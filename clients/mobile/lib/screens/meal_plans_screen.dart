@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'edit_meal_plan_screen.dart';
 
 const String mealPlansQuery = r'''
   query MealPlans {
@@ -46,10 +47,23 @@ class MealPlansScreen extends StatelessWidget {
                 title: Text(item['name'] as String),
                 subtitle: Text('Week starting: ${item['weekStartDate']}'),
                 trailing: Chip(label: Text(isActive ? 'Active' : 'Inactive')),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EditMealPlanScreen(mealPlanId: item['id'] as String),
+                  ),
+                ),
               );
             },
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const EditMealPlanScreen()),
+        ),
+        child: const Icon(Icons.add),
       ),
     );
   }
