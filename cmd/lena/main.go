@@ -15,9 +15,11 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/identity"
+	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
+	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
 func main() {
@@ -40,6 +42,9 @@ func main() {
 	defer pool.Close()
 
 	identitySvc := identity.NewService(pool)
+	inventorySvc := inventory.NewService(pool)
+	recipeSvc := recipe.NewService(pool)
+
 	authenticator := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:   splitAndTrim(cfg.AuthIssuers),
 		Audiences: splitAndTrim(cfg.AuthAudiences),
@@ -64,7 +69,7 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	resolver := bff.NewResolver()
+	resolver := bff.NewResolver(inventorySvc, recipeSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
 
 	go func() {

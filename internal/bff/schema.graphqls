@@ -1,11 +1,114 @@
 scalar Time
+scalar Date
 
 type Query {
   me: User!
+  item(id: ID!): Item
+  items(page: Int = 1, pageSize: Int = 25): ItemPage!
+  recipe(id: ID!): Recipe
+  recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
+}
+
+type Mutation {
+  createItem(input: CreateItemInput!): Item!
+  createRecipe(input: CreateRecipeInput!): Recipe!
+}
+
+type PageInfo {
+  pageNumber: Int!
+  pageSize: Int!
+  totalCount: Int!
 }
 
 type User {
   id: ID!
   email: String!
   displayName: String
+}
+
+type Category {
+  id: ID!
+  name: String!
+  description: String
+}
+
+type Brand {
+  id: ID!
+  name: String!
+}
+
+type Item {
+  id: ID!
+  name: String!
+  brand: Brand
+  upc12: String
+  upc14: String
+  category: Category!
+  unit: String!
+}
+
+type ItemPage {
+  items: [Item!]!
+  pageInfo: PageInfo!
+}
+
+type Recipe {
+  id: ID!
+  name: String!
+  description: String
+  servings: Int
+  prepTimeMinutes: Int
+  cookTimeMinutes: Int
+  items: [RecipeItem!]!
+  steps: [RecipeStep!]!
+}
+
+type RecipeItem {
+  item: Item!
+  quantity: Float!
+  unit: String!
+  notes: String
+  isOptional: Boolean!
+}
+
+type RecipeStep {
+  stepNumber: Int!
+  instruction: String!
+}
+
+type RecipePage {
+  items: [Recipe!]!
+  pageInfo: PageInfo!
+}
+
+input CreateItemInput {
+  name: String!
+  brandId: ID
+  upc12: String
+  upc14: String
+  categoryId: ID!
+  unit: String!
+}
+
+input CreateRecipeInput {
+  name: String!
+  description: String
+  servings: Int
+  prepTimeMinutes: Int
+  cookTimeMinutes: Int
+  items: [RecipeItemInput!]!
+  steps: [RecipeStepInput!]!
+}
+
+input RecipeItemInput {
+  itemId: ID!
+  quantity: Float!
+  unit: String!
+  notes: String
+  isOptional: Boolean
+}
+
+input RecipeStepInput {
+  stepNumber: Int!
+  instruction: String!
 }
