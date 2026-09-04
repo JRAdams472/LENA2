@@ -20,6 +20,7 @@ A complete re-implementation of LENA in Go and PostgreSQL as a single modular mo
 | Authentication | **Google now, multi-OIDC ready** — schema stores `(provider, external_subject)` and the JWT layer accepts a configurable issuer/audience list. |
 | Data migration | **Fresh start** — keep all existing domains, but no migration from the current SQL Server instance. Seed reference data if desired. |
 | Go / Postgres stack | **Recommended defaults**: `gqlgen`, Echo or stdlib `net/http`, `pgx` + `sqlc`, `golang-migrate`, `go-playground/validator`, structured logging (e.g. `uber-go/zap` or `rs/zerolog`). |
+| Business logic placement | **All business logic lives in Go code** — no stored procedures, triggers, views with logic, or complex SQL-side transformations. SQL is restricted to CRUD, filtering, joins, and simple aggregations. |
 | Output now | **Specification and planning documents only** under `docs/`. No Go/Flutter code is to be written until the specification is approved. |
 
 ---
@@ -393,6 +394,33 @@ CREATE TABLE grocery.grocery_list (
 
 ---
 
+## 7.5 The "No Business Logic in SQL" Rule
+
+Business logic from the original LENA stored procedures must **not** be ported into PostgreSQL. SQL in this rewrite is only for data access.
+
+### 7.5.1 Allowed in SQL
+
+- Simple `INSERT`, `SELECT`, `UPDATE`, `DELETE`.
+- Filtering, sorting, and pagination (`WHERE`, `ORDER BY`, `LIMIT`, `OFFSET`).
+- Joins **within a single domain schema** to fetch related rows.
+- Simple aggregations (`COUNT`, `SUM`, `MIN`, `MAX`) when the result set is the data being returned.
+- Constraints, indexes, and foreign keys.
+
+### 7.5.2 Not allowed in SQL
+
+- Stored procedures, functions, or triggers that encode business rules.
+- Views that transform data or embed business decisions.
+- Complex SQL-side calculations, conditional logic (`CASE` chains that implement rules), or string manipulation to derive values.
+- Multi-step workflows, loop constructs, or cursor-based processing.
+
+### 7.5.3 Where the logic goes instead
+
+- **Domain services** (`internal/<domain>/service.go`) own business rules and orchestration.
+- The **BFF** (`internal/bff`) owns cross-domain orchestration and client-facing transformations.
+- Validation, computation, and side effects happen in Go before or after the sqlc-generated queries are called.
+
+---
+
 ## 8. Authentication & Authorization
 
 1. Client sends `Authorization: Bearer <id_token>` (Google ID token, or any configured OIDC ID token).
@@ -648,6 +676,7 @@ The actual code, when approved, should be built in this order:
 
 - [ ] All `docs/` files above are produced and peer-review ready.
 - [ ] The specification is internally consistent with the "no cross-domain SQL" rule.
+- [ ] The specification explicitly states that all business logic lives in Go code and that no stored procedures, triggers, or logic-embedding views are used.
 - [ ] The data model explicitly separates per-user tables from catalog tables.
 - [ ] The GraphQL contract is sufficient for the existing Flutter grocery list flow and the existing Next.js pages.
 - [ ] The plan can be handed to another engineer who can implement it without further clarification on the architecture.
