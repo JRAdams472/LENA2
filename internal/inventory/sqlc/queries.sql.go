@@ -326,6 +326,46 @@ func (q *Queries) ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProf
 	return items, nil
 }
 
+const listFoodNutrientsByItem = `-- name: ListFoodNutrientsByItem :many
+SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount
+FROM inventory.food_nutrient fn
+JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
+WHERE fn.food_id = $1
+ORDER BY nt.name
+`
+
+type ListFoodNutrientsByItemRow struct {
+	NutrientID int64          `json:"nutrient_id"`
+	Name       string         `json:"name"`
+	Unit       pgtype.Text    `json:"unit"`
+	Amount     pgtype.Numeric `json:"amount"`
+}
+
+func (q *Queries) ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error) {
+	rows, err := q.db.Query(ctx, listFoodNutrientsByItem, foodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFoodNutrientsByItemRow{}
+	for rows.Next() {
+		var i ListFoodNutrientsByItemRow
+		if err := rows.Scan(
+			&i.NutrientID,
+			&i.Name,
+			&i.Unit,
+			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItems = `-- name: ListItems :many
 SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
 FROM inventory.item

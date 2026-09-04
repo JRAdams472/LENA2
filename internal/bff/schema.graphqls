@@ -24,6 +24,7 @@ type Query {
   grapeVarieties: [GrapeVariety!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
+  nutrition(mealPlanId: ID!): [NutritionSummary!]!
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
 }
@@ -378,6 +379,12 @@ type GrapeVariety {
   name: String!
   description: String
   isActive: Boolean!
+}
+
+type NutritionSummary {
+  name: String!
+  unit: String!
+  amount: Float!
 }
 
 input CreateBottleInput {

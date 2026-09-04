@@ -93,6 +93,16 @@ const REMOVE_MEAL_SLOT_ITEM = gql`
   }
 `;
 
+const NUTRITION_QUERY = gql`
+  query Nutrition($mealPlanId: ID!) {
+    nutrition(mealPlanId: $mealPlanId) {
+      name
+      unit
+      amount
+    }
+  }
+`;
+
 export default function EditMealPlan() {
   const router = useRouter();
   const id = router.query.id as string | undefined;
@@ -103,6 +113,10 @@ export default function EditMealPlan() {
   });
   const { data: recipesData } = useQuery(RECIPES_QUERY);
   const { data: itemsData } = useQuery(ITEMS_QUERY);
+  const { data: nutritionData } = useQuery(NUTRITION_QUERY, {
+    variables: { id },
+    skip: !id,
+  });
 
   const [updateMealPlan] = useMutation(UPDATE_MEAL_PLAN, {
     onCompleted: () => refetch(),
@@ -332,6 +346,24 @@ export default function EditMealPlan() {
           </li>
         ))}
       </ul>
+
+      <h2 style={{ marginTop: '2rem' }}>Nutrition</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Nutrient</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(nutritionData?.nutrition ?? []).map((n: any) => (
+            <tr key={n.name}>
+              <td>{n.name}</td>
+              <td>{n.amount.toFixed(2)} {n.unit}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </main>
   );
 }

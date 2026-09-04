@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -347,6 +348,100 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
+}
+
+// Nutrition returns a nutrition summary for a meal plan.
+func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphql.ID }) ([]*nutritionResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mealPlanID, err := parseID(string(args.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.UserID); err != nil {
+		return nil, err
+	}
+	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID)
+	if err != nil {
+		return nil, err
+	}
+
+	type total struct {
+		name   string
+		unit   string
+		amount float64
+	}
+	totals := make(map[int64]total)
+
+	addNutrients := func(itemID int64, quantity float64) error {
+		nutrients, err := r.InventoryService.ListFoodNutrientsByItem(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		for _, n := range nutrients {
+			t := totals[n.NutrientID]
+			t.name = n.Name
+			t.unit = n.Unit
+			t.amount += n.Amount * quantity
+			totals[n.NutrientID] = t
+		}
+		return nil
+	}
+
+	for _, slot := range slots {
+		overridden := make(map[int64]bool)
+		slotItems, err := r.MealPlanService.ListMealSlotItems(ctx, slot.SlotID)
+		if err != nil {
+			return nil, err
+		}
+		for _, si := range slotItems {
+			if si.ItemID == nil {
+				continue
+			}
+			if err := addNutrients(*si.ItemID, si.Quantity); err != nil {
+				return nil, err
+			}
+			if si.IsFromRecipe {
+				overridden[*si.ItemID] = true
+			}
+		}
+
+		if slot.RecipeID == nil {
+			continue
+		}
+		recipe, err := r.RecipeService.GetRecipeByID(ctx, *slot.RecipeID)
+		if err != nil {
+			return nil, err
+		}
+		if recipe.Servings <= 0 {
+			continue
+		}
+		scale := 1.0
+		if slot.Servings != nil {
+			scale = float64(*slot.Servings) / float64(recipe.Servings)
+		}
+		recipeItems, err := r.RecipeService.ListRecipeItems(ctx, recipe.RecipeID)
+		if err != nil {
+			return nil, err
+		}
+		for _, ri := range recipeItems {
+			if overridden[ri.ItemID] {
+				continue
+			}
+			if err := addNutrients(ri.ItemID, ri.Quantity*scale); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	out := make([]*nutritionResolver, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.name, Unit: t.unit, Amount: t.amount}})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].nutrition.Name < out[j].nutrition.Name })
+	return out, nil
 }
 
 // GroceryList resolves a single grocery list by ID.
@@ -2069,6 +2164,19 @@ func (r *grapeVarietyResolver) ID() graphql.ID {
 func (r *grapeVarietyResolver) Name() string         { return r.g.Name }
 func (r *grapeVarietyResolver) Description() *string { return nilIfEmpty(r.g.Description) }
 func (r *grapeVarietyResolver) IsActive() bool       { return r.g.IsActive }
+
+type nutrition struct {
+	Name   string
+	Unit   string
+	Amount float64
+}
+
+// nutritionResolver resolves a nutrition summary row.
+type nutritionResolver struct{ nutrition nutrition }
+
+func (r *nutritionResolver) Name() string    { return r.nutrition.Name }
+func (r *nutritionResolver) Unit() string    { return r.nutrition.Unit }
+func (r *nutritionResolver) Amount() float64 { return r.nutrition.Amount }
 
 // Inputs map directly to the GraphQL input types.
 type createBrandInput struct {

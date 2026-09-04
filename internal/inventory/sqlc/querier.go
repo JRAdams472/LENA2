@@ -21,6 +21,7 @@ type Querier interface {
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	ListCategories(ctx context.Context) ([]InventoryCategory, error)
 	ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProfile, error)
+	ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error)
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
 	UpdateItem(ctx context.Context, arg UpdateItemParams) error

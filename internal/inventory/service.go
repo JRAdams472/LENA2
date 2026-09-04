@@ -245,6 +245,27 @@ func (s *Service) ListNutrientTypes(ctx context.Context) ([]NutrientType, error)
 	return out, nil
 }
 
+// FoodNutrient is a nutrient value for a catalog item.
+type FoodNutrient struct {
+	NutrientID int64
+	Name       string
+	Unit       string
+	Amount     float64
+}
+
+// ListFoodNutrientsByItem returns nutrient values for an item.
+func (s *Service) ListFoodNutrientsByItem(ctx context.Context, itemID int64) ([]FoodNutrient, error) {
+	rows, err := s.q.ListFoodNutrientsByItem(ctx, itemID)
+	if err != nil {
+		return nil, fmt.Errorf("list food nutrients by item: %w", err)
+	}
+	out := make([]FoodNutrient, len(rows))
+	for i := range rows {
+		out[i] = toFoodNutrient(rows[i])
+	}
+	return out, nil
+}
+
 func toCategory(row sqlc.InventoryCategory) Category {
 	return Category{
 		CategoryID:  row.CategoryID,
@@ -291,6 +312,19 @@ func toNutrientType(row sqlc.InventoryNutrientType) NutrientType {
 		Name:       row.Name,
 		Unit:       row.Unit.String,
 		CreatedAt:  row.CreatedAt,
+	}
+}
+
+func toFoodNutrient(row sqlc.ListFoodNutrientsByItemRow) FoodNutrient {
+	var amount float64
+	if v, err := row.Amount.Float64Value(); err == nil {
+		amount = v.Float64
+	}
+	return FoodNutrient{
+		NutrientID: row.NutrientID,
+		Name:       row.Name,
+		Unit:       row.Unit.String,
+		Amount:     amount,
 	}
 }
 
