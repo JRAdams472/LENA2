@@ -1790,7 +1790,14 @@ func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 // bottleResolver resolves Bottle fields.
 type bottleResolver struct{ b wine.Bottle }
 
-func (r *bottleResolver) ID() graphql.ID        { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
+func (r *bottleResolver) ID() graphql.ID     { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
+func (r *bottleResolver) TypeID() graphql.ID { return graphql.ID(strconv.FormatInt(r.b.TypeID, 10)) }
+func (r *bottleResolver) CountryID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.b.CountryID, 10))
+}
+func (r *bottleResolver) RegionID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.b.RegionID, 10))
+}
 func (r *bottleResolver) Vineyard() *string     { return nilIfEmpty(r.b.Vineyard) }
 func (r *bottleResolver) VintageYear() int32    { return r.b.VintageYear }
 func (r *bottleResolver) Abv() *float64         { return float64OrNil(r.b.Abv) }

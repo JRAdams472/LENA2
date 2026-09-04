@@ -25,6 +25,10 @@ export function Layout({ children }: { children: ReactNode }) {
           <a>Wine</a>
         </Link>
         {' | '}
+        <Link href="/bottles" legacyBehavior>
+          <a>Bottles</a>
+        </Link>
+        {' | '}
         <Link href="/grocery" legacyBehavior>
           <a>Grocery</a>
         </Link>

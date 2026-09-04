@@ -126,6 +126,9 @@ type RecipePage {
 
 type Bottle {
   id: ID!
+  typeId: ID!
+  countryId: ID!
+  regionId: ID!
   vineyard: String
   vintageYear: Int!
   abv: Float

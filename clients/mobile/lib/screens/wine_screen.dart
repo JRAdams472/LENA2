@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'bottles_screen.dart';
 
 const String userBottlesQuery = r'''
   query UserBottles {
@@ -56,6 +57,13 @@ class WineScreen extends StatelessWidget {
             },
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const BottlesScreen()),
+        ),
+        child: const Icon(Icons.wine_bar),
       ),
     );
   }
