@@ -1,19 +1,27 @@
 import { gql, useMutation, useQuery } from '@apollo/client';
-import { useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
 
-const RECIPES_QUERY = gql`
-  query Recipes {
-    recipes(page: 1, pageSize: 25) {
+const RECIPE_QUERY = gql`
+  query Recipe($id: ID!) {
+    recipe(id: $id) {
+      id
+      name
+      description
+      servings
+      prepTimeMinutes
+      cookTimeMinutes
+      isFavorite
       items {
-        id
-        name
-        description
-        servings
-        isFavorite
+        item { id name }
+        quantity
+        unit
+        notes
+        isOptional
       }
-      pageInfo {
-        totalCount
+      steps {
+        stepNumber
+        instruction
       }
     }
   }
@@ -26,19 +34,22 @@ const ITEMS_QUERY = gql`
         id
         name
       }
-      pageInfo {
-        totalCount
-      }
     }
   }
 `;
 
-const CREATE_RECIPE = gql`
-  mutation CreateRecipe($input: CreateRecipeInput!) {
-    createRecipe(input: $input) {
+const UPDATE_RECIPE = gql`
+  mutation UpdateRecipe($id: ID!, $input: CreateRecipeInput!) {
+    updateRecipe(id: $id, input: $input) {
       id
       name
     }
+  }
+`;
+
+const DELETE_RECIPE = gql`
+  mutation DeleteRecipe($id: ID!) {
+    deleteRecipe(id: $id)
   }
 `;
 
@@ -48,24 +59,31 @@ const SET_RECIPE_FAVORITE = gql`
   }
 `;
 
-type Recipe = {
-  id: string;
-  name: string;
-  description?: string | null;
-  servings?: number | null;
-  isFavorite: boolean;
+type Item = { id: string; name: string };
+
+type FormItem = {
+  itemId: string;
+  quantity: string;
+  unit: string;
+  notes: string;
+  isOptional: boolean;
 };
 
-type Item = {
-  id: string;
-  name: string;
-};
+type FormStep = { instruction: string };
 
-export default function Recipes() {
-  const { data, loading, error, refetch } = useQuery(RECIPES_QUERY);
+export default function EditRecipe() {
+  const router = useRouter();
+  const id = (router.query.id as string) ?? '';
+  const { data, loading, error, refetch } = useQuery(RECIPE_QUERY, {
+    variables: { id },
+    skip: !id,
+  });
   const { data: itemsData } = useQuery(ITEMS_QUERY);
-  const [createRecipe] = useMutation(CREATE_RECIPE, {
+  const [updateRecipe] = useMutation(UPDATE_RECIPE, {
     onCompleted: () => refetch(),
+  });
+  const [deleteRecipe] = useMutation(DELETE_RECIPE, {
+    onCompleted: () => router.push('/recipes'),
   });
   const [setRecipeFavorite] = useMutation(SET_RECIPE_FAVORITE, {
     onCompleted: () => refetch(),
@@ -77,9 +95,35 @@ export default function Recipes() {
     servings: '',
     prepTimeMinutes: '',
     cookTimeMinutes: '',
-    items: [{ itemId: '', quantity: '', unit: '', notes: '', isOptional: false }],
-    steps: [{ instruction: '' }],
+    items: [{ itemId: '', quantity: '', unit: '', notes: '', isOptional: false } as FormItem],
+    steps: [{ instruction: '' } as FormStep],
   });
+
+  useEffect(() => {
+    if (!data?.recipe) return;
+    const r = data.recipe;
+    setForm({
+      name: r.name ?? '',
+      description: r.description ?? '',
+      servings: r.servings?.toString() ?? '',
+      prepTimeMinutes: r.prepTimeMinutes?.toString() ?? '',
+      cookTimeMinutes: r.cookTimeMinutes?.toString() ?? '',
+      items:
+        r.items?.length > 0
+          ? r.items.map((it: any) => ({
+              itemId: it.item?.id ?? '',
+              quantity: it.quantity?.toString() ?? '',
+              unit: it.unit ?? '',
+              notes: it.notes ?? '',
+              isOptional: it.isOptional ?? false,
+            }))
+          : [{ itemId: '', quantity: '', unit: '', notes: '', isOptional: false }],
+      steps:
+        r.steps?.length > 0
+          ? r.steps.map((s: any) => ({ instruction: s.instruction ?? '' }))
+          : [{ instruction: '' }],
+    });
+  }, [data]);
 
   const addItem = () => {
     setForm({
@@ -87,11 +131,9 @@ export default function Recipes() {
       items: [...form.items, { itemId: '', quantity: '', unit: '', notes: '', isOptional: false }],
     });
   };
-
   const removeItem = (index: number) => {
     setForm({ ...form, items: form.items.filter((_, i) => i !== index) });
   };
-
   const updateItem = (index: number, field: string, value: any) => {
     const items = [...form.items];
     items[index] = { ...items[index], [field]: value };
@@ -101,11 +143,9 @@ export default function Recipes() {
   const addStep = () => {
     setForm({ ...form, steps: [...form.steps, { instruction: '' }] });
   };
-
   const removeStep = (index: number) => {
     setForm({ ...form, steps: form.steps.filter((_, i) => i !== index) });
   };
-
   const updateStep = (index: number, value: string) => {
     const steps = [...form.steps];
     steps[index] = { instruction: value };
@@ -114,8 +154,9 @@ export default function Recipes() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createRecipe({
+    updateRecipe({
       variables: {
+        id,
         input: {
           name: form.name,
           description: form.description || null,
@@ -144,28 +185,33 @@ export default function Recipes() {
         },
       },
     });
-    setForm({
-      name: '',
-      description: '',
-      servings: '',
-      prepTimeMinutes: '',
-      cookTimeMinutes: '',
-      items: [{ itemId: '', quantity: '', unit: '', notes: '', isOptional: false }],
-      steps: [{ instruction: '' }],
-    });
   };
 
-  if (loading) return <p>Loading...</p>;
+  if (loading || !id) return <p>Loading...</p>;
   if (error) return <p>Error: {error.message}</p>;
 
   const items = itemsData?.items?.items ?? [];
+  const recipe = data?.recipe;
 
   return (
     <main style={{ padding: '2rem' }}>
-      <h1>Recipes</h1>
+      <h1>Edit Recipe</h1>
+      {recipe && (
+        <p>
+          <button
+            onClick={() =>
+              setRecipeFavorite({
+                variables: { recipeId: recipe.id, isFavorite: !recipe.isFavorite },
+              })
+            }
+          >
+            {recipe.isFavorite ? 'Unfavorite' : 'Favorite'}
+          </button>{' '}
+          <button onClick={() => deleteRecipe({ variables: { id } })}>Delete</button>
+        </p>
+      )}
 
-      <form onSubmit={handleSubmit} style={{ marginBottom: '2rem' }}>
-        <h2>Create recipe</h2>
+      <form onSubmit={handleSubmit}>
         <input
           placeholder="Name"
           value={form.name}
@@ -267,32 +313,9 @@ export default function Recipes() {
         </button>
 
         <div style={{ marginTop: '1rem' }}>
-          <button type="submit">Create</button>
+          <button type="submit">Save</button>
         </div>
       </form>
-
-      <ul>
-        {data?.recipes?.items.map((recipe: Recipe) => (
-          <li key={recipe.id}>
-            <Link href={`/recipes/${recipe.id}`} legacyBehavior>
-              <a>
-                {recipe.name}
-                {recipe.servings ? ` (serves ${recipe.servings})` : ''}
-              </a>
-            </Link>{' '}
-            <button
-              onClick={() =>
-                setRecipeFavorite({
-                  variables: { recipeId: recipe.id, isFavorite: !recipe.isFavorite },
-                })
-              }
-              aria-label={recipe.isFavorite ? 'Unfavorite' : 'Favorite'}
-            >
-              {recipe.isFavorite ? '★' : '☆'}
-            </button>
-          </li>
-        ))}
-      </ul>
     </main>
   );
 }
