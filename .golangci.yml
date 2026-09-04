@@ -20,7 +20,6 @@ linters:
       excludes:
         - G104
 
-issues:
-  exclude:
+  exclusions:
     paths:
       - migrations
