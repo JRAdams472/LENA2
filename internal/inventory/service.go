@@ -177,6 +177,74 @@ func (s *Service) DeleteItem(ctx context.Context, itemID int64) error {
 	return s.q.DeleteItem(ctx, itemID)
 }
 
+// FlavorProfile is a catalog food flavor profile.
+type FlavorProfile struct {
+	FlavorID  int64
+	Name      string
+	IsActive  bool
+	CreatedAt time.Time
+}
+
+// CreateFlavorProfile adds a new flavor profile.
+func (s *Service) CreateFlavorProfile(ctx context.Context, name, by string) (FlavorProfile, error) {
+	row, err := s.q.CreateFlavorProfile(ctx, sqlc.CreateFlavorProfileParams{
+		Name:      name,
+		IsActive:  true,
+		CreatedBy: by,
+		UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return FlavorProfile{}, fmt.Errorf("create flavor profile: %w", err)
+	}
+	return toFlavorProfile(row), nil
+}
+
+// ListFlavorProfiles returns all flavor profiles ordered by name.
+func (s *Service) ListFlavorProfiles(ctx context.Context) ([]FlavorProfile, error) {
+	rows, err := s.q.ListFlavorProfiles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list flavor profiles: %w", err)
+	}
+	out := make([]FlavorProfile, len(rows))
+	for i := range rows {
+		out[i] = toFlavorProfile(rows[i])
+	}
+	return out, nil
+}
+
+// NutrientType is a catalog nutrient type.
+type NutrientType struct {
+	NutrientID int64
+	Name       string
+	Unit       string
+	CreatedAt  time.Time
+}
+
+// CreateNutrientType adds a new nutrient type.
+func (s *Service) CreateNutrientType(ctx context.Context, name, unit string) (NutrientType, error) {
+	row, err := s.q.CreateNutrientType(ctx, sqlc.CreateNutrientTypeParams{
+		Name: name,
+		Unit: textOrNull(unit),
+	})
+	if err != nil {
+		return NutrientType{}, fmt.Errorf("create nutrient type: %w", err)
+	}
+	return toNutrientType(row), nil
+}
+
+// ListNutrientTypes returns all nutrient types ordered by name.
+func (s *Service) ListNutrientTypes(ctx context.Context) ([]NutrientType, error) {
+	rows, err := s.q.ListNutrientTypes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list nutrient types: %w", err)
+	}
+	out := make([]NutrientType, len(rows))
+	for i := range rows {
+		out[i] = toNutrientType(rows[i])
+	}
+	return out, nil
+}
+
 func toCategory(row sqlc.InventoryCategory) Category {
 	return Category{
 		CategoryID:  row.CategoryID,
@@ -206,6 +274,24 @@ func textOrNull(s string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: s, Valid: true}
+}
+
+func toFlavorProfile(row sqlc.InventoryFlavorProfile) FlavorProfile {
+	return FlavorProfile{
+		FlavorID:  row.FlavorID,
+		Name:      row.Name,
+		IsActive:  row.IsActive,
+		CreatedAt: row.CreatedAt,
+	}
+}
+
+func toNutrientType(row sqlc.InventoryNutrientType) NutrientType {
+	return NutrientType{
+		NutrientID: row.NutrientID,
+		Name:       row.Name,
+		Unit:       row.Unit.String,
+		CreatedAt:  row.CreatedAt,
+	}
 }
 
 func optInt64(v *int64) pgtype.Int8 {

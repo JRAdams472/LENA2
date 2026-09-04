@@ -7,6 +7,8 @@ type Query {
   brands: [Brand!]!
   category(id: ID!): Category
   categories: [Category!]!
+  flavorProfiles: [FlavorProfile!]!
+  nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
   recipe(id: ID!): Recipe
@@ -27,6 +29,8 @@ type Query {
 type Mutation {
   createBrand(input: CreateBrandInput!): Brand!
   createCategory(input: CreateCategoryInput!): Category!
+  createFlavorProfile(input: CreateFlavorProfileInput!): FlavorProfile!
+  createNutrientType(input: CreateNutrientTypeInput!): NutrientType!
 
   createItem(input: CreateItemInput!): Item!
   updateItem(id: ID!, input: UpdateItemInput!): Item!
@@ -78,6 +82,18 @@ type Category {
 type Brand {
   id: ID!
   name: String!
+}
+
+type FlavorProfile {
+  id: ID!
+  name: String!
+  isActive: Boolean!
+}
+
+type NutrientType {
+  id: ID!
+  name: String!
+  unit: String!
 }
 
 type Item {
@@ -238,6 +254,15 @@ input CreateBrandInput {
 input CreateCategoryInput {
   name: String!
   description: String
+}
+
+input CreateFlavorProfileInput {
+  name: String!
+}
+
+input CreateNutrientTypeInput {
+  name: String!
+  unit: String!
 }
 
 input CreateItemInput {

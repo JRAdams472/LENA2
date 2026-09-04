@@ -181,6 +181,38 @@ func (r *Resolver) Categories(ctx context.Context) ([]*categoryResolver, error) 
 	return out, nil
 }
 
+// FlavorProfiles resolves all flavor profiles.
+func (r *Resolver) FlavorProfiles(ctx context.Context) ([]*flavorProfileResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	profiles, err := r.InventoryService.ListFlavorProfiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*flavorProfileResolver, len(profiles))
+	for i := range profiles {
+		out[i] = &flavorProfileResolver{f: profiles[i]}
+	}
+	return out, nil
+}
+
+// NutrientTypes resolves all nutrient types.
+func (r *Resolver) NutrientTypes(ctx context.Context) ([]*nutrientTypeResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	types, err := r.InventoryService.ListNutrientTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*nutrientTypeResolver, len(types))
+	for i := range types {
+		out[i] = &nutrientTypeResolver{n: types[i]}
+	}
+	return out, nil
+}
+
 // Item resolves a single catalog item by ID.
 func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*itemResolver, error) {
 	if _, err := userFromContext(ctx); err != nil {
@@ -409,6 +441,32 @@ func (r *Resolver) CreateCategory(ctx context.Context, args struct{ Input create
 		return nil, err
 	}
 	return &categoryResolver{c: c}, nil
+}
+
+// CreateFlavorProfile adds a new flavor profile.
+func (r *Resolver) CreateFlavorProfile(ctx context.Context, args struct{ Input createFlavorProfileInput }) (*flavorProfileResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.InventoryService.CreateFlavorProfile(ctx, args.Input.Name, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &flavorProfileResolver{f: f}, nil
+}
+
+// CreateNutrientType adds a new nutrient type.
+func (r *Resolver) CreateNutrientType(ctx context.Context, args struct{ Input createNutrientTypeInput }) (*nutrientTypeResolver, error) {
+	_, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	n, err := r.InventoryService.CreateNutrientType(ctx, args.Input.Name, args.Input.Unit)
+	if err != nil {
+		return nil, err
+	}
+	return &nutrientTypeResolver{n: n}, nil
 }
 
 // CreateItem creates a new catalog item.
@@ -1413,6 +1471,24 @@ func (r *categoryResolver) ID() graphql.ID       { return graphql.ID(strconv.For
 func (r *categoryResolver) Name() string         { return r.c.Name }
 func (r *categoryResolver) Description() *string { return nilIfEmpty(r.c.Description) }
 
+// flavorProfileResolver resolves an inventory flavor profile.
+type flavorProfileResolver struct{ f inventory.FlavorProfile }
+
+func (r *flavorProfileResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.f.FlavorID, 10))
+}
+func (r *flavorProfileResolver) Name() string   { return r.f.Name }
+func (r *flavorProfileResolver) IsActive() bool { return r.f.IsActive }
+
+// nutrientTypeResolver resolves an inventory nutrient type.
+type nutrientTypeResolver struct{ n inventory.NutrientType }
+
+func (r *nutrientTypeResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.n.NutrientID, 10))
+}
+func (r *nutrientTypeResolver) Name() string { return r.n.Name }
+func (r *nutrientTypeResolver) Unit() string { return r.n.Unit }
+
 type itemPageResolver struct {
 	inv      *inventory.Service
 	items    []inventory.Item
@@ -1867,6 +1943,15 @@ type createBrandInput struct {
 type createCategoryInput struct {
 	Name        string
 	Description *string
+}
+
+type createFlavorProfileInput struct {
+	Name string
+}
+
+type createNutrientTypeInput struct {
+	Name string
+	Unit string
 }
 
 type createItemInput struct {
