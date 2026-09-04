@@ -1,0 +1,81 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+
+	"github.com/JRAdams472/LENA2/internal/platform/config"
+	"github.com/JRAdams472/LENA2/internal/platform/logger"
+	"github.com/JRAdams472/LENA2/internal/platform/postgres"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		os.Exit(1)
+	}
+
+	log := logger.New(cfg.LogLevel)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	e := echo.New()
+	e.HideBanner = true
+	e.Use(middleware.Recover())
+
+	corsCfg := middleware.CORSConfig{
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+	}
+	if cfg.CORSAllowedOrigins == "*" {
+		corsCfg.AllowOriginFunc = func(origin string) bool { return true }
+	} else {
+		corsCfg.AllowOrigins = strings.Split(cfg.CORSAllowedOrigins, ",")
+	}
+	e.Use(middleware.CORSWithConfig(corsCfg))
+
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	e.POST("/graphql", func(c echo.Context) error {
+		return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+	})
+
+	go func() {
+		addr := ":" + cfg.Port
+		log.Info("starting server", "addr", addr)
+		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+			log.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		log.Error("shutdown error", "error", err)
+	}
+}
