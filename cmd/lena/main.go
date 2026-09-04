@@ -13,7 +13,10 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/JRAdams472/LENA2/internal/bff"
+	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
 )
@@ -37,6 +40,12 @@ func main() {
 	}
 	defer pool.Close()
 
+	identitySvc := identity.NewService(pool)
+	authenticator := bff.NewAuthenticator(bff.AuthConfig{
+		Issuers:   splitAndTrim(cfg.AuthIssuers),
+		Audiences: splitAndTrim(cfg.AuthAudiences),
+	}, identitySvc)
+
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
@@ -57,8 +66,12 @@ func main() {
 	})
 
 	e.POST("/graphql", func(c echo.Context) error {
-		return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
-	})
+		user, _ := currentuser.FromContext(c.Request().Context())
+		return c.JSON(http.StatusNotImplemented, map[string]any{
+			"status": "not implemented",
+			"userId": user.UserID,
+		})
+	}, authenticator.Middleware())
 
 	go func() {
 		addr := ":" + cfg.Port
@@ -78,4 +91,17 @@ func main() {
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Error("shutdown error", "error", err)
 	}
+}
+
+// splitAndTrim splits a comma-separated env value into a trimmed, non-empty slice.
+func splitAndTrim(csv string) []string {
+	parts := strings.Split(csv, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
