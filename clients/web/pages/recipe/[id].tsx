@@ -11,6 +11,7 @@ const RECIPE_QUERY = gql`
       servings
       prepTimeMinutes
       cookTimeMinutes
+      isFavorite
       items {
         item {
           id
@@ -52,6 +53,12 @@ const UPDATE_RECIPE = gql`
   }
 `;
 
+const SET_RECIPE_FAVORITE = gql`
+  mutation SetRecipeFavorite($recipeId: ID!, $isFavorite: Boolean!) {
+    setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite)
+  }
+`;
+
 type Item = {
   id: string;
   name: string;
@@ -61,13 +68,16 @@ export default function EditRecipe() {
   const router = useRouter();
   const id = router.query.id as string | undefined;
 
-  const { data, loading, error } = useQuery(RECIPE_QUERY, {
+  const { data, loading, error, refetch } = useQuery(RECIPE_QUERY, {
     variables: { id },
     skip: !id,
   });
   const { data: itemsData } = useQuery(ITEMS_QUERY);
   const [updateRecipe] = useMutation(UPDATE_RECIPE, {
     onCompleted: () => router.push('/recipes'),
+  });
+  const [setRecipeFavorite] = useMutation(SET_RECIPE_FAVORITE, {
+    onCompleted: () => refetch(),
   });
 
   const [form, setForm] = useState({
@@ -142,9 +152,22 @@ export default function EditRecipe() {
 
   const items = itemsData?.items?.items ?? [];
 
+  const isFavorite = data?.recipe?.isFavorite ?? false;
+
   return (
     <main style={{ padding: '2rem' }}>
       <h1>Edit recipe</h1>
+      <button
+        onClick={() =>
+          id &&
+          setRecipeFavorite({
+            variables: { recipeId: id, isFavorite: !isFavorite },
+          })
+        }
+        aria-label={isFavorite ? 'Unfavorite' : 'Favorite'}
+      >
+        {isFavorite ? '★ Favorite' : '☆ Favorite'}
+      </button>
       <form onSubmit={handleSubmit}>
         <input
           placeholder="Name"

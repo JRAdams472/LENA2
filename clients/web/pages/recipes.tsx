@@ -10,6 +10,7 @@ const RECIPES_QUERY = gql`
         name
         description
         servings
+        isFavorite
       }
       pageInfo {
         totalCount
@@ -41,11 +42,18 @@ const CREATE_RECIPE = gql`
   }
 `;
 
+const SET_RECIPE_FAVORITE = gql`
+  mutation SetRecipeFavorite($recipeId: ID!, $isFavorite: Boolean!) {
+    setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite)
+  }
+`;
+
 type Recipe = {
   id: string;
   name: string;
   description?: string | null;
   servings?: number | null;
+  isFavorite: boolean;
 };
 
 type Item = {
@@ -57,6 +65,9 @@ export default function Recipes() {
   const { data, loading, error, refetch } = useQuery(RECIPES_QUERY);
   const { data: itemsData } = useQuery(ITEMS_QUERY);
   const [createRecipe] = useMutation(CREATE_RECIPE, {
+    onCompleted: () => refetch(),
+  });
+  const [setRecipeFavorite] = useMutation(SET_RECIPE_FAVORITE, {
     onCompleted: () => refetch(),
   });
 
@@ -195,7 +206,17 @@ export default function Recipes() {
                 {recipe.name}
                 {recipe.servings ? ` (serves ${recipe.servings})` : ''}
               </a>
-            </Link>
+            </Link>{' '}
+            <button
+              onClick={() =>
+                setRecipeFavorite({
+                  variables: { recipeId: recipe.id, isFavorite: !recipe.isFavorite },
+                })
+              }
+              aria-label={recipe.isFavorite ? 'Unfavorite' : 'Favorite'}
+            >
+              {recipe.isFavorite ? '★' : '☆'}
+            </button>
           </li>
         ))}
       </ul>

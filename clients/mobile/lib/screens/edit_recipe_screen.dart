@@ -24,6 +24,7 @@ const String recipeQuery = r'''
       servings
       prepTimeMinutes
       cookTimeMinutes
+      isFavorite
       items {
         item {
           id
@@ -56,6 +57,12 @@ const String updateRecipeMutation = r'''
   }
 ''';
 
+const String setRecipeFavoriteMutation = r'''
+  mutation SetRecipeFavorite($recipeId: ID!, $isFavorite: Boolean!) {
+    setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite)
+  }
+''';
+
 class EditRecipeScreen extends StatefulWidget {
   final String? recipeId;
 
@@ -78,6 +85,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   String? _itemId;
   bool _loaded = false;
   bool _isSaving = false;
+  bool _isFavorite = false;
+  bool _isTogglingFavorite = false;
   List<Map<String, dynamic>> _items = [];
 
   @override
@@ -118,8 +127,25 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           _qtyCtrl.text = item?['quantity']?.toString() ?? '';
           _unitCtrl.text = (item?['unit'] as String?) ?? '';
           _stepCtrl.text = (step?['instruction'] as String?) ?? '';
+          _isFavorite = (recipe['isFavorite'] as bool?) ?? false;
         });
       }
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (widget.recipeId == null) return;
+    setState(() => _isTogglingFavorite = true);
+    try {
+      final client = GraphQLProvider.of(context).value;
+      final next = !_isFavorite;
+      await client.mutate(MutationOptions(
+        document: gql(setRecipeFavoriteMutation),
+        variables: {'recipeId': widget.recipeId, 'isFavorite': next},
+      ));
+      if (mounted) setState(() => _isFavorite = next);
+    } finally {
+      if (mounted) setState(() => _isTogglingFavorite = false);
     }
   }
 
@@ -193,6 +219,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe'),
+        actions: widget.recipeId == null
+            ? null
+            : [
+                IconButton(
+                  icon: Icon(_isFavorite ? Icons.star : Icons.star_border),
+                  onPressed: _isTogglingFavorite ? null : _toggleFavorite,
+                ),
+              ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

@@ -124,6 +124,7 @@ type Recipe {
   cookTimeMinutes: Int
   items: [RecipeItem!]!
   steps: [RecipeStep!]!
+  isFavorite: Boolean!
 }
 
 type RecipeItem {

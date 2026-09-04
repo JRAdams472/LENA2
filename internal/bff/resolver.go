@@ -248,7 +248,8 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 
 // Recipe resolves a single recipe by ID.
 func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*recipeResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
@@ -259,7 +260,7 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: rec}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
 // Recipes resolves a paginated list of active recipes.
@@ -267,7 +268,8 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
 }) (*recipePageResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	page := clamp(args.Page, 1, 1_000_000)
@@ -276,7 +278,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
+	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
 }
 
 // Bottle resolves a single wine bottle by ID.
@@ -1669,6 +1671,8 @@ func (r *pageInfoResolver) TotalCount() int32 { return r.total }
 type recipeResolver struct {
 	inv    *inventory.Service
 	rec    *recipe.Service
+	up     *userprefs.Service
+	user   currentuser.User
 	recipe recipe.Recipe
 }
 
@@ -1700,6 +1704,13 @@ func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, erro
 	}
 	return out, nil
 }
+func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
+	fav, err := r.up.GetRecipeFavorite(ctx, r.user.UserID, r.recipe.RecipeID)
+	if err != nil {
+		return false, err
+	}
+	return fav.IsFavorite, nil
+}
 
 type recipeItemResolver struct {
 	inv  *inventory.Service
@@ -1726,6 +1737,8 @@ func (r *recipeStepResolver) Instruction() string { return r.step.Instruction }
 type recipePageResolver struct {
 	inv      *inventory.Service
 	rec      *recipe.Service
+	up       *userprefs.Service
+	user     currentuser.User
 	recipes  []recipe.Recipe
 	page     int32
 	pageSize int32
@@ -1735,7 +1748,7 @@ type recipePageResolver struct {
 func (r *recipePageResolver) Items() []*recipeResolver {
 	out := make([]*recipeResolver, len(r.recipes))
 	for i := range r.recipes {
-		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, recipe: r.recipes[i]}
+		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipes[i]}
 	}
 	return out
 }
