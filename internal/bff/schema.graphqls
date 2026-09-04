@@ -3,6 +3,10 @@ scalar Date
 
 type Query {
   me: User!
+  brand(id: ID!): Brand
+  brands: [Brand!]!
+  category(id: ID!): Category
+  categories: [Category!]!
   item(id: ID!): Item
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
   recipe(id: ID!): Recipe
@@ -10,6 +14,8 @@ type Query {
 }
 
 type Mutation {
+  createBrand(input: CreateBrandInput!): Brand!
+  createCategory(input: CreateCategoryInput!): Category!
   createItem(input: CreateItemInput!): Item!
   createRecipe(input: CreateRecipeInput!): Recipe!
 }
@@ -79,6 +85,15 @@ type RecipeStep {
 type RecipePage {
   items: [Recipe!]!
   pageInfo: PageInfo!
+}
+
+input CreateBrandInput {
+  name: String!
+}
+
+input CreateCategoryInput {
+  name: String!
+  description: String
 }
 
 input CreateItemInput {

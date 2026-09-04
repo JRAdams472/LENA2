@@ -86,6 +86,70 @@ func (r *Resolver) Me(ctx context.Context) (*userResolver, error) {
 	return &userResolver{u: u}, nil
 }
 
+// Brand resolves a single brand by ID.
+func (r *Resolver) Brand(ctx context.Context, args struct{ ID graphql.ID }) (*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.GetBrandByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &brandResolver{b: b}, nil
+}
+
+// Brands resolves all catalog brands.
+func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	brands, err := r.InventoryService.ListBrands(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*brandResolver, len(brands))
+	for i := range brands {
+		out[i] = &brandResolver{b: brands[i]}
+	}
+	return out, nil
+}
+
+// Category resolves a single category by ID.
+func (r *Resolver) Category(ctx context.Context, args struct{ ID graphql.ID }) (*categoryResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.InventoryService.GetCategoryByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryResolver{c: c}, nil
+}
+
+// Categories resolves all catalog categories.
+func (r *Resolver) Categories(ctx context.Context) ([]*categoryResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	cats, err := r.InventoryService.ListCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*categoryResolver, len(cats))
+	for i := range cats {
+		out[i] = &categoryResolver{c: cats[i]}
+	}
+	return out, nil
+}
+
 // Item resolves a single catalog item by ID.
 func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*itemResolver, error) {
 	if _, err := userFromContext(ctx); err != nil {
@@ -150,6 +214,31 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
+}
+
+// CreateBrand adds a new brand.
+func (r *Resolver) CreateBrand(ctx context.Context, args struct{ Input createBrandInput }) (*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.CreateBrand(ctx, args.Input.Name)
+	if err != nil {
+		return nil, err
+	}
+	return &brandResolver{b: b}, nil
+}
+
+// CreateCategory adds a new category.
+func (r *Resolver) CreateCategory(ctx context.Context, args struct{ Input createCategoryInput }) (*categoryResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.InventoryService.CreateCategory(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryResolver{c: c}, nil
 }
 
 // CreateItem creates a new catalog item.
@@ -401,6 +490,15 @@ func (r *recipePageResolver) PageInfo() *pageInfoResolver {
 }
 
 // Inputs map directly to the GraphQL input types.
+type createBrandInput struct {
+	Name string
+}
+
+type createCategoryInput struct {
+	Name        string
+	Description *string
+}
+
 type createItemInput struct {
 	Name       string
 	BrandID    *graphql.ID
