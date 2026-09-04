@@ -36,6 +36,15 @@ const COUNTRIES_QUERY = gql`
   }
 `;
 
+const VINTAGES_QUERY = gql`
+  query Vintages {
+    vintages {
+      id
+      year
+    }
+  }
+`;
+
 const REGIONS_QUERY = gql`
   query Regions($countryId: ID!) {
     regions(countryId: $countryId) {
@@ -63,11 +72,13 @@ type Bottle = {
 type Type = { id: string; name: string };
 type Country = { id: string; name: string };
 type Region = { id: string; name: string };
+type Vintage = { id: string; year: number };
 
 export default function Bottles() {
   const { data, loading, error, refetch } = useQuery(BOTTLES_QUERY);
   const { data: typesData } = useQuery(TYPES_QUERY);
   const { data: countriesData } = useQuery(COUNTRIES_QUERY);
+  const { data: vintagesData } = useQuery(VINTAGES_QUERY);
 
   const [form, setForm] = useState({
     typeId: '',
@@ -137,6 +148,7 @@ export default function Bottles() {
   const types = typesData?.types ?? [];
   const countries = countriesData?.countries ?? [];
   const regions = regionsData?.regions ?? [];
+  const vintages = vintagesData?.vintages ?? [];
 
   return (
     <main style={{ padding: '2rem' }}>
@@ -181,12 +193,18 @@ export default function Bottles() {
             </option>
           ))}
         </select>{' '}
-        <input
-          placeholder="Vintage year"
+        <select
           value={form.vintageYear}
           onChange={(e) => setForm({ ...form, vintageYear: e.target.value })}
           required
-        />{' '}
+        >
+          <option value="">Vintage</option>
+          {vintages.map((v: Vintage) => (
+            <option key={v.id} value={v.year}>
+              {v.year}
+            </option>
+          ))}
+        </select>{' '}
         <input
           placeholder="Bottle size"
           value={form.bottleSize}

@@ -121,3 +121,25 @@ ORDER BY gv.name;
 -- name: DeleteBottleGrapeVariety :exec
 DELETE FROM wine.bottle_grape_variety
 WHERE bottle_id = $1 AND grape_variety_id = $2;
+
+-- name: ListWineFlavorProfiles :many
+SELECT *
+FROM wine.flavor_profile
+WHERE is_active = true
+ORDER BY name;
+
+-- name: CreateBottleFlavorProfile :one
+INSERT INTO wine.bottle_flavor_profile (bottle_id, flavor_profile_id, intensity, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: ListBottleFlavorProfiles :many
+SELECT fp.flavor_profile_id, fp.name, bfp.intensity
+FROM wine.bottle_flavor_profile bfp
+JOIN wine.flavor_profile fp ON bfp.flavor_profile_id = fp.flavor_profile_id
+WHERE bfp.bottle_id = $1
+ORDER BY fp.name;
+
+-- name: DeleteBottleFlavorProfile :exec
+DELETE FROM wine.bottle_flavor_profile
+WHERE bottle_id = $1 AND flavor_profile_id = $2;

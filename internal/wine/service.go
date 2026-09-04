@@ -279,6 +279,69 @@ func (s *Service) RemoveBottleGrapeVariety(ctx context.Context, bottleID, grapeV
 	})
 }
 
+// WineFlavorProfile is a catalog of wine flavor profiles.
+type WineFlavorProfile struct {
+	FlavorProfileID int64
+	Name            string
+	Description     string
+	IsActive        bool
+}
+
+// ListWineFlavorProfiles returns active wine flavor profiles.
+func (s *Service) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error) {
+	rows, err := s.q.ListWineFlavorProfiles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list wine flavor profiles: %w", err)
+	}
+	out := make([]WineFlavorProfile, len(rows))
+	for i := range rows {
+		out[i] = toWineFlavorProfile(rows[i])
+	}
+	return out, nil
+}
+
+// BottleFlavorProfile is a flavor profile attached to a bottle.
+type BottleFlavorProfile struct {
+	FlavorProfileID int64
+	Name            string
+	Intensity       int16
+}
+
+// AddBottleFlavorProfile adds a flavor profile to a bottle.
+func (s *Service) AddBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64, intensity int16, by string) (BottleFlavorProfile, error) {
+	row, err := s.q.CreateBottleFlavorProfile(ctx, sqlc.CreateBottleFlavorProfileParams{
+		BottleID:        bottleID,
+		FlavorProfileID: flavorProfileID,
+		Intensity:       intensity,
+		CreatedBy:       by,
+	})
+	if err != nil {
+		return BottleFlavorProfile{}, fmt.Errorf("add bottle flavor profile: %w", err)
+	}
+	return toBottleFlavorProfileFromRow(row), nil
+}
+
+// ListBottleFlavorProfiles returns flavor profiles for a bottle.
+func (s *Service) ListBottleFlavorProfiles(ctx context.Context, bottleID int64) ([]BottleFlavorProfile, error) {
+	rows, err := s.q.ListBottleFlavorProfiles(ctx, bottleID)
+	if err != nil {
+		return nil, fmt.Errorf("list bottle flavor profiles: %w", err)
+	}
+	out := make([]BottleFlavorProfile, len(rows))
+	for i := range rows {
+		out[i] = toBottleFlavorProfile(rows[i])
+	}
+	return out, nil
+}
+
+// RemoveBottleFlavorProfile removes a flavor profile from a bottle.
+func (s *Service) RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64) error {
+	return s.q.DeleteBottleFlavorProfile(ctx, sqlc.DeleteBottleFlavorProfileParams{
+		BottleID:        bottleID,
+		FlavorProfileID: flavorProfileID,
+	})
+}
+
 // Bottle is a catalog wine bottle definition.
 type Bottle struct {
 	BottleID       int64
@@ -419,6 +482,30 @@ func toBottleGrapeVariety(row sqlc.ListBottleGrapeVarietiesRow) BottleGrapeVarie
 		GrapeVarietyID: row.GrapeVarietyID,
 		Name:           row.Name,
 		Percentage:     int16Value(row.Percentage),
+	}
+}
+
+func toWineFlavorProfile(row sqlc.WineFlavorProfile) WineFlavorProfile {
+	return WineFlavorProfile{
+		FlavorProfileID: row.FlavorProfileID,
+		Name:            row.Name,
+		Description:     row.Description.String,
+		IsActive:        row.IsActive,
+	}
+}
+
+func toBottleFlavorProfile(row sqlc.ListBottleFlavorProfilesRow) BottleFlavorProfile {
+	return BottleFlavorProfile{
+		FlavorProfileID: row.FlavorProfileID,
+		Name:            row.Name,
+		Intensity:       row.Intensity,
+	}
+}
+
+func toBottleFlavorProfileFromRow(row sqlc.WineBottleFlavorProfile) BottleFlavorProfile {
+	return BottleFlavorProfile{
+		FlavorProfileID: row.FlavorProfileID,
+		Intensity:       row.Intensity,
 	}
 }
 
