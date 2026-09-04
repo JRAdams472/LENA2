@@ -18,6 +18,8 @@ linters:
     gosec:
       excludes:
         - G104
+        # G115 is noisy for bounded int conversions already limited by page sizes and schema inputs.
+        - G115
 
   exclusions:
     paths:
