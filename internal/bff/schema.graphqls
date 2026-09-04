@@ -22,6 +22,7 @@ type Query {
   regions(countryId: ID!): [Region!]!
   vintages: [Vintage!]!
   grapeVarieties: [GrapeVariety!]!
+  wineFlavorProfiles: [WineFlavorProfile!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
   nutrition(mealPlanId: ID!): [NutritionSummary!]!
@@ -45,6 +46,11 @@ type Mutation {
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
   deleteUserItem(itemId: ID!): Boolean!
 
+  addFoodNutrient(input: AddFoodNutrientInput!): FoodNutrient!
+  removeFoodNutrient(itemId: ID!, nutrientId: ID!): Boolean!
+  addFoodFlavor(input: AddFoodFlavorInput!): FoodFlavor!
+  removeFoodFlavor(itemId: ID!, flavorId: ID!): Boolean!
+
   createRecipe(input: CreateRecipeInput!): Recipe!
   updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
   deleteRecipe(id: ID!): Boolean!
@@ -65,6 +71,10 @@ type Mutation {
 
   createBottle(input: CreateBottleInput!): Bottle!
   updateBottle(id: ID!, input: UpdateBottleInput!): Bottle!
+  addBottleGrapeVariety(input: AddBottleGrapeVarietyInput!): BottleGrapeVariety!
+  removeBottleGrapeVariety(bottleId: ID!, grapeVarietyId: ID!): Boolean!
+  addBottleFlavorProfile(input: AddBottleFlavorProfileInput!): BottleFlavorProfile!
+  removeBottleFlavorProfile(bottleId: ID!, flavorProfileId: ID!): Boolean!
   adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
   setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
 }
@@ -104,6 +114,16 @@ type NutrientType {
   unit: String!
 }
 
+type FoodNutrient {
+  nutrient: NutrientType!
+  amount: Float!
+}
+
+type FoodFlavor {
+  flavor: FlavorProfile!
+  intensity: Int!
+}
+
 type Item {
   id: ID!
   name: String!
@@ -112,6 +132,8 @@ type Item {
   upc14: String
   category: Category!
   unit: String!
+  nutrients: [FoodNutrient!]!
+  flavors: [FoodFlavor!]!
 }
 
 type ItemPage {
@@ -163,6 +185,25 @@ type Bottle {
   sweetness: Int
   oakIntegration: Boolean
   bottleSize: String!
+  grapeVarieties: [BottleGrapeVariety!]!
+  flavorProfiles: [BottleFlavorProfile!]!
+}
+
+type BottleGrapeVariety {
+  grapeVariety: GrapeVariety!
+  percentage: Int
+}
+
+type BottleFlavorProfile {
+  flavorProfile: WineFlavorProfile!
+  intensity: Int!
+}
+
+type WineFlavorProfile {
+  id: ID!
+  name: String!
+  description: String
+  isActive: Boolean!
 }
 
 type BottlePage {
@@ -290,6 +331,18 @@ input CreateVintageInput {
 input CreateGrapeVarietyInput {
   name: String!
   description: String
+}
+
+input AddFoodNutrientInput {
+  itemId: ID!
+  nutrientId: ID!
+  amount: Float!
+}
+
+input AddFoodFlavorInput {
+  itemId: ID!
+  flavorId: ID!
+  intensity: Int!
 }
 
 input CreateItemInput {
@@ -424,4 +477,16 @@ input UpdateBottleInput {
   sweetness: Int
   oakIntegration: Boolean
   bottleSize: String
+}
+
+input AddBottleGrapeVarietyInput {
+  bottleId: ID!
+  grapeVarietyId: ID!
+  percentage: Int
+}
+
+input AddBottleFlavorProfileInput {
+  bottleId: ID!
+  flavorProfileId: ID!
+  intensity: Int!
 }

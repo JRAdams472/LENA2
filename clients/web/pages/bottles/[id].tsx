@@ -18,25 +18,20 @@ const BOTTLE_QUERY = gql`
       body
       sweetness
       oakIntegration
+      grapeVarieties {
+        grapeVariety { id name }
+        percentage
+      }
+      flavorProfiles {
+        flavorProfile { id name }
+        intensity
+      }
     }
-  }
-`;
-
-const TYPES_QUERY = gql`
-  query Types {
-    types {
-      id
-      name
-    }
-  }
-`;
-
-const COUNTRIES_QUERY = gql`
-  query Countries {
-    countries {
-      id
-      name
-    }
+    types { id name }
+    countries { id name }
+    grapeVarieties { id name }
+    wineFlavorProfiles { id name }
+    vintages { id year }
   }
 `;
 
@@ -57,20 +52,69 @@ const UPDATE_BOTTLE = gql`
   }
 `;
 
+const ADD_BOTTLE_GRAPE = gql`
+  mutation AddBottleGrapeVariety($input: AddBottleGrapeVarietyInput!) {
+    addBottleGrapeVariety(input: $input) {
+      grapeVariety { id name }
+      percentage
+    }
+  }
+`;
+
+const REMOVE_BOTTLE_GRAPE = gql`
+  mutation RemoveBottleGrapeVariety($bottleId: ID!, $grapeVarietyId: ID!) {
+    removeBottleGrapeVariety(bottleId: $bottleId, grapeVarietyId: $grapeVarietyId)
+  }
+`;
+
+const ADD_BOTTLE_FLAVOR = gql`
+  mutation AddBottleFlavorProfile($input: AddBottleFlavorProfileInput!) {
+    addBottleFlavorProfile(input: $input) {
+      flavorProfile { id name }
+      intensity
+    }
+  }
+`;
+
+const REMOVE_BOTTLE_FLAVOR = gql`
+  mutation RemoveBottleFlavorProfile($bottleId: ID!, $flavorProfileId: ID!) {
+    removeBottleFlavorProfile(bottleId: $bottleId, flavorProfileId: $flavorProfileId)
+  }
+`;
+
 type Type = { id: string; name: string };
 type Country = { id: string; name: string };
 type Region = { id: string; name: string };
+type Option = { id: string; name: string };
+type Vintage = { id: string; year: number };
 
 export default function EditBottle() {
   const router = useRouter();
   const id = router.query.id as string | undefined;
-
-  const { data, loading, error } = useQuery(BOTTLE_QUERY, {
+  const { data, loading, error, refetch } = useQuery(BOTTLE_QUERY, {
     variables: { id },
     skip: !id,
   });
-  const { data: typesData } = useQuery(TYPES_QUERY);
-  const { data: countriesData } = useQuery(COUNTRIES_QUERY);
+  const { data: regionsData } = useQuery(REGIONS_QUERY, {
+    variables: { countryId: data?.bottle?.countryId ?? '' },
+    skip: !data?.bottle?.countryId,
+  });
+
+  const [updateBottle] = useMutation(UPDATE_BOTTLE, {
+    onCompleted: () => refetch(),
+  });
+  const [addBottleGrape] = useMutation(ADD_BOTTLE_GRAPE, {
+    onCompleted: () => refetch(),
+  });
+  const [removeBottleGrape] = useMutation(REMOVE_BOTTLE_GRAPE, {
+    onCompleted: () => refetch(),
+  });
+  const [addBottleFlavor] = useMutation(ADD_BOTTLE_FLAVOR, {
+    onCompleted: () => refetch(),
+  });
+  const [removeBottleFlavor] = useMutation(REMOVE_BOTTLE_FLAVOR, {
+    onCompleted: () => refetch(),
+  });
 
   const [form, setForm] = useState({
     typeId: '',
@@ -86,15 +130,8 @@ export default function EditBottle() {
     sweetness: '',
     oakIntegration: false,
   });
-
-  const { data: regionsData } = useQuery(REGIONS_QUERY, {
-    variables: { countryId: form.countryId },
-    skip: !form.countryId,
-  });
-
-  const [updateBottle] = useMutation(UPDATE_BOTTLE, {
-    onCompleted: () => router.push('/bottles'),
-  });
+  const [grapeForm, setGrapeForm] = useState({ grapeVarietyId: '', percentage: '' });
+  const [flavorForm, setFlavorForm] = useState({ flavorProfileId: '', intensity: '' });
 
   useEffect(() => {
     if (data?.bottle) {
@@ -140,12 +177,46 @@ export default function EditBottle() {
     });
   };
 
-  if (loading) return <p>Loading...</p>;
+  const handleAddGrape = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !grapeForm.grapeVarietyId) return;
+    addBottleGrape({
+      variables: {
+        input: {
+          bottleId: id,
+          grapeVarietyId: grapeForm.grapeVarietyId,
+          percentage: grapeForm.percentage ? parseInt(grapeForm.percentage, 10) : null,
+        },
+      },
+    });
+    setGrapeForm({ grapeVarietyId: '', percentage: '' });
+  };
+
+  const handleAddFlavor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !flavorForm.flavorProfileId || !flavorForm.intensity) return;
+    addBottleFlavor({
+      variables: {
+        input: {
+          bottleId: id,
+          flavorProfileId: flavorForm.flavorProfileId,
+          intensity: parseInt(flavorForm.intensity, 10),
+        },
+      },
+    });
+    setFlavorForm({ flavorProfileId: '', intensity: '' });
+  };
+
+  if (loading || !id) return <p>Loading...</p>;
   if (error) return <p>Error: {error.message}</p>;
 
-  const types = typesData?.types ?? [];
-  const countries = countriesData?.countries ?? [];
+  const types = data?.types ?? [];
+  const countries = data?.countries ?? [];
   const regions = regionsData?.regions ?? [];
+  const grapeVarieties = data?.grapeVarieties ?? [];
+  const wineFlavorProfiles = data?.wineFlavorProfiles ?? [];
+  const vintages = data?.vintages ?? [];
+  const bottle = data?.bottle;
 
   return (
     <main style={{ padding: '2rem' }}>
@@ -188,12 +259,18 @@ export default function EditBottle() {
             </option>
           ))}
         </select>{' '}
-        <input
-          placeholder="Vintage year"
+        <select
           value={form.vintageYear}
           onChange={(e) => setForm({ ...form, vintageYear: e.target.value })}
           required
-        />{' '}
+        >
+          <option value="">Vintage</option>
+          {vintages.map((v: Vintage) => (
+            <option key={v.id} value={v.year}>
+              {v.year}
+            </option>
+          ))}
+        </select>{' '}
         <input
           placeholder="Bottle size"
           value={form.bottleSize}
@@ -239,6 +316,90 @@ export default function EditBottle() {
           Oak integration
         </label>{' '}
         <button type="submit">Update</button>
+      </form>
+
+      <h2 style={{ marginTop: '2rem' }}>Grape varieties</h2>
+      <ul>
+        {(bottle?.grapeVarieties ?? []).map((g: any) => (
+          <li key={g.grapeVariety.id}>
+            {g.grapeVariety.name}
+            {g.percentage ? ` (${g.percentage}%)` : ''}{' '}
+            <button
+              onClick={() =>
+                removeBottleGrape({
+                  variables: { bottleId: id, grapeVarietyId: g.grapeVariety.id },
+                })
+              }
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form onSubmit={handleAddGrape}>
+        <select
+          value={grapeForm.grapeVarietyId}
+          onChange={(e) => setGrapeForm({ ...grapeForm, grapeVarietyId: e.target.value })}
+          required
+        >
+          <option value="">Grape variety</option>
+          {grapeVarieties.map((g: Option) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>{' '}
+        <input
+          placeholder="%"
+          value={grapeForm.percentage}
+          onChange={(e) => setGrapeForm({ ...grapeForm, percentage: e.target.value })}
+        />{' '}
+        <button type="submit">Add</button>
+      </form>
+
+      <h2 style={{ marginTop: '2rem' }}>Flavor profiles</h2>
+      <ul>
+        {(bottle?.flavorProfiles ?? []).map((f: any) => (
+          <li key={f.flavorProfile.id}>
+            {f.flavorProfile.name} (intensity {f.intensity}){' '}
+            <button
+              onClick={() =>
+                removeBottleFlavor({
+                  variables: { bottleId: id, flavorProfileId: f.flavorProfile.id },
+                })
+              }
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form onSubmit={handleAddFlavor}>
+        <select
+          value={flavorForm.flavorProfileId}
+          onChange={(e) => setFlavorForm({ ...flavorForm, flavorProfileId: e.target.value })}
+          required
+        >
+          <option value="">Flavor profile</option>
+          {wineFlavorProfiles.map((fp: Option) => (
+            <option key={fp.id} value={fp.id}>
+              {fp.name}
+            </option>
+          ))}
+        </select>{' '}
+        <select
+          value={flavorForm.intensity}
+          onChange={(e) => setFlavorForm({ ...flavorForm, intensity: e.target.value })}
+          required
+        >
+          <option value="">Intensity</option>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>{' '}
+        <button type="submit">Add</button>
       </form>
     </main>
   );

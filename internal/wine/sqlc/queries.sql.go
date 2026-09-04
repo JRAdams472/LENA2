@@ -78,6 +78,68 @@ func (q *Queries) CreateBottle(ctx context.Context, arg CreateBottleParams) (Win
 	return i, err
 }
 
+const createBottleFlavorProfile = `-- name: CreateBottleFlavorProfile :one
+INSERT INTO wine.bottle_flavor_profile (bottle_id, flavor_profile_id, intensity, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING bottle_id, flavor_profile_id, intensity, created_by, created_at
+`
+
+type CreateBottleFlavorProfileParams struct {
+	BottleID        int64  `json:"bottle_id"`
+	FlavorProfileID int64  `json:"flavor_profile_id"`
+	Intensity       int16  `json:"intensity"`
+	CreatedBy       string `json:"created_by"`
+}
+
+func (q *Queries) CreateBottleFlavorProfile(ctx context.Context, arg CreateBottleFlavorProfileParams) (WineBottleFlavorProfile, error) {
+	row := q.db.QueryRow(ctx, createBottleFlavorProfile,
+		arg.BottleID,
+		arg.FlavorProfileID,
+		arg.Intensity,
+		arg.CreatedBy,
+	)
+	var i WineBottleFlavorProfile
+	err := row.Scan(
+		&i.BottleID,
+		&i.FlavorProfileID,
+		&i.Intensity,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createBottleGrapeVariety = `-- name: CreateBottleGrapeVariety :one
+INSERT INTO wine.bottle_grape_variety (bottle_id, grape_variety_id, percentage, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING bottle_id, grape_variety_id, percentage, created_by, created_at
+`
+
+type CreateBottleGrapeVarietyParams struct {
+	BottleID       int64       `json:"bottle_id"`
+	GrapeVarietyID int64       `json:"grape_variety_id"`
+	Percentage     pgtype.Int2 `json:"percentage"`
+	CreatedBy      string      `json:"created_by"`
+}
+
+func (q *Queries) CreateBottleGrapeVariety(ctx context.Context, arg CreateBottleGrapeVarietyParams) (WineBottleGrapeVariety, error) {
+	row := q.db.QueryRow(ctx, createBottleGrapeVariety,
+		arg.BottleID,
+		arg.GrapeVarietyID,
+		arg.Percentage,
+		arg.CreatedBy,
+	)
+	var i WineBottleGrapeVariety
+	err := row.Scan(
+		&i.BottleID,
+		&i.GrapeVarietyID,
+		&i.Percentage,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createCountry = `-- name: CreateCountry :one
 INSERT INTO wine.country (name, iso_code, description, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -274,6 +336,36 @@ func (q *Queries) DeleteBottle(ctx context.Context, bottleID int64) error {
 	return err
 }
 
+const deleteBottleFlavorProfile = `-- name: DeleteBottleFlavorProfile :exec
+DELETE FROM wine.bottle_flavor_profile
+WHERE bottle_id = $1 AND flavor_profile_id = $2
+`
+
+type DeleteBottleFlavorProfileParams struct {
+	BottleID        int64 `json:"bottle_id"`
+	FlavorProfileID int64 `json:"flavor_profile_id"`
+}
+
+func (q *Queries) DeleteBottleFlavorProfile(ctx context.Context, arg DeleteBottleFlavorProfileParams) error {
+	_, err := q.db.Exec(ctx, deleteBottleFlavorProfile, arg.BottleID, arg.FlavorProfileID)
+	return err
+}
+
+const deleteBottleGrapeVariety = `-- name: DeleteBottleGrapeVariety :exec
+DELETE FROM wine.bottle_grape_variety
+WHERE bottle_id = $1 AND grape_variety_id = $2
+`
+
+type DeleteBottleGrapeVarietyParams struct {
+	BottleID       int64 `json:"bottle_id"`
+	GrapeVarietyID int64 `json:"grape_variety_id"`
+}
+
+func (q *Queries) DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) error {
+	_, err := q.db.Exec(ctx, deleteBottleGrapeVariety, arg.BottleID, arg.GrapeVarietyID)
+	return err
+}
+
 const getBottleByID = `-- name: GetBottleByID :one
 SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
 FROM wine.bottle
@@ -371,6 +463,74 @@ func (q *Queries) GetTypeByID(ctx context.Context, typeID int64) (WineType, erro
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listBottleFlavorProfiles = `-- name: ListBottleFlavorProfiles :many
+SELECT fp.flavor_profile_id, fp.name, bfp.intensity
+FROM wine.bottle_flavor_profile bfp
+JOIN wine.flavor_profile fp ON bfp.flavor_profile_id = fp.flavor_profile_id
+WHERE bfp.bottle_id = $1
+ORDER BY fp.name
+`
+
+type ListBottleFlavorProfilesRow struct {
+	FlavorProfileID int64  `json:"flavor_profile_id"`
+	Name            string `json:"name"`
+	Intensity       int16  `json:"intensity"`
+}
+
+func (q *Queries) ListBottleFlavorProfiles(ctx context.Context, bottleID int64) ([]ListBottleFlavorProfilesRow, error) {
+	rows, err := q.db.Query(ctx, listBottleFlavorProfiles, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBottleFlavorProfilesRow{}
+	for rows.Next() {
+		var i ListBottleFlavorProfilesRow
+		if err := rows.Scan(&i.FlavorProfileID, &i.Name, &i.Intensity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBottleGrapeVarieties = `-- name: ListBottleGrapeVarieties :many
+SELECT gv.grape_variety_id, gv.name, bgv.percentage
+FROM wine.bottle_grape_variety bgv
+JOIN wine.grape_variety gv ON bgv.grape_variety_id = gv.grape_variety_id
+WHERE bgv.bottle_id = $1
+ORDER BY gv.name
+`
+
+type ListBottleGrapeVarietiesRow struct {
+	GrapeVarietyID int64       `json:"grape_variety_id"`
+	Name           string      `json:"name"`
+	Percentage     pgtype.Int2 `json:"percentage"`
+}
+
+func (q *Queries) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]ListBottleGrapeVarietiesRow, error) {
+	rows, err := q.db.Query(ctx, listBottleGrapeVarieties, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBottleGrapeVarietiesRow{}
+	for rows.Next() {
+		var i ListBottleGrapeVarietiesRow
+		if err := rows.Scan(&i.GrapeVarietyID, &i.Name, &i.Percentage); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBottles = `-- name: ListBottles :many
@@ -584,6 +744,42 @@ func (q *Queries) ListVintages(ctx context.Context) ([]WineVintage, error) {
 		if err := rows.Scan(
 			&i.VintageID,
 			&i.Year,
+			&i.Description,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWineFlavorProfiles = `-- name: ListWineFlavorProfiles :many
+SELECT flavor_profile_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM wine.flavor_profile
+WHERE is_active = true
+ORDER BY name
+`
+
+func (q *Queries) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error) {
+	rows, err := q.db.Query(ctx, listWineFlavorProfiles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WineFlavorProfile{}
+	for rows.Next() {
+		var i WineFlavorProfile
+		if err := rows.Scan(
+			&i.FlavorProfileID,
+			&i.Name,
 			&i.Description,
 			&i.IsActive,
 			&i.CreatedBy,
