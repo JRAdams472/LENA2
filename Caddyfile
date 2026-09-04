@@ -1,0 +1,13 @@
+{$CADDY_ADDR:-:80} {
+    handle /graphql {
+        reverse_proxy api:8080
+    }
+
+    handle /health {
+        reverse_proxy api:8080
+    }
+
+    handle {
+        reverse_proxy web:3000
+    }
+}

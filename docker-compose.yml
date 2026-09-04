@@ -31,5 +31,50 @@ services:
       db:
         condition: service_healthy
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lena2-api
+    env_file: .env
+    environment:
+      LENA_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: clients/web
+      dockerfile: Dockerfile
+    container_name: lena2-web
+    env_file: .env
+    environment:
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: lena2-caddy
+    ports:
+      - "80:80"
+    environment:
+      CADDY_ADDR: ${CADDY_ADDR:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - web
+
 volumes:
   pg_data:
