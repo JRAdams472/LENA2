@@ -329,7 +329,7 @@ func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: mp}, nil
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp}, nil
 }
 
 // MealPlans resolves the current user's meal plans.
@@ -347,7 +347,7 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
+	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
 }
 
 // Nutrition returns a nutrition summary for a meal plan.
@@ -1173,7 +1173,7 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: mp}, nil
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp}, nil
 }
 
 // UpdateMealPlan modifies an existing meal plan.
@@ -1221,7 +1221,7 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: updated}, nil
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: updated}, nil
 }
 
 // DeleteMealPlan removes a meal plan owned by the current user.
@@ -2113,6 +2113,8 @@ type mealPlanResolver struct {
 	mp   *mealplan.Service
 	inv  *inventory.Service
 	rec  *recipe.Service
+	up   *userprefs.Service
+	user currentuser.User
 	plan mealplan.MealPlan
 }
 
@@ -2129,7 +2131,7 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 	}
 	out := make([]*mealSlotResolver, len(slots))
 	for i := range slots {
-		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, slot: slots[i]}
+		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i]}
 	}
 	return out, nil
 }
@@ -2139,6 +2141,8 @@ type mealSlotResolver struct {
 	mp   *mealplan.Service
 	inv  *inventory.Service
 	rec  *recipe.Service
+	up   *userprefs.Service
+	user currentuser.User
 	slot mealplan.MealSlot
 }
 
@@ -2155,7 +2159,7 @@ func (r *mealSlotResolver) Recipe(ctx context.Context) (*recipeResolver, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.inv, rec: r.rec, recipe: rec}, nil
+	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec}, nil
 }
 func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, error) {
 	items, err := r.mp.ListMealSlotItems(ctx, r.slot.SlotID)
@@ -2196,6 +2200,8 @@ type mealPlanPageResolver struct {
 	mp       *mealplan.Service
 	inv      *inventory.Service
 	rec      *recipe.Service
+	up       *userprefs.Service
+	user     currentuser.User
 	plans    []mealplan.MealPlan
 	page     int32
 	pageSize int32
@@ -2205,7 +2211,7 @@ type mealPlanPageResolver struct {
 func (r *mealPlanPageResolver) Items() []*mealPlanResolver {
 	out := make([]*mealPlanResolver, len(r.plans))
 	for i := range r.plans {
-		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, plan: r.plans[i]}
+		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, plan: r.plans[i]}
 	}
 	return out
 }
