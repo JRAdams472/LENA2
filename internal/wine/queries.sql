@@ -1,0 +1,87 @@
+-- name: CreateCountry :one
+INSERT INTO wine.country (name, iso_code, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetCountryByID :one
+SELECT *
+FROM wine.country
+WHERE country_id = $1;
+
+-- name: ListCountries :many
+SELECT *
+FROM wine.country
+ORDER BY name;
+
+-- name: CreateRegion :one
+INSERT INTO wine.region (country_id, name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetRegionByID :one
+SELECT *
+FROM wine.region
+WHERE region_id = $1;
+
+-- name: ListRegions :many
+SELECT *
+FROM wine.region
+WHERE country_id = $1
+ORDER BY name;
+
+-- name: CreateType :one
+INSERT INTO wine.type (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: GetTypeByID :one
+SELECT *
+FROM wine.type
+WHERE type_id = $1;
+
+-- name: ListTypes :many
+SELECT *
+FROM wine.type
+ORDER BY name;
+
+-- name: CreateBottle :one
+INSERT INTO wine.bottle (
+    type_id, country_id, region_id, vintage_year, vineyard, abv,
+    acidity, tannin_level, body, sweetness, oak_integration, bottle_size,
+    created_by, updated_by
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING *;
+
+-- name: GetBottleByID :one
+SELECT *
+FROM wine.bottle
+WHERE bottle_id = $1;
+
+-- name: ListBottles :many
+SELECT *
+FROM wine.bottle
+ORDER BY bottle_id DESC
+LIMIT $1 OFFSET $2;
+
+-- name: UpdateBottle :exec
+UPDATE wine.bottle
+SET type_id         = $2,
+    country_id      = $3,
+    region_id       = $4,
+    vintage_year    = $5,
+    vineyard        = $6,
+    abv             = $7,
+    acidity         = $8,
+    tannin_level    = $9,
+    body            = $10,
+    sweetness       = $11,
+    oak_integration = $12,
+    bottle_size     = $13,
+    updated_by      = $14,
+    updated_at      = now()
+WHERE bottle_id = $1;
+
+-- name: DeleteBottle :exec
+DELETE FROM wine.bottle
+WHERE bottle_id = $1;

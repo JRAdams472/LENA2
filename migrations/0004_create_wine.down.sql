@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS wine.bottle_grape_variety;
+DROP TABLE IF EXISTS wine.bottle_flavor_profile;
+DROP TABLE IF EXISTS wine.bottle;
+DROP TABLE IF EXISTS wine.flavor_profile;
+DROP TABLE IF EXISTS wine.grape_variety;
+DROP TABLE IF EXISTS wine.vintage;
+DROP TABLE IF EXISTS wine.type;
+DROP TABLE IF EXISTS wine.region;
+DROP TABLE IF EXISTS wine.country;
