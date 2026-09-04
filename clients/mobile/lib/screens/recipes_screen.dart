@@ -12,13 +12,20 @@ const String recipesQuery = r'''
         servings
         prepTimeMinutes
         cookTimeMinutes
+        isFavorite
       }
       pageInfo {
         totalCount
       }
     }
   }
-''';
+'';
+
+const String setRecipeFavorite = r'''
+  mutation SetRecipeFavorite($recipeId: ID!, $isFavorite: Boolean!) {
+    setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite)
+  }
+'';
 
 class RecipesScreen extends StatelessWidget {
   const RecipesScreen({super.key});
@@ -45,12 +52,33 @@ class RecipesScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = items[index] as Map<String, dynamic>;
               final description = item['description'] as String?;
+              final isFavorite = item['isFavorite'] as bool? ?? false;
               return ListTile(
                 title: Text(item['name'] as String),
                 subtitle: description != null && description.isNotEmpty
                     ? Text(description)
                     : null,
-                trailing: Text('Serves ${item['servings'] ?? '-'}'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Serves ${item['servings'] ?? '-'}'),
+                    Mutation(
+                      options: MutationOptions(
+                        document: gql(setRecipeFavorite),
+                        onCompleted: (_) => refetch?.call(),
+                      ),
+                      builder: (RunMutation runMutation, QueryResult? result) {
+                        return IconButton(
+                          icon: Icon(isFavorite ? Icons.star : Icons.star_border),
+                          onPressed: () => runMutation({
+                            'recipeId': item['id'],
+                            'isFavorite': !isFavorite,
+                          }),
+                        );
+                      },
+                    ),
+                  ],
+                ),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(

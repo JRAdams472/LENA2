@@ -117,6 +117,42 @@ func (q *Queries) CreateCountry(ctx context.Context, arg CreateCountryParams) (W
 	return i, err
 }
 
+const createGrapeVariety = `-- name: CreateGrapeVariety :one
+INSERT INTO wine.grape_variety (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING grape_variety_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type CreateGrapeVarietyParams struct {
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateGrapeVariety(ctx context.Context, arg CreateGrapeVarietyParams) (WineGrapeVariety, error) {
+	row := q.db.QueryRow(ctx, createGrapeVariety,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i WineGrapeVariety
+	err := row.Scan(
+		&i.GrapeVarietyID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createRegion = `-- name: CreateRegion :one
 INSERT INTO wine.region (country_id, name, description, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -182,6 +218,42 @@ func (q *Queries) CreateType(ctx context.Context, arg CreateTypeParams) (WineTyp
 	err := row.Scan(
 		&i.TypeID,
 		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createVintage = `-- name: CreateVintage :one
+INSERT INTO wine.vintage (year, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING vintage_id, year, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type CreateVintageParams struct {
+	Year        int32       `json:"year"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateVintage(ctx context.Context, arg CreateVintageParams) (WineVintage, error) {
+	row := q.db.QueryRow(ctx, createVintage,
+		arg.Year,
+		arg.Description,
+		arg.IsActive,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i WineVintage
+	err := row.Scan(
+		&i.VintageID,
+		&i.Year,
 		&i.Description,
 		&i.IsActive,
 		&i.CreatedBy,
@@ -387,6 +459,41 @@ func (q *Queries) ListCountries(ctx context.Context) ([]WineCountry, error) {
 	return items, nil
 }
 
+const listGrapeVarieties = `-- name: ListGrapeVarieties :many
+SELECT grape_variety_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM wine.grape_variety
+ORDER BY name
+`
+
+func (q *Queries) ListGrapeVarieties(ctx context.Context) ([]WineGrapeVariety, error) {
+	rows, err := q.db.Query(ctx, listGrapeVarieties)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WineGrapeVariety{}
+	for rows.Next() {
+		var i WineGrapeVariety
+		if err := rows.Scan(
+			&i.GrapeVarietyID,
+			&i.Name,
+			&i.Description,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRegions = `-- name: ListRegions :many
 SELECT region_id, country_id, name, description, is_active, created_by, created_at, updated_by, updated_at
 FROM wine.region
@@ -442,6 +549,41 @@ func (q *Queries) ListTypes(ctx context.Context) ([]WineType, error) {
 		if err := rows.Scan(
 			&i.TypeID,
 			&i.Name,
+			&i.Description,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVintages = `-- name: ListVintages :many
+SELECT vintage_id, year, description, is_active, created_by, created_at, updated_by, updated_at
+FROM wine.vintage
+ORDER BY year DESC
+`
+
+func (q *Queries) ListVintages(ctx context.Context) ([]WineVintage, error) {
+	rows, err := q.db.Query(ctx, listVintages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WineVintage{}
+	for rows.Next() {
+		var i WineVintage
+		if err := rows.Scan(
+			&i.VintageID,
+			&i.Year,
 			&i.Description,
 			&i.IsActive,
 			&i.CreatedBy,

@@ -79,3 +79,10 @@ RETURNING *;
 SELECT *
 FROM inventory.nutrient_type
 ORDER BY name;
+
+-- name: ListFoodNutrientsByItem :many
+SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount
+FROM inventory.food_nutrient fn
+JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
+WHERE fn.food_id = $1
+ORDER BY nt.name;

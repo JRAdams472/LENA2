@@ -7,6 +7,8 @@ type Query {
   brands: [Brand!]!
   category(id: ID!): Category
   categories: [Category!]!
+  flavorProfiles: [FlavorProfile!]!
+  nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
   recipe(id: ID!): Recipe
@@ -18,8 +20,11 @@ type Query {
   types: [WineType!]!
   countries: [Country!]!
   regions(countryId: ID!): [Region!]!
+  vintages: [Vintage!]!
+  grapeVarieties: [GrapeVariety!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
+  nutrition(mealPlanId: ID!): [NutritionSummary!]!
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
 }
@@ -27,6 +32,10 @@ type Query {
 type Mutation {
   createBrand(input: CreateBrandInput!): Brand!
   createCategory(input: CreateCategoryInput!): Category!
+  createFlavorProfile(input: CreateFlavorProfileInput!): FlavorProfile!
+  createNutrientType(input: CreateNutrientTypeInput!): NutrientType!
+  createVintage(input: CreateVintageInput!): Vintage!
+  createGrapeVariety(input: CreateGrapeVarietyInput!): GrapeVariety!
 
   createItem(input: CreateItemInput!): Item!
   updateItem(id: ID!, input: UpdateItemInput!): Item!
@@ -46,9 +55,12 @@ type Mutation {
   deleteMealPlan(id: ID!): Boolean!
   addMealSlot(input: AddMealSlotInput!): MealSlot!
   removeMealSlot(slotId: ID!): Boolean!
+  addMealSlotItem(input: AddMealSlotItemInput!): MealSlotItem!
+  removeMealSlotItem(slotItemId: ID!): Boolean!
 
   generateGroceryList(mealPlanId: ID!): GroceryList!
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
+  addGroceryItem(input: AddGroceryItemInput!): GroceryListItem!
   deleteGroceryItem(groceryListItemId: ID!): Boolean!
 
   createBottle(input: CreateBottleInput!): Bottle!
@@ -80,6 +92,18 @@ type Brand {
   name: String!
 }
 
+type FlavorProfile {
+  id: ID!
+  name: String!
+  isActive: Boolean!
+}
+
+type NutrientType {
+  id: ID!
+  name: String!
+  unit: String!
+}
+
 type Item {
   id: ID!
   name: String!
@@ -104,6 +128,7 @@ type Recipe {
   cookTimeMinutes: Int
   items: [RecipeItem!]!
   steps: [RecipeStep!]!
+  isFavorite: Boolean!
 }
 
 type RecipeItem {
@@ -226,6 +251,14 @@ type GroceryListItem {
   isChecked: Boolean!
 }
 
+input AddGroceryItemInput {
+  groceryListId: ID!
+  itemId: ID
+  manualItemName: String
+  quantity: Float!
+  unit: String!
+}
+
 type GroceryListPage {
   items: [GroceryList!]!
   pageInfo: PageInfo!
@@ -236,6 +269,25 @@ input CreateBrandInput {
 }
 
 input CreateCategoryInput {
+  name: String!
+  description: String
+}
+
+input CreateFlavorProfileInput {
+  name: String!
+}
+
+input CreateNutrientTypeInput {
+  name: String!
+  unit: String!
+}
+
+input CreateVintageInput {
+  year: Int!
+  description: String
+}
+
+input CreateGrapeVarietyInput {
   name: String!
   description: String
 }
@@ -296,6 +348,14 @@ input AddMealSlotInput {
   replacementNote: String
 }
 
+input AddMealSlotItemInput {
+  slotId: ID!
+  itemId: ID!
+  quantity: Float!
+  unit: String!
+  isFromRecipe: Boolean
+}
+
 type WineType {
   id: ID!
   name: String!
@@ -314,6 +374,26 @@ type Region {
   name: String!
   description: String
   country: Country!
+}
+
+type Vintage {
+  id: ID!
+  year: Int!
+  description: String
+  isActive: Boolean!
+}
+
+type GrapeVariety {
+  id: ID!
+  name: String!
+  description: String
+  isActive: Boolean!
+}
+
+type NutritionSummary {
+  name: String!
+  unit: String!
+  amount: Float!
 }
 
 input CreateBottleInput {

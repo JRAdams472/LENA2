@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -181,6 +182,38 @@ func (r *Resolver) Categories(ctx context.Context) ([]*categoryResolver, error) 
 	return out, nil
 }
 
+// FlavorProfiles resolves all flavor profiles.
+func (r *Resolver) FlavorProfiles(ctx context.Context) ([]*flavorProfileResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	profiles, err := r.InventoryService.ListFlavorProfiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*flavorProfileResolver, len(profiles))
+	for i := range profiles {
+		out[i] = &flavorProfileResolver{f: profiles[i]}
+	}
+	return out, nil
+}
+
+// NutrientTypes resolves all nutrient types.
+func (r *Resolver) NutrientTypes(ctx context.Context) ([]*nutrientTypeResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	types, err := r.InventoryService.ListNutrientTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*nutrientTypeResolver, len(types))
+	for i := range types {
+		out[i] = &nutrientTypeResolver{n: types[i]}
+	}
+	return out, nil
+}
+
 // Item resolves a single catalog item by ID.
 func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*itemResolver, error) {
 	if _, err := userFromContext(ctx); err != nil {
@@ -216,7 +249,8 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 
 // Recipe resolves a single recipe by ID.
 func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*recipeResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
@@ -227,7 +261,7 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: rec}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
 // Recipes resolves a paginated list of active recipes.
@@ -235,7 +269,8 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
 }) (*recipePageResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	page := clamp(args.Page, 1, 1_000_000)
@@ -244,7 +279,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
+	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
 }
 
 // Bottle resolves a single wine bottle by ID.
@@ -313,6 +348,100 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
+}
+
+// Nutrition returns a nutrition summary for a meal plan.
+func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphql.ID }) ([]*nutritionResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mealPlanID, err := parseID(string(args.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.UserID); err != nil {
+		return nil, err
+	}
+	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID)
+	if err != nil {
+		return nil, err
+	}
+
+	type total struct {
+		name   string
+		unit   string
+		amount float64
+	}
+	totals := make(map[int64]total)
+
+	addNutrients := func(itemID int64, quantity float64) error {
+		nutrients, err := r.InventoryService.ListFoodNutrientsByItem(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		for _, n := range nutrients {
+			t := totals[n.NutrientID]
+			t.name = n.Name
+			t.unit = n.Unit
+			t.amount += n.Amount * quantity
+			totals[n.NutrientID] = t
+		}
+		return nil
+	}
+
+	for _, slot := range slots {
+		overridden := make(map[int64]bool)
+		slotItems, err := r.MealPlanService.ListMealSlotItems(ctx, slot.SlotID)
+		if err != nil {
+			return nil, err
+		}
+		for _, si := range slotItems {
+			if si.ItemID == nil {
+				continue
+			}
+			if err := addNutrients(*si.ItemID, si.Quantity); err != nil {
+				return nil, err
+			}
+			if si.IsFromRecipe {
+				overridden[*si.ItemID] = true
+			}
+		}
+
+		if slot.RecipeID == nil {
+			continue
+		}
+		recipe, err := r.RecipeService.GetRecipeByID(ctx, *slot.RecipeID)
+		if err != nil {
+			return nil, err
+		}
+		if recipe.Servings <= 0 {
+			continue
+		}
+		scale := 1.0
+		if slot.Servings != nil {
+			scale = float64(*slot.Servings) / float64(recipe.Servings)
+		}
+		recipeItems, err := r.RecipeService.ListRecipeItems(ctx, recipe.RecipeID)
+		if err != nil {
+			return nil, err
+		}
+		for _, ri := range recipeItems {
+			if overridden[ri.ItemID] {
+				continue
+			}
+			if err := addNutrients(ri.ItemID, ri.Quantity*scale); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	out := make([]*nutritionResolver, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.name, Unit: t.unit, Amount: t.amount}})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].nutrition.Name < out[j].nutrition.Name })
+	return out, nil
 }
 
 // GroceryList resolves a single grocery list by ID.
@@ -409,6 +538,32 @@ func (r *Resolver) CreateCategory(ctx context.Context, args struct{ Input create
 		return nil, err
 	}
 	return &categoryResolver{c: c}, nil
+}
+
+// CreateFlavorProfile adds a new flavor profile.
+func (r *Resolver) CreateFlavorProfile(ctx context.Context, args struct{ Input createFlavorProfileInput }) (*flavorProfileResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.InventoryService.CreateFlavorProfile(ctx, args.Input.Name, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &flavorProfileResolver{f: f}, nil
+}
+
+// CreateNutrientType adds a new nutrient type.
+func (r *Resolver) CreateNutrientType(ctx context.Context, args struct{ Input createNutrientTypeInput }) (*nutrientTypeResolver, error) {
+	_, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	n, err := r.InventoryService.CreateNutrientType(ctx, args.Input.Name, args.Input.Unit)
+	if err != nil {
+		return nil, err
+	}
+	return &nutrientTypeResolver{n: n}, nil
 }
 
 // CreateItem creates a new catalog item.
@@ -1046,6 +1201,52 @@ func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graph
 	return true, nil
 }
 
+// AddMealSlotItem adds an ad-hoc item to a slot.
+func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMealSlotItemInput }) (*mealSlotItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slotID, err := parseID(string(args.Input.SlotID))
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.Input.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	isFromRecipe := false
+	if args.Input.IsFromRecipe != nil {
+		isFromRecipe = *args.Input.IsFromRecipe
+	}
+	item, err := r.MealPlanService.AddMealSlotItem(ctx, mealplan.MealSlotItem{
+		SlotID:       slotID,
+		ItemID:       &itemID,
+		Quantity:     args.Input.Quantity,
+		Unit:         args.Input.Unit,
+		IsFromRecipe: isFromRecipe,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &mealSlotItemResolver{inv: r.InventoryService, item: item}, nil
+}
+
+// RemoveMealSlotItem removes an item from a slot.
+func (r *Resolver) RemoveMealSlotItem(ctx context.Context, args struct{ SlotItemID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	slotItemID, err := parseID(string(args.SlotItemID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.MealPlanService.DeleteMealSlotItem(ctx, slotItemID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // GenerateGroceryList generates a grocery list from a meal plan.
 func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPlanID graphql.ID }) (*groceryListResolver, error) {
 	u, err := userFromContext(ctx)
@@ -1103,6 +1304,38 @@ func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryLi
 	return true, nil
 }
 
+// AddGroceryItem adds a manual or catalog item to a grocery list.
+func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGroceryItemInput }) (*groceryListItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	groceryListID, err := parseID(string(args.Input.GroceryListID))
+	if err != nil {
+		return nil, err
+	}
+	var itemID *int64
+	if args.Input.ItemID != nil {
+		parsed, err := parseID(string(*args.Input.ItemID))
+		if err != nil {
+			return nil, err
+		}
+		itemID = &parsed
+	}
+	it, err := r.GroceryService.AddGroceryListItem(ctx, grocery.GroceryListItem{
+		GroceryListID:  groceryListID,
+		ItemID:         itemID,
+		ManualItemName: derefString(args.Input.ManualItemName),
+		QuantityNeeded: args.Input.Quantity,
+		UnitOfMeasure:  args.Input.Unit,
+		Source:         "manual",
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListItemResolver{inv: r.InventoryService, item: it}, nil
+}
+
 // Types resolves all wine types.
 func (r *Resolver) Types(ctx context.Context) ([]*wineTypeResolver, error) {
 	if _, err := userFromContext(ctx); err != nil {
@@ -1153,6 +1386,64 @@ func (r *Resolver) Regions(ctx context.Context, args struct{ CountryID graphql.I
 		out[i] = &regionResolver{wine: r.WineService, r: regions[i]}
 	}
 	return out, nil
+}
+
+// Vintages resolves all wine vintages.
+func (r *Resolver) Vintages(ctx context.Context) ([]*vintageResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	vintages, err := r.WineService.ListVintages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*vintageResolver, len(vintages))
+	for i := range vintages {
+		out[i] = &vintageResolver{v: vintages[i]}
+	}
+	return out, nil
+}
+
+// GrapeVarieties resolves all grape varieties.
+func (r *Resolver) GrapeVarieties(ctx context.Context) ([]*grapeVarietyResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	varieties, err := r.WineService.ListGrapeVarieties(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*grapeVarietyResolver, len(varieties))
+	for i := range varieties {
+		out[i] = &grapeVarietyResolver{g: varieties[i]}
+	}
+	return out, nil
+}
+
+// CreateVintage adds a new vintage.
+func (r *Resolver) CreateVintage(ctx context.Context, args struct{ Input createVintageInput }) (*vintageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := r.WineService.CreateVintage(ctx, args.Input.Year, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &vintageResolver{v: v}, nil
+}
+
+// CreateGrapeVariety adds a new grape variety.
+func (r *Resolver) CreateGrapeVariety(ctx context.Context, args struct{ Input createGrapeVarietyInput }) (*grapeVarietyResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g, err := r.WineService.CreateGrapeVariety(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &grapeVarietyResolver{g: g}, nil
 }
 
 // CreateBottle adds a new bottle definition.
@@ -1413,6 +1704,24 @@ func (r *categoryResolver) ID() graphql.ID       { return graphql.ID(strconv.For
 func (r *categoryResolver) Name() string         { return r.c.Name }
 func (r *categoryResolver) Description() *string { return nilIfEmpty(r.c.Description) }
 
+// flavorProfileResolver resolves an inventory flavor profile.
+type flavorProfileResolver struct{ f inventory.FlavorProfile }
+
+func (r *flavorProfileResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.f.FlavorID, 10))
+}
+func (r *flavorProfileResolver) Name() string   { return r.f.Name }
+func (r *flavorProfileResolver) IsActive() bool { return r.f.IsActive }
+
+// nutrientTypeResolver resolves an inventory nutrient type.
+type nutrientTypeResolver struct{ n inventory.NutrientType }
+
+func (r *nutrientTypeResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.n.NutrientID, 10))
+}
+func (r *nutrientTypeResolver) Name() string { return r.n.Name }
+func (r *nutrientTypeResolver) Unit() string { return r.n.Unit }
+
 type itemPageResolver struct {
 	inv      *inventory.Service
 	items    []inventory.Item
@@ -1535,6 +1844,8 @@ func (r *pageInfoResolver) TotalCount() int32 { return r.total }
 type recipeResolver struct {
 	inv    *inventory.Service
 	rec    *recipe.Service
+	up     *userprefs.Service
+	user   currentuser.User
 	recipe recipe.Recipe
 }
 
@@ -1566,6 +1877,13 @@ func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, erro
 	}
 	return out, nil
 }
+func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
+	fav, err := r.up.GetRecipeFavorite(ctx, r.user.UserID, r.recipe.RecipeID)
+	if err != nil {
+		return false, err
+	}
+	return fav.IsFavorite, nil
+}
 
 type recipeItemResolver struct {
 	inv  *inventory.Service
@@ -1592,6 +1910,8 @@ func (r *recipeStepResolver) Instruction() string { return r.step.Instruction }
 type recipePageResolver struct {
 	inv      *inventory.Service
 	rec      *recipe.Service
+	up       *userprefs.Service
+	user     currentuser.User
 	recipes  []recipe.Recipe
 	page     int32
 	pageSize int32
@@ -1601,7 +1921,7 @@ type recipePageResolver struct {
 func (r *recipePageResolver) Items() []*recipeResolver {
 	out := make([]*recipeResolver, len(r.recipes))
 	for i := range r.recipes {
-		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, recipe: r.recipes[i]}
+		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipes[i]}
 	}
 	return out
 }
@@ -1859,12 +2179,62 @@ func (r *regionResolver) Country(ctx context.Context) (*countryResolver, error) 
 	return &countryResolver{c: c}, nil
 }
 
+// vintageResolver resolves a wine vintage.
+type vintageResolver struct{ v wine.Vintage }
+
+func (r *vintageResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.v.VintageID, 10)) }
+func (r *vintageResolver) Year() int32          { return r.v.Year }
+func (r *vintageResolver) Description() *string { return nilIfEmpty(r.v.Description) }
+func (r *vintageResolver) IsActive() bool       { return r.v.IsActive }
+
+// grapeVarietyResolver resolves a grape variety.
+type grapeVarietyResolver struct{ g wine.GrapeVariety }
+
+func (r *grapeVarietyResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.g.GrapeVarietyID, 10))
+}
+func (r *grapeVarietyResolver) Name() string         { return r.g.Name }
+func (r *grapeVarietyResolver) Description() *string { return nilIfEmpty(r.g.Description) }
+func (r *grapeVarietyResolver) IsActive() bool       { return r.g.IsActive }
+
+type nutrition struct {
+	Name   string
+	Unit   string
+	Amount float64
+}
+
+// nutritionResolver resolves a nutrition summary row.
+type nutritionResolver struct{ nutrition nutrition }
+
+func (r *nutritionResolver) Name() string    { return r.nutrition.Name }
+func (r *nutritionResolver) Unit() string    { return r.nutrition.Unit }
+func (r *nutritionResolver) Amount() float64 { return r.nutrition.Amount }
+
 // Inputs map directly to the GraphQL input types.
 type createBrandInput struct {
 	Name string
 }
 
 type createCategoryInput struct {
+	Name        string
+	Description *string
+}
+
+type createFlavorProfileInput struct {
+	Name string
+}
+
+type createNutrientTypeInput struct {
+	Name string
+	Unit string
+}
+
+type createVintageInput struct {
+	Year        int32
+	Description *string
+}
+
+type createGrapeVarietyInput struct {
 	Name        string
 	Description *string
 }
@@ -1923,6 +2293,22 @@ type addMealSlotInput struct {
 	RecipeID        *graphql.ID
 	Servings        *int32
 	ReplacementNote *string
+}
+
+type addMealSlotItemInput struct {
+	SlotID       graphql.ID
+	ItemID       graphql.ID
+	Quantity     float64
+	Unit         string
+	IsFromRecipe *bool
+}
+
+type addGroceryItemInput struct {
+	GroceryListID  graphql.ID
+	ItemID         *graphql.ID
+	ManualItemName *string
+	Quantity       float64
+	Unit           string
 }
 
 type createBottleInput struct {
