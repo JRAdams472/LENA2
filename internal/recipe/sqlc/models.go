@@ -10,6 +10,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type GroceryGroceryList struct {
+	GroceryListID int64              `json:"grocery_list_id"`
+	UserID        int64              `json:"user_id"`
+	MealPlanID    pgtype.Int8        `json:"meal_plan_id"`
+	GeneratedAt   time.Time          `json:"generated_at"`
+	CreatedBy     string             `json:"created_by"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedBy     pgtype.Text        `json:"updated_by"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type GroceryGroceryListItem struct {
+	GroceryListItemID int64              `json:"grocery_list_item_id"`
+	GroceryListID     int64              `json:"grocery_list_id"`
+	ItemID            pgtype.Int8        `json:"item_id"`
+	ManualItemName    pgtype.Text        `json:"manual_item_name"`
+	QuantityNeeded    pgtype.Numeric     `json:"quantity_needed"`
+	UnitOfMeasure     pgtype.Text        `json:"unit_of_measure"`
+	Source            string             `json:"source"`
+	IsChecked         bool               `json:"is_checked"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
 type IdentityUser struct {
 	UserID          int64              `json:"user_id"`
 	Provider        string             `json:"provider"`
@@ -102,6 +128,46 @@ type InventoryUserItem struct {
 	CreatedAt  time.Time          `json:"created_at"`
 	UpdatedBy  pgtype.Text        `json:"updated_by"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MealplanMealPlan struct {
+	MealPlanID         int64              `json:"meal_plan_id"`
+	UserID             int64              `json:"user_id"`
+	Name               string             `json:"name"`
+	WeekStartDate      pgtype.Date        `json:"week_start_date"`
+	WeekStartDayOfWeek int16              `json:"week_start_day_of_week"`
+	IsActive           bool               `json:"is_active"`
+	CreatedBy          string             `json:"created_by"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedBy          pgtype.Text        `json:"updated_by"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MealplanMealSlot struct {
+	SlotID          int64              `json:"slot_id"`
+	MealPlanID      int64              `json:"meal_plan_id"`
+	DayOfWeek       int16              `json:"day_of_week"`
+	MealType        string             `json:"meal_type"`
+	RecipeID        pgtype.Int8        `json:"recipe_id"`
+	Servings        pgtype.Int4        `json:"servings"`
+	ReplacementNote pgtype.Text        `json:"replacement_note"`
+	CreatedBy       string             `json:"created_by"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedBy       pgtype.Text        `json:"updated_by"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MealplanMealSlotItem struct {
+	SlotItemID   int64              `json:"slot_item_id"`
+	SlotID       int64              `json:"slot_id"`
+	ItemID       pgtype.Int8        `json:"item_id"`
+	Quantity     pgtype.Numeric     `json:"quantity"`
+	Unit         string             `json:"unit"`
+	IsFromRecipe bool               `json:"is_from_recipe"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RecipeRecipe struct {
