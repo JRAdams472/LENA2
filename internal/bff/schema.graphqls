@@ -54,6 +54,8 @@ type Mutation {
   deleteMealPlan(id: ID!): Boolean!
   addMealSlot(input: AddMealSlotInput!): MealSlot!
   removeMealSlot(slotId: ID!): Boolean!
+  addMealSlotItem(input: AddMealSlotItemInput!): MealSlotItem!
+  removeMealSlotItem(slotItemId: ID!): Boolean!
 
   generateGroceryList(mealPlanId: ID!): GroceryList!
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
@@ -334,6 +336,14 @@ input AddMealSlotInput {
   recipeId: ID
   servings: Int
   replacementNote: String
+}
+
+input AddMealSlotItemInput {
+  slotId: ID!
+  itemId: ID!
+  quantity: Float!
+  unit: String!
+  isFromRecipe: Boolean
 }
 
 type WineType {

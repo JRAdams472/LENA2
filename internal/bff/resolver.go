@@ -1106,6 +1106,52 @@ func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graph
 	return true, nil
 }
 
+// AddMealSlotItem adds an ad-hoc item to a slot.
+func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMealSlotItemInput }) (*mealSlotItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slotID, err := parseID(string(args.Input.SlotID))
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.Input.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	isFromRecipe := false
+	if args.Input.IsFromRecipe != nil {
+		isFromRecipe = *args.Input.IsFromRecipe
+	}
+	item, err := r.MealPlanService.AddMealSlotItem(ctx, mealplan.MealSlotItem{
+		SlotID:       slotID,
+		ItemID:       &itemID,
+		Quantity:     args.Input.Quantity,
+		Unit:         args.Input.Unit,
+		IsFromRecipe: isFromRecipe,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &mealSlotItemResolver{inv: r.InventoryService, item: item}, nil
+}
+
+// RemoveMealSlotItem removes an item from a slot.
+func (r *Resolver) RemoveMealSlotItem(ctx context.Context, args struct{ SlotItemID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	slotItemID, err := parseID(string(args.SlotItemID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.MealPlanService.DeleteMealSlotItem(ctx, slotItemID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // GenerateGroceryList generates a grocery list from a meal plan.
 func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPlanID graphql.ID }) (*groceryListResolver, error) {
 	u, err := userFromContext(ctx)
@@ -2107,6 +2153,14 @@ type addMealSlotInput struct {
 	RecipeID        *graphql.ID
 	Servings        *int32
 	ReplacementNote *string
+}
+
+type addMealSlotItemInput struct {
+	SlotID       graphql.ID
+	ItemID       graphql.ID
+	Quantity     float64
+	Unit         string
+	IsFromRecipe *bool
 }
 
 type createBottleInput struct {
