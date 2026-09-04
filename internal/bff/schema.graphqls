@@ -24,8 +24,29 @@ type Query {
 type Mutation {
   createBrand(input: CreateBrandInput!): Brand!
   createCategory(input: CreateCategoryInput!): Category!
+
   createItem(input: CreateItemInput!): Item!
+  updateItem(id: ID!, input: UpdateItemInput!): Item!
+  deleteItem(id: ID!): Boolean!
+
+  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!
+  setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
+  deleteUserItem(itemId: ID!): Boolean!
+
   createRecipe(input: CreateRecipeInput!): Recipe!
+  updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
+  deleteRecipe(id: ID!): Boolean!
+  setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
+
+  createMealPlan(input: CreateMealPlanInput!): MealPlan!
+  updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!
+  deleteMealPlan(id: ID!): Boolean!
+  addMealSlot(input: AddMealSlotInput!): MealSlot!
+  removeMealSlot(slotId: ID!): Boolean!
+
+  generateGroceryList(mealPlanId: ID!): GroceryList!
+  toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
+  deleteGroceryItem(groceryListItemId: ID!): Boolean!
 }
 
 type PageInfo {
@@ -238,4 +259,28 @@ input RecipeItemInput {
 input RecipeStepInput {
   stepNumber: Int!
   instruction: String!
+}
+
+input UpdateItemInput {
+  name: String
+  brandId: ID
+  upc12: String
+  upc14: String
+  categoryId: ID
+  unit: String
+}
+
+input CreateMealPlanInput {
+  name: String!
+  weekStartDate: String!
+  weekStartDayOfWeek: Int
+}
+
+input AddMealSlotInput {
+  mealPlanId: ID!
+  dayOfWeek: Int!
+  mealType: String!
+  recipeId: ID
+  servings: Int
+  replacementNote: String
 }

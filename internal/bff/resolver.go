@@ -480,6 +480,655 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: rec}, nil
 }
 
+// UpdateItem modifies an existing catalog item.
+func (r *Resolver) UpdateItem(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateItemInput
+}) (*itemResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.InventoryService.GetItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	brandID := existing.BrandID
+	if args.Input.BrandID != nil {
+		b, err := optionalID(args.Input.BrandID)
+		if err != nil {
+			return nil, err
+		}
+		brandID = b
+	}
+	categoryID := existing.CategoryID
+	if args.Input.CategoryID != nil {
+		c, err := parseID(string(*args.Input.CategoryID))
+		if err != nil {
+			return nil, err
+		}
+		categoryID = c
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	unit := existing.Unit
+	if args.Input.Unit != nil {
+		unit = *args.Input.Unit
+	}
+	upc12 := existing.Upc12
+	if args.Input.Upc12 != nil {
+		upc12 = *args.Input.Upc12
+	}
+	upc14 := existing.Upc14
+	if args.Input.Upc14 != nil {
+		upc14 = *args.Input.Upc14
+	}
+	u, _ := currentuser.FromContext(ctx)
+	if err := r.InventoryService.UpdateItem(ctx, id, inventory.Item{
+		Name:       name,
+		BrandID:    brandID,
+		Upc12:      upc12,
+		Upc14:      upc14,
+		CategoryID: categoryID,
+		Unit:       unit,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.InventoryService.GetItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+}
+
+// DeleteItem removes a catalog item.
+func (r *Resolver) DeleteItem(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteItem(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateRecipe modifies an existing recipe and replaces its items/steps.
+func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input createRecipeInput
+}) (*recipeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.RecipeService.GetRecipeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != "" {
+		name = args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	servings := existing.Servings
+	if args.Input.Servings != nil {
+		servings = *args.Input.Servings
+	}
+	prep := existing.PrepTimeMinutes
+	if args.Input.PrepTimeMinutes != nil {
+		prep = *args.Input.PrepTimeMinutes
+	}
+	cook := existing.CookTimeMinutes
+	if args.Input.CookTimeMinutes != nil {
+		cook = *args.Input.CookTimeMinutes
+	}
+	if err := r.RecipeService.UpdateRecipe(ctx, id, recipe.Recipe{
+		Name:            name,
+		Description:     description,
+		Servings:        servings,
+		PrepTimeMinutes: prep,
+		CookTimeMinutes: cook,
+		IsActive:        existing.IsActive,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	// Replace items.
+	existingItems, err := r.RecipeService.ListRecipeItems(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, ri := range existingItems {
+		if err := r.RecipeService.RemoveRecipeItem(ctx, id, ri.ItemID); err != nil {
+			return nil, err
+		}
+	}
+	for _, ri := range args.Input.Items {
+		itemID, err := parseID(string(ri.ItemID))
+		if err != nil {
+			return nil, err
+		}
+		if err := r.RecipeService.AddRecipeItem(ctx, recipe.RecipeItem{
+			RecipeID:   id,
+			ItemID:     itemID,
+			Quantity:   ri.Quantity,
+			Unit:       ri.Unit,
+			Notes:      derefString(ri.Notes),
+			IsOptional: boolValue(ri.IsOptional),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	// Replace steps.
+	existingSteps, err := r.RecipeService.ListRecipeSteps(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, rs := range existingSteps {
+		if err := r.RecipeService.DeleteRecipeStep(ctx, rs.StepID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rs := range args.Input.Steps {
+		if _, err := r.RecipeService.AddRecipeStep(ctx, id, rs.StepNumber, rs.Instruction, u.Email); err != nil {
+			return nil, err
+		}
+	}
+	updated, err := r.RecipeService.GetRecipeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: updated}, nil
+}
+
+// DeleteRecipe removes a recipe.
+func (r *Resolver) DeleteRecipe(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.RecipeService.DeleteRecipe(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetRecipeFavorite toggles the current user's favorite flag for a recipe.
+func (r *Resolver) SetRecipeFavorite(ctx context.Context, args struct {
+	RecipeID   graphql.ID
+	IsFavorite bool
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return false, err
+	}
+	if _, err := r.UserPrefsService.SetRecipeFavorite(ctx, u.UserID, id, args.IsFavorite, u.Email); err != nil {
+		return false, err
+	}
+	return args.IsFavorite, nil
+}
+
+// AdjustUserItem updates the quantity and purchase date of a user's pantry item.
+func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
+	ItemID     graphql.ID
+	Quantity   float64
+	PurchaseAt *graphql.Time
+}) (*userItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserItem(ctx, r.UserPrefsService, u.UserID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	isFav := false
+	var minQty *float64
+	var expiresAt *time.Time
+	notes := ""
+	if existing != nil {
+		isFav = existing.IsFavorite
+		minQty = existing.MinQty
+		expiresAt = existing.ExpiresAt
+		notes = existing.Notes
+	}
+	var purchaseAt *time.Time
+	if args.PurchaseAt != nil {
+		purchaseAt = &args.PurchaseAt.Time
+	}
+	updated, err := r.UserPrefsService.UpsertUserItem(ctx, userprefs.UserItem{
+		UserID:     u.UserID,
+		ItemID:     itemID,
+		CurrentQty: args.Quantity,
+		MinQty:     minQty,
+		PurchaseAt: purchaseAt,
+		ExpiresAt:  expiresAt,
+		Notes:      notes,
+		IsFavorite: isFav,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// SetItemFavorite toggles the favorite flag for a user's pantry item.
+func (r *Resolver) SetItemFavorite(ctx context.Context, args struct {
+	ItemID     graphql.ID
+	IsFavorite bool
+}) (*userItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserItem(ctx, r.UserPrefsService, u.UserID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	currentQty := 0.0
+	var minQty *float64
+	var purchaseAt *time.Time
+	var expiresAt *time.Time
+	notes := ""
+	if existing != nil {
+		currentQty = existing.CurrentQty
+		minQty = existing.MinQty
+		purchaseAt = existing.PurchaseAt
+		expiresAt = existing.ExpiresAt
+		notes = existing.Notes
+	}
+	updated, err := r.UserPrefsService.UpsertUserItem(ctx, userprefs.UserItem{
+		UserID:     u.UserID,
+		ItemID:     itemID,
+		CurrentQty: currentQty,
+		MinQty:     minQty,
+		PurchaseAt: purchaseAt,
+		ExpiresAt:  expiresAt,
+		Notes:      notes,
+		IsFavorite: args.IsFavorite,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// DeleteUserItem removes a user's pantry item by catalog item ID.
+func (r *Resolver) DeleteUserItem(ctx context.Context, args struct{ ItemID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return false, err
+	}
+	existing, err := findUserItem(ctx, r.UserPrefsService, u.UserID, itemID)
+	if err != nil {
+		return false, err
+	}
+	if existing == nil {
+		return false, nil
+	}
+	if err := r.UserPrefsService.DeleteUserItem(ctx, existing.UserItemID, u.UserID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AdjustUserBottle updates the quantity of a user's wine cellar holding.
+func (r *Resolver) AdjustUserBottle(ctx context.Context, args struct {
+	BottleID graphql.ID
+	Quantity int32
+}) (*userBottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(args.BottleID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserBottle(ctx, r.UserPrefsService, u.UserID, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	var bottleNum *int32
+	var purchaseAt *time.Time
+	var purchasePrice *float64
+	var storageTemp *float64
+	location := ""
+	notes := ""
+	isFav := false
+	if existing != nil {
+		bottleNum = existing.BottleNumber
+		purchaseAt = existing.PurchaseAt
+		purchasePrice = existing.PurchasePrice
+		storageTemp = existing.StorageTemp
+		location = existing.Location
+		notes = existing.Notes
+		isFav = existing.IsFavorite
+	}
+	updated, err := r.UserPrefsService.UpsertUserBottle(ctx, userprefs.UserBottle{
+		UserID:        u.UserID,
+		BottleID:      bottleID,
+		BottleNumber:  bottleNum,
+		Quantity:      args.Quantity,
+		PurchaseAt:    purchaseAt,
+		PurchasePrice: purchasePrice,
+		StorageTemp:   storageTemp,
+		Location:      location,
+		Notes:         notes,
+		IsFavorite:    isFav,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottleResolver{wine: r.WineService, bottle: updated}, nil
+}
+
+// SetBottleFavorite toggles the favorite flag for a user's wine holding.
+func (r *Resolver) SetBottleFavorite(ctx context.Context, args struct {
+	BottleID   graphql.ID
+	IsFavorite bool
+}) (*userBottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(args.BottleID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserBottle(ctx, r.UserPrefsService, u.UserID, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	quantity := int32(0)
+	var bottleNum *int32
+	var purchaseAt *time.Time
+	var purchasePrice *float64
+	var storageTemp *float64
+	location := ""
+	notes := ""
+	if existing != nil {
+		quantity = existing.Quantity
+		bottleNum = existing.BottleNumber
+		purchaseAt = existing.PurchaseAt
+		purchasePrice = existing.PurchasePrice
+		storageTemp = existing.StorageTemp
+		location = existing.Location
+		notes = existing.Notes
+	}
+	updated, err := r.UserPrefsService.UpsertUserBottle(ctx, userprefs.UserBottle{
+		UserID:        u.UserID,
+		BottleID:      bottleID,
+		BottleNumber:  bottleNum,
+		Quantity:      quantity,
+		PurchaseAt:    purchaseAt,
+		PurchasePrice: purchasePrice,
+		StorageTemp:   storageTemp,
+		Location:      location,
+		Notes:         notes,
+		IsFavorite:    args.IsFavorite,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottleResolver{wine: r.WineService, bottle: updated}, nil
+}
+
+// CreateMealPlan creates a new meal plan for the current user.
+func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input createMealPlanInput }) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	d, err := time.Parse("2006-01-02", args.Input.WeekStartDate)
+	if err != nil {
+		return nil, err
+	}
+	var dayOfWeek int32 = 1
+	if args.Input.WeekStartDayOfWeek != nil {
+		dayOfWeek = *args.Input.WeekStartDayOfWeek
+	}
+	mp, err := r.MealPlanService.CreateMealPlan(ctx, mealplan.MealPlan{
+		UserID:             u.UserID,
+		Name:               args.Input.Name,
+		WeekStartDate:      d,
+		WeekStartDayOfWeek: int16(dayOfWeek),
+		IsActive:           true,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: mp}, nil
+}
+
+// UpdateMealPlan modifies an existing meal plan.
+func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input createMealPlanInput
+}) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != "" {
+		name = args.Input.Name
+	}
+	weekStart := existing.WeekStartDate
+	if args.Input.WeekStartDate != "" {
+		if d, err := time.Parse("2006-01-02", args.Input.WeekStartDate); err == nil {
+			weekStart = d
+		} else {
+			return nil, err
+		}
+	}
+	dayOfWeek := existing.WeekStartDayOfWeek
+	if args.Input.WeekStartDayOfWeek != nil {
+		dayOfWeek = int16(*args.Input.WeekStartDayOfWeek)
+	}
+	if err := r.MealPlanService.UpdateMealPlan(ctx, id, u.UserID, mealplan.MealPlan{
+		Name:               name,
+		WeekStartDate:      weekStart,
+		WeekStartDayOfWeek: dayOfWeek,
+		IsActive:           existing.IsActive,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: updated}, nil
+}
+
+// DeleteMealPlan removes a meal plan owned by the current user.
+func (r *Resolver) DeleteMealPlan(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.MealPlanService.DeleteMealPlan(ctx, id, u.UserID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AddMealSlot adds a slot to a meal plan.
+func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSlotInput }) (*mealSlotResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mealPlanID, err := parseID(string(args.Input.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	var recipeID *int64
+	if args.Input.RecipeID != nil {
+		rid, err := parseID(string(*args.Input.RecipeID))
+		if err != nil {
+			return nil, err
+		}
+		recipeID = &rid
+	}
+	slot, err := r.MealPlanService.AddMealSlot(ctx, mealplan.MealSlot{
+		MealPlanID:      mealPlanID,
+		DayOfWeek:       int16(args.Input.DayOfWeek),
+		MealType:        args.Input.MealType,
+		RecipeID:        recipeID,
+		Servings:        args.Input.Servings,
+		ReplacementNote: derefString(args.Input.ReplacementNote),
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: slot}, nil
+}
+
+// RemoveMealSlot removes a slot from a meal plan.
+func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	slotID, err := parseID(string(args.SlotID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.MealPlanService.DeleteMealSlot(ctx, slotID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// GenerateGroceryList generates a grocery list from a meal plan.
+func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPlanID graphql.ID }) (*groceryListResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mealPlanID, err := parseID(string(args.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	list, err := r.GroceryService.Generate(ctx, u.UserID, mealPlanID, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, list: list}, nil
+}
+
+// ToggleGroceryItemChecked flips the checked state of a grocery list item.
+func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ GroceryListItemID graphql.ID }) (*groceryListItemResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.GroceryListItemID))
+	if err != nil {
+		return nil, err
+	}
+	it, err := r.GroceryService.GetGroceryListItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	it.IsChecked = !it.IsChecked
+	u, _ := userFromContext(ctx)
+	if err := r.GroceryService.UpdateGroceryListItem(ctx, id, it, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.GroceryService.GetGroceryListItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// DeleteGroceryItem removes an item from a grocery list.
+func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryListItemID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.GroceryListItemID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.GroceryService.DeleteGroceryListItem(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func findUserItem(ctx context.Context, svc *userprefs.Service, userID, itemID int64) (*userprefs.UserItem, error) {
+	items, err := svc.ListUserItems(ctx, userID, 100_000, 0)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if items[i].ItemID == itemID {
+			return &items[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func findUserBottle(ctx context.Context, svc *userprefs.Service, userID, bottleID int64) (*userprefs.UserBottle, error) {
+	bottles, err := svc.ListUserBottles(ctx, userID, 100_000, 0)
+	if err != nil {
+		return nil, err
+	}
+	for i := range bottles {
+		if bottles[i].BottleID == bottleID {
+			return &bottles[i], nil
+		}
+	}
+	return nil, nil
+}
+
 func derefString(s *string) string {
 	if s == nil {
 		return ""
@@ -997,6 +1646,30 @@ type recipeItemInput struct {
 type recipeStepInput struct {
 	StepNumber  int32
 	Instruction string
+}
+
+type updateItemInput struct {
+	Name       *string
+	BrandID    *graphql.ID
+	Upc12      *string
+	Upc14      *string
+	CategoryID *graphql.ID
+	Unit       *string
+}
+
+type createMealPlanInput struct {
+	Name               string
+	WeekStartDate      string
+	WeekStartDayOfWeek *int32
+}
+
+type addMealSlotInput struct {
+	MealPlanID      graphql.ID
+	DayOfWeek       int32
+	MealType        string
+	RecipeID        *graphql.ID
+	Servings        *int32
+	ReplacementNote *string
 }
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
