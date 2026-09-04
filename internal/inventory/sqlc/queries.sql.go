@@ -93,6 +93,68 @@ func (q *Queries) CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfi
 	return i, err
 }
 
+const createFoodFlavor = `-- name: CreateFoodFlavor :one
+INSERT INTO inventory.food_flavor (food_id, flavor_id, intensity, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING food_id, flavor_id, intensity, created_by, created_at
+`
+
+type CreateFoodFlavorParams struct {
+	FoodID    int64  `json:"food_id"`
+	FlavorID  int64  `json:"flavor_id"`
+	Intensity int16  `json:"intensity"`
+	CreatedBy string `json:"created_by"`
+}
+
+func (q *Queries) CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (InventoryFoodFlavor, error) {
+	row := q.db.QueryRow(ctx, createFoodFlavor,
+		arg.FoodID,
+		arg.FlavorID,
+		arg.Intensity,
+		arg.CreatedBy,
+	)
+	var i InventoryFoodFlavor
+	err := row.Scan(
+		&i.FoodID,
+		&i.FlavorID,
+		&i.Intensity,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createFoodNutrient = `-- name: CreateFoodNutrient :one
+INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING food_id, nutrient_id, amount, created_by, created_at
+`
+
+type CreateFoodNutrientParams struct {
+	FoodID     int64          `json:"food_id"`
+	NutrientID int64          `json:"nutrient_id"`
+	Amount     pgtype.Numeric `json:"amount"`
+	CreatedBy  string         `json:"created_by"`
+}
+
+func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (InventoryFoodNutrient, error) {
+	row := q.db.QueryRow(ctx, createFoodNutrient,
+		arg.FoodID,
+		arg.NutrientID,
+		arg.Amount,
+		arg.CreatedBy,
+	)
+	var i InventoryFoodNutrient
+	err := row.Scan(
+		&i.FoodID,
+		&i.NutrientID,
+		&i.Amount,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createItem = `-- name: CreateItem :one
 INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -159,6 +221,36 @@ func (q *Queries) CreateNutrientType(ctx context.Context, arg CreateNutrientType
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const deleteFoodFlavor = `-- name: DeleteFoodFlavor :exec
+DELETE FROM inventory.food_flavor
+WHERE food_id = $1 AND flavor_id = $2
+`
+
+type DeleteFoodFlavorParams struct {
+	FoodID   int64 `json:"food_id"`
+	FlavorID int64 `json:"flavor_id"`
+}
+
+func (q *Queries) DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) error {
+	_, err := q.db.Exec(ctx, deleteFoodFlavor, arg.FoodID, arg.FlavorID)
+	return err
+}
+
+const deleteFoodNutrient = `-- name: DeleteFoodNutrient :exec
+DELETE FROM inventory.food_nutrient
+WHERE food_id = $1 AND nutrient_id = $2
+`
+
+type DeleteFoodNutrientParams struct {
+	FoodID     int64 `json:"food_id"`
+	NutrientID int64 `json:"nutrient_id"`
+}
+
+func (q *Queries) DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error {
+	_, err := q.db.Exec(ctx, deleteFoodNutrient, arg.FoodID, arg.NutrientID)
+	return err
 }
 
 const deleteItem = `-- name: DeleteItem :exec
@@ -316,6 +408,40 @@ func (q *Queries) ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProf
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFoodFlavorsByItem = `-- name: ListFoodFlavorsByItem :many
+SELECT fp.flavor_id, fp.name, ff.intensity
+FROM inventory.food_flavor ff
+JOIN inventory.flavor_profile fp ON ff.flavor_id = fp.flavor_id
+WHERE ff.food_id = $1
+ORDER BY fp.name
+`
+
+type ListFoodFlavorsByItemRow struct {
+	FlavorID  int64  `json:"flavor_id"`
+	Name      string `json:"name"`
+	Intensity int16  `json:"intensity"`
+}
+
+func (q *Queries) ListFoodFlavorsByItem(ctx context.Context, foodID int64) ([]ListFoodFlavorsByItemRow, error) {
+	rows, err := q.db.Query(ctx, listFoodFlavorsByItem, foodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFoodFlavorsByItemRow{}
+	for rows.Next() {
+		var i ListFoodFlavorsByItemRow
+		if err := rows.Scan(&i.FlavorID, &i.Name, &i.Intensity); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

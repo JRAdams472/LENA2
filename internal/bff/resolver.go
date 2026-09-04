@@ -594,6 +594,92 @@ func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItem
 	return &itemResolver{inv: r.InventoryService, it: it}, nil
 }
 
+// AddFoodNutrient adds a nutrient value to a catalog item.
+func (r *Resolver) AddFoodNutrient(ctx context.Context, args struct{ Input addFoodNutrientInput }) (*foodNutrientResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.Input.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	nutrientID, err := parseID(string(args.Input.NutrientID))
+	if err != nil {
+		return nil, err
+	}
+	n, err := r.InventoryService.CreateFoodNutrient(ctx, itemID, nutrientID, args.Input.Amount, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &foodNutrientResolver{nutrient: n}, nil
+}
+
+// RemoveFoodNutrient removes a nutrient value from an item.
+func (r *Resolver) RemoveFoodNutrient(ctx context.Context, args struct {
+	ItemID     graphql.ID
+	NutrientID graphql.ID
+}) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return false, err
+	}
+	nutrientID, err := parseID(string(args.NutrientID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteFoodNutrient(ctx, itemID, nutrientID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AddFoodFlavor adds a flavor profile to a catalog item.
+func (r *Resolver) AddFoodFlavor(ctx context.Context, args struct{ Input addFoodFlavorInput }) (*foodFlavorResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.Input.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	flavorID, err := parseID(string(args.Input.FlavorID))
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.InventoryService.CreateFoodFlavor(ctx, itemID, flavorID, int16(args.Input.Intensity), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &foodFlavorResolver{flavor: f}, nil
+}
+
+// RemoveFoodFlavor removes a flavor profile from an item.
+func (r *Resolver) RemoveFoodFlavor(ctx context.Context, args struct {
+	ItemID   graphql.ID
+	FlavorID graphql.ID
+}) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return false, err
+	}
+	flavorID, err := parseID(string(args.FlavorID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteFoodFlavor(ctx, itemID, flavorID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CreateRecipe creates a new recipe and its items/steps.
 func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRecipeInput }) (*recipeResolver, error) {
 	u, err := userFromContext(ctx)
@@ -1692,6 +1778,28 @@ func (r *itemResolver) Category(ctx context.Context) (*categoryResolver, error) 
 	}
 	return &categoryResolver{c: c}, nil
 }
+func (r *itemResolver) Nutrients(ctx context.Context) ([]*foodNutrientResolver, error) {
+	nutrients, err := r.inv.ListFoodNutrientsByItem(ctx, r.it.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*foodNutrientResolver, len(nutrients))
+	for i := range nutrients {
+		out[i] = &foodNutrientResolver{nutrient: nutrients[i]}
+	}
+	return out, nil
+}
+func (r *itemResolver) Flavors(ctx context.Context) ([]*foodFlavorResolver, error) {
+	flavors, err := r.inv.ListFoodFlavorsByItem(ctx, r.it.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*foodFlavorResolver, len(flavors))
+	for i := range flavors {
+		out[i] = &foodFlavorResolver{flavor: flavors[i]}
+	}
+	return out, nil
+}
 
 type brandResolver struct{ b inventory.Brand }
 
@@ -1721,6 +1829,29 @@ func (r *nutrientTypeResolver) ID() graphql.ID {
 }
 func (r *nutrientTypeResolver) Name() string { return r.n.Name }
 func (r *nutrientTypeResolver) Unit() string { return r.n.Unit }
+
+// foodNutrientResolver resolves an item's nutrient value.
+type foodNutrientResolver struct{ nutrient inventory.FoodNutrient }
+
+func (r *foodNutrientResolver) Nutrient(ctx context.Context) (*nutrientTypeResolver, error) {
+	return &nutrientTypeResolver{n: inventory.NutrientType{
+		NutrientID: r.nutrient.NutrientID,
+		Name:       r.nutrient.Name,
+		Unit:       r.nutrient.Unit,
+	}}, nil
+}
+func (r *foodNutrientResolver) Amount() float64 { return r.nutrient.Amount }
+
+// foodFlavorResolver resolves an item's flavor profile.
+type foodFlavorResolver struct{ flavor inventory.FoodFlavor }
+
+func (r *foodFlavorResolver) Flavor(ctx context.Context) (*flavorProfileResolver, error) {
+	return &flavorProfileResolver{f: inventory.FlavorProfile{
+		FlavorID: r.flavor.FlavorID,
+		Name:     r.flavor.Name,
+	}}, nil
+}
+func (r *foodFlavorResolver) Intensity() int32 { return int32(r.flavor.Intensity) }
 
 type itemPageResolver struct {
 	inv      *inventory.Service
@@ -2309,6 +2440,18 @@ type addGroceryItemInput struct {
 	ManualItemName *string
 	Quantity       float64
 	Unit           string
+}
+
+type addFoodNutrientInput struct {
+	ItemID     graphql.ID
+	NutrientID graphql.ID
+	Amount     float64
+}
+
+type addFoodFlavorInput struct {
+	ItemID    graphql.ID
+	FlavorID  graphql.ID
+	Intensity int32
 }
 
 type createBottleInput struct {

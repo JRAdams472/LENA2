@@ -5,6 +5,7 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -266,6 +267,76 @@ func (s *Service) ListFoodNutrientsByItem(ctx context.Context, itemID int64) ([]
 	return out, nil
 }
 
+// CreateFoodNutrient adds a nutrient value to an item.
+func (s *Service) CreateFoodNutrient(ctx context.Context, itemID, nutrientID int64, amount float64, by string) (FoodNutrient, error) {
+	row, err := s.q.CreateFoodNutrient(ctx, sqlc.CreateFoodNutrientParams{
+		FoodID:     itemID,
+		NutrientID: nutrientID,
+		Amount:     numericFromFloat64(amount),
+		CreatedBy:  by,
+	})
+	if err != nil {
+		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
+	}
+	return FoodNutrient{
+		NutrientID: row.NutrientID,
+		Amount:     numericToFloat64(row.Amount),
+	}, nil
+}
+
+// DeleteFoodNutrient removes a nutrient value from an item.
+func (s *Service) DeleteFoodNutrient(ctx context.Context, itemID, nutrientID int64) error {
+	return s.q.DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{
+		FoodID:     itemID,
+		NutrientID: nutrientID,
+	})
+}
+
+// FoodFlavor is a flavor profile attached to a catalog item.
+type FoodFlavor struct {
+	FlavorID  int64
+	Name      string
+	Intensity int16
+}
+
+// CreateFoodFlavor adds a flavor to an item.
+func (s *Service) CreateFoodFlavor(ctx context.Context, itemID, flavorID int64, intensity int16, by string) (FoodFlavor, error) {
+	row, err := s.q.CreateFoodFlavor(ctx, sqlc.CreateFoodFlavorParams{
+		FoodID:    itemID,
+		FlavorID:  flavorID,
+		Intensity: intensity,
+		CreatedBy: by,
+	})
+	if err != nil {
+		return FoodFlavor{}, fmt.Errorf("create food flavor: %w", err)
+	}
+	return FoodFlavor{
+		FlavorID:  row.FlavorID,
+		Intensity: row.Intensity,
+	}, nil
+}
+
+// ListFoodFlavorsByItem returns the flavor profiles for an item.
+func (s *Service) ListFoodFlavorsByItem(ctx context.Context, itemID int64) ([]FoodFlavor, error) {
+	rows, err := s.q.ListFoodFlavorsByItem(ctx, itemID)
+	if err != nil {
+		return nil, fmt.Errorf("list food flavors by item: %w", err)
+	}
+	out := make([]FoodFlavor, len(rows))
+	for i := range rows {
+		out[i] = toFoodFlavor(rows[i])
+	}
+	return out, nil
+}
+
+// DeleteFoodFlavor removes a flavor from an item.
+func (s *Service) DeleteFoodFlavor(ctx context.Context, itemID, flavorID int64) error {
+	return s.q.DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{
+		FoodID:   itemID,
+		FlavorID: flavorID,
+	})
+}
+
 func toCategory(row sqlc.InventoryCategory) Category {
 	return Category{
 		CategoryID:  row.CategoryID,
@@ -326,6 +397,30 @@ func toFoodNutrient(row sqlc.ListFoodNutrientsByItemRow) FoodNutrient {
 		Unit:       row.Unit.String,
 		Amount:     amount,
 	}
+}
+
+func toFoodFlavor(row sqlc.ListFoodFlavorsByItemRow) FoodFlavor {
+	return FoodFlavor{
+		FlavorID:  row.FlavorID,
+		Name:      row.Name,
+		Intensity: row.Intensity,
+	}
+}
+
+func numericFromFloat64(f float64) pgtype.Numeric {
+	var n pgtype.Numeric
+	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
+		return pgtype.Numeric{}
+	}
+	n.Valid = true
+	return n
+}
+
+func numericToFloat64(n pgtype.Numeric) float64 {
+	if v, err := n.Float64Value(); err == nil {
+		return v.Float64
+	}
+	return 0
 }
 
 func optInt64(v *int64) pgtype.Int8 {
