@@ -46,7 +46,7 @@ func main() {
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}
 	if cfg.CORSAllowedOrigins == "*" {
-		corsCfg.AllowOriginFunc = func(origin string) bool { return true }
+		corsCfg.AllowOriginFunc = func(origin string) (bool, error) { return true, nil }
 	} else {
 		corsCfg.AllowOrigins = strings.Split(cfg.CORSAllowedOrigins, ",")
 	}
