@@ -105,3 +105,19 @@ RETURNING *;
 SELECT *
 FROM wine.grape_variety
 ORDER BY name;
+
+-- name: CreateBottleGrapeVariety :one
+INSERT INTO wine.bottle_grape_variety (bottle_id, grape_variety_id, percentage, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: ListBottleGrapeVarieties :many
+SELECT gv.grape_variety_id, gv.name, bgv.percentage
+FROM wine.bottle_grape_variety bgv
+JOIN wine.grape_variety gv ON bgv.grape_variety_id = gv.grape_variety_id
+WHERE bgv.bottle_id = $1
+ORDER BY gv.name;
+
+-- name: DeleteBottleGrapeVariety :exec
+DELETE FROM wine.bottle_grape_variety
+WHERE bottle_id = $1 AND grape_variety_id = $2;

@@ -70,6 +70,8 @@ type Mutation {
 
   createBottle(input: CreateBottleInput!): Bottle!
   updateBottle(id: ID!, input: UpdateBottleInput!): Bottle!
+  addBottleGrapeVariety(input: AddBottleGrapeVarietyInput!): BottleGrapeVariety!
+  removeBottleGrapeVariety(bottleId: ID!, grapeVarietyId: ID!): Boolean!
   adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
   setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
 }
@@ -180,6 +182,12 @@ type Bottle {
   sweetness: Int
   oakIntegration: Boolean
   bottleSize: String!
+  grapeVarieties: [BottleGrapeVariety!]!
+}
+
+type BottleGrapeVariety {
+  grapeVariety: GrapeVariety!
+  percentage: Int
 }
 
 type BottlePage {
@@ -453,4 +461,10 @@ input UpdateBottleInput {
   sweetness: Int
   oakIntegration: Boolean
   bottleSize: String
+}
+
+input AddBottleGrapeVarietyInput {
+  bottleId: ID!
+  grapeVarietyId: ID!
+  percentage: Int
 }

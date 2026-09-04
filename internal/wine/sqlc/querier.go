@@ -10,16 +10,19 @@ import (
 
 type Querier interface {
 	CreateBottle(ctx context.Context, arg CreateBottleParams) (WineBottle, error)
+	CreateBottleGrapeVariety(ctx context.Context, arg CreateBottleGrapeVarietyParams) (WineBottleGrapeVariety, error)
 	CreateCountry(ctx context.Context, arg CreateCountryParams) (WineCountry, error)
 	CreateGrapeVariety(ctx context.Context, arg CreateGrapeVarietyParams) (WineGrapeVariety, error)
 	CreateRegion(ctx context.Context, arg CreateRegionParams) (WineRegion, error)
 	CreateType(ctx context.Context, arg CreateTypeParams) (WineType, error)
 	CreateVintage(ctx context.Context, arg CreateVintageParams) (WineVintage, error)
 	DeleteBottle(ctx context.Context, bottleID int64) error
+	DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) error
 	GetBottleByID(ctx context.Context, bottleID int64) (WineBottle, error)
 	GetCountryByID(ctx context.Context, countryID int64) (WineCountry, error)
 	GetRegionByID(ctx context.Context, regionID int64) (WineRegion, error)
 	GetTypeByID(ctx context.Context, typeID int64) (WineType, error)
+	ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]ListBottleGrapeVarietiesRow, error)
 	ListBottles(ctx context.Context, arg ListBottlesParams) ([]WineBottle, error)
 	ListCountries(ctx context.Context) ([]WineCountry, error)
 	ListGrapeVarieties(ctx context.Context) ([]WineGrapeVariety, error)
