@@ -1,23 +1,26 @@
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
+  default: none
   enable:
     - errcheck
     - gosimple
     - govet
     - ineffassign
+    - misspell
     - staticcheck
     - unused
-    - gofmt
-    - misspell
     - gosec
 
-linters-settings:
-  gosec:
-    excludes:
-      - G104
+  settings:
+    gosec:
+      excludes:
+        - G104
 
 issues:
-  exclude-dirs:
-    - migrations
+  exclude:
+    paths:
+      - migrations
