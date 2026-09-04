@@ -15,6 +15,9 @@ type Query {
   userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
   bottle(id: ID!): Bottle
   bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
+  types: [WineType!]!
+  countries: [Country!]!
+  regions(countryId: ID!): [Region!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
   groceryList(id: ID!): GroceryList
@@ -47,6 +50,11 @@ type Mutation {
   generateGroceryList(mealPlanId: ID!): GroceryList!
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
   deleteGroceryItem(groceryListItemId: ID!): Boolean!
+
+  createBottle(input: CreateBottleInput!): Bottle!
+  updateBottle(id: ID!, input: UpdateBottleInput!): Bottle!
+  adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
+  setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
 }
 
 type PageInfo {
@@ -118,6 +126,9 @@ type RecipePage {
 
 type Bottle {
   id: ID!
+  typeId: ID!
+  countryId: ID!
+  regionId: ID!
   vineyard: String
   vintageYear: Int!
   abv: Float
@@ -283,4 +294,54 @@ input AddMealSlotInput {
   recipeId: ID
   servings: Int
   replacementNote: String
+}
+
+type WineType {
+  id: ID!
+  name: String!
+  description: String
+}
+
+type Country {
+  id: ID!
+  name: String!
+  isoCode: String
+  description: String
+}
+
+type Region {
+  id: ID!
+  name: String!
+  description: String
+  country: Country!
+}
+
+input CreateBottleInput {
+  typeId: ID!
+  countryId: ID!
+  regionId: ID!
+  vintageYear: Int!
+  vineyard: String
+  abv: Float
+  acidity: Int
+  tanninLevel: Int
+  body: Int
+  sweetness: Int
+  oakIntegration: Boolean
+  bottleSize: String!
+}
+
+input UpdateBottleInput {
+  typeId: ID
+  countryId: ID
+  regionId: ID
+  vintageYear: Int
+  vineyard: String
+  abv: Float
+  acidity: Int
+  tanninLevel: Int
+  body: Int
+  sweetness: Int
+  oakIntegration: Boolean
+  bottleSize: String
 }

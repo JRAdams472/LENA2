@@ -42,16 +42,16 @@ type UserItem struct {
 // UpsertUserItem creates or updates a user's pantry item.
 func (s *Service) UpsertUserItem(ctx context.Context, arg UserItem, by string) (UserItem, error) {
 	row, err := s.q.UpsertUserItem(ctx, sqlc.UpsertUserItemParams{
-		UserID:      arg.UserID,
-		ItemID:      arg.ItemID,
-		CurrentQty:  numericFromFloat64(arg.CurrentQty),
-		MinQty:      optNumeric(arg.MinQty),
-		PurchaseAt:  optTimestamptz(arg.PurchaseAt),
-		ExpiresAt:   optTimestamptz(arg.ExpiresAt),
-		Notes:       textOrNull(arg.Notes),
-		IsFavorite:  arg.IsFavorite,
-		CreatedBy:   by,
-		UpdatedBy:   textOrNull(by),
+		UserID:     arg.UserID,
+		ItemID:     arg.ItemID,
+		CurrentQty: numericFromFloat64(arg.CurrentQty),
+		MinQty:     optNumeric(arg.MinQty),
+		PurchaseAt: optTimestamptz(arg.PurchaseAt),
+		ExpiresAt:  optTimestamptz(arg.ExpiresAt),
+		Notes:      textOrNull(arg.Notes),
+		IsFavorite: arg.IsFavorite,
+		CreatedBy:  by,
+		UpdatedBy:  textOrNull(by),
 	})
 	if err != nil {
 		return UserItem{}, fmt.Errorf("upsert user item: %w", err)

@@ -1103,6 +1103,220 @@ func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryLi
 	return true, nil
 }
 
+// Types resolves all wine types.
+func (r *Resolver) Types(ctx context.Context) ([]*wineTypeResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	types, err := r.WineService.ListTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*wineTypeResolver, len(types))
+	for i := range types {
+		out[i] = &wineTypeResolver{t: types[i]}
+	}
+	return out, nil
+}
+
+// Countries resolves all wine countries.
+func (r *Resolver) Countries(ctx context.Context) ([]*countryResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	countries, err := r.WineService.ListCountries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*countryResolver, len(countries))
+	for i := range countries {
+		out[i] = &countryResolver{c: countries[i]}
+	}
+	return out, nil
+}
+
+// Regions resolves wine regions for a country.
+func (r *Resolver) Regions(ctx context.Context, args struct{ CountryID graphql.ID }) ([]*regionResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	countryID, err := parseID(string(args.CountryID))
+	if err != nil {
+		return nil, err
+	}
+	regions, err := r.WineService.ListRegions(ctx, countryID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*regionResolver, len(regions))
+	for i := range regions {
+		out[i] = &regionResolver{wine: r.WineService, r: regions[i]}
+	}
+	return out, nil
+}
+
+// CreateBottle adds a new bottle definition.
+func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBottleInput }) (*bottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	typeID, err := parseID(string(args.Input.TypeID))
+	if err != nil {
+		return nil, err
+	}
+	countryID, err := parseID(string(args.Input.CountryID))
+	if err != nil {
+		return nil, err
+	}
+	regionID, err := parseID(string(args.Input.RegionID))
+	if err != nil {
+		return nil, err
+	}
+	var vineyard string
+	if args.Input.Vineyard != nil {
+		vineyard = *args.Input.Vineyard
+	}
+	var abv float64
+	if args.Input.Abv != nil {
+		abv = *args.Input.Abv
+	}
+	var acidity int16
+	if args.Input.Acidity != nil {
+		acidity = int16(*args.Input.Acidity)
+	}
+	var tanninLevel int16
+	if args.Input.TanninLevel != nil {
+		tanninLevel = int16(*args.Input.TanninLevel)
+	}
+	var body int16
+	if args.Input.Body != nil {
+		body = int16(*args.Input.Body)
+	}
+	var sweetness int16
+	if args.Input.Sweetness != nil {
+		sweetness = int16(*args.Input.Sweetness)
+	}
+	b, err := r.WineService.CreateBottle(ctx, wine.Bottle{
+		TypeID:         typeID,
+		CountryID:      countryID,
+		RegionID:       regionID,
+		VintageYear:    args.Input.VintageYear,
+		Vineyard:       vineyard,
+		Abv:            abv,
+		Acidity:        acidity,
+		TanninLevel:    tanninLevel,
+		Body:           body,
+		Sweetness:      sweetness,
+		OakIntegration: args.Input.OakIntegration,
+		BottleSize:     args.Input.BottleSize,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{b: b}, nil
+}
+
+// UpdateBottle modifies an existing bottle definition.
+func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateBottleInput
+}) (*bottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetBottleByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	typeID := existing.TypeID
+	if args.Input.TypeID != nil {
+		tid, err := parseID(string(*args.Input.TypeID))
+		if err != nil {
+			return nil, err
+		}
+		typeID = tid
+	}
+	countryID := existing.CountryID
+	if args.Input.CountryID != nil {
+		cid, err := parseID(string(*args.Input.CountryID))
+		if err != nil {
+			return nil, err
+		}
+		countryID = cid
+	}
+	regionID := existing.RegionID
+	if args.Input.RegionID != nil {
+		rid, err := parseID(string(*args.Input.RegionID))
+		if err != nil {
+			return nil, err
+		}
+		regionID = rid
+	}
+	vintage := existing.VintageYear
+	if args.Input.VintageYear != nil {
+		vintage = *args.Input.VintageYear
+	}
+	vineyard := existing.Vineyard
+	if args.Input.Vineyard != nil {
+		vineyard = *args.Input.Vineyard
+	}
+	abv := existing.Abv
+	if args.Input.Abv != nil {
+		abv = *args.Input.Abv
+	}
+	acidity := existing.Acidity
+	if args.Input.Acidity != nil {
+		acidity = int16(*args.Input.Acidity)
+	}
+	tanninLevel := existing.TanninLevel
+	if args.Input.TanninLevel != nil {
+		tanninLevel = int16(*args.Input.TanninLevel)
+	}
+	body := existing.Body
+	if args.Input.Body != nil {
+		body = int16(*args.Input.Body)
+	}
+	sweetness := existing.Sweetness
+	if args.Input.Sweetness != nil {
+		sweetness = int16(*args.Input.Sweetness)
+	}
+	oakIntegration := existing.OakIntegration
+	if args.Input.OakIntegration != nil {
+		oakIntegration = *args.Input.OakIntegration
+	}
+	bottleSize := existing.BottleSize
+	if args.Input.BottleSize != nil {
+		bottleSize = *args.Input.BottleSize
+	}
+	if err := r.WineService.UpdateBottle(ctx, id, wine.Bottle{
+		TypeID:         typeID,
+		CountryID:      countryID,
+		RegionID:       regionID,
+		VintageYear:    vintage,
+		Vineyard:       vineyard,
+		Abv:            abv,
+		Acidity:        acidity,
+		TanninLevel:    tanninLevel,
+		Body:           body,
+		Sweetness:      sweetness,
+		OakIntegration: oakIntegration,
+		BottleSize:     bottleSize,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.WineService.GetBottleByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{b: updated}, nil
+}
+
 func findUserItem(ctx context.Context, svc *userprefs.Service, userID, itemID int64) (*userprefs.UserItem, error) {
 	items, err := svc.ListUserItems(ctx, userID, 100_000, 0)
 	if err != nil {
@@ -1576,7 +1790,14 @@ func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 // bottleResolver resolves Bottle fields.
 type bottleResolver struct{ b wine.Bottle }
 
-func (r *bottleResolver) ID() graphql.ID        { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
+func (r *bottleResolver) ID() graphql.ID     { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
+func (r *bottleResolver) TypeID() graphql.ID { return graphql.ID(strconv.FormatInt(r.b.TypeID, 10)) }
+func (r *bottleResolver) CountryID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.b.CountryID, 10))
+}
+func (r *bottleResolver) RegionID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.b.RegionID, 10))
+}
 func (r *bottleResolver) Vineyard() *string     { return nilIfEmpty(r.b.Vineyard) }
 func (r *bottleResolver) VintageYear() int32    { return r.b.VintageYear }
 func (r *bottleResolver) Abv() *float64         { return float64OrNil(r.b.Abv) }
@@ -1604,6 +1825,38 @@ func (r *bottlePageResolver) Items() []*bottleResolver {
 
 func (r *bottlePageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// wineTypeResolver resolves a wine type.
+type wineTypeResolver struct{ t wine.Type }
+
+func (r *wineTypeResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.t.TypeID, 10)) }
+func (r *wineTypeResolver) Name() string         { return r.t.Name }
+func (r *wineTypeResolver) Description() *string { return nilIfEmpty(r.t.Description) }
+
+// countryResolver resolves a wine country.
+type countryResolver struct{ c wine.Country }
+
+func (r *countryResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.c.CountryID, 10)) }
+func (r *countryResolver) Name() string         { return r.c.Name }
+func (r *countryResolver) IsoCode() string      { return r.c.IsoCode }
+func (r *countryResolver) Description() *string { return nilIfEmpty(r.c.Description) }
+
+// regionResolver resolves a wine region.
+type regionResolver struct {
+	wine *wine.Service
+	r    wine.Region
+}
+
+func (r *regionResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.r.RegionID, 10)) }
+func (r *regionResolver) Name() string         { return r.r.Name }
+func (r *regionResolver) Description() *string { return nilIfEmpty(r.r.Description) }
+func (r *regionResolver) Country(ctx context.Context) (*countryResolver, error) {
+	c, err := r.wine.GetCountryByID(ctx, r.r.CountryID)
+	if err != nil {
+		return nil, err
+	}
+	return &countryResolver{c: c}, nil
 }
 
 // Inputs map directly to the GraphQL input types.
@@ -1670,6 +1923,36 @@ type addMealSlotInput struct {
 	RecipeID        *graphql.ID
 	Servings        *int32
 	ReplacementNote *string
+}
+
+type createBottleInput struct {
+	TypeID         graphql.ID
+	CountryID      graphql.ID
+	RegionID       graphql.ID
+	VintageYear    int32
+	Vineyard       *string
+	Abv            *float64
+	Acidity        *int32
+	TanninLevel    *int32
+	Body           *int32
+	Sweetness      *int32
+	OakIntegration bool
+	BottleSize     string
+}
+
+type updateBottleInput struct {
+	TypeID         *graphql.ID
+	CountryID      *graphql.ID
+	RegionID       *graphql.ID
+	VintageYear    *int32
+	Vineyard       *string
+	Abv            *float64
+	Acidity        *int32
+	TanninLevel    *int32
+	Body           *int32
+	Sweetness      *int32
+	OakIntegration *bool
+	BottleSize     *string
 }
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.

@@ -25,3 +25,4 @@ The app expects an OIDC ID token stored with `flutter_secure_storage` under the 
 - `lib/graphql_config.dart` — Apollo-compatible GraphQL client setup with auth link.
 - `lib/main.dart` — App entry point with `GraphQLProvider`.
 - `lib/screens/home_screen.dart` — Example dashboard using `Me` and `userItems` queries.
+- `lib/screens/grocery_screen.dart` — Example grocery list with `toggleGroceryItemChecked` mutation.

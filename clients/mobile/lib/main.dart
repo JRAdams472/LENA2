@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'graphql_config.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_screen.dart';
 
 void main() {
   runApp(const LenaApp());
@@ -17,7 +17,7 @@ class LenaApp extends StatelessWidget {
       child: MaterialApp(
         title: 'LENA',
         theme: ThemeData(primarySwatch: Colors.teal),
-        home: const HomeScreen(),
+        home: const MainScreen(),
       ),
     );
   }
