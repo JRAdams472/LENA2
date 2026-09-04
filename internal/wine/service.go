@@ -234,6 +234,51 @@ func (s *Service) ListGrapeVarieties(ctx context.Context) ([]GrapeVariety, error
 	return out, nil
 }
 
+// BottleGrapeVariety is a grape variety associated with a bottle.
+type BottleGrapeVariety struct {
+	GrapeVarietyID int64
+	Name           string
+	Percentage     int16
+}
+
+// AddBottleGrapeVariety links a grape variety to a bottle.
+func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage int16, by string) (BottleGrapeVariety, error) {
+	row, err := s.q.CreateBottleGrapeVariety(ctx, sqlc.CreateBottleGrapeVarietyParams{
+		BottleID:       bottleID,
+		GrapeVarietyID: grapeVarietyID,
+		Percentage:     int2OrNull(percentage),
+		CreatedBy:      by,
+	})
+	if err != nil {
+		return BottleGrapeVariety{}, fmt.Errorf("add bottle grape variety: %w", err)
+	}
+	return BottleGrapeVariety{
+		GrapeVarietyID: row.GrapeVarietyID,
+		Percentage:     int16Value(row.Percentage),
+	}, nil
+}
+
+// ListBottleGrapeVarieties returns grape varieties for a bottle.
+func (s *Service) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]BottleGrapeVariety, error) {
+	rows, err := s.q.ListBottleGrapeVarieties(ctx, bottleID)
+	if err != nil {
+		return nil, fmt.Errorf("list bottle grape varieties: %w", err)
+	}
+	out := make([]BottleGrapeVariety, len(rows))
+	for i := range rows {
+		out[i] = toBottleGrapeVariety(rows[i])
+	}
+	return out, nil
+}
+
+// RemoveBottleGrapeVariety removes a grape variety from a bottle.
+func (s *Service) RemoveBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64) error {
+	return s.q.DeleteBottleGrapeVariety(ctx, sqlc.DeleteBottleGrapeVarietyParams{
+		BottleID:       bottleID,
+		GrapeVarietyID: grapeVarietyID,
+	})
+}
+
 // Bottle is a catalog wine bottle definition.
 type Bottle struct {
 	BottleID       int64
@@ -367,6 +412,21 @@ func toGrapeVariety(row sqlc.WineGrapeVariety) GrapeVariety {
 		Description:    row.Description.String,
 		IsActive:       row.IsActive,
 	}
+}
+
+func toBottleGrapeVariety(row sqlc.ListBottleGrapeVarietiesRow) BottleGrapeVariety {
+	return BottleGrapeVariety{
+		GrapeVarietyID: row.GrapeVarietyID,
+		Name:           row.Name,
+		Percentage:     int16Value(row.Percentage),
+	}
+}
+
+func int16Value(v pgtype.Int2) int16 {
+	if v.Valid {
+		return v.Int16
+	}
+	return 0
 }
 
 func toBottle(row sqlc.WineBottle) Bottle {

@@ -295,7 +295,7 @@ func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*b
 	if err != nil {
 		return nil, err
 	}
-	return &bottleResolver{b: b}, nil
+	return &bottleResolver{wine: r.WineService, b: b}, nil
 }
 
 // Bottles resolves a paginated list of wine bottles.
@@ -312,7 +312,7 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &bottlePageResolver{bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
+	return &bottlePageResolver{wine: r.WineService, bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
 }
 
 // MealPlan resolves a single meal plan by ID.
@@ -1591,7 +1591,7 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 	if err != nil {
 		return nil, err
 	}
-	return &bottleResolver{b: b}, nil
+	return &bottleResolver{wine: r.WineService, b: b}, nil
 }
 
 // UpdateBottle modifies an existing bottle definition.
@@ -1691,7 +1691,54 @@ func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &bottleResolver{b: updated}, nil
+	return &bottleResolver{wine: r.WineService, b: updated}, nil
+}
+
+// AddBottleGrapeVariety links a grape variety to a bottle.
+func (r *Resolver) AddBottleGrapeVariety(ctx context.Context, args struct{ Input addBottleGrapeVarietyInput }) (*bottleGrapeVarietyResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(args.Input.BottleID))
+	if err != nil {
+		return nil, err
+	}
+	grapeVarietyID, err := parseID(string(args.Input.GrapeVarietyID))
+	if err != nil {
+		return nil, err
+	}
+	var percentage int16
+	if args.Input.Percentage != nil {
+		percentage = int16(*args.Input.Percentage)
+	}
+	v, err := r.WineService.AddBottleGrapeVariety(ctx, bottleID, grapeVarietyID, percentage, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleGrapeVarietyResolver{wine: r.WineService, variety: v}, nil
+}
+
+// RemoveBottleGrapeVariety unlinks a grape variety from a bottle.
+func (r *Resolver) RemoveBottleGrapeVariety(ctx context.Context, args struct {
+	BottleID       graphql.ID
+	GrapeVarietyID graphql.ID
+}) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	bottleID, err := parseID(string(args.BottleID))
+	if err != nil {
+		return false, err
+	}
+	grapeVarietyID, err := parseID(string(args.GrapeVarietyID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.RemoveBottleGrapeVariety(ctx, bottleID, grapeVarietyID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func findUserItem(ctx context.Context, svc *userprefs.Service, userID, itemID int64) (*userprefs.UserItem, error) {
@@ -1938,7 +1985,7 @@ func (r *userBottleResolver) Bottle(ctx context.Context) (*bottleResolver, error
 	if err != nil {
 		return nil, err
 	}
-	return &bottleResolver{b: b}, nil
+	return &bottleResolver{wine: r.wine, b: b}, nil
 }
 
 type userBottlePageResolver struct {
@@ -2239,7 +2286,10 @@ func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 }
 
 // bottleResolver resolves Bottle fields.
-type bottleResolver struct{ b wine.Bottle }
+type bottleResolver struct {
+	wine *wine.Service
+	b    wine.Bottle
+}
 
 func (r *bottleResolver) ID() graphql.ID     { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
 func (r *bottleResolver) TypeID() graphql.ID { return graphql.ID(strconv.FormatInt(r.b.TypeID, 10)) }
@@ -2258,8 +2308,20 @@ func (r *bottleResolver) Body() *int32          { return int16OrNil(r.b.Body) }
 func (r *bottleResolver) Sweetness() *int32     { return int16OrNil(r.b.Sweetness) }
 func (r *bottleResolver) OakIntegration() *bool { return &r.b.OakIntegration }
 func (r *bottleResolver) BottleSize() string    { return r.b.BottleSize }
+func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVarietyResolver, error) {
+	varieties, err := r.wine.ListBottleGrapeVarieties(ctx, r.b.BottleID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*bottleGrapeVarietyResolver, len(varieties))
+	for i := range varieties {
+		out[i] = &bottleGrapeVarietyResolver{wine: r.wine, variety: varieties[i]}
+	}
+	return out, nil
+}
 
 type bottlePageResolver struct {
+	wine     *wine.Service
 	bottles  []wine.Bottle
 	page     int32
 	pageSize int32
@@ -2269,7 +2331,7 @@ type bottlePageResolver struct {
 func (r *bottlePageResolver) Items() []*bottleResolver {
 	out := make([]*bottleResolver, len(r.bottles))
 	for i := range r.bottles {
-		out[i] = &bottleResolver{b: r.bottles[i]}
+		out[i] = &bottleResolver{wine: r.wine, b: r.bottles[i]}
 	}
 	return out
 }
@@ -2327,6 +2389,20 @@ func (r *grapeVarietyResolver) ID() graphql.ID {
 func (r *grapeVarietyResolver) Name() string         { return r.g.Name }
 func (r *grapeVarietyResolver) Description() *string { return nilIfEmpty(r.g.Description) }
 func (r *grapeVarietyResolver) IsActive() bool       { return r.g.IsActive }
+
+// bottleGrapeVarietyResolver resolves a grape variety on a bottle.
+type bottleGrapeVarietyResolver struct {
+	wine    *wine.Service
+	variety wine.BottleGrapeVariety
+}
+
+func (r *bottleGrapeVarietyResolver) GrapeVariety(ctx context.Context) (*grapeVarietyResolver, error) {
+	return &grapeVarietyResolver{g: wine.GrapeVariety{
+		GrapeVarietyID: r.variety.GrapeVarietyID,
+		Name:           r.variety.Name,
+	}}, nil
+}
+func (r *bottleGrapeVarietyResolver) Percentage() *int32 { return int16OrNil(r.variety.Percentage) }
 
 type nutrition struct {
 	Name   string
@@ -2440,6 +2516,12 @@ type addGroceryItemInput struct {
 	ManualItemName *string
 	Quantity       float64
 	Unit           string
+}
+
+type addBottleGrapeVarietyInput struct {
+	BottleID       graphql.ID
+	GrapeVarietyID graphql.ID
+	Percentage     *int32
 }
 
 type addFoodNutrientInput struct {
