@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/labstack/echo/v4"
@@ -13,6 +14,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
 //go:embed schema.graphqls
@@ -23,11 +25,12 @@ var schema string
 type Resolver struct {
 	InventoryService *inventory.Service
 	RecipeService    *recipe.Service
+	UserPrefsService *userprefs.Service
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(inv *inventory.Service, rec *recipe.Service) *Resolver {
-	return &Resolver{InventoryService: inv, RecipeService: rec}
+func NewResolver(inv *inventory.Service, rec *recipe.Service, up *userprefs.Service) *Resolver {
+	return &Resolver{InventoryService: inv, RecipeService: rec, UserPrefsService: up}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -75,6 +78,13 @@ func clamp(v, min, max int32) int32 {
 		return max
 	}
 	return v
+}
+
+func timeToGraphQL(t *time.Time) *graphql.Time {
+	if t == nil {
+		return nil
+	}
+	return &graphql.Time{Time: *t}
 }
 
 // Me resolves the current authenticated user.
@@ -214,6 +224,24 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
+}
+
+// UserItems resolves the current user's pantry items.
+func (r *Resolver) UserItems(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*userItemPageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	items, err := r.UserPrefsService.ListUserItems(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &userItemPageResolver{inv: r.InventoryService, items: items, page: page, pageSize: pageSize, total: int32(len(items))}, nil
 }
 
 // CreateBrand adds a new brand.
@@ -397,6 +425,49 @@ func (r *itemPageResolver) Items() []*itemResolver {
 }
 
 func (r *itemPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// userItemResolver resolves UserItem fields.
+type userItemResolver struct {
+	inv  *inventory.Service
+	item userprefs.UserItem
+}
+
+func (r *userItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.UserItemID, 10))
+}
+func (r *userItemResolver) CurrentQty() float64       { return r.item.CurrentQty }
+func (r *userItemResolver) MinQty() *float64          { return r.item.MinQty }
+func (r *userItemResolver) Notes() *string            { return nilIfEmpty(r.item.Notes) }
+func (r *userItemResolver) IsFavorite() bool          { return r.item.IsFavorite }
+func (r *userItemResolver) PurchaseAt() *graphql.Time { return timeToGraphQL(r.item.PurchaseAt) }
+func (r *userItemResolver) ExpiresAt() *graphql.Time  { return timeToGraphQL(r.item.ExpiresAt) }
+func (r *userItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+type userItemPageResolver struct {
+	inv      *inventory.Service
+	items    []userprefs.UserItem
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *userItemPageResolver) Items() []*userItemResolver {
+	out := make([]*userItemResolver, len(r.items))
+	for i := range r.items {
+		out[i] = &userItemResolver{inv: r.inv, item: r.items[i]}
+	}
+	return out
+}
+
+func (r *userItemPageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 

@@ -11,6 +11,7 @@ type Query {
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
   recipe(id: ID!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
+  userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
 }
 
 type Mutation {
@@ -84,6 +85,22 @@ type RecipeStep {
 
 type RecipePage {
   items: [Recipe!]!
+  pageInfo: PageInfo!
+}
+
+type UserItem {
+  id: ID!
+  item: Item!
+  currentQty: Float!
+  minQty: Float
+  purchaseAt: Time
+  expiresAt: Time
+  notes: String
+  isFavorite: Boolean!
+}
+
+type UserItemPage {
+  items: [UserItem!]!
   pageInfo: PageInfo!
 }
 
