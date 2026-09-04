@@ -68,6 +68,8 @@ services:
     depends_on:
       db-seed:
         condition: service_completed_successfully
+      seq-gelf:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 10s
@@ -91,6 +93,7 @@ services:
       - "3000:3000"
     depends_on:
       - api
+      - seq-gelf
     logging:
       driver: gelf
       options:

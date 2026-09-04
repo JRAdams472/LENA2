@@ -14,7 +14,7 @@ INSERT INTO inventory.brand (name) VALUES
   ('Generic'),
   ('Organic Valley'),
   ('Kroger'),
-  ('Trader Joe\'s')
+  ('Trader Joe''s')
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO inventory.flavor_profile (name, is_active, created_by) VALUES
