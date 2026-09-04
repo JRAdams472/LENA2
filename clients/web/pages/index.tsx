@@ -1,4 +1,5 @@
 import { gql, useQuery } from '@apollo/client';
+import Link from 'next/link';
 
 const DASHBOARD_QUERY = gql`
   query Dashboard {
@@ -57,6 +58,11 @@ export default function Home() {
           </li>
         ))}
       </ul>
+      <p>
+        <Link href="/grocery" legacyBehavior>
+          <a>Grocery List</a>
+        </Link>
+      </p>
     </main>
   );
 }

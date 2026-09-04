@@ -26,3 +26,4 @@ The app expects an OIDC provider to issue an ID token. In development you can se
 - `lib/apolloClient.ts` — Apollo Client setup with an auth link.
 - `pages/_app.tsx` — Wraps every page in `ApolloProvider`.
 - `pages/index.tsx` — Example dashboard using the `Me` query and pantry list.
+- `pages/grocery.tsx` — Example grocery list query and `toggleGroceryItemChecked` mutation.
