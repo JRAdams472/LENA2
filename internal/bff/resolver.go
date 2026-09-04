@@ -11,6 +11,7 @@ import (
 	"github.com/graph-gophers/graphql-go"
 	"github.com/labstack/echo/v4"
 
+	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -25,6 +26,7 @@ var schema string
 // Resolver is the root GraphQL resolver. It is the only package that is
 // allowed to orchestrate across domain modules.
 type Resolver struct {
+	GroceryService   *grocery.Service
 	InventoryService *inventory.Service
 	MealPlanService  *mealplan.Service
 	RecipeService    *recipe.Service
@@ -33,8 +35,8 @@ type Resolver struct {
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(inv *inventory.Service, mp *mealplan.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
-	return &Resolver{InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
+func NewResolver(gr *grocery.Service, inv *inventory.Service, mp *mealplan.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
+	return &Resolver{GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -311,6 +313,41 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
+}
+
+// GroceryList resolves a single grocery list by ID.
+func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }) (*groceryListResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	list, err := r.GroceryService.GetGroceryListByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, list: list}, nil
+}
+
+// GroceryLists resolves the current user's grocery lists.
+func (r *Resolver) GroceryLists(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*groceryListPageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	lists, err := r.GroceryService.ListGroceryLists(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, lists: lists, page: page, pageSize: pageSize, total: int32(len(lists))}, nil
 }
 
 // UserBottles resolves the current user's wine cellar.
@@ -813,6 +850,77 @@ func (r *mealPlanPageResolver) Items() []*mealPlanResolver {
 }
 
 func (r *mealPlanPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// groceryListResolver resolves GroceryList fields.
+type groceryListResolver struct {
+	g    *grocery.Service
+	inv  *inventory.Service
+	list grocery.GroceryList
+}
+
+func (r *groceryListResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.list.GroceryListID, 10))
+}
+func (r *groceryListResolver) GeneratedAt() graphql.Time {
+	return graphql.Time{Time: r.list.GeneratedAt}
+}
+func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemResolver, error) {
+	items, err := r.g.ListGroceryListItems(ctx, r.list.GroceryListID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*groceryListItemResolver, len(items))
+	for i := range items {
+		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i]}
+	}
+	return out, nil
+}
+
+// groceryListItemResolver resolves GroceryListItem fields.
+type groceryListItemResolver struct {
+	inv  *inventory.Service
+	item grocery.GroceryListItem
+}
+
+func (r *groceryListItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.GroceryListItemID, 10))
+}
+func (r *groceryListItemResolver) ManualItemName() *string { return nilIfEmpty(r.item.ManualItemName) }
+func (r *groceryListItemResolver) QuantityNeeded() float64 { return r.item.QuantityNeeded }
+func (r *groceryListItemResolver) UnitOfMeasure() *string  { return nilIfEmpty(r.item.UnitOfMeasure) }
+func (r *groceryListItemResolver) Source() string          { return r.item.Source }
+func (r *groceryListItemResolver) IsChecked() bool         { return r.item.IsChecked }
+func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	if r.item.ItemID == nil {
+		return nil, nil
+	}
+	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+type groceryListPageResolver struct {
+	g        *grocery.Service
+	inv      *inventory.Service
+	lists    []grocery.GroceryList
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *groceryListPageResolver) Items() []*groceryListResolver {
+	out := make([]*groceryListResolver, len(r.lists))
+	for i := range r.lists {
+		out[i] = &groceryListResolver{g: r.g, inv: r.inv, list: r.lists[i]}
+	}
+	return out
+}
+
+func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 

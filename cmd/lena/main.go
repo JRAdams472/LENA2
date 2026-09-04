@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/JRAdams472/LENA2/internal/bff"
+	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -45,6 +46,7 @@ func main() {
 	defer pool.Close()
 
 	identitySvc := identity.NewService(pool)
+	grocerySvc := grocery.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
 	mealPlanSvc := mealplan.NewService(pool)
 	recipeSvc := recipe.NewService(pool)
@@ -75,7 +77,7 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	resolver := bff.NewResolver(inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
+	resolver := bff.NewResolver(grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
 
 	go func() {

@@ -17,6 +17,8 @@ type Query {
   bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
+  groceryList(id: ID!): GroceryList
+  groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
 }
 
 type Mutation {
@@ -173,6 +175,27 @@ type MealSlotItem {
 
 type MealPlanPage {
   items: [MealPlan!]!
+  pageInfo: PageInfo!
+}
+
+type GroceryList {
+  id: ID!
+  generatedAt: Time!
+  items: [GroceryListItem!]!
+}
+
+type GroceryListItem {
+  id: ID!
+  item: Item
+  manualItemName: String
+  quantityNeeded: Float!
+  unitOfMeasure: String
+  source: String!
+  isChecked: Boolean!
+}
+
+type GroceryListPage {
+  items: [GroceryList!]!
   pageInfo: PageInfo!
 }
 
