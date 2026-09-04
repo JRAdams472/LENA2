@@ -1,0 +1,14 @@
+.git
+.github
+.gitignore
+*.md
+docs
+clients/web/node_modules
+clients/web/.next
+clients/web/out
+.env
+.env.local
+.env.*.local
+coverage
+*.exe
+*.test
