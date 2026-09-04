@@ -276,6 +276,24 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	return &bottlePageResolver{bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
 }
 
+// UserBottles resolves the current user's wine cellar.
+func (r *Resolver) UserBottles(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*userBottlePageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	bottles, err := r.UserPrefsService.ListUserBottles(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottlePageResolver{wine: r.WineService, bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
+}
+
 // UserItems resolves the current user's pantry items.
 func (r *Resolver) UserItems(ctx context.Context, args struct {
 	Page     int32
@@ -518,6 +536,51 @@ func (r *userItemPageResolver) Items() []*userItemResolver {
 }
 
 func (r *userItemPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// userBottleResolver resolves UserBottle fields.
+type userBottleResolver struct {
+	wine   *wine.Service
+	bottle userprefs.UserBottle
+}
+
+func (r *userBottleResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.bottle.UserBottleID, 10))
+}
+func (r *userBottleResolver) BottleNumber() *int32      { return r.bottle.BottleNumber }
+func (r *userBottleResolver) Quantity() int32           { return r.bottle.Quantity }
+func (r *userBottleResolver) PurchaseAt() *graphql.Time { return timeToGraphQL(r.bottle.PurchaseAt) }
+func (r *userBottleResolver) PurchasePrice() *float64   { return r.bottle.PurchasePrice }
+func (r *userBottleResolver) StorageTemp() *float64     { return r.bottle.StorageTemp }
+func (r *userBottleResolver) Location() *string         { return nilIfEmpty(r.bottle.Location) }
+func (r *userBottleResolver) Notes() *string            { return nilIfEmpty(r.bottle.Notes) }
+func (r *userBottleResolver) IsFavorite() bool          { return r.bottle.IsFavorite }
+func (r *userBottleResolver) Bottle(ctx context.Context) (*bottleResolver, error) {
+	b, err := r.wine.GetBottleByID(ctx, r.bottle.BottleID)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{b: b}, nil
+}
+
+type userBottlePageResolver struct {
+	wine     *wine.Service
+	bottles  []userprefs.UserBottle
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *userBottlePageResolver) Items() []*userBottleResolver {
+	out := make([]*userBottleResolver, len(r.bottles))
+	for i := range r.bottles {
+		out[i] = &userBottleResolver{wine: r.wine, bottle: r.bottles[i]}
+	}
+	return out
+}
+
+func (r *userBottlePageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 

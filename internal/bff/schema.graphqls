@@ -12,6 +12,7 @@ type Query {
   recipe(id: ID!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
   userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
+  userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
   bottle(id: ID!): Bottle
   bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
 }
@@ -121,6 +122,24 @@ type UserItem {
 
 type UserItemPage {
   items: [UserItem!]!
+  pageInfo: PageInfo!
+}
+
+type UserBottle {
+  id: ID!
+  bottle: Bottle!
+  bottleNumber: Int
+  quantity: Int!
+  purchaseAt: Time
+  purchasePrice: Float
+  storageTemp: Float
+  location: String
+  notes: String
+  isFavorite: Boolean!
+}
+
+type UserBottlePage {
+  items: [UserBottle!]!
   pageInfo: PageInfo!
 }
 
