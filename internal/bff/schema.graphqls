@@ -3,15 +3,50 @@ scalar Date
 
 type Query {
   me: User!
+  brand(id: ID!): Brand
+  brands: [Brand!]!
+  category(id: ID!): Category
+  categories: [Category!]!
   item(id: ID!): Item
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
   recipe(id: ID!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
+  userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
+  userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
+  bottle(id: ID!): Bottle
+  bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
+  mealPlan(id: ID!): MealPlan
+  mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
+  groceryList(id: ID!): GroceryList
+  groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
 }
 
 type Mutation {
+  createBrand(input: CreateBrandInput!): Brand!
+  createCategory(input: CreateCategoryInput!): Category!
+
   createItem(input: CreateItemInput!): Item!
+  updateItem(id: ID!, input: UpdateItemInput!): Item!
+  deleteItem(id: ID!): Boolean!
+
+  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!
+  setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
+  deleteUserItem(itemId: ID!): Boolean!
+
   createRecipe(input: CreateRecipeInput!): Recipe!
+  updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
+  deleteRecipe(id: ID!): Boolean!
+  setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
+
+  createMealPlan(input: CreateMealPlanInput!): MealPlan!
+  updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!
+  deleteMealPlan(id: ID!): Boolean!
+  addMealSlot(input: AddMealSlotInput!): MealSlot!
+  removeMealSlot(slotId: ID!): Boolean!
+
+  generateGroceryList(mealPlanId: ID!): GroceryList!
+  toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
+  deleteGroceryItem(groceryListItemId: ID!): Boolean!
 }
 
 type PageInfo {
@@ -81,6 +116,119 @@ type RecipePage {
   pageInfo: PageInfo!
 }
 
+type Bottle {
+  id: ID!
+  vineyard: String
+  vintageYear: Int!
+  abv: Float
+  acidity: Int
+  tanninLevel: Int
+  body: Int
+  sweetness: Int
+  oakIntegration: Boolean
+  bottleSize: String!
+}
+
+type BottlePage {
+  items: [Bottle!]!
+  pageInfo: PageInfo!
+}
+
+type UserItem {
+  id: ID!
+  item: Item!
+  currentQty: Float!
+  minQty: Float
+  purchaseAt: Time
+  expiresAt: Time
+  notes: String
+  isFavorite: Boolean!
+}
+
+type UserItemPage {
+  items: [UserItem!]!
+  pageInfo: PageInfo!
+}
+
+type UserBottle {
+  id: ID!
+  bottle: Bottle!
+  bottleNumber: Int
+  quantity: Int!
+  purchaseAt: Time
+  purchasePrice: Float
+  storageTemp: Float
+  location: String
+  notes: String
+  isFavorite: Boolean!
+}
+
+type UserBottlePage {
+  items: [UserBottle!]!
+  pageInfo: PageInfo!
+}
+
+type MealPlan {
+  id: ID!
+  name: String!
+  weekStartDate: String!
+  isActive: Boolean!
+  slots: [MealSlot!]!
+}
+
+type MealSlot {
+  id: ID!
+  dayOfWeek: Int!
+  mealType: String!
+  recipe: Recipe
+  servings: Int
+  replacementNote: String
+  items: [MealSlotItem!]!
+}
+
+type MealSlotItem {
+  id: ID!
+  item: Item
+  quantity: Float!
+  unit: String!
+  isFromRecipe: Boolean!
+}
+
+type MealPlanPage {
+  items: [MealPlan!]!
+  pageInfo: PageInfo!
+}
+
+type GroceryList {
+  id: ID!
+  generatedAt: Time!
+  items: [GroceryListItem!]!
+}
+
+type GroceryListItem {
+  id: ID!
+  item: Item
+  manualItemName: String
+  quantityNeeded: Float!
+  unitOfMeasure: String
+  source: String!
+  isChecked: Boolean!
+}
+
+type GroceryListPage {
+  items: [GroceryList!]!
+  pageInfo: PageInfo!
+}
+
+input CreateBrandInput {
+  name: String!
+}
+
+input CreateCategoryInput {
+  name: String!
+  description: String
+}
+
 input CreateItemInput {
   name: String!
   brandId: ID
@@ -111,4 +259,28 @@ input RecipeItemInput {
 input RecipeStepInput {
   stepNumber: Int!
   instruction: String!
+}
+
+input UpdateItemInput {
+  name: String
+  brandId: ID
+  upc12: String
+  upc14: String
+  categoryId: ID
+  unit: String
+}
+
+input CreateMealPlanInput {
+  name: String!
+  weekStartDate: String!
+  weekStartDayOfWeek: Int
+}
+
+input AddMealSlotInput {
+  mealPlanId: ID!
+  dayOfWeek: Int!
+  mealType: String!
+  recipeId: ID
+  servings: Int
+  replacementNote: String
 }

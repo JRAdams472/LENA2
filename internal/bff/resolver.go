@@ -6,13 +6,18 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/labstack/echo/v4"
 
+	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/userprefs"
+	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
 //go:embed schema.graphqls
@@ -21,13 +26,17 @@ var schema string
 // Resolver is the root GraphQL resolver. It is the only package that is
 // allowed to orchestrate across domain modules.
 type Resolver struct {
+	GroceryService   *grocery.Service
 	InventoryService *inventory.Service
+	MealPlanService  *mealplan.Service
 	RecipeService    *recipe.Service
+	UserPrefsService *userprefs.Service
+	WineService      *wine.Service
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(inv *inventory.Service, rec *recipe.Service) *Resolver {
-	return &Resolver{InventoryService: inv, RecipeService: rec}
+func NewResolver(gr *grocery.Service, inv *inventory.Service, mp *mealplan.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
+	return &Resolver{GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -77,6 +86,28 @@ func clamp(v, min, max int32) int32 {
 	return v
 }
 
+func timeToGraphQL(t *time.Time) *graphql.Time {
+	if t == nil {
+		return nil
+	}
+	return &graphql.Time{Time: *t}
+}
+
+func float64OrNil(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+func int16OrNil(v int16) *int32 {
+	if v == 0 {
+		return nil
+	}
+	i := int32(v)
+	return &i
+}
+
 // Me resolves the current authenticated user.
 func (r *Resolver) Me(ctx context.Context) (*userResolver, error) {
 	u, err := userFromContext(ctx)
@@ -84,6 +115,70 @@ func (r *Resolver) Me(ctx context.Context) (*userResolver, error) {
 		return nil, err
 	}
 	return &userResolver{u: u}, nil
+}
+
+// Brand resolves a single brand by ID.
+func (r *Resolver) Brand(ctx context.Context, args struct{ ID graphql.ID }) (*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.GetBrandByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &brandResolver{b: b}, nil
+}
+
+// Brands resolves all catalog brands.
+func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	brands, err := r.InventoryService.ListBrands(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*brandResolver, len(brands))
+	for i := range brands {
+		out[i] = &brandResolver{b: brands[i]}
+	}
+	return out, nil
+}
+
+// Category resolves a single category by ID.
+func (r *Resolver) Category(ctx context.Context, args struct{ ID graphql.ID }) (*categoryResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.InventoryService.GetCategoryByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryResolver{c: c}, nil
+}
+
+// Categories resolves all catalog categories.
+func (r *Resolver) Categories(ctx context.Context) ([]*categoryResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	cats, err := r.InventoryService.ListCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*categoryResolver, len(cats))
+	for i := range cats {
+		out[i] = &categoryResolver{c: cats[i]}
+	}
+	return out, nil
 }
 
 // Item resolves a single catalog item by ID.
@@ -150,6 +245,170 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
+}
+
+// Bottle resolves a single wine bottle by ID.
+func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*bottleResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.WineService.GetBottleByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{b: b}, nil
+}
+
+// Bottles resolves a paginated list of wine bottles.
+func (r *Resolver) Bottles(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*bottlePageResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	bottles, err := r.WineService.ListBottles(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &bottlePageResolver{bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
+}
+
+// MealPlan resolves a single meal plan by ID.
+func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	mp, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: mp}, nil
+}
+
+// MealPlans resolves the current user's meal plans.
+func (r *Resolver) MealPlans(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*mealPlanPageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	plans, err := r.MealPlanService.ListMealPlans(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
+}
+
+// GroceryList resolves a single grocery list by ID.
+func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }) (*groceryListResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	list, err := r.GroceryService.GetGroceryListByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, list: list}, nil
+}
+
+// GroceryLists resolves the current user's grocery lists.
+func (r *Resolver) GroceryLists(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*groceryListPageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	lists, err := r.GroceryService.ListGroceryLists(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, lists: lists, page: page, pageSize: pageSize, total: int32(len(lists))}, nil
+}
+
+// UserBottles resolves the current user's wine cellar.
+func (r *Resolver) UserBottles(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*userBottlePageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	bottles, err := r.UserPrefsService.ListUserBottles(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottlePageResolver{wine: r.WineService, bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
+}
+
+// UserItems resolves the current user's pantry items.
+func (r *Resolver) UserItems(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*userItemPageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	items, err := r.UserPrefsService.ListUserItems(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &userItemPageResolver{inv: r.InventoryService, items: items, page: page, pageSize: pageSize, total: int32(len(items))}, nil
+}
+
+// CreateBrand adds a new brand.
+func (r *Resolver) CreateBrand(ctx context.Context, args struct{ Input createBrandInput }) (*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.CreateBrand(ctx, args.Input.Name)
+	if err != nil {
+		return nil, err
+	}
+	return &brandResolver{b: b}, nil
+}
+
+// CreateCategory adds a new category.
+func (r *Resolver) CreateCategory(ctx context.Context, args struct{ Input createCategoryInput }) (*categoryResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.InventoryService.CreateCategory(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryResolver{c: c}, nil
 }
 
 // CreateItem creates a new catalog item.
@@ -219,6 +478,655 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 		}
 	}
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: rec}, nil
+}
+
+// UpdateItem modifies an existing catalog item.
+func (r *Resolver) UpdateItem(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateItemInput
+}) (*itemResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.InventoryService.GetItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	brandID := existing.BrandID
+	if args.Input.BrandID != nil {
+		b, err := optionalID(args.Input.BrandID)
+		if err != nil {
+			return nil, err
+		}
+		brandID = b
+	}
+	categoryID := existing.CategoryID
+	if args.Input.CategoryID != nil {
+		c, err := parseID(string(*args.Input.CategoryID))
+		if err != nil {
+			return nil, err
+		}
+		categoryID = c
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	unit := existing.Unit
+	if args.Input.Unit != nil {
+		unit = *args.Input.Unit
+	}
+	upc12 := existing.Upc12
+	if args.Input.Upc12 != nil {
+		upc12 = *args.Input.Upc12
+	}
+	upc14 := existing.Upc14
+	if args.Input.Upc14 != nil {
+		upc14 = *args.Input.Upc14
+	}
+	u, _ := currentuser.FromContext(ctx)
+	if err := r.InventoryService.UpdateItem(ctx, id, inventory.Item{
+		Name:       name,
+		BrandID:    brandID,
+		Upc12:      upc12,
+		Upc14:      upc14,
+		CategoryID: categoryID,
+		Unit:       unit,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.InventoryService.GetItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+}
+
+// DeleteItem removes a catalog item.
+func (r *Resolver) DeleteItem(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteItem(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateRecipe modifies an existing recipe and replaces its items/steps.
+func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input createRecipeInput
+}) (*recipeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.RecipeService.GetRecipeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != "" {
+		name = args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	servings := existing.Servings
+	if args.Input.Servings != nil {
+		servings = *args.Input.Servings
+	}
+	prep := existing.PrepTimeMinutes
+	if args.Input.PrepTimeMinutes != nil {
+		prep = *args.Input.PrepTimeMinutes
+	}
+	cook := existing.CookTimeMinutes
+	if args.Input.CookTimeMinutes != nil {
+		cook = *args.Input.CookTimeMinutes
+	}
+	if err := r.RecipeService.UpdateRecipe(ctx, id, recipe.Recipe{
+		Name:            name,
+		Description:     description,
+		Servings:        servings,
+		PrepTimeMinutes: prep,
+		CookTimeMinutes: cook,
+		IsActive:        existing.IsActive,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	// Replace items.
+	existingItems, err := r.RecipeService.ListRecipeItems(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, ri := range existingItems {
+		if err := r.RecipeService.RemoveRecipeItem(ctx, id, ri.ItemID); err != nil {
+			return nil, err
+		}
+	}
+	for _, ri := range args.Input.Items {
+		itemID, err := parseID(string(ri.ItemID))
+		if err != nil {
+			return nil, err
+		}
+		if err := r.RecipeService.AddRecipeItem(ctx, recipe.RecipeItem{
+			RecipeID:   id,
+			ItemID:     itemID,
+			Quantity:   ri.Quantity,
+			Unit:       ri.Unit,
+			Notes:      derefString(ri.Notes),
+			IsOptional: boolValue(ri.IsOptional),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	// Replace steps.
+	existingSteps, err := r.RecipeService.ListRecipeSteps(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, rs := range existingSteps {
+		if err := r.RecipeService.DeleteRecipeStep(ctx, rs.StepID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rs := range args.Input.Steps {
+		if _, err := r.RecipeService.AddRecipeStep(ctx, id, rs.StepNumber, rs.Instruction, u.Email); err != nil {
+			return nil, err
+		}
+	}
+	updated, err := r.RecipeService.GetRecipeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: updated}, nil
+}
+
+// DeleteRecipe removes a recipe.
+func (r *Resolver) DeleteRecipe(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.RecipeService.DeleteRecipe(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetRecipeFavorite toggles the current user's favorite flag for a recipe.
+func (r *Resolver) SetRecipeFavorite(ctx context.Context, args struct {
+	RecipeID   graphql.ID
+	IsFavorite bool
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return false, err
+	}
+	if _, err := r.UserPrefsService.SetRecipeFavorite(ctx, u.UserID, id, args.IsFavorite, u.Email); err != nil {
+		return false, err
+	}
+	return args.IsFavorite, nil
+}
+
+// AdjustUserItem updates the quantity and purchase date of a user's pantry item.
+func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
+	ItemID     graphql.ID
+	Quantity   float64
+	PurchaseAt *graphql.Time
+}) (*userItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserItem(ctx, r.UserPrefsService, u.UserID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	isFav := false
+	var minQty *float64
+	var expiresAt *time.Time
+	notes := ""
+	if existing != nil {
+		isFav = existing.IsFavorite
+		minQty = existing.MinQty
+		expiresAt = existing.ExpiresAt
+		notes = existing.Notes
+	}
+	var purchaseAt *time.Time
+	if args.PurchaseAt != nil {
+		purchaseAt = &args.PurchaseAt.Time
+	}
+	updated, err := r.UserPrefsService.UpsertUserItem(ctx, userprefs.UserItem{
+		UserID:     u.UserID,
+		ItemID:     itemID,
+		CurrentQty: args.Quantity,
+		MinQty:     minQty,
+		PurchaseAt: purchaseAt,
+		ExpiresAt:  expiresAt,
+		Notes:      notes,
+		IsFavorite: isFav,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// SetItemFavorite toggles the favorite flag for a user's pantry item.
+func (r *Resolver) SetItemFavorite(ctx context.Context, args struct {
+	ItemID     graphql.ID
+	IsFavorite bool
+}) (*userItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserItem(ctx, r.UserPrefsService, u.UserID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	currentQty := 0.0
+	var minQty *float64
+	var purchaseAt *time.Time
+	var expiresAt *time.Time
+	notes := ""
+	if existing != nil {
+		currentQty = existing.CurrentQty
+		minQty = existing.MinQty
+		purchaseAt = existing.PurchaseAt
+		expiresAt = existing.ExpiresAt
+		notes = existing.Notes
+	}
+	updated, err := r.UserPrefsService.UpsertUserItem(ctx, userprefs.UserItem{
+		UserID:     u.UserID,
+		ItemID:     itemID,
+		CurrentQty: currentQty,
+		MinQty:     minQty,
+		PurchaseAt: purchaseAt,
+		ExpiresAt:  expiresAt,
+		Notes:      notes,
+		IsFavorite: args.IsFavorite,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// DeleteUserItem removes a user's pantry item by catalog item ID.
+func (r *Resolver) DeleteUserItem(ctx context.Context, args struct{ ItemID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return false, err
+	}
+	existing, err := findUserItem(ctx, r.UserPrefsService, u.UserID, itemID)
+	if err != nil {
+		return false, err
+	}
+	if existing == nil {
+		return false, nil
+	}
+	if err := r.UserPrefsService.DeleteUserItem(ctx, existing.UserItemID, u.UserID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AdjustUserBottle updates the quantity of a user's wine cellar holding.
+func (r *Resolver) AdjustUserBottle(ctx context.Context, args struct {
+	BottleID graphql.ID
+	Quantity int32
+}) (*userBottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(args.BottleID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserBottle(ctx, r.UserPrefsService, u.UserID, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	var bottleNum *int32
+	var purchaseAt *time.Time
+	var purchasePrice *float64
+	var storageTemp *float64
+	location := ""
+	notes := ""
+	isFav := false
+	if existing != nil {
+		bottleNum = existing.BottleNumber
+		purchaseAt = existing.PurchaseAt
+		purchasePrice = existing.PurchasePrice
+		storageTemp = existing.StorageTemp
+		location = existing.Location
+		notes = existing.Notes
+		isFav = existing.IsFavorite
+	}
+	updated, err := r.UserPrefsService.UpsertUserBottle(ctx, userprefs.UserBottle{
+		UserID:        u.UserID,
+		BottleID:      bottleID,
+		BottleNumber:  bottleNum,
+		Quantity:      args.Quantity,
+		PurchaseAt:    purchaseAt,
+		PurchasePrice: purchasePrice,
+		StorageTemp:   storageTemp,
+		Location:      location,
+		Notes:         notes,
+		IsFavorite:    isFav,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottleResolver{wine: r.WineService, bottle: updated}, nil
+}
+
+// SetBottleFavorite toggles the favorite flag for a user's wine holding.
+func (r *Resolver) SetBottleFavorite(ctx context.Context, args struct {
+	BottleID   graphql.ID
+	IsFavorite bool
+}) (*userBottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(args.BottleID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := findUserBottle(ctx, r.UserPrefsService, u.UserID, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	quantity := int32(0)
+	var bottleNum *int32
+	var purchaseAt *time.Time
+	var purchasePrice *float64
+	var storageTemp *float64
+	location := ""
+	notes := ""
+	if existing != nil {
+		quantity = existing.Quantity
+		bottleNum = existing.BottleNumber
+		purchaseAt = existing.PurchaseAt
+		purchasePrice = existing.PurchasePrice
+		storageTemp = existing.StorageTemp
+		location = existing.Location
+		notes = existing.Notes
+	}
+	updated, err := r.UserPrefsService.UpsertUserBottle(ctx, userprefs.UserBottle{
+		UserID:        u.UserID,
+		BottleID:      bottleID,
+		BottleNumber:  bottleNum,
+		Quantity:      quantity,
+		PurchaseAt:    purchaseAt,
+		PurchasePrice: purchasePrice,
+		StorageTemp:   storageTemp,
+		Location:      location,
+		Notes:         notes,
+		IsFavorite:    args.IsFavorite,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottleResolver{wine: r.WineService, bottle: updated}, nil
+}
+
+// CreateMealPlan creates a new meal plan for the current user.
+func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input createMealPlanInput }) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	d, err := time.Parse("2006-01-02", args.Input.WeekStartDate)
+	if err != nil {
+		return nil, err
+	}
+	var dayOfWeek int32 = 1
+	if args.Input.WeekStartDayOfWeek != nil {
+		dayOfWeek = *args.Input.WeekStartDayOfWeek
+	}
+	mp, err := r.MealPlanService.CreateMealPlan(ctx, mealplan.MealPlan{
+		UserID:             u.UserID,
+		Name:               args.Input.Name,
+		WeekStartDate:      d,
+		WeekStartDayOfWeek: int16(dayOfWeek),
+		IsActive:           true,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: mp}, nil
+}
+
+// UpdateMealPlan modifies an existing meal plan.
+func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input createMealPlanInput
+}) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != "" {
+		name = args.Input.Name
+	}
+	weekStart := existing.WeekStartDate
+	if args.Input.WeekStartDate != "" {
+		if d, err := time.Parse("2006-01-02", args.Input.WeekStartDate); err == nil {
+			weekStart = d
+		} else {
+			return nil, err
+		}
+	}
+	dayOfWeek := existing.WeekStartDayOfWeek
+	if args.Input.WeekStartDayOfWeek != nil {
+		dayOfWeek = int16(*args.Input.WeekStartDayOfWeek)
+	}
+	if err := r.MealPlanService.UpdateMealPlan(ctx, id, u.UserID, mealplan.MealPlan{
+		Name:               name,
+		WeekStartDate:      weekStart,
+		WeekStartDayOfWeek: dayOfWeek,
+		IsActive:           existing.IsActive,
+	}, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: updated}, nil
+}
+
+// DeleteMealPlan removes a meal plan owned by the current user.
+func (r *Resolver) DeleteMealPlan(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.MealPlanService.DeleteMealPlan(ctx, id, u.UserID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AddMealSlot adds a slot to a meal plan.
+func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSlotInput }) (*mealSlotResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mealPlanID, err := parseID(string(args.Input.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	var recipeID *int64
+	if args.Input.RecipeID != nil {
+		rid, err := parseID(string(*args.Input.RecipeID))
+		if err != nil {
+			return nil, err
+		}
+		recipeID = &rid
+	}
+	slot, err := r.MealPlanService.AddMealSlot(ctx, mealplan.MealSlot{
+		MealPlanID:      mealPlanID,
+		DayOfWeek:       int16(args.Input.DayOfWeek),
+		MealType:        args.Input.MealType,
+		RecipeID:        recipeID,
+		Servings:        args.Input.Servings,
+		ReplacementNote: derefString(args.Input.ReplacementNote),
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: slot}, nil
+}
+
+// RemoveMealSlot removes a slot from a meal plan.
+func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	slotID, err := parseID(string(args.SlotID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.MealPlanService.DeleteMealSlot(ctx, slotID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// GenerateGroceryList generates a grocery list from a meal plan.
+func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPlanID graphql.ID }) (*groceryListResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mealPlanID, err := parseID(string(args.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	list, err := r.GroceryService.Generate(ctx, u.UserID, mealPlanID, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, list: list}, nil
+}
+
+// ToggleGroceryItemChecked flips the checked state of a grocery list item.
+func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ GroceryListItemID graphql.ID }) (*groceryListItemResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.GroceryListItemID))
+	if err != nil {
+		return nil, err
+	}
+	it, err := r.GroceryService.GetGroceryListItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	it.IsChecked = !it.IsChecked
+	u, _ := userFromContext(ctx)
+	if err := r.GroceryService.UpdateGroceryListItem(ctx, id, it, u.Email); err != nil {
+		return nil, err
+	}
+	updated, err := r.GroceryService.GetGroceryListItemByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// DeleteGroceryItem removes an item from a grocery list.
+func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryListItemID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.GroceryListItemID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.GroceryService.DeleteGroceryListItem(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func findUserItem(ctx context.Context, svc *userprefs.Service, userID, itemID int64) (*userprefs.UserItem, error) {
+	items, err := svc.ListUserItems(ctx, userID, 100_000, 0)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if items[i].ItemID == itemID {
+			return &items[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func findUserBottle(ctx context.Context, svc *userprefs.Service, userID, bottleID int64) (*userprefs.UserBottle, error) {
+	bottles, err := svc.ListUserBottles(ctx, userID, 100_000, 0)
+	if err != nil {
+		return nil, err
+	}
+	for i := range bottles {
+		if bottles[i].BottleID == bottleID {
+			return &bottles[i], nil
+		}
+	}
+	return nil, nil
 }
 
 func derefString(s *string) string {
@@ -311,6 +1219,94 @@ func (r *itemPageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 
+// userItemResolver resolves UserItem fields.
+type userItemResolver struct {
+	inv  *inventory.Service
+	item userprefs.UserItem
+}
+
+func (r *userItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.UserItemID, 10))
+}
+func (r *userItemResolver) CurrentQty() float64       { return r.item.CurrentQty }
+func (r *userItemResolver) MinQty() *float64          { return r.item.MinQty }
+func (r *userItemResolver) Notes() *string            { return nilIfEmpty(r.item.Notes) }
+func (r *userItemResolver) IsFavorite() bool          { return r.item.IsFavorite }
+func (r *userItemResolver) PurchaseAt() *graphql.Time { return timeToGraphQL(r.item.PurchaseAt) }
+func (r *userItemResolver) ExpiresAt() *graphql.Time  { return timeToGraphQL(r.item.ExpiresAt) }
+func (r *userItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+type userItemPageResolver struct {
+	inv      *inventory.Service
+	items    []userprefs.UserItem
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *userItemPageResolver) Items() []*userItemResolver {
+	out := make([]*userItemResolver, len(r.items))
+	for i := range r.items {
+		out[i] = &userItemResolver{inv: r.inv, item: r.items[i]}
+	}
+	return out
+}
+
+func (r *userItemPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// userBottleResolver resolves UserBottle fields.
+type userBottleResolver struct {
+	wine   *wine.Service
+	bottle userprefs.UserBottle
+}
+
+func (r *userBottleResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.bottle.UserBottleID, 10))
+}
+func (r *userBottleResolver) BottleNumber() *int32      { return r.bottle.BottleNumber }
+func (r *userBottleResolver) Quantity() int32           { return r.bottle.Quantity }
+func (r *userBottleResolver) PurchaseAt() *graphql.Time { return timeToGraphQL(r.bottle.PurchaseAt) }
+func (r *userBottleResolver) PurchasePrice() *float64   { return r.bottle.PurchasePrice }
+func (r *userBottleResolver) StorageTemp() *float64     { return r.bottle.StorageTemp }
+func (r *userBottleResolver) Location() *string         { return nilIfEmpty(r.bottle.Location) }
+func (r *userBottleResolver) Notes() *string            { return nilIfEmpty(r.bottle.Notes) }
+func (r *userBottleResolver) IsFavorite() bool          { return r.bottle.IsFavorite }
+func (r *userBottleResolver) Bottle(ctx context.Context) (*bottleResolver, error) {
+	b, err := r.wine.GetBottleByID(ctx, r.bottle.BottleID)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{b: b}, nil
+}
+
+type userBottlePageResolver struct {
+	wine     *wine.Service
+	bottles  []userprefs.UserBottle
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *userBottlePageResolver) Items() []*userBottleResolver {
+	out := make([]*userBottleResolver, len(r.bottles))
+	for i := range r.bottles {
+		out[i] = &userBottleResolver{wine: r.wine, bottle: r.bottles[i]}
+	}
+	return out
+}
+
+func (r *userBottlePageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
 type pageInfoResolver struct {
 	page     int32
 	pageSize int32
@@ -400,7 +1396,226 @@ func (r *recipePageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 
+// mealPlanResolver resolves MealPlan fields.
+type mealPlanResolver struct {
+	mp   *mealplan.Service
+	inv  *inventory.Service
+	rec  *recipe.Service
+	plan mealplan.MealPlan
+}
+
+func (r *mealPlanResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.plan.MealPlanID, 10))
+}
+func (r *mealPlanResolver) Name() string          { return r.plan.Name }
+func (r *mealPlanResolver) WeekStartDate() string { return r.plan.WeekStartDate.Format("2006-01-02") }
+func (r *mealPlanResolver) IsActive() bool        { return r.plan.IsActive }
+func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, error) {
+	slots, err := r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*mealSlotResolver, len(slots))
+	for i := range slots {
+		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, slot: slots[i]}
+	}
+	return out, nil
+}
+
+// mealSlotResolver resolves MealSlot fields.
+type mealSlotResolver struct {
+	mp   *mealplan.Service
+	inv  *inventory.Service
+	rec  *recipe.Service
+	slot mealplan.MealSlot
+}
+
+func (r *mealSlotResolver) ID() graphql.ID           { return graphql.ID(strconv.FormatInt(r.slot.SlotID, 10)) }
+func (r *mealSlotResolver) DayOfWeek() int32         { return int32(r.slot.DayOfWeek) }
+func (r *mealSlotResolver) MealType() string         { return r.slot.MealType }
+func (r *mealSlotResolver) Servings() *int32         { return r.slot.Servings }
+func (r *mealSlotResolver) ReplacementNote() *string { return nilIfEmpty(r.slot.ReplacementNote) }
+func (r *mealSlotResolver) Recipe(ctx context.Context) (*recipeResolver, error) {
+	if r.slot.RecipeID == nil {
+		return nil, nil
+	}
+	rec, err := r.rec.GetRecipeByID(ctx, *r.slot.RecipeID)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.inv, rec: r.rec, recipe: rec}, nil
+}
+func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, error) {
+	items, err := r.mp.ListMealSlotItems(ctx, r.slot.SlotID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*mealSlotItemResolver, len(items))
+	for i := range items {
+		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i]}
+	}
+	return out, nil
+}
+
+// mealSlotItemResolver resolves MealSlotItem fields.
+type mealSlotItemResolver struct {
+	inv  *inventory.Service
+	item mealplan.MealSlotItem
+}
+
+func (r *mealSlotItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.SlotItemID, 10))
+}
+func (r *mealSlotItemResolver) Quantity() float64  { return r.item.Quantity }
+func (r *mealSlotItemResolver) Unit() string       { return r.item.Unit }
+func (r *mealSlotItemResolver) IsFromRecipe() bool { return r.item.IsFromRecipe }
+func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	if r.item.ItemID == nil {
+		return nil, nil
+	}
+	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+type mealPlanPageResolver struct {
+	mp       *mealplan.Service
+	inv      *inventory.Service
+	rec      *recipe.Service
+	plans    []mealplan.MealPlan
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *mealPlanPageResolver) Items() []*mealPlanResolver {
+	out := make([]*mealPlanResolver, len(r.plans))
+	for i := range r.plans {
+		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, plan: r.plans[i]}
+	}
+	return out
+}
+
+func (r *mealPlanPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// groceryListResolver resolves GroceryList fields.
+type groceryListResolver struct {
+	g    *grocery.Service
+	inv  *inventory.Service
+	list grocery.GroceryList
+}
+
+func (r *groceryListResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.list.GroceryListID, 10))
+}
+func (r *groceryListResolver) GeneratedAt() graphql.Time {
+	return graphql.Time{Time: r.list.GeneratedAt}
+}
+func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemResolver, error) {
+	items, err := r.g.ListGroceryListItems(ctx, r.list.GroceryListID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*groceryListItemResolver, len(items))
+	for i := range items {
+		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i]}
+	}
+	return out, nil
+}
+
+// groceryListItemResolver resolves GroceryListItem fields.
+type groceryListItemResolver struct {
+	inv  *inventory.Service
+	item grocery.GroceryListItem
+}
+
+func (r *groceryListItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.GroceryListItemID, 10))
+}
+func (r *groceryListItemResolver) ManualItemName() *string { return nilIfEmpty(r.item.ManualItemName) }
+func (r *groceryListItemResolver) QuantityNeeded() float64 { return r.item.QuantityNeeded }
+func (r *groceryListItemResolver) UnitOfMeasure() *string  { return nilIfEmpty(r.item.UnitOfMeasure) }
+func (r *groceryListItemResolver) Source() string          { return r.item.Source }
+func (r *groceryListItemResolver) IsChecked() bool         { return r.item.IsChecked }
+func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	if r.item.ItemID == nil {
+		return nil, nil
+	}
+	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+type groceryListPageResolver struct {
+	g        *grocery.Service
+	inv      *inventory.Service
+	lists    []grocery.GroceryList
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *groceryListPageResolver) Items() []*groceryListResolver {
+	out := make([]*groceryListResolver, len(r.lists))
+	for i := range r.lists {
+		out[i] = &groceryListResolver{g: r.g, inv: r.inv, list: r.lists[i]}
+	}
+	return out
+}
+
+func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// bottleResolver resolves Bottle fields.
+type bottleResolver struct{ b wine.Bottle }
+
+func (r *bottleResolver) ID() graphql.ID        { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
+func (r *bottleResolver) Vineyard() *string     { return nilIfEmpty(r.b.Vineyard) }
+func (r *bottleResolver) VintageYear() int32    { return r.b.VintageYear }
+func (r *bottleResolver) Abv() *float64         { return float64OrNil(r.b.Abv) }
+func (r *bottleResolver) Acidity() *int32       { return int16OrNil(r.b.Acidity) }
+func (r *bottleResolver) TanninLevel() *int32   { return int16OrNil(r.b.TanninLevel) }
+func (r *bottleResolver) Body() *int32          { return int16OrNil(r.b.Body) }
+func (r *bottleResolver) Sweetness() *int32     { return int16OrNil(r.b.Sweetness) }
+func (r *bottleResolver) OakIntegration() *bool { return &r.b.OakIntegration }
+func (r *bottleResolver) BottleSize() string    { return r.b.BottleSize }
+
+type bottlePageResolver struct {
+	bottles  []wine.Bottle
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *bottlePageResolver) Items() []*bottleResolver {
+	out := make([]*bottleResolver, len(r.bottles))
+	for i := range r.bottles {
+		out[i] = &bottleResolver{b: r.bottles[i]}
+	}
+	return out
+}
+
+func (r *bottlePageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
 // Inputs map directly to the GraphQL input types.
+type createBrandInput struct {
+	Name string
+}
+
+type createCategoryInput struct {
+	Name        string
+	Description *string
+}
+
 type createItemInput struct {
 	Name       string
 	BrandID    *graphql.ID
@@ -431,6 +1646,30 @@ type recipeItemInput struct {
 type recipeStepInput struct {
 	StepNumber  int32
 	Instruction string
+}
+
+type updateItemInput struct {
+	Name       *string
+	BrandID    *graphql.ID
+	Upc12      *string
+	Upc14      *string
+	CategoryID *graphql.ID
+	Unit       *string
+}
+
+type createMealPlanInput struct {
+	Name               string
+	WeekStartDate      string
+	WeekStartDayOfWeek *int32
+}
+
+type addMealSlotInput struct {
+	MealPlanID      graphql.ID
+	DayOfWeek       int32
+	MealType        string
+	RecipeID        *graphql.ID
+	Servings        *int32
+	ReplacementNote *string
 }
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
