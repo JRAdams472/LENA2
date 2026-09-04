@@ -86,3 +86,28 @@ FROM inventory.food_nutrient fn
 JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
 WHERE fn.food_id = $1
 ORDER BY nt.name;
+
+-- name: CreateFoodNutrient :one
+INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: DeleteFoodNutrient :exec
+DELETE FROM inventory.food_nutrient
+WHERE food_id = $1 AND nutrient_id = $2;
+
+-- name: CreateFoodFlavor :one
+INSERT INTO inventory.food_flavor (food_id, flavor_id, intensity, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: ListFoodFlavorsByItem :many
+SELECT fp.flavor_id, fp.name, ff.intensity
+FROM inventory.food_flavor ff
+JOIN inventory.flavor_profile fp ON ff.flavor_id = fp.flavor_id
+WHERE ff.food_id = $1
+ORDER BY fp.name;
+
+-- name: DeleteFoodFlavor :exec
+DELETE FROM inventory.food_flavor
+WHERE food_id = $1 AND flavor_id = $2;

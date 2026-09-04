@@ -45,6 +45,11 @@ type Mutation {
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
   deleteUserItem(itemId: ID!): Boolean!
 
+  addFoodNutrient(input: AddFoodNutrientInput!): FoodNutrient!
+  removeFoodNutrient(itemId: ID!, nutrientId: ID!): Boolean!
+  addFoodFlavor(input: AddFoodFlavorInput!): FoodFlavor!
+  removeFoodFlavor(itemId: ID!, flavorId: ID!): Boolean!
+
   createRecipe(input: CreateRecipeInput!): Recipe!
   updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
   deleteRecipe(id: ID!): Boolean!
@@ -104,6 +109,16 @@ type NutrientType {
   unit: String!
 }
 
+type FoodNutrient {
+  nutrient: NutrientType!
+  amount: Float!
+}
+
+type FoodFlavor {
+  flavor: FlavorProfile!
+  intensity: Int!
+}
+
 type Item {
   id: ID!
   name: String!
@@ -112,6 +127,8 @@ type Item {
   upc14: String
   category: Category!
   unit: String!
+  nutrients: [FoodNutrient!]!
+  flavors: [FoodFlavor!]!
 }
 
 type ItemPage {
@@ -290,6 +307,18 @@ input CreateVintageInput {
 input CreateGrapeVarietyInput {
   name: String!
   description: String
+}
+
+input AddFoodNutrientInput {
+  itemId: ID!
+  nutrientId: ID!
+  amount: Float!
+}
+
+input AddFoodFlavorInput {
+  itemId: ID!
+  flavorId: ID!
+  intensity: Int!
 }
 
 input CreateItemInput {
