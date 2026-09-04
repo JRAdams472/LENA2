@@ -1304,6 +1304,38 @@ func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryLi
 	return true, nil
 }
 
+// AddGroceryItem adds a manual or catalog item to a grocery list.
+func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGroceryItemInput }) (*groceryListItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	groceryListID, err := parseID(string(args.Input.GroceryListID))
+	if err != nil {
+		return nil, err
+	}
+	var itemID *int64
+	if args.Input.ItemID != nil {
+		parsed, err := parseID(string(*args.Input.ItemID))
+		if err != nil {
+			return nil, err
+		}
+		itemID = &parsed
+	}
+	it, err := r.GroceryService.AddGroceryListItem(ctx, grocery.GroceryListItem{
+		GroceryListID:  groceryListID,
+		ItemID:         itemID,
+		ManualItemName: derefString(args.Input.ManualItemName),
+		QuantityNeeded: args.Input.Quantity,
+		UnitOfMeasure:  args.Input.Unit,
+		Source:         "manual",
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListItemResolver{inv: r.InventoryService, item: it}, nil
+}
+
 // Types resolves all wine types.
 func (r *Resolver) Types(ctx context.Context) ([]*wineTypeResolver, error) {
 	if _, err := userFromContext(ctx); err != nil {
@@ -2269,6 +2301,14 @@ type addMealSlotItemInput struct {
 	Quantity     float64
 	Unit         string
 	IsFromRecipe *bool
+}
+
+type addGroceryItemInput struct {
+	GroceryListID  graphql.ID
+	ItemID         *graphql.ID
+	ManualItemName *string
+	Quantity       float64
+	Unit           string
 }
 
 type createBottleInput struct {
