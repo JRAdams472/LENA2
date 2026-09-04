@@ -14,7 +14,7 @@ This document is the master specification for a complete ground-up rewrite of th
 | Cross-domain rule | **No cross-domain SQL queries.** Foreign keys are stored as IDs; the BFF hydrates them with module calls. |
 | Authentication | **Google now, multi-OIDC ready.** Schema stores `(provider, external_subject)` and the JWT layer accepts a configurable issuer/audience list. |
 | Data migration | **Fresh start** — no SQL Server data migration; seed reference data if desired. |
-| Go / Postgres stack | `gqlgen`, Echo, `pgx` + `sqlc`, `golang-migrate`, `go-playground/validator`, `rs/zerolog`/`zap`. |
+| Go / Postgres stack | `graph-gophers/graphql-go` (schema-first, no codegen), Echo, `pgx` + `sqlc`, `golang-migrate`, `go-playground/validator`, `rs/zerolog`/`zap`. |
 
 ## 3. High-Level Architecture
 
@@ -45,7 +45,7 @@ Flutter │ Next.js
 |---|---|
 | Language | Go 1.23+ |
 | HTTP router | Echo v4 (or `net/http` + `chi`) |
-| GraphQL | `gqlgen` |
+| GraphQL | `graph-gophers/graphql-go` |
 | DB driver | `pgx/v5` |
 | DB code gen | `sqlc` |
 | Migrations | `golang-migrate` |
@@ -61,7 +61,7 @@ Flutter │ Next.js
 ```
 cmd/lena/                 # main entrypoint
 internal/
-  bff/                    # GraphQL resolvers + orchestration
+  bff/                    # GraphQL schema (schema.graphqls) + resolvers
   identity/               # users, auth
   inventory/              # item catalog
   wine/                   # wine catalog
@@ -72,6 +72,7 @@ internal/
   platform/               # db, config, logger, validation, pagination
 migrations/               # golang-migrate .sql files
 docs/                     # specification & planning docs
+clients/                  # Flutter and Next.js starter projects
 docker-compose.yml
 .env.example
 ```

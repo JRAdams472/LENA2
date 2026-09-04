@@ -19,7 +19,7 @@ A complete re-implementation of LENA in Go and PostgreSQL as a single modular mo
 | Cross-domain rule | **No cross-domain database queries / SQL joins.** Foreign keys are stored as IDs in one module; the BFF (or a higher layer) calls the owning module to hydrate names, etc. |
 | Authentication | **Google now, multi-OIDC ready** — schema stores `(provider, external_subject)` and the JWT layer accepts a configurable issuer/audience list. |
 | Data migration | **Fresh start** — keep all existing domains, but no migration from the current SQL Server instance. Seed reference data if desired. |
-| Go / Postgres stack | **Recommended defaults**: `gqlgen`, Echo or stdlib `net/http`, `pgx` + `sqlc`, `golang-migrate`, `go-playground/validator`, structured logging (e.g. `uber-go/zap` or `rs/zerolog`). |
+| Go / Postgres stack | **Implemented**: `graph-gophers/graphql-go`, Echo, `pgx` + `sqlc`, `golang-migrate`, `go-playground/validator`, structured logging (e.g. `uber-go/zap` or `rs/zerolog`). |
 | Business logic placement | **All business logic lives in Go code** — no stored procedures, triggers, views with logic, or complex SQL-side transformations. SQL is restricted to CRUD, filtering, joins, and simple aggregations. |
 | Output now | **Specification and planning documents only** under `docs/`. No Go/Flutter code is to be written until the specification is approved. |
 
@@ -43,7 +43,7 @@ A complete re-implementation of LENA in Go and PostgreSQL as a single modular mo
               ┌─────────────▼─────────────┐
               │  Go monolith (cmd/lena)   │
               │  • HTTP router (Echo)     │
-              │  • GraphQL BFF (gqlgen)   │
+              │  • GraphQL BFF (graph-gophers)   │
               │  • Auth middleware        │
               └─────────────┬─────────────┘
                             │ in-process Go calls
@@ -81,7 +81,7 @@ A complete re-implementation of LENA in Go and PostgreSQL as a single modular mo
 |---|---|---|
 | Language | Go 1.23+ | Static, fast, single binary, excellent PostgreSQL tooling. |
 | HTTP router | `github.com/labstack/echo/v4` | Mature, middleware-friendly, easy CORS/JWT wiring. `net/http` + `chi` is acceptable if preferred. |
-| GraphQL | `github.com/99designs/gqlgen` | Schema-first, code generation, good fit for a BFF. |
+| GraphQL | `github.com/graph-gophers/graphql-go` | Schema-first, reflection-based resolvers, no code generation. |
 | DB driver | `github.com/jackc/pgx/v5` | Best PostgreSQL driver, pool support, `pgxpool`. |
 | DB code gen | `sqlc` (`github.com/sqlc-dev/sqlc`) | Type-safe queries from `.sql` files; avoids ORM magic. |
 | Migrations | `golang-migrate/migrate` | Industry standard, supports plain `.sql` up/down files. |
@@ -105,7 +105,7 @@ lena/
 │   │   ├── graph/
 │   │   │   ├── schema.graphqls
 │   │   │   ├── resolver.go
-│   │   │   └── generated/    # gqlgen output
+│   │   │   └── model/        # custom scalar helpers (e.g. Time)
 │   │   ├── auth.go           # JWT validation + current user
 │   │   └── loaders.go        # optional DataLoader implementations
 │   ├── identity/             # users, providers, auth
@@ -626,7 +626,7 @@ type Mutation {
 |---|---|
 | Unit | `go test` + mocks for service interfaces |
 | DB integration | `testcontainers-go` for PostgreSQL |
-| GraphQL | `gqlgen` resolver tests + `httptest` |
+| GraphQL | `graph-gophers/graphql-go` resolver tests + `httptest` |
 | Lint | `golangci-lint` |
 | CI | GitHub Actions: `go build`, `go test`, `golangci-lint`, `docker compose up --build` |
 
