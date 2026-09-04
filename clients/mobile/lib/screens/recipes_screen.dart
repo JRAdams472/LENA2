@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'edit_recipe_screen.dart';
 
 const String recipesQuery = r'''
   query Recipes {
@@ -50,10 +51,23 @@ class RecipesScreen extends StatelessWidget {
                     ? Text(description)
                     : null,
                 trailing: Text('Serves ${item['servings'] ?? '-'}'),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EditRecipeScreen(recipeId: item['id'] as String),
+                  ),
+                ),
               );
             },
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const EditRecipeScreen()),
+        ),
+        child: const Icon(Icons.add),
       ),
     );
   }

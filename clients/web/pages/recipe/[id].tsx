@@ -1,18 +1,29 @@
 import { gql, useMutation, useQuery } from '@apollo/client';
-import { useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
 
-const RECIPES_QUERY = gql`
-  query Recipes {
-    recipes(page: 1, pageSize: 25) {
+const RECIPE_QUERY = gql`
+  query Recipe($id: ID!) {
+    recipe(id: $id) {
+      id
+      name
+      description
+      servings
+      prepTimeMinutes
+      cookTimeMinutes
       items {
-        id
-        name
-        description
-        servings
+        item {
+          id
+          name
+        }
+        quantity
+        unit
+        notes
+        isOptional
       }
-      pageInfo {
-        totalCount
+      steps {
+        stepNumber
+        instruction
       }
     }
   }
@@ -32,32 +43,31 @@ const ITEMS_QUERY = gql`
   }
 `;
 
-const CREATE_RECIPE = gql`
-  mutation CreateRecipe($input: CreateRecipeInput!) {
-    createRecipe(input: $input) {
+const UPDATE_RECIPE = gql`
+  mutation UpdateRecipe($id: ID!, $input: CreateRecipeInput!) {
+    updateRecipe(id: $id, input: $input) {
       id
       name
     }
   }
 `;
 
-type Recipe = {
-  id: string;
-  name: string;
-  description?: string | null;
-  servings?: number | null;
-};
-
 type Item = {
   id: string;
   name: string;
 };
 
-export default function Recipes() {
-  const { data, loading, error, refetch } = useQuery(RECIPES_QUERY);
+export default function EditRecipe() {
+  const router = useRouter();
+  const id = router.query.id as string | undefined;
+
+  const { data, loading, error } = useQuery(RECIPE_QUERY, {
+    variables: { id },
+    skip: !id,
+  });
   const { data: itemsData } = useQuery(ITEMS_QUERY);
-  const [createRecipe] = useMutation(CREATE_RECIPE, {
-    onCompleted: () => refetch(),
+  const [updateRecipe] = useMutation(UPDATE_RECIPE, {
+    onCompleted: () => router.push('/recipes'),
   });
 
   const [form, setForm] = useState({
@@ -72,10 +82,31 @@ export default function Recipes() {
     stepInstruction: '',
   });
 
+  useEffect(() => {
+    if (data?.recipe) {
+      const r = data.recipe;
+      const item = r.items?.[0];
+      const step = r.steps?.[0];
+      setForm({
+        name: r.name ?? '',
+        description: r.description ?? '',
+        servings: r.servings?.toString() ?? '',
+        prepTimeMinutes: r.prepTimeMinutes?.toString() ?? '',
+        cookTimeMinutes: r.cookTimeMinutes?.toString() ?? '',
+        itemId: item?.item?.id ?? '',
+        quantity: item?.quantity?.toString() ?? '',
+        unit: item?.unit ?? '',
+        stepInstruction: step?.instruction ?? '',
+      });
+    }
+  }, [data]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createRecipe({
+    if (!id) return;
+    updateRecipe({
       variables: {
+        id,
         input: {
           name: form.name,
           description: form.description || null,
@@ -104,17 +135,6 @@ export default function Recipes() {
         },
       },
     });
-    setForm({
-      name: '',
-      description: '',
-      servings: '',
-      prepTimeMinutes: '',
-      cookTimeMinutes: '',
-      itemId: '',
-      quantity: '',
-      unit: '',
-      stepInstruction: '',
-    });
   };
 
   if (loading) return <p>Loading...</p>;
@@ -124,10 +144,8 @@ export default function Recipes() {
 
   return (
     <main style={{ padding: '2rem' }}>
-      <h1>Recipes</h1>
-
-      <form onSubmit={handleSubmit} style={{ marginBottom: '2rem' }}>
-        <h2>Create recipe</h2>
+      <h1>Edit recipe</h1>
+      <form onSubmit={handleSubmit}>
         <input
           placeholder="Name"
           value={form.name}
@@ -184,21 +202,8 @@ export default function Recipes() {
           onChange={(e) => setForm({ ...form, stepInstruction: e.target.value })}
           required
         />{' '}
-        <button type="submit">Create</button>
+        <button type="submit">Update</button>
       </form>
-
-      <ul>
-        {data?.recipes?.items.map((recipe: Recipe) => (
-          <li key={recipe.id}>
-            <Link href={`/recipe/${recipe.id}`} legacyBehavior>
-              <a>
-                {recipe.name}
-                {recipe.servings ? ` (serves ${recipe.servings})` : ''}
-              </a>
-            </Link>
-          </li>
-        ))}
-      </ul>
     </main>
   );
 }
