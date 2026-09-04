@@ -20,6 +20,8 @@ type Query {
   types: [WineType!]!
   countries: [Country!]!
   regions(countryId: ID!): [Region!]!
+  vintages: [Vintage!]!
+  grapeVarieties: [GrapeVariety!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
   groceryList(id: ID!): GroceryList
@@ -31,6 +33,8 @@ type Mutation {
   createCategory(input: CreateCategoryInput!): Category!
   createFlavorProfile(input: CreateFlavorProfileInput!): FlavorProfile!
   createNutrientType(input: CreateNutrientTypeInput!): NutrientType!
+  createVintage(input: CreateVintageInput!): Vintage!
+  createGrapeVariety(input: CreateGrapeVarietyInput!): GrapeVariety!
 
   createItem(input: CreateItemInput!): Item!
   updateItem(id: ID!, input: UpdateItemInput!): Item!
@@ -265,6 +269,16 @@ input CreateNutrientTypeInput {
   unit: String!
 }
 
+input CreateVintageInput {
+  year: Int!
+  description: String
+}
+
+input CreateGrapeVarietyInput {
+  name: String!
+  description: String
+}
+
 input CreateItemInput {
   name: String!
   brandId: ID
@@ -339,6 +353,20 @@ type Region {
   name: String!
   description: String
   country: Country!
+}
+
+type Vintage {
+  id: ID!
+  year: Int!
+  description: String
+  isActive: Boolean!
+}
+
+type GrapeVariety {
+  id: ID!
+  name: String!
+  description: String
+  isActive: Boolean!
 }
 
 input CreateBottleInput {

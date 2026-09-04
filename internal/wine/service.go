@@ -162,6 +162,78 @@ func (s *Service) ListTypes(ctx context.Context) ([]Type, error) {
 	return out, nil
 }
 
+// Vintage is a wine vintage year.
+type Vintage struct {
+	VintageID   int64
+	Year        int32
+	Description string
+	IsActive    bool
+}
+
+// CreateVintage adds a new vintage.
+func (s *Service) CreateVintage(ctx context.Context, year int32, description, by string) (Vintage, error) {
+	row, err := s.q.CreateVintage(ctx, sqlc.CreateVintageParams{
+		Year:        year,
+		Description: textOrNull(description),
+		IsActive:    true,
+		CreatedBy:   by,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Vintage{}, fmt.Errorf("create vintage: %w", err)
+	}
+	return toVintage(row), nil
+}
+
+// ListVintages returns all vintages ordered by year descending.
+func (s *Service) ListVintages(ctx context.Context) ([]Vintage, error) {
+	rows, err := s.q.ListVintages(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list vintages: %w", err)
+	}
+	out := make([]Vintage, len(rows))
+	for i := range rows {
+		out[i] = toVintage(rows[i])
+	}
+	return out, nil
+}
+
+// GrapeVariety is a catalog grape variety.
+type GrapeVariety struct {
+	GrapeVarietyID int64
+	Name           string
+	Description    string
+	IsActive       bool
+}
+
+// CreateGrapeVariety adds a new grape variety.
+func (s *Service) CreateGrapeVariety(ctx context.Context, name, description, by string) (GrapeVariety, error) {
+	row, err := s.q.CreateGrapeVariety(ctx, sqlc.CreateGrapeVarietyParams{
+		Name:        name,
+		Description: textOrNull(description),
+		IsActive:    true,
+		CreatedBy:   by,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return GrapeVariety{}, fmt.Errorf("create grape variety: %w", err)
+	}
+	return toGrapeVariety(row), nil
+}
+
+// ListGrapeVarieties returns all grape varieties ordered by name.
+func (s *Service) ListGrapeVarieties(ctx context.Context) ([]GrapeVariety, error) {
+	rows, err := s.q.ListGrapeVarieties(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list grape varieties: %w", err)
+	}
+	out := make([]GrapeVariety, len(rows))
+	for i := range rows {
+		out[i] = toGrapeVariety(rows[i])
+	}
+	return out, nil
+}
+
 // Bottle is a catalog wine bottle definition.
 type Bottle struct {
 	BottleID       int64
@@ -276,6 +348,24 @@ func toType(row sqlc.WineType) Type {
 		Name:        row.Name,
 		Description: row.Description.String,
 		IsActive:    row.IsActive,
+	}
+}
+
+func toVintage(row sqlc.WineVintage) Vintage {
+	return Vintage{
+		VintageID:   row.VintageID,
+		Year:        row.Year,
+		Description: row.Description.String,
+		IsActive:    row.IsActive,
+	}
+}
+
+func toGrapeVariety(row sqlc.WineGrapeVariety) GrapeVariety {
+	return GrapeVariety{
+		GrapeVarietyID: row.GrapeVarietyID,
+		Name:           row.Name,
+		Description:    row.Description.String,
+		IsActive:       row.IsActive,
 	}
 }
 

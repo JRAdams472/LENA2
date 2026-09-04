@@ -1213,6 +1213,64 @@ func (r *Resolver) Regions(ctx context.Context, args struct{ CountryID graphql.I
 	return out, nil
 }
 
+// Vintages resolves all wine vintages.
+func (r *Resolver) Vintages(ctx context.Context) ([]*vintageResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	vintages, err := r.WineService.ListVintages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*vintageResolver, len(vintages))
+	for i := range vintages {
+		out[i] = &vintageResolver{v: vintages[i]}
+	}
+	return out, nil
+}
+
+// GrapeVarieties resolves all grape varieties.
+func (r *Resolver) GrapeVarieties(ctx context.Context) ([]*grapeVarietyResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	varieties, err := r.WineService.ListGrapeVarieties(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*grapeVarietyResolver, len(varieties))
+	for i := range varieties {
+		out[i] = &grapeVarietyResolver{g: varieties[i]}
+	}
+	return out, nil
+}
+
+// CreateVintage adds a new vintage.
+func (r *Resolver) CreateVintage(ctx context.Context, args struct{ Input createVintageInput }) (*vintageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := r.WineService.CreateVintage(ctx, args.Input.Year, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &vintageResolver{v: v}, nil
+}
+
+// CreateGrapeVariety adds a new grape variety.
+func (r *Resolver) CreateGrapeVariety(ctx context.Context, args struct{ Input createGrapeVarietyInput }) (*grapeVarietyResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g, err := r.WineService.CreateGrapeVariety(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &grapeVarietyResolver{g: g}, nil
+}
+
 // CreateBottle adds a new bottle definition.
 func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBottleInput }) (*bottleResolver, error) {
 	u, err := userFromContext(ctx)
@@ -1935,6 +1993,24 @@ func (r *regionResolver) Country(ctx context.Context) (*countryResolver, error) 
 	return &countryResolver{c: c}, nil
 }
 
+// vintageResolver resolves a wine vintage.
+type vintageResolver struct{ v wine.Vintage }
+
+func (r *vintageResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.v.VintageID, 10)) }
+func (r *vintageResolver) Year() int32          { return r.v.Year }
+func (r *vintageResolver) Description() *string { return nilIfEmpty(r.v.Description) }
+func (r *vintageResolver) IsActive() bool       { return r.v.IsActive }
+
+// grapeVarietyResolver resolves a grape variety.
+type grapeVarietyResolver struct{ g wine.GrapeVariety }
+
+func (r *grapeVarietyResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.g.GrapeVarietyID, 10))
+}
+func (r *grapeVarietyResolver) Name() string         { return r.g.Name }
+func (r *grapeVarietyResolver) Description() *string { return nilIfEmpty(r.g.Description) }
+func (r *grapeVarietyResolver) IsActive() bool       { return r.g.IsActive }
+
 // Inputs map directly to the GraphQL input types.
 type createBrandInput struct {
 	Name string
@@ -1952,6 +2028,16 @@ type createFlavorProfileInput struct {
 type createNutrientTypeInput struct {
 	Name string
 	Unit string
+}
+
+type createVintageInput struct {
+	Year        int32
+	Description *string
+}
+
+type createGrapeVarietyInput struct {
+	Name        string
+	Description *string
 }
 
 type createItemInput struct {

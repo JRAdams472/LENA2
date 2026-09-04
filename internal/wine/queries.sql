@@ -85,3 +85,23 @@ WHERE bottle_id = $1;
 -- name: DeleteBottle :exec
 DELETE FROM wine.bottle
 WHERE bottle_id = $1;
+
+-- name: CreateVintage :one
+INSERT INTO wine.vintage (year, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: ListVintages :many
+SELECT *
+FROM wine.vintage
+ORDER BY year DESC;
+
+-- name: CreateGrapeVariety :one
+INSERT INTO wine.grape_variety (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: ListGrapeVarieties :many
+SELECT *
+FROM wine.grape_variety
+ORDER BY name;
