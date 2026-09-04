@@ -12,6 +12,8 @@ type Query {
   recipe(id: ID!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
   userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
+  bottle(id: ID!): Bottle
+  bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
 }
 
 type Mutation {
@@ -85,6 +87,24 @@ type RecipeStep {
 
 type RecipePage {
   items: [Recipe!]!
+  pageInfo: PageInfo!
+}
+
+type Bottle {
+  id: ID!
+  vineyard: String
+  vintageYear: Int!
+  abv: Float
+  acidity: Int
+  tanninLevel: Int
+  body: Int
+  sweetness: Int
+  oakIntegration: Boolean
+  bottleSize: String!
+}
+
+type BottlePage {
+  items: [Bottle!]!
   pageInfo: PageInfo!
 }
 

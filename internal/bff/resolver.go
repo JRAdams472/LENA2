@@ -15,6 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
+	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
 //go:embed schema.graphqls
@@ -26,11 +27,12 @@ type Resolver struct {
 	InventoryService *inventory.Service
 	RecipeService    *recipe.Service
 	UserPrefsService *userprefs.Service
+	WineService      *wine.Service
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(inv *inventory.Service, rec *recipe.Service, up *userprefs.Service) *Resolver {
-	return &Resolver{InventoryService: inv, RecipeService: rec, UserPrefsService: up}
+func NewResolver(inv *inventory.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
+	return &Resolver{InventoryService: inv, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -85,6 +87,21 @@ func timeToGraphQL(t *time.Time) *graphql.Time {
 		return nil
 	}
 	return &graphql.Time{Time: *t}
+}
+
+func float64OrNil(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+func int16OrNil(v int16) *int32 {
+	if v == 0 {
+		return nil
+	}
+	i := int32(v)
+	return &i
 }
 
 // Me resolves the current authenticated user.
@@ -224,6 +241,39 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, recipes: recipes, page: page, pageSize: pageSize, total: int32(len(recipes))}, nil
+}
+
+// Bottle resolves a single wine bottle by ID.
+func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*bottleResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.WineService.GetBottleByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{b: b}, nil
+}
+
+// Bottles resolves a paginated list of wine bottles.
+func (r *Resolver) Bottles(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*bottlePageResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	bottles, err := r.WineService.ListBottles(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &bottlePageResolver{bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
 }
 
 // UserItems resolves the current user's pantry items.
@@ -557,6 +607,39 @@ func (r *recipePageResolver) Items() []*recipeResolver {
 }
 
 func (r *recipePageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// bottleResolver resolves Bottle fields.
+type bottleResolver struct{ b wine.Bottle }
+
+func (r *bottleResolver) ID() graphql.ID        { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
+func (r *bottleResolver) Vineyard() *string     { return nilIfEmpty(r.b.Vineyard) }
+func (r *bottleResolver) VintageYear() int32    { return r.b.VintageYear }
+func (r *bottleResolver) Abv() *float64         { return float64OrNil(r.b.Abv) }
+func (r *bottleResolver) Acidity() *int32       { return int16OrNil(r.b.Acidity) }
+func (r *bottleResolver) TanninLevel() *int32   { return int16OrNil(r.b.TanninLevel) }
+func (r *bottleResolver) Body() *int32          { return int16OrNil(r.b.Body) }
+func (r *bottleResolver) Sweetness() *int32     { return int16OrNil(r.b.Sweetness) }
+func (r *bottleResolver) OakIntegration() *bool { return &r.b.OakIntegration }
+func (r *bottleResolver) BottleSize() string    { return r.b.BottleSize }
+
+type bottlePageResolver struct {
+	bottles  []wine.Bottle
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *bottlePageResolver) Items() []*bottleResolver {
+	out := make([]*bottleResolver, len(r.bottles))
+	for i := range r.bottles {
+		out[i] = &bottleResolver{b: r.bottles[i]}
+	}
+	return out
+}
+
+func (r *bottlePageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 

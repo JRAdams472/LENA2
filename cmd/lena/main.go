@@ -21,6 +21,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
+	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
 func main() {
@@ -46,6 +47,7 @@ func main() {
 	inventorySvc := inventory.NewService(pool)
 	recipeSvc := recipe.NewService(pool)
 	userPrefsSvc := userprefs.NewService(pool)
+	wineSvc := wine.NewService(pool)
 
 	authenticator := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:   splitAndTrim(cfg.AuthIssuers),
@@ -71,7 +73,7 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	resolver := bff.NewResolver(inventorySvc, recipeSvc, userPrefsSvc)
+	resolver := bff.NewResolver(inventorySvc, recipeSvc, userPrefsSvc, wineSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
 
 	go func() {
