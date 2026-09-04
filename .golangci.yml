@@ -1,0 +1,26 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+    - gosec
+
+  settings:
+    gosec:
+      excludes:
+        - G104
+        # G115 is noisy for bounded int conversions already limited by page sizes and schema inputs.
+        - G115
+
+  exclusions:
+    paths:
+      - migrations

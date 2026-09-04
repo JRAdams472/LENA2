@@ -61,10 +61,13 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
+	e.Use(middleware.RequestID())
 
 	corsCfg := middleware.CORSConfig{
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowCredentials: true,
+		MaxAge:           86400,
 	}
 	if cfg.CORSAllowedOrigins == "*" {
 		corsCfg.AllowOriginFunc = func(origin string) (bool, error) { return true, nil }
@@ -72,6 +75,35 @@ func main() {
 		corsCfg.AllowOrigins = strings.Split(cfg.CORSAllowedOrigins, ",")
 	}
 	e.Use(middleware.CORSWithConfig(corsCfg))
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:  true,
+		LogURI:     true,
+		LogMethod:  true,
+		LogLatency: true,
+		LogError:   true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			requestID := c.Response().Header().Get(echo.HeaderXRequestID)
+			if v.Error == nil {
+				log.Info("request",
+					"request_id", requestID,
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"latency_ms", v.Latency.Milliseconds(),
+				)
+			} else {
+				log.Error("request",
+					"request_id", requestID,
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"latency_ms", v.Latency.Milliseconds(),
+					"error", v.Error,
+				)
+			}
+			return nil
+		},
+	}))
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
