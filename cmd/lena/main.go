@@ -16,7 +16,6 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
-	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
 )
@@ -65,13 +64,8 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	e.POST("/graphql", func(c echo.Context) error {
-		user, _ := currentuser.FromContext(c.Request().Context())
-		return c.JSON(http.StatusNotImplemented, map[string]any{
-			"status": "not implemented",
-			"userId": user.UserID,
-		})
-	}, authenticator.Middleware())
+	resolver := bff.NewResolver()
+	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
 
 	go func() {
 		addr := ":" + cfg.Port
