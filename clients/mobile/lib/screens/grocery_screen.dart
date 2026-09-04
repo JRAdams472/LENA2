@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'generate_grocery_dialog.dart';
 
 const String groceryListQuery = r'''
   query GroceryList {
@@ -48,49 +49,57 @@ class GroceryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Grocery List')),
-      body: Query(
-        options: QueryOptions(document: gql(groceryListQuery)),
-        builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
-          if (result.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (result.hasException) {
-            return Center(child: Text('Error: ${result.exception.toString()}'));
-          }
-
+    return Query(
+      options: QueryOptions(document: gql(groceryListQuery)),
+      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+        Widget body;
+        if (result.isLoading) {
+          body = const Center(child: CircularProgressIndicator());
+        } else if (result.hasException) {
+          body = Center(child: Text('Error: ${result.exception.toString()}'));
+        } else {
           final lists = result.data?['groceryLists']?['items'] as List? ?? [];
           if (lists.isEmpty) {
-            return const Center(child: Text('No grocery list found.'));
+            body = const Center(child: Text('No grocery list found.'));
+          } else {
+            final list = lists.first;
+            final items = list['items'] as List? ?? [];
+            body = ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index] as Map<String, dynamic>;
+                final id = item['id'] as String;
+                final name = (item['item']?['name'] as String?) ??
+                    (item['manualItemName'] as String?) ??
+                    'Unknown';
+                final quantity = item['quantityNeeded'] ?? 0;
+                final unit = item['unitOfMeasure'] as String? ?? '';
+                final isChecked = item['isChecked'] as bool? ?? false;
+
+                return CheckboxListTile(
+                  title: Text('$name — $quantity $unit'),
+                  subtitle: Text('Source: ${item['source']}'),
+                  value: isChecked,
+                  onChanged: (value) { _toggle(context, id, refetch); },
+                );
+              },
+            );
           }
+        }
 
-          final list = lists.first;
-          final items = list['items'] as List? ?? [];
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index] as Map<String, dynamic>;
-              final id = item['id'] as String;
-              final name = (item['item']?['name'] as String?) ??
-                  (item['manualItemName'] as String?) ??
-                  'Unknown';
-              final quantity = item['quantityNeeded'] ?? 0;
-              final unit = item['unitOfMeasure'] as String? ?? '';
-              final isChecked = item['isChecked'] as bool? ?? false;
-
-              return CheckboxListTile(
-                title: Text('$name — $quantity $unit'),
-                subtitle: Text('Source: ${item['source']}'),
-                value: isChecked,
-                onChanged: (value) { _toggle(context, id, refetch); },
-              );
-            },
-          );
-        },
-      ),
+        return Scaffold(
+          appBar: AppBar(title: const Text('Grocery List')),
+          body: body,
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => GenerateGroceryDialog(onGenerated: refetch),
+            ),
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 }
