@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'grocery_screen.dart';
+import 'items_screen.dart';
 
 const String dashboardQuery = r'''
   query Dashboard {
@@ -71,6 +72,14 @@ class HomeScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const GroceryScreen()),
                   ),
                   child: const Text('Grocery List'),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ItemsScreen()),
+                  ),
+                  child: const Text('Manage Items'),
                 ),
               ],
             ),

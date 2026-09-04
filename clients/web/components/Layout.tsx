@@ -9,6 +9,10 @@ export function Layout({ children }: { children: ReactNode }) {
           <a>Home</a>
         </Link>
         {' | '}
+        <Link href="/items" legacyBehavior>
+          <a>Items</a>
+        </Link>
+        {' | '}
         <Link href="/recipes" legacyBehavior>
           <a>Recipes</a>
         </Link>
