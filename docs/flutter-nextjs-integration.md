@@ -1,102 +1,122 @@
-# LENA — Flutter & Next.js GraphQL Integration
+# Flutter & Next.js Client Integration
 
-## 1. Endpoint
+This document describes how the Flutter mobile app and the Next.js web app connect to the LENA GraphQL BFF.
 
-Both clients call a single endpoint:
+## Endpoint
 
-```
-POST /graphql
-Authorization: Bearer <id_token>
-```
+- **URL**: `https://<host>/graphql`
+- **Method**: `POST`
+- **Content-Type**: `application/json`
+- **Authentication**: `Authorization: Bearer <id_token>`
 
-## 2. Flutter
+The Go monolith (`cmd/lena`) serves the GraphQL endpoint with the BFF resolver. In local development the URL is `http://localhost:8080/graphql`.
+
+## Authentication
+
+1. Client obtains an ID token from the configured OIDC provider (Google by default).
+2. Include the token in the `Authorization` header:
+   ```http
+   Authorization: Bearer <id_token>
+   ```
+3. The BFF middleware validates the JWT and sets the current user context. If the user does not exist, a local LENA account is created on first request.
+
+## Flutter
 
 ### Dependencies
 
-Add to `mobile/pubspec.yaml`:
-
 ```yaml
 dependencies:
-  flutter:
-    sdk: flutter
-  google_sign_in: ^6.2.2
-  graphql_flutter: ^5.1.2
-  flutter_secure_storage: ^9.2.2
+  graphql_flutter: ^5.1.0
+  flutter_secure_storage: ^9.0.0
 ```
 
-### Client setup
+### Client Setup
 
 ```dart
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-final HttpLink httpLink = HttpLink('http://localhost/graphql');
+final _storage = FlutterSecureStorage();
+
+final HttpLink httpLink = HttpLink('https://api.lena.local/graphql');
 
 final AuthLink authLink = AuthLink(
-  getToken: () async => 'Bearer ${await secureStorage.read(key: 'id_token')}',
+  getToken: () async {
+    final token = await _storage.read(key: 'id_token');
+    return token == null ? null : 'Bearer $token';
+  },
 );
 
-final Link link = authLink.concat(httpLink);
-
-final ValueNotifier<GraphQLClient> client = ValueNotifier(
-  GraphQLClient(
-    link: link,
-    cache: GraphQLCache(store: InMemoryStore()),
-  ),
+final GraphQLClient client = GraphQLClient(
+  cache: GraphQLCache(),
+  link: authLink.concat(httpLink),
 );
 ```
 
-### Example query
+### Example Query
 
 ```dart
-const String getGroceryList = r'''
-  query GetGroceryList($id: ID!) {
-    groceryList(id: $id) {
+const String meQuery = r'''
+  query Me {
+    me {
       id
-      generatedAt
-      items {
-        id
-        item { name unit }
-        manualItemName
-        quantityNeeded
-        isChecked
-      }
+      email
+      displayName
     }
   }
-''';```
+''';
 
-### Example mutation
+final QueryOptions options = QueryOptions(document: gql(meQuery));
+final QueryResult result = await client.query(options);
+```
+
+### Example Mutation
 
 ```dart
-const String generateList = r'''
-  mutation GenerateList($mealPlanId: ID!) {
-    generateGroceryList(mealPlanId: $mealPlanId) {
+const String createItemMutation = r'''
+  mutation CreateItem($input: CreateItemInput!) {
+    createItem(input: $input) {
       id
-      generatedAt
+      name
     }
   }
-''';```
+''';
 
-## 3. Next.js
+final MutationOptions options = MutationOptions(
+  document: gql(createItemMutation),
+  variables: <String, dynamic>{
+    'input': {
+      'name': 'Almond Milk',
+      'categoryId': '1',
+      'unit': 'fl oz',
+    },
+  },
+);
+final QueryResult result = await client.mutate(options);
+```
+
+## Next.js
 
 ### Dependencies
 
 ```bash
-npm i @apollo/client graphql
+npm install @apollo/client graphql
 ```
 
-### Client setup
+### Client Setup
 
 ```ts
-// lib/apollo.ts
+// lib/apolloClient.ts
 import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 
 const httpLink = createHttpLink({
-  uri: process.env.NEXT_PUBLIC_GRAPHQL_URL,
+  uri: 'https://api.lena.local/graphql',
+  credentials: 'include',
 });
 
-const authLink = setContext((_, { headers }) => {
-  const token = localStorage.getItem('lena_id_token');
+const authLink = setContext(async (_, { headers }) => {
+  const token = await getIdToken(); // your OIDC helper
   return {
     headers: {
       ...headers,
@@ -105,59 +125,63 @@ const authLink = setContext((_, { headers }) => {
   };
 });
 
-export const client = new ApolloClient({
+export const apolloClient = new ApolloClient({
   link: authLink.concat(httpLink),
   cache: new InMemoryCache(),
 });
 ```
 
-### Example hook
+### Example Query
 
 ```tsx
-// app/grocery-lists/[id]/page.tsx
-import { useQuery, gql } from '@apollo/client';
+import { gql, useQuery } from '@apollo/client';
 
-const GET_GROCERY_LIST = gql`
-  query GetGroceryList($id: ID!) {
-    groceryList(id: $id) {
+const ME_QUERY = gql`
+  query Me {
+    me {
       id
-      generatedAt
-      items {
-        id
-        item { name unit }
-        manualItemName
-        quantityNeeded
-        isChecked
-      }
+      email
+      displayName
     }
   }
 `;
 
-export default function GroceryListPage({ params }: { params: { id: string } }) {
-  const { data, loading, error } = useQuery(GET_GROCERY_LIST, {
-    variables: { id: params.id },
-  });
-  // render
+function Profile() {
+  const { data, loading, error } = useQuery(ME_QUERY);
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+  return <div>{data.me.email}</div>;
 }
 ```
 
-## 4. Shared Patterns
+### Example Mutation
 
-- All GraphQL requests carry the ID token in the `Authorization` header.
-- On `401` / `UNAUTHENTICATED`, the client should clear the token and return to the sign-in screen.
-- Use fragments for `Item`, `Bottle`, `Recipe`, `MealSlot`, etc. to keep queries DRY.
+```tsx
+import { gql, useMutation } from '@apollo/client';
 
-## 5. Migration from REST
+const CREATE_ITEM = gql`
+  mutation CreateItem($input: CreateItemInput!) {
+    createItem(input: $input) {
+      id
+      name
+    }
+  }
+`;
 
-| Old REST | New GraphQL |
-|---|---|
-| `GET /api/GroceryList/{id}` | `query { groceryList(id) }` |
-| `POST /api/Item/items/{id}/quantity` | `mutation { adjustUserItem(itemId, quantity) }` |
-| `POST /api/Item/items/{id}/favorite` | `mutation { setItemFavorite(itemId, isFavorite) }` |
-| `POST /api/GroceryList/generate?mealPlanId=...` | `mutation { generateGroceryList(mealPlanId) }` |
-| `GET /api/auth/me` | `query { me }` |
+function AddItemForm() {
+  const [createItem, { data, loading, error }] = useMutation(CREATE_ITEM);
+  // ...
+}
+```
 
-## 6. Recommended Client Structure
+## Common Patterns
 
-- Flutter: `lib/graphql/` with one `.dart` file per domain (queries + mutations).
-- Next.js: `lib/queries/` and `lib/mutations/` or co-locate GraphQL documents with pages.
+- Use `item(id: $id)` and `items(page: $page, pageSize: $pageSize)` for catalog browsing.
+- Pantry and cellar data come from `userItems` and `userBottles`.
+- Meal planning flows use `mealPlans`, `addMealSlot`, and `generateGroceryList`.
+- Grocery shopping uses `groceryLists` and `toggleGroceryItemChecked`.
+
+## Error Handling
+
+- Return `401` / `403` responses mean the token is missing, expired, or invalid. Clients should refresh the OIDC token and retry.
+- GraphQL errors are returned in the `errors` array even when HTTP status is `200`. Inspect `result.errors` (Flutter) or `error.graphQLErrors` (Apollo).
