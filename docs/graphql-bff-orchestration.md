@@ -79,7 +79,18 @@ This is an optimization, not a relaxation of the no-join rule.
 - The BFF maps these to GraphQL `errors` with standard `message`, `path`, and `extensions.code`.
 - Example extension code: `NOT_FOUND`, `VALIDATION`, `UNAUTHORIZED`.
 
-## 7. Scoping
+## 7. GraphQL Implementation
+
+The BFF uses `github.com/graph-gophers/graphql-go`, a schema-first library that maps GraphQL fields to Go struct methods by reflection.
+
+- `internal/bff/schema.graphqls` — the single source of truth for the public schema.
+- `internal/bff/resolver.go` — root `Resolver` plus per-type resolvers such as `itemResolver`, `recipeResolver`, `mealPlanResolver`, etc.
+- `internal/bff/auth.go` — Echo middleware that validates OIDC ID tokens and injects `currentuser.User` into context.
+- `internal/bff/model/scalars.go` — custom scalar helpers such as `Time`.
+
+Resolvers return Go types that match the schema shape. For example, an `Item` resolver returns `*itemResolver`, which has methods `ID`, `Name`, `Brand(ctx)`, `Category(ctx)`, etc.
+
+## 8. Scoping
 
 - Every BFF resolver extracts `CurrentUser` from `context` (set by auth middleware).
 - Catalog mutations are allowed for any authenticated user initially.

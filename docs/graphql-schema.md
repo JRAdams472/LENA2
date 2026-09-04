@@ -1,46 +1,36 @@
-# LENA — GraphQL Schema Specification
+# LENA GraphQL Schema
 
-## 1. Endpoint
+This document describes the public GraphQL API exposed by the BFF at `/graphql`.
 
-- Single public endpoint: `POST /graphql`
-- All requests require `Authorization: Bearer <id_token>`.
-- Response is JSON with `data` and/or `errors`.
+## Scalar types
 
-## 2. Scalars
+- `ID` — opaque identifier, serialized as a string.
+- `String`, `Int`, `Float`, `Boolean` — built-in GraphQL scalars.
+- `Time` — ISO 8601 / RFC 3339 timestamp.
+- `Date` — ISO 8601 calendar date (`YYYY-MM-DD`). Currently declared but not used by any resolver.
+
+## Core types
+
+### `User`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `ID!` | LENA internal user ID |
+| `email` | `String!` | Primary email address |
+| `displayName` | `String` | Optional display name |
+
+### Catalog — `Brand`, `Category`, `Item`
 
 ```graphql
-scalar Time
-scalar Date
-```
-
-## 3. Core Types
-
-```graphql
-type User {
+type Brand {
   id: ID!
-  email: String!
-  displayName: String
-  provider: String!
-  externalSubject: String!
-  lastLoginAt: Time
-}
-
-type PageInfo {
-  pageNumber: Int!
-  pageSize: Int!
-  totalCount: Int!
+  name: String!
 }
 
 type Category {
   id: ID!
   name: String!
   description: String
-  isActive: Boolean!
-}
-
-type Brand {
-  id: ID!
-  name: String!
 }
 
 type Item {
@@ -51,9 +41,59 @@ type Item {
   upc14: String
   category: Category!
   unit: String!
-  isActive: Boolean!
+}
+```
+
+### Catalog — `Recipe`, `RecipeItem`, `RecipeStep`
+
+```graphql
+type Recipe {
+  id: ID!
+  name: String!
+  description: String
+  servings: Int
+  prepTimeMinutes: Int
+  cookTimeMinutes: Int
+  items: [RecipeItem!]!
+  steps: [RecipeStep!]!
 }
 
+type RecipeItem {
+  item: Item!
+  quantity: Float!
+  unit: String!
+  notes: String
+  isOptional: Boolean!
+}
+
+type RecipeStep {
+  stepNumber: Int!
+  instruction: String!
+}
+```
+
+### Wine — `Bottle`
+
+```graphql
+type Bottle {
+  id: ID!
+  vineyard: String
+  vintageYear: Int!
+  abv: Float
+  acidity: Int
+  tanninLevel: Int
+  body: Int
+  sweetness: Int
+  oakIntegration: Boolean
+  bottleSize: String!
+}
+```
+
+Wine reference data (`WineType`, `Country`, `Region`) exists in the database but is not exposed as separate GraphQL object types in the current schema.
+
+### User preferences — `UserItem`, `UserBottle`
+
+```graphql
 type UserItem {
   id: ID!
   item: Item!
@@ -63,65 +103,6 @@ type UserItem {
   expiresAt: Time
   notes: String
   isFavorite: Boolean!
-}
-
-type FlavorProfile {
-  id: ID!
-  name: String!
-  isActive: Boolean!
-}
-
-type NutrientType {
-  id: ID!
-  name: String!
-  unit: String
-}
-
-type Country {
-  id: ID!
-  name: String!
-  isoCode: String!
-  isActive: Boolean!
-}
-
-type Region {
-  id: ID!
-  country: Country!
-  name: String!
-  isActive: Boolean!
-}
-
-type WineType {
-  id: ID!
-  name: String!
-  isActive: Boolean!
-}
-
-type Vintage {
-  id: ID!
-  year: Int!
-  isActive: Boolean!
-}
-
-type GrapeVariety {
-  id: ID!
-  name: String!
-}
-
-type Bottle {
-  id: ID!
-  type: WineType!
-  country: Country!
-  region: Region!
-  vintageYear: Int!
-  vineyard: String
-  abv: Float
-  acidity: Int
-  tanninLevel: Int
-  body: Int
-  sweetness: Int
-  oakIntegration: Boolean
-  bottleSize: String!
 }
 
 type UserBottle {
@@ -136,40 +117,15 @@ type UserBottle {
   notes: String
   isFavorite: Boolean!
 }
+```
 
-type Recipe {
-  id: ID!
-  name: String!
-  description: String
-  servings: Int
-  prepTimeMinutes: Int
-  cookTimeMinutes: Int
-  isActive: Boolean!
-  isFavorite: Boolean!   # resolved from userprefs by BFF
-  items: [RecipeItem!]!
-  steps: [RecipeStep!]!
-}
+### Meal planning — `MealPlan`, `MealSlot`, `MealSlotItem`
 
-type RecipeItem {
-  recipe: Recipe!
-  item: Item!
-  quantity: Float!
-  unit: String!
-  notes: String
-  isOptional: Boolean!
-}
-
-type RecipeStep {
-  id: ID!
-  recipe: Recipe!
-  stepNumber: Int!
-  instruction: String!
-}
-
+```graphql
 type MealPlan {
   id: ID!
   name: String!
-  weekStartDate: Date!
+  weekStartDate: String!
   isActive: Boolean!
   slots: [MealSlot!]!
 }
@@ -191,7 +147,11 @@ type MealSlotItem {
   unit: String!
   isFromRecipe: Boolean!
 }
+```
 
+### Grocery — `GroceryList`, `GroceryListItem`
+
+```graphql
 type GroceryList {
   id: ID!
   generatedAt: Time!
@@ -209,165 +169,122 @@ type GroceryListItem {
 }
 ```
 
-## 4. Inputs
+## Queries
+
+| Query | Arguments | Returns | Description |
+|---|---|---|---|
+| `me` | — | `User!` | Current authenticated user |
+| `brand(id)` | `ID!` | `Brand` | Single catalog brand |
+| `brands` | — | `[Brand!]!` | All brands |
+| `category(id)` | `ID!` | `Category` | Single category |
+| `categories` | — | `[Category!]!` | All categories |
+| `item(id)` | `ID!` | `Item` | Single catalog item |
+| `items(page, pageSize)` | `Int, Int` | `ItemPage!` | Paginated catalog items |
+| `recipe(id)` | `ID!` | `Recipe` | Single recipe |
+| `recipes(page, pageSize)` | `Int, Int` | `RecipePage!` | Paginated recipes |
+| `userItems(page, pageSize)` | `Int, Int` | `UserItemPage!` | Current user's pantry |
+| `userBottles(page, pageSize)` | `Int, Int` | `UserBottlePage!` | Current user's cellar |
+| `bottle(id)` | `ID!` | `Bottle` | Single wine bottle |
+| `bottles(page, pageSize)` | `Int, Int` | `BottlePage!` | Paginated wine bottles |
+| `mealPlan(id)` | `ID!` | `MealPlan` | Single meal plan |
+| `mealPlans(page, pageSize)` | `Int, Int` | `MealPlanPage!` | Current user's plans |
+| `groceryList(id)` | `ID!` | `GroceryList` | Single grocery list |
+| `groceryLists(page, pageSize)` | `Int, Int` | `GroceryListPage!` | Current user's lists |
+
+## Mutations
+
+### Inventory
+
+- `createBrand(input: CreateBrandInput!): Brand!`
+- `createCategory(input: CreateCategoryInput!): Category!`
+- `createItem(input: CreateItemInput!): Item!`
+- `updateItem(id: ID!, input: UpdateItemInput!): Item!`
+- `deleteItem(id: ID!): Boolean!`
+
+### Recipes
+
+- `createRecipe(input: CreateRecipeInput!): Recipe!`
+- `updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!`
+- `deleteRecipe(id: ID!): Boolean!`
+- `setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!`
+
+### User pantry and cellar
+
+- `adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!`
+- `setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!`
+- `deleteUserItem(itemId: ID!): Boolean!`
+- `adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!`
+- `setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!`
+
+### Meal planning and grocery
+
+- `createMealPlan(input: CreateMealPlanInput!): MealPlan!`
+- `updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!`
+- `deleteMealPlan(id: ID!): Boolean!`
+- `addMealSlot(input: AddMealSlotInput!): MealSlot!`
+- `removeMealSlot(slotId: ID!): Boolean!`
+- `generateGroceryList(mealPlanId: ID!): GroceryList!`
+- `toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!`
+- `deleteGroceryItem(groceryListItemId: ID!): Boolean!`
+
+## Example operations
+
+### Fetch current user and pantry
 
 ```graphql
-input CreateItemInput {
-  name: String!
-  brandId: ID
-  upc12: String
-  upc14: String
-  categoryId: ID!
-  unit: String!
-}
-
-input UpdateItemInput {
-  name: String
-  brandId: ID
-  upc12: String
-  upc14: String
-  categoryId: ID
-  unit: String
-}
-
-input CreateRecipeInput {
-  name: String!
-  description: String
-  servings: Int
-  prepTimeMinutes: Int
-  cookTimeMinutes: Int
-  items: [RecipeItemInput!]!
-  steps: [RecipeStepInput!]!
-}
-
-input RecipeItemInput {
-  itemId: ID!
-  quantity: Float!
-  unit: String!
-  notes: String
-  isOptional: Boolean
-}
-
-input RecipeStepInput {
-  stepNumber: Int!
-  instruction: String!
-}
-
-input CreateMealPlanInput {
-  name: String!
-  weekStartDate: Date!
-  weekStartDayOfWeek: Int
-}
-
-input AddMealSlotInput {
-  mealPlanId: ID!
-  dayOfWeek: Int!
-  mealType: String!
-  recipeId: ID
-  servings: Int
-  replacementNote: String
+query Dashboard {
+  me {
+    id
+    email
+    displayName
+  }
+  userItems(page: 1, pageSize: 20) {
+    items {
+      id
+      item {
+        name
+        category { name }
+      }
+      currentQty
+      minQty
+    }
+    pageInfo {
+      pageNumber
+      pageSize
+      totalCount
+    }
+  }
 }
 ```
 
-## 5. Queries
+### Create a recipe
 
 ```graphql
-type Query {
-  me: User!
-
-  # Inventory catalog
-  items(page: Int = 1, pageSize: Int = 25, search: String, brand: String, inStock: Boolean, isFavorite: Boolean): ItemPage!
-  item(id: ID!): Item
-
-  # User inventory
-  userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
-  userItem(itemId: ID!): UserItem
-
-  # Wine
-  bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
-  bottle(id: ID!): Bottle
-  userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
-
-  # Recipes
-  recipes(page: Int = 1, pageSize: Int = 25, favoritesOnly: Boolean): RecipePage!
-  recipe(id: ID!): Recipe
-
-  # Meal plans
-  mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
-  mealPlan(id: ID!): MealPlan
-
-  # Grocery
-  groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
-  groceryList(id: ID!): GroceryList
-}
-
-type ItemPage { items: [Item!]!, pageInfo: PageInfo! }
-type UserItemPage { items: [UserItem!]!, pageInfo: PageInfo! }
-type BottlePage { items: [Bottle!]!, pageInfo: PageInfo! }
-type UserBottlePage { items: [UserBottle!]!, pageInfo: PageInfo! }
-type RecipePage { items: [Recipe!]!, pageInfo: PageInfo! }
-type MealPlanPage { items: [MealPlan!]!, pageInfo: PageInfo! }
-type GroceryListPage { items: [GroceryList!]!, pageInfo: PageInfo! }
-```
-
-## 6. Mutations
-
-```graphql
-type Mutation {
-  # Catalog
-  createItem(input: CreateItemInput!): Item!
-  updateItem(id: ID!, input: UpdateItemInput!): Item!
-  deleteItem(id: ID!): Boolean!
-
-  # User inventory
-  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!
-  setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
-  deleteUserItem(itemId: ID!): Boolean!
-
-  # Recipes
-  createRecipe(input: CreateRecipeInput!): Recipe!
-  updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
-  deleteRecipe(id: ID!): Boolean!
-  setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
-
-  # Wine
-  createBottle(input: CreateBottleInput!): Bottle!
-  updateBottle(id: ID!, input: UpdateBottleInput!): Bottle!
-  deleteBottle(id: ID!): Boolean!
-  adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
-  setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
-
-  # Meal planning
-  createMealPlan(input: CreateMealPlanInput!): MealPlan!
-  updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!
-  deleteMealPlan(id: ID!): Boolean!
-  addMealSlot(input: AddMealSlotInput!): MealSlot!
-  removeMealSlot(slotId: ID!): Boolean!
-
-  # Grocery
-  generateGroceryList(mealPlanId: ID!): GroceryList!
-  toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
-  deleteGroceryItem(groceryListItemId: ID!): Boolean!
+mutation CreatePasta {
+  createRecipe(input: {
+    name: "Pasta Marinara",
+    servings: 4,
+    items: [
+      { itemId: "1", quantity: 1, unit: "box", isOptional: false },
+      { itemId: "2", quantity: 24, unit: "oz", isOptional: false }
+    ],
+    steps: [
+      { stepNumber: 1, instruction: "Boil water and cook pasta." },
+      { stepNumber: 2, instruction: "Heat sauce and toss with pasta." }
+    ]
+  }) {
+    id
+    name
+    items { item { name } quantity unit }
+  }
 }
 ```
 
-> `CreateBottleInput` and `UpdateBottleInput` mirror the `Bottle` fields; omitted for brevity.
-
-## 7. Example Queries
-
-### Current user
+### Generate a grocery list from a meal plan
 
 ```graphql
-query {
-  me { id email displayName lastLoginAt }
-}
-```
-
-### Get grocery list with item details
-
-```graphql
-query {
-  groceryList(id: "1") {
+mutation GenerateGroceries($mealPlanId: ID!) {
+  generateGroceryList(mealPlanId: $mealPlanId) {
     id
     generatedAt
     items {
@@ -375,20 +292,27 @@ query {
       item { name unit }
       manualItemName
       quantityNeeded
+      unitOfMeasure
+      source
       isChecked
     }
   }
 }
 ```
 
-### Generate a grocery list
+### Toggle a grocery item
 
 ```graphql
-mutation {
-  generateGroceryList(mealPlanId: "1") {
+mutation Toggle($id: ID!) {
+  toggleGroceryItemChecked(groceryListItemId: $id) {
     id
-    generatedAt
-    items { id item { name } quantityNeeded isChecked }
+    isChecked
   }
 }
 ```
+
+## Notes for clients
+
+- All queries and mutations require a valid `Authorization: Bearer <id_token>` header.
+- Pagination defaults to `page: 1` and `pageSize: 25`.
+- Nullable `pageInfo.totalCount` in the resolver currently reflects the number of records returned for the requested page, not a global database count.
