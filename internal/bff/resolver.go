@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -25,14 +26,15 @@ var schema string
 // allowed to orchestrate across domain modules.
 type Resolver struct {
 	InventoryService *inventory.Service
+	MealPlanService  *mealplan.Service
 	RecipeService    *recipe.Service
 	UserPrefsService *userprefs.Service
 	WineService      *wine.Service
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(inv *inventory.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
-	return &Resolver{InventoryService: inv, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
+func NewResolver(inv *inventory.Service, mp *mealplan.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
+	return &Resolver{InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -274,6 +276,41 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &bottlePageResolver{bottles: bottles, page: page, pageSize: pageSize, total: int32(len(bottles))}, nil
+}
+
+// MealPlan resolves a single meal plan by ID.
+func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	mp, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plan: mp}, nil
+}
+
+// MealPlans resolves the current user's meal plans.
+func (r *Resolver) MealPlans(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*mealPlanPageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	plans, err := r.MealPlanService.ListMealPlans(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, plans: plans, page: page, pageSize: pageSize, total: int32(len(plans))}, nil
 }
 
 // UserBottles resolves the current user's wine cellar.
@@ -670,6 +707,112 @@ func (r *recipePageResolver) Items() []*recipeResolver {
 }
 
 func (r *recipePageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+// mealPlanResolver resolves MealPlan fields.
+type mealPlanResolver struct {
+	mp   *mealplan.Service
+	inv  *inventory.Service
+	rec  *recipe.Service
+	plan mealplan.MealPlan
+}
+
+func (r *mealPlanResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.plan.MealPlanID, 10))
+}
+func (r *mealPlanResolver) Name() string          { return r.plan.Name }
+func (r *mealPlanResolver) WeekStartDate() string { return r.plan.WeekStartDate.Format("2006-01-02") }
+func (r *mealPlanResolver) IsActive() bool        { return r.plan.IsActive }
+func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, error) {
+	slots, err := r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*mealSlotResolver, len(slots))
+	for i := range slots {
+		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, slot: slots[i]}
+	}
+	return out, nil
+}
+
+// mealSlotResolver resolves MealSlot fields.
+type mealSlotResolver struct {
+	mp   *mealplan.Service
+	inv  *inventory.Service
+	rec  *recipe.Service
+	slot mealplan.MealSlot
+}
+
+func (r *mealSlotResolver) ID() graphql.ID           { return graphql.ID(strconv.FormatInt(r.slot.SlotID, 10)) }
+func (r *mealSlotResolver) DayOfWeek() int32         { return int32(r.slot.DayOfWeek) }
+func (r *mealSlotResolver) MealType() string         { return r.slot.MealType }
+func (r *mealSlotResolver) Servings() *int32         { return r.slot.Servings }
+func (r *mealSlotResolver) ReplacementNote() *string { return nilIfEmpty(r.slot.ReplacementNote) }
+func (r *mealSlotResolver) Recipe(ctx context.Context) (*recipeResolver, error) {
+	if r.slot.RecipeID == nil {
+		return nil, nil
+	}
+	rec, err := r.rec.GetRecipeByID(ctx, *r.slot.RecipeID)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.inv, rec: r.rec, recipe: rec}, nil
+}
+func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, error) {
+	items, err := r.mp.ListMealSlotItems(ctx, r.slot.SlotID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*mealSlotItemResolver, len(items))
+	for i := range items {
+		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i]}
+	}
+	return out, nil
+}
+
+// mealSlotItemResolver resolves MealSlotItem fields.
+type mealSlotItemResolver struct {
+	inv  *inventory.Service
+	item mealplan.MealSlotItem
+}
+
+func (r *mealSlotItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.SlotItemID, 10))
+}
+func (r *mealSlotItemResolver) Quantity() float64  { return r.item.Quantity }
+func (r *mealSlotItemResolver) Unit() string       { return r.item.Unit }
+func (r *mealSlotItemResolver) IsFromRecipe() bool { return r.item.IsFromRecipe }
+func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	if r.item.ItemID == nil {
+		return nil, nil
+	}
+	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+type mealPlanPageResolver struct {
+	mp       *mealplan.Service
+	inv      *inventory.Service
+	rec      *recipe.Service
+	plans    []mealplan.MealPlan
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *mealPlanPageResolver) Items() []*mealPlanResolver {
+	out := make([]*mealPlanResolver, len(r.plans))
+	for i := range r.plans {
+		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, plan: r.plans[i]}
+	}
+	return out
+}
+
+func (r *mealPlanPageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 
