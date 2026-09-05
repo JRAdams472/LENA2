@@ -130,6 +130,8 @@ func repoRoot() (string, error) {
 }
 
 func execFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
+	path = filepath.Clean(path)
+	// #nosec G304 -- migration paths are globbed from the repo's migrations/ directory.
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return err
