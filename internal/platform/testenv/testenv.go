@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -21,10 +23,19 @@ import (
 // returns a connection pool and a terminate callback. Callers are responsible
 // for calling the returned cleanup function.
 func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error) {
+	// postgres logs "ready to accept connections" twice: once during initdb
+	// bootstrap and once after the real startup. Wait for the second
+	// occurrence plus the port, otherwise the first connection hits EOF.
 	container, err := postgres.Run(ctx, "postgres:16-alpine",
 		postgres.WithDatabase("lena"),
 		postgres.WithUsername("lena"),
 		postgres.WithPassword("change-me"),
+		testcontainers.WithWaitStrategy(
+			wait.ForAll(
+				wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+				wait.ForListeningPort("5432/tcp"),
+			),
+		),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start postgres container: %w", err)

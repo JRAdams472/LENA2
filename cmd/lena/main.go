@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
@@ -45,6 +47,29 @@ func main() {
 	}
 	defer pool.Close()
 
+	e := newServer(*cfg, pool, log)
+
+	go func() {
+		addr := ":" + cfg.Port
+		log.Info("starting server", "addr", addr)
+		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+			log.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		log.Error("shutdown error", "error", err)
+	}
+}
+
+func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Echo {
 	identitySvc := identity.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
@@ -117,25 +142,7 @@ func main() {
 
 	resolver := bff.NewResolver(grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
-
-	go func() {
-		addr := ":" + cfg.Port
-		log.Info("starting server", "addr", addr)
-		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-			log.Error("server error", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
-	if err := e.Shutdown(shutdownCtx); err != nil {
-		log.Error("shutdown error", "error", err)
-	}
+	return e
 }
 
 // splitAndTrim splits a comma-separated env value into a trimmed, non-empty slice.
