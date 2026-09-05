@@ -1,0 +1,346 @@
+package bff
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/graph-gophers/graphql-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/userprefs"
+)
+
+var recErrBoom = errors.New("boom")
+
+const recTestEmail = "rec@example.com"
+
+func recCtx() context.Context {
+	return testenv.WithUser(context.Background(), 11, recTestEmail)
+}
+
+func recStrPtr(s string) *string { return &s }
+func recInt32Ptr(v int32) *int32 { return &v }
+
+func newRecMocks(t *testing.T) (*mock.MockRecipeService, *mock.MockInventoryService, *mock.MockUserPrefsService) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	return mock.NewMockRecipeService(ctrl), mock.NewMockInventoryService(ctrl), mock.NewMockUserPrefsService(ctrl)
+}
+
+func TestResolver_Recipe_Recipe(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		rec, inv, up := newRecMocks(t)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{
+			RecipeID: 9, Name: "Soup", Description: "Tasty",
+			Servings: 4, PrepTimeMinutes: 10, CookTimeMinutes: 20, IsActive: true,
+		}, nil)
+		rec.EXPECT().ListRecipeItems(gomock.Any(), int64(9)).Return([]recipe.RecipeItem{
+			{RecipeID: 9, ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced"},
+		}, nil)
+		rec.EXPECT().ListRecipeSteps(gomock.Any(), int64(9)).Return([]recipe.RecipeStep{
+			{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"},
+		}, nil)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(3)).Return(inventory.Item{ItemID: 3, Name: "Broth"}, nil)
+		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).
+			Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
+
+		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
+		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.NoError(t, err)
+		ctx := recCtx()
+		assert.Equal(t, graphql.ID("9"), res.ID())
+		assert.Equal(t, "Soup", res.Name())
+		require.NotNil(t, res.Description())
+		assert.Equal(t, "Tasty", *res.Description())
+		require.NotNil(t, res.Servings())
+		assert.Equal(t, int32(4), *res.Servings())
+		require.NotNil(t, res.PrepTimeMinutes())
+		assert.Equal(t, int32(10), *res.PrepTimeMinutes())
+		require.NotNil(t, res.CookTimeMinutes())
+		assert.Equal(t, int32(20), *res.CookTimeMinutes())
+
+		items, err := res.Items(ctx)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		assert.Equal(t, 2.0, items[0].Quantity())
+		assert.Equal(t, "cups", items[0].Unit())
+		require.NotNil(t, items[0].Notes())
+		assert.Equal(t, "diced", *items[0].Notes())
+		assert.False(t, items[0].IsOptional())
+		it, err := items[0].Item(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "Broth", it.Name())
+
+		steps, err := res.Steps(ctx)
+		require.NoError(t, err)
+		require.Len(t, steps, 1)
+		assert.Equal(t, int32(1), steps[0].StepNumber())
+		assert.Equal(t, "Boil", steps[0].Instruction())
+
+		fav, err := res.IsFavorite(ctx)
+		require.NoError(t, err)
+		assert.True(t, fav)
+	})
+
+	t.Run("nullable fields", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
+			Return(recipe.Recipe{RecipeID: 9, Name: "Bare"}, nil)
+		r := &Resolver{RecipeService: rec}
+		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.NoError(t, err)
+		assert.Nil(t, res.Description())
+		assert.Nil(t, res.Servings())
+		assert.Nil(t, res.PrepTimeMinutes())
+		assert.Nil(t, res.CookTimeMinutes())
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.Recipe(context.Background(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "abc"})
+		require.Error(t, err)
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{}, recErrBoom)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorIs(t, err, recErrBoom)
+	})
+}
+
+func TestResolver_Recipe_Recipes(t *testing.T) {
+	type pageArgs = struct {
+		Page     int32
+		PageSize int32
+	}
+
+	t.Run("happy path", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(10), int32(10)).Return([]recipe.Recipe{
+			{RecipeID: 1, Name: "Soup"},
+			{RecipeID: 2, Name: "Salad"},
+		}, nil)
+		r := &Resolver{RecipeService: rec}
+		res, err := r.Recipes(recCtx(), pageArgs{Page: 2, PageSize: 10})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 2)
+		assert.Equal(t, "Soup", res.Items()[0].Name())
+		pi := res.PageInfo()
+		assert.Equal(t, int32(2), pi.PageNumber())
+		assert.Equal(t, int32(10), pi.PageSize())
+		assert.Equal(t, int32(2), pi.TotalCount())
+	})
+
+	t.Run("clamps page and page size", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(100), int32(0)).Return([]recipe.Recipe{}, nil)
+		r := &Resolver{RecipeService: rec}
+		res, err := r.Recipes(recCtx(), pageArgs{Page: -3, PageSize: 500})
+		require.NoError(t, err)
+		pi := res.PageInfo()
+		assert.Equal(t, int32(1), pi.PageNumber())
+		assert.Equal(t, int32(100), pi.PageSize())
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.Recipes(context.Background(), pageArgs{Page: 1, PageSize: 10})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(10), int32(0)).Return(nil, recErrBoom)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.Recipes(recCtx(), pageArgs{Page: 1, PageSize: 10})
+		require.ErrorIs(t, err, recErrBoom)
+	})
+}
+
+func TestResolver_Recipe_CreateRecipe(t *testing.T) {
+	t.Run("happy path with items and steps", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().CreateRecipe(gomock.Any(), recipe.Recipe{
+			Name: "Soup", Description: "Tasty", Servings: 4,
+			PrepTimeMinutes: 10, CookTimeMinutes: 20, IsActive: true,
+		}, recTestEmail).Return(recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: 4, IsActive: true}, nil)
+		rec.EXPECT().AddRecipeItem(gomock.Any(), recipe.RecipeItem{
+			RecipeID: 9, ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced", IsOptional: true,
+		}).Return(nil)
+		rec.EXPECT().AddRecipeStep(gomock.Any(), int64(9), int32(1), "Boil", recTestEmail).
+			Return(recipe.RecipeStep{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"}, nil)
+
+		r := &Resolver{RecipeService: rec}
+		res, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
+			Input: createRecipeInput{
+				Name:            "Soup",
+				Description:     recStrPtr("Tasty"),
+				Servings:        recInt32Ptr(4),
+				PrepTimeMinutes: recInt32Ptr(10),
+				CookTimeMinutes: recInt32Ptr(20),
+				Items: []recipeItemInput{
+					{ItemID: "3", Quantity: 2, Unit: "cups", Notes: recStrPtr("diced"), IsOptional: recBoolPtr(true)},
+				},
+				Steps: []recipeStepInput{
+					{StepNumber: 1, Instruction: "Boil"},
+				},
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("9"), res.ID())
+		assert.Equal(t, "Soup", res.Name())
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.CreateRecipe(context.Background(), struct{ Input createRecipeInput }{})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid item id", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().CreateRecipe(gomock.Any(), gomock.Any(), recTestEmail).
+			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", IsActive: true}, nil)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
+			Input: createRecipeInput{
+				Name:  "Soup",
+				Items: []recipeItemInput{{ItemID: "abc"}},
+			},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().CreateRecipe(gomock.Any(), gomock.Any(), recTestEmail).Return(recipe.Recipe{}, recErrBoom)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
+			Input: createRecipeInput{Name: "Soup"},
+		})
+		require.ErrorIs(t, err, recErrBoom)
+	})
+}
+
+func recBoolPtr(b bool) *bool { return &b }
+
+func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
+	type args = struct {
+		ID    graphql.ID
+		Input createRecipeInput
+	}
+
+	t.Run("happy path replaces items and steps", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
+			Return(recipe.Recipe{RecipeID: 9, Name: "Old", Description: "D", Servings: 2, IsActive: true}, nil)
+		rec.EXPECT().UpdateRecipe(gomock.Any(), int64(9), recipe.Recipe{
+			Name: "New", Description: "D", Servings: 6, IsActive: true,
+		}, recTestEmail).Return(nil)
+		rec.EXPECT().ListRecipeItems(gomock.Any(), int64(9)).Return([]recipe.RecipeItem{
+			{RecipeID: 9, ItemID: 1},
+		}, nil)
+		rec.EXPECT().RemoveRecipeItem(gomock.Any(), int64(9), int64(1)).Return(nil)
+		rec.EXPECT().AddRecipeItem(gomock.Any(), recipe.RecipeItem{
+			RecipeID: 9, ItemID: 3, Quantity: 1, Unit: "cup",
+		}).Return(nil)
+		rec.EXPECT().ListRecipeSteps(gomock.Any(), int64(9)).Return([]recipe.RecipeStep{
+			{StepID: 7, RecipeID: 9, StepNumber: 1},
+		}, nil)
+		rec.EXPECT().DeleteRecipeStep(gomock.Any(), int64(7)).Return(nil)
+		rec.EXPECT().AddRecipeStep(gomock.Any(), int64(9), int32(1), "Stir", recTestEmail).
+			Return(recipe.RecipeStep{StepID: 8, RecipeID: 9, StepNumber: 1, Instruction: "Stir"}, nil)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
+			Return(recipe.Recipe{RecipeID: 9, Name: "New", Servings: 6, IsActive: true}, nil)
+
+		r := &Resolver{RecipeService: rec}
+		res, err := r.UpdateRecipe(recCtx(), args{
+			ID: "9",
+			Input: createRecipeInput{
+				Name:     "New",
+				Servings: recInt32Ptr(6),
+				Items:    []recipeItemInput{{ItemID: "3", Quantity: 1, Unit: "cup"}},
+				Steps:    []recipeStepInput{{StepNumber: 1, Instruction: "Stir"}},
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "New", res.Name())
+		require.NotNil(t, res.Servings())
+		assert.Equal(t, int32(6), *res.Servings())
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.UpdateRecipe(context.Background(), args{ID: "9"})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.UpdateRecipe(recCtx(), args{ID: "abc"})
+		require.Error(t, err)
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{}, recErrBoom)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.UpdateRecipe(recCtx(), args{ID: "9"})
+		require.ErrorIs(t, err, recErrBoom)
+	})
+}
+
+func TestResolver_Recipe_DeleteRecipe(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().DeleteRecipe(gomock.Any(), int64(9)).Return(nil)
+		r := &Resolver{RecipeService: rec}
+		ok, err := r.DeleteRecipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.DeleteRecipe(context.Background(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.DeleteRecipe(recCtx(), struct{ ID graphql.ID }{ID: "abc"})
+		require.Error(t, err)
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().DeleteRecipe(gomock.Any(), int64(9)).Return(recErrBoom)
+		r := &Resolver{RecipeService: rec}
+		ok, err := r.DeleteRecipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorIs(t, err, recErrBoom)
+		assert.False(t, ok)
+	})
+}
