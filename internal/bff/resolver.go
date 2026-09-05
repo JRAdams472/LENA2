@@ -1665,7 +1665,7 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 		TanninLevel:    tanninLevel,
 		Body:           body,
 		Sweetness:      sweetness,
-		OakIntegration: args.Input.OakIntegration,
+		OakIntegration: boolValue(args.Input.OakIntegration),
 		BottleSize:     args.Input.BottleSize,
 	}, u.Email)
 	if err != nil {
@@ -2481,7 +2481,7 @@ type countryResolver struct{ c wine.Country }
 
 func (r *countryResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.c.CountryID, 10)) }
 func (r *countryResolver) Name() string         { return r.c.Name }
-func (r *countryResolver) IsoCode() string      { return r.c.IsoCode }
+func (r *countryResolver) IsoCode() *string     { return nilIfEmpty(r.c.IsoCode) }
 func (r *countryResolver) Description() *string { return nilIfEmpty(r.c.Description) }
 
 // regionResolver resolves a wine region.
@@ -2719,7 +2719,7 @@ type createBottleInput struct {
 	TanninLevel    *int32
 	Body           *int32
 	Sweetness      *int32
-	OakIntegration bool
+	OakIntegration *bool
 	BottleSize     string
 }
 
@@ -3340,6 +3340,6 @@ func NewGraphQLHandler(r *Resolver) echo.HandlerFunc {
 			return err
 		}
 		resp := parsed.Exec(c.Request().Context(), req.Query, req.OperationName, req.Variables)
-		return c.JSONBlob(http.StatusOK, resp.Data)
+		return c.JSON(http.StatusOK, resp)
 	}
 }

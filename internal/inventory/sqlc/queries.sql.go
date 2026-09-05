@@ -783,9 +783,8 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 
 const updateNutrientType = `-- name: UpdateNutrientType :one
 UPDATE inventory.nutrient_type
-SET name       = $2,
-    unit       = $3,
-    updated_at = now()
+SET name = $2,
+    unit = $3
 WHERE nutrient_id = $1
 RETURNING nutrient_id, name, unit, created_at
 `
