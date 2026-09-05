@@ -46,7 +46,7 @@ func TestIntegration(t *testing.T) {
 	t.Run("health returns 200", func(t *testing.T) {
 		resp, err := http.Get(srv.URL + "/health")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestIntegration(t *testing.T) {
 	t.Run("ready returns 200", func(t *testing.T) {
 		resp, err := http.Get(srv.URL + "/ready")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
@@ -64,7 +64,7 @@ func TestIntegration(t *testing.T) {
 		req := graphQLRequest(t, srv.URL, "", `{ me { email } }`, nil)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
@@ -73,7 +73,7 @@ func TestIntegration(t *testing.T) {
 		req := graphQLRequest(t, srv.URL, token, `{ me { email } }`, nil)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var gr graphQLResponse

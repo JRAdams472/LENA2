@@ -658,7 +658,7 @@ func doGraphQL(t *testing.T, srv *httptest.Server, token, query string, vars map
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var gr graphqlResponse
 	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
