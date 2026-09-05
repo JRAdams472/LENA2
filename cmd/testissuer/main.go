@@ -99,7 +99,15 @@ func main() {
 	})
 
 	log.Printf("testissuer listening on :%s (issuer=%s, audience=%s)", port, issuer, audience)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
