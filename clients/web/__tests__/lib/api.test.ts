@@ -48,6 +48,16 @@ describe("api client", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     setAuthTokenGetter(() => null);
+    // Default response for the userItems prefs fetch that item-list calls
+    // issue in parallel with the items query.
+    mockFetch.mockResolvedValue(
+      mockGraphQL({
+        userItems: {
+          items: [],
+          pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 },
+        },
+      })
+    );
   });
 
   it("getItems calls the GraphQL endpoint and returns data", async () => {

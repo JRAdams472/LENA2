@@ -23,11 +23,11 @@ interface ManualForm {
   unitOfMeasure: string;
 }
 
-const SOURCE_ORDER = ["MealPlan", "Depleted", "Manual"];
+const SOURCE_ORDER = ["recipe", "pantry", "manual"];
 const SOURCE_LABELS: Record<string, string> = {
-  MealPlan: "From Menu",
-  Depleted: "Depleted Stock",
-  Manual: "Manual",
+  recipe: "From Menu",
+  pantry: "Depleted Stock",
+  manual: "Manual",
 };
 
 export function ItemRow({
@@ -155,7 +155,7 @@ export default function GroceryListDetailPage({
   const list = listQuery.data;
   const grouped = (list.groceryListItems ?? []).reduce(
     (acc, item) => {
-      const source = item.source || "Manual";
+      const source = item.source || "manual";
       if (!acc[source]) acc[source] = [];
       acc[source].push(item);
       return acc;

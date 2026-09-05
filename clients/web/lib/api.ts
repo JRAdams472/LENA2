@@ -42,7 +42,12 @@ export class ApiError extends Error {
   }
 }
 
-let authTokenGetter: (() => string | null) | null = null;
+// Default getter reads the persisted token so early requests (fired before
+// AuthProvider's effect registers the real getter) still authenticate.
+let authTokenGetter: (() => string | null) | null = () =>
+  typeof window === "undefined"
+    ? null
+    : window.localStorage.getItem("lena_id_token");
 let onUnauthorized: (() => void) | null = null;
 
 export function setAuthTokenGetter(getter: () => string | null) {
@@ -182,6 +187,22 @@ interface GqlItem {
 
 interface GqlItemPage {
   items: GqlItem[];
+  pageInfo: GqlPageInfo;
+}
+
+interface GqlUserItem {
+  id: string;
+  item: GqlItem;
+  currentQty: number;
+  minQty: number | null;
+  purchaseAt: string | null;
+  expiresAt: string | null;
+  notes: string | null;
+  isFavorite: boolean;
+}
+
+interface GqlUserItemPage {
+  items: GqlUserItem[];
   pageInfo: GqlPageInfo;
 }
 
@@ -436,7 +457,7 @@ function toFoodFlavor(foodId: number, f: GqlFoodFlavor): FoodFlavor {
   };
 }
 
-function toItem(i: GqlItem): Item {
+function toItem(i: GqlItem, ui?: GqlUserItem): Item {
   const itemID = num(i.id);
   return {
     ...audit(),
@@ -447,12 +468,12 @@ function toItem(i: GqlItem): Item {
     upc14: i.upc14,
     categoryID: num(i.category?.id),
     unit: i.unit,
-    currentQuantity: 0,
-    minQuantity: null,
-    purchaseDate: null,
-    expiryDate: null,
-    notes: null,
-    isFavorite: false,
+    currentQuantity: ui?.currentQty ?? 0,
+    minQuantity: ui?.minQty ?? null,
+    purchaseDate: ui?.purchaseAt ?? null,
+    expiryDate: ui?.expiresAt ?? null,
+    notes: ui?.notes ?? null,
+    isFavorite: ui?.isFavorite ?? false,
     category: i.category
       ? {
           ...audit(),
@@ -804,6 +825,36 @@ async function fetchAllItems(): Promise<GqlItem[]> {
   return out;
 }
 
+async function fetchAllUserItems(): Promise<GqlUserItem[]> {
+  const pageSize = 200;
+  let page = 1;
+  const out: GqlUserItem[] = [];
+  for (;;) {
+    const data = await request<{ userItems: GqlUserItemPage }>(
+      `query ($page: Int, $pageSize: Int) {
+        userItems(page: $page, pageSize: $pageSize) {
+          items { id currentQty minQty purchaseAt expiresAt notes isFavorite item { id } }
+          pageInfo { pageNumber pageSize totalCount }
+        }
+      }`,
+      { page, pageSize }
+    );
+    out.push(...data.userItems.items);
+    if (out.length >= data.userItems.pageInfo.totalCount || data.userItems.items.length === 0) break;
+    page += 1;
+  }
+  return out;
+}
+
+async function fetchItemsWithPrefs(): Promise<Item[]> {
+  const [items, userItems] = await Promise.all([
+    fetchAllItems(),
+    fetchAllUserItems(),
+  ]);
+  const prefs = new Map(userItems.map((ui) => [num(ui.item.id), ui]));
+  return items.map((i) => toItem(i, prefs.get(num(i.id))));
+}
+
 async function fetchAllBottles(): Promise<GqlBottle[]> {
   const pageSize = 200;
   let page = 1;
@@ -851,7 +902,7 @@ export const api = {
   },
 
   // Items
-  getItems: async (): Promise<Item[]> => (await fetchAllItems()).map(toItem),
+  getItems: async (): Promise<Item[]> => fetchItemsWithPrefs(),
 
   getItemsPaged: async (
     pageNumber: number,
@@ -861,24 +912,23 @@ export const api = {
     inStock?: boolean,
     isFavorite?: boolean
   ): Promise<PagedResult<Item>> => {
-    void inStock;
-    void isFavorite;
-    let all = await fetchAllItems();
+    let all = await fetchItemsWithPrefs();
     const s = (search ?? "").trim().toLowerCase();
     if (s) all = all.filter((i) => i.name.toLowerCase().includes(s));
     const b = (brand ?? "").trim().toLowerCase();
-    if (b) all = all.filter((i) => (i.brand?.name ?? "").toLowerCase() === b);
-    return pagedSlice(all.map(toItem), pageNumber, pageSize);
+    if (b) all = all.filter((i) => (i.brand ?? "").toLowerCase() === b);
+    if (inStock) all = all.filter((i) => i.currentQuantity > 0);
+    if (isFavorite) all = all.filter((i) => i.isFavorite);
+    return pagedSlice(all, pageNumber, pageSize);
   },
 
   searchItems: async (search: string, brand?: string, limit: number = 50): Promise<Item[]> => {
     const s = search.trim().toLowerCase();
     const b = (brand ?? "").trim().toLowerCase();
-    return (await fetchAllItems())
+    return (await fetchItemsWithPrefs())
       .filter((i) => i.name.toLowerCase().includes(s))
-      .filter((i) => !b || (i.brand?.name ?? "").toLowerCase() === b)
-      .slice(0, limit)
-      .map(toItem);
+      .filter((i) => !b || (i.brand ?? "").toLowerCase() === b)
+      .slice(0, limit);
   },
 
   getBrands: async (search?: string): Promise<string[]> => {
