@@ -17,7 +17,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
-var recErrBoom = errors.New("boom")
+var errRecBoom = errors.New("boom")
 
 const recTestEmail = "rec@example.com"
 
@@ -118,10 +118,10 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{}, recErrBoom)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{}, errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
-		require.ErrorIs(t, err, recErrBoom)
+		require.ErrorIs(t, err, errRecBoom)
 	})
 }
 
@@ -168,10 +168,10 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(10), int32(0)).Return(nil, recErrBoom)
+		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(10), int32(0)).Return(nil, errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.Recipes(recCtx(), pageArgs{Page: 1, PageSize: 10})
-		require.ErrorIs(t, err, recErrBoom)
+		require.ErrorIs(t, err, errRecBoom)
 	})
 }
 
@@ -232,12 +232,12 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().CreateRecipe(gomock.Any(), gomock.Any(), recTestEmail).Return(recipe.Recipe{}, recErrBoom)
+		rec.EXPECT().CreateRecipe(gomock.Any(), gomock.Any(), recTestEmail).Return(recipe.Recipe{}, errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
 			Input: createRecipeInput{Name: "Soup"},
 		})
-		require.ErrorIs(t, err, recErrBoom)
+		require.ErrorIs(t, err, errRecBoom)
 	})
 }
 
@@ -304,10 +304,10 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{}, recErrBoom)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{}, errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.UpdateRecipe(recCtx(), args{ID: "9"})
-		require.ErrorIs(t, err, recErrBoom)
+		require.ErrorIs(t, err, errRecBoom)
 	})
 }
 
@@ -337,10 +337,10 @@ func TestResolver_Recipe_DeleteRecipe(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().DeleteRecipe(gomock.Any(), int64(9)).Return(recErrBoom)
+		rec.EXPECT().DeleteRecipe(gomock.Any(), int64(9)).Return(errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		ok, err := r.DeleteRecipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
-		require.ErrorIs(t, err, recErrBoom)
+		require.ErrorIs(t, err, errRecBoom)
 		assert.False(t, ok)
 	})
 }

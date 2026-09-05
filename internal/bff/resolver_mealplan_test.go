@@ -18,7 +18,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
-var mealPlanErrBoom = errors.New("mealplan boom")
+var errMealPlanBoom = errors.New("mealplan boom")
 
 const (
 	mealPlanUserID = int64(7)
@@ -31,10 +31,9 @@ func mealPlanCtx() context.Context {
 	return testenv.WithUser(context.Background(), mealPlanUserID, mealPlanEmail)
 }
 
-func mealPlanPtrInt64(v int64) *int64    { return &v }
-func mealPlanPtrInt32(v int32) *int32    { return &v }
-func mealPlanPtrString(v string) *string { return &v }
-func mealPlanPtrBool(v bool) *bool       { return &v }
+func mealPlanPtrInt64(v int64) *int64 { return &v }
+func mealPlanPtrInt32(v int32) *int32 { return &v }
+func mealPlanPtrBool(v bool) *bool    { return &v }
 
 func TestResolver_MealPlan_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -462,7 +461,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "MealPlan",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{}, mealPlanErrBoom)
+				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{}, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.MealPlan(ctx, struct{ ID graphql.ID }{ID: "10"})
@@ -471,7 +470,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "MealPlans",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, int32(10), int32(0)).Return(nil, mealPlanErrBoom)
+				mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, int32(10), int32(0)).Return(nil, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.MealPlans(ctx, struct{ Page, PageSize int32 }{Page: 1, PageSize: 10})
@@ -480,7 +479,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "CreateMealPlan",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().CreateMealPlan(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealPlan{}, mealPlanErrBoom)
+				mp.EXPECT().CreateMealPlan(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealPlan{}, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.CreateMealPlan(ctx, struct{ Input createMealPlanInput }{
@@ -491,7 +490,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "UpdateMealPlan",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{}, mealPlanErrBoom)
+				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{}, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.UpdateMealPlan(ctx, struct {
@@ -503,7 +502,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "DeleteMealPlan",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().DeleteMealPlan(gomock.Any(), int64(10), mealPlanUserID).Return(mealPlanErrBoom)
+				mp.EXPECT().DeleteMealPlan(gomock.Any(), int64(10), mealPlanUserID).Return(errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.DeleteMealPlan(ctx, struct{ ID graphql.ID }{ID: "10"})
@@ -513,7 +512,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "AddMealSlot",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().AddMealSlot(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealSlot{}, mealPlanErrBoom)
+				mp.EXPECT().AddMealSlot(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealSlot{}, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.AddMealSlot(ctx, struct{ Input addMealSlotInput }{
@@ -524,7 +523,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "RemoveMealSlot",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().DeleteMealSlot(gomock.Any(), int64(100)).Return(mealPlanErrBoom)
+				mp.EXPECT().DeleteMealSlot(gomock.Any(), int64(100)).Return(errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.RemoveMealSlot(ctx, struct{ SlotID graphql.ID }{SlotID: "100"})
@@ -534,7 +533,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "AddMealSlotItem",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().AddMealSlotItem(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealSlotItem{}, mealPlanErrBoom)
+				mp.EXPECT().AddMealSlotItem(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealSlotItem{}, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.AddMealSlotItem(ctx, struct{ Input addMealSlotItemInput }{
@@ -545,7 +544,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "RemoveMealSlotItem",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().DeleteMealSlotItem(gomock.Any(), int64(1000)).Return(mealPlanErrBoom)
+				mp.EXPECT().DeleteMealSlotItem(gomock.Any(), int64(1000)).Return(errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.RemoveMealSlotItem(ctx, struct{ SlotItemID graphql.ID }{SlotItemID: "1000"})
@@ -555,7 +554,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "Nutrition_GetMealPlanByID",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{}, mealPlanErrBoom)
+				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{}, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.Nutrition(ctx, struct{ MealPlanID graphql.ID }{MealPlanID: "10"})
@@ -565,7 +564,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 			name: "Nutrition_ListMealSlots",
 			setup: func(mp *mock.MockMealPlanService) {
 				mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{MealPlanID: 10}, nil)
-				mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), int64(10)).Return(nil, mealPlanErrBoom)
+				mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), int64(10)).Return(nil, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.Nutrition(ctx, struct{ MealPlanID graphql.ID }{MealPlanID: "10"})
@@ -588,7 +587,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 			} else {
 				assert.Nil(t, res)
 			}
-			assert.ErrorIs(t, err, mealPlanErrBoom)
+			assert.ErrorIs(t, err, errMealPlanBoom)
 		})
 	}
 }

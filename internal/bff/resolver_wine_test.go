@@ -15,7 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
-var wineErrBoom = errors.New("wine boom")
+var errWineBoom = errors.New("wine boom")
 
 const (
 	wineUserID = int64(11)
@@ -30,7 +30,6 @@ func newWineTestResolver(m *mock.MockWineService) *Resolver {
 	return &Resolver{WineService: m}
 }
 
-func winePtrInt64(v int64) *int64       { return &v }
 func winePtrInt32(v int32) *int32       { return &v }
 func winePtrFloat64(v float64) *float64 { return &v }
 func winePtrString(v string) *string    { return &v }
@@ -971,14 +970,14 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 		{
 			name: "Types",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().ListTypes(gomock.Any()).Return(nil, wineErrBoom)
+				m.EXPECT().ListTypes(gomock.Any()).Return(nil, errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) { return r.Types(ctx) },
 		},
 		{
 			name: "Bottle",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(wine.Bottle{}, wineErrBoom)
+				m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(wine.Bottle{}, errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.Bottle(ctx, struct{ ID graphql.ID }{ID: "101"})
@@ -987,7 +986,7 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 		{
 			name: "CreateBottle",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().CreateBottle(gomock.Any(), gomock.Any(), wineEmail).Return(wine.Bottle{}, wineErrBoom)
+				m.EXPECT().CreateBottle(gomock.Any(), gomock.Any(), wineEmail).Return(wine.Bottle{}, errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.CreateBottle(ctx, struct{ Input createBottleInput }{
@@ -998,7 +997,7 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 		{
 			name: "UpdateType",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().GetTypeByID(gomock.Any(), int64(1)).Return(wine.Type{}, wineErrBoom)
+				m.EXPECT().GetTypeByID(gomock.Any(), int64(1)).Return(wine.Type{}, errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				name := "Red"
@@ -1011,7 +1010,7 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 		{
 			name: "DeleteBottle",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().DeleteBottle(gomock.Any(), int64(101)).Return(wineErrBoom)
+				m.EXPECT().DeleteBottle(gomock.Any(), int64(101)).Return(errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.DeleteBottle(ctx, struct{ ID graphql.ID }{ID: "101"})
@@ -1021,7 +1020,7 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 		{
 			name: "AddBottleGrapeVariety",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().AddBottleGrapeVariety(gomock.Any(), int64(101), int64(201), gomock.Any(), wineEmail).Return(wine.BottleGrapeVariety{}, wineErrBoom)
+				m.EXPECT().AddBottleGrapeVariety(gomock.Any(), int64(101), int64(201), gomock.Any(), wineEmail).Return(wine.BottleGrapeVariety{}, errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.AddBottleGrapeVariety(ctx, struct{ Input addBottleGrapeVarietyInput }{
@@ -1032,7 +1031,7 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 		{
 			name: "RemoveBottleFlavorProfile",
 			setup: func(m *mock.MockWineService) {
-				m.EXPECT().RemoveBottleFlavorProfile(gomock.Any(), int64(101), int64(301)).Return(wineErrBoom)
+				m.EXPECT().RemoveBottleFlavorProfile(gomock.Any(), int64(101), int64(301)).Return(errWineBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.RemoveBottleFlavorProfile(ctx, struct {
@@ -1057,7 +1056,7 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 			} else {
 				assert.Nil(t, res)
 			}
-			assert.ErrorIs(t, err, wineErrBoom)
+			assert.ErrorIs(t, err, errWineBoom)
 		})
 	}
 }

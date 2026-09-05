@@ -15,7 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
-var invErrBoom = errors.New("boom")
+var errInvBoom = errors.New("boom")
 
 const invTestEmail = "inv@example.com"
 
@@ -56,10 +56,10 @@ func TestResolver_Inventory_Brand(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().GetBrandByID(gomock.Any(), int64(3)).Return(inventory.Brand{}, invErrBoom)
+		inv.EXPECT().GetBrandByID(gomock.Any(), int64(3)).Return(inventory.Brand{}, errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.Brand(invCtx(), struct{ ID graphql.ID }{ID: "3"})
-		require.ErrorIs(t, err, invErrBoom)
+		require.ErrorIs(t, err, errInvBoom)
 	})
 }
 
@@ -87,10 +87,10 @@ func TestResolver_Inventory_Brands(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListBrands(gomock.Any()).Return(nil, invErrBoom)
+		inv.EXPECT().ListBrands(gomock.Any()).Return(nil, errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.Brands(invCtx())
-		require.ErrorIs(t, err, invErrBoom)
+		require.ErrorIs(t, err, errInvBoom)
 	})
 }
 
@@ -294,10 +294,10 @@ func TestResolver_Inventory_Items(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListItems(gomock.Any(), int32(10), int32(0)).Return(nil, invErrBoom)
+		inv.EXPECT().ListItems(gomock.Any(), int32(10), int32(0)).Return(nil, errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 10})
-		require.ErrorIs(t, err, invErrBoom)
+		require.ErrorIs(t, err, errInvBoom)
 	})
 }
 
@@ -602,10 +602,10 @@ func TestResolver_Inventory_FoodNutrientMutations(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().DeleteFoodNutrient(gomock.Any(), int64(5), int64(2)).Return(invErrBoom)
+		inv.EXPECT().DeleteFoodNutrient(gomock.Any(), int64(5), int64(2)).Return(errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		ok, err := r.RemoveFoodNutrient(invCtx(), removeArgs{ItemID: "5", NutrientID: "2"})
-		require.ErrorIs(t, err, invErrBoom)
+		require.ErrorIs(t, err, errInvBoom)
 		assert.False(t, ok)
 	})
 

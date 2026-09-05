@@ -16,7 +16,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
-var upErrBoom = errors.New("userprefs boom")
+var errUpBoom = errors.New("userprefs boom")
 
 const (
 	upUserID = int64(9)
@@ -53,7 +53,7 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 	assert.Equal(t, &minQty, items[0].MinQty())
 	assert.Equal(t, "restock", *items[0].Notes())
 	assert.True(t, items[0].IsFavorite())
-	assert.True(t, items[0].PurchaseAt().Time.Equal(purchaseAt))
+	assert.True(t, items[0].PurchaseAt().Equal(purchaseAt))
 	assert.Nil(t, items[0].ExpiresAt())
 
 	assert.Equal(t, graphql.ID("6"), items[1].ID())
@@ -82,14 +82,14 @@ func TestResolver_UserItems_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, upErrBoom)
+	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
 
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32
 		PageSize int32
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, upErrBoom)
+	assert.ErrorIs(t, err, errUpBoom)
 }
 
 func TestResolver_UserBottles_Happy(t *testing.T) {
@@ -144,14 +144,14 @@ func TestResolver_UserBottles_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, upErrBoom)
+	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
 
 	res, err := r.UserBottles(upCtx(), struct {
 		Page     int32
 		PageSize int32
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, upErrBoom)
+	assert.ErrorIs(t, err, errUpBoom)
 }
 
 func TestResolver_AdjustUserItem_Happy(t *testing.T) {
@@ -225,7 +225,7 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 	r := &Resolver{UserPrefsService: up}
 
 	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).Return(nil, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserItem{}, upErrBoom)
+	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserItem{}, errUpBoom)
 
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
@@ -233,7 +233,7 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 		PurchaseAt *graphql.Time
 	}{ItemID: "42", Quantity: 1})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, upErrBoom)
+	assert.ErrorIs(t, err, errUpBoom)
 }
 
 func TestResolver_SetItemFavorite_Happy(t *testing.T) {
@@ -312,11 +312,11 @@ func TestResolver_DeleteUserItem_ServiceError(t *testing.T) {
 
 	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).
 		Return([]userprefs.UserItem{{UserItemID: 5, UserID: upUserID, ItemID: 42}}, nil)
-	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(upErrBoom)
+	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(errUpBoom)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "42"})
 	assert.False(t, ok)
-	assert.ErrorIs(t, err, upErrBoom)
+	assert.ErrorIs(t, err, errUpBoom)
 }
 
 func TestResolver_AdjustUserBottle_Happy(t *testing.T) {
@@ -368,14 +368,14 @@ func TestResolver_AdjustUserBottle_ServiceError(t *testing.T) {
 	r := &Resolver{UserPrefsService: up}
 
 	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(100_000), int32(0)).Return(nil, nil)
-	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserBottle{}, upErrBoom)
+	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserBottle{}, errUpBoom)
 
 	res, err := r.AdjustUserBottle(upCtx(), struct {
 		BottleID graphql.ID
 		Quantity int32
 	}{BottleID: "88", Quantity: 1})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, upErrBoom)
+	assert.ErrorIs(t, err, errUpBoom)
 }
 
 func TestResolver_SetBottleFavorite_Happy(t *testing.T) {
@@ -455,12 +455,12 @@ func TestResolver_SetRecipeFavorite_ServiceError(t *testing.T) {
 	r := &Resolver{UserPrefsService: up}
 
 	up.EXPECT().SetRecipeFavorite(gomock.Any(), upUserID, int64(77), false, upEmail).
-		Return(userprefs.RecipeFavorite{}, upErrBoom)
+		Return(userprefs.RecipeFavorite{}, errUpBoom)
 
 	ok, err := r.SetRecipeFavorite(upCtx(), struct {
 		RecipeID   graphql.ID
 		IsFavorite bool
 	}{RecipeID: "77", IsFavorite: false})
 	assert.False(t, ok)
-	assert.ErrorIs(t, err, upErrBoom)
+	assert.ErrorIs(t, err, errUpBoom)
 }

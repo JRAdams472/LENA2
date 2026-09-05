@@ -17,7 +17,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
-var grocErrBoom = errors.New("grocery boom")
+var errGrocBoom = errors.New("grocery boom")
 
 const (
 	grocUserID = int64(7)
@@ -41,7 +41,7 @@ func TestResolver_GroceryList_Happy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Equal(t, graphql.ID("11"), res.ID())
-	assert.True(t, res.GeneratedAt().Time.Equal(genAt))
+	assert.True(t, res.GeneratedAt().Equal(genAt))
 }
 
 func TestResolver_GroceryList_Unauthorized(t *testing.T) {
@@ -63,11 +63,11 @@ func TestResolver_GroceryList_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).Return(grocery.GroceryList{}, grocErrBoom)
+	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).Return(grocery.GroceryList{}, errGrocBoom)
 
 	res, err := r.GroceryList(grocCtx(), struct{ ID graphql.ID }{ID: "11"})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_GroceryLists_Happy(t *testing.T) {
@@ -132,14 +132,14 @@ func TestResolver_GroceryLists_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(0)).Return(nil, grocErrBoom)
+	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(0)).Return(nil, errGrocBoom)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32
 		PageSize int32
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
@@ -192,11 +192,11 @@ func TestResolver_GroceryList_ItemsSubResolverError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 
 	lr := &groceryListResolver{g: g, list: grocery.GroceryList{GroceryListID: 11}}
-	g.EXPECT().ListGroceryListItems(gomock.Any(), int64(11)).Return(nil, grocErrBoom)
+	g.EXPECT().ListGroceryListItems(gomock.Any(), int64(11)).Return(nil, errGrocBoom)
 
 	items, err := lr.Items(context.Background())
 	assert.Nil(t, items)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
@@ -225,11 +225,11 @@ func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().Generate(gomock.Any(), grocUserID, int64(55), grocEmail).Return(grocery.GroceryList{}, grocErrBoom)
+	g.EXPECT().Generate(gomock.Any(), grocUserID, int64(55), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_AddGroceryItem_Happy(t *testing.T) {
@@ -280,13 +280,13 @@ func TestResolver_AddGroceryItem_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().AddGroceryListItem(gomock.Any(), gomock.Any(), grocEmail).Return(grocery.GroceryListItem{}, grocErrBoom)
+	g.EXPECT().AddGroceryListItem(gomock.Any(), gomock.Any(), grocEmail).Return(grocery.GroceryListItem{}, errGrocBoom)
 
 	res, err := r.AddGroceryItem(grocCtx(), struct{ Input addGroceryItemInput }{
 		Input: addGroceryItemInput{GroceryListID: "11", Quantity: 1},
 	})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_ToggleGroceryItemChecked_Happy(t *testing.T) {
@@ -324,11 +324,11 @@ func TestResolver_ToggleGroceryItemChecked_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100)).Return(grocery.GroceryListItem{}, grocErrBoom)
+	g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100)).Return(grocery.GroceryListItem{}, errGrocBoom)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_ToggleGroceryItemChecked_UpdateError(t *testing.T) {
@@ -340,11 +340,11 @@ func TestResolver_ToggleGroceryItemChecked_UpdateError(t *testing.T) {
 	flipped := before
 	flipped.IsChecked = false
 	g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100)).Return(before, nil)
-	g.EXPECT().UpdateGroceryListItem(gomock.Any(), int64(100), gomock.Eq(flipped), grocEmail).Return(grocErrBoom)
+	g.EXPECT().UpdateGroceryListItem(gomock.Any(), int64(100), gomock.Eq(flipped), grocEmail).Return(errGrocBoom)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_DeleteGroceryItem_Happy(t *testing.T) {
@@ -378,11 +378,11 @@ func TestResolver_DeleteGroceryItem_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().DeleteGroceryListItem(gomock.Any(), int64(100)).Return(grocErrBoom)
+	g.EXPECT().DeleteGroceryListItem(gomock.Any(), int64(100)).Return(errGrocBoom)
 
 	ok, err := r.DeleteGroceryItem(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	assert.False(t, ok)
-	assert.ErrorIs(t, err, grocErrBoom)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func ptrToGrocInt64(v int64) *int64 { return &v }

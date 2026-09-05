@@ -115,7 +115,7 @@ func TestMisc_TimeToGraphQL(t *testing.T) {
 	now := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
 	got := timeToGraphQL(&now)
 	require.NotNil(t, got)
-	assert.True(t, got.Time.Equal(now))
+	assert.True(t, got.Equal(now))
 }
 
 func TestMisc_Float64OrNil(t *testing.T) {
