@@ -14,7 +14,7 @@ import (
 
 // Service provides identity operations backed by Postgres.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates an identity Service using the given connection pool.

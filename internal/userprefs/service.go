@@ -18,7 +18,7 @@ import (
 
 // Service provides per-user preference and holding operations.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates a userprefs Service using the given connection pool.
