@@ -12,6 +12,10 @@ on:
 env:
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: dummy
   NEXT_PUBLIC_API_BASE_URL: /graphql
+  # Baseline total statement coverage; raise as coverage improves.
+  # ~45% is the floor measured without DB integration tests; CI runs the
+  # full suite (incl. testcontainers) which covers the generated sqlc code.
+  GO_COVERAGE_MIN: "45"
 
 jobs:
   go:
@@ -23,14 +27,31 @@ jobs:
         with:
           go-version: "1.26.0"
 
+      # Scope to the Go source trees so stray Go files under
+      # clients/web/node_modules can't break local or CI runs.
       - name: Go build
-        run: go build ./...
+        run: go build ./cmd/... ./internal/...
 
       - name: Go vet
-        run: go vet ./...
+        run: go vet ./cmd/... ./internal/...
 
-      - name: Go test
-        run: go test -v -count=1 ./...
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd internal)"
+
+      - name: Go test with coverage
+        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./cmd/... ./internal/...
+
+      - name: Enforce coverage baseline
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
+          echo "Total statement coverage: ${total}% (minimum ${GO_COVERAGE_MIN}%)"
+          awk -v t="$total" -v m="$GO_COVERAGE_MIN" 'BEGIN { exit !(t+0 >= m+0) }'
+
+      - name: Upload Go coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
 
   web:
     runs-on: ubuntu-latest
@@ -55,10 +76,75 @@ jobs:
         working-directory: clients/web
         run: npm run lint
 
-      - name: Unit tests
+      - name: Unit tests with coverage
         working-directory: clients/web
-        run: npm test -- --watchAll=false
+        run: npm run test:coverage
 
       - name: Build
         working-directory: clients/web
         run: npm run build
+
+      - name: Upload Jest coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-coverage
+          path: clients/web/coverage
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the application stack
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+
+      - name: Wait for the API to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost/health > /dev/null; then
+              echo "API healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API failed to become healthy" >&2
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs --tail 100
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: clients/web
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: clients/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: clients/web
+        env:
+          E2E_BASE_URL: http://localhost
+          E2E_ISSUER_URL: http://localhost:8085
+        run: npx playwright test --reporter=html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: clients/web/playwright-report
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: clients/web/test-results
+          retention-days: 14
