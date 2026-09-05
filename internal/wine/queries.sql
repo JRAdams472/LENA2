@@ -39,6 +39,16 @@ SELECT *
 FROM wine.type
 WHERE type_id = $1;
 
+-- name: GetVintageByID :one
+SELECT *
+FROM wine.vintage
+WHERE vintage_id = $1;
+
+-- name: GetGrapeVarietyByID :one
+SELECT *
+FROM wine.grape_variety
+WHERE grape_variety_id = $1;
+
 -- name: ListTypes :many
 SELECT *
 FROM wine.type
@@ -143,3 +153,75 @@ ORDER BY fp.name;
 -- name: DeleteBottleFlavorProfile :exec
 DELETE FROM wine.bottle_flavor_profile
 WHERE bottle_id = $1 AND flavor_profile_id = $2;
+
+-- name: UpdateCountry :one
+UPDATE wine.country
+SET name        = $2,
+    iso_code    = $3,
+    description = $4,
+    is_active   = $5,
+    updated_by  = $6,
+    updated_at  = now()
+WHERE country_id = $1
+RETURNING *;
+
+-- name: DeleteCountry :exec
+DELETE FROM wine.country
+WHERE country_id = $1;
+
+-- name: UpdateRegion :one
+UPDATE wine.region
+SET country_id  = $2,
+    name        = $3,
+    description = $4,
+    is_active   = $5,
+    updated_by  = $6,
+    updated_at  = now()
+WHERE region_id = $1
+RETURNING *;
+
+-- name: DeleteRegion :exec
+DELETE FROM wine.region
+WHERE region_id = $1;
+
+-- name: UpdateType :one
+UPDATE wine.type
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE type_id = $1
+RETURNING *;
+
+-- name: DeleteType :exec
+DELETE FROM wine.type
+WHERE type_id = $1;
+
+-- name: UpdateVintage :one
+UPDATE wine.vintage
+SET year        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE vintage_id = $1
+RETURNING *;
+
+-- name: DeleteVintage :exec
+DELETE FROM wine.vintage
+WHERE vintage_id = $1;
+
+-- name: UpdateGrapeVariety :one
+UPDATE wine.grape_variety
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE grape_variety_id = $1
+RETURNING *;
+
+-- name: DeleteGrapeVariety :exec
+DELETE FROM wine.grape_variety
+WHERE grape_variety_id = $1;

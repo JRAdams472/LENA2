@@ -23,6 +23,16 @@ SELECT *
 FROM inventory.category
 WHERE category_id = $1;
 
+-- name: GetFlavorProfileByID :one
+SELECT *
+FROM inventory.flavor_profile
+WHERE flavor_id = $1;
+
+-- name: GetNutrientTypeByID :one
+SELECT *
+FROM inventory.nutrient_type
+WHERE nutrient_id = $1;
+
 -- name: ListCategories :many
 SELECT *
 FROM inventory.category
@@ -111,3 +121,52 @@ ORDER BY fp.name;
 -- name: DeleteFoodFlavor :exec
 DELETE FROM inventory.food_flavor
 WHERE food_id = $1 AND flavor_id = $2;
+
+-- name: UpdateBrand :one
+UPDATE inventory.brand
+SET name = $2
+WHERE brand_id = $1
+RETURNING brand_id, name, created_at;
+
+-- name: DeleteBrand :exec
+DELETE FROM inventory.brand
+WHERE brand_id = $1;
+
+-- name: UpdateCategory :one
+UPDATE inventory.category
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE category_id = $1
+RETURNING *;
+
+-- name: DeleteCategory :exec
+DELETE FROM inventory.category
+WHERE category_id = $1;
+
+-- name: UpdateFlavorProfile :one
+UPDATE inventory.flavor_profile
+SET name       = $2,
+    is_active  = $3,
+    updated_by = $4,
+    updated_at = now()
+WHERE flavor_id = $1
+RETURNING *;
+
+-- name: DeleteFlavorProfile :exec
+DELETE FROM inventory.flavor_profile
+WHERE flavor_id = $1;
+
+-- name: UpdateNutrientType :one
+UPDATE inventory.nutrient_type
+SET name       = $2,
+    unit       = $3,
+    updated_at = now()
+WHERE nutrient_id = $1
+RETURNING *;
+
+-- name: DeleteNutrientType :exec
+DELETE FROM inventory.nutrient_type
+WHERE nutrient_id = $1;

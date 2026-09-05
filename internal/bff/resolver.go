@@ -2674,6 +2674,581 @@ type updateBottleInput struct {
 	BottleSize     *string
 }
 
+// UpdateBrand renames an existing brand.
+func (r *Resolver) UpdateBrand(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateBrandInput
+}) (*brandResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.UpdateBrand(ctx, id, args.Input.Name)
+	if err != nil {
+		return nil, err
+	}
+	return &brandResolver{b: b}, nil
+}
+
+// DeleteBrand removes a brand.
+func (r *Resolver) DeleteBrand(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteBrand(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateCategory modifies an existing category.
+func (r *Resolver) UpdateCategory(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateCategoryInput
+}) (*categoryResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.InventoryService.GetCategoryByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	c, err := r.InventoryService.UpdateCategory(ctx, id, name, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryResolver{c: c}, nil
+}
+
+// DeleteCategory removes a category.
+func (r *Resolver) DeleteCategory(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteCategory(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateFlavorProfile modifies an existing flavor profile.
+func (r *Resolver) UpdateFlavorProfile(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateFlavorProfileInput
+}) (*flavorProfileResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.InventoryService.GetFlavorProfileByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	f, err := r.InventoryService.UpdateFlavorProfile(ctx, id, name, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &flavorProfileResolver{f: f}, nil
+}
+
+// DeleteFlavorProfile removes a flavor profile.
+func (r *Resolver) DeleteFlavorProfile(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteFlavorProfile(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateNutrientType modifies an existing nutrient type.
+func (r *Resolver) UpdateNutrientType(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateNutrientTypeInput
+}) (*nutrientTypeResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.InventoryService.GetNutrientTypeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	unit := existing.Unit
+	if args.Input.Unit != nil {
+		unit = *args.Input.Unit
+	}
+	n, err := r.InventoryService.UpdateNutrientType(ctx, id, name, unit)
+	if err != nil {
+		return nil, err
+	}
+	return &nutrientTypeResolver{n: n}, nil
+}
+
+// DeleteNutrientType removes a nutrient type.
+func (r *Resolver) DeleteNutrientType(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteNutrientType(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// CreateCountry adds a new wine country.
+func (r *Resolver) CreateCountry(ctx context.Context, args struct{ Input createCountryInput }) (*countryResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.WineService.CreateCountry(ctx, args.Input.Name, args.Input.IsoCode, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &countryResolver{c: c}, nil
+}
+
+// UpdateCountry modifies an existing wine country.
+func (r *Resolver) UpdateCountry(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateCountryInput
+}) (*countryResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetCountryByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	isoCode := existing.IsoCode
+	if args.Input.IsoCode != nil {
+		isoCode = *args.Input.IsoCode
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	c, err := r.WineService.UpdateCountry(ctx, id, name, isoCode, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &countryResolver{c: c}, nil
+}
+
+// DeleteCountry removes a wine country.
+func (r *Resolver) DeleteCountry(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteCountry(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// CreateRegion adds a new wine region.
+func (r *Resolver) CreateRegion(ctx context.Context, args struct{ Input createRegionInput }) (*regionResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	countryID, err := parseID(string(args.Input.CountryID))
+	if err != nil {
+		return nil, err
+	}
+	region, err := r.WineService.CreateRegion(ctx, wine.Region{
+		CountryID: countryID,
+		Name:      args.Input.Name,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &regionResolver{wine: r.WineService, r: region}, nil
+}
+
+// UpdateRegion modifies an existing wine region.
+func (r *Resolver) UpdateRegion(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateRegionInput
+}) (*regionResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetRegionByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	countryID := existing.CountryID
+	if args.Input.CountryID != nil {
+		cid, err := parseID(string(*args.Input.CountryID))
+		if err != nil {
+			return nil, err
+		}
+		countryID = cid
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	region, err := r.WineService.UpdateRegion(ctx, id, countryID, name, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &regionResolver{wine: r.WineService, r: region}, nil
+}
+
+// DeleteRegion removes a wine region.
+func (r *Resolver) DeleteRegion(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteRegion(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// CreateType adds a new wine type.
+func (r *Resolver) CreateType(ctx context.Context, args struct{ Input createTypeInput }) (*wineTypeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t, err := r.WineService.CreateType(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &wineTypeResolver{t: t}, nil
+}
+
+// UpdateType modifies an existing wine type.
+func (r *Resolver) UpdateType(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateTypeInput
+}) (*wineTypeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetTypeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	t, err := r.WineService.UpdateType(ctx, id, name, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &wineTypeResolver{t: t}, nil
+}
+
+// DeleteType removes a wine type.
+func (r *Resolver) DeleteType(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteType(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateVintage modifies an existing vintage.
+func (r *Resolver) UpdateVintage(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateVintageInput
+}) (*vintageResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetVintageByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	year := existing.Year
+	if args.Input.Year != nil {
+		year = *args.Input.Year
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	v, err := r.WineService.UpdateVintage(ctx, id, year, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &vintageResolver{v: v}, nil
+}
+
+// DeleteVintage removes a vintage.
+func (r *Resolver) DeleteVintage(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteVintage(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UpdateGrapeVariety modifies an existing grape variety.
+func (r *Resolver) UpdateGrapeVariety(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateGrapeVarietyInput
+}) (*grapeVarietyResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetGrapeVarietyByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	g, err := r.WineService.UpdateGrapeVariety(ctx, id, name, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &grapeVarietyResolver{g: g}, nil
+}
+
+// DeleteGrapeVariety removes a grape variety.
+func (r *Resolver) DeleteGrapeVariety(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteGrapeVariety(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DeleteBottle removes a bottle definition.
+func (r *Resolver) DeleteBottle(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteBottle(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+type updateBrandInput struct {
+	Name string
+}
+
+type updateCategoryInput struct {
+	Name        *string
+	Description *string
+	IsActive    *bool
+}
+
+type updateFlavorProfileInput struct {
+	Name     *string
+	IsActive *bool
+}
+
+type updateNutrientTypeInput struct {
+	Name *string
+	Unit *string
+}
+
+type createCountryInput struct {
+	Name        string
+	IsoCode     string
+	Description *string
+}
+
+type updateCountryInput struct {
+	Name        *string
+	IsoCode     *string
+	Description *string
+	IsActive    *bool
+}
+
+type createRegionInput struct {
+	CountryID   graphql.ID
+	Name        string
+	Description *string
+}
+
+type updateRegionInput struct {
+	CountryID   *graphql.ID
+	Name        *string
+	Description *string
+	IsActive    *bool
+}
+
+type createTypeInput struct {
+	Name        string
+	Description *string
+}
+
+type updateTypeInput struct {
+	Name        *string
+	Description *string
+	IsActive    *bool
+}
+
+type updateVintageInput struct {
+	Year        *int32
+	Description *string
+	IsActive    *bool
+}
+
+type updateGrapeVarietyInput struct {
+	Name        *string
+	Description *string
+	IsActive    *bool
+}
+
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
 func NewGraphQLHandler(r *Resolver) echo.HandlerFunc {
 	parsed, err := graphql.ParseSchema(schema, r)

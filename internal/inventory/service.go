@@ -62,6 +62,20 @@ func (s *Service) ListBrands(ctx context.Context) ([]Brand, error) {
 	return out, nil
 }
 
+// UpdateBrand renames an existing brand.
+func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name string) (Brand, error) {
+	row, err := s.q.UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: brandID, Name: name})
+	if err != nil {
+		return Brand{}, fmt.Errorf("update brand: %w", err)
+	}
+	return Brand{BrandID: row.BrandID, Name: row.Name, CreatedAt: row.CreatedAt}, nil
+}
+
+// DeleteBrand removes a brand from the catalog.
+func (s *Service) DeleteBrand(ctx context.Context, brandID int64) error {
+	return s.q.DeleteBrand(ctx, brandID)
+}
+
 // Category is a catalog category with optional description.
 type Category struct {
 	CategoryID  int64
@@ -105,6 +119,26 @@ func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
 		out[i] = toCategory(rows[i])
 	}
 	return out, nil
+}
+
+// UpdateCategory modifies an existing category.
+func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive bool, by string) (Category, error) {
+	row, err := s.q.UpdateCategory(ctx, sqlc.UpdateCategoryParams{
+		CategoryID:  categoryID,
+		Name:        name,
+		Description: textOrNull(description),
+		IsActive:    isActive,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Category{}, fmt.Errorf("update category: %w", err)
+	}
+	return toCategory(row), nil
+}
+
+// DeleteCategory removes a category from the catalog.
+func (s *Service) DeleteCategory(ctx context.Context, categoryID int64) error {
+	return s.q.DeleteCategory(ctx, categoryID)
 }
 
 // Item is a catalog food item.
@@ -200,6 +234,15 @@ func (s *Service) CreateFlavorProfile(ctx context.Context, name, by string) (Fla
 	return toFlavorProfile(row), nil
 }
 
+// GetFlavorProfileByID returns a flavor profile by its primary key.
+func (s *Service) GetFlavorProfileByID(ctx context.Context, flavorID int64) (FlavorProfile, error) {
+	row, err := s.q.GetFlavorProfileByID(ctx, flavorID)
+	if err != nil {
+		return FlavorProfile{}, fmt.Errorf("get flavor profile by id: %w", err)
+	}
+	return toFlavorProfile(row), nil
+}
+
 // ListFlavorProfiles returns all flavor profiles ordered by name.
 func (s *Service) ListFlavorProfiles(ctx context.Context) ([]FlavorProfile, error) {
 	rows, err := s.q.ListFlavorProfiles(ctx)
@@ -211,6 +254,25 @@ func (s *Service) ListFlavorProfiles(ctx context.Context) ([]FlavorProfile, erro
 		out[i] = toFlavorProfile(rows[i])
 	}
 	return out, nil
+}
+
+// UpdateFlavorProfile modifies an existing flavor profile.
+func (s *Service) UpdateFlavorProfile(ctx context.Context, flavorID int64, name string, isActive bool, by string) (FlavorProfile, error) {
+	row, err := s.q.UpdateFlavorProfile(ctx, sqlc.UpdateFlavorProfileParams{
+		FlavorID:  flavorID,
+		Name:      name,
+		IsActive:  isActive,
+		UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return FlavorProfile{}, fmt.Errorf("update flavor profile: %w", err)
+	}
+	return toFlavorProfile(row), nil
+}
+
+// DeleteFlavorProfile removes a flavor profile from the catalog.
+func (s *Service) DeleteFlavorProfile(ctx context.Context, flavorID int64) error {
+	return s.q.DeleteFlavorProfile(ctx, flavorID)
 }
 
 // NutrientType is a catalog nutrient type.
@@ -233,6 +295,15 @@ func (s *Service) CreateNutrientType(ctx context.Context, name, unit string) (Nu
 	return toNutrientType(row), nil
 }
 
+// GetNutrientTypeByID returns a nutrient type by its primary key.
+func (s *Service) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (NutrientType, error) {
+	row, err := s.q.GetNutrientTypeByID(ctx, nutrientID)
+	if err != nil {
+		return NutrientType{}, fmt.Errorf("get nutrient type by id: %w", err)
+	}
+	return toNutrientType(row), nil
+}
+
 // ListNutrientTypes returns all nutrient types ordered by name.
 func (s *Service) ListNutrientTypes(ctx context.Context) ([]NutrientType, error) {
 	rows, err := s.q.ListNutrientTypes(ctx)
@@ -244,6 +315,24 @@ func (s *Service) ListNutrientTypes(ctx context.Context) ([]NutrientType, error)
 		out[i] = toNutrientType(rows[i])
 	}
 	return out, nil
+}
+
+// UpdateNutrientType modifies an existing nutrient type.
+func (s *Service) UpdateNutrientType(ctx context.Context, nutrientID int64, name, unit string) (NutrientType, error) {
+	row, err := s.q.UpdateNutrientType(ctx, sqlc.UpdateNutrientTypeParams{
+		NutrientID: nutrientID,
+		Name:       name,
+		Unit:       textOrNull(unit),
+	})
+	if err != nil {
+		return NutrientType{}, fmt.Errorf("update nutrient type: %w", err)
+	}
+	return toNutrientType(row), nil
+}
+
+// DeleteNutrientType removes a nutrient type from the catalog.
+func (s *Service) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
+	return s.q.DeleteNutrientType(ctx, nutrientID)
 }
 
 // FoodNutrient is a nutrient value for a catalog item.

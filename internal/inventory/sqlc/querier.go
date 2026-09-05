@@ -16,12 +16,18 @@ type Querier interface {
 	CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (InventoryFoodNutrient, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (InventoryItem, error)
 	CreateNutrientType(ctx context.Context, arg CreateNutrientTypeParams) (InventoryNutrientType, error)
+	DeleteBrand(ctx context.Context, brandID int64) error
+	DeleteCategory(ctx context.Context, categoryID int64) error
+	DeleteFlavorProfile(ctx context.Context, flavorID int64) error
 	DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) error
 	DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error
 	DeleteItem(ctx context.Context, itemID int64) error
+	DeleteNutrientType(ctx context.Context, nutrientID int64) error
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
 	GetCategoryByID(ctx context.Context, categoryID int64) (InventoryCategory, error)
+	GetFlavorProfileByID(ctx context.Context, flavorID int64) (InventoryFlavorProfile, error)
 	GetItemByID(ctx context.Context, itemID int64) (InventoryItem, error)
+	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	ListCategories(ctx context.Context) ([]InventoryCategory, error)
 	ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProfile, error)
@@ -29,7 +35,11 @@ type Querier interface {
 	ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error)
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
+	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
+	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)
+	UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfileParams) (InventoryFlavorProfile, error)
 	UpdateItem(ctx context.Context, arg UpdateItemParams) error
+	UpdateNutrientType(ctx context.Context, arg UpdateNutrientTypeParams) (InventoryNutrientType, error)
 }
 
 var _ Querier = (*Queries)(nil)
