@@ -17,7 +17,7 @@ import (
 
 // Service provides grocery list operations.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates a grocery Service using the given connection pool.

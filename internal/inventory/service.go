@@ -16,7 +16,7 @@ import (
 
 // Service provides catalog operations for the inventory domain.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates an inventory Service using the given connection pool.

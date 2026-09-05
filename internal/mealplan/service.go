@@ -17,7 +17,7 @@ import (
 
 // Service provides meal planning operations.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates a mealplan Service using the given connection pool.

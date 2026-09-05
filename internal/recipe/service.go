@@ -15,7 +15,7 @@ import (
 
 // Service provides catalog operations for the recipe domain.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates a recipe Service using the given connection pool.

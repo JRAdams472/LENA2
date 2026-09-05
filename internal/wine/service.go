@@ -15,7 +15,7 @@ import (
 
 // Service provides catalog operations for the wine domain.
 type Service struct {
-	q *sqlc.Queries
+	q sqlc.Querier
 }
 
 // NewService creates a wine Service using the given connection pool.
