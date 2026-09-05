@@ -75,6 +75,11 @@ export interface NutrientType {
   unitOfMeasure: string;
 }
 
+export interface Brand {
+  brandID: number;
+  brandName: string;
+}
+
 export interface Bottle extends AuditableEntity {
   bottleID: number;
   bottleNumber: number | null;
@@ -136,6 +141,13 @@ export interface GrapeVariety extends AuditableEntity {
   description: string | null;
   isActive: boolean;
   bottleGrapeVarieties: BottleGrapeVariety[];
+}
+
+export interface WineFlavorProfile extends AuditableEntity {
+  flavorProfileID: number;
+  flavorProfileName: string;
+  description: string | null;
+  isActive: boolean;
 }
 
 export interface Region extends AuditableEntity {

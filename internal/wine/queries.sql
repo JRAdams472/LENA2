@@ -135,8 +135,31 @@ WHERE bottle_id = $1 AND grape_variety_id = $2;
 -- name: ListWineFlavorProfiles :many
 SELECT *
 FROM wine.flavor_profile
-WHERE is_active = true
 ORDER BY name;
+
+-- name: GetWineFlavorProfileByID :one
+SELECT *
+FROM wine.flavor_profile
+WHERE flavor_profile_id = $1;
+
+-- name: CreateWineFlavorProfile :one
+INSERT INTO wine.flavor_profile (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, true, $3, $3)
+RETURNING *;
+
+-- name: UpdateWineFlavorProfile :one
+UPDATE wine.flavor_profile
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE flavor_profile_id = $1
+RETURNING *;
+
+-- name: DeleteWineFlavorProfile :exec
+DELETE FROM wine.flavor_profile
+WHERE flavor_profile_id = $1;
 
 -- name: CreateBottleFlavorProfile :one
 INSERT INTO wine.bottle_flavor_profile (bottle_id, flavor_profile_id, intensity, created_by)

@@ -66,6 +66,8 @@ const NAVIGATION: { label: string; href?: string; children?: NavItem[] }[] = [
     label: "Inventory",
     children: [
       { label: "Items", href: "/inventory/items" },
+      { label: "Brands", href: "/inventory/brands" },
+      { label: "Categories", href: "/inventory/categories" },
       { label: "Food Flavors", href: "/inventory/food-flavors" },
       { label: "Food Nutrients", href: "/inventory/food-nutrients" },
       { label: "Nutrient Types", href: "/inventory/nutrient-types" },
@@ -80,6 +82,8 @@ const NAVIGATION: { label: string; href?: string; children?: NavItem[] }[] = [
       { label: "Regions", href: "/wine/regions" },
       { label: "Types", href: "/wine/types" },
       { label: "Vintages", href: "/wine/vintages" },
+      { label: "Grape Varieties", href: "/wine/grape-varieties" },
+      { label: "Wine Flavor Profiles", href: "/wine/wine-flavor-profiles" },
     ],
   },
   {
