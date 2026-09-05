@@ -224,11 +224,11 @@ func TestUpdateRecipe(t *testing.T) {
 	t.Run("deactivate and clear optional fields", func(t *testing.T) {
 		svc, mq := newService(t)
 		want := sqlc.UpdateRecipeParams{
-			RecipeID:   7,
-			Name:       "Waffles",
-			IsActive:   false,
-			UpdatedBy:  textOrNull("carol"),
-			Servings:   pgtype.Int4{},
+			RecipeID:        7,
+			Name:            "Waffles",
+			IsActive:        false,
+			UpdatedBy:       textOrNull("carol"),
+			Servings:        pgtype.Int4{},
 			PrepTimeMinutes: pgtype.Int4{},
 			CookTimeMinutes: pgtype.Int4{},
 			Description:     pgtype.Text{},
