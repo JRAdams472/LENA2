@@ -49,6 +49,9 @@ type Mutation {
   createGrapeVariety(input: CreateGrapeVarietyInput!): GrapeVariety!
   updateGrapeVariety(id: ID!, input: UpdateGrapeVarietyInput!): GrapeVariety!
   deleteGrapeVariety(id: ID!): Boolean!
+  createWineFlavorProfile(input: CreateWineFlavorProfileInput!): WineFlavorProfile!
+  updateWineFlavorProfile(id: ID!, input: UpdateWineFlavorProfileInput!): WineFlavorProfile!
+  deleteWineFlavorProfile(id: ID!): Boolean!
 
   createCountry(input: CreateCountryInput!): Country!
   updateCountry(id: ID!, input: UpdateCountryInput!): Country!
@@ -383,6 +386,17 @@ input UpdateVintageInput {
 }
 
 input UpdateGrapeVarietyInput {
+  name: String
+  description: String
+  isActive: Boolean
+}
+
+input CreateWineFlavorProfileInput {
+  name: String!
+  description: String
+}
+
+input UpdateWineFlavorProfileInput {
   name: String
   description: String
   isActive: Boolean

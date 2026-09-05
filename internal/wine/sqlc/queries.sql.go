@@ -326,6 +326,34 @@ func (q *Queries) CreateVintage(ctx context.Context, arg CreateVintageParams) (W
 	return i, err
 }
 
+const createWineFlavorProfile = `-- name: CreateWineFlavorProfile :one
+INSERT INTO wine.flavor_profile (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, true, $3, $3)
+RETURNING flavor_profile_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type CreateWineFlavorProfileParams struct {
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	CreatedBy   string      `json:"created_by"`
+}
+
+func (q *Queries) CreateWineFlavorProfile(ctx context.Context, arg CreateWineFlavorProfileParams) (WineFlavorProfile, error) {
+	row := q.db.QueryRow(ctx, createWineFlavorProfile, arg.Name, arg.Description, arg.CreatedBy)
+	var i WineFlavorProfile
+	err := row.Scan(
+		&i.FlavorProfileID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteBottle = `-- name: DeleteBottle :exec
 DELETE FROM wine.bottle
 WHERE bottle_id = $1
@@ -413,6 +441,16 @@ WHERE vintage_id = $1
 
 func (q *Queries) DeleteVintage(ctx context.Context, vintageID int64) error {
 	_, err := q.db.Exec(ctx, deleteVintage, vintageID)
+	return err
+}
+
+const deleteWineFlavorProfile = `-- name: DeleteWineFlavorProfile :exec
+DELETE FROM wine.flavor_profile
+WHERE flavor_profile_id = $1
+`
+
+func (q *Queries) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) error {
+	_, err := q.db.Exec(ctx, deleteWineFlavorProfile, flavorProfileID)
 	return err
 }
 
@@ -549,6 +587,28 @@ func (q *Queries) GetVintageByID(ctx context.Context, vintageID int64) (WineVint
 	err := row.Scan(
 		&i.VintageID,
 		&i.Year,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getWineFlavorProfileByID = `-- name: GetWineFlavorProfileByID :one
+SELECT flavor_profile_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM wine.flavor_profile
+WHERE flavor_profile_id = $1
+`
+
+func (q *Queries) GetWineFlavorProfileByID(ctx context.Context, flavorProfileID int64) (WineFlavorProfile, error) {
+	row := q.db.QueryRow(ctx, getWineFlavorProfileByID, flavorProfileID)
+	var i WineFlavorProfile
+	err := row.Scan(
+		&i.FlavorProfileID,
+		&i.Name,
 		&i.Description,
 		&i.IsActive,
 		&i.CreatedBy,
@@ -858,7 +918,6 @@ func (q *Queries) ListVintages(ctx context.Context) ([]WineVintage, error) {
 const listWineFlavorProfiles = `-- name: ListWineFlavorProfiles :many
 SELECT flavor_profile_id, name, description, is_active, created_by, created_at, updated_by, updated_at
 FROM wine.flavor_profile
-WHERE is_active = true
 ORDER BY name
 `
 
@@ -1150,6 +1209,47 @@ func (q *Queries) UpdateVintage(ctx context.Context, arg UpdateVintageParams) (W
 	err := row.Scan(
 		&i.VintageID,
 		&i.Year,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateWineFlavorProfile = `-- name: UpdateWineFlavorProfile :one
+UPDATE wine.flavor_profile
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE flavor_profile_id = $1
+RETURNING flavor_profile_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateWineFlavorProfileParams struct {
+	FlavorProfileID int64       `json:"flavor_profile_id"`
+	Name            string      `json:"name"`
+	Description     pgtype.Text `json:"description"`
+	IsActive        bool        `json:"is_active"`
+	UpdatedBy       pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateWineFlavorProfile(ctx context.Context, arg UpdateWineFlavorProfileParams) (WineFlavorProfile, error) {
+	row := q.db.QueryRow(ctx, updateWineFlavorProfile,
+		arg.FlavorProfileID,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i WineFlavorProfile
+	err := row.Scan(
+		&i.FlavorProfileID,
+		&i.Name,
 		&i.Description,
 		&i.IsActive,
 		&i.CreatedBy,

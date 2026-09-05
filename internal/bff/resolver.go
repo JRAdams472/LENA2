@@ -1522,6 +1522,70 @@ func (r *Resolver) WineFlavorProfiles(ctx context.Context) ([]*wineFlavorProfile
 	return out, nil
 }
 
+// CreateWineFlavorProfile adds a new wine flavor profile.
+func (r *Resolver) CreateWineFlavorProfile(ctx context.Context, args struct{ Input createWineFlavorProfileInput }) (*wineFlavorProfileResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fp, err := r.WineService.CreateWineFlavorProfile(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &wineFlavorProfileResolver{fp: fp}, nil
+}
+
+// UpdateWineFlavorProfile modifies an existing wine flavor profile.
+func (r *Resolver) UpdateWineFlavorProfile(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateWineFlavorProfileInput
+}) (*wineFlavorProfileResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.WineService.GetWineFlavorProfileByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	description := existing.Description
+	if args.Input.Description != nil {
+		description = *args.Input.Description
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	fp, err := r.WineService.UpdateWineFlavorProfile(ctx, id, name, description, isActive, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &wineFlavorProfileResolver{fp: fp}, nil
+}
+
+// DeleteWineFlavorProfile removes a wine flavor profile.
+func (r *Resolver) DeleteWineFlavorProfile(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.WineService.DeleteWineFlavorProfile(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CreateVintage adds a new vintage.
 func (r *Resolver) CreateVintage(ctx context.Context, args struct{ Input createVintageInput }) (*vintageResolver, error) {
 	u, err := userFromContext(ctx)
@@ -3244,6 +3308,17 @@ type updateVintageInput struct {
 }
 
 type updateGrapeVarietyInput struct {
+	Name        *string
+	Description *string
+	IsActive    *bool
+}
+
+type createWineFlavorProfileInput struct {
+	Name        string
+	Description *string
+}
+
+type updateWineFlavorProfileInput struct {
 	Name        *string
 	Description *string
 	IsActive    *bool

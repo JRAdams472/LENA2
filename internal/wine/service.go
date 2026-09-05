@@ -407,7 +407,7 @@ type WineFlavorProfile struct {
 	IsActive        bool
 }
 
-// ListWineFlavorProfiles returns active wine flavor profiles.
+// ListWineFlavorProfiles returns all wine flavor profiles.
 func (s *Service) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error) {
 	rows, err := s.q.ListWineFlavorProfiles(ctx)
 	if err != nil {
@@ -418,6 +418,48 @@ func (s *Service) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfi
 		out[i] = toWineFlavorProfile(rows[i])
 	}
 	return out, nil
+}
+
+// GetWineFlavorProfileByID returns a wine flavor profile by its primary key.
+func (s *Service) GetWineFlavorProfileByID(ctx context.Context, flavorProfileID int64) (WineFlavorProfile, error) {
+	row, err := s.q.GetWineFlavorProfileByID(ctx, flavorProfileID)
+	if err != nil {
+		return WineFlavorProfile{}, fmt.Errorf("get wine flavor profile by id: %w", err)
+	}
+	return toWineFlavorProfile(row), nil
+}
+
+// CreateWineFlavorProfile adds a new wine flavor profile.
+func (s *Service) CreateWineFlavorProfile(ctx context.Context, name, description, by string) (WineFlavorProfile, error) {
+	row, err := s.q.CreateWineFlavorProfile(ctx, sqlc.CreateWineFlavorProfileParams{
+		Name:        name,
+		Description: textOrNull(description),
+		CreatedBy:   by,
+	})
+	if err != nil {
+		return WineFlavorProfile{}, fmt.Errorf("create wine flavor profile: %w", err)
+	}
+	return toWineFlavorProfile(row), nil
+}
+
+// UpdateWineFlavorProfile modifies an existing wine flavor profile.
+func (s *Service) UpdateWineFlavorProfile(ctx context.Context, flavorProfileID int64, name, description string, isActive bool, by string) (WineFlavorProfile, error) {
+	row, err := s.q.UpdateWineFlavorProfile(ctx, sqlc.UpdateWineFlavorProfileParams{
+		FlavorProfileID: flavorProfileID,
+		Name:            name,
+		Description:     textOrNull(description),
+		IsActive:        isActive,
+		UpdatedBy:       textOrNull(by),
+	})
+	if err != nil {
+		return WineFlavorProfile{}, fmt.Errorf("update wine flavor profile: %w", err)
+	}
+	return toWineFlavorProfile(row), nil
+}
+
+// DeleteWineFlavorProfile removes a wine flavor profile from the catalog.
+func (s *Service) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) error {
+	return s.q.DeleteWineFlavorProfile(ctx, flavorProfileID)
 }
 
 // BottleFlavorProfile is a flavor profile attached to a bottle.

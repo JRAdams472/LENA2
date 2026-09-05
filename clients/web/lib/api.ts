@@ -2,6 +2,8 @@ import {
   AuditableEntity,
   User,
   Item,
+  Brand,
+  Category,
   Bottle,
   BottleGrapeVariety,
   BottleFlavorProfile,
@@ -10,6 +12,7 @@ import {
   WineType,
   Vintage,
   GrapeVariety,
+  WineFlavorProfile,
   FlavorProfile,
   FoodFlavor,
   FoodNutrient,
@@ -140,6 +143,7 @@ interface GqlCategory {
   id: string;
   name: string;
   description: string | null;
+  isActive: boolean;
 }
 
 interface GqlFlavorProfile {
@@ -506,6 +510,23 @@ function toRecipe(r: GqlRecipe): Recipe {
   };
 }
 
+function toBrand(b: GqlBrand): Brand {
+  return {
+    brandID: num(b.id),
+    brandName: b.name,
+  };
+}
+
+function toCategory(c: GqlCategory): Category {
+  return {
+    ...audit(),
+    categoryID: num(c.id),
+    categoryName: c.name,
+    description: c.description,
+    isActive: c.isActive,
+  };
+}
+
 function toGrapeVariety(g: GqlGrapeVariety): GrapeVariety {
   return {
     ...audit(),
@@ -514,6 +535,16 @@ function toGrapeVariety(g: GqlGrapeVariety): GrapeVariety {
     description: g.description,
     isActive: g.isActive,
     bottleGrapeVarieties: [],
+  };
+}
+
+function toWineFlavorProfile(f: GqlWineFlavorProfile): WineFlavorProfile {
+  return {
+    ...audit(),
+    flavorProfileID: num(f.id),
+    flavorProfileName: f.name,
+    description: f.description,
+    isActive: f.isActive,
   };
 }
 
@@ -968,6 +999,77 @@ export const api = {
   deleteFlavorProfile: async (id: number): Promise<FlavorProfile | null> => {
     await request<{ deleteFlavorProfile: boolean }>(
       `mutation ($id: ID!) { deleteFlavorProfile(id: $id) }`,
+      { id: String(id) }
+    );
+    return null;
+  },
+
+  getBrandList: async (): Promise<Brand[]> => {
+    const data = await request<{ brands: GqlBrand[] }>(
+      `query { brands { id name } }`
+    );
+    return data.brands.map(toBrand);
+  },
+
+  createBrand: async (brand: Omit<Brand, keyof AuditableEntity>): Promise<Brand> => {
+    const data = await request<{ createBrand: GqlBrand }>(
+      `mutation ($input: CreateBrandInput!) { createBrand(input: $input) { id name } }`,
+      { input: { name: brand.brandName } }
+    );
+    return toBrand(data.createBrand);
+  },
+
+  updateBrand: async (id: number, brand: Partial<Brand>): Promise<Brand> => {
+    const input: Record<string, unknown> = {};
+    if (brand.brandName !== undefined) input.name = brand.brandName;
+    const data = await request<{ updateBrand: GqlBrand }>(
+      `mutation ($id: ID!, $input: UpdateBrandInput!) { updateBrand(id: $id, input: $input) { id name } }`,
+      { id: String(id), input }
+    );
+    return toBrand(data.updateBrand);
+  },
+
+  deleteBrand: async (id: number): Promise<Brand | null> => {
+    await request<{ deleteBrand: boolean }>(
+      `mutation ($id: ID!) { deleteBrand(id: $id) }`,
+      { id: String(id) }
+    );
+    return null;
+  },
+
+  getCategories: async (): Promise<Category[]> => {
+    const data = await request<{ categories: GqlCategory[] }>(
+      `query { categories { id name description isActive } }`
+    );
+    return data.categories.map(toCategory);
+  },
+
+  getActiveCategories: async (): Promise<Category[]> =>
+    (await api.getCategories()).filter((c) => c.isActive),
+
+  createCategory: async (category: Omit<Category, keyof AuditableEntity>): Promise<Category> => {
+    const data = await request<{ createCategory: GqlCategory }>(
+      `mutation ($input: CreateCategoryInput!) { createCategory(input: $input) { id name description isActive } }`,
+      { input: { name: category.categoryName, description: category.description } }
+    );
+    return toCategory(data.createCategory);
+  },
+
+  updateCategory: async (id: number, category: Partial<Category>): Promise<Category> => {
+    const input: Record<string, unknown> = {};
+    if (category.categoryName !== undefined) input.name = category.categoryName;
+    if (category.description !== undefined) input.description = category.description;
+    if (category.isActive !== undefined) input.isActive = category.isActive;
+    const data = await request<{ updateCategory: GqlCategory }>(
+      `mutation ($id: ID!, $input: UpdateCategoryInput!) { updateCategory(id: $id, input: $input) { id name description isActive } }`,
+      { id: String(id), input }
+    );
+    return toCategory(data.updateCategory);
+  },
+
+  deleteCategory: async (id: number): Promise<Category | null> => {
+    await request<{ deleteCategory: boolean }>(
+      `mutation ($id: ID!) { deleteCategory(id: $id) }`,
       { id: String(id) }
     );
     return null;
@@ -1441,6 +1543,82 @@ export const api = {
   deleteVintage: async (id: number): Promise<Vintage | null> => {
     await request<{ deleteVintage: boolean }>(
       `mutation ($id: ID!) { deleteVintage(id: $id) }`,
+      { id: String(id) }
+    );
+    return null;
+  },
+
+  getGrapeVarieties: async (): Promise<GrapeVariety[]> => {
+    const data = await request<{ grapeVarieties: GqlGrapeVariety[] }>(
+      `query { grapeVarieties { id name description isActive } }`
+    );
+    return data.grapeVarieties.map(toGrapeVariety);
+  },
+
+  getActiveGrapeVarieties: async (): Promise<GrapeVariety[]> =>
+    (await api.getGrapeVarieties()).filter((g) => g.isActive),
+
+  createGrapeVariety: async (grapeVariety: Omit<GrapeVariety, keyof AuditableEntity>): Promise<GrapeVariety> => {
+    const data = await request<{ createGrapeVariety: GqlGrapeVariety }>(
+      `mutation ($input: CreateGrapeVarietyInput!) { createGrapeVariety(input: $input) { id name description isActive } }`,
+      { input: { name: grapeVariety.grapeVarietyName, description: grapeVariety.description } }
+    );
+    return toGrapeVariety(data.createGrapeVariety);
+  },
+
+  updateGrapeVariety: async (id: number, grapeVariety: Partial<GrapeVariety>): Promise<GrapeVariety> => {
+    const input: Record<string, unknown> = {};
+    if (grapeVariety.grapeVarietyName !== undefined) input.name = grapeVariety.grapeVarietyName;
+    if (grapeVariety.description !== undefined) input.description = grapeVariety.description;
+    if (grapeVariety.isActive !== undefined) input.isActive = grapeVariety.isActive;
+    const data = await request<{ updateGrapeVariety: GqlGrapeVariety }>(
+      `mutation ($id: ID!, $input: UpdateGrapeVarietyInput!) { updateGrapeVariety(id: $id, input: $input) { id name description isActive } }`,
+      { id: String(id), input }
+    );
+    return toGrapeVariety(data.updateGrapeVariety);
+  },
+
+  deleteGrapeVariety: async (id: number): Promise<GrapeVariety | null> => {
+    await request<{ deleteGrapeVariety: boolean }>(
+      `mutation ($id: ID!) { deleteGrapeVariety(id: $id) }`,
+      { id: String(id) }
+    );
+    return null;
+  },
+
+  getWineFlavorProfiles: async (): Promise<WineFlavorProfile[]> => {
+    const data = await request<{ wineFlavorProfiles: GqlWineFlavorProfile[] }>(
+      `query { wineFlavorProfiles { id name description isActive } }`
+    );
+    return data.wineFlavorProfiles.map(toWineFlavorProfile);
+  },
+
+  getActiveWineFlavorProfiles: async (): Promise<WineFlavorProfile[]> =>
+    (await api.getWineFlavorProfiles()).filter((f) => f.isActive),
+
+  createWineFlavorProfile: async (flavorProfile: Omit<WineFlavorProfile, keyof AuditableEntity>): Promise<WineFlavorProfile> => {
+    const data = await request<{ createWineFlavorProfile: GqlWineFlavorProfile }>(
+      `mutation ($input: CreateWineFlavorProfileInput!) { createWineFlavorProfile(input: $input) { id name description isActive } }`,
+      { input: { name: flavorProfile.flavorProfileName, description: flavorProfile.description } }
+    );
+    return toWineFlavorProfile(data.createWineFlavorProfile);
+  },
+
+  updateWineFlavorProfile: async (id: number, flavorProfile: Partial<WineFlavorProfile>): Promise<WineFlavorProfile> => {
+    const input: Record<string, unknown> = {};
+    if (flavorProfile.flavorProfileName !== undefined) input.name = flavorProfile.flavorProfileName;
+    if (flavorProfile.description !== undefined) input.description = flavorProfile.description;
+    if (flavorProfile.isActive !== undefined) input.isActive = flavorProfile.isActive;
+    const data = await request<{ updateWineFlavorProfile: GqlWineFlavorProfile }>(
+      `mutation ($id: ID!, $input: UpdateWineFlavorProfileInput!) { updateWineFlavorProfile(id: $id, input: $input) { id name description isActive } }`,
+      { id: String(id), input }
+    );
+    return toWineFlavorProfile(data.updateWineFlavorProfile);
+  },
+
+  deleteWineFlavorProfile: async (id: number): Promise<WineFlavorProfile | null> => {
+    await request<{ deleteWineFlavorProfile: boolean }>(
+      `mutation ($id: ID!) { deleteWineFlavorProfile(id: $id) }`,
       { id: String(id) }
     );
     return null;
