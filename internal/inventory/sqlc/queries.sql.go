@@ -223,6 +223,36 @@ func (q *Queries) CreateNutrientType(ctx context.Context, arg CreateNutrientType
 	return i, err
 }
 
+const deleteBrand = `-- name: DeleteBrand :exec
+DELETE FROM inventory.brand
+WHERE brand_id = $1
+`
+
+func (q *Queries) DeleteBrand(ctx context.Context, brandID int64) error {
+	_, err := q.db.Exec(ctx, deleteBrand, brandID)
+	return err
+}
+
+const deleteCategory = `-- name: DeleteCategory :exec
+DELETE FROM inventory.category
+WHERE category_id = $1
+`
+
+func (q *Queries) DeleteCategory(ctx context.Context, categoryID int64) error {
+	_, err := q.db.Exec(ctx, deleteCategory, categoryID)
+	return err
+}
+
+const deleteFlavorProfile = `-- name: DeleteFlavorProfile :exec
+DELETE FROM inventory.flavor_profile
+WHERE flavor_id = $1
+`
+
+func (q *Queries) DeleteFlavorProfile(ctx context.Context, flavorID int64) error {
+	_, err := q.db.Exec(ctx, deleteFlavorProfile, flavorID)
+	return err
+}
+
 const deleteFoodFlavor = `-- name: DeleteFoodFlavor :exec
 DELETE FROM inventory.food_flavor
 WHERE food_id = $1 AND flavor_id = $2
@@ -263,6 +293,16 @@ func (q *Queries) DeleteItem(ctx context.Context, itemID int64) error {
 	return err
 }
 
+const deleteNutrientType = `-- name: DeleteNutrientType :exec
+DELETE FROM inventory.nutrient_type
+WHERE nutrient_id = $1
+`
+
+func (q *Queries) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
+	_, err := q.db.Exec(ctx, deleteNutrientType, nutrientID)
+	return err
+}
+
 const getBrandByID = `-- name: GetBrandByID :one
 SELECT brand_id, name, created_at
 FROM inventory.brand
@@ -298,6 +338,27 @@ func (q *Queries) GetCategoryByID(ctx context.Context, categoryID int64) (Invent
 	return i, err
 }
 
+const getFlavorProfileByID = `-- name: GetFlavorProfileByID :one
+SELECT flavor_id, name, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.flavor_profile
+WHERE flavor_id = $1
+`
+
+func (q *Queries) GetFlavorProfileByID(ctx context.Context, flavorID int64) (InventoryFlavorProfile, error) {
+	row := q.db.QueryRow(ctx, getFlavorProfileByID, flavorID)
+	var i InventoryFlavorProfile
+	err := row.Scan(
+		&i.FlavorID,
+		&i.Name,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getItemByID = `-- name: GetItemByID :one
 SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
 FROM inventory.item
@@ -319,6 +380,24 @@ func (q *Queries) GetItemByID(ctx context.Context, itemID int64) (InventoryItem,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getNutrientTypeByID = `-- name: GetNutrientTypeByID :one
+SELECT nutrient_id, name, unit, created_at
+FROM inventory.nutrient_type
+WHERE nutrient_id = $1
+`
+
+func (q *Queries) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error) {
+	row := q.db.QueryRow(ctx, getNutrientTypeByID, nutrientID)
+	var i InventoryNutrientType
+	err := row.Scan(
+		&i.NutrientID,
+		&i.Name,
+		&i.Unit,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -567,6 +646,103 @@ func (q *Queries) ListNutrientTypes(ctx context.Context) ([]InventoryNutrientTyp
 	return items, nil
 }
 
+const updateBrand = `-- name: UpdateBrand :one
+UPDATE inventory.brand
+SET name = $2
+WHERE brand_id = $1
+RETURNING brand_id, name, created_at
+`
+
+type UpdateBrandParams struct {
+	BrandID int64  `json:"brand_id"`
+	Name    string `json:"name"`
+}
+
+func (q *Queries) UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error) {
+	row := q.db.QueryRow(ctx, updateBrand, arg.BrandID, arg.Name)
+	var i InventoryBrand
+	err := row.Scan(&i.BrandID, &i.Name, &i.CreatedAt)
+	return i, err
+}
+
+const updateCategory = `-- name: UpdateCategory :one
+UPDATE inventory.category
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE category_id = $1
+RETURNING category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateCategoryParams struct {
+	CategoryID  int64       `json:"category_id"`
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error) {
+	row := q.db.QueryRow(ctx, updateCategory,
+		arg.CategoryID,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i InventoryCategory
+	err := row.Scan(
+		&i.CategoryID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateFlavorProfile = `-- name: UpdateFlavorProfile :one
+UPDATE inventory.flavor_profile
+SET name       = $2,
+    is_active  = $3,
+    updated_by = $4,
+    updated_at = now()
+WHERE flavor_id = $1
+RETURNING flavor_id, name, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateFlavorProfileParams struct {
+	FlavorID  int64       `json:"flavor_id"`
+	Name      string      `json:"name"`
+	IsActive  bool        `json:"is_active"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfileParams) (InventoryFlavorProfile, error) {
+	row := q.db.QueryRow(ctx, updateFlavorProfile,
+		arg.FlavorID,
+		arg.Name,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i InventoryFlavorProfile
+	err := row.Scan(
+		&i.FlavorID,
+		&i.Name,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateItem = `-- name: UpdateItem :exec
 UPDATE inventory.item
 SET name        = $2,
@@ -603,4 +779,31 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 		arg.UpdatedBy,
 	)
 	return err
+}
+
+const updateNutrientType = `-- name: UpdateNutrientType :one
+UPDATE inventory.nutrient_type
+SET name       = $2,
+    unit       = $3,
+    updated_at = now()
+WHERE nutrient_id = $1
+RETURNING nutrient_id, name, unit, created_at
+`
+
+type UpdateNutrientTypeParams struct {
+	NutrientID int64       `json:"nutrient_id"`
+	Name       string      `json:"name"`
+	Unit       pgtype.Text `json:"unit"`
+}
+
+func (q *Queries) UpdateNutrientType(ctx context.Context, arg UpdateNutrientTypeParams) (InventoryNutrientType, error) {
+	row := q.db.QueryRow(ctx, updateNutrientType, arg.NutrientID, arg.Name, arg.Unit)
+	var i InventoryNutrientType
+	err := row.Scan(
+		&i.NutrientID,
+		&i.Name,
+		&i.Unit,
+		&i.CreatedAt,
+	)
+	return i, err
 }

@@ -366,6 +366,56 @@ func (q *Queries) DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottle
 	return err
 }
 
+const deleteCountry = `-- name: DeleteCountry :exec
+DELETE FROM wine.country
+WHERE country_id = $1
+`
+
+func (q *Queries) DeleteCountry(ctx context.Context, countryID int64) error {
+	_, err := q.db.Exec(ctx, deleteCountry, countryID)
+	return err
+}
+
+const deleteGrapeVariety = `-- name: DeleteGrapeVariety :exec
+DELETE FROM wine.grape_variety
+WHERE grape_variety_id = $1
+`
+
+func (q *Queries) DeleteGrapeVariety(ctx context.Context, grapeVarietyID int64) error {
+	_, err := q.db.Exec(ctx, deleteGrapeVariety, grapeVarietyID)
+	return err
+}
+
+const deleteRegion = `-- name: DeleteRegion :exec
+DELETE FROM wine.region
+WHERE region_id = $1
+`
+
+func (q *Queries) DeleteRegion(ctx context.Context, regionID int64) error {
+	_, err := q.db.Exec(ctx, deleteRegion, regionID)
+	return err
+}
+
+const deleteType = `-- name: DeleteType :exec
+DELETE FROM wine.type
+WHERE type_id = $1
+`
+
+func (q *Queries) DeleteType(ctx context.Context, typeID int64) error {
+	_, err := q.db.Exec(ctx, deleteType, typeID)
+	return err
+}
+
+const deleteVintage = `-- name: DeleteVintage :exec
+DELETE FROM wine.vintage
+WHERE vintage_id = $1
+`
+
+func (q *Queries) DeleteVintage(ctx context.Context, vintageID int64) error {
+	_, err := q.db.Exec(ctx, deleteVintage, vintageID)
+	return err
+}
+
 const getBottleByID = `-- name: GetBottleByID :one
 SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
 FROM wine.bottle
@@ -420,6 +470,28 @@ func (q *Queries) GetCountryByID(ctx context.Context, countryID int64) (WineCoun
 	return i, err
 }
 
+const getGrapeVarietyByID = `-- name: GetGrapeVarietyByID :one
+SELECT grape_variety_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM wine.grape_variety
+WHERE grape_variety_id = $1
+`
+
+func (q *Queries) GetGrapeVarietyByID(ctx context.Context, grapeVarietyID int64) (WineGrapeVariety, error) {
+	row := q.db.QueryRow(ctx, getGrapeVarietyByID, grapeVarietyID)
+	var i WineGrapeVariety
+	err := row.Scan(
+		&i.GrapeVarietyID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRegionByID = `-- name: GetRegionByID :one
 SELECT region_id, country_id, name, description, is_active, created_by, created_at, updated_by, updated_at
 FROM wine.region
@@ -455,6 +527,28 @@ func (q *Queries) GetTypeByID(ctx context.Context, typeID int64) (WineType, erro
 	err := row.Scan(
 		&i.TypeID,
 		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getVintageByID = `-- name: GetVintageByID :one
+SELECT vintage_id, year, description, is_active, created_by, created_at, updated_by, updated_at
+FROM wine.vintage
+WHERE vintage_id = $1
+`
+
+func (q *Queries) GetVintageByID(ctx context.Context, vintageID int64) (WineVintage, error) {
+	row := q.db.QueryRow(ctx, getVintageByID, vintageID)
+	var i WineVintage
+	err := row.Scan(
+		&i.VintageID,
+		&i.Year,
 		&i.Description,
 		&i.IsActive,
 		&i.CreatedBy,
@@ -851,4 +945,217 @@ func (q *Queries) UpdateBottle(ctx context.Context, arg UpdateBottleParams) erro
 		arg.UpdatedBy,
 	)
 	return err
+}
+
+const updateCountry = `-- name: UpdateCountry :one
+UPDATE wine.country
+SET name        = $2,
+    iso_code    = $3,
+    description = $4,
+    is_active   = $5,
+    updated_by  = $6,
+    updated_at  = now()
+WHERE country_id = $1
+RETURNING country_id, name, iso_code, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateCountryParams struct {
+	CountryID   int64       `json:"country_id"`
+	Name        string      `json:"name"`
+	IsoCode     string      `json:"iso_code"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateCountry(ctx context.Context, arg UpdateCountryParams) (WineCountry, error) {
+	row := q.db.QueryRow(ctx, updateCountry,
+		arg.CountryID,
+		arg.Name,
+		arg.IsoCode,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i WineCountry
+	err := row.Scan(
+		&i.CountryID,
+		&i.Name,
+		&i.IsoCode,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateGrapeVariety = `-- name: UpdateGrapeVariety :one
+UPDATE wine.grape_variety
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE grape_variety_id = $1
+RETURNING grape_variety_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateGrapeVarietyParams struct {
+	GrapeVarietyID int64       `json:"grape_variety_id"`
+	Name           string      `json:"name"`
+	Description    pgtype.Text `json:"description"`
+	IsActive       bool        `json:"is_active"`
+	UpdatedBy      pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateGrapeVariety(ctx context.Context, arg UpdateGrapeVarietyParams) (WineGrapeVariety, error) {
+	row := q.db.QueryRow(ctx, updateGrapeVariety,
+		arg.GrapeVarietyID,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i WineGrapeVariety
+	err := row.Scan(
+		&i.GrapeVarietyID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateRegion = `-- name: UpdateRegion :one
+UPDATE wine.region
+SET country_id  = $2,
+    name        = $3,
+    description = $4,
+    is_active   = $5,
+    updated_by  = $6,
+    updated_at  = now()
+WHERE region_id = $1
+RETURNING region_id, country_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateRegionParams struct {
+	RegionID    int64       `json:"region_id"`
+	CountryID   int64       `json:"country_id"`
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateRegion(ctx context.Context, arg UpdateRegionParams) (WineRegion, error) {
+	row := q.db.QueryRow(ctx, updateRegion,
+		arg.RegionID,
+		arg.CountryID,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i WineRegion
+	err := row.Scan(
+		&i.RegionID,
+		&i.CountryID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateType = `-- name: UpdateType :one
+UPDATE wine.type
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE type_id = $1
+RETURNING type_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateTypeParams struct {
+	TypeID      int64       `json:"type_id"`
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateType(ctx context.Context, arg UpdateTypeParams) (WineType, error) {
+	row := q.db.QueryRow(ctx, updateType,
+		arg.TypeID,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i WineType
+	err := row.Scan(
+		&i.TypeID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateVintage = `-- name: UpdateVintage :one
+UPDATE wine.vintage
+SET year        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE vintage_id = $1
+RETURNING vintage_id, year, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateVintageParams struct {
+	VintageID   int64       `json:"vintage_id"`
+	Year        int32       `json:"year"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateVintage(ctx context.Context, arg UpdateVintageParams) (WineVintage, error) {
+	row := q.db.QueryRow(ctx, updateVintage,
+		arg.VintageID,
+		arg.Year,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i WineVintage
+	err := row.Scan(
+		&i.VintageID,
+		&i.Year,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

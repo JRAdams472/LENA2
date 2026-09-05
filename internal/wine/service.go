@@ -70,6 +70,27 @@ func (s *Service) ListCountries(ctx context.Context) ([]Country, error) {
 	return out, nil
 }
 
+// UpdateCountry modifies an existing country.
+func (s *Service) UpdateCountry(ctx context.Context, countryID int64, name, isoCode, description string, isActive bool, by string) (Country, error) {
+	row, err := s.q.UpdateCountry(ctx, sqlc.UpdateCountryParams{
+		CountryID:   countryID,
+		Name:        name,
+		IsoCode:     isoCode,
+		Description: textOrNull(description),
+		IsActive:    isActive,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Country{}, fmt.Errorf("update country: %w", err)
+	}
+	return toCountry(row), nil
+}
+
+// DeleteCountry removes a country from the catalog.
+func (s *Service) DeleteCountry(ctx context.Context, countryID int64) error {
+	return s.q.DeleteCountry(ctx, countryID)
+}
+
 // Region is a catalog wine region within a country.
 type Region struct {
 	RegionID    int64
@@ -117,6 +138,27 @@ func (s *Service) ListRegions(ctx context.Context, countryID int64) ([]Region, e
 	return out, nil
 }
 
+// UpdateRegion modifies an existing region.
+func (s *Service) UpdateRegion(ctx context.Context, regionID, countryID int64, name, description string, isActive bool, by string) (Region, error) {
+	row, err := s.q.UpdateRegion(ctx, sqlc.UpdateRegionParams{
+		RegionID:    regionID,
+		CountryID:   countryID,
+		Name:        name,
+		Description: textOrNull(description),
+		IsActive:    isActive,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Region{}, fmt.Errorf("update region: %w", err)
+	}
+	return toRegion(row), nil
+}
+
+// DeleteRegion removes a region from the catalog.
+func (s *Service) DeleteRegion(ctx context.Context, regionID int64) error {
+	return s.q.DeleteRegion(ctx, regionID)
+}
+
 // Type is a catalog wine type (e.g. red, white, sparkling).
 type Type struct {
 	TypeID      int64
@@ -162,6 +204,26 @@ func (s *Service) ListTypes(ctx context.Context) ([]Type, error) {
 	return out, nil
 }
 
+// UpdateType modifies an existing wine type.
+func (s *Service) UpdateType(ctx context.Context, typeID int64, name, description string, isActive bool, by string) (Type, error) {
+	row, err := s.q.UpdateType(ctx, sqlc.UpdateTypeParams{
+		TypeID:      typeID,
+		Name:        name,
+		Description: textOrNull(description),
+		IsActive:    isActive,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Type{}, fmt.Errorf("update type: %w", err)
+	}
+	return toType(row), nil
+}
+
+// DeleteType removes a wine type from the catalog.
+func (s *Service) DeleteType(ctx context.Context, typeID int64) error {
+	return s.q.DeleteType(ctx, typeID)
+}
+
 // Vintage is a wine vintage year.
 type Vintage struct {
 	VintageID   int64
@@ -185,6 +247,15 @@ func (s *Service) CreateVintage(ctx context.Context, year int32, description, by
 	return toVintage(row), nil
 }
 
+// GetVintageByID returns a vintage by its primary key.
+func (s *Service) GetVintageByID(ctx context.Context, vintageID int64) (Vintage, error) {
+	row, err := s.q.GetVintageByID(ctx, vintageID)
+	if err != nil {
+		return Vintage{}, fmt.Errorf("get vintage by id: %w", err)
+	}
+	return toVintage(row), nil
+}
+
 // ListVintages returns all vintages ordered by year descending.
 func (s *Service) ListVintages(ctx context.Context) ([]Vintage, error) {
 	rows, err := s.q.ListVintages(ctx)
@@ -196,6 +267,26 @@ func (s *Service) ListVintages(ctx context.Context) ([]Vintage, error) {
 		out[i] = toVintage(rows[i])
 	}
 	return out, nil
+}
+
+// UpdateVintage modifies an existing vintage.
+func (s *Service) UpdateVintage(ctx context.Context, vintageID int64, year int32, description string, isActive bool, by string) (Vintage, error) {
+	row, err := s.q.UpdateVintage(ctx, sqlc.UpdateVintageParams{
+		VintageID:   vintageID,
+		Year:        year,
+		Description: textOrNull(description),
+		IsActive:    isActive,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Vintage{}, fmt.Errorf("update vintage: %w", err)
+	}
+	return toVintage(row), nil
+}
+
+// DeleteVintage removes a vintage from the catalog.
+func (s *Service) DeleteVintage(ctx context.Context, vintageID int64) error {
+	return s.q.DeleteVintage(ctx, vintageID)
 }
 
 // GrapeVariety is a catalog grape variety.
@@ -221,6 +312,15 @@ func (s *Service) CreateGrapeVariety(ctx context.Context, name, description, by 
 	return toGrapeVariety(row), nil
 }
 
+// GetGrapeVarietyByID returns a grape variety by its primary key.
+func (s *Service) GetGrapeVarietyByID(ctx context.Context, grapeVarietyID int64) (GrapeVariety, error) {
+	row, err := s.q.GetGrapeVarietyByID(ctx, grapeVarietyID)
+	if err != nil {
+		return GrapeVariety{}, fmt.Errorf("get grape variety by id: %w", err)
+	}
+	return toGrapeVariety(row), nil
+}
+
 // ListGrapeVarieties returns all grape varieties ordered by name.
 func (s *Service) ListGrapeVarieties(ctx context.Context) ([]GrapeVariety, error) {
 	rows, err := s.q.ListGrapeVarieties(ctx)
@@ -232,6 +332,26 @@ func (s *Service) ListGrapeVarieties(ctx context.Context) ([]GrapeVariety, error
 		out[i] = toGrapeVariety(rows[i])
 	}
 	return out, nil
+}
+
+// UpdateGrapeVariety modifies an existing grape variety.
+func (s *Service) UpdateGrapeVariety(ctx context.Context, grapeVarietyID int64, name, description string, isActive bool, by string) (GrapeVariety, error) {
+	row, err := s.q.UpdateGrapeVariety(ctx, sqlc.UpdateGrapeVarietyParams{
+		GrapeVarietyID: grapeVarietyID,
+		Name:           name,
+		Description:    textOrNull(description),
+		IsActive:       isActive,
+		UpdatedBy:      textOrNull(by),
+	})
+	if err != nil {
+		return GrapeVariety{}, fmt.Errorf("update grape variety: %w", err)
+	}
+	return toGrapeVariety(row), nil
+}
+
+// DeleteGrapeVariety removes a grape variety from the catalog.
+func (s *Service) DeleteGrapeVariety(ctx context.Context, grapeVarietyID int64) error {
+	return s.q.DeleteGrapeVariety(ctx, grapeVarietyID)
 }
 
 // BottleGrapeVariety is a grape variety associated with a bottle.

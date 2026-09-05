@@ -85,10 +85,12 @@ services:
     build:
       context: clients/web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-dummy}
     container_name: lena2-web
     environment:
       PORT: 3000
-      NEXT_PUBLIC_LENA_API_URL: ${NEXT_PUBLIC_LENA_API_URL:-/graphql}
     ports:
       - "3000:3000"
     depends_on:

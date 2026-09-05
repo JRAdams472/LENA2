@@ -20,10 +20,17 @@ type Querier interface {
 	DeleteBottle(ctx context.Context, bottleID int64) error
 	DeleteBottleFlavorProfile(ctx context.Context, arg DeleteBottleFlavorProfileParams) error
 	DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) error
+	DeleteCountry(ctx context.Context, countryID int64) error
+	DeleteGrapeVariety(ctx context.Context, grapeVarietyID int64) error
+	DeleteRegion(ctx context.Context, regionID int64) error
+	DeleteType(ctx context.Context, typeID int64) error
+	DeleteVintage(ctx context.Context, vintageID int64) error
 	GetBottleByID(ctx context.Context, bottleID int64) (WineBottle, error)
 	GetCountryByID(ctx context.Context, countryID int64) (WineCountry, error)
+	GetGrapeVarietyByID(ctx context.Context, grapeVarietyID int64) (WineGrapeVariety, error)
 	GetRegionByID(ctx context.Context, regionID int64) (WineRegion, error)
 	GetTypeByID(ctx context.Context, typeID int64) (WineType, error)
+	GetVintageByID(ctx context.Context, vintageID int64) (WineVintage, error)
 	ListBottleFlavorProfiles(ctx context.Context, bottleID int64) ([]ListBottleFlavorProfilesRow, error)
 	ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]ListBottleGrapeVarietiesRow, error)
 	ListBottles(ctx context.Context, arg ListBottlesParams) ([]WineBottle, error)
@@ -34,6 +41,11 @@ type Querier interface {
 	ListVintages(ctx context.Context) ([]WineVintage, error)
 	ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error)
 	UpdateBottle(ctx context.Context, arg UpdateBottleParams) error
+	UpdateCountry(ctx context.Context, arg UpdateCountryParams) (WineCountry, error)
+	UpdateGrapeVariety(ctx context.Context, arg UpdateGrapeVarietyParams) (WineGrapeVariety, error)
+	UpdateRegion(ctx context.Context, arg UpdateRegionParams) (WineRegion, error)
+	UpdateType(ctx context.Context, arg UpdateTypeParams) (WineType, error)
+	UpdateVintage(ctx context.Context, arg UpdateVintageParams) (WineVintage, error)
 }
 
 var _ Querier = (*Queries)(nil)
