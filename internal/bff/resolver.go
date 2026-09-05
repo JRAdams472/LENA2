@@ -27,16 +27,16 @@ var schema string
 // Resolver is the root GraphQL resolver. It is the only package that is
 // allowed to orchestrate across domain modules.
 type Resolver struct {
-	GroceryService   *grocery.Service
-	InventoryService *inventory.Service
-	MealPlanService  *mealplan.Service
-	RecipeService    *recipe.Service
-	UserPrefsService *userprefs.Service
-	WineService      *wine.Service
+	GroceryService   GroceryService
+	InventoryService InventoryService
+	MealPlanService  MealPlanService
+	RecipeService    RecipeService
+	UserPrefsService UserPrefsService
+	WineService      WineService
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(gr *grocery.Service, inv *inventory.Service, mp *mealplan.Service, rec *recipe.Service, up *userprefs.Service, wineSvc *wine.Service) *Resolver {
+func NewResolver(gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService) *Resolver {
 	return &Resolver{GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
 }
 
@@ -1864,7 +1864,7 @@ func (r *Resolver) RemoveBottleFlavorProfile(ctx context.Context, args struct {
 	return true, nil
 }
 
-func findUserItem(ctx context.Context, svc *userprefs.Service, userID, itemID int64) (*userprefs.UserItem, error) {
+func findUserItem(ctx context.Context, svc UserPrefsService, userID, itemID int64) (*userprefs.UserItem, error) {
 	items, err := svc.ListUserItems(ctx, userID, 100_000, 0)
 	if err != nil {
 		return nil, err
@@ -1877,7 +1877,7 @@ func findUserItem(ctx context.Context, svc *userprefs.Service, userID, itemID in
 	return nil, nil
 }
 
-func findUserBottle(ctx context.Context, svc *userprefs.Service, userID, bottleID int64) (*userprefs.UserBottle, error) {
+func findUserBottle(ctx context.Context, svc UserPrefsService, userID, bottleID int64) (*userprefs.UserBottle, error) {
 	bottles, err := svc.ListUserBottles(ctx, userID, 100_000, 0)
 	if err != nil {
 		return nil, err
@@ -1922,7 +1922,7 @@ func (r *userResolver) DisplayName() *string { return nilIfEmpty(r.u.DisplayName
 
 // itemResolver resolves Item fields.
 type itemResolver struct {
-	inv *inventory.Service
+	inv InventoryService
 	it  inventory.Item
 }
 
@@ -2024,7 +2024,7 @@ func (r *foodFlavorResolver) Flavor(ctx context.Context) (*flavorProfileResolver
 func (r *foodFlavorResolver) Intensity() int32 { return int32(r.flavor.Intensity) }
 
 type itemPageResolver struct {
-	inv      *inventory.Service
+	inv      InventoryService
 	items    []inventory.Item
 	page     int32
 	pageSize int32
@@ -2045,7 +2045,7 @@ func (r *itemPageResolver) PageInfo() *pageInfoResolver {
 
 // userItemResolver resolves UserItem fields.
 type userItemResolver struct {
-	inv  *inventory.Service
+	inv  InventoryService
 	item userprefs.UserItem
 }
 
@@ -2067,7 +2067,7 @@ func (r *userItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 }
 
 type userItemPageResolver struct {
-	inv      *inventory.Service
+	inv      InventoryService
 	items    []userprefs.UserItem
 	page     int32
 	pageSize int32
@@ -2088,7 +2088,7 @@ func (r *userItemPageResolver) PageInfo() *pageInfoResolver {
 
 // userBottleResolver resolves UserBottle fields.
 type userBottleResolver struct {
-	wine   *wine.Service
+	wine   WineService
 	bottle userprefs.UserBottle
 }
 
@@ -2112,7 +2112,7 @@ func (r *userBottleResolver) Bottle(ctx context.Context) (*bottleResolver, error
 }
 
 type userBottlePageResolver struct {
-	wine     *wine.Service
+	wine     WineService
 	bottles  []userprefs.UserBottle
 	page     int32
 	pageSize int32
@@ -2143,9 +2143,9 @@ func (r *pageInfoResolver) TotalCount() int32 { return r.total }
 
 // recipeResolver resolves Recipe fields.
 type recipeResolver struct {
-	inv    *inventory.Service
-	rec    *recipe.Service
-	up     *userprefs.Service
+	inv    InventoryService
+	rec    RecipeService
+	up     UserPrefsService
 	user   currentuser.User
 	recipe recipe.Recipe
 }
@@ -2187,7 +2187,7 @@ func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
 }
 
 type recipeItemResolver struct {
-	inv  *inventory.Service
+	inv  InventoryService
 	item recipe.RecipeItem
 }
 
@@ -2209,9 +2209,9 @@ func (r *recipeStepResolver) StepNumber() int32   { return r.step.StepNumber }
 func (r *recipeStepResolver) Instruction() string { return r.step.Instruction }
 
 type recipePageResolver struct {
-	inv      *inventory.Service
-	rec      *recipe.Service
-	up       *userprefs.Service
+	inv      InventoryService
+	rec      RecipeService
+	up       UserPrefsService
 	user     currentuser.User
 	recipes  []recipe.Recipe
 	page     int32
@@ -2233,10 +2233,10 @@ func (r *recipePageResolver) PageInfo() *pageInfoResolver {
 
 // mealPlanResolver resolves MealPlan fields.
 type mealPlanResolver struct {
-	mp   *mealplan.Service
-	inv  *inventory.Service
-	rec  *recipe.Service
-	up   *userprefs.Service
+	mp   MealPlanService
+	inv  InventoryService
+	rec  RecipeService
+	up   UserPrefsService
 	user currentuser.User
 	plan mealplan.MealPlan
 }
@@ -2261,10 +2261,10 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 
 // mealSlotResolver resolves MealSlot fields.
 type mealSlotResolver struct {
-	mp   *mealplan.Service
-	inv  *inventory.Service
-	rec  *recipe.Service
-	up   *userprefs.Service
+	mp   MealPlanService
+	inv  InventoryService
+	rec  RecipeService
+	up   UserPrefsService
 	user currentuser.User
 	slot mealplan.MealSlot
 }
@@ -2298,7 +2298,7 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 
 // mealSlotItemResolver resolves MealSlotItem fields.
 type mealSlotItemResolver struct {
-	inv  *inventory.Service
+	inv  InventoryService
 	item mealplan.MealSlotItem
 }
 
@@ -2320,10 +2320,10 @@ func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) 
 }
 
 type mealPlanPageResolver struct {
-	mp       *mealplan.Service
-	inv      *inventory.Service
-	rec      *recipe.Service
-	up       *userprefs.Service
+	mp       MealPlanService
+	inv      InventoryService
+	rec      RecipeService
+	up       UserPrefsService
 	user     currentuser.User
 	plans    []mealplan.MealPlan
 	page     int32
@@ -2345,8 +2345,8 @@ func (r *mealPlanPageResolver) PageInfo() *pageInfoResolver {
 
 // groceryListResolver resolves GroceryList fields.
 type groceryListResolver struct {
-	g    *grocery.Service
-	inv  *inventory.Service
+	g    GroceryService
+	inv  InventoryService
 	list grocery.GroceryList
 }
 
@@ -2370,7 +2370,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 
 // groceryListItemResolver resolves GroceryListItem fields.
 type groceryListItemResolver struct {
-	inv  *inventory.Service
+	inv  InventoryService
 	item grocery.GroceryListItem
 }
 
@@ -2394,8 +2394,8 @@ func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, erro
 }
 
 type groceryListPageResolver struct {
-	g        *grocery.Service
-	inv      *inventory.Service
+	g        GroceryService
+	inv      InventoryService
 	lists    []grocery.GroceryList
 	page     int32
 	pageSize int32
@@ -2416,7 +2416,7 @@ func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 
 // bottleResolver resolves Bottle fields.
 type bottleResolver struct {
-	wine *wine.Service
+	wine WineService
 	b    wine.Bottle
 }
 
@@ -2450,7 +2450,7 @@ func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVari
 }
 
 type bottlePageResolver struct {
-	wine     *wine.Service
+	wine     WineService
 	bottles  []wine.Bottle
 	page     int32
 	pageSize int32
@@ -2486,7 +2486,7 @@ func (r *countryResolver) Description() *string { return nilIfEmpty(r.c.Descript
 
 // regionResolver resolves a wine region.
 type regionResolver struct {
-	wine *wine.Service
+	wine WineService
 	r    wine.Region
 }
 
@@ -2521,7 +2521,7 @@ func (r *grapeVarietyResolver) IsActive() bool       { return r.g.IsActive }
 
 // bottleGrapeVarietyResolver resolves a grape variety on a bottle.
 type bottleGrapeVarietyResolver struct {
-	wine    *wine.Service
+	wine    WineService
 	variety wine.BottleGrapeVariety
 }
 
@@ -2558,7 +2558,7 @@ func (r *wineFlavorProfileResolver) IsActive() bool       { return r.fp.IsActive
 
 // bottleFlavorProfileResolver resolves a flavor profile on a bottle.
 type bottleFlavorProfileResolver struct {
-	wine   *wine.Service
+	wine   WineService
 	flavor wine.BottleFlavorProfile
 }
 
