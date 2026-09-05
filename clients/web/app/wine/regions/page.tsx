@@ -22,7 +22,6 @@ export default function RegionsPage() {
         { key: "regionName", label: "Region Name" },
         { key: "description", label: "Description" },
         { key: "countryID", label: "Country ID", type: "number" },
-        { key: "isActive", label: "Active", type: "boolean" },
       ]}
       createFn={(row) => api.createRegion(asEntity(row))}
       updateFn={(row) =>

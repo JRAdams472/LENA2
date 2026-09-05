@@ -12,7 +12,6 @@ export default function TypesPage() {
       fields={[
         { key: "typeName", label: "Type Name" },
         { key: "description", label: "Description" },
-        { key: "isActive", label: "Active", type: "boolean" },
       ]}
       createFn={(row) => api.createType(asEntity(row))}
       updateFn={(row) =>
