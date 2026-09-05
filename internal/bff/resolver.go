@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/grocery"
@@ -718,7 +719,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 			return nil, err
 		}
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: rec}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
 // UpdateItem modifies an existing catalog item.
@@ -894,7 +895,7 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, recipe: updated}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: updated}, nil
 }
 
 // DeleteRecipe removes a recipe.
@@ -1981,6 +1982,7 @@ type categoryResolver struct{ c inventory.Category }
 func (r *categoryResolver) ID() graphql.ID       { return graphql.ID(strconv.FormatInt(r.c.CategoryID, 10)) }
 func (r *categoryResolver) Name() string         { return r.c.Name }
 func (r *categoryResolver) Description() *string { return nilIfEmpty(r.c.Description) }
+func (r *categoryResolver) IsActive() bool       { return r.c.IsActive }
 
 // flavorProfileResolver resolves an inventory flavor profile.
 type flavorProfileResolver struct{ f inventory.FlavorProfile }
@@ -2181,6 +2183,9 @@ func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, erro
 func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
 	fav, err := r.up.GetRecipeFavorite(ctx, r.user.UserID, r.recipe.RecipeID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
 		return false, err
 	}
 	return fav.IsFavorite, nil

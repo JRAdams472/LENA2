@@ -116,7 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setAuthTokenGetter(() => tokenRef.current);
+    // Read storage on each call so requests fired before the store
+    // subscription settles still send the persisted token.
+    setAuthTokenGetter(() => tokenStore.getSnapshot());
     setOnUnauthorized(signOut);
   }, [signOut]);
 

@@ -121,6 +121,7 @@ type Category {
   id: ID!
   name: String!
   description: String
+  isActive: Boolean!
 }
 
 type Brand {

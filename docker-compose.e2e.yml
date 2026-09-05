@@ -1,0 +1,35 @@
+# Overrides for Playwright e2e runs:
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+#
+# Adds a local OIDC issuer the API trusts in addition to Google, so tests can
+# mint their own ID tokens without real Google sign-in.
+services:
+  testissuer:
+    build:
+      context: .
+      dockerfile: cmd/testissuer/Dockerfile
+    container_name: lena2-testissuer
+    environment:
+      PORT: 8085
+      # The API container resolves the issuer by this name.
+      ISSUER_URL: http://testissuer:8085
+      TOKEN_AUDIENCE: lena-e2e-client
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    environment:
+      LENA_AUTH_ISSUERS: https://accounts.google.com,http://testissuer:8085
+      LENA_AUTH_AUDIENCES: ${LENA_GOOGLE_CLIENT_ID:-dummy},lena-e2e-client
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+      seq-gelf:
+        condition: service_started
+      testissuer:
+        condition: service_healthy
