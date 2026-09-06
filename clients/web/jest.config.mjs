@@ -9,15 +9,22 @@ const customJestConfig = {
   testEnvironment: "jest-environment-jsdom",
   testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.next/", "<rootDir>/e2e/"],
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
-  // Baseline thresholds below current coverage (~53/42/47/57); raise as
-  // coverage improves. Scope stays at Jest's default (files exercised by
-  // tests) so untested pages don't sink the gate.
+  // Measure all app and lib source so untested pages/components count
+  // against the gate (excludes config, test helpers, and e2e).
+  collectCoverageFrom: [
+    "app/**/*.{ts,tsx}",
+    "lib/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "!**/*.d.ts",
+    "!**/node_modules/**",
+  ],
+  // 60% minimum gate; raise as coverage improves.
   coverageThreshold: {
     global: {
-      statements: 45,
-      branches: 35,
-      functions: 40,
-      lines: 50,
+      statements: 60,
+      branches: 60,
+      functions: 60,
+      lines: 60,
     },
   },
 };
