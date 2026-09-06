@@ -24,27 +24,33 @@ func isGenerated(path string) bool {
 }
 
 func main() {
-	in := bufio.NewScanner(os.Stdin)
-	in.Buffer(make([]byte, 1024*1024), 1024*1024)
-	out := bufio.NewWriter(os.Stdout)
-	defer out.Flush()
-
-	for in.Scan() {
-		line := in.Text()
-		if strings.HasPrefix(line, "mode:") {
-			fmt.Fprintln(out, line)
-			continue
-		}
-		// Cover block lines start with "<file>:<start-line>.<col>,..." — the
-		// file path is everything before the first colon.
-		path, _, found := strings.Cut(line, ":")
-		if !found || isGenerated(path) {
-			continue
-		}
-		fmt.Fprintln(out, line)
-	}
-	if err := in.Err(); err != nil {
+	if err := run(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "coveragefilter:", err)
 		os.Exit(1)
 	}
+}
+
+func run(in *os.File, outFile *os.File) error {
+	scanner := bufio.NewScanner(in)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	out := bufio.NewWriter(outFile)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "mode:") {
+			// Cover block lines start with "<file>:<start-line>.<col>,..." —
+			// the file path is everything before the first colon.
+			path, _, found := strings.Cut(line, ":")
+			if !found || isGenerated(path) {
+				continue
+			}
+		}
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return out.Flush()
 }
