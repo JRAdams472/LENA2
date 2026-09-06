@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
@@ -50,6 +51,7 @@ func TestBFF_Integration(t *testing.T) {
 	}, identitySvc)
 
 	resolver := NewResolver(
+		analytics.NewService(pool),
 		grocery.NewService(pool),
 		inventory.NewService(pool),
 		mealplan.NewService(pool),

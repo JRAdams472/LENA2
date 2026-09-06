@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -89,6 +90,7 @@ func main() {
 
 func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) *echo.Echo {
 	identitySvc := identity.NewService(pool)
+	analyticsSvc := analytics.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
 	mealPlanSvc := mealplan.NewService(pool)
@@ -160,7 +162,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()))
 	}
 
-	resolver := bff.NewResolver(grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
+	resolver := bff.NewResolver(analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength)),

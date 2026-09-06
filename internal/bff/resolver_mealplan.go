@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -358,6 +359,13 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 	}, u.Email)
 	if err != nil {
 		return nil, err
+	}
+	if slot.RecipeID != nil {
+		recordEventAsync(r.AnalyticsService, u.UserID, u.Email, analytics.Event{
+			EventType:  analytics.EventMenuAdd,
+			EntityType: analytics.EntityRecipe,
+			EntityID:   *slot.RecipeID,
+		})
 	}
 	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: slot}, nil
 }

@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -141,6 +142,17 @@ type UserPrefsService interface {
 }
 
 var _ UserPrefsService = (*userprefs.Service)(nil)
+
+// AnalyticsService is the subset of *analytics.Service used by the resolver.
+type AnalyticsService interface {
+	RecordEvent(ctx context.Context, e analytics.Event, by string) error
+	GetUserSelectionCounts(ctx context.Context, userID int64, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error)
+	GetGlobalSelectionCounts(ctx context.Context, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error)
+	TopUserSelections(ctx context.Context, userID int64, entityType string, limit int32) ([]analytics.SelectionCount, error)
+	TopGlobalSelections(ctx context.Context, entityType string, limit int32) ([]analytics.SelectionCount, error)
+}
+
+var _ AnalyticsService = (*analytics.Service)(nil)
 
 // WineService is the subset of *wine.Service used by the resolver.
 type WineService interface {
