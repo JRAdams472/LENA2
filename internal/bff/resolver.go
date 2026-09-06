@@ -4,10 +4,12 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
@@ -209,6 +211,62 @@ type itemChildren struct {
 	categories map[int64]inventory.Category
 	nutrients  map[int64][]inventory.FoodNutrient
 	flavors    map[int64][]inventory.FoodFlavor
+	units      map[int64]inventory.Unit
+}
+
+// loadUnits fetches a set of units in one query, keyed by ID.
+func loadUnits(ctx context.Context, inv InventoryService, unitIDs []int64) (map[int64]inventory.Unit, error) {
+	units := make(map[int64]inventory.Unit)
+	if len(unitIDs) == 0 {
+		return units, nil
+	}
+	rows, err := inv.GetUnitsByIDs(ctx, unitIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range rows {
+		units[u.UnitID] = u
+	}
+	return units, nil
+}
+
+// resolveUnitID maps a unit name or abbreviation (e.g. "cup", "c") to its
+// canonical unit_id. Unknown units are rejected rather than stored.
+func resolveUnitID(ctx context.Context, inv InventoryService, name string) (int64, error) {
+	u, err := inv.GetUnitByName(ctx, strings.TrimSpace(name))
+	if err != nil {
+		return 0, fmt.Errorf("unknown unit %q", name)
+	}
+	return u.UnitID, nil
+}
+
+// unitName renders a unit's display name from a preloaded map, falling back
+// to a lazy service call when units is nil.
+func unitName(ctx context.Context, inv InventoryService, units map[int64]inventory.Unit, unitID int64) (string, error) {
+	if units != nil {
+		if u, ok := units[unitID]; ok {
+			return u.Name, nil
+		}
+		return "", nil
+	}
+	u, err := inv.GetUnitByID(ctx, unitID)
+	if err != nil {
+		return "", err
+	}
+	return u.Name, nil
+}
+
+// unitNamePtr is unitName for nullable unit references (e.g. grocery list
+// items where the unit may be unset).
+func unitNamePtr(ctx context.Context, inv InventoryService, units map[int64]inventory.Unit, unitID *int64) (*string, error) {
+	if unitID == nil {
+		return nil, nil
+	}
+	name, err := unitName(ctx, inv, units, *unitID)
+	if err != nil {
+		return nil, err
+	}
+	return &name, nil
 }
 
 // loadItems fetches a set of catalog items in one query, keyed by ID.
@@ -235,11 +293,13 @@ func loadItemChildren(ctx context.Context, inv InventoryService, items []invento
 		categories: make(map[int64]inventory.Category),
 		nutrients:  make(map[int64][]inventory.FoodNutrient),
 		flavors:    make(map[int64][]inventory.FoodFlavor),
+		units:      make(map[int64]inventory.Unit),
 	}
 	if len(items) == 0 {
 		return ch, nil
 	}
 	itemIDs := make([]int64, len(items))
+	unitIDSet := make(map[int64]bool)
 	brandIDSet := make(map[int64]bool)
 	categoryIDSet := make(map[int64]bool)
 	for i, it := range items {
@@ -248,6 +308,9 @@ func loadItemChildren(ctx context.Context, inv InventoryService, items []invento
 			brandIDSet[*it.BrandID] = true
 		}
 		categoryIDSet[it.CategoryID] = true
+		if it.UnitID != 0 {
+			unitIDSet[it.UnitID] = true
+		}
 	}
 	brandIDs := make([]int64, 0, len(brandIDSet))
 	for id := range brandIDSet {
@@ -290,6 +353,15 @@ func loadItemChildren(ctx context.Context, inv InventoryService, items []invento
 	for _, f := range flavors {
 		ch.flavors[f.ItemID] = append(ch.flavors[f.ItemID], f)
 	}
+	unitIDs := make([]int64, 0, len(unitIDSet))
+	for id := range unitIDSet {
+		unitIDs = append(unitIDs, id)
+	}
+	slices.Sort(unitIDs)
+	ch.units, err = loadUnits(ctx, inv, unitIDs)
+	if err != nil {
+		return nil, err
+	}
 	return ch, nil
 }
 
@@ -302,6 +374,7 @@ type recipeChildren struct {
 	favorites    map[int64]bool
 	items        map[int64]inventory.Item
 	itemChildren *itemChildren
+	units        map[int64]inventory.Unit
 }
 
 // loadRecipeChildren batch-loads the recipes, their items and steps, the
@@ -315,6 +388,7 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		itemsBy:   make(map[int64][]recipe.RecipeItem),
 		stepsBy:   make(map[int64][]recipe.RecipeStep),
 		favorites: make(map[int64]bool),
+		units:     make(map[int64]inventory.Unit),
 	}
 	if len(recipeIDs) > 0 {
 		recipes, err := rec.GetRecipesByIDs(ctx, recipeIDs)
@@ -374,6 +448,25 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		return nil, err
 	}
 	rc.itemChildren = ch
+	// Recipe items carry their own unit_id; preload them alongside the
+	// catalog-item units so unit display never issues a query per row.
+	unitIDSet := make(map[int64]bool)
+	for _, items := range rc.itemsBy {
+		for _, ri := range items {
+			if ri.UnitID != 0 {
+				unitIDSet[ri.UnitID] = true
+			}
+		}
+	}
+	unitIDs := make([]int64, 0, len(unitIDSet))
+	for id := range unitIDSet {
+		unitIDs = append(unitIDs, id)
+	}
+	slices.Sort(unitIDs)
+	rc.units, err = loadUnits(ctx, inv, unitIDs)
+	if err != nil {
+		return nil, err
+	}
 	return rc, nil
 }
 

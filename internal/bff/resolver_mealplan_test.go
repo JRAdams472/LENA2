@@ -73,16 +73,19 @@ func TestResolver_MealPlan_Happy(t *testing.T) {
 	assert.Equal(t, "note", *slot.ReplacementNote())
 
 	mp.EXPECT().ListMealSlotItems(gomock.Any(), int64(100)).Return([]mealplan.MealSlotItem{
-		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, Unit: "cup", IsFromRecipe: true},
+		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, UnitID: 3, IsFromRecipe: true},
 	}, nil)
-	inv.EXPECT().GetItemByID(gomock.Any(), int64(50)).Return(inventory.Item{ItemID: 50, Name: "Flour", CategoryID: 1, Unit: "cup"}, nil)
+	inv.EXPECT().GetItemByID(gomock.Any(), int64(50)).Return(inventory.Item{ItemID: 50, Name: "Flour", CategoryID: 1, UnitID: 3}, nil)
+	inv.EXPECT().GetUnitByID(gomock.Any(), int64(3)).Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 
 	items, err := slot.Items(mealPlanCtx())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, graphql.ID("1000"), items[0].ID())
 	assert.Equal(t, 1.5, items[0].Quantity())
-	assert.Equal(t, "cup", items[0].Unit())
+	unit, err := items[0].Unit(mealPlanCtx())
+	require.NoError(t, err)
+	assert.Equal(t, "cup", unit)
 	assert.True(t, items[0].IsFromRecipe())
 
 	itemRes, err := items[0].Item(mealPlanCtx())
@@ -151,15 +154,15 @@ func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
 	}, nil)
 
 	mp.EXPECT().ListMealSlotItemsByPlan(gomock.Any(), int64(10)).Return([]mealplan.MealSlotItem{
-		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1, Unit: "cup", IsFromRecipe: true},
+		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1, UnitID: 3, IsFromRecipe: true},
 	}, nil)
 
 	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{20}).Return([]recipe.Recipe{
 		{RecipeID: 20, Name: "Pasta", Servings: mealPlanPtrInt32(4)},
 	}, nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{20}).Return([]recipe.RecipeItem{
-		{RecipeID: 20, ItemID: 50, Quantity: 0.5, Unit: "cup"},
-		{RecipeID: 20, ItemID: 60, Quantity: 1, Unit: "oz"},
+		{RecipeID: 20, ItemID: 50, Quantity: 0.5, UnitID: 3},
+		{RecipeID: 20, ItemID: 60, Quantity: 1, UnitID: 12},
 	}, nil)
 
 	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), gomock.Any()).Return([]inventory.FoodNutrient{
@@ -300,8 +303,11 @@ func TestResolver_MealPlan_AddMealSlotItem_Happy(t *testing.T) {
 	inv := mock.NewMockInventoryService(ctrl)
 	r := &Resolver{MealPlanService: mp, InventoryService: inv}
 
-	mp.EXPECT().AddMealSlotItem(gomock.Any(), gomock.Any(), mealPlanEmail).Return(mealplan.MealSlotItem{
-		SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, Unit: "cup", IsFromRecipe: true,
+	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+	mp.EXPECT().AddMealSlotItem(gomock.Any(), gomock.Eq(mealplan.MealSlotItem{
+		SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, UnitID: 3, IsFromRecipe: true,
+	}), mealPlanEmail).Return(mealplan.MealSlotItem{
+		SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, UnitID: 3, IsFromRecipe: true,
 	}, nil)
 
 	res, err := r.AddMealSlotItem(mealPlanCtx(), struct{ Input addMealSlotItemInput }{
@@ -316,7 +322,7 @@ func TestResolver_MealPlan_AddMealSlotItem_Happy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("1000"), res.ID())
 
-	inv.EXPECT().GetItemByID(gomock.Any(), int64(50)).Return(inventory.Item{ItemID: 50, Name: "Flour", CategoryID: 1, Unit: "cup"}, nil)
+	inv.EXPECT().GetItemByID(gomock.Any(), int64(50)).Return(inventory.Item{ItemID: 50, Name: "Flour", CategoryID: 1, UnitID: 3}, nil)
 
 	itemRes, err := res.Item(mealPlanCtx())
 	require.NoError(t, err)
@@ -581,6 +587,10 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 			inv := mock.NewMockInventoryService(ctrl)
 			rec := mock.NewMockRecipeService(ctrl)
 			r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec}
+			// AddMealSlotItem resolves the unit name before calling the
+			// service; permit that lookup for any case that reaches it.
+			inv.EXPECT().GetUnitByName(gomock.Any(), gomock.Any()).
+				Return(inventory.Unit{UnitID: 1, Name: "each"}, nil).AnyTimes()
 			tt.setup(mp)
 
 			res, err := tt.call(r, mealPlanCtx())

@@ -191,6 +191,21 @@ func (mr *MockQuerierMockRecorder) CreateNutrientType(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNutrientType", reflect.TypeOf((*MockQuerier)(nil).CreateNutrientType), ctx, arg)
 }
 
+// CreateUnit mocks base method.
+func (m *MockQuerier) CreateUnit(ctx context.Context, arg sqlc.CreateUnitParams) (sqlc.InventoryUnit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateUnit", ctx, arg)
+	ret0, _ := ret[0].(sqlc.InventoryUnit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateUnit indicates an expected call of CreateUnit.
+func (mr *MockQuerierMockRecorder) CreateUnit(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateUnit", reflect.TypeOf((*MockQuerier)(nil).CreateUnit), ctx, arg)
+}
+
 // DeleteBrand mocks base method.
 func (m *MockQuerier) DeleteBrand(ctx context.Context, brandID int64) error {
 	m.ctrl.T.Helper()
@@ -453,6 +468,51 @@ func (mr *MockQuerierMockRecorder) GetNutrientTypeByID(ctx, nutrientID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNutrientTypeByID", reflect.TypeOf((*MockQuerier)(nil).GetNutrientTypeByID), ctx, nutrientID)
 }
 
+// GetUnitByID mocks base method.
+func (m *MockQuerier) GetUnitByID(ctx context.Context, unitID int64) (sqlc.InventoryUnit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnitByID", ctx, unitID)
+	ret0, _ := ret[0].(sqlc.InventoryUnit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnitByID indicates an expected call of GetUnitByID.
+func (mr *MockQuerierMockRecorder) GetUnitByID(ctx, unitID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitByID", reflect.TypeOf((*MockQuerier)(nil).GetUnitByID), ctx, unitID)
+}
+
+// GetUnitByName mocks base method.
+func (m *MockQuerier) GetUnitByName(ctx context.Context, lower string) (sqlc.InventoryUnit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnitByName", ctx, lower)
+	ret0, _ := ret[0].(sqlc.InventoryUnit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnitByName indicates an expected call of GetUnitByName.
+func (mr *MockQuerierMockRecorder) GetUnitByName(ctx, lower any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitByName", reflect.TypeOf((*MockQuerier)(nil).GetUnitByName), ctx, lower)
+}
+
+// GetUnitsByIDs mocks base method.
+func (m *MockQuerier) GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]sqlc.InventoryUnit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnitsByIDs", ctx, unitIds)
+	ret0, _ := ret[0].([]sqlc.InventoryUnit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnitsByIDs indicates an expected call of GetUnitsByIDs.
+func (mr *MockQuerierMockRecorder) GetUnitsByIDs(ctx, unitIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitsByIDs", reflect.TypeOf((*MockQuerier)(nil).GetUnitsByIDs), ctx, unitIds)
+}
+
 // ListBrands mocks base method.
 func (m *MockQuerier) ListBrands(ctx context.Context) ([]sqlc.InventoryBrand, error) {
 	m.ctrl.T.Helper()
@@ -601,6 +661,21 @@ func (m *MockQuerier) ListNutrientTypes(ctx context.Context) ([]sqlc.InventoryNu
 func (mr *MockQuerierMockRecorder) ListNutrientTypes(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNutrientTypes", reflect.TypeOf((*MockQuerier)(nil).ListNutrientTypes), ctx)
+}
+
+// ListUnits mocks base method.
+func (m *MockQuerier) ListUnits(ctx context.Context) ([]sqlc.InventoryUnit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUnits", ctx)
+	ret0, _ := ret[0].([]sqlc.InventoryUnit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUnits indicates an expected call of ListUnits.
+func (mr *MockQuerierMockRecorder) ListUnits(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockQuerier)(nil).ListUnits), ctx)
 }
 
 // UpdateBrand mocks base method.

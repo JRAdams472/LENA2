@@ -110,7 +110,7 @@ type GroceryListItem struct {
 	IngredientID      *int64
 	ManualItemName    string
 	QuantityNeeded    float64
-	UnitOfMeasure     string
+	UnitID            *int64
 	Source            string
 	IsChecked         bool
 }
@@ -127,7 +127,7 @@ func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, b
 		IngredientID:   optInt8(arg.IngredientID),
 		ManualItemName: textOrNull(arg.ManualItemName),
 		QuantityNeeded: qty,
-		UnitOfMeasure:  textOrNull(arg.UnitOfMeasure),
+		UnitID:         optInt8(arg.UnitID),
 		Source:         arg.Source,
 		IsChecked:      arg.IsChecked,
 		CreatedBy:      by,
@@ -203,7 +203,7 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID i
 		IngredientID:      optInt8(arg.IngredientID),
 		ManualItemName:    textOrNull(arg.ManualItemName),
 		QuantityNeeded:    qty,
-		UnitOfMeasure:     textOrNull(arg.UnitOfMeasure),
+		UnitID:            optInt8(arg.UnitID),
 		Source:            arg.Source,
 		IsChecked:         arg.IsChecked,
 		UpdatedBy:         textOrNull(by),
@@ -242,7 +242,6 @@ func toGroceryListItem(row sqlc.GroceryGroceryListItem) (GroceryListItem, error)
 		GroceryListItemID: row.GroceryListItemID,
 		GroceryListID:     row.GroceryListID,
 		ManualItemName:    row.ManualItemName.String,
-		UnitOfMeasure:     row.UnitOfMeasure.String,
 		Source:            row.Source,
 		IsChecked:         row.IsChecked,
 	}
@@ -253,6 +252,10 @@ func toGroceryListItem(row sqlc.GroceryGroceryListItem) (GroceryListItem, error)
 	if row.IngredientID.Valid {
 		v := row.IngredientID.Int64
 		gli.IngredientID = &v
+	}
+	if row.UnitID.Valid {
+		v := row.UnitID.Int64
+		gli.UnitID = &v
 	}
 	if row.QuantityNeeded.Valid {
 		f8, err := row.QuantityNeeded.Float64Value()

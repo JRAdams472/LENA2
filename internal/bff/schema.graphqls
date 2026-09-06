@@ -13,6 +13,7 @@ type Query {
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
   ingredient(id: ID!): Ingredient
   ingredients(page: Int = 1, pageSize: Int = 25): IngredientPage!
+  units: [Unit!]!
   recipe(id: ID!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
   userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
@@ -204,6 +205,18 @@ input UpdateIngredientInput {
   isActive: Boolean
 }
 
+# Unit is a canonical unit of measure shared by every domain. kind is one
+# of "volume", "weight", or "count" and enables future unit conversion.
+# Unit inputs accept a name or abbreviation ("cup", "c"); unknown units
+# are rejected.
+type Unit {
+  id: ID!
+  name: String!
+  abbreviation: String
+  kind: String!
+  isActive: Boolean!
+}
+
 type Recipe {
   id: ID!
   name: String!
@@ -212,17 +225,28 @@ type Recipe {
   prepTimeMinutes: Int
   cookTimeMinutes: Int
   items: [RecipeItem!]!
+  itemSections: [RecipeItemSection!]!
   steps: [RecipeStep!]!
   isFavorite: Boolean!
 }
 
 type RecipeItem {
+  id: ID!
   item: Item!
   ingredient: Ingredient
   quantity: Float!
   unit: String!
+  section: String
+  displayOrder: Int!
   notes: String
   isOptional: Boolean!
+}
+
+# RecipeItemSection groups recipe items by section name (e.g. "For the
+# crust"). Items without a section land in a group with a null name.
+type RecipeItemSection {
+  name: String
+  items: [RecipeItem!]!
 }
 
 type RecipeStep {
@@ -516,6 +540,8 @@ input RecipeItemInput {
   ingredientId: ID
   quantity: Float!
   unit: String!
+  section: String
+  displayOrder: Int
   notes: String
   isOptional: Boolean
 }

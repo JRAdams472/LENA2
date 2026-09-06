@@ -207,7 +207,7 @@ type MealSlotItem struct {
 	ItemID       *int64
 	IngredientID *int64
 	Quantity     float64
-	Unit         string
+	UnitID       int64
 	IsFromRecipe bool
 }
 
@@ -222,7 +222,7 @@ func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, by stri
 		ItemID:       optInt8(arg.ItemID),
 		IngredientID: optInt8(arg.IngredientID),
 		Quantity:     qty,
-		Unit:         arg.Unit,
+		UnitID:       arg.UnitID,
 		IsFromRecipe: arg.IsFromRecipe,
 		CreatedBy:    by,
 		UpdatedBy:    textOrNull(by),
@@ -318,7 +318,7 @@ func toMealSlotItem(row sqlc.MealplanMealSlotItem) (MealSlotItem, error) {
 	msi := MealSlotItem{
 		SlotItemID:   row.SlotItemID,
 		SlotID:       row.SlotID,
-		Unit:         row.Unit,
+		UnitID:       row.UnitID,
 		IsFromRecipe: row.IsFromRecipe,
 	}
 	if row.ItemID.Valid {

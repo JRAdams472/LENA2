@@ -42,20 +42,20 @@ DELETE FROM recipe.recipe
 WHERE recipe_id = $1;
 
 -- name: AddRecipeItem :exec
-INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit, notes, is_optional)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit_id, section_name, display_order, notes, is_optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: ListRecipeItems :many
 SELECT *
 FROM recipe.recipe_item
 WHERE recipe_id = $1
-ORDER BY item_id;
+ORDER BY display_order, recipe_item_id;
 
 -- name: ListRecipeItemsByRecipes :many
 SELECT *
 FROM recipe.recipe_item
 WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
-ORDER BY item_id;
+ORDER BY recipe_id, display_order, recipe_item_id;
 
 -- name: DeleteRecipeItems :exec
 DELETE FROM recipe.recipe_item
@@ -63,7 +63,7 @@ WHERE recipe_id = $1;
 
 -- name: RemoveRecipeItem :exec
 DELETE FROM recipe.recipe_item
-WHERE recipe_id = $1 AND item_id = $2;
+WHERE recipe_item_id = $1;
 
 -- name: AddRecipeStep :one
 INSERT INTO recipe.recipe_step (recipe_id, step_number, instruction, created_by, updated_by)

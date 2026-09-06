@@ -630,6 +630,51 @@ func (mr *MockInventoryServiceMockRecorder) GetNutrientTypeByID(ctx, nutrientID 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNutrientTypeByID", reflect.TypeOf((*MockInventoryService)(nil).GetNutrientTypeByID), ctx, nutrientID)
 }
 
+// GetUnitByID mocks base method.
+func (m *MockInventoryService) GetUnitByID(ctx context.Context, unitID int64) (inventory.Unit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnitByID", ctx, unitID)
+	ret0, _ := ret[0].(inventory.Unit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnitByID indicates an expected call of GetUnitByID.
+func (mr *MockInventoryServiceMockRecorder) GetUnitByID(ctx, unitID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitByID", reflect.TypeOf((*MockInventoryService)(nil).GetUnitByID), ctx, unitID)
+}
+
+// GetUnitByName mocks base method.
+func (m *MockInventoryService) GetUnitByName(ctx context.Context, name string) (inventory.Unit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnitByName", ctx, name)
+	ret0, _ := ret[0].(inventory.Unit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnitByName indicates an expected call of GetUnitByName.
+func (mr *MockInventoryServiceMockRecorder) GetUnitByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitByName", reflect.TypeOf((*MockInventoryService)(nil).GetUnitByName), ctx, name)
+}
+
+// GetUnitsByIDs mocks base method.
+func (m *MockInventoryService) GetUnitsByIDs(ctx context.Context, unitIDs []int64) ([]inventory.Unit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnitsByIDs", ctx, unitIDs)
+	ret0, _ := ret[0].([]inventory.Unit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnitsByIDs indicates an expected call of GetUnitsByIDs.
+func (mr *MockInventoryServiceMockRecorder) GetUnitsByIDs(ctx, unitIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitsByIDs", reflect.TypeOf((*MockInventoryService)(nil).GetUnitsByIDs), ctx, unitIDs)
+}
+
 // ListBrands mocks base method.
 func (m *MockInventoryService) ListBrands(ctx context.Context) ([]inventory.Brand, error) {
 	m.ctrl.T.Helper()
@@ -778,6 +823,21 @@ func (m *MockInventoryService) ListNutrientTypes(ctx context.Context) ([]invento
 func (mr *MockInventoryServiceMockRecorder) ListNutrientTypes(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNutrientTypes", reflect.TypeOf((*MockInventoryService)(nil).ListNutrientTypes), ctx)
+}
+
+// ListUnits mocks base method.
+func (m *MockInventoryService) ListUnits(ctx context.Context) ([]inventory.Unit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUnits", ctx)
+	ret0, _ := ret[0].([]inventory.Unit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUnits indicates an expected call of ListUnits.
+func (mr *MockInventoryServiceMockRecorder) ListUnits(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockInventoryService)(nil).ListUnits), ctx)
 }
 
 // UpdateBrand mocks base method.
@@ -1346,17 +1406,17 @@ func (mr *MockRecipeServiceMockRecorder) ListRecipes(ctx, active, limit, offset 
 }
 
 // RemoveRecipeItem mocks base method.
-func (m *MockRecipeService) RemoveRecipeItem(ctx context.Context, recipeID, itemID int64) error {
+func (m *MockRecipeService) RemoveRecipeItem(ctx context.Context, recipeItemID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveRecipeItem", ctx, recipeID, itemID)
+	ret := m.ctrl.Call(m, "RemoveRecipeItem", ctx, recipeItemID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveRecipeItem indicates an expected call of RemoveRecipeItem.
-func (mr *MockRecipeServiceMockRecorder) RemoveRecipeItem(ctx, recipeID, itemID any) *gomock.Call {
+func (mr *MockRecipeServiceMockRecorder) RemoveRecipeItem(ctx, recipeItemID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveRecipeItem", reflect.TypeOf((*MockRecipeService)(nil).RemoveRecipeItem), ctx, recipeID, itemID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveRecipeItem", reflect.TypeOf((*MockRecipeService)(nil).RemoveRecipeItem), ctx, recipeItemID)
 }
 
 // UpdateRecipe mocks base method.

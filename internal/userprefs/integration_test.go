@@ -29,10 +29,10 @@ func createTestItem(ctx context.Context, t *testing.T, pool *pgxpool.Pool) int64
 	name := fmt.Sprintf("IT Userprefs Item %d", time.Now().UnixNano())
 	var itemID int64
 	err := pool.QueryRow(ctx, `
-		INSERT INTO inventory.item (name, category_id, unit, created_by)
-		SELECT $1, category_id, 'each', $2
-		FROM inventory.category
-		WHERE name = 'Produce'
+		INSERT INTO inventory.item (name, category_id, unit_id, created_by)
+		SELECT $1, c.category_id, u.unit_id, $2
+		FROM inventory.category c, inventory.unit u
+		WHERE c.name = 'Produce' AND u.name = 'each'
 		LIMIT 1
 		RETURNING item_id
 	`, name, itBy).Scan(&itemID)

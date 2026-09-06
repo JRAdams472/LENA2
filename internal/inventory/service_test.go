@@ -287,7 +287,7 @@ func TestCreateItem(t *testing.T) {
 		Upc12:      pgtype.Text{String: "012345678901", Valid: true},
 		Upc14:      pgtype.Text{},
 		CategoryID: 3,
-		Unit:       "each",
+		UnitID:     14,
 		CreatedBy:  "alice",
 		UpdatedBy:  pgtype.Text{String: "alice", Valid: true},
 	}).Return(sqlc.InventoryItem{
@@ -296,7 +296,7 @@ func TestCreateItem(t *testing.T) {
 		BrandID:    pgtype.Int8{Int64: 5, Valid: true},
 		Upc12:      pgtype.Text{String: "012345678901", Valid: true},
 		CategoryID: 3,
-		Unit:       "each",
+		UnitID:     14,
 	}, nil)
 
 	it, err := s.CreateItem(ctx, Item{
@@ -304,7 +304,7 @@ func TestCreateItem(t *testing.T) {
 		BrandID:    &brandID,
 		Upc12:      "012345678901",
 		CategoryID: 3,
-		Unit:       "each",
+		UnitID:     14,
 	}, "alice")
 	require.NoError(t, err)
 	assert.Equal(t, int64(11), it.ItemID)
@@ -346,7 +346,7 @@ func TestGetItemByID(t *testing.T) {
 		Upc12:      pgtype.Text{String: "012345678901", Valid: true},
 		Upc14:      pgtype.Text{String: "12345678901234", Valid: true},
 		CategoryID: 3,
-		Unit:       "each",
+		UnitID:     14,
 	}, nil)
 
 	it, err := s.GetItemByID(ctx, 11)
@@ -400,11 +400,11 @@ func TestUpdateItem(t *testing.T) {
 		Upc12:      pgtype.Text{},
 		Upc14:      pgtype.Text{},
 		CategoryID: 3,
-		Unit:       "kg",
+		UnitID:     11,
 		UpdatedBy:  pgtype.Text{String: "bob", Valid: true},
 	}).Return(nil)
 
-	err := s.UpdateItem(ctx, 11, Item{Name: "Pear", CategoryID: 3, Unit: "kg"}, "bob")
+	err := s.UpdateItem(ctx, 11, Item{Name: "Pear", CategoryID: 3, UnitID: 11}, "bob")
 	assert.NoError(t, err)
 }
 
@@ -867,35 +867,37 @@ func TestNumericHelpers(t *testing.T) {
 func TestCreateIngredient(t *testing.T) {
 	ctx := context.Background()
 	catID := int64(3)
+	unitID := int64(10)
 
 	s, q := newTestService(t)
 	q.EXPECT().CreateIngredient(ctx, sqlc.CreateIngredientParams{
-		Name:        "All-Purpose Flour",
-		CategoryID:  pgtype.Int8{Int64: 3, Valid: true},
-		DefaultUnit: pgtype.Text{String: "g", Valid: true},
-		IsActive:    true,
-		CreatedBy:   "tester",
-		UpdatedBy:   pgtype.Text{String: "tester", Valid: true},
+		Name:          "All-Purpose Flour",
+		CategoryID:    pgtype.Int8{Int64: 3, Valid: true},
+		DefaultUnitID: pgtype.Int8{Int64: 10, Valid: true},
+		IsActive:      true,
+		CreatedBy:     "tester",
+		UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
 	}).Return(sqlc.InventoryIngredient{
-		IngredientID: 9,
-		Name:         "All-Purpose Flour",
-		CategoryID:   pgtype.Int8{Int64: 3, Valid: true},
-		DefaultUnit:  pgtype.Text{String: "g", Valid: true},
-		IsActive:     true,
+		IngredientID:  9,
+		Name:          "All-Purpose Flour",
+		CategoryID:    pgtype.Int8{Int64: 3, Valid: true},
+		DefaultUnitID: pgtype.Int8{Int64: 10, Valid: true},
+		IsActive:      true,
 	}, nil)
 
 	in, err := s.CreateIngredient(ctx, Ingredient{
-		Name:        "All-Purpose Flour",
-		CategoryID:  &catID,
-		DefaultUnit: "g",
-		IsActive:    true,
+		Name:          "All-Purpose Flour",
+		CategoryID:    &catID,
+		DefaultUnitID: &unitID,
+		IsActive:      true,
 	}, "tester")
 	require.NoError(t, err)
 	assert.Equal(t, int64(9), in.IngredientID)
 	assert.Equal(t, "All-Purpose Flour", in.Name)
 	require.NotNil(t, in.CategoryID)
 	assert.Equal(t, int64(3), *in.CategoryID)
-	assert.Equal(t, "g", in.DefaultUnit)
+	require.NotNil(t, in.DefaultUnitID)
+	assert.Equal(t, int64(10), *in.DefaultUnitID)
 	assert.True(t, in.IsActive)
 }
 
@@ -921,7 +923,7 @@ func TestGetIngredientByID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(9), in.IngredientID)
 	assert.Nil(t, in.CategoryID)
-	assert.Empty(t, in.DefaultUnit)
+	assert.Nil(t, in.DefaultUnitID)
 }
 
 func TestGetIngredientByID_Error(t *testing.T) {
@@ -987,27 +989,29 @@ func TestCountIngredients(t *testing.T) {
 func TestUpdateIngredient(t *testing.T) {
 	ctx := context.Background()
 
+	unitID := int64(11)
 	s, q := newTestService(t)
 	q.EXPECT().UpdateIngredient(ctx, sqlc.UpdateIngredientParams{
-		IngredientID: 9,
-		Name:         "Bread Flour",
-		CategoryID:   pgtype.Int8{},
-		DefaultUnit:  pgtype.Text{String: "kg", Valid: true},
-		IsActive:     false,
-		UpdatedBy:    pgtype.Text{String: "tester", Valid: true},
+		IngredientID:  9,
+		Name:          "Bread Flour",
+		CategoryID:    pgtype.Int8{},
+		DefaultUnitID: pgtype.Int8{Int64: 11, Valid: true},
+		IsActive:      false,
+		UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
 	}).Return(sqlc.InventoryIngredient{
-		IngredientID: 9,
-		Name:         "Bread Flour",
-		DefaultUnit:  pgtype.Text{String: "kg", Valid: true},
+		IngredientID:  9,
+		Name:          "Bread Flour",
+		DefaultUnitID: pgtype.Int8{Int64: 11, Valid: true},
 	}, nil)
 
 	in, err := s.UpdateIngredient(ctx, 9, Ingredient{
-		Name:        "Bread Flour",
-		DefaultUnit: "kg",
+		Name:          "Bread Flour",
+		DefaultUnitID: &unitID,
 	}, "tester")
 	require.NoError(t, err)
 	assert.Equal(t, "Bread Flour", in.Name)
-	assert.Equal(t, "kg", in.DefaultUnit)
+	require.NotNil(t, in.DefaultUnitID)
+	assert.Equal(t, int64(11), *in.DefaultUnitID)
 	assert.False(t, in.IsActive)
 }
 

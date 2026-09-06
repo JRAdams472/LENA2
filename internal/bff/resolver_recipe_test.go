@@ -46,12 +46,13 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 			Servings: recInt32Ptr(4), PrepTimeMinutes: recInt32Ptr(10), CookTimeMinutes: recInt32Ptr(20), IsActive: true,
 		}, nil)
 		rec.EXPECT().ListRecipeItems(gomock.Any(), int64(9)).Return([]recipe.RecipeItem{
-			{RecipeID: 9, ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced"},
+			{RecipeItemID: 40, RecipeID: 9, ItemID: 3, Quantity: 2, UnitID: 3, Notes: "diced"},
 		}, nil)
 		rec.EXPECT().ListRecipeSteps(gomock.Any(), int64(9)).Return([]recipe.RecipeStep{
 			{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"},
 		}, nil)
 		inv.EXPECT().GetItemByID(gomock.Any(), int64(3)).Return(inventory.Item{ItemID: 3, Name: "Broth"}, nil)
+		inv.EXPECT().GetUnitByID(gomock.Any(), int64(3)).Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).
 			Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
 
@@ -73,8 +74,11 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		items, err := res.Items(ctx)
 		require.NoError(t, err)
 		require.Len(t, items, 1)
+		assert.Equal(t, graphql.ID("40"), items[0].ID())
 		assert.Equal(t, 2.0, items[0].Quantity())
-		assert.Equal(t, "cups", items[0].Unit())
+		unit, err := items[0].Unit(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "cup", unit)
 		require.NotNil(t, items[0].Notes())
 		assert.Equal(t, "diced", *items[0].Notes())
 		assert.False(t, items[0].IsOptional())
@@ -191,22 +195,23 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 
 func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 	t.Run("happy path with items and steps", func(t *testing.T) {
-		rec, _, _ := newRecMocks(t)
+		rec, inv, _ := newRecMocks(t)
 		expectedRecipe := recipe.Recipe{
 			Name: "Soup", Description: "Tasty",
 			Servings: recInt32Ptr(4), PrepTimeMinutes: recInt32Ptr(10), CookTimeMinutes: recInt32Ptr(20),
 			IsActive: true,
 		}
 		expectedItems := []recipe.RecipeItem{
-			{ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced", IsOptional: true},
+			{ItemID: 3, Quantity: 2, UnitID: 3, Notes: "diced", IsOptional: true},
 		}
 		expectedSteps := []recipe.RecipeStep{
 			{StepNumber: 1, Instruction: "Boil"},
 		}
+		inv.EXPECT().GetUnitByName(gomock.Any(), "cups").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 		rec.EXPECT().CreateRecipeWithChildren(gomock.Any(), gomock.Eq(expectedRecipe), gomock.Eq(expectedItems), gomock.Eq(expectedSteps), recTestEmail).
 			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: recInt32Ptr(4), IsActive: true}, nil)
 
-		r := &Resolver{RecipeService: rec}
+		r := &Resolver{RecipeService: rec, InventoryService: inv}
 		res, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
 			Input: createRecipeInput{
 				Name:            "Soup",
@@ -275,7 +280,7 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 	}
 
 	t.Run("happy path replaces items and steps", func(t *testing.T) {
-		rec, _, _ := newRecMocks(t)
+		rec, inv, _ := newRecMocks(t)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
 			Return(recipe.Recipe{RecipeID: 9, Name: "Old", Description: "D", Servings: recInt32Ptr(2), IsActive: true}, nil)
 
@@ -283,16 +288,17 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 			Name: "New", Description: "D", Servings: recInt32Ptr(6), IsActive: true,
 		}
 		expectedItems := []recipe.RecipeItem{
-			{ItemID: 3, Quantity: 1, Unit: "cup"},
+			{ItemID: 3, Quantity: 1, UnitID: 3},
 		}
 		expectedSteps := []recipe.RecipeStep{
 			{StepNumber: 1, Instruction: "Stir"},
 		}
+		inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 		rec.EXPECT().UpdateRecipeWithChildren(gomock.Any(), int64(9), gomock.Eq(expectedRecipe), gomock.Eq(expectedItems), gomock.Eq(expectedSteps), recTestEmail).Return(nil)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
 			Return(recipe.Recipe{RecipeID: 9, Name: "New", Servings: recInt32Ptr(6), IsActive: true}, nil)
 
-		r := &Resolver{RecipeService: rec}
+		r := &Resolver{RecipeService: rec, InventoryService: inv}
 		res, err := r.UpdateRecipe(recCtx(), args{
 			ID: "9",
 			Input: createRecipeInput{

@@ -74,6 +74,26 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 		if err != nil {
 			return nil, err
 		}
+		// Slot items carry their own unit_id; merge them into the shared
+		// unit map so Unit resolution never issues a query per row.
+		slotUnitSet := make(map[int64]bool)
+		for _, si := range slotItems {
+			if si.UnitID != 0 {
+				slotUnitSet[si.UnitID] = true
+			}
+		}
+		slotUnitIDs := make([]int64, 0, len(slotUnitSet))
+		for id := range slotUnitSet {
+			slotUnitIDs = append(slotUnitIDs, id)
+		}
+		sort.Slice(slotUnitIDs, func(i, j int) bool { return slotUnitIDs[i] < slotUnitIDs[j] })
+		slotUnits, err := loadUnits(ctx, r.InventoryService, slotUnitIDs)
+		if err != nil {
+			return nil, err
+		}
+		for id, un := range slotUnits {
+			rc.units[id] = un
+		}
 	}
 	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, slotsByPlan: slotsByPlan, slotItemsBySlot: slotItemsBySlot, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
@@ -375,6 +395,10 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	if err != nil {
 		return nil, err
 	}
+	unitID, err := resolveUnitID(ctx, r.InventoryService, args.Input.Unit)
+	if err != nil {
+		return nil, err
+	}
 	isFromRecipe := false
 	if args.Input.IsFromRecipe != nil {
 		isFromRecipe = *args.Input.IsFromRecipe
@@ -384,7 +408,7 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 		ItemID:       &itemID,
 		IngredientID: ingredientID,
 		Quantity:     args.Input.Quantity,
-		Unit:         args.Input.Unit,
+		UnitID:       unitID,
 		IsFromRecipe: isFromRecipe,
 	}, u.Email)
 	if err != nil {
@@ -510,7 +534,7 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 	}
 	out := make([]*mealSlotItemResolver, len(items))
 	for i := range items {
-		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch}
+		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch, rc: r.rc}
 	}
 	return out, nil
 }
@@ -521,6 +545,7 @@ type mealSlotItemResolver struct {
 	item  mealplan.MealSlotItem
 	items map[int64]inventory.Item
 	ch    *itemChildren
+	rc    *recipeChildren
 }
 
 func (r *mealSlotItemResolver) ID() graphql.ID {
@@ -529,7 +554,13 @@ func (r *mealSlotItemResolver) ID() graphql.ID {
 
 func (r *mealSlotItemResolver) Quantity() float64 { return r.item.Quantity }
 
-func (r *mealSlotItemResolver) Unit() string { return r.item.Unit }
+func (r *mealSlotItemResolver) Unit(ctx context.Context) (string, error) {
+	var units map[int64]inventory.Unit
+	if r.rc != nil {
+		units = r.rc.units
+	}
+	return unitName(ctx, r.inv, units, r.item.UnitID)
+}
 
 func (r *mealSlotItemResolver) IsFromRecipe() bool { return r.item.IsFromRecipe }
 

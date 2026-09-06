@@ -56,8 +56,10 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 }
 
 // parseRecipeChildren converts GraphQL recipe items/steps into service
-// types so the service can persist them inside one transaction.
-func parseRecipeChildren(items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
+// types so the service can persist them inside one transaction. Unit names
+// are resolved to unit IDs via the shared unit catalog; unknown units are
+// rejected.
+func parseRecipeChildren(ctx context.Context, inv InventoryService, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
 	outItems := make([]recipe.RecipeItem, 0, len(items))
 	for _, ri := range items {
 		itemID, err := parseID(string(ri.ItemID))
@@ -68,11 +70,17 @@ func parseRecipeChildren(items []recipeItemInput, steps []recipeStepInput) ([]re
 		if err != nil {
 			return nil, nil, err
 		}
+		unitID, err := resolveUnitID(ctx, inv, ri.Unit)
+		if err != nil {
+			return nil, nil, err
+		}
 		outItems = append(outItems, recipe.RecipeItem{
 			ItemID:       itemID,
 			IngredientID: ingredientID,
 			Quantity:     ri.Quantity,
-			Unit:         ri.Unit,
+			UnitID:       unitID,
+			SectionName:  derefString(ri.Section),
+			DisplayOrder: int32Value(ri.DisplayOrder),
 			Notes:        derefString(ri.Notes),
 			IsOptional:   boolValue(ri.IsOptional),
 		})
@@ -93,7 +101,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	if err != nil {
 		return nil, err
 	}
-	items, steps, err := parseRecipeChildren(args.Input.Items, args.Input.Steps)
+	items, steps, err := parseRecipeChildren(ctx, r.InventoryService, args.Input.Items, args.Input.Steps)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +157,7 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 	if args.Input.CookTimeMinutes != nil {
 		cook = args.Input.CookTimeMinutes
 	}
-	items, steps, err := parseRecipeChildren(args.Input.Items, args.Input.Steps)
+	items, steps, err := parseRecipeChildren(ctx, r.InventoryService, args.Input.Items, args.Input.Steps)
 	if err != nil {
 		return nil, err
 	}
@@ -242,11 +250,49 @@ func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, erro
 			return nil, err
 		}
 	}
+	var units map[int64]inventory.Unit
+	if r.rc != nil {
+		units = r.rc.units
+	}
 	out := make([]*recipeItemResolver, len(items))
 	for i := range items {
-		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch}
+		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch, units: units}
 	}
 	return out, nil
+}
+
+// ItemSections groups the recipe's items by section name in display order.
+// Items without a section land in a group with a null name.
+func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSectionResolver, error) {
+	var items []recipe.RecipeItem
+	var itemsByID map[int64]inventory.Item
+	var ch *itemChildren
+	var units map[int64]inventory.Unit
+	if r.rc != nil {
+		items = r.rc.itemsBy[r.recipe.RecipeID]
+		itemsByID = r.rc.items
+		ch = r.rc.itemChildren
+		units = r.rc.units
+	} else {
+		var err error
+		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Items arrive ordered by display_order; group by first-seen section.
+	var sections []*recipeItemSectionResolver
+	byName := make(map[string]*recipeItemSectionResolver)
+	for _, ri := range items {
+		sec, ok := byName[ri.SectionName]
+		if !ok {
+			sec = &recipeItemSectionResolver{name: ri.SectionName}
+			byName[ri.SectionName] = sec
+			sections = append(sections, sec)
+		}
+		sec.items = append(sec.items, &recipeItemResolver{inv: r.inv, item: ri, items: itemsByID, ch: ch, units: units})
+	}
+	return sections, nil
 }
 
 func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, error) {
@@ -286,6 +332,11 @@ type recipeItemResolver struct {
 	item  recipe.RecipeItem
 	items map[int64]inventory.Item
 	ch    *itemChildren
+	units map[int64]inventory.Unit
+}
+
+func (r *recipeItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.item.RecipeItemID, 10))
 }
 
 func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
@@ -318,11 +369,27 @@ func (r *recipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolve
 
 func (r *recipeItemResolver) Quantity() float64 { return r.item.Quantity }
 
-func (r *recipeItemResolver) Unit() string { return r.item.Unit }
+func (r *recipeItemResolver) Unit(ctx context.Context) (string, error) {
+	return unitName(ctx, r.inv, r.units, r.item.UnitID)
+}
+
+func (r *recipeItemResolver) Section() *string { return nilIfEmpty(r.item.SectionName) }
+
+func (r *recipeItemResolver) DisplayOrder() int32 { return r.item.DisplayOrder }
 
 func (r *recipeItemResolver) Notes() *string { return nilIfEmpty(r.item.Notes) }
 
 func (r *recipeItemResolver) IsOptional() bool { return r.item.IsOptional }
+
+// recipeItemSectionResolver resolves a named group of recipe items.
+type recipeItemSectionResolver struct {
+	name  string
+	items []*recipeItemResolver
+}
+
+func (r *recipeItemSectionResolver) Name() *string { return nilIfEmpty(r.name) }
+
+func (r *recipeItemSectionResolver) Items() []*recipeItemResolver { return r.items }
 
 type recipeStepResolver struct{ step recipe.RecipeStep }
 
@@ -369,6 +436,8 @@ type recipeItemInput struct {
 	IngredientID *graphql.ID
 	Quantity     float64
 	Unit         string
+	Section      *string
+	DisplayOrder *int32
 	Notes        *string
 	IsOptional   *bool
 }

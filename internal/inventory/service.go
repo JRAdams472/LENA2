@@ -192,7 +192,7 @@ type Item struct {
 	Upc12      string
 	Upc14      string
 	CategoryID int64
-	Unit       string
+	UnitID     int64
 }
 
 // CreateItem adds a new item to the catalog.
@@ -203,7 +203,7 @@ func (s *Service) CreateItem(ctx context.Context, arg Item, by string) (Item, er
 		Upc12:      textOrNull(arg.Upc12),
 		Upc14:      textOrNull(arg.Upc14),
 		CategoryID: arg.CategoryID,
-		Unit:       arg.Unit,
+		UnitID:     arg.UnitID,
 		CreatedBy:  by,
 		UpdatedBy:  textOrNull(by),
 	})
@@ -267,7 +267,7 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 		Upc12:      textOrNull(arg.Upc12),
 		Upc14:      textOrNull(arg.Upc14),
 		CategoryID: arg.CategoryID,
-		Unit:       arg.Unit,
+		UnitID:     arg.UnitID,
 		UpdatedBy:  textOrNull(by),
 	})
 }
@@ -554,22 +554,22 @@ func (s *Service) DeleteFoodFlavor(ctx context.Context, itemID, flavorID int64) 
 // and grocery lists can reference an ingredient instead. Scaffolding only:
 // nothing populates this data yet.
 type Ingredient struct {
-	IngredientID int64
-	Name         string
-	CategoryID   *int64
-	DefaultUnit  string
-	IsActive     bool
+	IngredientID  int64
+	Name          string
+	CategoryID    *int64
+	DefaultUnitID *int64
+	IsActive      bool
 }
 
 // CreateIngredient adds a new generic ingredient.
 func (s *Service) CreateIngredient(ctx context.Context, arg Ingredient, by string) (Ingredient, error) {
 	row, err := s.q.CreateIngredient(ctx, sqlc.CreateIngredientParams{
-		Name:        arg.Name,
-		CategoryID:  optInt64(arg.CategoryID),
-		DefaultUnit: textOrNull(arg.DefaultUnit),
-		IsActive:    arg.IsActive,
-		CreatedBy:   by,
-		UpdatedBy:   textOrNull(by),
+		Name:          arg.Name,
+		CategoryID:    optInt64(arg.CategoryID),
+		DefaultUnitID: optInt64(arg.DefaultUnitID),
+		IsActive:      arg.IsActive,
+		CreatedBy:     by,
+		UpdatedBy:     textOrNull(by),
 	})
 	if err != nil {
 		return Ingredient{}, fmt.Errorf("create ingredient: %w", err)
@@ -624,12 +624,12 @@ func (s *Service) CountIngredients(ctx context.Context) (int64, error) {
 // UpdateIngredient modifies an existing ingredient.
 func (s *Service) UpdateIngredient(ctx context.Context, ingredientID int64, arg Ingredient, by string) (Ingredient, error) {
 	row, err := s.q.UpdateIngredient(ctx, sqlc.UpdateIngredientParams{
-		IngredientID: ingredientID,
-		Name:         arg.Name,
-		CategoryID:   optInt64(arg.CategoryID),
-		DefaultUnit:  textOrNull(arg.DefaultUnit),
-		IsActive:     arg.IsActive,
-		UpdatedBy:    textOrNull(by),
+		IngredientID:  ingredientID,
+		Name:          arg.Name,
+		CategoryID:    optInt64(arg.CategoryID),
+		DefaultUnitID: optInt64(arg.DefaultUnitID),
+		IsActive:      arg.IsActive,
+		UpdatedBy:     textOrNull(by),
 	})
 	if err != nil {
 		return Ingredient{}, fmt.Errorf("update ingredient: %w", err)
@@ -646,13 +646,96 @@ func toIngredient(row sqlc.InventoryIngredient) Ingredient {
 	in := Ingredient{
 		IngredientID: row.IngredientID,
 		Name:         row.Name,
-		DefaultUnit:  row.DefaultUnit.String,
 		IsActive:     row.IsActive,
 	}
 	if row.CategoryID.Valid {
 		in.CategoryID = &row.CategoryID.Int64
 	}
+	if row.DefaultUnitID.Valid {
+		in.DefaultUnitID = &row.DefaultUnitID.Int64
+	}
 	return in
+}
+
+// Unit is a canonical unit of measure shared by every domain. Kind is one
+// of "volume", "weight", or "count" and enables future unit conversion.
+type Unit struct {
+	UnitID       int64
+	Name         string
+	Abbreviation string
+	Kind         string
+	IsActive     bool
+}
+
+// CreateUnit adds a new unit of measure.
+func (s *Service) CreateUnit(ctx context.Context, arg Unit, by string) (Unit, error) {
+	row, err := s.q.CreateUnit(ctx, sqlc.CreateUnitParams{
+		Name:         arg.Name,
+		Abbreviation: textOrNull(arg.Abbreviation),
+		Kind:         arg.Kind,
+		IsActive:     arg.IsActive,
+		CreatedBy:    by,
+		UpdatedBy:    textOrNull(by),
+	})
+	if err != nil {
+		return Unit{}, fmt.Errorf("create unit: %w", err)
+	}
+	return toUnit(row), nil
+}
+
+// GetUnitByID returns a unit by its primary key.
+func (s *Service) GetUnitByID(ctx context.Context, unitID int64) (Unit, error) {
+	row, err := s.q.GetUnitByID(ctx, unitID)
+	if err != nil {
+		return Unit{}, fmt.Errorf("get unit by id: %w", err)
+	}
+	return toUnit(row), nil
+}
+
+// GetUnitByName returns a unit matching a name or abbreviation,
+// case-insensitively. Callers should trim the input first.
+func (s *Service) GetUnitByName(ctx context.Context, name string) (Unit, error) {
+	row, err := s.q.GetUnitByName(ctx, name)
+	if err != nil {
+		return Unit{}, fmt.Errorf("get unit by name: %w", err)
+	}
+	return toUnit(row), nil
+}
+
+// GetUnitsByIDs returns a set of units in a single query.
+func (s *Service) GetUnitsByIDs(ctx context.Context, unitIDs []int64) ([]Unit, error) {
+	rows, err := s.q.GetUnitsByIDs(ctx, unitIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get units by ids: %w", err)
+	}
+	out := make([]Unit, len(rows))
+	for i := range rows {
+		out[i] = toUnit(rows[i])
+	}
+	return out, nil
+}
+
+// ListUnits returns all units grouped by kind then name.
+func (s *Service) ListUnits(ctx context.Context) ([]Unit, error) {
+	rows, err := s.q.ListUnits(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list units: %w", err)
+	}
+	out := make([]Unit, len(rows))
+	for i := range rows {
+		out[i] = toUnit(rows[i])
+	}
+	return out, nil
+}
+
+func toUnit(row sqlc.InventoryUnit) Unit {
+	return Unit{
+		UnitID:       row.UnitID,
+		Name:         row.Name,
+		Abbreviation: row.Abbreviation.String,
+		Kind:         row.Kind,
+		IsActive:     row.IsActive,
+	}
 }
 
 func toCategory(row sqlc.InventoryCategory) Category {
@@ -671,7 +754,7 @@ func toItem(row sqlc.InventoryItem) Item {
 		Upc12:      row.Upc12.String,
 		Upc14:      row.Upc14.String,
 		CategoryID: row.CategoryID,
-		Unit:       row.Unit,
+		UnitID:     row.UnitID,
 	}
 	if row.BrandID.Valid {
 		it.BrandID = &row.BrandID.Int64

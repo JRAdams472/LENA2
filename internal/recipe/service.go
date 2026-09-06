@@ -206,13 +206,18 @@ func (s *Service) UpdateRecipeWithChildren(ctx context.Context, recipeID int64, 
 
 // RecipeItem is one ingredient in a recipe. ItemID is the branded catalog
 // item; IngredientID optionally points at the brand-agnostic ingredient
-// abstraction and will eventually replace ItemID.
+// abstraction and will eventually replace ItemID. SectionName groups items
+// (e.g. "crust", "filling"); DisplayOrder controls ordering within the
+// recipe.
 type RecipeItem struct {
+	RecipeItemID int64
 	RecipeID     int64
 	ItemID       int64
 	IngredientID *int64
 	Quantity     float64
-	Unit         string
+	UnitID       int64
+	SectionName  string
+	DisplayOrder int32
 	Notes        string
 	IsOptional   bool
 }
@@ -232,7 +237,9 @@ func addRecipeItem(ctx context.Context, q sqlc.Querier, arg RecipeItem) error {
 		ItemID:       arg.ItemID,
 		IngredientID: optInt8(arg.IngredientID),
 		Quantity:     qty,
-		Unit:         arg.Unit,
+		UnitID:       arg.UnitID,
+		SectionName:  textOrNull(arg.SectionName),
+		DisplayOrder: arg.DisplayOrder,
 		Notes:        textOrNull(arg.Notes),
 		IsOptional:   arg.IsOptional,
 	})
@@ -268,9 +275,9 @@ func toRecipeItems(rows []sqlc.RecipeRecipeItem) ([]RecipeItem, error) {
 	return out, nil
 }
 
-// RemoveRecipeItem removes an item from a recipe.
-func (s *Service) RemoveRecipeItem(ctx context.Context, recipeID, itemID int64) error {
-	return s.q.RemoveRecipeItem(ctx, sqlc.RemoveRecipeItemParams{RecipeID: recipeID, ItemID: itemID})
+// RemoveRecipeItem removes an item from a recipe by its surrogate key.
+func (s *Service) RemoveRecipeItem(ctx context.Context, recipeItemID int64) error {
+	return s.q.RemoveRecipeItem(ctx, recipeItemID)
 }
 
 // RecipeStep is one step in a recipe.
@@ -365,11 +372,14 @@ func toRecipe(row sqlc.RecipeRecipe) Recipe {
 
 func toRecipeItem(row sqlc.RecipeRecipeItem) (RecipeItem, error) {
 	ri := RecipeItem{
-		RecipeID:   row.RecipeID,
-		ItemID:     row.ItemID,
-		Unit:       row.Unit,
-		Notes:      row.Notes.String,
-		IsOptional: row.IsOptional,
+		RecipeItemID: row.RecipeItemID,
+		RecipeID:     row.RecipeID,
+		ItemID:       row.ItemID,
+		UnitID:       row.UnitID,
+		SectionName:  row.SectionName.String,
+		DisplayOrder: row.DisplayOrder,
+		Notes:        row.Notes.String,
+		IsOptional:   row.IsOptional,
 	}
 	if row.IngredientID.Valid {
 		v := row.IngredientID.Int64
@@ -378,7 +388,7 @@ func toRecipeItem(row sqlc.RecipeRecipeItem) (RecipeItem, error) {
 	if row.Quantity.Valid {
 		v, err := row.Quantity.Float64Value()
 		if err != nil {
-			return RecipeItem{}, fmt.Errorf("recipe %d item %d quantity: %w", row.RecipeID, row.ItemID, err)
+			return RecipeItem{}, fmt.Errorf("recipe item %d quantity: %w", row.RecipeItemID, err)
 		}
 		ri.Quantity = v.Float64
 	}

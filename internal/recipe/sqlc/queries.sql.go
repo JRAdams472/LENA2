@@ -12,8 +12,8 @@ import (
 )
 
 const addRecipeItem = `-- name: AddRecipeItem :exec
-INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit, notes, is_optional)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit_id, section_name, display_order, notes, is_optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type AddRecipeItemParams struct {
@@ -21,7 +21,9 @@ type AddRecipeItemParams struct {
 	ItemID       int64          `json:"item_id"`
 	IngredientID pgtype.Int8    `json:"ingredient_id"`
 	Quantity     pgtype.Numeric `json:"quantity"`
-	Unit         string         `json:"unit"`
+	UnitID       int64          `json:"unit_id"`
+	SectionName  pgtype.Text    `json:"section_name"`
+	DisplayOrder int32          `json:"display_order"`
 	Notes        pgtype.Text    `json:"notes"`
 	IsOptional   bool           `json:"is_optional"`
 }
@@ -32,7 +34,9 @@ func (q *Queries) AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) er
 		arg.ItemID,
 		arg.IngredientID,
 		arg.Quantity,
-		arg.Unit,
+		arg.UnitID,
+		arg.SectionName,
+		arg.DisplayOrder,
 		arg.Notes,
 		arg.IsOptional,
 	)
@@ -237,10 +241,10 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 }
 
 const listRecipeItems = `-- name: ListRecipeItems :many
-SELECT recipe_id, item_id, quantity, unit, notes, is_optional, ingredient_id
+SELECT recipe_id, item_id, quantity, notes, is_optional, ingredient_id, unit_id, recipe_item_id, section_name, display_order
 FROM recipe.recipe_item
 WHERE recipe_id = $1
-ORDER BY item_id
+ORDER BY display_order, recipe_item_id
 `
 
 func (q *Queries) ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error) {
@@ -256,10 +260,13 @@ func (q *Queries) ListRecipeItems(ctx context.Context, recipeID int64) ([]Recipe
 			&i.RecipeID,
 			&i.ItemID,
 			&i.Quantity,
-			&i.Unit,
 			&i.Notes,
 			&i.IsOptional,
 			&i.IngredientID,
+			&i.UnitID,
+			&i.RecipeItemID,
+			&i.SectionName,
+			&i.DisplayOrder,
 		); err != nil {
 			return nil, err
 		}
@@ -272,10 +279,10 @@ func (q *Queries) ListRecipeItems(ctx context.Context, recipeID int64) ([]Recipe
 }
 
 const listRecipeItemsByRecipes = `-- name: ListRecipeItemsByRecipes :many
-SELECT recipe_id, item_id, quantity, unit, notes, is_optional, ingredient_id
+SELECT recipe_id, item_id, quantity, notes, is_optional, ingredient_id, unit_id, recipe_item_id, section_name, display_order
 FROM recipe.recipe_item
 WHERE recipe_id = ANY($1::bigint[])
-ORDER BY item_id
+ORDER BY recipe_id, display_order, recipe_item_id
 `
 
 func (q *Queries) ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error) {
@@ -291,10 +298,13 @@ func (q *Queries) ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int6
 			&i.RecipeID,
 			&i.ItemID,
 			&i.Quantity,
-			&i.Unit,
 			&i.Notes,
 			&i.IsOptional,
 			&i.IngredientID,
+			&i.UnitID,
+			&i.RecipeItemID,
+			&i.SectionName,
+			&i.DisplayOrder,
 		); err != nil {
 			return nil, err
 		}
@@ -426,16 +436,11 @@ func (q *Queries) ListRecipes(ctx context.Context, arg ListRecipesParams) ([]Rec
 
 const removeRecipeItem = `-- name: RemoveRecipeItem :exec
 DELETE FROM recipe.recipe_item
-WHERE recipe_id = $1 AND item_id = $2
+WHERE recipe_item_id = $1
 `
 
-type RemoveRecipeItemParams struct {
-	RecipeID int64 `json:"recipe_id"`
-	ItemID   int64 `json:"item_id"`
-}
-
-func (q *Queries) RemoveRecipeItem(ctx context.Context, arg RemoveRecipeItemParams) error {
-	_, err := q.db.Exec(ctx, removeRecipeItem, arg.RecipeID, arg.ItemID)
+func (q *Queries) RemoveRecipeItem(ctx context.Context, recipeItemID int64) error {
+	_, err := q.db.Exec(ctx, removeRecipeItem, recipeItemID)
 	return err
 }
 

@@ -262,17 +262,17 @@ func (mr *MockQuerierMockRecorder) ListRecipes(ctx, arg any) *gomock.Call {
 }
 
 // RemoveRecipeItem mocks base method.
-func (m *MockQuerier) RemoveRecipeItem(ctx context.Context, arg sqlc.RemoveRecipeItemParams) error {
+func (m *MockQuerier) RemoveRecipeItem(ctx context.Context, recipeItemID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveRecipeItem", ctx, arg)
+	ret := m.ctrl.Call(m, "RemoveRecipeItem", ctx, recipeItemID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveRecipeItem indicates an expected call of RemoveRecipeItem.
-func (mr *MockQuerierMockRecorder) RemoveRecipeItem(ctx, arg any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) RemoveRecipeItem(ctx, recipeItemID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveRecipeItem", reflect.TypeOf((*MockQuerier)(nil).RemoveRecipeItem), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveRecipeItem", reflect.TypeOf((*MockQuerier)(nil).RemoveRecipeItem), ctx, recipeItemID)
 }
 
 // UpdateRecipe mocks base method.

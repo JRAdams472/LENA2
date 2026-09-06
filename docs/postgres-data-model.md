@@ -72,7 +72,7 @@ CREATE TABLE inventory.item (
     upc12       VARCHAR(12),
     upc14       VARCHAR(14),
     category_id BIGINT NOT NULL REFERENCES inventory.category(category_id),
-    unit        VARCHAR(20) NOT NULL,
+    unit_id     BIGINT NOT NULL REFERENCES inventory.unit(unit_id),
     created_by  VARCHAR(100) NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by  VARCHAR(100),
@@ -144,15 +144,31 @@ CREATE TABLE inventory.food_nutrient (
 -- can reference an ingredient instead. Scaffolding only — nothing
 -- populates this data yet.
 CREATE TABLE inventory.ingredient (
-    ingredient_id BIGSERIAL PRIMARY KEY,
-    name          VARCHAR(200) NOT NULL UNIQUE,
-    category_id   BIGINT REFERENCES inventory.category(category_id),
-    default_unit  VARCHAR(20),
-    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
-    created_by    VARCHAR(100) NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_by    VARCHAR(100),
-    updated_at    TIMESTAMPTZ
+    ingredient_id   BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(200) NOT NULL UNIQUE,
+    category_id     BIGINT REFERENCES inventory.category(category_id),
+    default_unit_id BIGINT REFERENCES inventory.unit(unit_id),
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by      VARCHAR(100) NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by      VARCHAR(100),
+    updated_at      TIMESTAMPTZ
+);
+
+-- Canonical unit of measure shared by every domain. kind enables future
+-- unit conversion (volume <-> volume, weight <-> weight); 'count' covers
+-- discrete units. Seeds cover common cooking units; unknown inputs are
+-- rejected at the BFF layer rather than stored.
+CREATE TABLE inventory.unit (
+    unit_id      BIGSERIAL PRIMARY KEY,
+    name         VARCHAR(50) NOT NULL UNIQUE,
+    abbreviation VARCHAR(20),
+    kind         VARCHAR(20) NOT NULL DEFAULT 'count' CHECK (kind IN ('volume', 'weight', 'count')),
+    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by   VARCHAR(100) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by   VARCHAR(100),
+    updated_at   TIMESTAMPTZ
 );
 ```
 
@@ -284,15 +300,18 @@ CREATE TABLE recipe.recipe (
 );
 
 CREATE TABLE recipe.recipe_item (
-    recipe_id     BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
-    item_id       BIGINT NOT NULL REFERENCES inventory.item(item_id),
-    ingredient_id BIGINT REFERENCES inventory.ingredient(ingredient_id),
-    quantity      NUMERIC(10,4) NOT NULL,
-    unit          VARCHAR(20) NOT NULL,
-    notes         VARCHAR(500),
-    is_optional   BOOLEAN NOT NULL DEFAULT FALSE,
-    PRIMARY KEY (recipe_id, item_id)
+    recipe_item_id BIGSERIAL PRIMARY KEY,
+    recipe_id      BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
+    item_id        BIGINT NOT NULL REFERENCES inventory.item(item_id),
+    ingredient_id  BIGINT REFERENCES inventory.ingredient(ingredient_id),
+    quantity       NUMERIC(10,4) NOT NULL,
+    unit_id        BIGINT NOT NULL REFERENCES inventory.unit(unit_id),
+    section_name   VARCHAR(200),
+    display_order  INTEGER NOT NULL DEFAULT 0,
+    notes          VARCHAR(500),
+    is_optional    BOOLEAN NOT NULL DEFAULT FALSE
 );
+CREATE INDEX idx_recipe_item_recipe ON recipe.recipe_item (recipe_id, display_order);
 
 CREATE TABLE recipe.recipe_step (
     step_id       BIGSERIAL PRIMARY KEY,
@@ -356,7 +375,7 @@ CREATE TABLE mealplan.meal_slot_item (
     item_id       BIGINT REFERENCES inventory.item(item_id),
     ingredient_id BIGINT REFERENCES inventory.ingredient(ingredient_id),
     quantity      NUMERIC(10,4) NOT NULL,
-    unit          VARCHAR(20) NOT NULL,
+    unit_id       BIGINT NOT NULL REFERENCES inventory.unit(unit_id),
     is_from_recipe BOOLEAN NOT NULL DEFAULT FALSE,
     created_by    VARCHAR(100) NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -386,7 +405,7 @@ CREATE TABLE grocery.grocery_list_item (
     ingredient_id        BIGINT REFERENCES inventory.ingredient(ingredient_id),
     manual_item_name     VARCHAR(200),
     quantity_needed      NUMERIC(10,4) NOT NULL,
-    unit_of_measure      VARCHAR(20),
+    unit_id              BIGINT REFERENCES inventory.unit(unit_id),
     source               VARCHAR(50) NOT NULL,
     is_checked           BOOLEAN NOT NULL DEFAULT FALSE,
     created_by           VARCHAR(100) NOT NULL,

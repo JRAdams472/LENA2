@@ -12,9 +12,9 @@ import (
 )
 
 const addGroceryListItem = `-- name: AddGroceryListItem :one
-INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, ingredient_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, updated_by)
+INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, ingredient_id, manual_item_name, quantity_needed, unit_id, source, is_checked, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
+RETURNING grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
 `
 
 type AddGroceryListItemParams struct {
@@ -23,7 +23,7 @@ type AddGroceryListItemParams struct {
 	IngredientID   pgtype.Int8    `json:"ingredient_id"`
 	ManualItemName pgtype.Text    `json:"manual_item_name"`
 	QuantityNeeded pgtype.Numeric `json:"quantity_needed"`
-	UnitOfMeasure  pgtype.Text    `json:"unit_of_measure"`
+	UnitID         pgtype.Int8    `json:"unit_id"`
 	Source         string         `json:"source"`
 	IsChecked      bool           `json:"is_checked"`
 	CreatedBy      string         `json:"created_by"`
@@ -37,7 +37,7 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 		arg.IngredientID,
 		arg.ManualItemName,
 		arg.QuantityNeeded,
-		arg.UnitOfMeasure,
+		arg.UnitID,
 		arg.Source,
 		arg.IsChecked,
 		arg.CreatedBy,
@@ -50,7 +50,6 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 		&i.ItemID,
 		&i.ManualItemName,
 		&i.QuantityNeeded,
-		&i.UnitOfMeasure,
 		&i.Source,
 		&i.IsChecked,
 		&i.CreatedBy,
@@ -58,6 +57,7 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.IngredientID,
+		&i.UnitID,
 	)
 	return i, err
 }
@@ -162,7 +162,7 @@ func (q *Queries) GetGroceryListByID(ctx context.Context, arg GetGroceryListByID
 }
 
 const getGroceryListItemByID = `-- name: GetGroceryListItemByID :one
-SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
 FROM grocery.grocery_list_item
 WHERE grocery_list_item_id = $1
 `
@@ -176,7 +176,6 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, groceryListItemID 
 		&i.ItemID,
 		&i.ManualItemName,
 		&i.QuantityNeeded,
-		&i.UnitOfMeasure,
 		&i.Source,
 		&i.IsChecked,
 		&i.CreatedBy,
@@ -184,12 +183,13 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, groceryListItemID 
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.IngredientID,
+		&i.UnitID,
 	)
 	return i, err
 }
 
 const listGroceryListItems = `-- name: ListGroceryListItems :many
-SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
 FROM grocery.grocery_list_item
 WHERE grocery_list_id = $1
 ORDER BY grocery_list_item_id
@@ -210,7 +210,6 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, groceryListID int64)
 			&i.ItemID,
 			&i.ManualItemName,
 			&i.QuantityNeeded,
-			&i.UnitOfMeasure,
 			&i.Source,
 			&i.IsChecked,
 			&i.CreatedBy,
@@ -218,6 +217,7 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, groceryListID int64)
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.IngredientID,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -230,7 +230,7 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, groceryListID int64)
 }
 
 const listGroceryListItemsByLists = `-- name: ListGroceryListItemsByLists :many
-SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
 FROM grocery.grocery_list_item
 WHERE grocery_list_id = ANY($1::bigint[])
 ORDER BY grocery_list_item_id
@@ -251,7 +251,6 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, groceryListId
 			&i.ItemID,
 			&i.ManualItemName,
 			&i.QuantityNeeded,
-			&i.UnitOfMeasure,
 			&i.Source,
 			&i.IsChecked,
 			&i.CreatedBy,
@@ -259,6 +258,7 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, groceryListId
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.IngredientID,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -319,7 +319,7 @@ SET item_id          = $2,
     ingredient_id    = $3,
     manual_item_name = $4,
     quantity_needed  = $5,
-    unit_of_measure  = $6,
+    unit_id          = $6,
     source           = $7,
     is_checked       = $8,
     updated_by       = $9,
@@ -333,7 +333,7 @@ type UpdateGroceryListItemParams struct {
 	IngredientID      pgtype.Int8    `json:"ingredient_id"`
 	ManualItemName    pgtype.Text    `json:"manual_item_name"`
 	QuantityNeeded    pgtype.Numeric `json:"quantity_needed"`
-	UnitOfMeasure     pgtype.Text    `json:"unit_of_measure"`
+	UnitID            pgtype.Int8    `json:"unit_id"`
 	Source            string         `json:"source"`
 	IsChecked         bool           `json:"is_checked"`
 	UpdatedBy         pgtype.Text    `json:"updated_by"`
@@ -346,7 +346,7 @@ func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryLi
 		arg.IngredientID,
 		arg.ManualItemName,
 		arg.QuantityNeeded,
-		arg.UnitOfMeasure,
+		arg.UnitID,
 		arg.Source,
 		arg.IsChecked,
 		arg.UpdatedBy,
