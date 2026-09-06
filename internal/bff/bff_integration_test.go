@@ -44,8 +44,9 @@ func TestBFF_Integration(t *testing.T) {
 
 	identitySvc := identity.NewService(pool)
 	authenticator := NewAuthenticator(AuthConfig{
-		Issuers:   []string{issuer.URL},
-		Audiences: []string{issuer.Audience},
+		Issuers:     []string{issuer.URL},
+		Audiences:   []string{issuer.Audience},
+		AdminEmails: []string{"auth@example.com", "user-a@example.com"},
 	}, identitySvc)
 
 	resolver := NewResolver(
@@ -64,14 +65,14 @@ func TestBFF_Integration(t *testing.T) {
 	defer srv.Close()
 
 	t.Run("auth", func(t *testing.T) {
-		runAuthTests(t, srv, issuer)
+		runAuthTests(t, srv, issuer, authenticator)
 	})
 	t.Run("end to end", func(t *testing.T) {
 		runEndToEndTests(t, srv, issuer)
 	})
 }
 
-func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer) {
+func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer, authenticator *Authenticator) {
 	t.Run("no token returns 401", func(t *testing.T) {
 		status, _ := doGraphQL(t, srv, "", `{ me { email } }`, nil)
 		assert.Equal(t, http.StatusUnauthorized, status)
@@ -103,6 +104,25 @@ func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer
 		decodeData(t, gr.Data, &data)
 		require.NotEmpty(t, data.Me.ID)
 		assert.Equal(t, "auth@example.com", data.Me.Email)
+	})
+
+	t.Run("admin email promotes user to admin", func(t *testing.T) {
+		tok := issuer.Token(t, "admin-user", "auth@example.com", "Admin User")
+		u, err := authenticator.authenticate(context.Background(), tok)
+		require.NoError(t, err)
+		assert.True(t, u.IsAdmin)
+	})
+
+	t.Run("jwks rotation is handled with forced refetch", func(t *testing.T) {
+		tok1 := issuer.Token(t, "rot-user", "user-a@example.com", "Rot User")
+		_, err := authenticator.authenticate(context.Background(), tok1)
+		require.NoError(t, err)
+
+		issuer.RotateKey(t)
+
+		tok2 := issuer.Token(t, "rot-user", "user-a@example.com", "Rot User")
+		_, err = authenticator.authenticate(context.Background(), tok2)
+		require.NoError(t, err)
 	})
 }
 

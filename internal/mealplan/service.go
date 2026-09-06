@@ -6,6 +6,7 @@ package mealplan
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -72,6 +73,15 @@ func (s *Service) ListMealPlans(ctx context.Context, userID int64, limit, offset
 		out[i] = toMealPlan(rows[i])
 	}
 	return out, nil
+}
+
+// CountMealPlans returns the total number of plans owned by the user.
+func (s *Service) CountMealPlans(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountMealPlans(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("count meal plans: %w", err)
+	}
+	return n, nil
 }
 
 // UpdateMealPlan modifies a user's plan.
@@ -173,10 +183,14 @@ type MealSlotItem struct {
 
 // AddMealSlotItem adds an item override to a slot.
 func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, by string) (MealSlotItem, error) {
+	qty, err := numericFromFloat64(arg.Quantity)
+	if err != nil {
+		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", err)
+	}
 	row, err := s.q.AddMealSlotItem(ctx, sqlc.AddMealSlotItemParams{
 		SlotID:       arg.SlotID,
 		ItemID:       optInt8(arg.ItemID),
-		Quantity:     numericFromFloat64(arg.Quantity),
+		Quantity:     qty,
 		Unit:         arg.Unit,
 		IsFromRecipe: arg.IsFromRecipe,
 		CreatedBy:    by,
@@ -185,7 +199,11 @@ func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, by stri
 	if err != nil {
 		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", err)
 	}
-	return toMealSlotItem(row), nil
+	msi, err := toMealSlotItem(row)
+	if err != nil {
+		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", err)
+	}
+	return msi, nil
 }
 
 // ListMealSlotItems returns all item overrides for a slot.
@@ -194,9 +212,27 @@ func (s *Service) ListMealSlotItems(ctx context.Context, slotID int64) ([]MealSl
 	if err != nil {
 		return nil, fmt.Errorf("list meal slot items: %w", err)
 	}
+	return toMealSlotItems(rows)
+}
+
+// ListMealSlotItemsByPlan returns all item overrides across every slot of a
+// plan in a single query.
+func (s *Service) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealSlotItem, error) {
+	rows, err := s.q.ListMealSlotItemsByPlan(ctx, mealPlanID)
+	if err != nil {
+		return nil, fmt.Errorf("list meal slot items by plan: %w", err)
+	}
+	return toMealSlotItems(rows)
+}
+
+func toMealSlotItems(rows []sqlc.MealplanMealSlotItem) ([]MealSlotItem, error) {
 	out := make([]MealSlotItem, len(rows))
 	for i := range rows {
-		out[i] = toMealSlotItem(rows[i])
+		msi, err := toMealSlotItem(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = msi
 	}
 	return out, nil
 }
@@ -237,7 +273,7 @@ func toMealSlot(row sqlc.MealplanMealSlot) MealSlot {
 	return ms
 }
 
-func toMealSlotItem(row sqlc.MealplanMealSlotItem) MealSlotItem {
+func toMealSlotItem(row sqlc.MealplanMealSlotItem) (MealSlotItem, error) {
 	msi := MealSlotItem{
 		SlotItemID:   row.SlotItemID,
 		SlotID:       row.SlotID,
@@ -249,10 +285,13 @@ func toMealSlotItem(row sqlc.MealplanMealSlotItem) MealSlotItem {
 		msi.ItemID = &v
 	}
 	if row.Quantity.Valid {
-		f8, _ := row.Quantity.Float64Value()
+		f8, err := row.Quantity.Float64Value()
+		if err != nil {
+			return MealSlotItem{}, fmt.Errorf("slot item %d quantity: %w", row.SlotItemID, err)
+		}
 		msi.Quantity = f8.Float64
 	}
-	return msi
+	return msi, nil
 }
 
 func textOrNull(s string) pgtype.Text {
@@ -262,13 +301,16 @@ func textOrNull(s string) pgtype.Text {
 	return pgtype.Text{String: s, Valid: true}
 }
 
-func numericFromFloat64(f float64) pgtype.Numeric {
+func numericFromFloat64(f float64) (pgtype.Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
+	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: %w", f, err)
 	}
 	n.Valid = true
-	return n
+	return n, nil
 }
 
 func optInt4(v *int32) pgtype.Int4 {

@@ -340,3 +340,25 @@ func TestGenerate(t *testing.T) {
 		assert.ErrorIs(t, err, errDB)
 	})
 }
+
+func TestCountGroceryLists(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().CountGroceryLists(ctx, int64(42)).Return(int64(5), nil)
+
+		got, err := s.CountGroceryLists(ctx, 42)
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), got)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().CountGroceryLists(ctx, int64(42)).Return(int64(0), errDB)
+
+		_, err := s.CountGroceryLists(ctx, 42)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "count grocery lists")
+	})
+}

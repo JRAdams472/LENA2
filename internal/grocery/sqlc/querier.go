@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	AddGroceryListItem(ctx context.Context, arg AddGroceryListItemParams) (GroceryGroceryListItem, error)
+	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
 	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
 	DeleteGroceryListItem(ctx context.Context, groceryListItemID int64) error

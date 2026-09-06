@@ -22,6 +22,10 @@ var errRecBoom = errors.New("boom")
 const recTestEmail = "rec@example.com"
 
 func recCtx() context.Context {
+	return testenv.WithAdmin(context.Background(), 11, recTestEmail)
+}
+
+func recUserCtx() context.Context {
 	return testenv.WithUser(context.Background(), 11, recTestEmail)
 }
 
@@ -39,7 +43,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		rec, inv, up := newRecMocks(t)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{
 			RecipeID: 9, Name: "Soup", Description: "Tasty",
-			Servings: 4, PrepTimeMinutes: 10, CookTimeMinutes: 20, IsActive: true,
+			Servings: recInt32Ptr(4), PrepTimeMinutes: recInt32Ptr(10), CookTimeMinutes: recInt32Ptr(20), IsActive: true,
 		}, nil)
 		rec.EXPECT().ListRecipeItems(gomock.Any(), int64(9)).Return([]recipe.RecipeItem{
 			{RecipeID: 9, ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced"},
@@ -137,6 +141,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			{RecipeID: 1, Name: "Soup"},
 			{RecipeID: 2, Name: "Salad"},
 		}, nil)
+		rec.EXPECT().CountRecipes(gomock.Any(), true).Return(int64(5), nil)
 		r := &Resolver{RecipeService: rec}
 		res, err := r.Recipes(recCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)
@@ -145,18 +150,20 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 		pi := res.PageInfo()
 		assert.Equal(t, int32(2), pi.PageNumber())
 		assert.Equal(t, int32(10), pi.PageSize())
-		assert.Equal(t, int32(2), pi.TotalCount())
+		assert.Equal(t, int32(5), pi.TotalCount())
 	})
 
 	t.Run("clamps page and page size", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
 		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(100), int32(0)).Return([]recipe.Recipe{}, nil)
+		rec.EXPECT().CountRecipes(gomock.Any(), true).Return(int64(0), nil)
 		r := &Resolver{RecipeService: rec}
 		res, err := r.Recipes(recCtx(), pageArgs{Page: -3, PageSize: 500})
 		require.NoError(t, err)
 		pi := res.PageInfo()
 		assert.Equal(t, int32(1), pi.PageNumber())
 		assert.Equal(t, int32(100), pi.PageSize())
+		assert.Equal(t, int32(0), pi.TotalCount())
 	})
 
 	t.Run("unauthorized", func(t *testing.T) {
@@ -178,15 +185,19 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 	t.Run("happy path with items and steps", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().CreateRecipe(gomock.Any(), recipe.Recipe{
-			Name: "Soup", Description: "Tasty", Servings: 4,
-			PrepTimeMinutes: 10, CookTimeMinutes: 20, IsActive: true,
-		}, recTestEmail).Return(recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: 4, IsActive: true}, nil)
-		rec.EXPECT().AddRecipeItem(gomock.Any(), recipe.RecipeItem{
-			RecipeID: 9, ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced", IsOptional: true,
-		}).Return(nil)
-		rec.EXPECT().AddRecipeStep(gomock.Any(), int64(9), int32(1), "Boil", recTestEmail).
-			Return(recipe.RecipeStep{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"}, nil)
+		expectedRecipe := recipe.Recipe{
+			Name: "Soup", Description: "Tasty",
+			Servings: recInt32Ptr(4), PrepTimeMinutes: recInt32Ptr(10), CookTimeMinutes: recInt32Ptr(20),
+			IsActive: true,
+		}
+		expectedItems := []recipe.RecipeItem{
+			{ItemID: 3, Quantity: 2, Unit: "cups", Notes: "diced", IsOptional: true},
+		}
+		expectedSteps := []recipe.RecipeStep{
+			{StepNumber: 1, Instruction: "Boil"},
+		}
+		rec.EXPECT().CreateRecipeWithChildren(gomock.Any(), gomock.Eq(expectedRecipe), gomock.Eq(expectedItems), gomock.Eq(expectedSteps), recTestEmail).
+			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: recInt32Ptr(4), IsActive: true}, nil)
 
 		r := &Resolver{RecipeService: rec}
 		res, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
@@ -216,10 +227,17 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 		require.ErrorContains(t, err, "unauthorized")
 	})
 
+	t.Run("forbidden for non-admin", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.CreateRecipe(recUserCtx(), struct{ Input createRecipeInput }{
+			Input: createRecipeInput{Name: "Soup"},
+		})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
 	t.Run("invalid item id", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().CreateRecipe(gomock.Any(), gomock.Any(), recTestEmail).
-			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", IsActive: true}, nil)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
 			Input: createRecipeInput{
@@ -232,7 +250,7 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().CreateRecipe(gomock.Any(), gomock.Any(), recTestEmail).Return(recipe.Recipe{}, errRecBoom)
+		rec.EXPECT().CreateRecipeWithChildren(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), recTestEmail).Return(recipe.Recipe{}, errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
 			Input: createRecipeInput{Name: "Soup"},
@@ -252,25 +270,20 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 	t.Run("happy path replaces items and steps", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
-			Return(recipe.Recipe{RecipeID: 9, Name: "Old", Description: "D", Servings: 2, IsActive: true}, nil)
-		rec.EXPECT().UpdateRecipe(gomock.Any(), int64(9), recipe.Recipe{
-			Name: "New", Description: "D", Servings: 6, IsActive: true,
-		}, recTestEmail).Return(nil)
-		rec.EXPECT().ListRecipeItems(gomock.Any(), int64(9)).Return([]recipe.RecipeItem{
-			{RecipeID: 9, ItemID: 1},
-		}, nil)
-		rec.EXPECT().RemoveRecipeItem(gomock.Any(), int64(9), int64(1)).Return(nil)
-		rec.EXPECT().AddRecipeItem(gomock.Any(), recipe.RecipeItem{
-			RecipeID: 9, ItemID: 3, Quantity: 1, Unit: "cup",
-		}).Return(nil)
-		rec.EXPECT().ListRecipeSteps(gomock.Any(), int64(9)).Return([]recipe.RecipeStep{
-			{StepID: 7, RecipeID: 9, StepNumber: 1},
-		}, nil)
-		rec.EXPECT().DeleteRecipeStep(gomock.Any(), int64(7)).Return(nil)
-		rec.EXPECT().AddRecipeStep(gomock.Any(), int64(9), int32(1), "Stir", recTestEmail).
-			Return(recipe.RecipeStep{StepID: 8, RecipeID: 9, StepNumber: 1, Instruction: "Stir"}, nil)
+			Return(recipe.Recipe{RecipeID: 9, Name: "Old", Description: "D", Servings: recInt32Ptr(2), IsActive: true}, nil)
+
+		expectedRecipe := recipe.Recipe{
+			Name: "New", Description: "D", Servings: recInt32Ptr(6), IsActive: true,
+		}
+		expectedItems := []recipe.RecipeItem{
+			{ItemID: 3, Quantity: 1, Unit: "cup"},
+		}
+		expectedSteps := []recipe.RecipeStep{
+			{StepNumber: 1, Instruction: "Stir"},
+		}
+		rec.EXPECT().UpdateRecipeWithChildren(gomock.Any(), int64(9), gomock.Eq(expectedRecipe), gomock.Eq(expectedItems), gomock.Eq(expectedSteps), recTestEmail).Return(nil)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
-			Return(recipe.Recipe{RecipeID: 9, Name: "New", Servings: 6, IsActive: true}, nil)
+			Return(recipe.Recipe{RecipeID: 9, Name: "New", Servings: recInt32Ptr(6), IsActive: true}, nil)
 
 		r := &Resolver{RecipeService: rec}
 		res, err := r.UpdateRecipe(recCtx(), args{

@@ -26,6 +26,9 @@ services:
     environment:
       LENA_AUTH_ISSUERS: https://accounts.google.com,http://testissuer:8085
       LENA_AUTH_AUDIENCES: ${LENA_GOOGLE_CLIENT_ID:-dummy},lena-e2e-client
+      # e2e@example.com is seeded as admin so catalog mutations work in e2e;
+      # e2e-other@example.com stays a member to exercise the rejection path.
+      LENA_ADMIN_EMAILS: e2e@example.com
     depends_on:
       db-seed:
         condition: service_completed_successfully

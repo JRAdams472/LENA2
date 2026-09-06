@@ -86,6 +86,20 @@ func (mr *MockQuerierMockRecorder) ListUsers(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUsers", reflect.TypeOf((*MockQuerier)(nil).ListUsers), ctx, arg)
 }
 
+// SetUserRole mocks base method.
+func (m *MockQuerier) SetUserRole(ctx context.Context, arg sqlc.SetUserRoleParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserRole", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUserRole indicates an expected call of SetUserRole.
+func (mr *MockQuerierMockRecorder) SetUserRole(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserRole", reflect.TypeOf((*MockQuerier)(nil).SetUserRole), ctx, arg)
+}
+
 // UpdateUser mocks base method.
 func (m *MockQuerier) UpdateUser(ctx context.Context, arg sqlc.UpdateUserParams) error {
 	m.ctrl.T.Helper()

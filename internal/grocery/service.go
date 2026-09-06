@@ -6,6 +6,7 @@ package grocery
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -69,6 +70,15 @@ func (s *Service) ListGroceryLists(ctx context.Context, userID int64, limit, off
 	return out, nil
 }
 
+// CountGroceryLists returns the total number of lists owned by the user.
+func (s *Service) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountGroceryLists(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("count grocery lists: %w", err)
+	}
+	return n, nil
+}
+
 // DeleteGroceryList removes a grocery list owned by the user.
 func (s *Service) DeleteGroceryList(ctx context.Context, groceryListID, userID int64) error {
 	return s.q.DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: groceryListID, UserID: userID})
@@ -88,11 +98,15 @@ type GroceryListItem struct {
 
 // AddGroceryListItem adds an item to a grocery list.
 func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, by string) (GroceryListItem, error) {
+	qty, err := numericFromFloat64(arg.QuantityNeeded)
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("add grocery list item: %w", err)
+	}
 	row, err := s.q.AddGroceryListItem(ctx, sqlc.AddGroceryListItemParams{
 		GroceryListID:  arg.GroceryListID,
 		ItemID:         optInt8(arg.ItemID),
 		ManualItemName: textOrNull(arg.ManualItemName),
-		QuantityNeeded: numericFromFloat64(arg.QuantityNeeded),
+		QuantityNeeded: qty,
 		UnitOfMeasure:  textOrNull(arg.UnitOfMeasure),
 		Source:         arg.Source,
 		IsChecked:      arg.IsChecked,
@@ -102,7 +116,11 @@ func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, b
 	if err != nil {
 		return GroceryListItem{}, fmt.Errorf("add grocery list item: %w", err)
 	}
-	return toGroceryListItem(row), nil
+	gli, err := toGroceryListItem(row)
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("add grocery list item: %w", err)
+	}
+	return gli, nil
 }
 
 // ListGroceryListItems returns all items on a list.
@@ -113,7 +131,11 @@ func (s *Service) ListGroceryListItems(ctx context.Context, groceryListID int64)
 	}
 	out := make([]GroceryListItem, len(rows))
 	for i := range rows {
-		out[i] = toGroceryListItem(rows[i])
+		gli, err := toGroceryListItem(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list grocery list items: %w", err)
+		}
+		out[i] = gli
 	}
 	return out, nil
 }
@@ -124,16 +146,24 @@ func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID 
 	if err != nil {
 		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", err)
 	}
-	return toGroceryListItem(row), nil
+	gli, err := toGroceryListItem(row)
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", err)
+	}
+	return gli, nil
 }
 
 // UpdateGroceryListItem modifies an item.
 func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID int64, arg GroceryListItem, by string) error {
+	qty, err := numericFromFloat64(arg.QuantityNeeded)
+	if err != nil {
+		return fmt.Errorf("update grocery list item: %w", err)
+	}
 	return s.q.UpdateGroceryListItem(ctx, sqlc.UpdateGroceryListItemParams{
 		GroceryListItemID: groceryListItemID,
 		ItemID:            optInt8(arg.ItemID),
 		ManualItemName:    textOrNull(arg.ManualItemName),
-		QuantityNeeded:    numericFromFloat64(arg.QuantityNeeded),
+		QuantityNeeded:    qty,
 		UnitOfMeasure:     textOrNull(arg.UnitOfMeasure),
 		Source:            arg.Source,
 		IsChecked:         arg.IsChecked,
@@ -168,7 +198,7 @@ func toGroceryList(row sqlc.GroceryGroceryList) GroceryList {
 	return gl
 }
 
-func toGroceryListItem(row sqlc.GroceryGroceryListItem) GroceryListItem {
+func toGroceryListItem(row sqlc.GroceryGroceryListItem) (GroceryListItem, error) {
 	gli := GroceryListItem{
 		GroceryListItemID: row.GroceryListItemID,
 		GroceryListID:     row.GroceryListID,
@@ -182,10 +212,13 @@ func toGroceryListItem(row sqlc.GroceryGroceryListItem) GroceryListItem {
 		gli.ItemID = &v
 	}
 	if row.QuantityNeeded.Valid {
-		f8, _ := row.QuantityNeeded.Float64Value()
+		f8, err := row.QuantityNeeded.Float64Value()
+		if err != nil {
+			return GroceryListItem{}, fmt.Errorf("grocery list item %d quantity: %w", row.GroceryListItemID, err)
+		}
 		gli.QuantityNeeded = f8.Float64
 	}
-	return gli
+	return gli, nil
 }
 
 func textOrNull(s string) pgtype.Text {
@@ -195,13 +228,16 @@ func textOrNull(s string) pgtype.Text {
 	return pgtype.Text{String: s, Valid: true}
 }
 
-func numericFromFloat64(f float64) pgtype.Numeric {
+func numericFromFloat64(f float64) (pgtype.Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
+	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: %w", f, err)
 	}
 	n.Valid = true
-	return n
+	return n, nil
 }
 
 func optInt8(v *int64) pgtype.Int8 {

@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countItems = `-- name: CountItems :one
+SELECT COUNT(*)
+FROM inventory.item
+`
+
+func (q *Queries) CountItems(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countItems)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBrand = `-- name: CreateBrand :one
 INSERT INTO inventory.brand (name)
 VALUES ($1)
@@ -556,6 +568,48 @@ func (q *Queries) ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]
 	for rows.Next() {
 		var i ListFoodNutrientsByItemRow
 		if err := rows.Scan(
+			&i.NutrientID,
+			&i.Name,
+			&i.Unit,
+			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFoodNutrientsByItems = `-- name: ListFoodNutrientsByItems :many
+SELECT fn.food_id, nt.nutrient_id, nt.name, nt.unit, fn.amount
+FROM inventory.food_nutrient fn
+JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
+WHERE fn.food_id = ANY($1::bigint[])
+ORDER BY nt.name
+`
+
+type ListFoodNutrientsByItemsRow struct {
+	FoodID     int64          `json:"food_id"`
+	NutrientID int64          `json:"nutrient_id"`
+	Name       string         `json:"name"`
+	Unit       pgtype.Text    `json:"unit"`
+	Amount     pgtype.Numeric `json:"amount"`
+}
+
+func (q *Queries) ListFoodNutrientsByItems(ctx context.Context, itemIds []int64) ([]ListFoodNutrientsByItemsRow, error) {
+	rows, err := q.db.Query(ctx, listFoodNutrientsByItems, itemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFoodNutrientsByItemsRow{}
+	for rows.Next() {
+		var i ListFoodNutrientsByItemsRow
+		if err := rows.Scan(
+			&i.FoodID,
 			&i.NutrientID,
 			&i.Name,
 			&i.Unit,

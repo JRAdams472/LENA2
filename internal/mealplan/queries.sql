@@ -15,6 +15,11 @@ WHERE user_id = $1
 ORDER BY week_start_date DESC
 LIMIT $2 OFFSET $3;
 
+-- name: CountMealPlans :one
+SELECT COUNT(*)
+FROM mealplan.meal_plan
+WHERE user_id = $1;
+
 -- name: UpdateMealPlan :exec
 UPDATE mealplan.meal_plan
 SET name                = $3,
@@ -70,6 +75,13 @@ SELECT *
 FROM mealplan.meal_slot_item
 WHERE slot_id = $1
 ORDER BY slot_item_id;
+
+-- name: ListMealSlotItemsByPlan :many
+SELECT msi.*
+FROM mealplan.meal_slot_item msi
+JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
+WHERE ms.meal_plan_id = $1
+ORDER BY msi.slot_item_id;
 
 -- name: DeleteMealSlotItem :exec
 DELETE FROM mealplan.meal_slot_item

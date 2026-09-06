@@ -462,3 +462,49 @@ func TestDeleteRecipeFavorite(t *testing.T) {
 		assert.ErrorIs(t, err, errDB)
 	})
 }
+
+func TestCountUserItems(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountUserItems(ctx, int64(10)).Return(int64(3), nil)
+
+		got, err := svc.CountUserItems(ctx, 10)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), got)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountUserItems(ctx, int64(10)).Return(int64(0), errDB)
+
+		_, err := svc.CountUserItems(ctx, 10)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "count user items")
+		assert.ErrorIs(t, err, errDB)
+	})
+}
+
+func TestCountUserBottles(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountUserBottles(ctx, int64(10)).Return(int64(7), nil)
+
+		got, err := svc.CountUserBottles(ctx, 10)
+		require.NoError(t, err)
+		assert.Equal(t, int64(7), got)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountUserBottles(ctx, int64(10)).Return(int64(0), errDB)
+
+		_, err := svc.CountUserBottles(ctx, 10)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "count user bottles")
+		assert.ErrorIs(t, err, errDB)
+	})
+}

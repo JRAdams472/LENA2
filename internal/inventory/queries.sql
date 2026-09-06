@@ -54,6 +54,10 @@ FROM inventory.item
 ORDER BY name
 LIMIT $1 OFFSET $2;
 
+-- name: CountItems :one
+SELECT COUNT(*)
+FROM inventory.item;
+
 -- name: UpdateItem :exec
 UPDATE inventory.item
 SET name        = $2,
@@ -95,6 +99,13 @@ SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount
 FROM inventory.food_nutrient fn
 JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
 WHERE fn.food_id = $1
+ORDER BY nt.name;
+
+-- name: ListFoodNutrientsByItems :many
+SELECT fn.food_id, nt.nutrient_id, nt.name, nt.unit, fn.amount
+FROM inventory.food_nutrient fn
+JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
+WHERE fn.food_id = ANY(sqlc.arg(item_ids)::bigint[])
 ORDER BY nt.name;
 
 -- name: CreateFoodNutrient :one

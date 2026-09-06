@@ -52,6 +52,23 @@ func main() {
 	}
 	_ = signingKey.Set(jwk.KeyIDKey, keyID)
 
+	mux := newMux(issuer, audience, jwks, signingKey)
+
+	log.Printf("testissuer listening on :%s (issuer=%s, audience=%s)", port, issuer, audience)
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
+}
+
+// newMux builds the issuer's HTTP routes: OIDC discovery, JWKS, health,
+// and the /token endpoint that mints signed ID tokens.
+func newMux(issuer, audience string, jwks jwk.Set, signingKey jwk.Key) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]string{
@@ -97,17 +114,7 @@ func main() {
 		}
 		writeJSON(w, map[string]string{"id_token": string(signed)})
 	})
-
-	log.Printf("testissuer listening on :%s (issuer=%s, audience=%s)", port, issuer, audience)
-	srv := &http.Server{
-		Addr:              ":" + port,
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
-	log.Fatal(srv.ListenAndServe())
+	return mux
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -20,6 +20,10 @@ var errInvBoom = errors.New("boom")
 const invTestEmail = "inv@example.com"
 
 func invCtx() context.Context {
+	return testenv.WithAdmin(context.Background(), 7, invTestEmail)
+}
+
+func invUserCtx() context.Context {
 	return testenv.WithUser(context.Background(), 7, invTestEmail)
 }
 
@@ -264,6 +268,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 			{ItemID: 1, Name: "Milk"},
 			{ItemID: 2, Name: "Eggs"},
 		}, nil)
+		inv.EXPECT().CountItems(gomock.Any()).Return(int64(5), nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Items(invCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)
@@ -272,18 +277,20 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		pi := res.PageInfo()
 		assert.Equal(t, int32(2), pi.PageNumber())
 		assert.Equal(t, int32(10), pi.PageSize())
-		assert.Equal(t, int32(2), pi.TotalCount())
+		assert.Equal(t, int32(5), pi.TotalCount())
 	})
 
 	t.Run("clamps page and page size", func(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().ListItems(gomock.Any(), int32(100), int32(0)).Return([]inventory.Item{}, nil)
+		inv.EXPECT().CountItems(gomock.Any()).Return(int64(0), nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Items(invCtx(), pageArgs{Page: 0, PageSize: 500})
 		require.NoError(t, err)
 		pi := res.PageInfo()
 		assert.Equal(t, int32(1), pi.PageNumber())
 		assert.Equal(t, int32(100), pi.PageSize())
+		assert.Equal(t, int32(0), pi.TotalCount())
 	})
 
 	t.Run("unauthorized", func(t *testing.T) {
@@ -414,6 +421,11 @@ func TestResolver_Inventory_CreateItem(t *testing.T) {
 
 	_, err = r.CreateItem(context.Background(), struct{ Input createItemInput }{})
 	require.ErrorContains(t, err, "unauthorized")
+
+	_, err = r.CreateItem(invUserCtx(), struct{ Input createItemInput }{
+		Input: createItemInput{Name: "Milk", CategoryID: "2"},
+	})
+	require.ErrorContains(t, err, "forbidden")
 
 	_, err = r.CreateItem(invCtx(), struct{ Input createItemInput }{
 		Input: createItemInput{Name: "Milk", CategoryID: "abc"},

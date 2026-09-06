@@ -41,6 +41,21 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// CountBottles mocks base method.
+func (m *MockQuerier) CountBottles(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountBottles", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountBottles indicates an expected call of CountBottles.
+func (mr *MockQuerierMockRecorder) CountBottles(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBottles", reflect.TypeOf((*MockQuerier)(nil).CountBottles), ctx)
+}
+
 // CreateBottle mocks base method.
 func (m *MockQuerier) CreateBottle(ctx context.Context, arg sqlc.CreateBottleParams) (sqlc.WineBottle, error) {
 	m.ctrl.T.Helper()

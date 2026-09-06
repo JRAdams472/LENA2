@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -14,6 +15,17 @@ import (
 )
 
 var errDB = errors.New(`db error`)
+
+func f64(v float64) *float64 { return &v }
+func i16(v int16) *int16     { return &v }
+
+func mustNum(v float64) pgtype.Numeric {
+	n, err := numericFromFloat64(v)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
 
 func newService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
@@ -797,11 +809,11 @@ func TestBottle(t *testing.T) {
 		RegionID:       3,
 		VintageYear:    2020,
 		Vineyard:       `Chateau`,
-		Abv:            13.5,
-		Acidity:        5,
-		TanninLevel:    4,
-		Body:           3,
-		Sweetness:      2,
+		Abv:            f64(13.5),
+		Acidity:        i16(5),
+		TanninLevel:    i16(4),
+		Body:           i16(3),
+		Sweetness:      i16(2),
 		OakIntegration: true,
 		BottleSize:     `750ml`,
 	}
@@ -813,11 +825,11 @@ func TestBottle(t *testing.T) {
 		RegionID:       3,
 		VintageYear:    2020,
 		Vineyard:       textOrNull(`Chateau`),
-		Abv:            numericOrNull(13.5),
-		Acidity:        int2OrNull(5),
-		TanninLevel:    int2OrNull(4),
-		Body:           int2OrNull(3),
-		Sweetness:      int2OrNull(2),
+		Abv:            mustNum(13.5),
+		Acidity:        optInt2(i16(5)),
+		TanninLevel:    optInt2(i16(4)),
+		Body:           optInt2(i16(3)),
+		Sweetness:      optInt2(i16(2)),
 		OakIntegration: boolOrNull(true),
 		BottleSize:     `750ml`,
 	}
@@ -829,11 +841,11 @@ func TestBottle(t *testing.T) {
 		RegionID:       3,
 		VintageYear:    2020,
 		Vineyard:       `Chateau`,
-		Abv:            13.5,
-		Acidity:        5,
-		TanninLevel:    4,
-		Body:           3,
-		Sweetness:      2,
+		Abv:            f64(13.5),
+		Acidity:        i16(5),
+		TanninLevel:    i16(4),
+		Body:           i16(3),
+		Sweetness:      i16(2),
 		OakIntegration: true,
 		BottleSize:     `750ml`,
 	}
@@ -846,11 +858,11 @@ func TestBottle(t *testing.T) {
 			RegionID:       3,
 			VintageYear:    2020,
 			Vineyard:       textOrNull(`Chateau`),
-			Abv:            numericOrNull(13.5),
-			Acidity:        int2OrNull(5),
-			TanninLevel:    int2OrNull(4),
-			Body:           int2OrNull(3),
-			Sweetness:      int2OrNull(2),
+			Abv:            mustNum(13.5),
+			Acidity:        optInt2(i16(5)),
+			TanninLevel:    optInt2(i16(4)),
+			Body:           optInt2(i16(3)),
+			Sweetness:      optInt2(i16(2)),
 			OakIntegration: boolOrNull(true),
 			BottleSize:     `750ml`,
 			CreatedBy:      `user`,
@@ -923,11 +935,11 @@ func TestBottle(t *testing.T) {
 			RegionID:       3,
 			VintageYear:    2020,
 			Vineyard:       textOrNull(`Chateau`),
-			Abv:            numericOrNull(13.5),
-			Acidity:        int2OrNull(5),
-			TanninLevel:    int2OrNull(4),
-			Body:           int2OrNull(3),
-			Sweetness:      int2OrNull(2),
+			Abv:            mustNum(13.5),
+			Acidity:        optInt2(i16(5)),
+			TanninLevel:    optInt2(i16(4)),
+			Body:           optInt2(i16(3)),
+			Sweetness:      optInt2(i16(2)),
 			OakIntegration: boolOrNull(true),
 			BottleSize:     `750ml`,
 			UpdatedBy:      textOrNull(`user`),
@@ -970,25 +982,25 @@ func TestJunction(t *testing.T) {
 		mq.EXPECT().CreateBottleGrapeVariety(ctx, gomock.Eq(sqlc.CreateBottleGrapeVarietyParams{
 			BottleID:       1,
 			GrapeVarietyID: 2,
-			Percentage:     int2OrNull(45),
+			Percentage:     optInt2(i16(45)),
 			CreatedBy:      `user`,
 		})).Return(sqlc.WineBottleGrapeVariety{
 			BottleID:       1,
 			GrapeVarietyID: 2,
-			Percentage:     int2OrNull(45),
+			Percentage:     optInt2(i16(45)),
 			CreatedBy:      `user`,
 		}, nil)
 
-		got, err := svc.AddBottleGrapeVariety(ctx, 1, 2, 45, `user`)
+		got, err := svc.AddBottleGrapeVariety(ctx, 1, 2, i16(45), `user`)
 		require.NoError(t, err)
-		assert.Equal(t, BottleGrapeVariety{GrapeVarietyID: 2, Percentage: 45}, got)
+		assert.Equal(t, BottleGrapeVariety{GrapeVarietyID: 2, Percentage: i16(45)}, got)
 	})
 
 	t.Run(`AddBottleGrapeVariety error`, func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().CreateBottleGrapeVariety(ctx, gomock.Any()).Return(sqlc.WineBottleGrapeVariety{}, errDB)
 
-		_, err := svc.AddBottleGrapeVariety(ctx, 1, 2, 45, `user`)
+		_, err := svc.AddBottleGrapeVariety(ctx, 1, 2, i16(45), `user`)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, `add bottle grape variety`)
 		assert.ErrorIs(t, err, errDB)
@@ -997,13 +1009,13 @@ func TestJunction(t *testing.T) {
 	t.Run(`ListBottleGrapeVarieties success`, func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListBottleGrapeVarieties(ctx, int64(1)).Return([]sqlc.ListBottleGrapeVarietiesRow{
-			{GrapeVarietyID: 2, Name: `Merlot`, Percentage: int2OrNull(45)},
+			{GrapeVarietyID: 2, Name: `Merlot`, Percentage: optInt2(i16(45))},
 		}, nil)
 
 		got, err := svc.ListBottleGrapeVarieties(ctx, 1)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, BottleGrapeVariety{GrapeVarietyID: 2, Name: `Merlot`, Percentage: 45}, got[0])
+		assert.Equal(t, BottleGrapeVariety{GrapeVarietyID: 2, Name: `Merlot`, Percentage: i16(45)}, got[0])
 	})
 
 	t.Run(`ListBottleGrapeVarieties error`, func(t *testing.T) {
@@ -1102,6 +1114,29 @@ func TestJunction(t *testing.T) {
 		mq.EXPECT().DeleteBottleFlavorProfile(ctx, gomock.Any()).Return(errDB)
 
 		err := svc.RemoveBottleFlavorProfile(ctx, 1, 2)
+		assert.ErrorIs(t, err, errDB)
+	})
+}
+
+func TestCountBottles(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run(`success`, func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountBottles(ctx).Return(int64(42), nil)
+
+		got, err := svc.CountBottles(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), got)
+	})
+
+	t.Run(`error`, func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountBottles(ctx).Return(int64(0), errDB)
+
+		_, err := svc.CountBottles(ctx)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, `count bottles`)
 		assert.ErrorIs(t, err, errDB)
 	})
 }

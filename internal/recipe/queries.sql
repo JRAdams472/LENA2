@@ -15,6 +15,16 @@ WHERE is_active = $1
 ORDER BY name
 LIMIT $2 OFFSET $3;
 
+-- name: CountRecipes :one
+SELECT COUNT(*)
+FROM recipe.recipe
+WHERE is_active = $1;
+
+-- name: GetRecipesByIDs :many
+SELECT *
+FROM recipe.recipe
+WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[]);
+
 -- name: UpdateRecipe :exec
 UPDATE recipe.recipe
 SET name              = $2,
@@ -41,6 +51,16 @@ FROM recipe.recipe_item
 WHERE recipe_id = $1
 ORDER BY item_id;
 
+-- name: ListRecipeItemsByRecipes :many
+SELECT *
+FROM recipe.recipe_item
+WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
+ORDER BY item_id;
+
+-- name: DeleteRecipeItems :exec
+DELETE FROM recipe.recipe_item
+WHERE recipe_id = $1;
+
 -- name: RemoveRecipeItem :exec
 DELETE FROM recipe.recipe_item
 WHERE recipe_id = $1 AND item_id = $2;
@@ -63,6 +83,10 @@ SET step_number = $2,
     updated_by  = $4,
     updated_at  = now()
 WHERE step_id = $1;
+
+-- name: DeleteRecipeSteps :exec
+DELETE FROM recipe.recipe_step
+WHERE recipe_id = $1;
 
 -- name: DeleteRecipeStep :exec
 DELETE FROM recipe.recipe_step

@@ -48,6 +48,7 @@ type IdentityUser struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedBy       pgtype.Text        `json:"updated_by"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	Role            string             `json:"role"`
 }
 
 type InventoryBrand struct {

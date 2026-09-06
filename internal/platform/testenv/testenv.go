@@ -131,6 +131,17 @@ func WithUser(ctx context.Context, userID int64, email string) context.Context {
 	})
 }
 
+// WithAdmin returns a context carrying an admin currentuser.User; catalog
+// mutations require this after the role-based authorization change.
+func WithAdmin(ctx context.Context, userID int64, email string) context.Context {
+	return currentuser.WithUser(ctx, currentuser.User{
+		UserID:   userID,
+		Provider: "test-provider",
+		Email:    email,
+		IsAdmin:  true,
+	})
+}
+
 func repoRoot() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

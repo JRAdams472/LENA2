@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	CountBottles(ctx context.Context) (int64, error)
 	CreateBottle(ctx context.Context, arg CreateBottleParams) (WineBottle, error)
 	CreateBottleFlavorProfile(ctx context.Context, arg CreateBottleFlavorProfileParams) (WineBottleFlavorProfile, error)
 	CreateBottleGrapeVariety(ctx context.Context, arg CreateBottleGrapeVarietyParams) (WineBottleGrapeVariety, error)

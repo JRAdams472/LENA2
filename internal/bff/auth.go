@@ -24,12 +24,22 @@ import (
 type AuthConfig struct {
 	Issuers   []string
 	Audiences []string
+	// AdminEmails is a bootstrap allowlist: a user whose email is listed
+	// is promoted to the persisted 'admin' role on their next request.
+	AdminEmails []string
+}
+
+// identityStore is the subset of identity.Service the authenticator needs;
+// declared as an interface so tests can substitute a fake.
+type identityStore interface {
+	UpsertUser(ctx context.Context, provider, subject, email, displayName string) (identity.User, error)
+	SetUserRole(ctx context.Context, userID int64, role string) error
 }
 
 // Authenticator validates OIDC ID tokens and resolves the current user.
 type Authenticator struct {
 	cfg      AuthConfig
-	identity *identity.Service
+	identity identityStore
 	httpc    *http.Client
 
 	mu   sync.Mutex
@@ -44,7 +54,7 @@ type cachedKeySet struct {
 const jwksCacheTTL = time.Hour
 
 // NewAuthenticator creates an Authenticator backed by the given identity service.
-func NewAuthenticator(cfg AuthConfig, identitySvc *identity.Service) *Authenticator {
+func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) *Authenticator {
 	return &Authenticator{
 		cfg:      cfg,
 		identity: identitySvc,
@@ -88,14 +98,21 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		return currentuser.User{}, fmt.Errorf("issuer %q is not allowed", issuer)
 	}
 
-	keySet, err := a.keySetForIssuer(ctx, issuer)
+	keySet, err := a.keySetForIssuer(ctx, issuer, false)
 	if err != nil {
 		return currentuser.User{}, fmt.Errorf("load jwks for issuer %q: %w", issuer, err)
 	}
 
 	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("verify token: %w", err)
+		// The issuer may have rotated signing keys inside our cache window.
+		// Bust the cached JWKS, re-fetch, and retry verification once.
+		if refreshed, refErr := a.keySetForIssuer(ctx, issuer, true); refErr == nil {
+			token, err = jwt.Parse([]byte(raw), jwt.WithKeySet(refreshed), jwt.WithValidate(true))
+		}
+		if err != nil {
+			return currentuser.User{}, fmt.Errorf("verify token: %w", err)
+		}
 	}
 
 	audience, _ := token.Audience()
@@ -117,22 +134,34 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		return currentuser.User{}, fmt.Errorf("upsert user: %w", err)
 	}
 
+	// Bootstrap admin access: users whose email is configured in
+	// LENA_ADMIN_EMAILS are promoted to the persisted admin role here so
+	// the role survives across logins.
+	if u.Role != identity.RoleAdmin && contains(a.cfg.AdminEmails, u.Email) {
+		if err := a.identity.SetUserRole(ctx, u.UserID, identity.RoleAdmin); err != nil {
+			return currentuser.User{}, fmt.Errorf("promote admin user: %w", err)
+		}
+		u.Role = identity.RoleAdmin
+	}
+
 	return currentuser.User{
 		UserID:          u.UserID,
 		Provider:        u.Provider,
 		ExternalSubject: u.ExternalSubject,
 		Email:           u.Email,
 		DisplayName:     u.DisplayName,
+		IsAdmin:         u.IsAdmin(),
 	}, nil
 }
 
 // keySetForIssuer returns a cached JWKS for the issuer, discovering and
-// fetching it if the cache is empty or stale.
-func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string) (jwk.Set, error) {
+// fetching it if the cache is empty, stale, or forceRefresh is set (used
+// after a signature-verification failure to handle key rotation).
+func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string, forceRefresh bool) (jwk.Set, error) {
 	a.mu.Lock()
 	entry, ok := a.jwks[issuer]
 	a.mu.Unlock()
-	if ok && time.Now().Before(entry.expiresAt) {
+	if ok && !forceRefresh && time.Now().Before(entry.expiresAt) {
 		return entry.set, nil
 	}
 

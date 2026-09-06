@@ -7,6 +7,7 @@ package userprefs
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -41,11 +42,19 @@ type UserItem struct {
 
 // UpsertUserItem creates or updates a user's pantry item.
 func (s *Service) UpsertUserItem(ctx context.Context, arg UserItem, by string) (UserItem, error) {
+	currentQty, err := numericFromFloat64(arg.CurrentQty)
+	if err != nil {
+		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+	}
+	minQty, err := optNumeric(arg.MinQty)
+	if err != nil {
+		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+	}
 	row, err := s.q.UpsertUserItem(ctx, sqlc.UpsertUserItemParams{
 		UserID:     arg.UserID,
 		ItemID:     arg.ItemID,
-		CurrentQty: numericFromFloat64(arg.CurrentQty),
-		MinQty:     optNumeric(arg.MinQty),
+		CurrentQty: currentQty,
+		MinQty:     minQty,
 		PurchaseAt: optTimestamptz(arg.PurchaseAt),
 		ExpiresAt:  optTimestamptz(arg.ExpiresAt),
 		Notes:      textOrNull(arg.Notes),
@@ -56,7 +65,11 @@ func (s *Service) UpsertUserItem(ctx context.Context, arg UserItem, by string) (
 	if err != nil {
 		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
 	}
-	return toUserItem(row), nil
+	ui, err := toUserItem(row)
+	if err != nil {
+		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+	}
+	return ui, nil
 }
 
 // GetUserItemByID returns a pantry item owned by the user.
@@ -65,7 +78,11 @@ func (s *Service) GetUserItemByID(ctx context.Context, userItemID, userID int64)
 	if err != nil {
 		return UserItem{}, fmt.Errorf("get user item: %w", err)
 	}
-	return toUserItem(row), nil
+	ui, err := toUserItem(row)
+	if err != nil {
+		return UserItem{}, fmt.Errorf("get user item: %w", err)
+	}
+	return ui, nil
 }
 
 // ListUserItems returns a user's pantry items.
@@ -76,9 +93,22 @@ func (s *Service) ListUserItems(ctx context.Context, userID int64, limit, offset
 	}
 	out := make([]UserItem, len(rows))
 	for i := range rows {
-		out[i] = toUserItem(rows[i])
+		ui, err := toUserItem(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list user items: %w", err)
+		}
+		out[i] = ui
 	}
 	return out, nil
+}
+
+// CountUserItems returns the total number of pantry items owned by the user.
+func (s *Service) CountUserItems(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountUserItems(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("count user items: %w", err)
+	}
+	return n, nil
 }
 
 // DeleteUserItem removes a pantry item owned by the user.
@@ -103,14 +133,22 @@ type UserBottle struct {
 
 // UpsertUserBottle creates or updates a user's wine holding.
 func (s *Service) UpsertUserBottle(ctx context.Context, arg UserBottle, by string) (UserBottle, error) {
+	price, err := optNumeric(arg.PurchasePrice)
+	if err != nil {
+		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+	}
+	temp, err := optNumeric(arg.StorageTemp)
+	if err != nil {
+		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+	}
 	row, err := s.q.UpsertUserBottle(ctx, sqlc.UpsertUserBottleParams{
 		UserID:        arg.UserID,
 		BottleID:      arg.BottleID,
 		BottleNumber:  optInt4(arg.BottleNumber),
 		Quantity:      arg.Quantity,
 		PurchaseAt:    optTimestamptz(arg.PurchaseAt),
-		PurchasePrice: optNumeric(arg.PurchasePrice),
-		StorageTemp:   optNumeric(arg.StorageTemp),
+		PurchasePrice: price,
+		StorageTemp:   temp,
 		Location:      textOrNull(arg.Location),
 		Notes:         textOrNull(arg.Notes),
 		IsFavorite:    arg.IsFavorite,
@@ -120,7 +158,11 @@ func (s *Service) UpsertUserBottle(ctx context.Context, arg UserBottle, by strin
 	if err != nil {
 		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
 	}
-	return toUserBottle(row), nil
+	ub, err := toUserBottle(row)
+	if err != nil {
+		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+	}
+	return ub, nil
 }
 
 // GetUserBottleByID returns a cellar holding owned by the user.
@@ -129,7 +171,11 @@ func (s *Service) GetUserBottleByID(ctx context.Context, userBottleID, userID in
 	if err != nil {
 		return UserBottle{}, fmt.Errorf("get user bottle: %w", err)
 	}
-	return toUserBottle(row), nil
+	ub, err := toUserBottle(row)
+	if err != nil {
+		return UserBottle{}, fmt.Errorf("get user bottle: %w", err)
+	}
+	return ub, nil
 }
 
 // ListUserBottles returns a user's cellar holdings.
@@ -140,9 +186,22 @@ func (s *Service) ListUserBottles(ctx context.Context, userID int64, limit, offs
 	}
 	out := make([]UserBottle, len(rows))
 	for i := range rows {
-		out[i] = toUserBottle(rows[i])
+		ub, err := toUserBottle(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list user bottles: %w", err)
+		}
+		out[i] = ub
 	}
 	return out, nil
+}
+
+// CountUserBottles returns the total number of cellar holdings owned by the user.
+func (s *Service) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountUserBottles(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("count user bottles: %w", err)
+	}
+	return n, nil
 }
 
 // DeleteUserBottle removes a cellar holding owned by the user.
@@ -186,7 +245,7 @@ func (s *Service) DeleteRecipeFavorite(ctx context.Context, userID, recipeID int
 	return s.q.DeleteRecipeFavorite(ctx, sqlc.DeleteRecipeFavoriteParams{UserID: userID, RecipeID: recipeID})
 }
 
-func toUserItem(row sqlc.InventoryUserItem) UserItem {
+func toUserItem(row sqlc.InventoryUserItem) (UserItem, error) {
 	ui := UserItem{
 		UserItemID: row.UserItemID,
 		UserID:     row.UserID,
@@ -195,11 +254,17 @@ func toUserItem(row sqlc.InventoryUserItem) UserItem {
 		IsFavorite: row.IsFavorite,
 	}
 	if row.CurrentQty.Valid {
-		f8, _ := row.CurrentQty.Float64Value()
+		f8, err := row.CurrentQty.Float64Value()
+		if err != nil {
+			return UserItem{}, fmt.Errorf("user item %d current_qty: %w", row.UserItemID, err)
+		}
 		ui.CurrentQty = f8.Float64
 	}
 	if row.MinQty.Valid {
-		f8, _ := row.MinQty.Float64Value()
+		f8, err := row.MinQty.Float64Value()
+		if err != nil {
+			return UserItem{}, fmt.Errorf("user item %d min_qty: %w", row.UserItemID, err)
+		}
 		v := f8.Float64
 		ui.MinQty = &v
 	}
@@ -211,10 +276,10 @@ func toUserItem(row sqlc.InventoryUserItem) UserItem {
 		v := row.ExpiresAt.Time
 		ui.ExpiresAt = &v
 	}
-	return ui
+	return ui, nil
 }
 
-func toUserBottle(row sqlc.WineUserBottle) UserBottle {
+func toUserBottle(row sqlc.WineUserBottle) (UserBottle, error) {
 	ub := UserBottle{
 		UserBottleID: row.UserBottleID,
 		UserID:       row.UserID,
@@ -233,16 +298,22 @@ func toUserBottle(row sqlc.WineUserBottle) UserBottle {
 		ub.PurchaseAt = &v
 	}
 	if row.PurchasePrice.Valid {
-		f8, _ := row.PurchasePrice.Float64Value()
+		f8, err := row.PurchasePrice.Float64Value()
+		if err != nil {
+			return UserBottle{}, fmt.Errorf("user bottle %d purchase_price: %w", row.UserBottleID, err)
+		}
 		v := f8.Float64
 		ub.PurchasePrice = &v
 	}
 	if row.StorageTemp.Valid {
-		f8, _ := row.StorageTemp.Float64Value()
+		f8, err := row.StorageTemp.Float64Value()
+		if err != nil {
+			return UserBottle{}, fmt.Errorf("user bottle %d storage_temp: %w", row.UserBottleID, err)
+		}
 		v := f8.Float64
 		ub.StorageTemp = &v
 	}
-	return ub
+	return ub, nil
 }
 
 func textOrNull(s string) pgtype.Text {
@@ -252,18 +323,21 @@ func textOrNull(s string) pgtype.Text {
 	return pgtype.Text{String: s, Valid: true}
 }
 
-func numericFromFloat64(f float64) pgtype.Numeric {
+func numericFromFloat64(f float64) (pgtype.Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
+	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: %w", f, err)
 	}
 	n.Valid = true
-	return n
+	return n, nil
 }
 
-func optNumeric(f *float64) pgtype.Numeric {
+func optNumeric(f *float64) (pgtype.Numeric, error) {
 	if f == nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, nil
 	}
 	return numericFromFloat64(*f)
 }

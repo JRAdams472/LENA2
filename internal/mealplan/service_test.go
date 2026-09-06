@@ -409,3 +409,53 @@ func TestDeleteMealSlotItem(t *testing.T) {
 		assert.ErrorIs(t, s.DeleteMealSlotItem(ctx, 900), errDB)
 	})
 }
+
+func TestCountMealPlans(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().CountMealPlans(ctx, int64(42)).Return(int64(5), nil)
+
+		got, err := s.CountMealPlans(ctx, 42)
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), got)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().CountMealPlans(ctx, int64(42)).Return(int64(0), errDB)
+
+		_, err := s.CountMealPlans(ctx, 42)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "count meal plans")
+	})
+}
+
+func TestListMealSlotItemsByPlan(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().ListMealSlotItemsByPlan(ctx, int64(7)).Return([]sqlc.MealplanMealSlotItem{
+			{SlotItemID: 900, SlotID: 55, Unit: "cups"},
+			{SlotItemID: 901, SlotID: 56, Unit: "g"},
+		}, nil)
+
+		got, err := s.ListMealSlotItemsByPlan(ctx, 7)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, int64(900), got[0].SlotItemID)
+		assert.Equal(t, int64(55), got[0].SlotID)
+		assert.Equal(t, int64(901), got[1].SlotItemID)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().ListMealSlotItemsByPlan(ctx, gomock.Any()).Return(nil, errDB)
+
+		_, err := s.ListMealSlotItemsByPlan(ctx, 7)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "list meal slot items by plan")
+	})
+}

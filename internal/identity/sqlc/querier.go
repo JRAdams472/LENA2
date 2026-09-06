@@ -12,6 +12,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	GetUserByProviderSubject(ctx context.Context, arg GetUserByProviderSubjectParams) (IdentityUser, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
+	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
 	UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error)
 }

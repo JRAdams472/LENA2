@@ -22,6 +22,14 @@ func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{q: sqlc.New(pool)}
 }
 
+// RoleMember and RoleAdmin are the persisted authorization roles on
+// identity.users. Membership is seeded via the LENA_ADMIN_EMAILS config
+// list: on each authenticated request the BFF promotes a matching user.
+const (
+	RoleMember = "member"
+	RoleAdmin  = "admin"
+)
+
 // User is the identity module's view of a user row.
 type User struct {
 	UserID          int64
@@ -30,7 +38,11 @@ type User struct {
 	Email           string
 	DisplayName     string
 	IsActive        bool
+	Role            string
 }
+
+// IsAdmin reports whether the user holds the admin role.
+func (u User) IsAdmin() bool { return u.Role == RoleAdmin }
 
 // UpsertUser creates the user on first sign-in or refreshes email/display
 // name/last-login on subsequent sign-ins, keyed by (provider, subject).
@@ -47,6 +59,11 @@ func (s *Service) UpsertUser(ctx context.Context, provider, subject, email, disp
 		return User{}, fmt.Errorf("upsert user: %w", err)
 	}
 	return toUser(row), nil
+}
+
+// SetUserRole updates a user's persisted role.
+func (s *Service) SetUserRole(ctx context.Context, userID int64, role string) error {
+	return s.q.SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: userID, Role: role})
 }
 
 // GetByID looks up a user by their primary key.
@@ -66,6 +83,7 @@ func toUser(row sqlc.IdentityUser) User {
 		Email:           row.Email,
 		DisplayName:     row.DisplayName.String,
 		IsActive:        row.IsActive,
+		Role:            row.Role,
 	}
 }
 

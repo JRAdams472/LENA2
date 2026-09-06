@@ -38,6 +38,7 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 		{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 3, MinQty: &minQty, PurchaseAt: &purchaseAt, Notes: "restock", IsFavorite: true},
 		{UserItemID: 6, UserID: upUserID, ItemID: 43, CurrentQty: 0.5},
 	}, nil)
+	up.EXPECT().CountUserItems(gomock.Any(), upUserID).Return(int64(5), nil)
 
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32
@@ -64,7 +65,7 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 	pi := res.PageInfo()
 	assert.Equal(t, int32(3), pi.PageNumber())
 	assert.Equal(t, int32(20), pi.PageSize())
-	assert.Equal(t, int32(2), pi.TotalCount())
+	assert.Equal(t, int32(5), pi.TotalCount())
 }
 
 func TestResolver_UserItems_Unauthorized(t *testing.T) {
@@ -103,6 +104,7 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return([]userprefs.UserBottle{
 		{UserBottleID: 30, UserID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 6, PurchasePrice: &price, StorageTemp: &temp, Location: "cellar", IsFavorite: true},
 	}, nil)
+	up.EXPECT().CountUserBottles(gomock.Any(), upUserID).Return(int64(5), nil)
 
 	res, err := r.UserBottles(upCtx(), struct {
 		Page     int32
@@ -126,7 +128,7 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 	pi := res.PageInfo()
 	assert.Equal(t, int32(1), pi.PageNumber())
 	assert.Equal(t, int32(10), pi.PageSize())
-	assert.Equal(t, int32(1), pi.TotalCount())
+	assert.Equal(t, int32(5), pi.TotalCount())
 }
 
 func TestResolver_UserBottles_Unauthorized(t *testing.T) {

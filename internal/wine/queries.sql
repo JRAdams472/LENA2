@@ -74,6 +74,10 @@ FROM wine.bottle
 ORDER BY bottle_id DESC
 LIMIT $1 OFFSET $2;
 
+-- name: CountBottles :one
+SELECT COUNT(*)
+FROM wine.bottle;
+
 -- name: UpdateBottle :exec
 UPDATE wine.bottle
 SET type_id         = $2,

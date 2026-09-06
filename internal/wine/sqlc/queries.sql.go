@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countBottles = `-- name: CountBottles :one
+SELECT COUNT(*)
+FROM wine.bottle
+`
+
+func (q *Queries) CountBottles(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countBottles)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBottle = `-- name: CreateBottle :one
 INSERT INTO wine.bottle (
     type_id, country_id, region_id, vintage_year, vineyard, abv,

@@ -12,6 +12,9 @@ type User struct {
 	ExternalSubject string
 	Email           string
 	DisplayName     string
+	// IsAdmin is set when the user's persisted identity.users role is
+	// 'admin'. Admin-only mutations check this flag, not just authn.
+	IsAdmin bool
 }
 
 type contextKey struct{}

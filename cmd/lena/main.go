@@ -37,10 +37,13 @@ func main() {
 
 	log := logger.New(cfg.LogLevel)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	// The 10s timeout applies only to pool creation; a deferred cancel at
+	// main scope would keep the context alive for the process lifetime.
+	pool, err := func() (*pgxpool.Pool, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return postgres.NewPool(ctx, cfg.DatabaseURL)
+	}()
 	if err != nil {
 		log.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -79,8 +82,9 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 	wineSvc := wine.NewService(pool)
 
 	authenticator := bff.NewAuthenticator(bff.AuthConfig{
-		Issuers:   splitAndTrim(cfg.AuthIssuers),
-		Audiences: splitAndTrim(cfg.AuthAudiences),
+		Issuers:     splitAndTrim(cfg.AuthIssuers),
+		Audiences:   splitAndTrim(cfg.AuthAudiences),
+		AdminEmails: splitAndTrim(cfg.AdminEmails),
 	}, identitySvc)
 
 	e := echo.New()
@@ -88,18 +92,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 
-	corsCfg := middleware.CORSConfig{
-		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-		AllowCredentials: true,
-		MaxAge:           86400,
-	}
-	if cfg.CORSAllowedOrigins == "*" {
-		corsCfg.AllowOriginFunc = func(origin string) (bool, error) { return true, nil }
-	} else {
-		corsCfg.AllowOrigins = strings.Split(cfg.CORSAllowedOrigins, ",")
-	}
-	e.Use(middleware.CORSWithConfig(corsCfg))
+	e.Use(middleware.CORSWithConfig(buildCORSConfig(cfg.CORSAllowedOrigins)))
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogStatus:  true,
 		LogURI:     true,
@@ -143,6 +136,27 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 	resolver := bff.NewResolver(grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
 	return e
+}
+
+// buildCORSConfig builds the CORS middleware config. When origins are
+// wildcarded we reflect any origin but must not allow credentials —
+// reflecting arbitrary origins with credentials enabled leaks
+// Authorization/cookie data and opens a CSRF vector. Credentials are only
+// allowed with an explicit origin allowlist.
+func buildCORSConfig(allowedOrigins string) middleware.CORSConfig {
+	cfg := middleware.CORSConfig{
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		MaxAge:       86400,
+	}
+	if allowedOrigins == "*" {
+		cfg.AllowOriginFunc = func(origin string) (bool, error) { return true, nil }
+		cfg.AllowCredentials = false
+	} else {
+		cfg.AllowOrigins = strings.Split(allowedOrigins, ",")
+		cfg.AllowCredentials = true
+	}
+	return cfg
 }
 
 // splitAndTrim splits a comma-separated env value into a trimmed, non-empty slice.

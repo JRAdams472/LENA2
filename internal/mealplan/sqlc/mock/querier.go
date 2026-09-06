@@ -71,6 +71,21 @@ func (mr *MockQuerierMockRecorder) AddMealSlotItem(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlotItem", reflect.TypeOf((*MockQuerier)(nil).AddMealSlotItem), ctx, arg)
 }
 
+// CountMealPlans mocks base method.
+func (m *MockQuerier) CountMealPlans(ctx context.Context, userID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountMealPlans", ctx, userID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountMealPlans indicates an expected call of CountMealPlans.
+func (mr *MockQuerierMockRecorder) CountMealPlans(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockQuerier)(nil).CountMealPlans), ctx, userID)
+}
+
 // CreateMealPlan mocks base method.
 func (m *MockQuerier) CreateMealPlan(ctx context.Context, arg sqlc.CreateMealPlanParams) (sqlc.MealplanMealPlan, error) {
 	m.ctrl.T.Helper()
@@ -186,6 +201,21 @@ func (m *MockQuerier) ListMealSlotItems(ctx context.Context, slotID int64) ([]sq
 func (mr *MockQuerierMockRecorder) ListMealSlotItems(ctx, slotID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItems), ctx, slotID)
+}
+
+// ListMealSlotItemsByPlan mocks base method.
+func (m *MockQuerier) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]sqlc.MealplanMealSlotItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, mealPlanID)
+	ret0, _ := ret[0].([]sqlc.MealplanMealSlotItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListMealSlotItemsByPlan indicates an expected call of ListMealSlotItemsByPlan.
+func (mr *MockQuerierMockRecorder) ListMealSlotItemsByPlan(ctx, mealPlanID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItemsByPlan), ctx, mealPlanID)
 }
 
 // ListMealSlotsForPlan mocks base method.

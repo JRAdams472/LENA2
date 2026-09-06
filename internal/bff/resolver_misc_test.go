@@ -97,8 +97,10 @@ func TestMisc_NilIfEmpty(t *testing.T) {
 }
 
 func TestMisc_Int32Ptr(t *testing.T) {
-	assert.Nil(t, int32Ptr(0))
-	got := int32Ptr(7)
+	got := int32Ptr(0)
+	require.NotNil(t, got)
+	assert.Equal(t, int32(0), *got)
+	got = int32Ptr(7)
 	require.NotNil(t, got)
 	assert.Equal(t, int32(7), *got)
 }
@@ -116,20 +118,6 @@ func TestMisc_TimeToGraphQL(t *testing.T) {
 	got := timeToGraphQL(&now)
 	require.NotNil(t, got)
 	assert.True(t, got.Equal(now))
-}
-
-func TestMisc_Float64OrNil(t *testing.T) {
-	assert.Nil(t, float64OrNil(0))
-	got := float64OrNil(2.5)
-	require.NotNil(t, got)
-	assert.Equal(t, 2.5, *got)
-}
-
-func TestMisc_Int16OrNil(t *testing.T) {
-	assert.Nil(t, int16OrNil(0))
-	got := int16OrNil(3)
-	require.NotNil(t, got)
-	assert.Equal(t, int32(3), *got)
 }
 
 func TestMisc_DerefString(t *testing.T) {

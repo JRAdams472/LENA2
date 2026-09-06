@@ -17,6 +17,16 @@ import (
 
 var errDB = errors.New("db failure")
 
+func i32(v int32) *int32 { return &v }
+
+func mustNum(v float64) pgtype.Numeric {
+	n, err := numericFromFloat64(v)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
 func newService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
@@ -45,9 +55,12 @@ func assertRecipe(t *testing.T, r Recipe) {
 	assert.Equal(t, int64(7), r.RecipeID)
 	assert.Equal(t, "Pancakes", r.Name)
 	assert.Equal(t, "fluffy", r.Description)
-	assert.Equal(t, int32(4), r.Servings)
-	assert.Equal(t, int32(10), r.PrepTimeMinutes)
-	assert.Equal(t, int32(15), r.CookTimeMinutes)
+	require.NotNil(t, r.Servings)
+	assert.Equal(t, int32(4), *r.Servings)
+	require.NotNil(t, r.PrepTimeMinutes)
+	assert.Equal(t, int32(10), *r.PrepTimeMinutes)
+	require.NotNil(t, r.CookTimeMinutes)
+	assert.Equal(t, int32(15), *r.CookTimeMinutes)
 	assert.True(t, r.IsActive)
 }
 
@@ -57,17 +70,17 @@ func TestCreateRecipe(t *testing.T) {
 		arg := Recipe{
 			Name:            "Pancakes",
 			Description:     "fluffy",
-			Servings:        4,
-			PrepTimeMinutes: 10,
-			CookTimeMinutes: 15,
+			Servings:        i32(4),
+			PrepTimeMinutes: i32(10),
+			CookTimeMinutes: i32(15),
 			IsActive:        true,
 		}
 		want := sqlc.CreateRecipeParams{
 			Name:            "Pancakes",
 			Description:     textOrNull("fluffy"),
-			Servings:        int4OrNull(4),
-			PrepTimeMinutes: int4OrNull(10),
-			CookTimeMinutes: int4OrNull(15),
+			Servings:        optInt4(i32(4)),
+			PrepTimeMinutes: optInt4(i32(10)),
+			CookTimeMinutes: optInt4(i32(15)),
 			IsActive:        true,
 			CreatedBy:       "alice",
 			UpdatedBy:       textOrNull("alice"),
@@ -98,7 +111,9 @@ func TestCreateRecipe(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), got.RecipeID)
 		assert.Equal(t, "", got.Description)
-		assert.Equal(t, int32(0), got.Servings)
+		assert.Nil(t, got.Servings)
+		assert.Nil(t, got.PrepTimeMinutes)
+		assert.Nil(t, got.CookTimeMinutes)
 		assert.False(t, got.IsActive)
 	})
 
@@ -151,7 +166,7 @@ func TestListRecipes(t *testing.T) {
 			rows:   []sqlc.RecipeRecipe{recipeRow()},
 			want: []Recipe{{
 				RecipeID: 7, Name: "Pancakes", Description: "fluffy",
-				Servings: 4, PrepTimeMinutes: 10, CookTimeMinutes: 15, IsActive: true,
+				Servings: i32(4), PrepTimeMinutes: i32(10), CookTimeMinutes: i32(15), IsActive: true,
 			}},
 		},
 		{
@@ -201,18 +216,18 @@ func TestUpdateRecipe(t *testing.T) {
 		arg := Recipe{
 			Name:            "Waffles",
 			Description:     "crispy",
-			Servings:        2,
-			PrepTimeMinutes: 5,
-			CookTimeMinutes: 8,
+			Servings:        i32(2),
+			PrepTimeMinutes: i32(5),
+			CookTimeMinutes: i32(8),
 			IsActive:        true,
 		}
 		want := sqlc.UpdateRecipeParams{
 			RecipeID:        7,
 			Name:            "Waffles",
 			Description:     textOrNull("crispy"),
-			Servings:        int4OrNull(2),
-			PrepTimeMinutes: int4OrNull(5),
-			CookTimeMinutes: int4OrNull(8),
+			Servings:        optInt4(i32(2)),
+			PrepTimeMinutes: optInt4(i32(5)),
+			CookTimeMinutes: optInt4(i32(8)),
 			IsActive:        true,
 			UpdatedBy:       textOrNull("carol"),
 		}
@@ -267,7 +282,7 @@ func itemRow() sqlc.RecipeRecipeItem {
 	return sqlc.RecipeRecipeItem{
 		RecipeID:   7,
 		ItemID:     42,
-		Quantity:   numericFromFloat64(1.5),
+		Quantity:   mustNum(1.5),
 		Unit:       "cups",
 		Notes:      pgtype.Text{String: "sifted", Valid: true},
 		IsOptional: true,
@@ -288,7 +303,7 @@ func TestAddRecipeItem(t *testing.T) {
 		want := sqlc.AddRecipeItemParams{
 			RecipeID:   7,
 			ItemID:     42,
-			Quantity:   numericFromFloat64(1.5),
+			Quantity:   mustNum(1.5),
 			Unit:       "cups",
 			Notes:      textOrNull("sifted"),
 			IsOptional: true,
@@ -303,7 +318,7 @@ func TestAddRecipeItem(t *testing.T) {
 		mq.EXPECT().AddRecipeItem(gomock.Any(), sqlc.AddRecipeItemParams{
 			RecipeID: 7,
 			ItemID:   42,
-			Quantity: numericFromFloat64(2),
+			Quantity: mustNum(2),
 			Unit:     "g",
 			Notes:    pgtype.Text{},
 		}).Return(nil)
@@ -508,5 +523,53 @@ func TestDeleteRecipeStep(t *testing.T) {
 		mq.EXPECT().DeleteRecipeStep(gomock.Any(), int64(11)).Return(errDB)
 
 		assert.ErrorIs(t, svc.DeleteRecipeStep(context.Background(), 11), errDB)
+	})
+}
+
+func TestCountRecipes(t *testing.T) {
+	t.Run("success returns count", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountRecipes(gomock.Any(), true).Return(int64(42), nil)
+
+		n, err := svc.CountRecipes(context.Background(), true)
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), n)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountRecipes(gomock.Any(), false).Return(int64(0), errDB)
+
+		_, err := svc.CountRecipes(context.Background(), false)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "count recipes:")
+	})
+}
+
+func TestGetRecipesByIDs(t *testing.T) {
+	t.Run("success maps rows", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{7, 8}).Return([]sqlc.RecipeRecipe{
+			{RecipeID: 7, Name: "A", IsActive: true},
+			{RecipeID: 8, Name: "B", IsActive: false},
+		}, nil)
+
+		got, err := svc.GetRecipesByIDs(context.Background(), []int64{7, 8})
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, int64(7), got[0].RecipeID)
+		assert.Equal(t, "A", got[0].Name)
+		assert.Equal(t, int64(8), got[1].RecipeID)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipesByIDs(gomock.Any(), gomock.Any()).Return(nil, errDB)
+
+		_, err := svc.GetRecipesByIDs(context.Background(), []int64{7})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "get recipes by ids:")
 	})
 }
