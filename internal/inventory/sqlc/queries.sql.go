@@ -287,18 +287,19 @@ func (q *Queries) CreateNutrientType(ctx context.Context, arg CreateNutrientType
 }
 
 const createUnit = `-- name: CreateUnit :one
-INSERT INTO inventory.unit (name, abbreviation, kind, is_active, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+INSERT INTO inventory.unit (name, abbreviation, kind, to_base_factor, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at, to_base_factor
 `
 
 type CreateUnitParams struct {
-	Name         string      `json:"name"`
-	Abbreviation pgtype.Text `json:"abbreviation"`
-	Kind         string      `json:"kind"`
-	IsActive     bool        `json:"is_active"`
-	CreatedBy    string      `json:"created_by"`
-	UpdatedBy    pgtype.Text `json:"updated_by"`
+	Name         string         `json:"name"`
+	Abbreviation pgtype.Text    `json:"abbreviation"`
+	Kind         string         `json:"kind"`
+	ToBaseFactor pgtype.Numeric `json:"to_base_factor"`
+	IsActive     bool           `json:"is_active"`
+	CreatedBy    string         `json:"created_by"`
+	UpdatedBy    pgtype.Text    `json:"updated_by"`
 }
 
 func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (InventoryUnit, error) {
@@ -306,6 +307,7 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Invento
 		arg.Name,
 		arg.Abbreviation,
 		arg.Kind,
+		arg.ToBaseFactor,
 		arg.IsActive,
 		arg.CreatedBy,
 		arg.UpdatedBy,
@@ -321,6 +323,7 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Invento
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ToBaseFactor,
 	)
 	return i, err
 }
@@ -673,7 +676,7 @@ func (q *Queries) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (In
 }
 
 const getUnitByID = `-- name: GetUnitByID :one
-SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at, to_base_factor
 FROM inventory.unit
 WHERE unit_id = $1
 `
@@ -691,12 +694,13 @@ func (q *Queries) GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ToBaseFactor,
 	)
 	return i, err
 }
 
 const getUnitByName = `-- name: GetUnitByName :one
-SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at, to_base_factor
 FROM inventory.unit
 WHERE lower(name) = lower($1) OR lower(abbreviation) = lower($1)
 `
@@ -714,12 +718,13 @@ func (q *Queries) GetUnitByName(ctx context.Context, lower string) (InventoryUni
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ToBaseFactor,
 	)
 	return i, err
 }
 
 const getUnitsByIDs = `-- name: GetUnitsByIDs :many
-SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at, to_base_factor
 FROM inventory.unit
 WHERE unit_id = ANY($1::bigint[])
 `
@@ -743,6 +748,7 @@ func (q *Queries) GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]Invento
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.ToBaseFactor,
 		); err != nil {
 			return nil, err
 		}
@@ -1123,7 +1129,7 @@ func (q *Queries) ListNutrientTypes(ctx context.Context) ([]InventoryNutrientTyp
 }
 
 const listUnits = `-- name: ListUnits :many
-SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at, to_base_factor
 FROM inventory.unit
 ORDER BY kind, name
 `
@@ -1147,6 +1153,7 @@ func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.ToBaseFactor,
 		); err != nil {
 			return nil, err
 		}

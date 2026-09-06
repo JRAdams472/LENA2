@@ -29,6 +29,87 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
+// ScaledRecipe resolves a recipe with its ingredient quantities scaled to the
+// requested number of servings. The recipe itself is not modified.
+func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
+	ID       graphql.ID
+	Servings int32
+}) (*recipeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	if args.Servings <= 0 {
+		return nil, errors.New("servings must be positive")
+	}
+
+	scaled, err := r.RecipeService.ScaleRecipe(ctx, id, args.Servings)
+	if err != nil {
+		return nil, err
+	}
+
+	rc := &recipeChildren{
+		itemsBy:   make(map[int64][]recipe.RecipeItem),
+		stepsBy:   make(map[int64][]recipe.RecipeStep),
+		favorites: make(map[int64]bool),
+		items:     make(map[int64]inventory.Item),
+		units:     make(map[int64]inventory.Unit),
+	}
+	rc.itemsBy[scaled.Recipe.RecipeID] = scaled.Items
+	rc.stepsBy[scaled.Recipe.RecipeID] = scaled.Steps
+	fav, err := r.UserPrefsService.GetRecipeFavorite(ctx, u.UserID, scaled.Recipe.RecipeID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	rc.favorites[scaled.Recipe.RecipeID] = fav.IsFavorite
+
+	if len(scaled.Items) > 0 {
+		itemIDSet := make(map[int64]bool)
+		unitIDSet := make(map[int64]bool)
+		for _, ri := range scaled.Items {
+			itemIDSet[ri.ItemID] = true
+			if ri.UnitID != 0 {
+				unitIDSet[ri.UnitID] = true
+			}
+		}
+		itemIDs := make([]int64, 0, len(itemIDSet))
+		for itemID := range itemIDSet {
+			itemIDs = append(itemIDs, itemID)
+		}
+		items, err := r.InventoryService.GetItemsByIDs(ctx, itemIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			rc.items[it.ItemID] = it
+		}
+		unitIDs := make([]int64, 0, len(unitIDSet))
+		for unitID := range unitIDSet {
+			unitIDs = append(unitIDs, unitID)
+		}
+		units, err := r.InventoryService.GetUnitsByIDs(ctx, unitIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, unit := range units {
+			rc.units[unit.UnitID] = unit
+		}
+	}
+
+	return &recipeResolver{
+		inv:    r.InventoryService,
+		rec:    r.RecipeService,
+		up:     r.UserPrefsService,
+		user:   u,
+		recipe: scaled.Recipe,
+		rc:     rc,
+	}, nil
+}
+
 // Recipes resolves a paginated list of active recipes.
 func (r *Resolver) Recipes(ctx context.Context, args struct {
 	Page     int32
