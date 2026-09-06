@@ -17,6 +17,7 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
+import Rating from "@mui/material/Rating";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -150,6 +151,13 @@ export default function RecipeDetailPage() {
     onSuccess: invalidateSteps,
   });
 
+  const rateMutation = useMutation({
+    mutationFn: (rating: number) => api.rateRecipe(recipeId, rating),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["recipe", recipeId], updated);
+    },
+  });
+
   const resetStepForm = () => {
     setEditingStepId(null);
     setStepNumber("");
@@ -222,6 +230,25 @@ export default function RecipeDetailPage() {
             <Typography variant="body2">
               Servings: {recipeQuery.data.servings ?? "-"}
             </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
+              <Rating
+                aria-label="Your rating"
+                value={recipeQuery.data.myRating}
+                onChange={(_, value) => {
+                  if (value != null) rateMutation.mutate(value);
+                }}
+              />
+              <Typography variant="body2" color="text.secondary">
+                {recipeQuery.data.averageRating != null
+                  ? `${recipeQuery.data.averageRating.toFixed(1)} avg · ${recipeQuery.data.ratingCount} rating${recipeQuery.data.ratingCount === 1 ? "" : "s"}`
+                  : "No ratings yet"}
+              </Typography>
+            </Box>
+            {rateMutation.error && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {(rateMutation.error as Error).message}
+              </Alert>
+            )}
           </>
         )}
       </Paper>

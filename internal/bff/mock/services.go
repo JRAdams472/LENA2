@@ -1331,6 +1331,36 @@ func (mr *MockRecipeServiceMockRecorder) GetRecipesByIDs(ctx, recipeIDs any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipesByIDs", reflect.TypeOf((*MockRecipeService)(nil).GetRecipesByIDs), ctx, recipeIDs)
 }
 
+// GetUserRating mocks base method.
+func (m *MockRecipeService) GetUserRating(ctx context.Context, userID, recipeID int64) (recipe.RecipeRating, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserRating", ctx, userID, recipeID)
+	ret0, _ := ret[0].(recipe.RecipeRating)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserRating indicates an expected call of GetUserRating.
+func (mr *MockRecipeServiceMockRecorder) GetUserRating(ctx, userID, recipeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserRating", reflect.TypeOf((*MockRecipeService)(nil).GetUserRating), ctx, userID, recipeID)
+}
+
+// ListRatingSummaries mocks base method.
+func (m *MockRecipeService) ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRatingSummaries", ctx, recipeIDs)
+	ret0, _ := ret[0].([]recipe.RatingSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRatingSummaries indicates an expected call of ListRatingSummaries.
+func (mr *MockRecipeServiceMockRecorder) ListRatingSummaries(ctx, recipeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingSummaries", reflect.TypeOf((*MockRecipeService)(nil).ListRatingSummaries), ctx, recipeIDs)
+}
+
 // ListRecipeItems mocks base method.
 func (m *MockRecipeService) ListRecipeItems(ctx context.Context, recipeID int64) ([]recipe.RecipeItem, error) {
 	m.ctrl.T.Helper()
@@ -1359,6 +1389,21 @@ func (m *MockRecipeService) ListRecipeItemsByRecipes(ctx context.Context, recipe
 func (mr *MockRecipeServiceMockRecorder) ListRecipeItemsByRecipes(ctx, recipeIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeItemsByRecipes", reflect.TypeOf((*MockRecipeService)(nil).ListRecipeItemsByRecipes), ctx, recipeIDs)
+}
+
+// ListRecipeRatings mocks base method.
+func (m *MockRecipeService) ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]recipe.RecipeRating, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeRatings", ctx, userID, recipeIDs)
+	ret0, _ := ret[0].([]recipe.RecipeRating)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeRatings indicates an expected call of ListRecipeRatings.
+func (mr *MockRecipeServiceMockRecorder) ListRecipeRatings(ctx, userID, recipeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeRatings", reflect.TypeOf((*MockRecipeService)(nil).ListRecipeRatings), ctx, userID, recipeIDs)
 }
 
 // ListRecipeSteps mocks base method.
@@ -1433,6 +1478,21 @@ func (m *MockRecipeService) ScaleRecipe(ctx context.Context, recipeID int64, ser
 func (mr *MockRecipeServiceMockRecorder) ScaleRecipe(ctx, recipeID, servings any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScaleRecipe", reflect.TypeOf((*MockRecipeService)(nil).ScaleRecipe), ctx, recipeID, servings)
+}
+
+// SetRating mocks base method.
+func (m *MockRecipeService) SetRating(ctx context.Context, userID, recipeID int64, rating int16, by string) (recipe.RecipeRating, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetRating", ctx, userID, recipeID, rating, by)
+	ret0, _ := ret[0].(recipe.RecipeRating)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetRating indicates an expected call of SetRating.
+func (mr *MockRecipeServiceMockRecorder) SetRating(ctx, userID, recipeID, rating, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRating", reflect.TypeOf((*MockRecipeService)(nil).SetRating), ctx, userID, recipeID, rating, by)
 }
 
 // UpdateRecipe mocks base method.

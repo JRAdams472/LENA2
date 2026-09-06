@@ -202,6 +202,32 @@ func (q *Queries) GetRecipeByID(ctx context.Context, recipeID int64) (RecipeReci
 	return i, err
 }
 
+const getRecipeRating = `-- name: GetRecipeRating :one
+SELECT user_id, recipe_id, rating, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_rating
+WHERE user_id = $1 AND recipe_id = $2
+`
+
+type GetRecipeRatingParams struct {
+	UserID   int64 `json:"user_id"`
+	RecipeID int64 `json:"recipe_id"`
+}
+
+func (q *Queries) GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error) {
+	row := q.db.QueryRow(ctx, getRecipeRating, arg.UserID, arg.RecipeID)
+	var i RecipeRecipeRating
+	err := row.Scan(
+		&i.UserID,
+		&i.RecipeID,
+		&i.Rating,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRecipesByIDs = `-- name: GetRecipesByIDs :many
 SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
 FROM recipe.recipe
@@ -305,6 +331,80 @@ func (q *Queries) ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int6
 			&i.RecipeItemID,
 			&i.SectionName,
 			&i.DisplayOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecipeRatingSummaries = `-- name: ListRecipeRatingSummaries :many
+SELECT recipe_id,
+       AVG(rating)::float8 AS average_rating,
+       COUNT(*)            AS rating_count
+FROM recipe.recipe_rating
+WHERE recipe_id = ANY($1::bigint[])
+GROUP BY recipe_id
+`
+
+type ListRecipeRatingSummariesRow struct {
+	RecipeID      int64   `json:"recipe_id"`
+	AverageRating float64 `json:"average_rating"`
+	RatingCount   int64   `json:"rating_count"`
+}
+
+func (q *Queries) ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error) {
+	rows, err := q.db.Query(ctx, listRecipeRatingSummaries, recipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecipeRatingSummariesRow{}
+	for rows.Next() {
+		var i ListRecipeRatingSummariesRow
+		if err := rows.Scan(&i.RecipeID, &i.AverageRating, &i.RatingCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecipeRatings = `-- name: ListRecipeRatings :many
+SELECT user_id, recipe_id, rating, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_rating
+WHERE user_id = $1 AND recipe_id = ANY($2::bigint[])
+`
+
+type ListRecipeRatingsParams struct {
+	UserID    int64   `json:"user_id"`
+	RecipeIds []int64 `json:"recipe_ids"`
+}
+
+func (q *Queries) ListRecipeRatings(ctx context.Context, arg ListRecipeRatingsParams) ([]RecipeRecipeRating, error) {
+	rows, err := q.db.Query(ctx, listRecipeRatings, arg.UserID, arg.RecipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeRating{}
+	for rows.Next() {
+		var i RecipeRecipeRating
+		if err := rows.Scan(
+			&i.UserID,
+			&i.RecipeID,
+			&i.Rating,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -506,4 +606,44 @@ func (q *Queries) UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepPara
 		arg.UpdatedBy,
 	)
 	return err
+}
+
+const upsertRecipeRating = `-- name: UpsertRecipeRating :one
+INSERT INTO recipe.recipe_rating (user_id, recipe_id, rating, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, recipe_id)
+    DO UPDATE SET
+        rating     = EXCLUDED.rating,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+RETURNING user_id, recipe_id, rating, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertRecipeRatingParams struct {
+	UserID    int64       `json:"user_id"`
+	RecipeID  int64       `json:"recipe_id"`
+	Rating    int16       `json:"rating"`
+	CreatedBy string      `json:"created_by"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpsertRecipeRating(ctx context.Context, arg UpsertRecipeRatingParams) (RecipeRecipeRating, error) {
+	row := q.db.QueryRow(ctx, upsertRecipeRating,
+		arg.UserID,
+		arg.RecipeID,
+		arg.Rating,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i RecipeRecipeRating
+	err := row.Scan(
+		&i.UserID,
+		&i.RecipeID,
+		&i.Rating,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

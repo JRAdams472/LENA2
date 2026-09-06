@@ -193,6 +193,9 @@ export interface Recipe extends AuditableEntity {
   recipeSteps?: RecipeStep[];
   selectionCount: number;
   personalSelectionCount: number;
+  myRating: number | null;
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 export interface RecipeItem {

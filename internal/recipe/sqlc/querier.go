@@ -18,15 +18,19 @@ type Querier interface {
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipeSteps(ctx context.Context, recipeID int64) error
 	GetRecipeByID(ctx context.Context, recipeID int64) (RecipeRecipe, error)
+	GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error)
 	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
 	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
+	ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error)
+	ListRecipeRatings(ctx context.Context, arg ListRecipeRatingsParams) ([]RecipeRecipeRating, error)
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]RecipeRecipeStep, error)
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeStep, error)
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)
 	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
 	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) error
 	UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) error
+	UpsertRecipeRating(ctx context.Context, arg UpsertRecipeRatingParams) (RecipeRecipeRating, error)
 }
 
 var _ Querier = (*Queries)(nil)

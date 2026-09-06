@@ -27,8 +27,15 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	if err != nil {
 		return nil, err
 	}
-	rc := &recipeChildren{recipeCounts: make(map[int64]countPair)}
+	rc := &recipeChildren{
+		recipeCounts: make(map[int64]countPair),
+		myRatings:    make(map[int64]int16),
+		summaries:    make(map[int64]recipe.RatingSummary),
+	}
 	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, rc); err != nil {
+		return nil, err
+	}
+	if err := loadRecipeRatings(ctx, r.RecipeService, u.UserID, []int64{id}, rc); err != nil {
 		return nil, err
 	}
 	var globalCount, personalCount int64
@@ -68,8 +75,13 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		items:        make(map[int64]inventory.Item),
 		units:        make(map[int64]inventory.Unit),
 		recipeCounts: make(map[int64]countPair),
+		myRatings:    make(map[int64]int16),
+		summaries:    make(map[int64]recipe.RatingSummary),
 	}
 	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{scaled.Recipe.RecipeID}, rc); err != nil {
+		return nil, err
+	}
+	if err := loadRecipeRatings(ctx, r.RecipeService, u.UserID, []int64{scaled.Recipe.RecipeID}, rc); err != nil {
 		return nil, err
 	}
 	rc.itemsBy[scaled.Recipe.RecipeID] = scaled.Items
@@ -315,6 +327,46 @@ func (r *Resolver) SetRecipeFavorite(ctx context.Context, args struct {
 	return args.IsFavorite, nil
 }
 
+// RateRecipe upserts the current user's 1-5 star rating for a recipe and
+// returns the recipe with fresh rating fields.
+func (r *Resolver) RateRecipe(ctx context.Context, args struct {
+	RecipeID graphql.ID
+	Rating   int32
+}) (*recipeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := r.RecipeService.SetRating(ctx, u.UserID, id, int16(args.Rating), u.Email); err != nil {
+		return nil, err
+	}
+	recordEventAsync(r.AnalyticsService, u.UserID, u.Email, analytics.Event{
+		EventType:  analytics.EventRatingGiven,
+		EntityType: analytics.EntityRecipe,
+		EntityID:   id,
+	})
+	rec, err := r.RecipeService.GetRecipeByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	rc := &recipeChildren{
+		recipeCounts: make(map[int64]countPair),
+		myRatings:    make(map[int64]int16),
+		summaries:    make(map[int64]recipe.RatingSummary),
+	}
+	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, rc); err != nil {
+		return nil, err
+	}
+	if err := loadRecipeRatings(ctx, r.RecipeService, u.UserID, []int64{id}, rc); err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc}, nil
+}
+
 // recipeResolver resolves Recipe fields. When rc is non-nil its
 // batch-loaded maps are used instead of per-recipe service calls.
 type recipeResolver struct {
@@ -448,6 +500,59 @@ func (r *recipeResolver) PersonalSelectionCount() int32 {
 		}
 	}
 	return int64ToInt32(r.personalCount)
+}
+
+// MyRating resolves the current user's rating, or null when unrated.
+func (r *recipeResolver) MyRating(ctx context.Context) (*int32, error) {
+	if r.rc != nil {
+		if v, ok := r.rc.myRatings[r.recipe.RecipeID]; ok {
+			rating := int32(v)
+			return &rating, nil
+		}
+		return nil, nil
+	}
+	rating, err := r.rec.GetUserRating(ctx, r.user.UserID, r.recipe.RecipeID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	v := int32(rating.Rating)
+	return &v, nil
+}
+
+// AverageRating resolves the mean rating across all users, or null when the
+// recipe has no ratings.
+func (r *recipeResolver) AverageRating(ctx context.Context) (*float64, error) {
+	s, ok, err := r.ratingSummary(ctx)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return &s.AverageRating, nil
+}
+
+func (r *recipeResolver) RatingCount(ctx context.Context) (int32, error) {
+	s, ok, err := r.ratingSummary(ctx)
+	if err != nil || !ok {
+		return 0, err
+	}
+	return int64ToInt32(s.RatingCount), nil
+}
+
+func (r *recipeResolver) ratingSummary(ctx context.Context) (recipe.RatingSummary, bool, error) {
+	if r.rc != nil {
+		s, ok := r.rc.summaries[r.recipe.RecipeID]
+		return s, ok, nil
+	}
+	summaries, err := r.rec.ListRatingSummaries(ctx, []int64{r.recipe.RecipeID})
+	if err != nil {
+		return recipe.RatingSummary{}, false, err
+	}
+	if len(summaries) == 0 {
+		return recipe.RatingSummary{}, false, nil
+	}
+	return summaries[0], true, nil
 }
 
 type recipeItemResolver struct {

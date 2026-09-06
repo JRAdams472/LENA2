@@ -123,6 +123,10 @@ type RecipeService interface {
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int64) ([]recipe.RecipeStep, error)
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipe(ctx context.Context, recipeID int64) error
+	SetRating(ctx context.Context, userID, recipeID int64, rating int16, by string) (recipe.RecipeRating, error)
+	GetUserRating(ctx context.Context, userID, recipeID int64) (recipe.RecipeRating, error)
+	ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]recipe.RecipeRating, error)
+	ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error)
 }
 
 var _ RecipeService = (*recipe.Service)(nil)

@@ -232,6 +232,9 @@ describe("api client: recipes", () => {
       isFavorite: false,
       selectionCount: 0,
       personalSelectionCount: 0,
+      myRating: null,
+      averageRating: null,
+      ratingCount: 0,
       recipeItems: [
         {
           recipeID: 0,

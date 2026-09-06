@@ -280,6 +280,71 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 	})
 }
 
+func TestIntegrationRecipeRatings(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	userA := testenv.MustUser(ctx, t, pool, "rating-a@example.com")
+	userB := testenv.MustUser(ctx, t, pool, "rating-b@example.com")
+
+	rec, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Rated Recipe", IsActive: true}, itBy)
+	require.NoError(t, err)
+
+	// Unrated recipe: no user rating, no summary rows.
+	_, err = svc.GetUserRating(ctx, userA, rec.RecipeID)
+	assert.Error(t, err)
+	summaries, err := svc.ListRatingSummaries(ctx, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	assert.Empty(t, summaries)
+
+	// Two users rate; aggregate reflects both.
+	got, err := svc.SetRating(ctx, userA, rec.RecipeID, 5, itBy)
+	require.NoError(t, err)
+	assert.Equal(t, userA, got.UserID)
+	assert.Equal(t, rec.RecipeID, got.RecipeID)
+	assert.Equal(t, int16(5), got.Rating)
+
+	_, err = svc.SetRating(ctx, userB, rec.RecipeID, 3, itBy)
+	require.NoError(t, err)
+
+	// Upsert: same user updates their rating instead of inserting a second row.
+	_, err = svc.SetRating(ctx, userA, rec.RecipeID, 4, itBy)
+	require.NoError(t, err)
+
+	mine, err := svc.GetUserRating(ctx, userA, rec.RecipeID)
+	require.NoError(t, err)
+	assert.Equal(t, int16(4), mine.Rating)
+
+	ratings, err := svc.ListRecipeRatings(ctx, userA, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	require.Len(t, ratings, 1)
+	assert.Equal(t, int16(4), ratings[0].Rating)
+
+	summaries, err = svc.ListRatingSummaries(ctx, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.InDelta(t, 3.5, summaries[0].AverageRating, 1e-9)
+	assert.Equal(t, int64(2), summaries[0].RatingCount)
+
+	// Ratings are scoped per user.
+	ratingsB, err := svc.ListRecipeRatings(ctx, userB, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	require.Len(t, ratingsB, 1)
+	assert.Equal(t, int16(3), ratingsB[0].Rating)
+
+	// Out-of-range ratings are rejected before hitting the database.
+	_, err = svc.SetRating(ctx, userA, rec.RecipeID, 0, itBy)
+	assert.Error(t, err)
+	_, err = svc.SetRating(ctx, userA, rec.RecipeID, 6, itBy)
+	assert.Error(t, err)
+}
+
 func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")

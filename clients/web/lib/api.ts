@@ -235,6 +235,9 @@ interface GqlRecipe {
   isFavorite: boolean;
   selectionCount: number;
   personalSelectionCount: number;
+  myRating: number | null;
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 interface GqlRecipePage {
@@ -547,6 +550,9 @@ function toRecipe(r: GqlRecipe): Recipe {
     recipeSteps: (r.steps ?? []).map((s) => toRecipeStep(recipeID, s)),
     selectionCount: r.selectionCount ?? 0,
     personalSelectionCount: r.personalSelectionCount ?? 0,
+    myRating: r.myRating ?? null,
+    averageRating: r.averageRating ?? null,
+    ratingCount: r.ratingCount ?? 0,
   };
 }
 
@@ -788,7 +794,7 @@ const ITEM_FIELDS = `
 `;
 
 const RECIPE_FIELDS = `
-  id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount
+  id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount myRating averageRating ratingCount
   items { quantity unit notes isOptional item { ${ITEM_FIELDS} } }
   steps { stepNumber instruction }
 `;
@@ -1804,6 +1810,14 @@ export const api = {
       `mutation ($recipeId: ID!, $isFavorite: Boolean!) { setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite) }`,
       { recipeId: String(id), isFavorite }
     );
+  },
+
+  rateRecipe: async (id: number, rating: number): Promise<Recipe> => {
+    const data = await request<{ rateRecipe: GqlRecipe }>(
+      `mutation ($recipeId: ID!, $rating: Int!) { rateRecipe(recipeId: $recipeId, rating: $rating) { ${RECIPE_FIELDS} } }`,
+      { recipeId: String(id), rating }
+    );
+    return toRecipe(data.rateRecipe);
   },
 
   getRecipeItems: async (recipeId: number): Promise<RecipeItem[]> =>

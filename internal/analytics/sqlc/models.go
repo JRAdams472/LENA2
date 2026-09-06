@@ -252,6 +252,16 @@ type RecipeRecipeItem struct {
 	DisplayOrder int32          `json:"display_order"`
 }
 
+type RecipeRecipeRating struct {
+	UserID    int64              `json:"user_id"`
+	RecipeID  int64              `json:"recipe_id"`
+	Rating    int16              `json:"rating"`
+	CreatedBy string             `json:"created_by"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedBy pgtype.Text        `json:"updated_by"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RecipeRecipeStep struct {
 	StepID      int64              `json:"step_id"`
 	RecipeID    int64              `json:"recipe_id"`
