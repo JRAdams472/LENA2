@@ -26,6 +26,12 @@ type Config struct {
 	// OTLPEndpoint is the OTLP gRPC collector endpoint for traces; empty
 	// disables trace export while metrics remain available on /metrics.
 	OTLPEndpoint string `envconfig:"OTEL_EXPORTER_OTLP_ENDPOINT" default:""`
+	// GraphQL hardening knobs: maximum query depth, maximum raw query
+	// length in bytes, and per-user request rate limiting.
+	GraphQLMaxDepth           int `envconfig:"GRAPHQL_MAX_DEPTH" default:"15"`
+	GraphQLMaxQueryLength     int `envconfig:"GRAPHQL_MAX_QUERY_LENGTH" default:"8192"`
+	GraphQLRateLimitPerMinute int `envconfig:"GRAPHQL_RATE_LIMIT_PER_MINUTE" default:"120"`
+	GraphQLRateLimitBurst     int `envconfig:"GRAPHQL_RATE_LIMIT_BURST" default:"20"`
 }
 
 // Load reads configuration from environment variables.

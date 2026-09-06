@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/graph-gophers/graphql-go"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -160,7 +161,11 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	}
 
 	resolver := bff.NewResolver(grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
-	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
+	e.POST("/graphql", bff.NewGraphQLHandler(resolver,
+		graphql.MaxDepth(cfg.GraphQLMaxDepth),
+		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength)),
+		authenticator.Middleware(),
+		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst))
 	return e
 }
 

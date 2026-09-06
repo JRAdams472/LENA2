@@ -29,6 +29,9 @@ services:
       # e2e@example.com is seeded as admin so catalog mutations work in e2e;
       # e2e-other@example.com stays a member to exercise the rejection path.
       LENA_ADMIN_EMAILS: e2e@example.com
+      # The whole e2e suite authenticates as the same user, so the default
+      # per-user GraphQL rate limit would 429 mid-run; disable it here.
+      LENA_GRAPHQL_RATE_LIMIT_PER_MINUTE: "0"
     depends_on:
       db-seed:
         condition: service_completed_successfully

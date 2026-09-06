@@ -423,8 +423,11 @@ func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []in
 }
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
-func NewGraphQLHandler(r *Resolver) echo.HandlerFunc {
-	parsed, err := graphql.ParseSchema(schema, r, graphql.Tracer(newGraphQLTracer()))
+// Extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength) are
+// applied on top of the built-in tracer.
+func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) echo.HandlerFunc {
+	opts := append([]graphql.SchemaOpt{graphql.Tracer(newGraphQLTracer())}, schemaOpts...)
+	parsed, err := graphql.ParseSchema(schema, r, opts...)
 	if err != nil {
 		panic(err)
 	}
