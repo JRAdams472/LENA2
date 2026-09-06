@@ -8,21 +8,30 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/recipe/sqlc"
 )
 
 // Service provides catalog operations for the recipe domain.
 type Service struct {
 	q    sqlc.Querier
-	pool *pgxpool.Pool
+	pool dbtx.Pool
 }
 
 // NewService creates a recipe Service using the given connection pool.
-func NewService(pool *pgxpool.Pool) *Service {
+func NewService(pool dbtx.Pool) *Service {
 	return &Service{q: sqlc.New(pool), pool: pool}
+}
+
+// withTx runs fn against a sqlc.Querier bound to a single transaction on
+// the domain's pool, committing on success and rolling back on error.
+func (s *Service) withTx(ctx context.Context, fn func(q sqlc.Querier) error) error {
+	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		return fn(sqlc.New(tx))
+	})
 }
 
 // Recipe is a catalog recipe definition. Nullable numeric fields are
@@ -129,30 +138,28 @@ func (s *Service) DeleteRecipe(ctx context.Context, recipeID int64) error {
 // CreateRecipeWithChildren creates a recipe plus its items and steps in a
 // single transaction; any failure rolls back the whole write.
 func (s *Service) CreateRecipeWithChildren(ctx context.Context, arg Recipe, items []RecipeItem, steps []RecipeStep, by string) (Recipe, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Recipe{}, fmt.Errorf("begin recipe transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(s.pool).WithTx(tx)
-
-	rec, err := createRecipe(ctx, q, arg, by)
+	var rec Recipe
+	err := s.withTx(ctx, func(q sqlc.Querier) error {
+		var err error
+		rec, err = createRecipe(ctx, q, arg, by)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			item.RecipeID = rec.RecipeID
+			if err := addRecipeItem(ctx, q, item); err != nil {
+				return err
+			}
+		}
+		for _, step := range steps {
+			if _, err := addRecipeStep(ctx, q, rec.RecipeID, step.StepNumber, step.Instruction, by); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return Recipe{}, err
-	}
-	for _, item := range items {
-		item.RecipeID = rec.RecipeID
-		if err := addRecipeItem(ctx, q, item); err != nil {
-			return Recipe{}, err
-		}
-	}
-	for _, step := range steps {
-		if _, err := addRecipeStep(ctx, q, rec.RecipeID, step.StepNumber, step.Instruction, by); err != nil {
-			return Recipe{}, err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return Recipe{}, fmt.Errorf("commit recipe transaction: %w", err)
 	}
 	return rec, nil
 }
@@ -160,37 +167,29 @@ func (s *Service) CreateRecipeWithChildren(ctx context.Context, arg Recipe, item
 // UpdateRecipeWithChildren updates a recipe row and replaces its items and
 // steps in a single transaction; any failure leaves the prior state intact.
 func (s *Service) UpdateRecipeWithChildren(ctx context.Context, recipeID int64, arg Recipe, items []RecipeItem, steps []RecipeStep, by string) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin recipe transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(s.pool).WithTx(tx)
-
-	if err := updateRecipeRow(ctx, q, recipeID, arg, by); err != nil {
-		return fmt.Errorf("update recipe: %w", err)
-	}
-	if err := q.DeleteRecipeItems(ctx, recipeID); err != nil {
-		return fmt.Errorf("replace recipe items: %w", err)
-	}
-	if err := q.DeleteRecipeSteps(ctx, recipeID); err != nil {
-		return fmt.Errorf("replace recipe steps: %w", err)
-	}
-	for _, item := range items {
-		item.RecipeID = recipeID
-		if err := addRecipeItem(ctx, q, item); err != nil {
-			return err
+	return s.withTx(ctx, func(q sqlc.Querier) error {
+		if err := updateRecipeRow(ctx, q, recipeID, arg, by); err != nil {
+			return fmt.Errorf("update recipe: %w", err)
 		}
-	}
-	for _, step := range steps {
-		if _, err := addRecipeStep(ctx, q, recipeID, step.StepNumber, step.Instruction, by); err != nil {
-			return err
+		if err := q.DeleteRecipeItems(ctx, recipeID); err != nil {
+			return fmt.Errorf("replace recipe items: %w", err)
 		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit recipe transaction: %w", err)
-	}
-	return nil
+		if err := q.DeleteRecipeSteps(ctx, recipeID); err != nil {
+			return fmt.Errorf("replace recipe steps: %w", err)
+		}
+		for _, item := range items {
+			item.RecipeID = recipeID
+			if err := addRecipeItem(ctx, q, item); err != nil {
+				return err
+			}
+		}
+		for _, step := range steps {
+			if _, err := addRecipeStep(ctx, q, recipeID, step.StepNumber, step.Instruction, by); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // RecipeItem is one ingredient in a recipe.
