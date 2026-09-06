@@ -26,12 +26,24 @@ func NewService(pool dbtx.Pool) *Service {
 	return &Service{q: sqlc.New(pool), pool: pool}
 }
 
+// WithTx returns a copy of the service whose queries run on tx. Callers that
+// hold a transaction can bind a service to it and compose multiple service
+// operations into one atomic unit of work.
+func (s *Service) WithTx(tx pgx.Tx) *Service {
+	return &Service{q: sqlc.New(tx), pool: s.pool}
+}
+
+// InTx runs fn inside a single transaction; the *Service passed to fn is
+// bound to that transaction. The transaction commits when fn returns nil and
+// rolls back otherwise.
+func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
+}
+
 // withTx runs fn against a sqlc.Querier bound to a single transaction on
 // the domain's pool, committing on success and rolling back on error.
 func (s *Service) withTx(ctx context.Context, fn func(q sqlc.Querier) error) error {
-	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error {
-		return fn(sqlc.New(tx))
-	})
+	return s.InTx(ctx, func(tx *Service) error { return fn(tx.q) })
 }
 
 // Recipe is a catalog recipe definition. Nullable numeric fields are
