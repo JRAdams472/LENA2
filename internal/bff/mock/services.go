@@ -1419,6 +1419,21 @@ func (mr *MockRecipeServiceMockRecorder) RemoveRecipeItem(ctx, recipeItemID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveRecipeItem", reflect.TypeOf((*MockRecipeService)(nil).RemoveRecipeItem), ctx, recipeItemID)
 }
 
+// ScaleRecipe mocks base method.
+func (m *MockRecipeService) ScaleRecipe(ctx context.Context, recipeID int64, servings int32) (recipe.ScaledRecipe, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScaleRecipe", ctx, recipeID, servings)
+	ret0, _ := ret[0].(recipe.ScaledRecipe)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScaleRecipe indicates an expected call of ScaleRecipe.
+func (mr *MockRecipeServiceMockRecorder) ScaleRecipe(ctx, recipeID, servings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScaleRecipe", reflect.TypeOf((*MockRecipeService)(nil).ScaleRecipe), ctx, recipeID, servings)
+}
+
 // UpdateRecipe mocks base method.
 func (m *MockRecipeService) UpdateRecipe(ctx context.Context, recipeID int64, arg recipe.Recipe, by string) error {
 	m.ctrl.T.Helper()

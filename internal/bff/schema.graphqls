@@ -15,6 +15,7 @@ type Query {
   ingredients(page: Int = 1, pageSize: Int = 25): IngredientPage!
   units: [Unit!]!
   recipe(id: ID!): Recipe
+  scaledRecipe(id: ID!, servings: Int!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
   userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
   userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
@@ -215,6 +216,7 @@ type Unit {
   abbreviation: String
   kind: String!
   isActive: Boolean!
+  toBaseFactor: Float
 }
 
 type Recipe {

@@ -105,6 +105,7 @@ var _ MealPlanService = (*mealplan.Service)(nil)
 // RecipeService is the subset of *recipe.Service used by the resolver.
 type RecipeService interface {
 	GetRecipeByID(ctx context.Context, recipeID int64) (recipe.Recipe, error)
+	ScaleRecipe(ctx context.Context, recipeID int64, servings int32) (recipe.ScaledRecipe, error)
 	ListRecipes(ctx context.Context, active bool, limit, offset int32) ([]recipe.Recipe, error)
 	CountRecipes(ctx context.Context, active bool) (int64, error)
 	GetRecipesByIDs(ctx context.Context, recipeIDs []int64) ([]recipe.Recipe, error)

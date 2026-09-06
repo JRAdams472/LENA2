@@ -659,20 +659,27 @@ func toIngredient(row sqlc.InventoryIngredient) Ingredient {
 
 // Unit is a canonical unit of measure shared by every domain. Kind is one
 // of "volume", "weight", or "count" and enables future unit conversion.
+// ToBaseFactor is nil for count units and for units without a defined conversion.
 type Unit struct {
 	UnitID       int64
 	Name         string
 	Abbreviation string
 	Kind         string
 	IsActive     bool
+	ToBaseFactor *float64
 }
 
 // CreateUnit adds a new unit of measure.
 func (s *Service) CreateUnit(ctx context.Context, arg Unit, by string) (Unit, error) {
+	toBase, err := numericFromOptionalFloat64(arg.ToBaseFactor)
+	if err != nil {
+		return Unit{}, fmt.Errorf("create unit: %w", err)
+	}
 	row, err := s.q.CreateUnit(ctx, sqlc.CreateUnitParams{
 		Name:         arg.Name,
 		Abbreviation: textOrNull(arg.Abbreviation),
 		Kind:         arg.Kind,
+		ToBaseFactor: toBase,
 		IsActive:     arg.IsActive,
 		CreatedBy:    by,
 		UpdatedBy:    textOrNull(by),
@@ -729,13 +736,20 @@ func (s *Service) ListUnits(ctx context.Context) ([]Unit, error) {
 }
 
 func toUnit(row sqlc.InventoryUnit) Unit {
-	return Unit{
+	u := Unit{
 		UnitID:       row.UnitID,
 		Name:         row.Name,
 		Abbreviation: row.Abbreviation.String,
 		Kind:         row.Kind,
 		IsActive:     row.IsActive,
 	}
+	if row.ToBaseFactor.Valid {
+		v, err := numericToFloat64(row.ToBaseFactor)
+		if err == nil {
+			u.ToBaseFactor = &v
+		}
+	}
+	return u
 }
 
 func toCategory(row sqlc.InventoryCategory) Category {
@@ -818,6 +832,13 @@ func numericFromFloat64(f float64) (pgtype.Numeric, error) {
 	}
 	n.Valid = true
 	return n, nil
+}
+
+func numericFromOptionalFloat64(f *float64) (pgtype.Numeric, error) {
+	if f == nil {
+		return pgtype.Numeric{}, nil
+	}
+	return numericFromFloat64(*f)
 }
 
 func numericToFloat64(n pgtype.Numeric) (float64, error) {

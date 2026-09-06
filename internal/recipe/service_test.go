@@ -149,6 +149,46 @@ func TestGetRecipeByID(t *testing.T) {
 	})
 }
 
+func TestScaleRecipe(t *testing.T) {
+	t.Run("success scales quantities and servings", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+		mq.EXPECT().ListRecipeItems(gomock.Any(), int64(7)).Return([]sqlc.RecipeRecipeItem{itemRow()}, nil)
+		mq.EXPECT().ListRecipeSteps(gomock.Any(), int64(7)).Return([]sqlc.RecipeRecipeStep{stepRow()}, nil)
+
+		got, err := svc.ScaleRecipe(context.Background(), 7, 2)
+		require.NoError(t, err)
+		assert.Equal(t, int64(7), got.Recipe.RecipeID)
+		require.NotNil(t, got.Recipe.Servings)
+		assert.Equal(t, int32(2), *got.Recipe.Servings)
+		require.Len(t, got.Items, 1)
+		assert.InDelta(t, 0.75, got.Items[0].Quantity, 1e-9)
+		assert.Equal(t, int64(42), got.Items[0].ItemID)
+		require.Len(t, got.Steps, 1)
+		assert.Equal(t, int32(1), got.Steps[0].StepNumber)
+	})
+
+	t.Run("target servings must be positive", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+
+		_, err := svc.ScaleRecipe(context.Background(), 7, 0)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "target servings")
+	})
+
+	t.Run("error when recipe has no base servings", func(t *testing.T) {
+		svc, mq := newService(t)
+		row := recipeRow()
+		row.Servings = pgtype.Int4{}
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(row, nil)
+
+		_, err := svc.ScaleRecipe(context.Background(), 7, 2)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "base servings")
+	})
+}
+
 func TestListRecipes(t *testing.T) {
 	tests := []struct {
 		name   string

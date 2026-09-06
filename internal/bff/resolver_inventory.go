@@ -427,6 +427,8 @@ func (r *unitResolver) Kind() string { return r.u.Kind }
 
 func (r *unitResolver) IsActive() bool { return r.u.IsActive }
 
+func (r *unitResolver) ToBaseFactor() *float64 { return r.u.ToBaseFactor }
+
 // CreateItem creates a new catalog item.
 func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItemInput }) (*itemResolver, error) {
 	u, err := requireAdmin(ctx)

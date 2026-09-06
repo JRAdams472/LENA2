@@ -244,8 +244,8 @@ DELETE FROM inventory.ingredient
 WHERE ingredient_id = $1;
 
 -- name: CreateUnit :one
-INSERT INTO inventory.unit (name, abbreviation, kind, is_active, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO inventory.unit (name, abbreviation, kind, to_base_factor, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: GetUnitByID :one

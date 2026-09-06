@@ -138,6 +138,7 @@ type InventoryUnit struct {
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedBy    pgtype.Text        `json:"updated_by"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ToBaseFactor pgtype.Numeric     `json:"to_base_factor"`
 }
 
 type InventoryUserItem struct {

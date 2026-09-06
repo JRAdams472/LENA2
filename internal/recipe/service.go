@@ -89,6 +89,50 @@ func (s *Service) GetRecipeByID(ctx context.Context, recipeID int64) (Recipe, er
 	return toRecipe(row), nil
 }
 
+// ScaledRecipe is a recipe whose ingredient quantities have been scaled to
+// a target number of servings.
+type ScaledRecipe struct {
+	Recipe Recipe
+	Items  []RecipeItem
+	Steps  []RecipeStep
+}
+
+// ScaleRecipe returns the recipe with its ingredient quantities scaled to
+// the requested number of servings. The returned Recipe reflects the target
+// servings; Items and Steps are copies that do not affect the catalog.
+func (s *Service) ScaleRecipe(ctx context.Context, recipeID int64, servings int32) (ScaledRecipe, error) {
+	rec, err := s.GetRecipeByID(ctx, recipeID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+	if rec.Servings == nil || *rec.Servings <= 0 {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: recipe has no valid base servings")
+	}
+	if servings <= 0 {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: target servings must be positive")
+	}
+
+	items, err := s.ListRecipeItems(ctx, recipeID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+	steps, err := s.ListRecipeSteps(ctx, recipeID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+
+	baseServings := *rec.Servings
+	factor := float64(servings) / float64(baseServings)
+	scaledItems := make([]RecipeItem, len(items))
+	for i, it := range items {
+		it.Quantity *= factor
+		scaledItems[i] = it
+	}
+
+	rec.Servings = &servings
+	return ScaledRecipe{Recipe: rec, Items: scaledItems, Steps: steps}, nil
+}
+
 // ListRecipes returns a paginated list of active/inactive recipes.
 func (s *Service) ListRecipes(ctx context.Context, active bool, limit, offset int32) ([]Recipe, error) {
 	rows, err := s.q.ListRecipes(ctx, sqlc.ListRecipesParams{IsActive: active, Limit: limit, Offset: offset})
