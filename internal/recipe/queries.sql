@@ -42,8 +42,8 @@ DELETE FROM recipe.recipe
 WHERE recipe_id = $1;
 
 -- name: AddRecipeItem :exec
-INSERT INTO recipe.recipe_item (recipe_id, item_id, quantity, unit, notes, is_optional)
-VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit, notes, is_optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: ListRecipeItems :many
 SELECT *

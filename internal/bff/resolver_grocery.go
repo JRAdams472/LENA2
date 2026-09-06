@@ -148,9 +148,14 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 		}
 		itemID = &parsed
 	}
+	ingredientID, err := optionalID(args.Input.IngredientID)
+	if err != nil {
+		return nil, err
+	}
 	it, err := r.GroceryService.AddGroceryListItem(ctx, grocery.GroceryListItem{
 		GroceryListID:  groceryListID,
 		ItemID:         itemID,
+		IngredientID:   ingredientID,
 		ManualItemName: derefString(args.Input.ManualItemName),
 		QuantityNeeded: args.Input.Quantity,
 		UnitOfMeasure:  args.Input.Unit,
@@ -222,6 +227,20 @@ func (r *groceryListItemResolver) Source() string { return r.item.Source }
 
 func (r *groceryListItemResolver) IsChecked() bool { return r.item.IsChecked }
 
+// Ingredient resolves the brand-agnostic ingredient linked to this grocery
+// list item, when set. Scaffolding only — nothing populates ingredient_id
+// yet.
+func (r *groceryListItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
+	if r.item.IngredientID == nil {
+		return nil, nil
+	}
+	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.inv, in: in}, nil
+}
+
 func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 	if r.item.ItemID == nil {
 		return nil, nil
@@ -267,6 +286,7 @@ func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 type addGroceryItemInput struct {
 	GroceryListID  graphql.ID
 	ItemID         *graphql.ID
+	IngredientID   *graphql.ID
 	ManualItemName *string
 	Quantity       float64
 	Unit           string

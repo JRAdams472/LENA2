@@ -12,23 +12,25 @@ import (
 )
 
 const addRecipeItem = `-- name: AddRecipeItem :exec
-INSERT INTO recipe.recipe_item (recipe_id, item_id, quantity, unit, notes, is_optional)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit, notes, is_optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type AddRecipeItemParams struct {
-	RecipeID   int64          `json:"recipe_id"`
-	ItemID     int64          `json:"item_id"`
-	Quantity   pgtype.Numeric `json:"quantity"`
-	Unit       string         `json:"unit"`
-	Notes      pgtype.Text    `json:"notes"`
-	IsOptional bool           `json:"is_optional"`
+	RecipeID     int64          `json:"recipe_id"`
+	ItemID       int64          `json:"item_id"`
+	IngredientID pgtype.Int8    `json:"ingredient_id"`
+	Quantity     pgtype.Numeric `json:"quantity"`
+	Unit         string         `json:"unit"`
+	Notes        pgtype.Text    `json:"notes"`
+	IsOptional   bool           `json:"is_optional"`
 }
 
 func (q *Queries) AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) error {
 	_, err := q.db.Exec(ctx, addRecipeItem,
 		arg.RecipeID,
 		arg.ItemID,
+		arg.IngredientID,
 		arg.Quantity,
 		arg.Unit,
 		arg.Notes,
@@ -235,7 +237,7 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 }
 
 const listRecipeItems = `-- name: ListRecipeItems :many
-SELECT recipe_id, item_id, quantity, unit, notes, is_optional
+SELECT recipe_id, item_id, quantity, unit, notes, is_optional, ingredient_id
 FROM recipe.recipe_item
 WHERE recipe_id = $1
 ORDER BY item_id
@@ -257,6 +259,7 @@ func (q *Queries) ListRecipeItems(ctx context.Context, recipeID int64) ([]Recipe
 			&i.Unit,
 			&i.Notes,
 			&i.IsOptional,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +272,7 @@ func (q *Queries) ListRecipeItems(ctx context.Context, recipeID int64) ([]Recipe
 }
 
 const listRecipeItemsByRecipes = `-- name: ListRecipeItemsByRecipes :many
-SELECT recipe_id, item_id, quantity, unit, notes, is_optional
+SELECT recipe_id, item_id, quantity, unit, notes, is_optional, ingredient_id
 FROM recipe.recipe_item
 WHERE recipe_id = ANY($1::bigint[])
 ORDER BY item_id
@@ -291,6 +294,7 @@ func (q *Queries) ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int6
 			&i.Unit,
 			&i.Notes,
 			&i.IsOptional,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}

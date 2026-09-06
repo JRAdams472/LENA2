@@ -549,6 +549,112 @@ func (s *Service) DeleteFoodFlavor(ctx context.Context, itemID, flavorID int64) 
 	})
 }
 
+// Ingredient is a brand-agnostic generic ingredient (e.g. "all-purpose
+// flour"). Branded items exist for barcode scanning; recipes, meal slots
+// and grocery lists can reference an ingredient instead. Scaffolding only:
+// nothing populates this data yet.
+type Ingredient struct {
+	IngredientID int64
+	Name         string
+	CategoryID   *int64
+	DefaultUnit  string
+	IsActive     bool
+}
+
+// CreateIngredient adds a new generic ingredient.
+func (s *Service) CreateIngredient(ctx context.Context, arg Ingredient, by string) (Ingredient, error) {
+	row, err := s.q.CreateIngredient(ctx, sqlc.CreateIngredientParams{
+		Name:        arg.Name,
+		CategoryID:  optInt64(arg.CategoryID),
+		DefaultUnit: textOrNull(arg.DefaultUnit),
+		IsActive:    arg.IsActive,
+		CreatedBy:   by,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Ingredient{}, fmt.Errorf("create ingredient: %w", err)
+	}
+	return toIngredient(row), nil
+}
+
+// GetIngredientByID returns an ingredient by its primary key.
+func (s *Service) GetIngredientByID(ctx context.Context, ingredientID int64) (Ingredient, error) {
+	row, err := s.q.GetIngredientByID(ctx, ingredientID)
+	if err != nil {
+		return Ingredient{}, fmt.Errorf("get ingredient by id: %w", err)
+	}
+	return toIngredient(row), nil
+}
+
+// GetIngredientsByIDs returns a set of ingredients in a single query.
+func (s *Service) GetIngredientsByIDs(ctx context.Context, ingredientIDs []int64) ([]Ingredient, error) {
+	rows, err := s.q.GetIngredientsByIDs(ctx, ingredientIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get ingredients by ids: %w", err)
+	}
+	out := make([]Ingredient, len(rows))
+	for i := range rows {
+		out[i] = toIngredient(rows[i])
+	}
+	return out, nil
+}
+
+// ListIngredients returns a paginated list of ingredients ordered by name.
+func (s *Service) ListIngredients(ctx context.Context, limit, offset int32) ([]Ingredient, error) {
+	rows, err := s.q.ListIngredients(ctx, sqlc.ListIngredientsParams{Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, fmt.Errorf("list ingredients: %w", err)
+	}
+	out := make([]Ingredient, len(rows))
+	for i := range rows {
+		out[i] = toIngredient(rows[i])
+	}
+	return out, nil
+}
+
+// CountIngredients returns the total number of ingredients.
+func (s *Service) CountIngredients(ctx context.Context) (int64, error) {
+	n, err := s.q.CountIngredients(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count ingredients: %w", err)
+	}
+	return n, nil
+}
+
+// UpdateIngredient modifies an existing ingredient.
+func (s *Service) UpdateIngredient(ctx context.Context, ingredientID int64, arg Ingredient, by string) (Ingredient, error) {
+	row, err := s.q.UpdateIngredient(ctx, sqlc.UpdateIngredientParams{
+		IngredientID: ingredientID,
+		Name:         arg.Name,
+		CategoryID:   optInt64(arg.CategoryID),
+		DefaultUnit:  textOrNull(arg.DefaultUnit),
+		IsActive:     arg.IsActive,
+		UpdatedBy:    textOrNull(by),
+	})
+	if err != nil {
+		return Ingredient{}, fmt.Errorf("update ingredient: %w", err)
+	}
+	return toIngredient(row), nil
+}
+
+// DeleteIngredient removes an ingredient from the catalog.
+func (s *Service) DeleteIngredient(ctx context.Context, ingredientID int64) error {
+	return s.q.DeleteIngredient(ctx, ingredientID)
+}
+
+func toIngredient(row sqlc.InventoryIngredient) Ingredient {
+	in := Ingredient{
+		IngredientID: row.IngredientID,
+		Name:         row.Name,
+		DefaultUnit:  row.DefaultUnit.String,
+		IsActive:     row.IsActive,
+	}
+	if row.CategoryID.Valid {
+		in.CategoryID = &row.CategoryID.Int64
+	}
+	return in
+}
+
 func toCategory(row sqlc.InventoryCategory) Category {
 	return Category{
 		CategoryID:  row.CategoryID,

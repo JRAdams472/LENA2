@@ -204,14 +204,17 @@ func (s *Service) UpdateRecipeWithChildren(ctx context.Context, recipeID int64, 
 	})
 }
 
-// RecipeItem is one ingredient in a recipe.
+// RecipeItem is one ingredient in a recipe. ItemID is the branded catalog
+// item; IngredientID optionally points at the brand-agnostic ingredient
+// abstraction and will eventually replace ItemID.
 type RecipeItem struct {
-	RecipeID   int64
-	ItemID     int64
-	Quantity   float64
-	Unit       string
-	Notes      string
-	IsOptional bool
+	RecipeID     int64
+	ItemID       int64
+	IngredientID *int64
+	Quantity     float64
+	Unit         string
+	Notes        string
+	IsOptional   bool
 }
 
 // AddRecipeItem adds an item to a recipe.
@@ -225,12 +228,13 @@ func addRecipeItem(ctx context.Context, q sqlc.Querier, arg RecipeItem) error {
 		return fmt.Errorf("add recipe item: %w", err)
 	}
 	return q.AddRecipeItem(ctx, sqlc.AddRecipeItemParams{
-		RecipeID:   arg.RecipeID,
-		ItemID:     arg.ItemID,
-		Quantity:   qty,
-		Unit:       arg.Unit,
-		Notes:      textOrNull(arg.Notes),
-		IsOptional: arg.IsOptional,
+		RecipeID:     arg.RecipeID,
+		ItemID:       arg.ItemID,
+		IngredientID: optInt8(arg.IngredientID),
+		Quantity:     qty,
+		Unit:         arg.Unit,
+		Notes:        textOrNull(arg.Notes),
+		IsOptional:   arg.IsOptional,
 	})
 }
 
@@ -367,6 +371,10 @@ func toRecipeItem(row sqlc.RecipeRecipeItem) (RecipeItem, error) {
 		Notes:      row.Notes.String,
 		IsOptional: row.IsOptional,
 	}
+	if row.IngredientID.Valid {
+		v := row.IngredientID.Int64
+		ri.IngredientID = &v
+	}
 	if row.Quantity.Valid {
 		v, err := row.Quantity.Float64Value()
 		if err != nil {
@@ -398,6 +406,13 @@ func optInt4(v *int32) pgtype.Int4 {
 		return pgtype.Int4{}
 	}
 	return pgtype.Int4{Int32: *v, Valid: true}
+}
+
+func optInt8(v *int64) pgtype.Int8 {
+	if v == nil {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *v, Valid: true}
 }
 
 func numericFromFloat64(f float64) (pgtype.Numeric, error) {

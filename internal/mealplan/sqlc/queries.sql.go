@@ -57,14 +57,15 @@ func (q *Queries) AddMealSlot(ctx context.Context, arg AddMealSlotParams) (Mealp
 }
 
 const addMealSlotItem = `-- name: AddMealSlotItem :one
-INSERT INTO mealplan.meal_slot_item (slot_id, item_id, quantity, unit, is_from_recipe, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING slot_item_id, slot_id, item_id, quantity, unit, is_from_recipe, created_by, created_at, updated_by, updated_at
+INSERT INTO mealplan.meal_slot_item (slot_id, item_id, ingredient_id, quantity, unit, is_from_recipe, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING slot_item_id, slot_id, item_id, quantity, unit, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id
 `
 
 type AddMealSlotItemParams struct {
 	SlotID       int64          `json:"slot_id"`
 	ItemID       pgtype.Int8    `json:"item_id"`
+	IngredientID pgtype.Int8    `json:"ingredient_id"`
 	Quantity     pgtype.Numeric `json:"quantity"`
 	Unit         string         `json:"unit"`
 	IsFromRecipe bool           `json:"is_from_recipe"`
@@ -76,6 +77,7 @@ func (q *Queries) AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams
 	row := q.db.QueryRow(ctx, addMealSlotItem,
 		arg.SlotID,
 		arg.ItemID,
+		arg.IngredientID,
 		arg.Quantity,
 		arg.Unit,
 		arg.IsFromRecipe,
@@ -94,6 +96,7 @@ func (q *Queries) AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.IngredientID,
 	)
 	return i, err
 }
@@ -288,7 +291,7 @@ func (q *Queries) ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([
 }
 
 const listMealSlotItems = `-- name: ListMealSlotItems :many
-SELECT slot_item_id, slot_id, item_id, quantity, unit, is_from_recipe, created_by, created_at, updated_by, updated_at
+SELECT slot_item_id, slot_id, item_id, quantity, unit, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id
 FROM mealplan.meal_slot_item
 WHERE slot_id = $1
 ORDER BY slot_item_id
@@ -314,6 +317,7 @@ func (q *Queries) ListMealSlotItems(ctx context.Context, slotID int64) ([]Mealpl
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -326,7 +330,7 @@ func (q *Queries) ListMealSlotItems(ctx context.Context, slotID int64) ([]Mealpl
 }
 
 const listMealSlotItemsByPlan = `-- name: ListMealSlotItemsByPlan :many
-SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
 WHERE ms.meal_plan_id = $1
@@ -353,6 +357,7 @@ func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64)
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -365,7 +370,7 @@ func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64)
 }
 
 const listMealSlotItemsByPlans = `-- name: ListMealSlotItemsByPlans :many
-SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
 WHERE ms.meal_plan_id = ANY($1::bigint[])
@@ -392,6 +397,7 @@ func (q *Queries) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []in
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}

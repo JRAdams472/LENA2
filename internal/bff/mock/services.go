@@ -218,6 +218,21 @@ func (m *MockInventoryService) EXPECT() *MockInventoryServiceMockRecorder {
 	return m.recorder
 }
 
+// CountIngredients mocks base method.
+func (m *MockInventoryService) CountIngredients(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountIngredients", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountIngredients indicates an expected call of CountIngredients.
+func (mr *MockInventoryServiceMockRecorder) CountIngredients(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountIngredients", reflect.TypeOf((*MockInventoryService)(nil).CountIngredients), ctx)
+}
+
 // CountItems mocks base method.
 func (m *MockInventoryService) CountItems(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -306,6 +321,21 @@ func (m *MockInventoryService) CreateFoodNutrient(ctx context.Context, itemID, n
 func (mr *MockInventoryServiceMockRecorder) CreateFoodNutrient(ctx, itemID, nutrientID, amount, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateFoodNutrient", reflect.TypeOf((*MockInventoryService)(nil).CreateFoodNutrient), ctx, itemID, nutrientID, amount, by)
+}
+
+// CreateIngredient mocks base method.
+func (m *MockInventoryService) CreateIngredient(ctx context.Context, arg inventory.Ingredient, by string) (inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateIngredient", ctx, arg, by)
+	ret0, _ := ret[0].(inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateIngredient indicates an expected call of CreateIngredient.
+func (mr *MockInventoryServiceMockRecorder) CreateIngredient(ctx, arg, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIngredient", reflect.TypeOf((*MockInventoryService)(nil).CreateIngredient), ctx, arg, by)
 }
 
 // CreateItem mocks base method.
@@ -406,6 +436,20 @@ func (m *MockInventoryService) DeleteFoodNutrient(ctx context.Context, itemID, n
 func (mr *MockInventoryServiceMockRecorder) DeleteFoodNutrient(ctx, itemID, nutrientID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFoodNutrient", reflect.TypeOf((*MockInventoryService)(nil).DeleteFoodNutrient), ctx, itemID, nutrientID)
+}
+
+// DeleteIngredient mocks base method.
+func (m *MockInventoryService) DeleteIngredient(ctx context.Context, ingredientID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteIngredient", ctx, ingredientID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteIngredient indicates an expected call of DeleteIngredient.
+func (mr *MockInventoryServiceMockRecorder) DeleteIngredient(ctx, ingredientID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIngredient", reflect.TypeOf((*MockInventoryService)(nil).DeleteIngredient), ctx, ingredientID)
 }
 
 // DeleteItem mocks base method.
@@ -509,6 +553,36 @@ func (m *MockInventoryService) GetFlavorProfileByID(ctx context.Context, flavorI
 func (mr *MockInventoryServiceMockRecorder) GetFlavorProfileByID(ctx, flavorID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFlavorProfileByID", reflect.TypeOf((*MockInventoryService)(nil).GetFlavorProfileByID), ctx, flavorID)
+}
+
+// GetIngredientByID mocks base method.
+func (m *MockInventoryService) GetIngredientByID(ctx context.Context, ingredientID int64) (inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIngredientByID", ctx, ingredientID)
+	ret0, _ := ret[0].(inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIngredientByID indicates an expected call of GetIngredientByID.
+func (mr *MockInventoryServiceMockRecorder) GetIngredientByID(ctx, ingredientID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIngredientByID", reflect.TypeOf((*MockInventoryService)(nil).GetIngredientByID), ctx, ingredientID)
+}
+
+// GetIngredientsByIDs mocks base method.
+func (m *MockInventoryService) GetIngredientsByIDs(ctx context.Context, ingredientIDs []int64) ([]inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIngredientsByIDs", ctx, ingredientIDs)
+	ret0, _ := ret[0].([]inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIngredientsByIDs indicates an expected call of GetIngredientsByIDs.
+func (mr *MockInventoryServiceMockRecorder) GetIngredientsByIDs(ctx, ingredientIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIngredientsByIDs", reflect.TypeOf((*MockInventoryService)(nil).GetIngredientsByIDs), ctx, ingredientIDs)
 }
 
 // GetItemByID mocks base method.
@@ -661,6 +735,21 @@ func (mr *MockInventoryServiceMockRecorder) ListFoodNutrientsByItems(ctx, itemID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFoodNutrientsByItems", reflect.TypeOf((*MockInventoryService)(nil).ListFoodNutrientsByItems), ctx, itemIDs)
 }
 
+// ListIngredients mocks base method.
+func (m *MockInventoryService) ListIngredients(ctx context.Context, limit, offset int32) ([]inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIngredients", ctx, limit, offset)
+	ret0, _ := ret[0].([]inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIngredients indicates an expected call of ListIngredients.
+func (mr *MockInventoryServiceMockRecorder) ListIngredients(ctx, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIngredients", reflect.TypeOf((*MockInventoryService)(nil).ListIngredients), ctx, limit, offset)
+}
+
 // ListItems mocks base method.
 func (m *MockInventoryService) ListItems(ctx context.Context, limit, offset int32) ([]inventory.Item, error) {
 	m.ctrl.T.Helper()
@@ -734,6 +823,21 @@ func (m *MockInventoryService) UpdateFlavorProfile(ctx context.Context, flavorID
 func (mr *MockInventoryServiceMockRecorder) UpdateFlavorProfile(ctx, flavorID, name, isActive, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFlavorProfile", reflect.TypeOf((*MockInventoryService)(nil).UpdateFlavorProfile), ctx, flavorID, name, isActive, by)
+}
+
+// UpdateIngredient mocks base method.
+func (m *MockInventoryService) UpdateIngredient(ctx context.Context, ingredientID int64, arg inventory.Ingredient, by string) (inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateIngredient", ctx, ingredientID, arg, by)
+	ret0, _ := ret[0].(inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateIngredient indicates an expected call of UpdateIngredient.
+func (mr *MockInventoryServiceMockRecorder) UpdateIngredient(ctx, ingredientID, arg, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngredient", reflect.TypeOf((*MockInventoryService)(nil).UpdateIngredient), ctx, ingredientID, arg, by)
 }
 
 // UpdateItem mocks base method.

@@ -202,3 +202,43 @@ RETURNING *;
 -- name: DeleteNutrientType :exec
 DELETE FROM inventory.nutrient_type
 WHERE nutrient_id = $1;
+
+-- name: CreateIngredient :one
+INSERT INTO inventory.ingredient (name, category_id, default_unit, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetIngredientByID :one
+SELECT *
+FROM inventory.ingredient
+WHERE ingredient_id = $1;
+
+-- name: GetIngredientsByIDs :many
+SELECT *
+FROM inventory.ingredient
+WHERE ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);
+
+-- name: ListIngredients :many
+SELECT *
+FROM inventory.ingredient
+ORDER BY name
+LIMIT $1 OFFSET $2;
+
+-- name: CountIngredients :one
+SELECT COUNT(*)
+FROM inventory.ingredient;
+
+-- name: UpdateIngredient :one
+UPDATE inventory.ingredient
+SET name         = $2,
+    category_id  = $3,
+    default_unit = $4,
+    is_active    = $5,
+    updated_by   = $6,
+    updated_at   = now()
+WHERE ingredient_id = $1
+RETURNING *;
+
+-- name: DeleteIngredient :exec
+DELETE FROM inventory.ingredient
+WHERE ingredient_id = $1;

@@ -371,6 +371,10 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	if err != nil {
 		return nil, err
 	}
+	ingredientID, err := optionalID(args.Input.IngredientID)
+	if err != nil {
+		return nil, err
+	}
 	isFromRecipe := false
 	if args.Input.IsFromRecipe != nil {
 		isFromRecipe = *args.Input.IsFromRecipe
@@ -378,6 +382,7 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	item, err := r.MealPlanService.AddMealSlotItem(ctx, mealplan.MealSlotItem{
 		SlotID:       slotID,
 		ItemID:       &itemID,
+		IngredientID: ingredientID,
 		Quantity:     args.Input.Quantity,
 		Unit:         args.Input.Unit,
 		IsFromRecipe: isFromRecipe,
@@ -528,6 +533,19 @@ func (r *mealSlotItemResolver) Unit() string { return r.item.Unit }
 
 func (r *mealSlotItemResolver) IsFromRecipe() bool { return r.item.IsFromRecipe }
 
+// Ingredient resolves the brand-agnostic ingredient linked to this slot
+// item, when set. Scaffolding only — nothing populates ingredient_id yet.
+func (r *mealSlotItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
+	if r.item.IngredientID == nil {
+		return nil, nil
+	}
+	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.inv, in: in}, nil
+}
+
 func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 	if r.item.ItemID == nil {
 		return nil, nil
@@ -606,6 +624,7 @@ type addMealSlotInput struct {
 type addMealSlotItemInput struct {
 	SlotID       graphql.ID
 	ItemID       graphql.ID
+	IngredientID *graphql.ID
 	Quantity     float64
 	Unit         string
 	IsFromRecipe *bool

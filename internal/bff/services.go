@@ -66,6 +66,13 @@ type InventoryService interface {
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (inventory.NutrientType, error)
 	UpdateNutrientType(ctx context.Context, nutrientID int64, name, unit string) (inventory.NutrientType, error)
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
+	GetIngredientByID(ctx context.Context, ingredientID int64) (inventory.Ingredient, error)
+	GetIngredientsByIDs(ctx context.Context, ingredientIDs []int64) ([]inventory.Ingredient, error)
+	ListIngredients(ctx context.Context, limit, offset int32) ([]inventory.Ingredient, error)
+	CountIngredients(ctx context.Context) (int64, error)
+	CreateIngredient(ctx context.Context, arg inventory.Ingredient, by string) (inventory.Ingredient, error)
+	UpdateIngredient(ctx context.Context, ingredientID int64, arg inventory.Ingredient, by string) (inventory.Ingredient, error)
+	DeleteIngredient(ctx context.Context, ingredientID int64) error
 }
 
 var _ InventoryService = (*inventory.Service)(nil)

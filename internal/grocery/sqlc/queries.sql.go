@@ -12,14 +12,15 @@ import (
 )
 
 const addGroceryListItem = `-- name: AddGroceryListItem :one
-INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at
+INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, ingredient_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
 `
 
 type AddGroceryListItemParams struct {
 	GroceryListID  int64          `json:"grocery_list_id"`
 	ItemID         pgtype.Int8    `json:"item_id"`
+	IngredientID   pgtype.Int8    `json:"ingredient_id"`
 	ManualItemName pgtype.Text    `json:"manual_item_name"`
 	QuantityNeeded pgtype.Numeric `json:"quantity_needed"`
 	UnitOfMeasure  pgtype.Text    `json:"unit_of_measure"`
@@ -33,6 +34,7 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 	row := q.db.QueryRow(ctx, addGroceryListItem,
 		arg.GroceryListID,
 		arg.ItemID,
+		arg.IngredientID,
 		arg.ManualItemName,
 		arg.QuantityNeeded,
 		arg.UnitOfMeasure,
@@ -55,6 +57,7 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.IngredientID,
 	)
 	return i, err
 }
@@ -159,7 +162,7 @@ func (q *Queries) GetGroceryListByID(ctx context.Context, arg GetGroceryListByID
 }
 
 const getGroceryListItemByID = `-- name: GetGroceryListItemByID :one
-SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
 FROM grocery.grocery_list_item
 WHERE grocery_list_item_id = $1
 `
@@ -180,12 +183,13 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, groceryListItemID 
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.IngredientID,
 	)
 	return i, err
 }
 
 const listGroceryListItems = `-- name: ListGroceryListItems :many
-SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
 FROM grocery.grocery_list_item
 WHERE grocery_list_id = $1
 ORDER BY grocery_list_item_id
@@ -213,6 +217,7 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, groceryListID int64)
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -225,7 +230,7 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, groceryListID int64)
 }
 
 const listGroceryListItemsByLists = `-- name: ListGroceryListItemsByLists :many
-SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id
 FROM grocery.grocery_list_item
 WHERE grocery_list_id = ANY($1::bigint[])
 ORDER BY grocery_list_item_id
@@ -253,6 +258,7 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, groceryListId
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -310,12 +316,13 @@ func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsPara
 const updateGroceryListItem = `-- name: UpdateGroceryListItem :exec
 UPDATE grocery.grocery_list_item
 SET item_id          = $2,
-    manual_item_name = $3,
-    quantity_needed  = $4,
-    unit_of_measure  = $5,
-    source           = $6,
-    is_checked       = $7,
-    updated_by       = $8,
+    ingredient_id    = $3,
+    manual_item_name = $4,
+    quantity_needed  = $5,
+    unit_of_measure  = $6,
+    source           = $7,
+    is_checked       = $8,
+    updated_by       = $9,
     updated_at       = now()
 WHERE grocery_list_item_id = $1
 `
@@ -323,6 +330,7 @@ WHERE grocery_list_item_id = $1
 type UpdateGroceryListItemParams struct {
 	GroceryListItemID int64          `json:"grocery_list_item_id"`
 	ItemID            pgtype.Int8    `json:"item_id"`
+	IngredientID      pgtype.Int8    `json:"ingredient_id"`
 	ManualItemName    pgtype.Text    `json:"manual_item_name"`
 	QuantityNeeded    pgtype.Numeric `json:"quantity_needed"`
 	UnitOfMeasure     pgtype.Text    `json:"unit_of_measure"`
@@ -335,6 +343,7 @@ func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryLi
 	_, err := q.db.Exec(ctx, updateGroceryListItem,
 		arg.GroceryListItemID,
 		arg.ItemID,
+		arg.IngredientID,
 		arg.ManualItemName,
 		arg.QuantityNeeded,
 		arg.UnitOfMeasure,

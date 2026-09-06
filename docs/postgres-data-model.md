@@ -138,6 +138,22 @@ CREATE TABLE inventory.food_nutrient (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (food_id, nutrient_id)
 );
+
+-- Brand-agnostic generic ingredient (e.g. "all-purpose flour"). Branded
+-- items exist for barcode scanning; recipes, meal slots and grocery lists
+-- can reference an ingredient instead. Scaffolding only — nothing
+-- populates this data yet.
+CREATE TABLE inventory.ingredient (
+    ingredient_id BIGSERIAL PRIMARY KEY,
+    name          VARCHAR(200) NOT NULL UNIQUE,
+    category_id   BIGINT REFERENCES inventory.category(category_id),
+    default_unit  VARCHAR(20),
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by    VARCHAR(100) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by    VARCHAR(100),
+    updated_at    TIMESTAMPTZ
+);
 ```
 
 ## 5. Wine (catalog + per-user)
@@ -270,6 +286,7 @@ CREATE TABLE recipe.recipe (
 CREATE TABLE recipe.recipe_item (
     recipe_id     BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
     item_id       BIGINT NOT NULL REFERENCES inventory.item(item_id),
+    ingredient_id BIGINT REFERENCES inventory.ingredient(ingredient_id),
     quantity      NUMERIC(10,4) NOT NULL,
     unit          VARCHAR(20) NOT NULL,
     notes         VARCHAR(500),
@@ -337,6 +354,7 @@ CREATE TABLE mealplan.meal_slot_item (
     slot_item_id  BIGSERIAL PRIMARY KEY,
     slot_id       BIGINT NOT NULL REFERENCES mealplan.meal_slot(slot_id) ON DELETE CASCADE,
     item_id       BIGINT REFERENCES inventory.item(item_id),
+    ingredient_id BIGINT REFERENCES inventory.ingredient(ingredient_id),
     quantity      NUMERIC(10,4) NOT NULL,
     unit          VARCHAR(20) NOT NULL,
     is_from_recipe BOOLEAN NOT NULL DEFAULT FALSE,
@@ -365,6 +383,7 @@ CREATE TABLE grocery.grocery_list_item (
     grocery_list_item_id BIGSERIAL PRIMARY KEY,
     grocery_list_id      BIGINT NOT NULL REFERENCES grocery.grocery_list(grocery_list_id) ON DELETE CASCADE,
     item_id              BIGINT REFERENCES inventory.item(item_id),
+    ingredient_id        BIGINT REFERENCES inventory.ingredient(ingredient_id),
     manual_item_name     VARCHAR(200),
     quantity_needed      NUMERIC(10,4) NOT NULL,
     unit_of_measure      VARCHAR(20),

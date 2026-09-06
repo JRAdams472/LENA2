@@ -301,3 +301,49 @@ func TestIntegrationFoodJunctions(t *testing.T) {
 	_, err = svc.CreateFoodFlavor(ctx, item.ItemID, fp.FlavorID, 9, itBy)
 	assert.Error(t, err, "intensity outside 1-5 should violate check constraint")
 }
+
+func TestIntegrationIngredientCRUD(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc := newIntegrationService(t, ctx)
+
+	cat, err := svc.CreateCategory(ctx, "IT Ingredient Category", "", itBy)
+	require.NoError(t, err)
+
+	in, err := svc.CreateIngredient(ctx, Ingredient{
+		Name:        "IT Ingredient Alpha",
+		CategoryID:  &cat.CategoryID,
+		DefaultUnit: "g",
+		IsActive:    true,
+	}, itBy)
+	require.NoError(t, err)
+	require.NotZero(t, in.IngredientID)
+	assert.Equal(t, "IT Ingredient Alpha", in.Name)
+	require.NotNil(t, in.CategoryID)
+	assert.Equal(t, cat.CategoryID, *in.CategoryID)
+	assert.Equal(t, "g", in.DefaultUnit)
+
+	got, err := svc.GetIngredientByID(ctx, in.IngredientID)
+	require.NoError(t, err)
+	assert.Equal(t, in.IngredientID, got.IngredientID)
+
+	ins, err := svc.GetIngredientsByIDs(ctx, []int64{in.IngredientID})
+	require.NoError(t, err)
+	require.Len(t, ins, 1)
+
+	updated, err := svc.UpdateIngredient(ctx, in.IngredientID, Ingredient{
+		Name:        "IT Ingredient Beta",
+		DefaultUnit: "kg",
+		IsActive:    false,
+	}, itBy)
+	require.NoError(t, err)
+	assert.Equal(t, "IT Ingredient Beta", updated.Name)
+	assert.Nil(t, updated.CategoryID)
+	assert.False(t, updated.IsActive)
+
+	require.NoError(t, svc.DeleteIngredient(ctx, in.IngredientID))
+	_, err = svc.GetIngredientByID(ctx, in.IngredientID)
+	assert.Error(t, err)
+}
