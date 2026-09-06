@@ -305,6 +305,8 @@ describe("api client: items", () => {
       category: null,
       foodNutrients: null,
       foodFlavors: null,
+      selectionCount: 0,
+      personalSelectionCount: 0,
     });
 
     expect(lastRequestBody().variables).toEqual({

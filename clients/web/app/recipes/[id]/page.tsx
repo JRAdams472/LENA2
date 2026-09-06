@@ -21,7 +21,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "@/lib/api";
-import { RecipeStep } from "@/lib/types";
+import { Brand, RecipeStep } from "@/lib/types";
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>();
@@ -49,13 +49,26 @@ export default function RecipeDetailPage() {
 
   const brandsQuery = useQuery({
     queryKey: ["item-brands", brandInput],
-    queryFn: () => api.getBrands(brandInput),
+    queryFn: () =>
+      brandInput === ""
+        ? api.getFrequentBrands(10)
+        : api.getBrands(brandInput),
   });
+
+  const brandOptions = brandsQuery.data ?? [];
+  const selectedBrand =
+    brand === "" ? null : brandOptions.find((b) => b.brandName === brand) ?? null;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedItemSearch(itemSearch), 300);
     return () => clearTimeout(timer);
   }, [itemSearch]);
+
+  useEffect(() => {
+    if (debouncedItemSearch.trim()) {
+      void api.recordSearch("item", debouncedItemSearch);
+    }
+  }, [debouncedItemSearch]);
 
   const searchQuery = useQuery({
     queryKey: ["items-search", debouncedItemSearch, brand],
@@ -221,18 +234,22 @@ export default function RecipeDetailPage() {
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
           <Autocomplete
             size="small"
-            options={brandsQuery.data ?? []}
-            getOptionLabel={(b) => b ?? ""}
-            isOptionEqualToValue={(a, b) => a === b}
+            options={brandOptions}
+            getOptionLabel={(b) => (typeof b === "string" ? b : b?.brandName ?? "")}
+            isOptionEqualToValue={(a, b) =>
+              (typeof a === "object" && typeof b === "object" && a?.brandID === b?.brandID)
+            }
             inputValue={brandInput}
             onInputChange={(_, value) => setBrandInput(value)}
-            value={brand === "" ? null : brand}
+            value={selectedBrand}
             onChange={(_, value) => {
-              setBrand(value ?? "");
-              setBrandInput(value ?? "");
+              const b = value as Brand | null;
+              setBrand(b?.brandName ?? "");
+              setBrandInput(b?.brandName ?? "");
               setItemId("");
               setItemSearch("");
               setDebouncedItemSearch("");
+              if (b) void api.recordSelection("brand", b.brandID);
             }}
             filterOptions={(options) => options}
             loading={brandsQuery.isLoading}
@@ -254,7 +271,10 @@ export default function RecipeDetailPage() {
             value={
               searchQuery.data?.find((item) => item.itemID === itemId) ?? null
             }
-            onChange={(_, value) => setItemId(value ? value.itemID : "")}
+            onChange={(_, value) => {
+              setItemId(value ? value.itemID : "");
+              if (value) void api.recordSelection("item", value.itemID);
+            }}
             filterOptions={(options) => options}
             loading={searchQuery.isLoading}
             noOptionsText={

@@ -5,12 +5,14 @@ type Query {
   me: User!
   brand(id: ID!): Brand
   brands: [Brand!]!
+  frequentBrands(limit: Int = 10): [Brand!]!
   category(id: ID!): Category
   categories: [Category!]!
   flavorProfiles: [FlavorProfile!]!
   nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
+  frequentItems(limit: Int = 10): [Item!]!
   ingredient(id: ID!): Ingredient
   ingredients(page: Int = 1, pageSize: Int = 25): IngredientPage!
   units: [Unit!]!
@@ -137,6 +139,8 @@ type Category {
 type Brand {
   id: ID!
   name: String!
+  selectionCount: Int!
+  personalSelectionCount: Int!
 }
 
 type FlavorProfile {
@@ -171,6 +175,8 @@ type Item {
   unit: String!
   nutrients: [FoodNutrient!]!
   flavors: [FoodFlavor!]!
+  selectionCount: Int!
+  personalSelectionCount: Int!
 }
 
 type ItemPage {
@@ -232,6 +238,8 @@ type Recipe {
   itemSections: [RecipeItemSection!]!
   steps: [RecipeStep!]!
   isFavorite: Boolean!
+  selectionCount: Int!
+  personalSelectionCount: Int!
 }
 
 type RecipeItem {

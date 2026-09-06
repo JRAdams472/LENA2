@@ -259,7 +259,7 @@ describe("api client: brands", () => {
     );
 
     const brands = await api.getBrandList();
-    expect(brands).toEqual([{ brandID: 7, brandName: "Acme" }]);
+    expect(brands).toEqual([{ brandID: 7, brandName: "Acme", selectionCount: 0, personalSelectionCount: 0 }]);
   });
 
   it("getBrands filters by search term", async () => {
@@ -272,8 +272,8 @@ describe("api client: brands", () => {
       })
     );
 
-    const names = await api.getBrands("acm");
-    expect(names).toEqual(["Acme"]);
+    const brands = await api.getBrands("acm");
+    expect(brands).toEqual([{ brandID: 1, brandName: "Acme", selectionCount: 0, personalSelectionCount: 0 }]);
   });
 
   it("createBrand posts the input and maps the result", async () => {
@@ -281,7 +281,7 @@ describe("api client: brands", () => {
       mockGraphQL({ createBrand: { id: "3", name: "NewCo" } })
     );
 
-    const brand = await api.createBrand({ brandID: 0, brandName: "NewCo" });
+    const brand = await api.createBrand({ brandID: 0, brandName: "NewCo", selectionCount: 0, personalSelectionCount: 0 });
     const body = lastRequestBody();
     expect(body.query).toContain("createBrand");
     expect(body.variables).toEqual({ input: { name: "NewCo" } });

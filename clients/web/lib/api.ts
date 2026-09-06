@@ -142,6 +142,8 @@ interface GqlPageInfo {
 interface GqlBrand {
   id: string;
   name: string;
+  selectionCount: number;
+  personalSelectionCount: number;
 }
 
 interface GqlCategory {
@@ -183,6 +185,8 @@ interface GqlItem {
   unit: string;
   nutrients: GqlFoodNutrient[];
   flavors: GqlFoodFlavor[];
+  selectionCount: number;
+  personalSelectionCount: number;
 }
 
 interface GqlItemPage {
@@ -229,6 +233,8 @@ interface GqlRecipe {
   items: GqlRecipeItem[];
   steps: GqlRecipeStep[];
   isFavorite: boolean;
+  selectionCount: number;
+  personalSelectionCount: number;
 }
 
 interface GqlRecipePage {
@@ -457,6 +463,15 @@ function toFoodFlavor(foodId: number, f: GqlFoodFlavor): FoodFlavor {
   };
 }
 
+function toBrand(b: GqlBrand): Brand {
+  return {
+    brandID: num(b.id),
+    brandName: b.name,
+    selectionCount: b.selectionCount ?? 0,
+    personalSelectionCount: b.personalSelectionCount ?? 0,
+  };
+}
+
 function toItem(i: GqlItem, ui?: GqlUserItem): Item {
   const itemID = num(i.id);
   return {
@@ -485,6 +500,8 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
       : null,
     foodNutrients: (i.nutrients ?? []).map((n) => toFoodNutrient(itemID, n)),
     foodFlavors: (i.flavors ?? []).map((f) => toFoodFlavor(itemID, f)),
+    selectionCount: i.selectionCount ?? 0,
+    personalSelectionCount: i.personalSelectionCount ?? 0,
   };
 }
 
@@ -528,13 +545,8 @@ function toRecipe(r: GqlRecipe): Recipe {
     isFavorite: r.isFavorite,
     recipeItems: (r.items ?? []).map((i) => toRecipeItem(recipeID, i)),
     recipeSteps: (r.steps ?? []).map((s) => toRecipeStep(recipeID, s)),
-  };
-}
-
-function toBrand(b: GqlBrand): Brand {
-  return {
-    brandID: num(b.id),
-    brandName: b.name,
+    selectionCount: r.selectionCount ?? 0,
+    personalSelectionCount: r.personalSelectionCount ?? 0,
   };
 }
 
@@ -763,16 +775,20 @@ function toGroceryList(g: GqlGroceryList): GroceryList {
 /* Shared selection sets                                               */
 /* ------------------------------------------------------------------ */
 
+const BRAND_FIELDS = `
+  id name selectionCount personalSelectionCount
+`;
+
 const ITEM_FIELDS = `
-  id name upc12 upc14 unit
-  brand { id name }
+  id name upc12 upc14 unit selectionCount personalSelectionCount
+  brand { ${BRAND_FIELDS} }
   category { id name description }
   nutrients { amount nutrient { id name unit } }
   flavors { intensity flavor { id name isActive } }
 `;
 
 const RECIPE_FIELDS = `
-  id name description servings prepTimeMinutes cookTimeMinutes isFavorite
+  id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount
   items { quantity unit notes isOptional item { ${ITEM_FIELDS} } }
   steps { stepNumber instruction }
 `;
@@ -805,6 +821,13 @@ const GROCERY_LIST_FIELDS = `
 /* Helpers to page through the API for client-side filtering           */
 /* ------------------------------------------------------------------ */
 
+function sortByFrequency(a: { personalSelectionCount: number; selectionCount: number }, b: { personalSelectionCount: number; selectionCount: number }): number {
+  const pa = a.personalSelectionCount;
+  const pb = b.personalSelectionCount;
+  if (pa !== pb) return pb - pa;
+  return b.selectionCount - a.selectionCount;
+}
+
 async function fetchAllItems(): Promise<GqlItem[]> {
   const pageSize = 200;
   let page = 1;
@@ -818,7 +841,7 @@ async function fetchAllItems(): Promise<GqlItem[]> {
     if (out.length >= data.items.pageInfo.totalCount || data.items.items.length === 0) break;
     page += 1;
   }
-  return out;
+  return out.sort(sortByFrequency);
 }
 
 async function fetchAllUserItems(): Promise<GqlUserItem[]> {
@@ -915,6 +938,7 @@ export const api = {
     if (b) all = all.filter((i) => (i.brand ?? "").toLowerCase() === b);
     if (inStock) all = all.filter((i) => i.currentQuantity > 0);
     if (isFavorite) all = all.filter((i) => i.isFavorite);
+    all.sort(sortByFrequency);
     return pagedSlice(all, pageNumber, pageSize);
   },
 
@@ -924,17 +948,49 @@ export const api = {
     return (await fetchItemsWithPrefs())
       .filter((i) => i.name.toLowerCase().includes(s))
       .filter((i) => !b || (i.brand ?? "").toLowerCase() === b)
+      .sort(sortByFrequency)
       .slice(0, limit);
   },
 
-  getBrands: async (search?: string): Promise<string[]> => {
+  getBrands: async (search?: string): Promise<Brand[]> => {
     const data = await request<{ brands: GqlBrand[] }>(
-      `query { brands { id name } }`
+      `query { brands { ${BRAND_FIELDS} } }`
     );
     const s = (search ?? "").trim().toLowerCase();
     return data.brands
-      .map((b) => b.name)
-      .filter((n) => !s || n.toLowerCase().includes(s));
+      .filter((b) => !s || b.name.toLowerCase().includes(s))
+      .sort(sortByFrequency)
+      .map(toBrand);
+  },
+
+  getFrequentBrands: async (limit = 10): Promise<Brand[]> => {
+    const data = await request<{ frequentBrands: GqlBrand[] }>(
+      `query ($limit: Int) { frequentBrands(limit: $limit) { ${BRAND_FIELDS} } }`,
+      { limit }
+    );
+    return (data.frequentBrands ?? []).map(toBrand);
+  },
+
+  getFrequentItems: async (limit = 10): Promise<Item[]> => {
+    const data = await request<{ frequentItems: GqlItem[] }>(
+      `query ($limit: Int) { frequentItems(limit: $limit) { ${ITEM_FIELDS} } }`,
+      { limit }
+    );
+    return (data.frequentItems ?? []).map((i) => toItem(i));
+  },
+
+  recordSelection: async (entityType: string, entityId: number): Promise<void> => {
+    await request<{ recordSelection: boolean }>(
+      `mutation ($entityType: String!, $entityId: ID!) { recordSelection(entityType: $entityType, entityId: $entityId) }`,
+      { entityType, entityId: String(entityId) }
+    );
+  },
+
+  recordSearch: async (entityType: string, term: string): Promise<void> => {
+    await request<{ recordSearch: boolean }>(
+      `mutation ($entityType: String!, $term: String!) { recordSearch(entityType: $entityType, term: $term) }`,
+      { entityType, term }
+    );
   },
 
   getItem: async (id: number): Promise<Item> => {
@@ -1052,14 +1108,14 @@ export const api = {
 
   getBrandList: async (): Promise<Brand[]> => {
     const data = await request<{ brands: GqlBrand[] }>(
-      `query { brands { id name } }`
+      `query { brands { ${BRAND_FIELDS} } }`
     );
     return data.brands.map(toBrand);
   },
 
   createBrand: async (brand: Omit<Brand, keyof AuditableEntity>): Promise<Brand> => {
     const data = await request<{ createBrand: GqlBrand }>(
-      `mutation ($input: CreateBrandInput!) { createBrand(input: $input) { id name } }`,
+      `mutation ($input: CreateBrandInput!) { createBrand(input: $input) { ${BRAND_FIELDS} } }`,
       { input: { name: brand.brandName } }
     );
     return toBrand(data.createBrand);
@@ -1069,7 +1125,7 @@ export const api = {
     const input: Record<string, unknown> = {};
     if (brand.brandName !== undefined) input.name = brand.brandName;
     const data = await request<{ updateBrand: GqlBrand }>(
-      `mutation ($id: ID!, $input: UpdateBrandInput!) { updateBrand(id: $id, input: $input) { id name } }`,
+      `mutation ($id: ID!, $input: UpdateBrandInput!) { updateBrand(id: $id, input: $input) { ${BRAND_FIELDS} } }`,
       { id: String(id), input }
     );
     return toBrand(data.updateBrand);
@@ -1688,7 +1744,7 @@ export const api = {
         break;
       page += 1;
     }
-    return out;
+    return out.sort(sortByFrequency);
   },
 
   getRecipesPaged: async (pageNumber: number, pageSize: number, search?: string, isFavorite?: boolean): Promise<PagedResult<Recipe>> => {
@@ -1697,12 +1753,14 @@ export const api = {
         `query ($page: Int, $pageSize: Int) { recipes(page: $page, pageSize: $pageSize) { items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
         { page: pageNumber, pageSize }
       );
-      return toPaged(data.recipes.items.map(toRecipe), data.recipes.pageInfo);
+      const items = data.recipes.items.map(toRecipe).sort(sortByFrequency);
+      return toPaged(items, data.recipes.pageInfo);
     }
     let all = await api.getRecipes();
     const s = (search ?? "").trim().toLowerCase();
     if (s) all = all.filter((r) => r.recipeName.toLowerCase().includes(s));
     if (isFavorite !== undefined) all = all.filter((r) => r.isFavorite === isFavorite);
+    all.sort(sortByFrequency);
     return pagedSlice(all, pageNumber, pageSize);
   },
 

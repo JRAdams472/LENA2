@@ -67,6 +67,8 @@ export interface Item extends AuditableEntity {
   category: Category | null;
   foodNutrients: FoodNutrient[] | null;
   foodFlavors: FoodFlavor[] | null;
+  selectionCount: number;
+  personalSelectionCount: number;
 }
 
 export interface NutrientType {
@@ -78,6 +80,8 @@ export interface NutrientType {
 export interface Brand {
   brandID: number;
   brandName: string;
+  selectionCount: number;
+  personalSelectionCount: number;
 }
 
 export interface Bottle extends AuditableEntity {
@@ -187,6 +191,8 @@ export interface Recipe extends AuditableEntity {
   isFavorite: boolean;
   recipeItems?: RecipeItem[];
   recipeSteps?: RecipeStep[];
+  selectionCount: number;
+  personalSelectionCount: number;
 }
 
 export interface RecipeItem {
