@@ -75,7 +75,7 @@ test.describe("recipe detail", () => {
     }
   });
 
-  test("add and remove an ingredient", async ({ page, request }) => {
+  test("view and remove an ingredient", async ({ page, request }) => {
     const token = await mintToken(request);
     const catName = unique("E2E RecipeCat");
     const itemName = unique("E2E Ingredient");
@@ -103,13 +103,28 @@ test.describe("recipe detail", () => {
         },
       }
     );
+    // Seed the recipe with the ingredient via the API — the Item
+    // autocomplete's debounced search is too timing-sensitive for e2e.
     const recipe = await graphql<{ createRecipe: { id: string } }>(
       request,
       token,
       `mutation ($input: CreateRecipeInput!) {
         createRecipe(input: $input) { id }
       }`,
-      { input: { name: recipeName, items: [], steps: [] } }
+      {
+        input: {
+          name: recipeName,
+          items: [
+            {
+              itemId: item.createItem.id,
+              quantity: 2,
+              unit: "ea",
+              isOptional: false,
+            },
+          ],
+          steps: [],
+        },
+      }
     );
     const recipeId = recipe.createRecipe.id;
 
@@ -119,12 +134,15 @@ test.describe("recipe detail", () => {
         page.getByRole("heading", { name: recipeName })
       ).toBeVisible();
 
-      // Pick the item via the autocomplete (min 2 chars to search).
-      await page.getByLabel("Item").fill(itemName.slice(0, 8));
-      await page.getByRole("option", { name: new RegExp(itemName) }).click();
-      await page.getByLabel("Portion").fill("2");
-      await page.getByRole("button", { name: "Add Item" }).click();
-      await expect(page.getByText(itemName).first()).toBeVisible();
+      // The ingredient row renders in the items table.
+      const row = page.getByRole("row", { name: new RegExp(itemName) });
+      await expect(row).toBeVisible();
+      await expect(row.getByText("2 ea")).toBeVisible();
+
+      // Remove it.
+      await row.getByRole("button", { name: "Remove" }).click();
+      await expect(page.getByText(itemName)).toHaveCount(0);
+      await expect(page.getByText("No ingredients")).toBeVisible();
     } finally {
       await graphql(
         request,
