@@ -21,6 +21,11 @@ type Config struct {
 	AuthIssuers        string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
 	AuthAudiences      string `envconfig:"AUTH_AUDIENCES" required:"true"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost"`
+	// ServiceName is the OpenTelemetry service.name resource attribute.
+	ServiceName string `envconfig:"OTEL_SERVICE_NAME" default:"lena2"`
+	// OTLPEndpoint is the OTLP gRPC collector endpoint for traces; empty
+	// disables trace export while metrics remain available on /metrics.
+	OTLPEndpoint string `envconfig:"OTEL_EXPORTER_OTLP_ENDPOINT" default:""`
 }
 
 // Load reads configuration from environment variables.

@@ -39,7 +39,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	log := logger.New(cfg.LogLevel)
-	e := newServer(cfg, pool, log)
+	e := newServer(cfg, pool, log, nil)
 	srv := httptest.NewServer(e)
 	defer srv.Close()
 

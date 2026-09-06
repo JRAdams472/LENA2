@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// NewPool opens and verifies a pgx connection pool.
+// NewPool opens and verifies a pgx connection pool. Every query is
+// instrumented with an OpenTelemetry span; when no tracer provider is
+// configured the tracer is a no-op.
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid database url: %w", err)
 	}
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
