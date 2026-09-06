@@ -34,6 +34,7 @@ type GroceryGroceryListItem struct {
 	CreatedAt         time.Time          `json:"created_at"`
 	UpdatedBy         pgtype.Text        `json:"updated_by"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	IngredientID      pgtype.Int8        `json:"ingredient_id"`
 }
 
 type IdentityUser struct {
@@ -92,6 +93,18 @@ type InventoryFoodNutrient struct {
 	Amount     pgtype.Numeric `json:"amount"`
 	CreatedBy  string         `json:"created_by"`
 	CreatedAt  time.Time      `json:"created_at"`
+}
+
+type InventoryIngredient struct {
+	IngredientID int64              `json:"ingredient_id"`
+	Name         string             `json:"name"`
+	CategoryID   pgtype.Int8        `json:"category_id"`
+	DefaultUnit  pgtype.Text        `json:"default_unit"`
+	IsActive     bool               `json:"is_active"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type InventoryItem struct {
@@ -169,6 +182,7 @@ type MealplanMealSlotItem struct {
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedBy    pgtype.Text        `json:"updated_by"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	IngredientID pgtype.Int8        `json:"ingredient_id"`
 }
 
 type RecipeRecipe struct {
@@ -186,12 +200,13 @@ type RecipeRecipe struct {
 }
 
 type RecipeRecipeItem struct {
-	RecipeID   int64          `json:"recipe_id"`
-	ItemID     int64          `json:"item_id"`
-	Quantity   pgtype.Numeric `json:"quantity"`
-	Unit       string         `json:"unit"`
-	Notes      pgtype.Text    `json:"notes"`
-	IsOptional bool           `json:"is_optional"`
+	RecipeID     int64          `json:"recipe_id"`
+	ItemID       int64          `json:"item_id"`
+	Quantity     pgtype.Numeric `json:"quantity"`
+	Unit         string         `json:"unit"`
+	Notes        pgtype.Text    `json:"notes"`
+	IsOptional   bool           `json:"is_optional"`
+	IngredientID pgtype.Int8    `json:"ingredient_id"`
 }
 
 type RecipeRecipeStep struct {

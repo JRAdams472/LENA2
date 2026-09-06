@@ -863,3 +863,176 @@ func TestNumericHelpers(t *testing.T) {
 		assert.Equal(t, 0.0, v)
 	})
 }
+
+func TestCreateIngredient(t *testing.T) {
+	ctx := context.Background()
+	catID := int64(3)
+
+	s, q := newTestService(t)
+	q.EXPECT().CreateIngredient(ctx, sqlc.CreateIngredientParams{
+		Name:        "All-Purpose Flour",
+		CategoryID:  pgtype.Int8{Int64: 3, Valid: true},
+		DefaultUnit: pgtype.Text{String: "g", Valid: true},
+		IsActive:    true,
+		CreatedBy:   "tester",
+		UpdatedBy:   pgtype.Text{String: "tester", Valid: true},
+	}).Return(sqlc.InventoryIngredient{
+		IngredientID: 9,
+		Name:         "All-Purpose Flour",
+		CategoryID:   pgtype.Int8{Int64: 3, Valid: true},
+		DefaultUnit:  pgtype.Text{String: "g", Valid: true},
+		IsActive:     true,
+	}, nil)
+
+	in, err := s.CreateIngredient(ctx, Ingredient{
+		Name:        "All-Purpose Flour",
+		CategoryID:  &catID,
+		DefaultUnit: "g",
+		IsActive:    true,
+	}, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, int64(9), in.IngredientID)
+	assert.Equal(t, "All-Purpose Flour", in.Name)
+	require.NotNil(t, in.CategoryID)
+	assert.Equal(t, int64(3), *in.CategoryID)
+	assert.Equal(t, "g", in.DefaultUnit)
+	assert.True(t, in.IsActive)
+}
+
+func TestCreateIngredient_Error(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().CreateIngredient(ctx, gomock.Any()).Return(sqlc.InventoryIngredient{}, errBoom)
+
+	_, err := s.CreateIngredient(ctx, Ingredient{Name: "x", IsActive: true}, "tester")
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "create ingredient:")
+}
+
+func TestGetIngredientByID(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().GetIngredientByID(ctx, int64(9)).Return(sqlc.InventoryIngredient{
+		IngredientID: 9, Name: "All-Purpose Flour", IsActive: true,
+	}, nil)
+
+	in, err := s.GetIngredientByID(ctx, 9)
+	require.NoError(t, err)
+	assert.Equal(t, int64(9), in.IngredientID)
+	assert.Nil(t, in.CategoryID)
+	assert.Empty(t, in.DefaultUnit)
+}
+
+func TestGetIngredientByID_Error(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().GetIngredientByID(ctx, int64(9)).Return(sqlc.InventoryIngredient{}, errBoom)
+
+	_, err := s.GetIngredientByID(ctx, 9)
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "get ingredient by id:")
+}
+
+func TestGetIngredientsByIDs(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().GetIngredientsByIDs(ctx, []int64{1, 2}).Return([]sqlc.InventoryIngredient{
+		{IngredientID: 1, Name: "Flour", IsActive: true},
+		{IngredientID: 2, Name: "Sugar", IsActive: true},
+	}, nil)
+
+	ins, err := s.GetIngredientsByIDs(ctx, []int64{1, 2})
+	require.NoError(t, err)
+	require.Len(t, ins, 2)
+	assert.Equal(t, "Flour", ins[0].Name)
+	assert.Equal(t, "Sugar", ins[1].Name)
+}
+
+func TestListIngredients(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().ListIngredients(ctx, sqlc.ListIngredientsParams{Limit: 10, Offset: 0}).Return([]sqlc.InventoryIngredient{
+		{IngredientID: 1, Name: "Flour", IsActive: true},
+	}, nil)
+
+	ins, err := s.ListIngredients(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, ins, 1)
+	assert.Equal(t, "Flour", ins[0].Name)
+}
+
+func TestListIngredients_Error(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().ListIngredients(ctx, gomock.Any()).Return(nil, errBoom)
+
+	_, err := s.ListIngredients(ctx, 10, 0)
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "list ingredients:")
+}
+
+func TestCountIngredients(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().CountIngredients(ctx).Return(int64(42), nil)
+
+	n, err := s.CountIngredients(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), n)
+}
+
+func TestUpdateIngredient(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().UpdateIngredient(ctx, sqlc.UpdateIngredientParams{
+		IngredientID: 9,
+		Name:         "Bread Flour",
+		CategoryID:   pgtype.Int8{},
+		DefaultUnit:  pgtype.Text{String: "kg", Valid: true},
+		IsActive:     false,
+		UpdatedBy:    pgtype.Text{String: "tester", Valid: true},
+	}).Return(sqlc.InventoryIngredient{
+		IngredientID: 9,
+		Name:         "Bread Flour",
+		DefaultUnit:  pgtype.Text{String: "kg", Valid: true},
+	}, nil)
+
+	in, err := s.UpdateIngredient(ctx, 9, Ingredient{
+		Name:        "Bread Flour",
+		DefaultUnit: "kg",
+	}, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, "Bread Flour", in.Name)
+	assert.Equal(t, "kg", in.DefaultUnit)
+	assert.False(t, in.IsActive)
+}
+
+func TestUpdateIngredient_Error(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().UpdateIngredient(ctx, gomock.Any()).Return(sqlc.InventoryIngredient{}, errBoom)
+
+	_, err := s.UpdateIngredient(ctx, 9, Ingredient{Name: "x"}, "tester")
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "update ingredient:")
+}
+
+func TestDeleteIngredient(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().DeleteIngredient(ctx, int64(9)).Return(nil)
+
+	require.NoError(t, s.DeleteIngredient(ctx, 9))
+}
+
+func TestDeleteIngredient_Error(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().DeleteIngredient(ctx, int64(9)).Return(errBoom)
+
+	assert.ErrorIs(t, s.DeleteIngredient(ctx, 9), errBoom)
+}

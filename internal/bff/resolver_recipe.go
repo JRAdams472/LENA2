@@ -64,12 +64,17 @@ func parseRecipeChildren(items []recipeItemInput, steps []recipeStepInput) ([]re
 		if err != nil {
 			return nil, nil, err
 		}
+		ingredientID, err := optionalID(ri.IngredientID)
+		if err != nil {
+			return nil, nil, err
+		}
 		outItems = append(outItems, recipe.RecipeItem{
-			ItemID:     itemID,
-			Quantity:   ri.Quantity,
-			Unit:       ri.Unit,
-			Notes:      derefString(ri.Notes),
-			IsOptional: boolValue(ri.IsOptional),
+			ItemID:       itemID,
+			IngredientID: ingredientID,
+			Quantity:     ri.Quantity,
+			Unit:         ri.Unit,
+			Notes:        derefString(ri.Notes),
+			IsOptional:   boolValue(ri.IsOptional),
 		})
 	}
 	outSteps := make([]recipe.RecipeStep, 0, len(steps))
@@ -298,6 +303,19 @@ func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 	return &itemResolver{inv: r.inv, it: it}, nil
 }
 
+// Ingredient resolves the brand-agnostic ingredient linked to this recipe
+// item, when set. Scaffolding only — nothing populates ingredient_id yet.
+func (r *recipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
+	if r.item.IngredientID == nil {
+		return nil, nil
+	}
+	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.inv, in: in}, nil
+}
+
 func (r *recipeItemResolver) Quantity() float64 { return r.item.Quantity }
 
 func (r *recipeItemResolver) Unit() string { return r.item.Unit }
@@ -347,11 +365,12 @@ type createRecipeInput struct {
 }
 
 type recipeItemInput struct {
-	ItemID     graphql.ID
-	Quantity   float64
-	Unit       string
-	Notes      *string
-	IsOptional *bool
+	ItemID       graphql.ID
+	IngredientID *graphql.ID
+	Quantity     float64
+	Unit         string
+	Notes        *string
+	IsOptional   *bool
 }
 
 type recipeStepInput struct {

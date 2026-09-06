@@ -25,8 +25,8 @@ DELETE FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND user_id = $2;
 
 -- name: AddGroceryListItem :one
-INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, ingredient_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListGroceryListItems :many
@@ -49,12 +49,13 @@ WHERE grocery_list_item_id = $1;
 -- name: UpdateGroceryListItem :exec
 UPDATE grocery.grocery_list_item
 SET item_id          = $2,
-    manual_item_name = $3,
-    quantity_needed  = $4,
-    unit_of_measure  = $5,
-    source           = $6,
-    is_checked       = $7,
-    updated_by       = $8,
+    ingredient_id    = $3,
+    manual_item_name = $4,
+    quantity_needed  = $5,
+    unit_of_measure  = $6,
+    source           = $7,
+    is_checked       = $8,
+    updated_by       = $9,
     updated_at       = now()
 WHERE grocery_list_item_id = $1;
 

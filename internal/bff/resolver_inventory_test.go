@@ -677,3 +677,155 @@ func TestResolver_Inventory_FoodFlavorMutations(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestResolver_Inventory_Ingredient(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		catID := int64(4)
+		inv := newInvMock(t)
+		inv.EXPECT().GetIngredientByID(gomock.Any(), int64(9)).Return(inventory.Ingredient{
+			IngredientID: 9, Name: "All-Purpose Flour", CategoryID: &catID,
+			DefaultUnit: "g", IsActive: true,
+		}, nil)
+		inv.EXPECT().GetCategoryByID(gomock.Any(), int64(4)).Return(inventory.Category{
+			CategoryID: 4, Name: "Baking",
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.Ingredient(invCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("9"), res.ID())
+		assert.Equal(t, "All-Purpose Flour", res.Name())
+		require.NotNil(t, res.DefaultUnit())
+		assert.Equal(t, "g", *res.DefaultUnit())
+		assert.True(t, res.IsActive())
+		cat, err := res.Category(invCtx())
+		require.NoError(t, err)
+		assert.Equal(t, "Baking", cat.Name())
+	})
+
+	t.Run("nil category and unit", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetIngredientByID(gomock.Any(), int64(9)).Return(inventory.Ingredient{
+			IngredientID: 9, Name: "Flour", IsActive: true,
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.Ingredient(invCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.NoError(t, err)
+		assert.Nil(t, res.DefaultUnit())
+		cat, err := res.Category(invCtx())
+		require.NoError(t, err)
+		assert.Nil(t, cat)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.Ingredient(context.Background(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.Ingredient(invCtx(), struct{ ID graphql.ID }{ID: "abc"})
+		require.Error(t, err)
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetIngredientByID(gomock.Any(), int64(9)).Return(inventory.Ingredient{}, errInvBoom)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.Ingredient(invCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorIs(t, err, errInvBoom)
+	})
+}
+
+func TestResolver_Inventory_Ingredients(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().ListIngredients(gomock.Any(), int32(25), int32(0)).Return([]inventory.Ingredient{
+			{IngredientID: 1, Name: "Flour", IsActive: true},
+			{IngredientID: 2, Name: "Sugar", IsActive: true},
+		}, nil)
+		inv.EXPECT().CountIngredients(gomock.Any()).Return(int64(42), nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.Ingredients(invCtx(), struct {
+			Page     int32
+			PageSize int32
+		}{Page: 1, PageSize: 25})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 2)
+		assert.Equal(t, int32(42), res.PageInfo().TotalCount())
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.Ingredients(context.Background(), struct {
+			Page     int32
+			PageSize int32
+		}{Page: 1, PageSize: 25})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+}
+
+func TestResolver_Inventory_IngredientMutations(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().CreateIngredient(gomock.Any(), inventory.Ingredient{
+			Name:        "Flour",
+			DefaultUnit: "g",
+			IsActive:    true,
+		}, invTestEmail).Return(inventory.Ingredient{IngredientID: 9, Name: "Flour", IsActive: true}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.CreateIngredient(invCtx(), struct{ Input createIngredientInput }{
+			Input: createIngredientInput{Name: "Flour", DefaultUnit: invStrPtr("g")},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("9"), res.ID())
+	})
+
+	t.Run("update", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetIngredientByID(gomock.Any(), int64(9)).Return(inventory.Ingredient{
+			IngredientID: 9, Name: "Flour", IsActive: true,
+		}, nil)
+		inv.EXPECT().UpdateIngredient(gomock.Any(), int64(9), inventory.Ingredient{
+			Name:     "Bread Flour",
+			IsActive: true,
+		}, invTestEmail).Return(inventory.Ingredient{IngredientID: 9, Name: "Bread Flour", IsActive: true}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.UpdateIngredient(invCtx(), struct {
+			ID    graphql.ID
+			Input updateIngredientInput
+		}{ID: "9", Input: updateIngredientInput{Name: invStrPtr("Bread Flour")}})
+		require.NoError(t, err)
+		assert.Equal(t, "Bread Flour", res.Name())
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().DeleteIngredient(gomock.Any(), int64(9)).Return(nil)
+		r := &Resolver{InventoryService: inv}
+		ok, err := r.DeleteIngredient(invCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("forbidden for non-admin", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.CreateIngredient(invUserCtx(), struct{ Input createIngredientInput }{
+			Input: createIngredientInput{Name: "Flour"},
+		})
+		require.ErrorContains(t, err, "forbidden")
+		_, err = r.UpdateIngredient(invUserCtx(), struct {
+			ID    graphql.ID
+			Input updateIngredientInput
+		}{ID: "9", Input: updateIngredientInput{}})
+		require.ErrorContains(t, err, "forbidden")
+		_, err = r.DeleteIngredient(invUserCtx(), struct{ ID graphql.ID }{ID: "9"})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.CreateIngredient(context.Background(), struct{ Input createIngredientInput }{})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+}

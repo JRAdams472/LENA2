@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countIngredients = `-- name: CountIngredients :one
+SELECT COUNT(*)
+FROM inventory.ingredient
+`
+
+func (q *Queries) CountIngredients(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countIngredients)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countItems = `-- name: CountItems :one
 SELECT COUNT(*)
 FROM inventory.item
@@ -167,6 +179,45 @@ func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrient
 	return i, err
 }
 
+const createIngredient = `-- name: CreateIngredient :one
+INSERT INTO inventory.ingredient (name, category_id, default_unit, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type CreateIngredientParams struct {
+	Name        string      `json:"name"`
+	CategoryID  pgtype.Int8 `json:"category_id"`
+	DefaultUnit pgtype.Text `json:"default_unit"`
+	IsActive    bool        `json:"is_active"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientParams) (InventoryIngredient, error) {
+	row := q.db.QueryRow(ctx, createIngredient,
+		arg.Name,
+		arg.CategoryID,
+		arg.DefaultUnit,
+		arg.IsActive,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i InventoryIngredient
+	err := row.Scan(
+		&i.IngredientID,
+		&i.Name,
+		&i.CategoryID,
+		&i.DefaultUnit,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createItem = `-- name: CreateItem :one
 INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -292,6 +343,16 @@ type DeleteFoodNutrientParams struct {
 
 func (q *Queries) DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error {
 	_, err := q.db.Exec(ctx, deleteFoodNutrient, arg.FoodID, arg.NutrientID)
+	return err
+}
+
+const deleteIngredient = `-- name: DeleteIngredient :exec
+DELETE FROM inventory.ingredient
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredient(ctx context.Context, ingredientID int64) error {
+	_, err := q.db.Exec(ctx, deleteIngredient, ingredientID)
 	return err
 }
 
@@ -430,6 +491,65 @@ func (q *Queries) GetFlavorProfileByID(ctx context.Context, flavorID int64) (Inv
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getIngredientByID = `-- name: GetIngredientByID :one
+SELECT ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.ingredient
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) GetIngredientByID(ctx context.Context, ingredientID int64) (InventoryIngredient, error) {
+	row := q.db.QueryRow(ctx, getIngredientByID, ingredientID)
+	var i InventoryIngredient
+	err := row.Scan(
+		&i.IngredientID,
+		&i.Name,
+		&i.CategoryID,
+		&i.DefaultUnit,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getIngredientsByIDs = `-- name: GetIngredientsByIDs :many
+SELECT ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.ingredient
+WHERE ingredient_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetIngredientsByIDs(ctx context.Context, ingredientIds []int64) ([]InventoryIngredient, error) {
+	rows, err := q.db.Query(ctx, getIngredientsByIDs, ingredientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryIngredient{}
+	for rows.Next() {
+		var i InventoryIngredient
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.Name,
+			&i.CategoryID,
+			&i.DefaultUnit,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getItemByID = `-- name: GetItemByID :one
@@ -764,6 +884,48 @@ func (q *Queries) ListFoodNutrientsByItems(ctx context.Context, itemIds []int64)
 	return items, nil
 }
 
+const listIngredients = `-- name: ListIngredients :many
+SELECT ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.ingredient
+ORDER BY name
+LIMIT $1 OFFSET $2
+`
+
+type ListIngredientsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams) ([]InventoryIngredient, error) {
+	rows, err := q.db.Query(ctx, listIngredients, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryIngredient{}
+	for rows.Next() {
+		var i InventoryIngredient
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.Name,
+			&i.CategoryID,
+			&i.DefaultUnit,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItems = `-- name: ListItems :many
 SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
 FROM inventory.item
@@ -927,6 +1089,51 @@ func (q *Queries) UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfi
 	err := row.Scan(
 		&i.FlavorID,
 		&i.Name,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateIngredient = `-- name: UpdateIngredient :one
+UPDATE inventory.ingredient
+SET name         = $2,
+    category_id  = $3,
+    default_unit = $4,
+    is_active    = $5,
+    updated_by   = $6,
+    updated_at   = now()
+WHERE ingredient_id = $1
+RETURNING ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateIngredientParams struct {
+	IngredientID int64       `json:"ingredient_id"`
+	Name         string      `json:"name"`
+	CategoryID   pgtype.Int8 `json:"category_id"`
+	DefaultUnit  pgtype.Text `json:"default_unit"`
+	IsActive     bool        `json:"is_active"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (InventoryIngredient, error) {
+	row := q.db.QueryRow(ctx, updateIngredient,
+		arg.IngredientID,
+		arg.Name,
+		arg.CategoryID,
+		arg.DefaultUnit,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i InventoryIngredient
+	err := row.Scan(
+		&i.IngredientID,
+		&i.Name,
+		&i.CategoryID,
+		&i.DefaultUnit,
 		&i.IsActive,
 		&i.CreatedBy,
 		&i.CreatedAt,

@@ -196,6 +196,189 @@ func (r *Resolver) CreateNutrientType(ctx context.Context, args struct{ Input cr
 	return &nutrientTypeResolver{n: n}, nil
 }
 
+// Ingredient resolves a single generic ingredient by ID.
+func (r *Resolver) Ingredient(ctx context.Context, args struct{ ID graphql.ID }) (*ingredientResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	in, err := r.InventoryService.GetIngredientByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+}
+
+// Ingredients resolves a paginated list of generic ingredients.
+func (r *Resolver) Ingredients(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*ingredientPageResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	ingredients, err := r.InventoryService.ListIngredients(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.InventoryService.CountIngredients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientPageResolver{inv: r.InventoryService, ingredients: ingredients, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// CreateIngredient adds a new generic ingredient.
+func (r *Resolver) CreateIngredient(ctx context.Context, args struct{ Input createIngredientInput }) (*ingredientResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	categoryID, err := optionalID(args.Input.CategoryID)
+	if err != nil {
+		return nil, err
+	}
+	in, err := r.InventoryService.CreateIngredient(ctx, inventory.Ingredient{
+		Name:        args.Input.Name,
+		CategoryID:  categoryID,
+		DefaultUnit: derefString(args.Input.DefaultUnit),
+		IsActive:    true,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+}
+
+// UpdateIngredient modifies an existing ingredient.
+func (r *Resolver) UpdateIngredient(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input updateIngredientInput
+}) (*ingredientResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.InventoryService.GetIngredientByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	name := existing.Name
+	if args.Input.Name != nil {
+		name = *args.Input.Name
+	}
+	categoryID := existing.CategoryID
+	if args.Input.CategoryID != nil {
+		c, err := optionalID(args.Input.CategoryID)
+		if err != nil {
+			return nil, err
+		}
+		categoryID = c
+	}
+	defaultUnit := existing.DefaultUnit
+	if args.Input.DefaultUnit != nil {
+		defaultUnit = *args.Input.DefaultUnit
+	}
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	in, err := r.InventoryService.UpdateIngredient(ctx, id, inventory.Ingredient{
+		Name:        name,
+		CategoryID:  categoryID,
+		DefaultUnit: defaultUnit,
+		IsActive:    isActive,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+}
+
+// DeleteIngredient removes an ingredient from the catalog.
+func (r *Resolver) DeleteIngredient(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.DeleteIngredient(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ingredientResolver resolves Ingredient fields.
+type ingredientResolver struct {
+	inv InventoryService
+	in  inventory.Ingredient
+}
+
+func (r *ingredientResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.in.IngredientID, 10))
+}
+
+func (r *ingredientResolver) Name() string { return r.in.Name }
+
+func (r *ingredientResolver) DefaultUnit() *string { return nilIfEmpty(r.in.DefaultUnit) }
+
+func (r *ingredientResolver) IsActive() bool { return r.in.IsActive }
+
+func (r *ingredientResolver) Category(ctx context.Context) (*categoryResolver, error) {
+	if r.in.CategoryID == nil {
+		return nil, nil
+	}
+	c, err := r.inv.GetCategoryByID(ctx, *r.in.CategoryID)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryResolver{c: c}, nil
+}
+
+type ingredientPageResolver struct {
+	inv         InventoryService
+	ingredients []inventory.Ingredient
+	page        int32
+	pageSize    int32
+	total       int32
+}
+
+func (r *ingredientPageResolver) Items() []*ingredientResolver {
+	out := make([]*ingredientResolver, len(r.ingredients))
+	for i := range r.ingredients {
+		out[i] = &ingredientResolver{inv: r.inv, in: r.ingredients[i]}
+	}
+	return out
+}
+
+func (r *ingredientPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
+type createIngredientInput struct {
+	Name        string
+	CategoryID  *graphql.ID
+	DefaultUnit *string
+}
+
+type updateIngredientInput struct {
+	Name        *string
+	CategoryID  *graphql.ID
+	DefaultUnit *string
+	IsActive    *bool
+}
+
 // CreateItem creates a new catalog item.
 func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItemInput }) (*itemResolver, error) {
 	u, err := requireAdmin(ctx)

@@ -100,11 +100,14 @@ func (s *Service) DeleteGroceryList(ctx context.Context, groceryListID, userID i
 	return s.q.DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: groceryListID, UserID: userID})
 }
 
-// GroceryListItem is a single item on a shopping list.
+// GroceryListItem is a single item on a shopping list. ItemID is the
+// branded catalog item; IngredientID optionally points at the
+// brand-agnostic ingredient abstraction.
 type GroceryListItem struct {
 	GroceryListItemID int64
 	GroceryListID     int64
 	ItemID            *int64
+	IngredientID      *int64
 	ManualItemName    string
 	QuantityNeeded    float64
 	UnitOfMeasure     string
@@ -121,6 +124,7 @@ func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, b
 	row, err := s.q.AddGroceryListItem(ctx, sqlc.AddGroceryListItemParams{
 		GroceryListID:  arg.GroceryListID,
 		ItemID:         optInt8(arg.ItemID),
+		IngredientID:   optInt8(arg.IngredientID),
 		ManualItemName: textOrNull(arg.ManualItemName),
 		QuantityNeeded: qty,
 		UnitOfMeasure:  textOrNull(arg.UnitOfMeasure),
@@ -196,6 +200,7 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID i
 	return s.q.UpdateGroceryListItem(ctx, sqlc.UpdateGroceryListItemParams{
 		GroceryListItemID: groceryListItemID,
 		ItemID:            optInt8(arg.ItemID),
+		IngredientID:      optInt8(arg.IngredientID),
 		ManualItemName:    textOrNull(arg.ManualItemName),
 		QuantityNeeded:    qty,
 		UnitOfMeasure:     textOrNull(arg.UnitOfMeasure),
@@ -244,6 +249,10 @@ func toGroceryListItem(row sqlc.GroceryGroceryListItem) (GroceryListItem, error)
 	if row.ItemID.Valid {
 		v := row.ItemID.Int64
 		gli.ItemID = &v
+	}
+	if row.IngredientID.Valid {
+		v := row.IngredientID.Int64
+		gli.IngredientID = &v
 	}
 	if row.QuantityNeeded.Valid {
 		f8, err := row.QuantityNeeded.Float64Value()
