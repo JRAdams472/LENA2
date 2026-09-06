@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
@@ -16,12 +17,27 @@ import (
 
 // Service provides catalog operations for the wine domain.
 type Service struct {
-	q sqlc.Querier
+	q    sqlc.Querier
+	pool dbtx.Pool
 }
 
 // NewService creates a wine Service using the given connection pool.
 func NewService(pool dbtx.Pool) *Service {
-	return &Service{q: sqlc.New(pool)}
+	return &Service{q: sqlc.New(pool), pool: pool}
+}
+
+// WithTx returns a copy of the service whose queries run on tx. Callers that
+// hold a transaction can bind a service to it and compose multiple service
+// operations into one atomic unit of work.
+func (s *Service) WithTx(tx pgx.Tx) *Service {
+	return &Service{q: sqlc.New(tx), pool: s.pool}
+}
+
+// InTx runs fn inside a single transaction; the *Service passed to fn is
+// bound to that transaction. The transaction commits when fn returns nil and
+// rolls back otherwise.
+func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
 // Country is a catalog wine country.
