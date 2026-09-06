@@ -22,9 +22,11 @@ go test ./cmd/... ./internal/...
 # unit only (skip testcontainers suites)
 go test -short ./cmd/... ./internal/...
 
-# with coverage
+# with coverage (hand-written code only)
 go test -count=1 -coverprofile=coverage.out -covermode=atomic ./cmd/... ./internal/...
-go tool cover -func coverage.out   # per-package + total
+# exclude generated sqlc and gomock packages before measuring:
+cat coverage.out | go run ./tools/coveragefilter > coverage-filtered.out
+go tool cover -func coverage-filtered.out   # per-package + total
 ```
 
 Notes:
@@ -32,8 +34,12 @@ Notes:
 - Prefer `./cmd/... ./internal/...` over `./...` — `clients/web/node_modules`
   can contain Go files that break coverage runs.
 - `-race` requires cgo (a C toolchain); on Windows without gcc, drop the flag.
-- Coverage gate: CI fails below `GO_COVERAGE_MIN` (currently 45%) in
-  `.github/workflows/test.yml`. Raise it as coverage improves.
+- Coverage policy: generated code — `internal/*/sqlc` query output and all
+  `*/mock` packages (gomock, generated via mockgen) — is excluded from the
+  gate by `tools/coveragefilter`. Everything hand-written counts.
+- Coverage gate: CI fails below `GO_COVERAGE_MIN` (currently 60%) in
+  `.github/workflows/test.yml`, applied to the filtered profile. Raise it as
+  coverage improves.
 
 ### Test helpers (`internal/platform/testenv`)
 

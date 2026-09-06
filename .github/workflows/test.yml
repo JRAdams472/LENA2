@@ -12,10 +12,10 @@ on:
 env:
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: dummy
   NEXT_PUBLIC_API_BASE_URL: /graphql
-  # Baseline total statement coverage; raise as coverage improves.
-  # ~40% is the floor measured without DB integration tests; CI runs the
-  # full suite (incl. testcontainers) which covers the generated sqlc code.
-  GO_COVERAGE_MIN: "40"
+  # Baseline total statement coverage measured on hand-written code only;
+  # generated sqlc and gomock packages are filtered out of the profile by
+  # tools/coveragefilter. Raise as coverage improves.
+  GO_COVERAGE_MIN: "60"
 
 jobs:
   go:
@@ -41,9 +41,12 @@ jobs:
       - name: Go test with coverage
         run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./cmd/... ./internal/...
 
+      - name: Filter generated code from coverage
+        run: go run ./tools/coveragefilter < coverage.out > coverage-filtered.out
+
       - name: Enforce coverage baseline
         run: |
-          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
+          total=$(go tool cover -func=coverage-filtered.out | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
           echo "Total statement coverage: ${total}% (minimum ${GO_COVERAGE_MIN}%)"
           awk -v t="$total" -v m="$GO_COVERAGE_MIN" 'BEGIN { exit !(t+0 >= m+0) }'
 
@@ -51,7 +54,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage
-          path: coverage.out
+          path: |
+            coverage.out
+            coverage-filtered.out
 
   web:
     runs-on: ubuntu-latest
