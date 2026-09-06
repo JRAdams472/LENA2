@@ -424,7 +424,7 @@ func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []in
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
 func NewGraphQLHandler(r *Resolver) echo.HandlerFunc {
-	parsed, err := graphql.ParseSchema(schema, r)
+	parsed, err := graphql.ParseSchema(schema, r, graphql.Tracer(newGraphQLTracer()))
 	if err != nil {
 		panic(err)
 	}

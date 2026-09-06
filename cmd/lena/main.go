@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/grocery"
@@ -23,6 +25,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
+	"github.com/JRAdams472/LENA2/internal/platform/telemetry"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
@@ -50,7 +53,18 @@ func main() {
 	}
 	defer pool.Close()
 
-	e := newServer(*cfg, pool, log)
+	tel, err := telemetry.Setup(context.Background(), cfg.ServiceName, cfg.OTLPEndpoint, pool)
+	if err != nil {
+		log.Error("telemetry setup failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		tel.Shutdown(ctx)
+	}()
+
+	e := newServer(*cfg, pool, log, tel)
 
 	go func() {
 		addr := ":" + cfg.Port
@@ -72,7 +86,7 @@ func main() {
 	}
 }
 
-func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Echo {
+func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) *echo.Echo {
 	identitySvc := identity.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
@@ -90,6 +104,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
+	e.Use(otelecho.Middleware(cfg.ServiceName))
 	e.Use(middleware.RequestID())
 
 	e.Use(middleware.CORSWithConfig(buildCORSConfig(cfg.CORSAllowedOrigins)))
@@ -101,9 +116,14 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 		LogError:   true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
 			requestID := c.Response().Header().Get(echo.HeaderXRequestID)
+			var traceID string
+			if sc := oteltrace.SpanContextFromContext(c.Request().Context()); sc.IsValid() {
+				traceID = sc.TraceID().String()
+			}
 			if v.Error == nil {
 				log.Info("request",
 					"request_id", requestID,
+					"trace_id", traceID,
 					"method", v.Method,
 					"uri", v.URI,
 					"status", v.Status,
@@ -112,6 +132,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 			} else {
 				log.Error("request",
 					"request_id", requestID,
+					"trace_id", traceID,
 					"method", v.Method,
 					"uri", v.URI,
 					"status", v.Status,
@@ -132,6 +153,11 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *echo.Ec
 		}
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	if tel != nil {
+		e.Use(telemetry.HTTPMetrics())
+		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()))
+	}
 
 	resolver := bff.NewResolver(grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
 	e.POST("/graphql", bff.NewGraphQLHandler(resolver), authenticator.Middleware())
