@@ -2,9 +2,10 @@ package bff
 
 import (
 	"context"
+	"strconv"
+
 	"github.com/JRAdams472/LENA2/internal/wine"
 	"github.com/graph-gophers/graphql-go"
-	"strconv"
 )
 
 // Bottle resolves a single wine bottle by ID.
@@ -41,7 +42,11 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &bottlePageResolver{wine: r.WineService, bottles: bottles, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	bc, err := loadBottleChildren(ctx, r.WineService, distinctIDs(bottles, func(b wine.Bottle) *int64 { return &b.BottleID }), false)
+	if err != nil {
+		return nil, err
+	}
+	return &bottlePageResolver{wine: r.WineService, bottles: bottles, bc: bc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // Types resolves all wine types.
@@ -89,9 +94,18 @@ func (r *Resolver) Regions(ctx context.Context, args struct{ CountryID graphql.I
 	if err != nil {
 		return nil, err
 	}
+	// All regions in this list share one country; fetch it once instead of
+	// once per region. On lookup failure the resolver falls back to a lazy
+	// per-region fetch.
+	var country *wine.Country
+	if len(regions) > 0 {
+		if c, err := r.WineService.GetCountryByID(ctx, countryID); err == nil {
+			country = &c
+		}
+	}
 	out := make([]*regionResolver, len(regions))
 	for i := range regions {
-		out[i] = &regionResolver{wine: r.WineService, r: regions[i]}
+		out[i] = &regionResolver{wine: r.WineService, r: regions[i], country: country}
 	}
 	return out, nil
 }
@@ -462,10 +476,12 @@ func (r *Resolver) RemoveBottleFlavorProfile(ctx context.Context, args struct {
 	return true, nil
 }
 
-// bottleResolver resolves Bottle fields.
+// bottleResolver resolves Bottle fields. When bc is non-nil its
+// batch-loaded maps are used instead of per-bottle service calls.
 type bottleResolver struct {
 	wine WineService
 	b    wine.Bottle
+	bc   *bottleChildren
 }
 
 func (r *bottleResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
@@ -499,9 +515,15 @@ func (r *bottleResolver) OakIntegration() *bool { return &r.b.OakIntegration }
 func (r *bottleResolver) BottleSize() string { return r.b.BottleSize }
 
 func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVarietyResolver, error) {
-	varieties, err := r.wine.ListBottleGrapeVarieties(ctx, r.b.BottleID)
-	if err != nil {
-		return nil, err
+	var varieties []wine.BottleGrapeVariety
+	if r.bc != nil {
+		varieties = r.bc.grapesBy[r.b.BottleID]
+	} else {
+		var err error
+		varieties, err = r.wine.ListBottleGrapeVarieties(ctx, r.b.BottleID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*bottleGrapeVarietyResolver, len(varieties))
 	for i := range varieties {
@@ -513,6 +535,7 @@ func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVari
 type bottlePageResolver struct {
 	wine     WineService
 	bottles  []wine.Bottle
+	bc       *bottleChildren
 	page     int32
 	pageSize int32
 	total    int32
@@ -521,7 +544,7 @@ type bottlePageResolver struct {
 func (r *bottlePageResolver) Items() []*bottleResolver {
 	out := make([]*bottleResolver, len(r.bottles))
 	for i := range r.bottles {
-		out[i] = &bottleResolver{wine: r.wine, b: r.bottles[i]}
+		out[i] = &bottleResolver{wine: r.wine, b: r.bottles[i], bc: r.bc}
 	}
 	return out
 }
@@ -550,10 +573,12 @@ func (r *countryResolver) IsoCode() *string { return nilIfEmpty(r.c.IsoCode) }
 
 func (r *countryResolver) Description() *string { return nilIfEmpty(r.c.Description) }
 
-// regionResolver resolves a wine region.
+// regionResolver resolves a wine region. When country is non-nil it is
+// used instead of a per-region lookup.
 type regionResolver struct {
-	wine WineService
-	r    wine.Region
+	wine    WineService
+	r       wine.Region
+	country *wine.Country
 }
 
 func (r *regionResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.r.RegionID, 10)) }
@@ -563,6 +588,9 @@ func (r *regionResolver) Name() string { return r.r.Name }
 func (r *regionResolver) Description() *string { return nilIfEmpty(r.r.Description) }
 
 func (r *regionResolver) Country(ctx context.Context) (*countryResolver, error) {
+	if r.country != nil {
+		return &countryResolver{c: *r.country}, nil
+	}
 	c, err := r.wine.GetCountryByID(ctx, r.r.CountryID)
 	if err != nil {
 		return nil, err
@@ -612,9 +640,15 @@ func (r *bottleGrapeVarietyResolver) Percentage() *int32 {
 }
 
 func (r *bottleResolver) FlavorProfiles(ctx context.Context) ([]*bottleFlavorProfileResolver, error) {
-	flavors, err := r.wine.ListBottleFlavorProfiles(ctx, r.b.BottleID)
-	if err != nil {
-		return nil, err
+	var flavors []wine.BottleFlavorProfile
+	if r.bc != nil {
+		flavors = r.bc.favorsBy[r.b.BottleID]
+	} else {
+		var err error
+		flavors, err = r.wine.ListBottleFlavorProfiles(ctx, r.b.BottleID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*bottleFlavorProfileResolver, len(flavors))
 	for i := range flavors {

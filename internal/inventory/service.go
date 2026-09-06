@@ -63,6 +63,19 @@ func (s *Service) ListBrands(ctx context.Context) ([]Brand, error) {
 	return out, nil
 }
 
+// GetBrandsByIDs returns a set of brands in a single query.
+func (s *Service) GetBrandsByIDs(ctx context.Context, brandIDs []int64) ([]Brand, error) {
+	rows, err := s.q.GetBrandsByIDs(ctx, brandIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get brands by ids: %w", err)
+	}
+	out := make([]Brand, len(rows))
+	for i := range rows {
+		out[i] = Brand{BrandID: rows[i].BrandID, Name: rows[i].Name, CreatedAt: rows[i].CreatedAt}
+	}
+	return out, nil
+}
+
 // UpdateBrand renames an existing brand.
 func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name string) (Brand, error) {
 	row, err := s.q.UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: brandID, Name: name})
@@ -114,6 +127,19 @@ func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	rows, err := s.q.ListCategories(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list categories: %w", err)
+	}
+	out := make([]Category, len(rows))
+	for i := range rows {
+		out[i] = toCategory(rows[i])
+	}
+	return out, nil
+}
+
+// GetCategoriesByIDs returns a set of categories in a single query.
+func (s *Service) GetCategoriesByIDs(ctx context.Context, categoryIDs []int64) ([]Category, error) {
+	rows, err := s.q.GetCategoriesByIDs(ctx, categoryIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get categories by ids: %w", err)
 	}
 	out := make([]Category, len(rows))
 	for i := range rows {
@@ -178,6 +204,19 @@ func (s *Service) GetItemByID(ctx context.Context, itemID int64) (Item, error) {
 		return Item{}, fmt.Errorf("get item by id: %w", err)
 	}
 	return toItem(row), nil
+}
+
+// GetItemsByIDs returns a set of items in a single query.
+func (s *Service) GetItemsByIDs(ctx context.Context, itemIDs []int64) ([]Item, error) {
+	rows, err := s.q.GetItemsByIDs(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get items by ids: %w", err)
+	}
+	out := make([]Item, len(rows))
+	for i := range rows {
+		out[i] = toItem(rows[i])
+	}
+	return out, nil
 }
 
 // ListItems returns a paginated list of items ordered by name.
@@ -430,6 +469,7 @@ func (s *Service) DeleteFoodNutrient(ctx context.Context, itemID, nutrientID int
 
 // FoodFlavor is a flavor profile attached to a catalog item.
 type FoodFlavor struct {
+	ItemID    int64
 	FlavorID  int64
 	Name      string
 	Intensity int16
@@ -461,6 +501,26 @@ func (s *Service) ListFoodFlavorsByItem(ctx context.Context, itemID int64) ([]Fo
 	out := make([]FoodFlavor, len(rows))
 	for i := range rows {
 		out[i] = toFoodFlavor(rows[i])
+		out[i].ItemID = itemID
+	}
+	return out, nil
+}
+
+// ListFoodFlavorsByItems returns the flavor profiles for a set of items in a
+// single query; each result carries the item it belongs to.
+func (s *Service) ListFoodFlavorsByItems(ctx context.Context, itemIDs []int64) ([]FoodFlavor, error) {
+	rows, err := s.q.ListFoodFlavorsByItems(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list food flavors by items: %w", err)
+	}
+	out := make([]FoodFlavor, len(rows))
+	for i := range rows {
+		out[i] = FoodFlavor{
+			ItemID:    rows[i].FoodID,
+			FlavorID:  rows[i].FlavorID,
+			Name:      rows[i].Name,
+			Intensity: rows[i].Intensity,
+		}
 	}
 	return out, nil
 }

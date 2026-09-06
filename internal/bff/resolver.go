@@ -4,13 +4,19 @@ import (
 	"context"
 	_ "embed"
 	"errors"
-	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/graph-gophers/graphql-go"
-	"github.com/labstack/echo/v4"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
+
+	"github.com/graph-gophers/graphql-go"
+	"github.com/labstack/echo/v4"
+
+	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
 //go:embed schema.graphqls
@@ -177,6 +183,244 @@ func (r *pageInfoResolver) PageNumber() int32 { return r.page }
 func (r *pageInfoResolver) PageSize() int32 { return r.pageSize }
 
 func (r *pageInfoResolver) TotalCount() int32 { return r.total }
+
+// distinctIDs collects the unique non-nil IDs produced by f, sorted so
+// generated queries are deterministic.
+func distinctIDs[T any](xs []T, f func(T) *int64) []int64 {
+	set := make(map[int64]bool)
+	for _, x := range xs {
+		if id := f(x); id != nil {
+			set[*id] = true
+		}
+	}
+	ids := make([]int64, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// itemChildren holds inventory rows batch-loaded for a list response so
+// nested item field resolvers do not issue a query per row. When a child
+// resolver's ch field is nil it falls back to lazy service calls.
+type itemChildren struct {
+	brands     map[int64]inventory.Brand
+	categories map[int64]inventory.Category
+	nutrients  map[int64][]inventory.FoodNutrient
+	flavors    map[int64][]inventory.FoodFlavor
+}
+
+// loadItems fetches a set of catalog items in one query, keyed by ID.
+func loadItems(ctx context.Context, inv InventoryService, itemIDs []int64) (map[int64]inventory.Item, error) {
+	items := make(map[int64]inventory.Item)
+	if len(itemIDs) == 0 {
+		return items, nil
+	}
+	rows, err := inv.GetItemsByIDs(ctx, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range rows {
+		items[it.ItemID] = it
+	}
+	return items, nil
+}
+
+// loadItemChildren batch-loads the brand, category, nutrient and flavor
+// rows referenced by items.
+func loadItemChildren(ctx context.Context, inv InventoryService, items []inventory.Item) (*itemChildren, error) {
+	ch := &itemChildren{
+		brands:     make(map[int64]inventory.Brand),
+		categories: make(map[int64]inventory.Category),
+		nutrients:  make(map[int64][]inventory.FoodNutrient),
+		flavors:    make(map[int64][]inventory.FoodFlavor),
+	}
+	if len(items) == 0 {
+		return ch, nil
+	}
+	itemIDs := make([]int64, len(items))
+	brandIDSet := make(map[int64]bool)
+	categoryIDSet := make(map[int64]bool)
+	for i, it := range items {
+		itemIDs[i] = it.ItemID
+		if it.BrandID != nil {
+			brandIDSet[*it.BrandID] = true
+		}
+		categoryIDSet[it.CategoryID] = true
+	}
+	brandIDs := make([]int64, 0, len(brandIDSet))
+	for id := range brandIDSet {
+		brandIDs = append(brandIDs, id)
+	}
+	slices.Sort(brandIDs)
+	categoryIDs := make([]int64, 0, len(categoryIDSet))
+	for id := range categoryIDSet {
+		categoryIDs = append(categoryIDs, id)
+	}
+	slices.Sort(categoryIDs)
+	slices.Sort(itemIDs)
+	if len(brandIDs) > 0 {
+		brands, err := inv.GetBrandsByIDs(ctx, brandIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range brands {
+			ch.brands[b.BrandID] = b
+		}
+	}
+	categories, err := inv.GetCategoriesByIDs(ctx, categoryIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range categories {
+		ch.categories[c.CategoryID] = c
+	}
+	nutrients, err := inv.ListFoodNutrientsByItems(ctx, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range nutrients {
+		ch.nutrients[n.ItemID] = append(ch.nutrients[n.ItemID], n)
+	}
+	flavors, err := inv.ListFoodFlavorsByItems(ctx, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range flavors {
+		ch.flavors[f.ItemID] = append(ch.flavors[f.ItemID], f)
+	}
+	return ch, nil
+}
+
+// recipeChildren holds recipe rows batch-loaded for a list response so
+// nested recipe field resolvers do not issue a query per row.
+type recipeChildren struct {
+	recipes      map[int64]recipe.Recipe
+	itemsBy      map[int64][]recipe.RecipeItem
+	stepsBy      map[int64][]recipe.RecipeStep
+	favorites    map[int64]bool
+	items        map[int64]inventory.Item
+	itemChildren *itemChildren
+}
+
+// loadRecipeChildren batch-loads the recipes, their items and steps, the
+// current user's favorite flags, and the catalog rows for every item those
+// recipes reference. The returned itemID set is merged into extraItemIDs so
+// callers can also resolve items referenced from elsewhere (e.g. meal slot
+// overrides) with the same maps.
+func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv InventoryService, userID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
+	rc := &recipeChildren{
+		recipes:   make(map[int64]recipe.Recipe),
+		itemsBy:   make(map[int64][]recipe.RecipeItem),
+		stepsBy:   make(map[int64][]recipe.RecipeStep),
+		favorites: make(map[int64]bool),
+	}
+	if len(recipeIDs) > 0 {
+		recipes, err := rec.GetRecipesByIDs(ctx, recipeIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, rcp := range recipes {
+			rc.recipes[rcp.RecipeID] = rcp
+		}
+		items, err := rec.ListRecipeItemsByRecipes(ctx, recipeIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, ri := range items {
+			rc.itemsBy[ri.RecipeID] = append(rc.itemsBy[ri.RecipeID], ri)
+		}
+		steps, err := rec.ListRecipeStepsByRecipes(ctx, recipeIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range steps {
+			rc.stepsBy[s.RecipeID] = append(rc.stepsBy[s.RecipeID], s)
+		}
+		favs, err := up.ListRecipeFavorites(ctx, userID, recipeIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range favs {
+			rc.favorites[f.RecipeID] = f.IsFavorite
+		}
+	}
+	itemIDSet := make(map[int64]bool)
+	for _, id := range extraItemIDs {
+		itemIDSet[id] = true
+	}
+	for _, items := range rc.itemsBy {
+		for _, ri := range items {
+			itemIDSet[ri.ItemID] = true
+		}
+	}
+	itemIDs := make([]int64, 0, len(itemIDSet))
+	for id := range itemIDSet {
+		itemIDs = append(itemIDs, id)
+	}
+	slices.Sort(itemIDs)
+	items, err := loadItems(ctx, inv, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	rc.items = items
+	list := make([]inventory.Item, 0, len(items))
+	for _, it := range items {
+		list = append(list, it)
+	}
+	ch, err := loadItemChildren(ctx, inv, list)
+	if err != nil {
+		return nil, err
+	}
+	rc.itemChildren = ch
+	return rc, nil
+}
+
+// bottleChildren holds wine rows batch-loaded for a list response so
+// nested bottle field resolvers do not issue a query per row.
+type bottleChildren struct {
+	bottles  map[int64]wine.Bottle
+	grapesBy map[int64][]wine.BottleGrapeVariety
+	favorsBy map[int64][]wine.BottleFlavorProfile
+}
+
+// loadBottleChildren batch-loads the bottles (when includeBottles is set),
+// grape varieties and flavor profiles for a set of bottle IDs.
+func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []int64, includeBottles bool) (*bottleChildren, error) {
+	bc := &bottleChildren{
+		bottles:  make(map[int64]wine.Bottle),
+		grapesBy: make(map[int64][]wine.BottleGrapeVariety),
+		favorsBy: make(map[int64][]wine.BottleFlavorProfile),
+	}
+	if len(bottleIDs) == 0 {
+		return bc, nil
+	}
+	if includeBottles {
+		bottles, err := wineSvc.GetBottlesByIDs(ctx, bottleIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range bottles {
+			bc.bottles[b.BottleID] = b
+		}
+	}
+	grapes, err := wineSvc.ListBottleGrapeVarietiesByBottles(ctx, bottleIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range grapes {
+		bc.grapesBy[g.BottleID] = append(bc.grapesBy[g.BottleID], g)
+	}
+	favors, err := wineSvc.ListBottleFlavorProfilesByBottles(ctx, bottleIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range favors {
+		bc.favorsBy[f.BottleID] = append(bc.favorsBy[f.BottleID], f)
+	}
+	return bc, nil
+}
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
 func NewGraphQLHandler(r *Resolver) echo.HandlerFunc {

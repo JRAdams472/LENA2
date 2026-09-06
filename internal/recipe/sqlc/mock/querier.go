@@ -231,6 +231,21 @@ func (mr *MockQuerierMockRecorder) ListRecipeSteps(ctx, recipeID any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeSteps", reflect.TypeOf((*MockQuerier)(nil).ListRecipeSteps), ctx, recipeID)
 }
 
+// ListRecipeStepsByRecipes mocks base method.
+func (m *MockQuerier) ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]sqlc.RecipeRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeStepsByRecipes", ctx, recipeIds)
+	ret0, _ := ret[0].([]sqlc.RecipeRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeStepsByRecipes indicates an expected call of ListRecipeStepsByRecipes.
+func (mr *MockQuerierMockRecorder) ListRecipeStepsByRecipes(ctx, recipeIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeStepsByRecipes", reflect.TypeOf((*MockQuerier)(nil).ListRecipeStepsByRecipes), ctx, recipeIds)
+}
+
 // ListRecipes mocks base method.
 func (m *MockQuerier) ListRecipes(ctx context.Context, arg sqlc.ListRecipesParams) ([]sqlc.RecipeRecipe, error) {
 	m.ctrl.T.Helper()

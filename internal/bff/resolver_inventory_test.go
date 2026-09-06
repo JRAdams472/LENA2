@@ -269,6 +269,9 @@ func TestResolver_Inventory_Items(t *testing.T) {
 			{ItemID: 2, Name: "Eggs"},
 		}, nil)
 		inv.EXPECT().CountItems(gomock.Any()).Return(int64(5), nil)
+		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{0}).Return(nil, nil)
+		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
+		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Items(invCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)

@@ -140,6 +140,24 @@ func (s *Service) ListGroceryListItems(ctx context.Context, groceryListID int64)
 	return out, nil
 }
 
+// ListGroceryListItemsByLists returns all items across a set of lists in a
+// single query.
+func (s *Service) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64) ([]GroceryListItem, error) {
+	rows, err := s.q.ListGroceryListItemsByLists(ctx, groceryListIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list grocery list items by lists: %w", err)
+	}
+	out := make([]GroceryListItem, len(rows))
+	for i := range rows {
+		gli, err := toGroceryListItem(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list grocery list items by lists: %w", err)
+		}
+		out[i] = gli
+	}
+	return out, nil
+}
+
 // GetGroceryListItemByID returns an item by its primary key.
 func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID int64) (GroceryListItem, error) {
 	row, err := s.q.GetGroceryListItemByID(ctx, groceryListItemID)

@@ -328,6 +328,67 @@ func (q *Queries) GetBrandByID(ctx context.Context, brandID int64) (InventoryBra
 	return i, err
 }
 
+const getBrandsByIDs = `-- name: GetBrandsByIDs :many
+SELECT brand_id, name, created_at
+FROM inventory.brand
+WHERE brand_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error) {
+	rows, err := q.db.Query(ctx, getBrandsByIDs, brandIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryBrand{}
+	for rows.Next() {
+		var i InventoryBrand
+		if err := rows.Scan(&i.BrandID, &i.Name, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCategoriesByIDs = `-- name: GetCategoriesByIDs :many
+SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.category
+WHERE category_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]InventoryCategory, error) {
+	rows, err := q.db.Query(ctx, getCategoriesByIDs, categoryIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryCategory{}
+	for rows.Next() {
+		var i InventoryCategory
+		if err := rows.Scan(
+			&i.CategoryID,
+			&i.Name,
+			&i.Description,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCategoryByID = `-- name: GetCategoryByID :one
 SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
 FROM inventory.category
@@ -394,6 +455,44 @@ func (q *Queries) GetItemByID(ctx context.Context, itemID int64) (InventoryItem,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getItemsByIDs = `-- name: GetItemsByIDs :many
+SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
+FROM inventory.item
+WHERE item_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, getItemsByIDs, itemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.Name,
+			&i.BrandID,
+			&i.Upc12,
+			&i.Upc14,
+			&i.CategoryID,
+			&i.Unit,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getNutrientTypeByID = `-- name: GetNutrientTypeByID :one
@@ -533,6 +632,46 @@ func (q *Queries) ListFoodFlavorsByItem(ctx context.Context, foodID int64) ([]Li
 	for rows.Next() {
 		var i ListFoodFlavorsByItemRow
 		if err := rows.Scan(&i.FlavorID, &i.Name, &i.Intensity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFoodFlavorsByItems = `-- name: ListFoodFlavorsByItems :many
+SELECT ff.food_id, fp.flavor_id, fp.name, ff.intensity
+FROM inventory.food_flavor ff
+JOIN inventory.flavor_profile fp ON ff.flavor_id = fp.flavor_id
+WHERE ff.food_id = ANY($1::bigint[])
+ORDER BY fp.name
+`
+
+type ListFoodFlavorsByItemsRow struct {
+	FoodID    int64  `json:"food_id"`
+	FlavorID  int64  `json:"flavor_id"`
+	Name      string `json:"name"`
+	Intensity int16  `json:"intensity"`
+}
+
+func (q *Queries) ListFoodFlavorsByItems(ctx context.Context, itemIds []int64) ([]ListFoodFlavorsByItemsRow, error) {
+	rows, err := q.db.Query(ctx, listFoodFlavorsByItems, itemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFoodFlavorsByItemsRow{}
+	for rows.Next() {
+		var i ListFoodFlavorsByItemsRow
+		if err := rows.Scan(
+			&i.FoodID,
+			&i.FlavorID,
+			&i.Name,
+			&i.Intensity,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

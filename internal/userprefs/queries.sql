@@ -92,6 +92,11 @@ SELECT *
 FROM recipe.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = $2;
 
+-- name: ListRecipeFavorites :many
+SELECT *
+FROM recipe.user_recipe_preference
+WHERE user_id = $1 AND recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[]);
+
 -- name: DeleteRecipeFavorite :exec
 DELETE FROM recipe.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = $2;

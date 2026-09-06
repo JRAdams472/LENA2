@@ -50,6 +50,12 @@ FROM mealplan.meal_slot
 WHERE meal_plan_id = $1
 ORDER BY day_of_week, meal_type;
 
+-- name: ListMealSlotsByPlans :many
+SELECT *
+FROM mealplan.meal_slot
+WHERE meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[])
+ORDER BY day_of_week, meal_type;
+
 -- name: UpdateMealSlot :exec
 UPDATE mealplan.meal_slot
 SET day_of_week      = $2,
@@ -81,6 +87,13 @@ SELECT msi.*
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
 WHERE ms.meal_plan_id = $1
+ORDER BY msi.slot_item_id;
+
+-- name: ListMealSlotItemsByPlans :many
+SELECT msi.*
+FROM mealplan.meal_slot_item msi
+JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
+WHERE ms.meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[])
 ORDER BY msi.slot_item_id;
 
 -- name: DeleteMealSlotItem :exec

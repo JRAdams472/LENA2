@@ -231,6 +231,8 @@ func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 		{BottleID: 1, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020, BottleSize: "750ml"},
 	}, nil)
 	m.EXPECT().CountBottles(gomock.Any()).Return(int64(5), nil)
+	m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
+	m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
 
 	res, err := r.Bottles(wineCtx(), struct {
 		Page     int32

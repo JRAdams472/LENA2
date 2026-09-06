@@ -497,6 +497,50 @@ func (q *Queries) GetBottleByID(ctx context.Context, bottleID int64) (WineBottle
 	return i, err
 }
 
+const getBottlesByIDs = `-- name: GetBottlesByIDs :many
+SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
+FROM wine.bottle
+WHERE bottle_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetBottlesByIDs(ctx context.Context, bottleIds []int64) ([]WineBottle, error) {
+	rows, err := q.db.Query(ctx, getBottlesByIDs, bottleIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WineBottle{}
+	for rows.Next() {
+		var i WineBottle
+		if err := rows.Scan(
+			&i.BottleID,
+			&i.TypeID,
+			&i.CountryID,
+			&i.RegionID,
+			&i.VintageYear,
+			&i.Vineyard,
+			&i.Abv,
+			&i.Acidity,
+			&i.TanninLevel,
+			&i.Body,
+			&i.Sweetness,
+			&i.OakIntegration,
+			&i.BottleSize,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCountryByID = `-- name: GetCountryByID :one
 SELECT country_id, name, iso_code, description, is_active, created_by, created_at, updated_by, updated_at
 FROM wine.country
@@ -665,6 +709,46 @@ func (q *Queries) ListBottleFlavorProfiles(ctx context.Context, bottleID int64) 
 	return items, nil
 }
 
+const listBottleFlavorProfilesByBottles = `-- name: ListBottleFlavorProfilesByBottles :many
+SELECT bfp.bottle_id, fp.flavor_profile_id, fp.name, bfp.intensity
+FROM wine.bottle_flavor_profile bfp
+JOIN wine.flavor_profile fp ON bfp.flavor_profile_id = fp.flavor_profile_id
+WHERE bfp.bottle_id = ANY($1::bigint[])
+ORDER BY fp.name
+`
+
+type ListBottleFlavorProfilesByBottlesRow struct {
+	BottleID        int64  `json:"bottle_id"`
+	FlavorProfileID int64  `json:"flavor_profile_id"`
+	Name            string `json:"name"`
+	Intensity       int16  `json:"intensity"`
+}
+
+func (q *Queries) ListBottleFlavorProfilesByBottles(ctx context.Context, bottleIds []int64) ([]ListBottleFlavorProfilesByBottlesRow, error) {
+	rows, err := q.db.Query(ctx, listBottleFlavorProfilesByBottles, bottleIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBottleFlavorProfilesByBottlesRow{}
+	for rows.Next() {
+		var i ListBottleFlavorProfilesByBottlesRow
+		if err := rows.Scan(
+			&i.BottleID,
+			&i.FlavorProfileID,
+			&i.Name,
+			&i.Intensity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listBottleGrapeVarieties = `-- name: ListBottleGrapeVarieties :many
 SELECT gv.grape_variety_id, gv.name, bgv.percentage
 FROM wine.bottle_grape_variety bgv
@@ -689,6 +773,46 @@ func (q *Queries) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) 
 	for rows.Next() {
 		var i ListBottleGrapeVarietiesRow
 		if err := rows.Scan(&i.GrapeVarietyID, &i.Name, &i.Percentage); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBottleGrapeVarietiesByBottles = `-- name: ListBottleGrapeVarietiesByBottles :many
+SELECT bgv.bottle_id, gv.grape_variety_id, gv.name, bgv.percentage
+FROM wine.bottle_grape_variety bgv
+JOIN wine.grape_variety gv ON bgv.grape_variety_id = gv.grape_variety_id
+WHERE bgv.bottle_id = ANY($1::bigint[])
+ORDER BY gv.name
+`
+
+type ListBottleGrapeVarietiesByBottlesRow struct {
+	BottleID       int64       `json:"bottle_id"`
+	GrapeVarietyID int64       `json:"grape_variety_id"`
+	Name           string      `json:"name"`
+	Percentage     pgtype.Int2 `json:"percentage"`
+}
+
+func (q *Queries) ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIds []int64) ([]ListBottleGrapeVarietiesByBottlesRow, error) {
+	rows, err := q.db.Query(ctx, listBottleGrapeVarietiesByBottles, bottleIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBottleGrapeVarietiesByBottlesRow{}
+	for rows.Next() {
+		var i ListBottleGrapeVarietiesByBottlesRow
+		if err := rows.Scan(
+			&i.BottleID,
+			&i.GrapeVarietyID,
+			&i.Name,
+			&i.Percentage,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -3,11 +3,13 @@ package bff
 import (
 	"context"
 	"errors"
+	"strconv"
+
+	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/jackc/pgx/v5"
-	"strconv"
 )
 
 // Recipe resolves a single recipe by ID.
@@ -46,7 +48,11 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID }), nil)
+	if err != nil {
+		return nil, err
+	}
+	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // parseRecipeChildren converts GraphQL recipe items/steps into service
@@ -193,13 +199,15 @@ func (r *Resolver) SetRecipeFavorite(ctx context.Context, args struct {
 	return args.IsFavorite, nil
 }
 
-// recipeResolver resolves Recipe fields.
+// recipeResolver resolves Recipe fields. When rc is non-nil its
+// batch-loaded maps are used instead of per-recipe service calls.
 type recipeResolver struct {
 	inv    InventoryService
 	rec    RecipeService
 	up     UserPrefsService
 	user   currentuser.User
 	recipe recipe.Recipe
+	rc     *recipeChildren
 }
 
 func (r *recipeResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.recipe.RecipeID, 10)) }
@@ -215,21 +223,37 @@ func (r *recipeResolver) PrepTimeMinutes() *int32 { return r.recipe.PrepTimeMinu
 func (r *recipeResolver) CookTimeMinutes() *int32 { return r.recipe.CookTimeMinutes }
 
 func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, error) {
-	items, err := r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
-	if err != nil {
-		return nil, err
+	var items []recipe.RecipeItem
+	var itemsByID map[int64]inventory.Item
+	var ch *itemChildren
+	if r.rc != nil {
+		items = r.rc.itemsBy[r.recipe.RecipeID]
+		itemsByID = r.rc.items
+		ch = r.rc.itemChildren
+	} else {
+		var err error
+		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*recipeItemResolver, len(items))
 	for i := range items {
-		out[i] = &recipeItemResolver{inv: r.inv, item: items[i]}
+		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch}
 	}
 	return out, nil
 }
 
 func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, error) {
-	steps, err := r.rec.ListRecipeSteps(ctx, r.recipe.RecipeID)
-	if err != nil {
-		return nil, err
+	var steps []recipe.RecipeStep
+	if r.rc != nil {
+		steps = r.rc.stepsBy[r.recipe.RecipeID]
+	} else {
+		var err error
+		steps, err = r.rec.ListRecipeSteps(ctx, r.recipe.RecipeID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*recipeStepResolver, len(steps))
 	for i := range steps {
@@ -239,6 +263,9 @@ func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, erro
 }
 
 func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
+	if r.rc != nil {
+		return r.rc.favorites[r.recipe.RecipeID], nil
+	}
 	fav, err := r.up.GetRecipeFavorite(ctx, r.user.UserID, r.recipe.RecipeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -250,11 +277,20 @@ func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
 }
 
 type recipeItemResolver struct {
-	inv  InventoryService
-	item recipe.RecipeItem
+	inv   InventoryService
+	item  recipe.RecipeItem
+	items map[int64]inventory.Item
+	ch    *itemChildren
 }
 
 func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	if r.items != nil {
+		it, ok := r.items[r.item.ItemID]
+		if !ok {
+			return nil, nil
+		}
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+	}
 	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
 	if err != nil {
 		return nil, err
@@ -282,6 +318,7 @@ type recipePageResolver struct {
 	up       UserPrefsService
 	user     currentuser.User
 	recipes  []recipe.Recipe
+	rc       *recipeChildren
 	page     int32
 	pageSize int32
 	total    int32
@@ -290,7 +327,7 @@ type recipePageResolver struct {
 func (r *recipePageResolver) Items() []*recipeResolver {
 	out := make([]*recipeResolver, len(r.recipes))
 	for i := range r.recipes {
-		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipes[i]}
+		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipes[i], rc: r.rc}
 	}
 	return out
 }

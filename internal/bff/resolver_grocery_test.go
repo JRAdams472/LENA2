@@ -82,6 +82,7 @@ func TestResolver_GroceryLists_Happy(t *testing.T) {
 	// page=2, pageSize=10 -> limit=10, offset=10
 	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(10)).Return(lists, nil)
 	g.EXPECT().CountGroceryLists(gomock.Any(), grocUserID).Return(int64(5), nil)
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11, 12}).Return(nil, nil)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32

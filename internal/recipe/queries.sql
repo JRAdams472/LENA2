@@ -76,6 +76,12 @@ FROM recipe.recipe_step
 WHERE recipe_id = $1
 ORDER BY step_number;
 
+-- name: ListRecipeStepsByRecipes :many
+SELECT *
+FROM recipe.recipe_step
+WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
+ORDER BY step_number;
+
 -- name: UpdateRecipeStep :exec
 UPDATE recipe.recipe_step
 SET step_number = $2,

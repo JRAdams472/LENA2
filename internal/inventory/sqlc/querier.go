@@ -25,14 +25,18 @@ type Querier interface {
 	DeleteItem(ctx context.Context, itemID int64) error
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
+	GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error)
+	GetCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]InventoryCategory, error)
 	GetCategoryByID(ctx context.Context, categoryID int64) (InventoryCategory, error)
 	GetFlavorProfileByID(ctx context.Context, flavorID int64) (InventoryFlavorProfile, error)
 	GetItemByID(ctx context.Context, itemID int64) (InventoryItem, error)
+	GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	ListCategories(ctx context.Context) ([]InventoryCategory, error)
 	ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProfile, error)
 	ListFoodFlavorsByItem(ctx context.Context, foodID int64) ([]ListFoodFlavorsByItemRow, error)
+	ListFoodFlavorsByItems(ctx context.Context, itemIds []int64) ([]ListFoodFlavorsByItemsRow, error)
 	ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error)
 	ListFoodNutrientsByItems(ctx context.Context, itemIds []int64) ([]ListFoodNutrientsByItemsRow, error)
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)

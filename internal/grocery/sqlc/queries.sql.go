@@ -224,6 +224,46 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, groceryListID int64)
 	return items, nil
 }
 
+const listGroceryListItemsByLists = `-- name: ListGroceryListItemsByLists :many
+SELECT grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, unit_of_measure, source, is_checked, created_by, created_at, updated_by, updated_at
+FROM grocery.grocery_list_item
+WHERE grocery_list_id = ANY($1::bigint[])
+ORDER BY grocery_list_item_id
+`
+
+func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, groceryListIds []int64) ([]GroceryGroceryListItem, error) {
+	rows, err := q.db.Query(ctx, listGroceryListItemsByLists, groceryListIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroceryGroceryListItem{}
+	for rows.Next() {
+		var i GroceryGroceryListItem
+		if err := rows.Scan(
+			&i.GroceryListItemID,
+			&i.GroceryListID,
+			&i.ItemID,
+			&i.ManualItemName,
+			&i.QuantityNeeded,
+			&i.UnitOfMeasure,
+			&i.Source,
+			&i.IsChecked,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGroceryLists = `-- name: ListGroceryLists :many
 SELECT grocery_list_id, user_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at
 FROM grocery.grocery_list

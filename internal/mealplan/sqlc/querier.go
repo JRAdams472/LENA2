@@ -21,6 +21,8 @@ type Querier interface {
 	ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([]MealplanMealPlan, error)
 	ListMealSlotItems(ctx context.Context, slotID int64) ([]MealplanMealSlotItem, error)
 	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlotItem, error)
+	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlotItem, error)
+	ListMealSlotsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlot, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlot, error)
 	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) error
 	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error

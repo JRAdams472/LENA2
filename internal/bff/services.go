@@ -22,6 +22,7 @@ type GroceryService interface {
 	DeleteGroceryListItem(ctx context.Context, groceryListItemID int64) error
 	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, by string) (grocery.GroceryListItem, error)
 	ListGroceryListItems(ctx context.Context, groceryListID int64) ([]grocery.GroceryListItem, error)
+	ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64) ([]grocery.GroceryListItem, error)
 }
 
 var _ GroceryService = (*grocery.Service)(nil)
@@ -49,6 +50,10 @@ type InventoryService interface {
 	ListFoodNutrientsByItem(ctx context.Context, itemID int64) ([]inventory.FoodNutrient, error)
 	ListFoodNutrientsByItems(ctx context.Context, itemIDs []int64) ([]inventory.FoodNutrient, error)
 	ListFoodFlavorsByItem(ctx context.Context, itemID int64) ([]inventory.FoodFlavor, error)
+	ListFoodFlavorsByItems(ctx context.Context, itemIDs []int64) ([]inventory.FoodFlavor, error)
+	GetItemsByIDs(ctx context.Context, itemIDs []int64) ([]inventory.Item, error)
+	GetBrandsByIDs(ctx context.Context, brandIDs []int64) ([]inventory.Brand, error)
+	GetCategoriesByIDs(ctx context.Context, categoryIDs []int64) ([]inventory.Category, error)
 	UpdateItem(ctx context.Context, itemID int64, arg inventory.Item, by string) error
 	DeleteItem(ctx context.Context, itemID int64) error
 	UpdateBrand(ctx context.Context, brandID int64, name string) (inventory.Brand, error)
@@ -71,8 +76,10 @@ type MealPlanService interface {
 	ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error)
 	CountMealPlans(ctx context.Context, userID int64) (int64, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]mealplan.MealSlot, error)
+	ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64) ([]mealplan.MealSlot, error)
 	ListMealSlotItems(ctx context.Context, slotID int64) ([]mealplan.MealSlotItem, error)
 	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64) ([]mealplan.MealSlotItem, error)
 	CreateMealPlan(ctx context.Context, arg mealplan.MealPlan, by string) (mealplan.MealPlan, error)
 	UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error
 	DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error
@@ -100,6 +107,7 @@ type RecipeService interface {
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]recipe.RecipeItem, error)
 	RemoveRecipeItem(ctx context.Context, recipeID, itemID int64) error
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]recipe.RecipeStep, error)
+	ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int64) ([]recipe.RecipeStep, error)
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipe(ctx context.Context, recipeID int64) error
 }
@@ -117,6 +125,7 @@ type UserPrefsService interface {
 	DeleteUserItem(ctx context.Context, userItemID, userID int64) error
 	UpsertUserBottle(ctx context.Context, arg userprefs.UserBottle, by string) (userprefs.UserBottle, error)
 	GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (userprefs.RecipeFavorite, error)
+	ListRecipeFavorites(ctx context.Context, userID int64, recipeIDs []int64) ([]userprefs.RecipeFavorite, error)
 }
 
 var _ UserPrefsService = (*userprefs.Service)(nil)
@@ -146,7 +155,10 @@ type WineService interface {
 	AddBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64, intensity int16, by string) (wine.BottleFlavorProfile, error)
 	RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64) error
 	ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]wine.BottleGrapeVariety, error)
+	ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIDs []int64) ([]wine.BottleGrapeVariety, error)
 	ListBottleFlavorProfiles(ctx context.Context, bottleID int64) ([]wine.BottleFlavorProfile, error)
+	ListBottleFlavorProfilesByBottles(ctx context.Context, bottleIDs []int64) ([]wine.BottleFlavorProfile, error)
+	GetBottlesByIDs(ctx context.Context, bottleIDs []int64) ([]wine.Bottle, error)
 	CreateCountry(ctx context.Context, name, isoCode, description, by string) (wine.Country, error)
 	GetCountryByID(ctx context.Context, countryID int64) (wine.Country, error)
 	UpdateCountry(ctx context.Context, countryID int64, name, isoCode, description string, isActive bool, by string) (wine.Country, error)

@@ -153,6 +153,19 @@ func (s *Service) ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([
 	return out, nil
 }
 
+// ListMealSlotsByPlans returns all slots for a set of plans in a single query.
+func (s *Service) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64) ([]MealSlot, error) {
+	rows, err := s.q.ListMealSlotsByPlans(ctx, mealPlanIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list meal slots by plans: %w", err)
+	}
+	out := make([]MealSlot, len(rows))
+	for i := range rows {
+		out[i] = toMealSlot(rows[i])
+	}
+	return out, nil
+}
+
 // UpdateMealSlot updates a slot's recipe, servings or note.
 func (s *Service) UpdateMealSlot(ctx context.Context, slotID int64, arg MealSlot, by string) error {
 	return s.q.UpdateMealSlot(ctx, sqlc.UpdateMealSlotParams{
@@ -221,6 +234,16 @@ func (s *Service) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64)
 	rows, err := s.q.ListMealSlotItemsByPlan(ctx, mealPlanID)
 	if err != nil {
 		return nil, fmt.Errorf("list meal slot items by plan: %w", err)
+	}
+	return toMealSlotItems(rows)
+}
+
+// ListMealSlotItemsByPlans returns all item overrides across every slot of a
+// set of plans in a single query.
+func (s *Service) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64) ([]MealSlotItem, error) {
+	rows, err := s.q.ListMealSlotItemsByPlans(ctx, mealPlanIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list meal slot items by plans: %w", err)
 	}
 	return toMealSlotItems(rows)
 }

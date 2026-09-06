@@ -158,6 +158,21 @@ func (mr *MockQuerierMockRecorder) GetUserItemByID(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByID", reflect.TypeOf((*MockQuerier)(nil).GetUserItemByID), ctx, arg)
 }
 
+// ListRecipeFavorites mocks base method.
+func (m *MockQuerier) ListRecipeFavorites(ctx context.Context, arg sqlc.ListRecipeFavoritesParams) ([]sqlc.RecipeUserRecipePreference, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeFavorites", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.RecipeUserRecipePreference)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeFavorites indicates an expected call of ListRecipeFavorites.
+func (mr *MockQuerierMockRecorder) ListRecipeFavorites(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeFavorites", reflect.TypeOf((*MockQuerier)(nil).ListRecipeFavorites), ctx, arg)
+}
+
 // ListUserBottles mocks base method.
 func (m *MockQuerier) ListUserBottles(ctx context.Context, arg sqlc.ListUserBottlesParams) ([]sqlc.WineUserBottle, error) {
 	m.ctrl.T.Helper()
