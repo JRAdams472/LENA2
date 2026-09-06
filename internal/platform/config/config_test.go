@@ -27,6 +27,18 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, "postgres://user:pass@localhost:5432/db", cfg.DatabaseURL)
 	assert.Equal(t, "client-id", cfg.GoogleClientID)
 	assert.Equal(t, "aud1,aud2", cfg.AuthAudiences)
+	assert.Empty(t, cfg.AdminEmails)
+}
+
+// TestLoadOptionalGoogleClientID asserts GOOGLE_CLIENT_ID is optional: it is
+// only consumed by clients, not by server-side audience validation.
+func TestLoadOptionalGoogleClientID(t *testing.T) {
+	t.Setenv("LENA_DATABASE_URL", "postgres://user:pass@localhost:5432/db")
+	t.Setenv("LENA_AUTH_AUDIENCES", "aud1")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.GoogleClientID)
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -51,11 +63,6 @@ func TestLoadMissingRequired(t *testing.T) {
 	}{
 		{"missing all", map[string]string{}},
 		{"missing database url", map[string]string{
-			"LENA_GOOGLE_CLIENT_ID": "id",
-			"LENA_AUTH_AUDIENCES":   "aud",
-		}},
-		{"missing google client id", map[string]string{
-			"LENA_DATABASE_URL":   "postgres://x",
 			"LENA_AUTH_AUDIENCES": "aud",
 		}},
 		{"missing auth audiences", map[string]string{
