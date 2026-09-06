@@ -20,6 +20,14 @@ func newIntegrationService(t *testing.T, ctx context.Context) *Service {
 	return NewService(pool)
 }
 
+// unitID returns the id of a seeded unit by name or abbreviation.
+func unitID(t *testing.T, ctx context.Context, svc *Service, name string) int64 {
+	t.Helper()
+	u, err := svc.GetUnitByName(ctx, name)
+	require.NoError(t, err, "unit %q should be seeded by migration 0012", name)
+	return u.UnitID
+}
+
 func TestIntegrationBrandCRUD(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -125,7 +133,7 @@ func TestIntegrationItemCRUD(t *testing.T) {
 		BrandID:    &brand.BrandID,
 		Upc12:      "123456789012",
 		CategoryID: cat.CategoryID,
-		Unit:       "g",
+		UnitID:     unitID(t, ctx, svc, "g"),
 	}, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, item.ItemID)
@@ -148,22 +156,23 @@ func TestIntegrationItemCRUD(t *testing.T) {
 	}
 	assert.True(t, found)
 
+	ozID := unitID(t, ctx, svc, "oz")
 	require.NoError(t, svc.UpdateItem(ctx, item.ItemID, Item{
 		Name:       "IT Item Beta",
 		BrandID:    &brand.BrandID,
 		CategoryID: cat.CategoryID,
-		Unit:       "oz",
+		UnitID:     ozID,
 	}, itBy))
 	got, err = svc.GetItemByID(ctx, item.ItemID)
 	require.NoError(t, err)
 	assert.Equal(t, "IT Item Beta", got.Name)
-	assert.Equal(t, "oz", got.Unit)
+	assert.Equal(t, ozID, got.UnitID)
 
 	// FK violation: item referencing a non-existent category.
 	_, err = svc.CreateItem(ctx, Item{
 		Name:       "IT Item BadCat",
 		CategoryID: 99999999,
-		Unit:       "g",
+		UnitID:     unitID(t, ctx, svc, "g"),
 	}, itBy)
 	assert.Error(t, err, "item with non-existent category_id should fail")
 
@@ -256,7 +265,7 @@ func TestIntegrationFoodJunctions(t *testing.T) {
 	item, err := svc.CreateItem(ctx, Item{
 		Name:       "IT Junction Item",
 		CategoryID: cat.CategoryID,
-		Unit:       "g",
+		UnitID:     unitID(t, ctx, svc, "g"),
 	}, itBy)
 	require.NoError(t, err)
 	nt, err := svc.CreateNutrientType(ctx, "IT Junction Nutrient", "mg")
@@ -312,18 +321,20 @@ func TestIntegrationIngredientCRUD(t *testing.T) {
 	cat, err := svc.CreateCategory(ctx, "IT Ingredient Category", "", itBy)
 	require.NoError(t, err)
 
+	gID := unitID(t, ctx, svc, "g")
 	in, err := svc.CreateIngredient(ctx, Ingredient{
-		Name:        "IT Ingredient Alpha",
-		CategoryID:  &cat.CategoryID,
-		DefaultUnit: "g",
-		IsActive:    true,
+		Name:          "IT Ingredient Alpha",
+		CategoryID:    &cat.CategoryID,
+		DefaultUnitID: &gID,
+		IsActive:      true,
 	}, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, in.IngredientID)
 	assert.Equal(t, "IT Ingredient Alpha", in.Name)
 	require.NotNil(t, in.CategoryID)
 	assert.Equal(t, cat.CategoryID, *in.CategoryID)
-	assert.Equal(t, "g", in.DefaultUnit)
+	require.NotNil(t, in.DefaultUnitID)
+	assert.Equal(t, gID, *in.DefaultUnitID)
 
 	got, err := svc.GetIngredientByID(ctx, in.IngredientID)
 	require.NoError(t, err)
@@ -333,10 +344,11 @@ func TestIntegrationIngredientCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, ins, 1)
 
+	kgID := unitID(t, ctx, svc, "kg")
 	updated, err := svc.UpdateIngredient(ctx, in.IngredientID, Ingredient{
-		Name:        "IT Ingredient Beta",
-		DefaultUnit: "kg",
-		IsActive:    false,
+		Name:          "IT Ingredient Beta",
+		DefaultUnitID: &kgID,
+		IsActive:      false,
 	}, itBy)
 	require.NoError(t, err)
 	assert.Equal(t, "IT Ingredient Beta", updated.Name)

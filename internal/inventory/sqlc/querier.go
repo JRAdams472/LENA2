@@ -19,6 +19,7 @@ type Querier interface {
 	CreateIngredient(ctx context.Context, arg CreateIngredientParams) (InventoryIngredient, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (InventoryItem, error)
 	CreateNutrientType(ctx context.Context, arg CreateNutrientTypeParams) (InventoryNutrientType, error)
+	CreateUnit(ctx context.Context, arg CreateUnitParams) (InventoryUnit, error)
 	DeleteBrand(ctx context.Context, brandID int64) error
 	DeleteCategory(ctx context.Context, categoryID int64) error
 	DeleteFlavorProfile(ctx context.Context, flavorID int64) error
@@ -37,6 +38,9 @@ type Querier interface {
 	GetItemByID(ctx context.Context, itemID int64) (InventoryItem, error)
 	GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
+	GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit, error)
+	GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error)
+	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	ListCategories(ctx context.Context) ([]InventoryCategory, error)
 	ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProfile, error)
@@ -47,6 +51,7 @@ type Querier interface {
 	ListIngredients(ctx context.Context, arg ListIngredientsParams) ([]InventoryIngredient, error)
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
+	ListUnits(ctx context.Context) ([]InventoryUnit, error)
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)
 	UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfileParams) (InventoryFlavorProfile, error)

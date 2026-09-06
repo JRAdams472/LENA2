@@ -57,9 +57,9 @@ func (q *Queries) AddMealSlot(ctx context.Context, arg AddMealSlotParams) (Mealp
 }
 
 const addMealSlotItem = `-- name: AddMealSlotItem :one
-INSERT INTO mealplan.meal_slot_item (slot_id, item_id, ingredient_id, quantity, unit, is_from_recipe, created_by, updated_by)
+INSERT INTO mealplan.meal_slot_item (slot_id, item_id, ingredient_id, quantity, unit_id, is_from_recipe, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING slot_item_id, slot_id, item_id, quantity, unit, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id
+RETURNING slot_item_id, slot_id, item_id, quantity, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
 `
 
 type AddMealSlotItemParams struct {
@@ -67,7 +67,7 @@ type AddMealSlotItemParams struct {
 	ItemID       pgtype.Int8    `json:"item_id"`
 	IngredientID pgtype.Int8    `json:"ingredient_id"`
 	Quantity     pgtype.Numeric `json:"quantity"`
-	Unit         string         `json:"unit"`
+	UnitID       int64          `json:"unit_id"`
 	IsFromRecipe bool           `json:"is_from_recipe"`
 	CreatedBy    string         `json:"created_by"`
 	UpdatedBy    pgtype.Text    `json:"updated_by"`
@@ -79,7 +79,7 @@ func (q *Queries) AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams
 		arg.ItemID,
 		arg.IngredientID,
 		arg.Quantity,
-		arg.Unit,
+		arg.UnitID,
 		arg.IsFromRecipe,
 		arg.CreatedBy,
 		arg.UpdatedBy,
@@ -90,13 +90,13 @@ func (q *Queries) AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams
 		&i.SlotID,
 		&i.ItemID,
 		&i.Quantity,
-		&i.Unit,
 		&i.IsFromRecipe,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.IngredientID,
+		&i.UnitID,
 	)
 	return i, err
 }
@@ -291,7 +291,7 @@ func (q *Queries) ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([
 }
 
 const listMealSlotItems = `-- name: ListMealSlotItems :many
-SELECT slot_item_id, slot_id, item_id, quantity, unit, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id
+SELECT slot_item_id, slot_id, item_id, quantity, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
 FROM mealplan.meal_slot_item
 WHERE slot_id = $1
 ORDER BY slot_item_id
@@ -311,13 +311,13 @@ func (q *Queries) ListMealSlotItems(ctx context.Context, slotID int64) ([]Mealpl
 			&i.SlotID,
 			&i.ItemID,
 			&i.Quantity,
-			&i.Unit,
 			&i.IsFromRecipe,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.IngredientID,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -330,7 +330,7 @@ func (q *Queries) ListMealSlotItems(ctx context.Context, slotID int64) ([]Mealpl
 }
 
 const listMealSlotItemsByPlan = `-- name: ListMealSlotItemsByPlan :many
-SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id, msi.unit_id
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
 WHERE ms.meal_plan_id = $1
@@ -351,13 +351,13 @@ func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64)
 			&i.SlotID,
 			&i.ItemID,
 			&i.Quantity,
-			&i.Unit,
 			&i.IsFromRecipe,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.IngredientID,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -370,7 +370,7 @@ func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64)
 }
 
 const listMealSlotItemsByPlans = `-- name: ListMealSlotItemsByPlans :many
-SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id, msi.unit_id
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
 WHERE ms.meal_plan_id = ANY($1::bigint[])
@@ -391,13 +391,13 @@ func (q *Queries) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []in
 			&i.SlotID,
 			&i.ItemID,
 			&i.Quantity,
-			&i.Unit,
 			&i.IsFromRecipe,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.IngredientID,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}

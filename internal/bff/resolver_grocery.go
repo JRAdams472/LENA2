@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
@@ -48,6 +49,7 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	listIDs := distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID })
 	itemsByList := make(map[int64][]grocery.GroceryListItem)
 	var items map[int64]inventory.Item
+	var units map[int64]inventory.Unit
 	var ch *itemChildren
 	if len(listIDs) > 0 {
 		listItems, err := r.GroceryService.ListGroceryListItemsByLists(ctx, listIDs)
@@ -61,6 +63,10 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 		if err != nil {
 			return nil, err
 		}
+		units, err = loadUnits(ctx, r.InventoryService, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.UnitID }))
+		if err != nil {
+			return nil, err
+		}
 		itemList := make([]inventory.Item, 0, len(items))
 		for _, it := range items {
 			itemList = append(itemList, it)
@@ -70,7 +76,7 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 			return nil, err
 		}
 	}
-	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, lists: lists, itemsByList: itemsByList, items: items, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, lists: lists, itemsByList: itemsByList, items: items, units: units, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // GenerateGroceryList generates a grocery list from a meal plan.
@@ -152,13 +158,22 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 	if err != nil {
 		return nil, err
 	}
+	// The unit is optional for grocery items; an empty string means unset.
+	var unitID *int64
+	if u := strings.TrimSpace(args.Input.Unit); u != "" {
+		id, err := resolveUnitID(ctx, r.InventoryService, u)
+		if err != nil {
+			return nil, err
+		}
+		unitID = &id
+	}
 	it, err := r.GroceryService.AddGroceryListItem(ctx, grocery.GroceryListItem{
 		GroceryListID:  groceryListID,
 		ItemID:         itemID,
 		IngredientID:   ingredientID,
 		ManualItemName: derefString(args.Input.ManualItemName),
 		QuantityNeeded: args.Input.Quantity,
-		UnitOfMeasure:  args.Input.Unit,
+		UnitID:         unitID,
 		Source:         "manual",
 	}, u.Email)
 	if err != nil {
@@ -176,6 +191,7 @@ type groceryListResolver struct {
 	list     grocery.GroceryList
 	items    []grocery.GroceryListItem
 	catItems map[int64]inventory.Item
+	units    map[int64]inventory.Unit
 	ch       *itemChildren
 }
 
@@ -200,7 +216,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 	}
 	out := make([]*groceryListItemResolver, len(items))
 	for i := range items {
-		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i], items: r.catItems, ch: r.ch}
+		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i], items: r.catItems, units: r.units, ch: r.ch}
 	}
 	return out, nil
 }
@@ -210,6 +226,7 @@ type groceryListItemResolver struct {
 	inv   InventoryService
 	item  grocery.GroceryListItem
 	items map[int64]inventory.Item
+	units map[int64]inventory.Unit
 	ch    *itemChildren
 }
 
@@ -221,7 +238,9 @@ func (r *groceryListItemResolver) ManualItemName() *string { return nilIfEmpty(r
 
 func (r *groceryListItemResolver) QuantityNeeded() float64 { return r.item.QuantityNeeded }
 
-func (r *groceryListItemResolver) UnitOfMeasure() *string { return nilIfEmpty(r.item.UnitOfMeasure) }
+func (r *groceryListItemResolver) UnitOfMeasure(ctx context.Context) (*string, error) {
+	return unitNamePtr(ctx, r.inv, r.units, r.item.UnitID)
+}
 
 func (r *groceryListItemResolver) Source() string { return r.item.Source }
 
@@ -265,6 +284,7 @@ type groceryListPageResolver struct {
 	lists       []grocery.GroceryList
 	itemsByList map[int64][]grocery.GroceryListItem
 	items       map[int64]inventory.Item
+	units       map[int64]inventory.Unit
 	ch          *itemChildren
 	page        int32
 	pageSize    int32
@@ -274,7 +294,7 @@ type groceryListPageResolver struct {
 func (r *groceryListPageResolver) Items() []*groceryListResolver {
 	out := make([]*groceryListResolver, len(r.lists))
 	for i := range r.lists {
-		out[i] = &groceryListResolver{g: r.g, inv: r.inv, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, ch: r.ch}
+		out[i] = &groceryListResolver{g: r.g, inv: r.inv, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, units: r.units, ch: r.ch}
 	}
 	return out
 }

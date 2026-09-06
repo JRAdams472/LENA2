@@ -17,6 +17,14 @@ import (
 
 const itBy = "integration-test"
 
+// itUnitID returns the id of a seeded unit by name or abbreviation.
+func itUnitID(t *testing.T, ctx context.Context, invSvc *inventory.Service, name string) int64 {
+	t.Helper()
+	u, err := invSvc.GetUnitByName(ctx, name)
+	require.NoError(t, err, "unit %q should be seeded by migration 0012", name)
+	return u.UnitID
+}
+
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
 	pool, cleanup, err := testenv.NewTestDB(t, ctx)
@@ -44,7 +52,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		Name:       "IT Meal Item",
 		BrandID:    &brand.BrandID,
 		CategoryID: cat.CategoryID,
-		Unit:       "g",
+		UnitID:     itUnitID(t, ctx, invSvc, "g"),
 	}, itBy)
 	require.NoError(t, err)
 
@@ -126,7 +134,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		SlotID:       slot.SlotID,
 		ItemID:       &itemID,
 		Quantity:     1.5,
-		Unit:         "cup",
+		UnitID:       itUnitID(t, ctx, invSvc, "cup"),
 		IsFromRecipe: true,
 	}, itBy)
 	require.NoError(t, err)
@@ -147,7 +155,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		SlotID:   slot.SlotID,
 		ItemID:   &itemID,
 		Quantity: 2.0,
-		Unit:     "tbsp",
+		UnitID:   itUnitID(t, ctx, invSvc, "tbsp"),
 	}, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, slotItem2.SlotItemID)
@@ -190,7 +198,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		SlotID:   slot2.SlotID,
 		ItemID:   &itemID,
 		Quantity: 1.0,
-		Unit:     "each",
+		UnitID:   itUnitID(t, ctx, invSvc, "each"),
 	}, itBy)
 	require.NoError(t, err)
 

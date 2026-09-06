@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/graph-gophers/graphql-go"
@@ -243,11 +244,19 @@ func (r *Resolver) CreateIngredient(ctx context.Context, args struct{ Input crea
 	if err != nil {
 		return nil, err
 	}
+	var defaultUnitID *int64
+	if u := strings.TrimSpace(derefString(args.Input.DefaultUnit)); u != "" {
+		id, err := resolveUnitID(ctx, r.InventoryService, u)
+		if err != nil {
+			return nil, err
+		}
+		defaultUnitID = &id
+	}
 	in, err := r.InventoryService.CreateIngredient(ctx, inventory.Ingredient{
-		Name:        args.Input.Name,
-		CategoryID:  categoryID,
-		DefaultUnit: derefString(args.Input.DefaultUnit),
-		IsActive:    true,
+		Name:          args.Input.Name,
+		CategoryID:    categoryID,
+		DefaultUnitID: defaultUnitID,
+		IsActive:      true,
 	}, u.Email)
 	if err != nil {
 		return nil, err
@@ -284,19 +293,26 @@ func (r *Resolver) UpdateIngredient(ctx context.Context, args struct {
 		}
 		categoryID = c
 	}
-	defaultUnit := existing.DefaultUnit
+	defaultUnitID := existing.DefaultUnitID
 	if args.Input.DefaultUnit != nil {
-		defaultUnit = *args.Input.DefaultUnit
+		defaultUnitID = nil
+		if u := strings.TrimSpace(*args.Input.DefaultUnit); u != "" {
+			id, err := resolveUnitID(ctx, r.InventoryService, u)
+			if err != nil {
+				return nil, err
+			}
+			defaultUnitID = &id
+		}
 	}
 	isActive := existing.IsActive
 	if args.Input.IsActive != nil {
 		isActive = *args.Input.IsActive
 	}
 	in, err := r.InventoryService.UpdateIngredient(ctx, id, inventory.Ingredient{
-		Name:        name,
-		CategoryID:  categoryID,
-		DefaultUnit: defaultUnit,
-		IsActive:    isActive,
+		Name:          name,
+		CategoryID:    categoryID,
+		DefaultUnitID: defaultUnitID,
+		IsActive:      isActive,
 	}, u.Email)
 	if err != nil {
 		return nil, err
@@ -331,7 +347,10 @@ func (r *ingredientResolver) ID() graphql.ID {
 
 func (r *ingredientResolver) Name() string { return r.in.Name }
 
-func (r *ingredientResolver) DefaultUnit() *string { return nilIfEmpty(r.in.DefaultUnit) }
+// DefaultUnit renders the ingredient's default unit name, when set.
+func (r *ingredientResolver) DefaultUnit(ctx context.Context) (*string, error) {
+	return unitNamePtr(ctx, r.inv, nil, r.in.DefaultUnitID)
+}
 
 func (r *ingredientResolver) IsActive() bool { return r.in.IsActive }
 
@@ -379,6 +398,35 @@ type updateIngredientInput struct {
 	IsActive    *bool
 }
 
+// Units resolves all canonical units of measure.
+func (r *Resolver) Units(ctx context.Context) ([]*unitResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	units, err := r.InventoryService.ListUnits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*unitResolver, len(units))
+	for i := range units {
+		out[i] = &unitResolver{u: units[i]}
+	}
+	return out, nil
+}
+
+// unitResolver resolves Unit fields.
+type unitResolver struct{ u inventory.Unit }
+
+func (r *unitResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.u.UnitID, 10)) }
+
+func (r *unitResolver) Name() string { return r.u.Name }
+
+func (r *unitResolver) Abbreviation() *string { return nilIfEmpty(r.u.Abbreviation) }
+
+func (r *unitResolver) Kind() string { return r.u.Kind }
+
+func (r *unitResolver) IsActive() bool { return r.u.IsActive }
+
 // CreateItem creates a new catalog item.
 func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItemInput }) (*itemResolver, error) {
 	u, err := requireAdmin(ctx)
@@ -393,13 +441,17 @@ func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItem
 	if err != nil {
 		return nil, err
 	}
+	unitID, err := resolveUnitID(ctx, r.InventoryService, args.Input.Unit)
+	if err != nil {
+		return nil, err
+	}
 	it, err := r.InventoryService.CreateItem(ctx, inventory.Item{
 		Name:       args.Input.Name,
 		BrandID:    brandID,
 		Upc12:      derefString(args.Input.Upc12),
 		Upc14:      derefString(args.Input.Upc14),
 		CategoryID: catID,
-		Unit:       args.Input.Unit,
+		UnitID:     unitID,
 	}, u.Email)
 	if err != nil {
 		return nil, err
@@ -530,9 +582,13 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 	if args.Input.Name != nil {
 		name = *args.Input.Name
 	}
-	unit := existing.Unit
+	unitID := existing.UnitID
 	if args.Input.Unit != nil {
-		unit = *args.Input.Unit
+		id, err := resolveUnitID(ctx, r.InventoryService, *args.Input.Unit)
+		if err != nil {
+			return nil, err
+		}
+		unitID = id
 	}
 	upc12 := existing.Upc12
 	if args.Input.Upc12 != nil {
@@ -548,7 +604,7 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 		Upc12:      upc12,
 		Upc14:      upc14,
 		CategoryID: categoryID,
-		Unit:       unit,
+		UnitID:     unitID,
 	}, u.Email); err != nil {
 		return nil, err
 	}
@@ -590,7 +646,13 @@ func (r *itemResolver) Upc12() *string { return nilIfEmpty(r.it.Upc12) }
 
 func (r *itemResolver) Upc14() *string { return nilIfEmpty(r.it.Upc14) }
 
-func (r *itemResolver) Unit() string { return r.it.Unit }
+func (r *itemResolver) Unit(ctx context.Context) (string, error) {
+	var units map[int64]inventory.Unit
+	if r.ch != nil {
+		units = r.ch.units
+	}
+	return unitName(ctx, r.inv, units, r.it.UnitID)
+}
 
 func (r *itemResolver) Brand(ctx context.Context) (*brandResolver, error) {
 	if r.it.BrandID == nil {

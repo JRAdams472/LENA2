@@ -17,6 +17,14 @@ import (
 
 const itBy = "integration-test"
 
+// itUnitID returns the id of a seeded unit by name or abbreviation.
+func itUnitID(t *testing.T, ctx context.Context, invSvc *inventory.Service, name string) int64 {
+	t.Helper()
+	u, err := invSvc.GetUnitByName(ctx, name)
+	require.NoError(t, err, "unit %q should be seeded by migration 0012", name)
+	return u.UnitID
+}
+
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
 	pool, cleanup, err := testenv.NewTestDB(t, ctx)
@@ -44,7 +52,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 		Name:       "IT Grocery Item",
 		BrandID:    &brand.BrandID,
 		CategoryID: cat.CategoryID,
-		Unit:       "each",
+		UnitID:     itUnitID(t, ctx, invSvc, "each"),
 	}, itBy)
 	require.NoError(t, err)
 
@@ -81,11 +89,12 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, listsB)
 
+	lbID := itUnitID(t, ctx, invSvc, "lb")
 	manualItem, err := svc.AddGroceryListItem(ctx, GroceryListItem{
 		GroceryListID:  list.GroceryListID,
 		ManualItemName: "apples",
 		QuantityNeeded: 2.0,
-		UnitOfMeasure:  "lb",
+		UnitID:         &lbID,
 		Source:         "manual",
 		IsChecked:      false,
 	}, itBy)
@@ -93,11 +102,12 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.NotZero(t, manualItem.GroceryListItemID)
 
 	itemID := item.ItemID
+	canID := itUnitID(t, ctx, invSvc, "can")
 	catalogItem, err := svc.AddGroceryListItem(ctx, GroceryListItem{
 		GroceryListID:  list.GroceryListID,
 		ItemID:         &itemID,
 		QuantityNeeded: 1.0,
-		UnitOfMeasure:  "bottle",
+		UnitID:         &canID,
 		Source:         "pantry",
 		IsChecked:      false,
 	}, itBy)
@@ -117,7 +127,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 		GroceryListID:  list.GroceryListID,
 		ManualItemName: "green apples",
 		QuantityNeeded: 3.0,
-		UnitOfMeasure:  "lb",
+		UnitID:         &lbID,
 		Source:         "manual",
 		IsChecked:      true,
 	}, itBy))

@@ -143,12 +143,13 @@ func TestDeleteGroceryList(t *testing.T) {
 func TestAddGroceryListItem(t *testing.T) {
 	ctx := context.Background()
 	itemID := int64(123)
+	unitID := int64(6)
 	in := GroceryListItem{
 		GroceryListID:  3,
 		ItemID:         &itemID,
 		ManualItemName: "milk",
 		QuantityNeeded: 2.5,
-		UnitOfMeasure:  "liters",
+		UnitID:         &unitID,
 		Source:         "manual",
 		IsChecked:      false,
 	}
@@ -163,7 +164,7 @@ func TestAddGroceryListItem(t *testing.T) {
 				f8, err := arg.QuantityNeeded.Float64Value()
 				require.NoError(t, err)
 				assert.InDelta(t, 2.5, f8.Float64, 1e-9)
-				assert.Equal(t, pgtype.Text{String: "liters", Valid: true}, arg.UnitOfMeasure)
+				assert.Equal(t, pgtype.Int8{Int64: 6, Valid: true}, arg.UnitID)
 				assert.Equal(t, "manual", arg.Source)
 				assert.False(t, arg.IsChecked)
 				assert.Equal(t, "tester", arg.CreatedBy)
@@ -173,7 +174,7 @@ func TestAddGroceryListItem(t *testing.T) {
 					ItemID:            arg.ItemID,
 					ManualItemName:    arg.ManualItemName,
 					QuantityNeeded:    arg.QuantityNeeded,
-					UnitOfMeasure:     arg.UnitOfMeasure,
+					UnitID:            arg.UnitID,
 					Source:            arg.Source,
 				}, nil
 			})
@@ -186,7 +187,8 @@ func TestAddGroceryListItem(t *testing.T) {
 		assert.Equal(t, int64(123), *got.ItemID)
 		assert.Equal(t, "milk", got.ManualItemName)
 		assert.InDelta(t, 2.5, got.QuantityNeeded, 1e-9)
-		assert.Equal(t, "liters", got.UnitOfMeasure)
+		require.NotNil(t, got.UnitID)
+		assert.Equal(t, int64(6), *got.UnitID)
 		assert.Equal(t, "manual", got.Source)
 	})
 
@@ -258,11 +260,12 @@ func TestGetGroceryListItemByID(t *testing.T) {
 func TestUpdateGroceryListItem(t *testing.T) {
 	ctx := context.Background()
 	itemID := int64(123)
+	unitID := int64(14)
 	in := GroceryListItem{
 		ItemID:         &itemID,
 		ManualItemName: "eggs",
 		QuantityNeeded: 12,
-		UnitOfMeasure:  "pcs",
+		UnitID:         &unitID,
 		Source:         "manual",
 		IsChecked:      true,
 	}

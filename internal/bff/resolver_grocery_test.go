@@ -159,10 +159,12 @@ func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
 	require.NoError(t, err)
 
 	itemID := int64(42)
+	unitID := int64(3)
 	g.EXPECT().ListGroceryListItems(gomock.Any(), int64(11)).Return([]grocery.GroceryListItem{
-		{GroceryListItemID: 100, GroceryListID: 11, ItemID: &itemID, QuantityNeeded: 2.5, UnitOfMeasure: "cups", Source: "recipe"},
+		{GroceryListItemID: 100, GroceryListID: 11, ItemID: &itemID, QuantityNeeded: 2.5, UnitID: &unitID, Source: "recipe"},
 		{GroceryListItemID: 101, GroceryListID: 11, ManualItemName: "Bananas", QuantityNeeded: 3, Source: "manual", IsChecked: true},
 	}, nil)
+	inv.EXPECT().GetUnitByID(gomock.Any(), int64(3)).Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 
 	items, err := listRes.Items(grocCtx())
 	require.NoError(t, err)
@@ -171,7 +173,10 @@ func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
 	assert.Equal(t, graphql.ID("100"), items[0].ID())
 	assert.Nil(t, items[0].ManualItemName())
 	assert.Equal(t, 2.5, items[0].QuantityNeeded())
-	assert.Equal(t, "cups", *items[0].UnitOfMeasure())
+	uom, err := items[0].UnitOfMeasure(grocCtx())
+	require.NoError(t, err)
+	require.NotNil(t, uom)
+	assert.Equal(t, "cup", *uom)
 	assert.Equal(t, "recipe", items[0].Source())
 	assert.False(t, items[0].IsChecked())
 
@@ -239,7 +244,8 @@ func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 func TestResolver_AddGroceryItem_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
-	r := &Resolver{GroceryService: g}
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{GroceryService: g, InventoryService: inv}
 
 	itemID := graphql.ID("42")
 	manual := "Bananas"
@@ -248,11 +254,12 @@ func TestResolver_AddGroceryItem_Happy(t *testing.T) {
 		ItemID:         ptrToGrocInt64(42),
 		ManualItemName: "Bananas",
 		QuantityNeeded: 2,
-		UnitOfMeasure:  "bunch",
+		UnitID:         ptrToGrocInt64(19),
 		Source:         "manual",
 	}
+	inv.EXPECT().GetUnitByName(gomock.Any(), "bunch").Return(inventory.Unit{UnitID: 19, Name: "bunch"}, nil)
 	g.EXPECT().AddGroceryListItem(gomock.Any(), gomock.Eq(want), grocEmail).
-		Return(grocery.GroceryListItem{GroceryListItemID: 100, GroceryListID: 11, ItemID: ptrToGrocInt64(42), ManualItemName: "Bananas", QuantityNeeded: 2, UnitOfMeasure: "bunch", Source: "manual"}, nil)
+		Return(grocery.GroceryListItem{GroceryListItemID: 100, GroceryListID: 11, ItemID: ptrToGrocInt64(42), ManualItemName: "Bananas", QuantityNeeded: 2, UnitID: ptrToGrocInt64(19), Source: "manual"}, nil)
 
 	res, err := r.AddGroceryItem(grocCtx(), struct{ Input addGroceryItemInput }{
 		Input: addGroceryItemInput{
@@ -282,12 +289,14 @@ func TestResolver_AddGroceryItem_Unauthorized(t *testing.T) {
 func TestResolver_AddGroceryItem_ServiceError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
-	r := &Resolver{GroceryService: g}
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{GroceryService: g, InventoryService: inv}
 
+	inv.EXPECT().GetUnitByName(gomock.Any(), "bunch").Return(inventory.Unit{UnitID: 19, Name: "bunch"}, nil)
 	g.EXPECT().AddGroceryListItem(gomock.Any(), gomock.Any(), grocEmail).Return(grocery.GroceryListItem{}, errGrocBoom)
 
 	res, err := r.AddGroceryItem(grocCtx(), struct{ Input addGroceryItemInput }{
-		Input: addGroceryItemInput{GroceryListID: "11", Quantity: 1},
+		Input: addGroceryItemInput{GroceryListID: "11", Quantity: 1, Unit: "bunch"},
 	})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errGrocBoom)

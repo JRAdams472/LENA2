@@ -280,12 +280,15 @@ func TestDeleteRecipe(t *testing.T) {
 
 func itemRow() sqlc.RecipeRecipeItem {
 	return sqlc.RecipeRecipeItem{
-		RecipeID:   7,
-		ItemID:     42,
-		Quantity:   mustNum(1.5),
-		Unit:       "cups",
-		Notes:      pgtype.Text{String: "sifted", Valid: true},
-		IsOptional: true,
+		RecipeItemID: 55,
+		RecipeID:     7,
+		ItemID:       42,
+		Quantity:     mustNum(1.5),
+		UnitID:       3,
+		SectionName:  pgtype.Text{String: "filling", Valid: true},
+		DisplayOrder: 2,
+		Notes:        pgtype.Text{String: "sifted", Valid: true},
+		IsOptional:   true,
 	}
 }
 
@@ -293,20 +296,24 @@ func TestAddRecipeItem(t *testing.T) {
 	t.Run("success passes mapped params", func(t *testing.T) {
 		svc, mq := newService(t)
 		arg := RecipeItem{
-			RecipeID:   7,
-			ItemID:     42,
-			Quantity:   1.5,
-			Unit:       "cups",
-			Notes:      "sifted",
-			IsOptional: true,
+			RecipeID:     7,
+			ItemID:       42,
+			Quantity:     1.5,
+			UnitID:       3,
+			SectionName:  "filling",
+			DisplayOrder: 2,
+			Notes:        "sifted",
+			IsOptional:   true,
 		}
 		want := sqlc.AddRecipeItemParams{
-			RecipeID:   7,
-			ItemID:     42,
-			Quantity:   mustNum(1.5),
-			Unit:       "cups",
-			Notes:      textOrNull("sifted"),
-			IsOptional: true,
+			RecipeID:     7,
+			ItemID:       42,
+			Quantity:     mustNum(1.5),
+			UnitID:       3,
+			SectionName:  textOrNull("filling"),
+			DisplayOrder: 2,
+			Notes:        textOrNull("sifted"),
+			IsOptional:   true,
 		}
 		mq.EXPECT().AddRecipeItem(gomock.Any(), want).Return(nil)
 
@@ -319,12 +326,12 @@ func TestAddRecipeItem(t *testing.T) {
 			RecipeID: 7,
 			ItemID:   42,
 			Quantity: mustNum(2),
-			Unit:     "g",
+			UnitID:   10,
 			Notes:    pgtype.Text{},
 		}).Return(nil)
 
 		require.NoError(t, svc.AddRecipeItem(context.Background(),
-			RecipeItem{RecipeID: 7, ItemID: 42, Quantity: 2, Unit: "g"}))
+			RecipeItem{RecipeID: 7, ItemID: 42, Quantity: 2, UnitID: 10}))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
@@ -344,10 +351,13 @@ func TestListRecipeItems(t *testing.T) {
 		got, err := svc.ListRecipeItems(context.Background(), 7)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
+		assert.Equal(t, int64(55), got[0].RecipeItemID)
 		assert.Equal(t, int64(7), got[0].RecipeID)
 		assert.Equal(t, int64(42), got[0].ItemID)
 		assert.InDelta(t, 1.5, got[0].Quantity, 1e-9)
-		assert.Equal(t, "cups", got[0].Unit)
+		assert.Equal(t, int64(3), got[0].UnitID)
+		assert.Equal(t, "filling", got[0].SectionName)
+		assert.Equal(t, int32(2), got[0].DisplayOrder)
 		assert.Equal(t, "sifted", got[0].Notes)
 		assert.True(t, got[0].IsOptional)
 	})
@@ -355,7 +365,7 @@ func TestListRecipeItems(t *testing.T) {
 	t.Run("null quantity maps to zero", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListRecipeItems(gomock.Any(), int64(7)).
-			Return([]sqlc.RecipeRecipeItem{{RecipeID: 7, ItemID: 9, Unit: "pinch"}}, nil)
+			Return([]sqlc.RecipeRecipeItem{{RecipeID: 7, ItemID: 9, UnitID: 15}}, nil)
 
 		got, err := svc.ListRecipeItems(context.Background(), 7)
 		require.NoError(t, err)
@@ -377,18 +387,16 @@ func TestListRecipeItems(t *testing.T) {
 func TestRemoveRecipeItem(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().RemoveRecipeItem(gomock.Any(),
-			sqlc.RemoveRecipeItemParams{RecipeID: 7, ItemID: 42}).Return(nil)
+		mq.EXPECT().RemoveRecipeItem(gomock.Any(), int64(55)).Return(nil)
 
-		require.NoError(t, svc.RemoveRecipeItem(context.Background(), 7, 42))
+		require.NoError(t, svc.RemoveRecipeItem(context.Background(), 55))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().RemoveRecipeItem(gomock.Any(),
-			sqlc.RemoveRecipeItemParams{RecipeID: 7, ItemID: 42}).Return(errDB)
+		mq.EXPECT().RemoveRecipeItem(gomock.Any(), int64(55)).Return(errDB)
 
-		assert.ErrorIs(t, svc.RemoveRecipeItem(context.Background(), 7, 42), errDB)
+		assert.ErrorIs(t, svc.RemoveRecipeItem(context.Background(), 55), errDB)
 	})
 }
 

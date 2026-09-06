@@ -323,7 +323,7 @@ func TestDeleteMealSlot(t *testing.T) {
 func TestAddMealSlotItem(t *testing.T) {
 	ctx := context.Background()
 	itemID := int64(123)
-	in := MealSlotItem{SlotID: 55, ItemID: &itemID, Quantity: 2.5, Unit: "cups", IsFromRecipe: true}
+	in := MealSlotItem{SlotID: 55, ItemID: &itemID, Quantity: 2.5, UnitID: 3, IsFromRecipe: true}
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
@@ -334,7 +334,7 @@ func TestAddMealSlotItem(t *testing.T) {
 				f8, err := arg.Quantity.Float64Value()
 				require.NoError(t, err)
 				assert.InDelta(t, 2.5, f8.Float64, 1e-9)
-				assert.Equal(t, "cups", arg.Unit)
+				assert.Equal(t, int64(3), arg.UnitID)
 				assert.True(t, arg.IsFromRecipe)
 				assert.Equal(t, "tester", arg.CreatedBy)
 				return sqlc.MealplanMealSlotItem{
@@ -342,7 +342,7 @@ func TestAddMealSlotItem(t *testing.T) {
 					SlotID:       arg.SlotID,
 					ItemID:       arg.ItemID,
 					Quantity:     arg.Quantity,
-					Unit:         arg.Unit,
+					UnitID:       arg.UnitID,
 					IsFromRecipe: arg.IsFromRecipe,
 				}, nil
 			})
@@ -354,7 +354,7 @@ func TestAddMealSlotItem(t *testing.T) {
 		require.NotNil(t, got.ItemID)
 		assert.Equal(t, int64(123), *got.ItemID)
 		assert.InDelta(t, 2.5, got.Quantity, 1e-9)
-		assert.Equal(t, "cups", got.Unit)
+		assert.Equal(t, int64(3), got.UnitID)
 		assert.True(t, got.IsFromRecipe)
 	})
 
@@ -374,15 +374,15 @@ func TestListMealSlotItems(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().ListMealSlotItems(ctx, int64(55)).
 			Return([]sqlc.MealplanMealSlotItem{
-				{SlotItemID: 900, SlotID: 55, Unit: "cups"},
-				{SlotItemID: 901, SlotID: 55, Unit: "g"},
+				{SlotItemID: 900, SlotID: 55, UnitID: 3},
+				{SlotItemID: 901, SlotID: 55, UnitID: 10},
 			}, nil)
 
 		got, err := s.ListMealSlotItems(ctx, 55)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.Equal(t, int64(900), got[0].SlotItemID)
-		assert.Equal(t, "g", got[1].Unit)
+		assert.Equal(t, int64(10), got[1].UnitID)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
@@ -438,8 +438,8 @@ func TestListMealSlotItemsByPlan(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().ListMealSlotItemsByPlan(ctx, int64(7)).Return([]sqlc.MealplanMealSlotItem{
-			{SlotItemID: 900, SlotID: 55, Unit: "cups"},
-			{SlotItemID: 901, SlotID: 56, Unit: "g"},
+			{SlotItemID: 900, SlotID: 55, UnitID: 3},
+			{SlotItemID: 901, SlotID: 56, UnitID: 10},
 		}, nil)
 
 		got, err := s.ListMealSlotItemsByPlan(ctx, 7)

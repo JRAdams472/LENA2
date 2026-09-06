@@ -72,7 +72,7 @@ DELETE FROM mealplan.meal_slot
 WHERE slot_id = $1;
 
 -- name: AddMealSlotItem :one
-INSERT INTO mealplan.meal_slot_item (slot_id, item_id, ingredient_id, quantity, unit, is_from_recipe, created_by, updated_by)
+INSERT INTO mealplan.meal_slot_item (slot_id, item_id, ingredient_id, quantity, unit_id, is_from_recipe, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 

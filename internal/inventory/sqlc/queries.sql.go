@@ -180,25 +180,25 @@ func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrient
 }
 
 const createIngredient = `-- name: CreateIngredient :one
-INSERT INTO inventory.ingredient (name, category_id, default_unit, is_active, created_by, updated_by)
+INSERT INTO inventory.ingredient (name, category_id, default_unit_id, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+RETURNING ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 `
 
 type CreateIngredientParams struct {
-	Name        string      `json:"name"`
-	CategoryID  pgtype.Int8 `json:"category_id"`
-	DefaultUnit pgtype.Text `json:"default_unit"`
-	IsActive    bool        `json:"is_active"`
-	CreatedBy   string      `json:"created_by"`
-	UpdatedBy   pgtype.Text `json:"updated_by"`
+	Name          string      `json:"name"`
+	CategoryID    pgtype.Int8 `json:"category_id"`
+	DefaultUnitID pgtype.Int8 `json:"default_unit_id"`
+	IsActive      bool        `json:"is_active"`
+	CreatedBy     string      `json:"created_by"`
+	UpdatedBy     pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientParams) (InventoryIngredient, error) {
 	row := q.db.QueryRow(ctx, createIngredient,
 		arg.Name,
 		arg.CategoryID,
-		arg.DefaultUnit,
+		arg.DefaultUnitID,
 		arg.IsActive,
 		arg.CreatedBy,
 		arg.UpdatedBy,
@@ -208,20 +208,20 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 		&i.IngredientID,
 		&i.Name,
 		&i.CategoryID,
-		&i.DefaultUnit,
 		&i.IsActive,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.DefaultUnitID,
 	)
 	return i, err
 }
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit, created_by, updated_by)
+INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
+RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
 `
 
 type CreateItemParams struct {
@@ -230,7 +230,7 @@ type CreateItemParams struct {
 	Upc12      pgtype.Text `json:"upc12"`
 	Upc14      pgtype.Text `json:"upc14"`
 	CategoryID int64       `json:"category_id"`
-	Unit       string      `json:"unit"`
+	UnitID     int64       `json:"unit_id"`
 	CreatedBy  string      `json:"created_by"`
 	UpdatedBy  pgtype.Text `json:"updated_by"`
 }
@@ -242,7 +242,7 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Invento
 		arg.Upc12,
 		arg.Upc14,
 		arg.CategoryID,
-		arg.Unit,
+		arg.UnitID,
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
@@ -254,11 +254,11 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Invento
 		&i.Upc12,
 		&i.Upc14,
 		&i.CategoryID,
-		&i.Unit,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.UnitID,
 	)
 	return i, err
 }
@@ -282,6 +282,45 @@ func (q *Queries) CreateNutrientType(ctx context.Context, arg CreateNutrientType
 		&i.Name,
 		&i.Unit,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createUnit = `-- name: CreateUnit :one
+INSERT INTO inventory.unit (name, abbreviation, kind, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type CreateUnitParams struct {
+	Name         string      `json:"name"`
+	Abbreviation pgtype.Text `json:"abbreviation"`
+	Kind         string      `json:"kind"`
+	IsActive     bool        `json:"is_active"`
+	CreatedBy    string      `json:"created_by"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (InventoryUnit, error) {
+	row := q.db.QueryRow(ctx, createUnit,
+		arg.Name,
+		arg.Abbreviation,
+		arg.Kind,
+		arg.IsActive,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i InventoryUnit
+	err := row.Scan(
+		&i.UnitID,
+		&i.Name,
+		&i.Abbreviation,
+		&i.Kind,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -494,7 +533,7 @@ func (q *Queries) GetFlavorProfileByID(ctx context.Context, flavorID int64) (Inv
 }
 
 const getIngredientByID = `-- name: GetIngredientByID :one
-SELECT ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 FROM inventory.ingredient
 WHERE ingredient_id = $1
 `
@@ -506,18 +545,18 @@ func (q *Queries) GetIngredientByID(ctx context.Context, ingredientID int64) (In
 		&i.IngredientID,
 		&i.Name,
 		&i.CategoryID,
-		&i.DefaultUnit,
 		&i.IsActive,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.DefaultUnitID,
 	)
 	return i, err
 }
 
 const getIngredientsByIDs = `-- name: GetIngredientsByIDs :many
-SELECT ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 FROM inventory.ingredient
 WHERE ingredient_id = ANY($1::bigint[])
 `
@@ -535,12 +574,12 @@ func (q *Queries) GetIngredientsByIDs(ctx context.Context, ingredientIds []int64
 			&i.IngredientID,
 			&i.Name,
 			&i.CategoryID,
-			&i.DefaultUnit,
 			&i.IsActive,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.DefaultUnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -553,7 +592,7 @@ func (q *Queries) GetIngredientsByIDs(ctx context.Context, ingredientIds []int64
 }
 
 const getItemByID = `-- name: GetItemByID :one
-SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
 FROM inventory.item
 WHERE item_id = $1
 `
@@ -568,17 +607,17 @@ func (q *Queries) GetItemByID(ctx context.Context, itemID int64) (InventoryItem,
 		&i.Upc12,
 		&i.Upc14,
 		&i.CategoryID,
-		&i.Unit,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.UnitID,
 	)
 	return i, err
 }
 
 const getItemsByIDs = `-- name: GetItemsByIDs :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
 FROM inventory.item
 WHERE item_id = ANY($1::bigint[])
 `
@@ -599,11 +638,11 @@ func (q *Queries) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]Invento
 			&i.Upc12,
 			&i.Upc14,
 			&i.CategoryID,
-			&i.Unit,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -631,6 +670,88 @@ func (q *Queries) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (In
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getUnitByID = `-- name: GetUnitByID :one
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.unit
+WHERE unit_id = $1
+`
+
+func (q *Queries) GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit, error) {
+	row := q.db.QueryRow(ctx, getUnitByID, unitID)
+	var i InventoryUnit
+	err := row.Scan(
+		&i.UnitID,
+		&i.Name,
+		&i.Abbreviation,
+		&i.Kind,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUnitByName = `-- name: GetUnitByName :one
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.unit
+WHERE lower(name) = lower($1) OR lower(abbreviation) = lower($1)
+`
+
+func (q *Queries) GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error) {
+	row := q.db.QueryRow(ctx, getUnitByName, lower)
+	var i InventoryUnit
+	err := row.Scan(
+		&i.UnitID,
+		&i.Name,
+		&i.Abbreviation,
+		&i.Kind,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUnitsByIDs = `-- name: GetUnitsByIDs :many
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.unit
+WHERE unit_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error) {
+	rows, err := q.db.Query(ctx, getUnitsByIDs, unitIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryUnit{}
+	for rows.Next() {
+		var i InventoryUnit
+		if err := rows.Scan(
+			&i.UnitID,
+			&i.Name,
+			&i.Abbreviation,
+			&i.Kind,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBrands = `-- name: ListBrands :many
@@ -885,7 +1006,7 @@ func (q *Queries) ListFoodNutrientsByItems(ctx context.Context, itemIds []int64)
 }
 
 const listIngredients = `-- name: ListIngredients :many
-SELECT ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 FROM inventory.ingredient
 ORDER BY name
 LIMIT $1 OFFSET $2
@@ -909,12 +1030,12 @@ func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams
 			&i.IngredientID,
 			&i.Name,
 			&i.CategoryID,
-			&i.DefaultUnit,
 			&i.IsActive,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.DefaultUnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -927,7 +1048,7 @@ func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams
 }
 
 const listItems = `-- name: ListItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, unit, created_by, created_at, updated_by, updated_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
 FROM inventory.item
 ORDER BY name
 LIMIT $1 OFFSET $2
@@ -954,11 +1075,11 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Invento
 			&i.Upc12,
 			&i.Upc14,
 			&i.CategoryID,
-			&i.Unit,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.UnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -990,6 +1111,42 @@ func (q *Queries) ListNutrientTypes(ctx context.Context) ([]InventoryNutrientTyp
 			&i.Name,
 			&i.Unit,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnits = `-- name: ListUnits :many
+SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.unit
+ORDER BY kind, name
+`
+
+func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
+	rows, err := q.db.Query(ctx, listUnits)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryUnit{}
+	for rows.Next() {
+		var i InventoryUnit
+		if err := rows.Scan(
+			&i.UnitID,
+			&i.Name,
+			&i.Abbreviation,
+			&i.Kind,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1100,23 +1257,23 @@ func (q *Queries) UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfi
 
 const updateIngredient = `-- name: UpdateIngredient :one
 UPDATE inventory.ingredient
-SET name         = $2,
-    category_id  = $3,
-    default_unit = $4,
-    is_active    = $5,
+SET name            = $2,
+    category_id     = $3,
+    default_unit_id = $4,
+    is_active       = $5,
     updated_by   = $6,
     updated_at   = now()
 WHERE ingredient_id = $1
-RETURNING ingredient_id, name, category_id, default_unit, is_active, created_by, created_at, updated_by, updated_at
+RETURNING ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 `
 
 type UpdateIngredientParams struct {
-	IngredientID int64       `json:"ingredient_id"`
-	Name         string      `json:"name"`
-	CategoryID   pgtype.Int8 `json:"category_id"`
-	DefaultUnit  pgtype.Text `json:"default_unit"`
-	IsActive     bool        `json:"is_active"`
-	UpdatedBy    pgtype.Text `json:"updated_by"`
+	IngredientID  int64       `json:"ingredient_id"`
+	Name          string      `json:"name"`
+	CategoryID    pgtype.Int8 `json:"category_id"`
+	DefaultUnitID pgtype.Int8 `json:"default_unit_id"`
+	IsActive      bool        `json:"is_active"`
+	UpdatedBy     pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (InventoryIngredient, error) {
@@ -1124,7 +1281,7 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 		arg.IngredientID,
 		arg.Name,
 		arg.CategoryID,
-		arg.DefaultUnit,
+		arg.DefaultUnitID,
 		arg.IsActive,
 		arg.UpdatedBy,
 	)
@@ -1133,12 +1290,12 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 		&i.IngredientID,
 		&i.Name,
 		&i.CategoryID,
-		&i.DefaultUnit,
 		&i.IsActive,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.DefaultUnitID,
 	)
 	return i, err
 }
@@ -1150,7 +1307,7 @@ SET name        = $2,
     upc12       = $4,
     upc14       = $5,
     category_id = $6,
-    unit        = $7,
+    unit_id     = $7,
     updated_by  = $8,
     updated_at  = now()
 WHERE item_id = $1
@@ -1163,7 +1320,7 @@ type UpdateItemParams struct {
 	Upc12      pgtype.Text `json:"upc12"`
 	Upc14      pgtype.Text `json:"upc14"`
 	CategoryID int64       `json:"category_id"`
-	Unit       string      `json:"unit"`
+	UnitID     int64       `json:"unit_id"`
 	UpdatedBy  pgtype.Text `json:"updated_by"`
 }
 
@@ -1175,7 +1332,7 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 		arg.Upc12,
 		arg.Upc14,
 		arg.CategoryID,
-		arg.Unit,
+		arg.UnitID,
 		arg.UpdatedBy,
 	)
 	return err

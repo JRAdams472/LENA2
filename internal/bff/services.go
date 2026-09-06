@@ -73,6 +73,10 @@ type InventoryService interface {
 	CreateIngredient(ctx context.Context, arg inventory.Ingredient, by string) (inventory.Ingredient, error)
 	UpdateIngredient(ctx context.Context, ingredientID int64, arg inventory.Ingredient, by string) (inventory.Ingredient, error)
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
+	GetUnitByID(ctx context.Context, unitID int64) (inventory.Unit, error)
+	GetUnitByName(ctx context.Context, name string) (inventory.Unit, error)
+	GetUnitsByIDs(ctx context.Context, unitIDs []int64) ([]inventory.Unit, error)
+	ListUnits(ctx context.Context) ([]inventory.Unit, error)
 }
 
 var _ InventoryService = (*inventory.Service)(nil)
@@ -112,7 +116,7 @@ type RecipeService interface {
 	AddRecipeStep(ctx context.Context, recipeID int64, stepNumber int32, instruction, by string) (recipe.RecipeStep, error)
 	UpdateRecipe(ctx context.Context, recipeID int64, arg recipe.Recipe, by string) error
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]recipe.RecipeItem, error)
-	RemoveRecipeItem(ctx context.Context, recipeID, itemID int64) error
+	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]recipe.RecipeStep, error)
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int64) ([]recipe.RecipeStep, error)
 	DeleteRecipeStep(ctx context.Context, stepID int64) error

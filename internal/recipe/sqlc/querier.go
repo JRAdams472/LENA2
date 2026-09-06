@@ -24,7 +24,7 @@ type Querier interface {
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]RecipeRecipeStep, error)
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeStep, error)
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)
-	RemoveRecipeItem(ctx context.Context, arg RemoveRecipeItemParams) error
+	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
 	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) error
 	UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) error
 }

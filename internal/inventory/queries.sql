@@ -39,7 +39,7 @@ FROM inventory.category
 ORDER BY name;
 
 -- name: CreateItem :one
-INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit, created_by, updated_by)
+INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
@@ -65,7 +65,7 @@ SET name        = $2,
     upc12       = $4,
     upc14       = $5,
     category_id = $6,
-    unit        = $7,
+    unit_id     = $7,
     updated_by  = $8,
     updated_at  = now()
 WHERE item_id = $1;
@@ -204,7 +204,7 @@ DELETE FROM inventory.nutrient_type
 WHERE nutrient_id = $1;
 
 -- name: CreateIngredient :one
-INSERT INTO inventory.ingredient (name, category_id, default_unit, is_active, created_by, updated_by)
+INSERT INTO inventory.ingredient (name, category_id, default_unit_id, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
@@ -230,10 +230,10 @@ FROM inventory.ingredient;
 
 -- name: UpdateIngredient :one
 UPDATE inventory.ingredient
-SET name         = $2,
-    category_id  = $3,
-    default_unit = $4,
-    is_active    = $5,
+SET name            = $2,
+    category_id     = $3,
+    default_unit_id = $4,
+    is_active       = $5,
     updated_by   = $6,
     updated_at   = now()
 WHERE ingredient_id = $1
@@ -242,3 +242,28 @@ RETURNING *;
 -- name: DeleteIngredient :exec
 DELETE FROM inventory.ingredient
 WHERE ingredient_id = $1;
+
+-- name: CreateUnit :one
+INSERT INTO inventory.unit (name, abbreviation, kind, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetUnitByID :one
+SELECT *
+FROM inventory.unit
+WHERE unit_id = $1;
+
+-- name: GetUnitByName :one
+SELECT *
+FROM inventory.unit
+WHERE lower(name) = lower($1) OR lower(abbreviation) = lower($1);
+
+-- name: GetUnitsByIDs :many
+SELECT *
+FROM inventory.unit
+WHERE unit_id = ANY(sqlc.arg(unit_ids)::bigint[]);
+
+-- name: ListUnits :many
+SELECT *
+FROM inventory.unit
+ORDER BY kind, name;

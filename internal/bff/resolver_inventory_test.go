@@ -185,8 +185,9 @@ func TestResolver_Inventory_Item(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).Return(inventory.Item{
 			ItemID: 5, Name: "Milk", BrandID: &brandID, Upc12: "012345678901",
-			CategoryID: 2, Unit: "gal",
+			CategoryID: 2, UnitID: 9,
 		}, nil)
+		inv.EXPECT().GetUnitByID(gomock.Any(), int64(9)).Return(inventory.Unit{UnitID: 9, Name: "gallon"}, nil)
 		inv.EXPECT().GetBrandByID(gomock.Any(), int64(8)).Return(inventory.Brand{BrandID: 8, Name: "DairyCo"}, nil)
 		inv.EXPECT().GetCategoryByID(gomock.Any(), int64(2)).Return(inventory.Category{CategoryID: 2, Name: "Dairy"}, nil)
 		inv.EXPECT().ListFoodNutrientsByItem(gomock.Any(), int64(5)).Return([]inventory.FoodNutrient{
@@ -205,7 +206,9 @@ func TestResolver_Inventory_Item(t *testing.T) {
 		require.NotNil(t, res.Upc12())
 		assert.Equal(t, "012345678901", *res.Upc12())
 		assert.Nil(t, res.Upc14())
-		assert.Equal(t, "gal", res.Unit())
+		unit, err := res.Unit(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "gallon", unit)
 
 		brand, err := res.Brand(ctx)
 		require.NoError(t, err)
@@ -408,9 +411,10 @@ func TestResolver_Inventory_DeleteCategory(t *testing.T) {
 func TestResolver_Inventory_CreateItem(t *testing.T) {
 	inv := newInvMock(t)
 	brandID := graphql.ID("8")
-	expected := inventory.Item{Name: "Milk", BrandID: invInt64Ptr(8), Upc12: "0123", CategoryID: 2, Unit: "gal"}
+	expected := inventory.Item{Name: "Milk", BrandID: invInt64Ptr(8), Upc12: "0123", CategoryID: 2, UnitID: 9}
+	inv.EXPECT().GetUnitByName(gomock.Any(), "gal").Return(inventory.Unit{UnitID: 9, Name: "gallon"}, nil)
 	inv.EXPECT().CreateItem(gomock.Any(), expected, invTestEmail).
-		Return(inventory.Item{ItemID: 5, Name: "Milk", BrandID: invInt64Ptr(8), CategoryID: 2, Unit: "gal"}, nil)
+		Return(inventory.Item{ItemID: 5, Name: "Milk", BrandID: invInt64Ptr(8), CategoryID: 2, UnitID: 9}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.CreateItem(invCtx(), struct{ Input createItemInput }{
 		Input: createItemInput{
@@ -446,12 +450,12 @@ func TestResolver_Inventory_UpdateItem(t *testing.T) {
 
 	inv := newInvMock(t)
 	inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).
-		Return(inventory.Item{ItemID: 5, Name: "Old", CategoryID: 2, Unit: "gal"}, nil)
+		Return(inventory.Item{ItemID: 5, Name: "Old", CategoryID: 2, UnitID: 9}, nil)
 	inv.EXPECT().UpdateItem(gomock.Any(), int64(5), inventory.Item{
-		Name: "New", CategoryID: 2, Unit: "gal",
+		Name: "New", CategoryID: 2, UnitID: 9,
 	}, invTestEmail).Return(nil)
 	inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).
-		Return(inventory.Item{ItemID: 5, Name: "New", CategoryID: 2, Unit: "gal"}, nil)
+		Return(inventory.Item{ItemID: 5, Name: "New", CategoryID: 2, UnitID: 9}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.UpdateItem(invCtx(), args{ID: "5", Input: updateItemInput{Name: invStrPtr("New")}})
 	require.NoError(t, err)
@@ -682,10 +686,12 @@ func TestResolver_Inventory_Ingredient(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		catID := int64(4)
 		inv := newInvMock(t)
+		unitID := int64(10)
 		inv.EXPECT().GetIngredientByID(gomock.Any(), int64(9)).Return(inventory.Ingredient{
 			IngredientID: 9, Name: "All-Purpose Flour", CategoryID: &catID,
-			DefaultUnit: "g", IsActive: true,
+			DefaultUnitID: &unitID, IsActive: true,
 		}, nil)
+		inv.EXPECT().GetUnitByID(gomock.Any(), int64(10)).Return(inventory.Unit{UnitID: 10, Name: "gram"}, nil)
 		inv.EXPECT().GetCategoryByID(gomock.Any(), int64(4)).Return(inventory.Category{
 			CategoryID: 4, Name: "Baking",
 		}, nil)
@@ -694,8 +700,10 @@ func TestResolver_Inventory_Ingredient(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, graphql.ID("9"), res.ID())
 		assert.Equal(t, "All-Purpose Flour", res.Name())
-		require.NotNil(t, res.DefaultUnit())
-		assert.Equal(t, "g", *res.DefaultUnit())
+		du, err := res.DefaultUnit(invCtx())
+		require.NoError(t, err)
+		require.NotNil(t, du)
+		assert.Equal(t, "gram", *du)
 		assert.True(t, res.IsActive())
 		cat, err := res.Category(invCtx())
 		require.NoError(t, err)
@@ -710,7 +718,9 @@ func TestResolver_Inventory_Ingredient(t *testing.T) {
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Ingredient(invCtx(), struct{ ID graphql.ID }{ID: "9"})
 		require.NoError(t, err)
-		assert.Nil(t, res.DefaultUnit())
+		du, err := res.DefaultUnit(invCtx())
+		require.NoError(t, err)
+		assert.Nil(t, du)
 		cat, err := res.Category(invCtx())
 		require.NoError(t, err)
 		assert.Nil(t, cat)
@@ -768,10 +778,11 @@ func TestResolver_Inventory_Ingredients(t *testing.T) {
 func TestResolver_Inventory_IngredientMutations(t *testing.T) {
 	t.Run("create", func(t *testing.T) {
 		inv := newInvMock(t)
+		inv.EXPECT().GetUnitByName(gomock.Any(), "g").Return(inventory.Unit{UnitID: 10, Name: "gram"}, nil)
 		inv.EXPECT().CreateIngredient(gomock.Any(), inventory.Ingredient{
-			Name:        "Flour",
-			DefaultUnit: "g",
-			IsActive:    true,
+			Name:          "Flour",
+			DefaultUnitID: invInt64Ptr(10),
+			IsActive:      true,
 		}, invTestEmail).Return(inventory.Ingredient{IngredientID: 9, Name: "Flour", IsActive: true}, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.CreateIngredient(invCtx(), struct{ Input createIngredientInput }{

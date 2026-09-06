@@ -27,7 +27,6 @@ type GroceryGroceryListItem struct {
 	ItemID            pgtype.Int8        `json:"item_id"`
 	ManualItemName    pgtype.Text        `json:"manual_item_name"`
 	QuantityNeeded    pgtype.Numeric     `json:"quantity_needed"`
-	UnitOfMeasure     pgtype.Text        `json:"unit_of_measure"`
 	Source            string             `json:"source"`
 	IsChecked         bool               `json:"is_checked"`
 	CreatedBy         string             `json:"created_by"`
@@ -35,6 +34,7 @@ type GroceryGroceryListItem struct {
 	UpdatedBy         pgtype.Text        `json:"updated_by"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	IngredientID      pgtype.Int8        `json:"ingredient_id"`
+	UnitID            pgtype.Int8        `json:"unit_id"`
 }
 
 type IdentityUser struct {
@@ -96,15 +96,15 @@ type InventoryFoodNutrient struct {
 }
 
 type InventoryIngredient struct {
-	IngredientID int64              `json:"ingredient_id"`
-	Name         string             `json:"name"`
-	CategoryID   pgtype.Int8        `json:"category_id"`
-	DefaultUnit  pgtype.Text        `json:"default_unit"`
-	IsActive     bool               `json:"is_active"`
-	CreatedBy    string             `json:"created_by"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedBy    pgtype.Text        `json:"updated_by"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	IngredientID  int64              `json:"ingredient_id"`
+	Name          string             `json:"name"`
+	CategoryID    pgtype.Int8        `json:"category_id"`
+	IsActive      bool               `json:"is_active"`
+	CreatedBy     string             `json:"created_by"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedBy     pgtype.Text        `json:"updated_by"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	DefaultUnitID pgtype.Int8        `json:"default_unit_id"`
 }
 
 type InventoryItem struct {
@@ -114,11 +114,11 @@ type InventoryItem struct {
 	Upc12      pgtype.Text        `json:"upc12"`
 	Upc14      pgtype.Text        `json:"upc14"`
 	CategoryID int64              `json:"category_id"`
-	Unit       string             `json:"unit"`
 	CreatedBy  string             `json:"created_by"`
 	CreatedAt  time.Time          `json:"created_at"`
 	UpdatedBy  pgtype.Text        `json:"updated_by"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	UnitID     int64              `json:"unit_id"`
 }
 
 type InventoryNutrientType struct {
@@ -126,6 +126,18 @@ type InventoryNutrientType struct {
 	Name       string      `json:"name"`
 	Unit       pgtype.Text `json:"unit"`
 	CreatedAt  time.Time   `json:"created_at"`
+}
+
+type InventoryUnit struct {
+	UnitID       int64              `json:"unit_id"`
+	Name         string             `json:"name"`
+	Abbreviation pgtype.Text        `json:"abbreviation"`
+	Kind         string             `json:"kind"`
+	IsActive     bool               `json:"is_active"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type InventoryUserItem struct {
@@ -176,13 +188,13 @@ type MealplanMealSlotItem struct {
 	SlotID       int64              `json:"slot_id"`
 	ItemID       pgtype.Int8        `json:"item_id"`
 	Quantity     pgtype.Numeric     `json:"quantity"`
-	Unit         string             `json:"unit"`
 	IsFromRecipe bool               `json:"is_from_recipe"`
 	CreatedBy    string             `json:"created_by"`
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedBy    pgtype.Text        `json:"updated_by"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	IngredientID pgtype.Int8        `json:"ingredient_id"`
+	UnitID       int64              `json:"unit_id"`
 }
 
 type RecipeRecipe struct {
@@ -203,10 +215,13 @@ type RecipeRecipeItem struct {
 	RecipeID     int64          `json:"recipe_id"`
 	ItemID       int64          `json:"item_id"`
 	Quantity     pgtype.Numeric `json:"quantity"`
-	Unit         string         `json:"unit"`
 	Notes        pgtype.Text    `json:"notes"`
 	IsOptional   bool           `json:"is_optional"`
 	IngredientID pgtype.Int8    `json:"ingredient_id"`
+	UnitID       int64          `json:"unit_id"`
+	RecipeItemID int64          `json:"recipe_item_id"`
+	SectionName  pgtype.Text    `json:"section_name"`
+	DisplayOrder int32          `json:"display_order"`
 }
 
 type RecipeRecipeStep struct {
