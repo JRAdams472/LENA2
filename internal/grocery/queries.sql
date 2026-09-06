@@ -35,6 +35,12 @@ FROM grocery.grocery_list_item
 WHERE grocery_list_id = $1
 ORDER BY grocery_list_item_id;
 
+-- name: ListGroceryListItemsByLists :many
+SELECT *
+FROM grocery.grocery_list_item
+WHERE grocery_list_id = ANY(sqlc.arg(grocery_list_ids)::bigint[])
+ORDER BY grocery_list_item_id;
+
 -- name: GetGroceryListItemByID :one
 SELECT *
 FROM grocery.grocery_list_item

@@ -2,14 +2,15 @@ package bff
 
 import (
 	"context"
+	"sort"
+	"strconv"
+	"time"
+
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/graph-gophers/graphql-go"
-	"sort"
-	"strconv"
-	"time"
 )
 
 // MealPlan resolves a single meal plan by ID.
@@ -48,7 +49,33 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	planIDs := distinctIDs(plans, func(p mealplan.MealPlan) *int64 { return &p.MealPlanID })
+	slotsByPlan := make(map[int64][]mealplan.MealSlot)
+	slotItemsBySlot := make(map[int64][]mealplan.MealSlotItem)
+	var rc *recipeChildren
+	if len(planIDs) > 0 {
+		slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range slots {
+			slotsByPlan[s.MealPlanID] = append(slotsByPlan[s.MealPlanID], s)
+		}
+		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, si := range slotItems {
+			slotItemsBySlot[si.SlotID] = append(slotItemsBySlot[si.SlotID], si)
+		}
+		rc, err = loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
+			distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
+			distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, slotsByPlan: slotsByPlan, slotItemsBySlot: slotItemsBySlot, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // Nutrition returns a nutrition summary for a meal plan.
@@ -376,14 +403,19 @@ func (r *Resolver) RemoveMealSlotItem(ctx context.Context, args struct{ SlotItem
 	return true, nil
 }
 
-// mealPlanResolver resolves MealPlan fields.
+// mealPlanResolver resolves MealPlan fields. When rc is non-nil the
+// batch-loaded slots, slot items and recipe data are used instead of
+// per-plan service calls.
 type mealPlanResolver struct {
-	mp   MealPlanService
-	inv  InventoryService
-	rec  RecipeService
-	up   UserPrefsService
-	user currentuser.User
-	plan mealplan.MealPlan
+	mp        MealPlanService
+	inv       InventoryService
+	rec       RecipeService
+	up        UserPrefsService
+	user      currentuser.User
+	plan      mealplan.MealPlan
+	slots     []mealplan.MealSlot
+	slotItems map[int64][]mealplan.MealSlotItem
+	rc        *recipeChildren
 }
 
 func (r *mealPlanResolver) ID() graphql.ID {
@@ -397,25 +429,35 @@ func (r *mealPlanResolver) WeekStartDate() string { return r.plan.WeekStartDate.
 func (r *mealPlanResolver) IsActive() bool { return r.plan.IsActive }
 
 func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, error) {
-	slots, err := r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID)
-	if err != nil {
-		return nil, err
+	var slots []mealplan.MealSlot
+	if r.rc != nil {
+		slots = r.slots
+	} else {
+		var err error
+		slots, err = r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*mealSlotResolver, len(slots))
 	for i := range slots {
-		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i]}
+		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i], items: r.slotItems[slots[i].SlotID], rc: r.rc}
 	}
 	return out, nil
 }
 
-// mealSlotResolver resolves MealSlot fields.
+// mealSlotResolver resolves MealSlot fields. When rc is non-nil the
+// batch-loaded slot items, recipes and catalog rows are used instead of
+// per-slot service calls.
 type mealSlotResolver struct {
-	mp   MealPlanService
-	inv  InventoryService
-	rec  RecipeService
-	up   UserPrefsService
-	user currentuser.User
-	slot mealplan.MealSlot
+	mp    MealPlanService
+	inv   InventoryService
+	rec   RecipeService
+	up    UserPrefsService
+	user  currentuser.User
+	slot  mealplan.MealSlot
+	items []mealplan.MealSlotItem
+	rc    *recipeChildren
 }
 
 func (r *mealSlotResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.slot.SlotID, 10)) }
@@ -432,6 +474,13 @@ func (r *mealSlotResolver) Recipe(ctx context.Context) (*recipeResolver, error) 
 	if r.slot.RecipeID == nil {
 		return nil, nil
 	}
+	if r.rc != nil {
+		rec, ok := r.rc.recipes[*r.slot.RecipeID]
+		if !ok {
+			return nil, nil
+		}
+		return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec, rc: r.rc}, nil
+	}
 	rec, err := r.rec.GetRecipeByID(ctx, *r.slot.RecipeID)
 	if err != nil {
 		return nil, err
@@ -440,21 +489,33 @@ func (r *mealSlotResolver) Recipe(ctx context.Context) (*recipeResolver, error) 
 }
 
 func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, error) {
-	items, err := r.mp.ListMealSlotItems(ctx, r.slot.SlotID)
-	if err != nil {
-		return nil, err
+	var items []mealplan.MealSlotItem
+	var itemsByID map[int64]inventory.Item
+	var ch *itemChildren
+	if r.rc != nil {
+		items = r.items
+		itemsByID = r.rc.items
+		ch = r.rc.itemChildren
+	} else {
+		var err error
+		items, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*mealSlotItemResolver, len(items))
 	for i := range items {
-		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i]}
+		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch}
 	}
 	return out, nil
 }
 
 // mealSlotItemResolver resolves MealSlotItem fields.
 type mealSlotItemResolver struct {
-	inv  InventoryService
-	item mealplan.MealSlotItem
+	inv   InventoryService
+	item  mealplan.MealSlotItem
+	items map[int64]inventory.Item
+	ch    *itemChildren
 }
 
 func (r *mealSlotItemResolver) ID() graphql.ID {
@@ -471,6 +532,13 @@ func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) 
 	if r.item.ItemID == nil {
 		return nil, nil
 	}
+	if r.items != nil {
+		it, ok := r.items[*r.item.ItemID]
+		if !ok {
+			return nil, nil
+		}
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+	}
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
@@ -479,21 +547,24 @@ func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) 
 }
 
 type mealPlanPageResolver struct {
-	mp       MealPlanService
-	inv      InventoryService
-	rec      RecipeService
-	up       UserPrefsService
-	user     currentuser.User
-	plans    []mealplan.MealPlan
-	page     int32
-	pageSize int32
-	total    int32
+	mp              MealPlanService
+	inv             InventoryService
+	rec             RecipeService
+	up              UserPrefsService
+	user            currentuser.User
+	plans           []mealplan.MealPlan
+	slotsByPlan     map[int64][]mealplan.MealSlot
+	slotItemsBySlot map[int64][]mealplan.MealSlotItem
+	rc              *recipeChildren
+	page            int32
+	pageSize        int32
+	total           int32
 }
 
 func (r *mealPlanPageResolver) Items() []*mealPlanResolver {
 	out := make([]*mealPlanResolver, len(r.plans))
 	for i := range r.plans {
-		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, plan: r.plans[i]}
+		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, plan: r.plans[i], slots: r.slotsByPlan[r.plans[i].MealPlanID], slotItems: r.slotItemsBySlot, rc: r.rc}
 	}
 	return out
 }

@@ -332,6 +332,21 @@ func (mr *MockQuerierMockRecorder) GetBottleByID(ctx, bottleID any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBottleByID", reflect.TypeOf((*MockQuerier)(nil).GetBottleByID), ctx, bottleID)
 }
 
+// GetBottlesByIDs mocks base method.
+func (m *MockQuerier) GetBottlesByIDs(ctx context.Context, bottleIds []int64) ([]sqlc.WineBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBottlesByIDs", ctx, bottleIds)
+	ret0, _ := ret[0].([]sqlc.WineBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBottlesByIDs indicates an expected call of GetBottlesByIDs.
+func (mr *MockQuerierMockRecorder) GetBottlesByIDs(ctx, bottleIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBottlesByIDs", reflect.TypeOf((*MockQuerier)(nil).GetBottlesByIDs), ctx, bottleIds)
+}
+
 // GetCountryByID mocks base method.
 func (m *MockQuerier) GetCountryByID(ctx context.Context, countryID int64) (sqlc.WineCountry, error) {
 	m.ctrl.T.Helper()
@@ -437,6 +452,21 @@ func (mr *MockQuerierMockRecorder) ListBottleFlavorProfiles(ctx, bottleID any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleFlavorProfiles", reflect.TypeOf((*MockQuerier)(nil).ListBottleFlavorProfiles), ctx, bottleID)
 }
 
+// ListBottleFlavorProfilesByBottles mocks base method.
+func (m *MockQuerier) ListBottleFlavorProfilesByBottles(ctx context.Context, bottleIds []int64) ([]sqlc.ListBottleFlavorProfilesByBottlesRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBottleFlavorProfilesByBottles", ctx, bottleIds)
+	ret0, _ := ret[0].([]sqlc.ListBottleFlavorProfilesByBottlesRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBottleFlavorProfilesByBottles indicates an expected call of ListBottleFlavorProfilesByBottles.
+func (mr *MockQuerierMockRecorder) ListBottleFlavorProfilesByBottles(ctx, bottleIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleFlavorProfilesByBottles", reflect.TypeOf((*MockQuerier)(nil).ListBottleFlavorProfilesByBottles), ctx, bottleIds)
+}
+
 // ListBottleGrapeVarieties mocks base method.
 func (m *MockQuerier) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]sqlc.ListBottleGrapeVarietiesRow, error) {
 	m.ctrl.T.Helper()
@@ -450,6 +480,21 @@ func (m *MockQuerier) ListBottleGrapeVarieties(ctx context.Context, bottleID int
 func (mr *MockQuerierMockRecorder) ListBottleGrapeVarieties(ctx, bottleID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleGrapeVarieties", reflect.TypeOf((*MockQuerier)(nil).ListBottleGrapeVarieties), ctx, bottleID)
+}
+
+// ListBottleGrapeVarietiesByBottles mocks base method.
+func (m *MockQuerier) ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIds []int64) ([]sqlc.ListBottleGrapeVarietiesByBottlesRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBottleGrapeVarietiesByBottles", ctx, bottleIds)
+	ret0, _ := ret[0].([]sqlc.ListBottleGrapeVarietiesByBottlesRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBottleGrapeVarietiesByBottles indicates an expected call of ListBottleGrapeVarietiesByBottles.
+func (mr *MockQuerierMockRecorder) ListBottleGrapeVarietiesByBottles(ctx, bottleIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleGrapeVarietiesByBottles", reflect.TypeOf((*MockQuerier)(nil).ListBottleGrapeVarietiesByBottles), ctx, bottleIds)
 }
 
 // ListBottles mocks base method.

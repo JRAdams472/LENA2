@@ -357,6 +357,7 @@ func (s *Service) DeleteGrapeVariety(ctx context.Context, grapeVarietyID int64) 
 
 // BottleGrapeVariety is a grape variety associated with a bottle.
 type BottleGrapeVariety struct {
+	BottleID       int64
 	GrapeVarietyID int64
 	Name           string
 	Percentage     *int16
@@ -388,6 +389,26 @@ func (s *Service) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) 
 	out := make([]BottleGrapeVariety, len(rows))
 	for i := range rows {
 		out[i] = toBottleGrapeVariety(rows[i])
+		out[i].BottleID = bottleID
+	}
+	return out, nil
+}
+
+// ListBottleGrapeVarietiesByBottles returns grape varieties for a set of
+// bottles in a single query; each result carries the bottle it belongs to.
+func (s *Service) ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIDs []int64) ([]BottleGrapeVariety, error) {
+	rows, err := s.q.ListBottleGrapeVarietiesByBottles(ctx, bottleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list bottle grape varieties by bottles: %w", err)
+	}
+	out := make([]BottleGrapeVariety, len(rows))
+	for i := range rows {
+		out[i] = BottleGrapeVariety{
+			BottleID:       rows[i].BottleID,
+			GrapeVarietyID: rows[i].GrapeVarietyID,
+			Name:           rows[i].Name,
+			Percentage:     int16Ptr(rows[i].Percentage),
+		}
 	}
 	return out, nil
 }
@@ -465,6 +486,7 @@ func (s *Service) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID i
 
 // BottleFlavorProfile is a flavor profile attached to a bottle.
 type BottleFlavorProfile struct {
+	BottleID        int64
 	FlavorProfileID int64
 	Name            string
 	Intensity       int16
@@ -493,6 +515,26 @@ func (s *Service) ListBottleFlavorProfiles(ctx context.Context, bottleID int64) 
 	out := make([]BottleFlavorProfile, len(rows))
 	for i := range rows {
 		out[i] = toBottleFlavorProfile(rows[i])
+		out[i].BottleID = bottleID
+	}
+	return out, nil
+}
+
+// ListBottleFlavorProfilesByBottles returns flavor profiles for a set of
+// bottles in a single query; each result carries the bottle it belongs to.
+func (s *Service) ListBottleFlavorProfilesByBottles(ctx context.Context, bottleIDs []int64) ([]BottleFlavorProfile, error) {
+	rows, err := s.q.ListBottleFlavorProfilesByBottles(ctx, bottleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list bottle flavor profiles by bottles: %w", err)
+	}
+	out := make([]BottleFlavorProfile, len(rows))
+	for i := range rows {
+		out[i] = BottleFlavorProfile{
+			BottleID:        rows[i].BottleID,
+			FlavorProfileID: rows[i].FlavorProfileID,
+			Name:            rows[i].Name,
+			Intensity:       rows[i].Intensity,
+		}
 	}
 	return out, nil
 }
@@ -566,6 +608,23 @@ func (s *Service) GetBottleByID(ctx context.Context, bottleID int64) (Bottle, er
 		return Bottle{}, fmt.Errorf("get bottle by id: %w", err)
 	}
 	return b, nil
+}
+
+// GetBottlesByIDs returns a set of bottles in a single query.
+func (s *Service) GetBottlesByIDs(ctx context.Context, bottleIDs []int64) ([]Bottle, error) {
+	rows, err := s.q.GetBottlesByIDs(ctx, bottleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get bottles by ids: %w", err)
+	}
+	out := make([]Bottle, len(rows))
+	for i := range rows {
+		b, err := toBottle(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("get bottles by ids: %w", err)
+		}
+		out[i] = b
+	}
+	return out, nil
 }
 
 // ListBottles returns a paginated list of bottles.

@@ -174,6 +174,45 @@ func (q *Queries) GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams
 	return i, err
 }
 
+const listRecipeFavorites = `-- name: ListRecipeFavorites :many
+SELECT user_id, recipe_id, is_favorite, created_by, created_at, updated_by, updated_at
+FROM recipe.user_recipe_preference
+WHERE user_id = $1 AND recipe_id = ANY($2::bigint[])
+`
+
+type ListRecipeFavoritesParams struct {
+	UserID    int64   `json:"user_id"`
+	RecipeIds []int64 `json:"recipe_ids"`
+}
+
+func (q *Queries) ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]RecipeUserRecipePreference, error) {
+	rows, err := q.db.Query(ctx, listRecipeFavorites, arg.UserID, arg.RecipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeUserRecipePreference{}
+	for rows.Next() {
+		var i RecipeUserRecipePreference
+		if err := rows.Scan(
+			&i.UserID,
+			&i.RecipeID,
+			&i.IsFavorite,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserBottles = `-- name: ListUserBottles :many
 SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
 FROM wine.user_bottle

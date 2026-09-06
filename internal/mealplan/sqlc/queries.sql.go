@@ -364,6 +364,84 @@ func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64)
 	return items, nil
 }
 
+const listMealSlotItemsByPlans = `-- name: ListMealSlotItemsByPlans :many
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at
+FROM mealplan.meal_slot_item msi
+JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
+WHERE ms.meal_plan_id = ANY($1::bigint[])
+ORDER BY msi.slot_item_id
+`
+
+func (q *Queries) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlotItem, error) {
+	rows, err := q.db.Query(ctx, listMealSlotItemsByPlans, mealPlanIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MealplanMealSlotItem{}
+	for rows.Next() {
+		var i MealplanMealSlotItem
+		if err := rows.Scan(
+			&i.SlotItemID,
+			&i.SlotID,
+			&i.ItemID,
+			&i.Quantity,
+			&i.Unit,
+			&i.IsFromRecipe,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMealSlotsByPlans = `-- name: ListMealSlotsByPlans :many
+SELECT slot_id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, replacement_note, created_by, created_at, updated_by, updated_at
+FROM mealplan.meal_slot
+WHERE meal_plan_id = ANY($1::bigint[])
+ORDER BY day_of_week, meal_type
+`
+
+func (q *Queries) ListMealSlotsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlot, error) {
+	rows, err := q.db.Query(ctx, listMealSlotsByPlans, mealPlanIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MealplanMealSlot{}
+	for rows.Next() {
+		var i MealplanMealSlot
+		if err := rows.Scan(
+			&i.SlotID,
+			&i.MealPlanID,
+			&i.DayOfWeek,
+			&i.MealType,
+			&i.RecipeID,
+			&i.Servings,
+			&i.ReplacementNote,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMealSlotsForPlan = `-- name: ListMealSlotsForPlan :many
 SELECT slot_id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, replacement_note, created_by, created_at, updated_by, updated_at
 FROM mealplan.meal_slot

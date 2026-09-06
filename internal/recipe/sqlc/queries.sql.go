@@ -338,6 +338,42 @@ func (q *Queries) ListRecipeSteps(ctx context.Context, recipeID int64) ([]Recipe
 	return items, nil
 }
 
+const listRecipeStepsByRecipes = `-- name: ListRecipeStepsByRecipes :many
+SELECT step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_step
+WHERE recipe_id = ANY($1::bigint[])
+ORDER BY step_number
+`
+
+func (q *Queries) ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeStep, error) {
+	rows, err := q.db.Query(ctx, listRecipeStepsByRecipes, recipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeStep{}
+	for rows.Next() {
+		var i RecipeRecipeStep
+		if err := rows.Scan(
+			&i.StepID,
+			&i.RecipeID,
+			&i.StepNumber,
+			&i.Instruction,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecipes = `-- name: ListRecipes :many
 SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
 FROM recipe.recipe

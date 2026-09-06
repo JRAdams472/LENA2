@@ -159,6 +159,21 @@ func (mr *MockQuerierMockRecorder) ListGroceryListItems(ctx, groceryListID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItems", reflect.TypeOf((*MockQuerier)(nil).ListGroceryListItems), ctx, groceryListID)
 }
 
+// ListGroceryListItemsByLists mocks base method.
+func (m *MockQuerier) ListGroceryListItemsByLists(ctx context.Context, groceryListIds []int64) ([]sqlc.GroceryGroceryListItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListGroceryListItemsByLists", ctx, groceryListIds)
+	ret0, _ := ret[0].([]sqlc.GroceryGroceryListItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListGroceryListItemsByLists indicates an expected call of ListGroceryListItemsByLists.
+func (mr *MockQuerierMockRecorder) ListGroceryListItemsByLists(ctx, groceryListIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItemsByLists", reflect.TypeOf((*MockQuerier)(nil).ListGroceryListItemsByLists), ctx, groceryListIds)
+}
+
 // ListGroceryLists mocks base method.
 func (m *MockQuerier) ListGroceryLists(ctx context.Context, arg sqlc.ListGroceryListsParams) ([]sqlc.GroceryGroceryList, error) {
 	m.ctrl.T.Helper()

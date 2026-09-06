@@ -17,6 +17,7 @@ type Querier interface {
 	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (RecipeUserRecipePreference, error)
 	GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (WineUserBottle, error)
 	GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (InventoryUserItem, error)
+	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]RecipeUserRecipePreference, error)
 	ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]WineUserBottle, error)
 	ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]InventoryUserItem, error)
 	UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (RecipeUserRecipePreference, error)

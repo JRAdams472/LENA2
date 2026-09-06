@@ -2,9 +2,10 @@ package bff
 
 import (
 	"context"
+	"strconv"
+
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/graph-gophers/graphql-go"
-	"strconv"
 )
 
 // Brand resolves a single brand by ID.
@@ -137,7 +138,11 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &itemPageResolver{inv: r.InventoryService, items: items, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	ch, err := loadItemChildren(ctx, r.InventoryService, items)
+	if err != nil {
+		return nil, err
+	}
+	return &itemPageResolver{inv: r.InventoryService, items: items, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // CreateBrand adds a new brand.
@@ -386,10 +391,12 @@ func (r *Resolver) DeleteItem(ctx context.Context, args struct{ ID graphql.ID })
 	return true, nil
 }
 
-// itemResolver resolves Item fields.
+// itemResolver resolves Item fields. When ch is non-nil its batch-loaded
+// maps are used instead of per-item service calls.
 type itemResolver struct {
 	inv InventoryService
 	it  inventory.Item
+	ch  *itemChildren
 }
 
 func (r *itemResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.it.ItemID, 10)) }
@@ -406,6 +413,13 @@ func (r *itemResolver) Brand(ctx context.Context) (*brandResolver, error) {
 	if r.it.BrandID == nil {
 		return nil, nil
 	}
+	if r.ch != nil {
+		b, ok := r.ch.brands[*r.it.BrandID]
+		if !ok {
+			return nil, nil
+		}
+		return &brandResolver{b: b}, nil
+	}
 	b, err := r.inv.GetBrandByID(ctx, *r.it.BrandID)
 	if err != nil {
 		return nil, err
@@ -414,6 +428,13 @@ func (r *itemResolver) Brand(ctx context.Context) (*brandResolver, error) {
 }
 
 func (r *itemResolver) Category(ctx context.Context) (*categoryResolver, error) {
+	if r.ch != nil {
+		c, ok := r.ch.categories[r.it.CategoryID]
+		if !ok {
+			return nil, nil
+		}
+		return &categoryResolver{c: c}, nil
+	}
 	c, err := r.inv.GetCategoryByID(ctx, r.it.CategoryID)
 	if err != nil {
 		return nil, err
@@ -422,9 +443,15 @@ func (r *itemResolver) Category(ctx context.Context) (*categoryResolver, error) 
 }
 
 func (r *itemResolver) Nutrients(ctx context.Context) ([]*foodNutrientResolver, error) {
-	nutrients, err := r.inv.ListFoodNutrientsByItem(ctx, r.it.ItemID)
-	if err != nil {
-		return nil, err
+	var nutrients []inventory.FoodNutrient
+	if r.ch != nil {
+		nutrients = r.ch.nutrients[r.it.ItemID]
+	} else {
+		var err error
+		nutrients, err = r.inv.ListFoodNutrientsByItem(ctx, r.it.ItemID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*foodNutrientResolver, len(nutrients))
 	for i := range nutrients {
@@ -434,9 +461,15 @@ func (r *itemResolver) Nutrients(ctx context.Context) ([]*foodNutrientResolver, 
 }
 
 func (r *itemResolver) Flavors(ctx context.Context) ([]*foodFlavorResolver, error) {
-	flavors, err := r.inv.ListFoodFlavorsByItem(ctx, r.it.ItemID)
-	if err != nil {
-		return nil, err
+	var flavors []inventory.FoodFlavor
+	if r.ch != nil {
+		flavors = r.ch.flavors[r.it.ItemID]
+	} else {
+		var err error
+		flavors, err = r.inv.ListFoodFlavorsByItem(ctx, r.it.ItemID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*foodFlavorResolver, len(flavors))
 	for i := range flavors {
@@ -511,6 +544,7 @@ func (r *foodFlavorResolver) Intensity() int32 { return int32(r.flavor.Intensity
 type itemPageResolver struct {
 	inv      InventoryService
 	items    []inventory.Item
+	ch       *itemChildren
 	page     int32
 	pageSize int32
 	total    int32
@@ -519,7 +553,7 @@ type itemPageResolver struct {
 func (r *itemPageResolver) Items() []*itemResolver {
 	out := make([]*itemResolver, len(r.items))
 	for i := range r.items {
-		out[i] = &itemResolver{inv: r.inv, it: r.items[i]}
+		out[i] = &itemResolver{inv: r.inv, it: r.items[i], ch: r.ch}
 	}
 	return out
 }

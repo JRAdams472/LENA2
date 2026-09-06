@@ -136,13 +136,20 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 	}
 
 	t.Run("happy path", func(t *testing.T) {
-		rec, _, _ := newRecMocks(t)
+		rec, inv, up := newRecMocks(t)
 		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(10), int32(10)).Return([]recipe.Recipe{
 			{RecipeID: 1, Name: "Soup"},
 			{RecipeID: 2, Name: "Salad"},
 		}, nil)
 		rec.EXPECT().CountRecipes(gomock.Any(), true).Return(int64(5), nil)
-		r := &Resolver{RecipeService: rec}
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{1, 2}).Return([]recipe.Recipe{
+			{RecipeID: 1, Name: "Soup"},
+			{RecipeID: 2, Name: "Salad"},
+		}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{1, 2}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{1, 2}).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{1, 2}).Return(nil, nil)
+		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.Recipes(recCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 2)

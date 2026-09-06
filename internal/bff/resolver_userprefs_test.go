@@ -12,8 +12,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
+	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
 var errUpBoom = errors.New("userprefs boom")
@@ -30,7 +32,8 @@ func upCtx() context.Context {
 func TestResolver_UserItems_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
-	r := &Resolver{UserPrefsService: up}
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{UserPrefsService: up, InventoryService: inv}
 
 	minQty := 1.5
 	purchaseAt := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
@@ -39,6 +42,13 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 		{UserItemID: 6, UserID: upUserID, ItemID: 43, CurrentQty: 0.5},
 	}, nil)
 	up.EXPECT().CountUserItems(gomock.Any(), upUserID).Return(int64(5), nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{42, 43}).Return([]inventory.Item{
+		{ItemID: 42, Name: "Flour", CategoryID: 1},
+		{ItemID: 43, Name: "Sugar", CategoryID: 1},
+	}, nil)
+	inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return(nil, nil)
+	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{42, 43}).Return(nil, nil)
+	inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{42, 43}).Return(nil, nil)
 
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32
@@ -96,7 +106,8 @@ func TestResolver_UserItems_ServiceError(t *testing.T) {
 func TestResolver_UserBottles_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
-	r := &Resolver{UserPrefsService: up}
+	w := mock.NewMockWineService(ctrl)
+	r := &Resolver{UserPrefsService: up, WineService: w}
 
 	bottleNum := int32(2)
 	price := 24.99
@@ -105,6 +116,9 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 		{UserBottleID: 30, UserID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 6, PurchasePrice: &price, StorageTemp: &temp, Location: "cellar", IsFavorite: true},
 	}, nil)
 	up.EXPECT().CountUserBottles(gomock.Any(), upUserID).Return(int64(5), nil)
+	w.EXPECT().GetBottlesByIDs(gomock.Any(), []int64{88}).Return([]wine.Bottle{{BottleID: 88, BottleSize: "750ml"}}, nil)
+	w.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
+	w.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
 
 	res, err := r.UserBottles(upCtx(), struct {
 		Page     int32

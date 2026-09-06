@@ -1015,7 +1015,7 @@ func TestJunction(t *testing.T) {
 		got, err := svc.ListBottleGrapeVarieties(ctx, 1)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, BottleGrapeVariety{GrapeVarietyID: 2, Name: `Merlot`, Percentage: i16(45)}, got[0])
+		assert.Equal(t, BottleGrapeVariety{BottleID: 1, GrapeVarietyID: 2, Name: `Merlot`, Percentage: i16(45)}, got[0])
 	})
 
 	t.Run(`ListBottleGrapeVarieties error`, func(t *testing.T) {
@@ -1085,7 +1085,7 @@ func TestJunction(t *testing.T) {
 		got, err := svc.ListBottleFlavorProfiles(ctx, 1)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, BottleFlavorProfile{FlavorProfileID: 2, Name: `Oak`, Intensity: 7}, got[0])
+		assert.Equal(t, BottleFlavorProfile{BottleID: 1, FlavorProfileID: 2, Name: `Oak`, Intensity: 7}, got[0])
 	})
 
 	t.Run(`ListBottleFlavorProfiles error`, func(t *testing.T) {

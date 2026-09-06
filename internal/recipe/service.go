@@ -297,6 +297,19 @@ func (s *Service) ListRecipeSteps(ctx context.Context, recipeID int64) ([]Recipe
 	return out, nil
 }
 
+// ListRecipeStepsByRecipes returns all steps for a set of recipes in one query.
+func (s *Service) ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int64) ([]RecipeStep, error) {
+	rows, err := s.q.ListRecipeStepsByRecipes(ctx, recipeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list recipe steps by recipes: %w", err)
+	}
+	out := make([]RecipeStep, len(rows))
+	for i := range rows {
+		out[i] = toRecipeStep(rows[i])
+	}
+	return out, nil
+}
+
 // UpdateRecipeStep modifies a step.
 func (s *Service) UpdateRecipeStep(ctx context.Context, stepID int64, stepNumber int32, instruction, by string) error {
 	return s.q.UpdateRecipeStep(ctx, sqlc.UpdateRecipeStepParams{

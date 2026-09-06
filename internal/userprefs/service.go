@@ -240,6 +240,20 @@ func (s *Service) GetRecipeFavorite(ctx context.Context, userID, recipeID int64)
 	return RecipeFavorite{UserID: row.UserID, RecipeID: row.RecipeID, IsFavorite: row.IsFavorite}, nil
 }
 
+// ListRecipeFavorites returns a user's favorite flags for a set of recipes
+// in a single query.
+func (s *Service) ListRecipeFavorites(ctx context.Context, userID int64, recipeIDs []int64) ([]RecipeFavorite, error) {
+	rows, err := s.q.ListRecipeFavorites(ctx, sqlc.ListRecipeFavoritesParams{UserID: userID, RecipeIds: recipeIDs})
+	if err != nil {
+		return nil, fmt.Errorf("list recipe favorites: %w", err)
+	}
+	out := make([]RecipeFavorite, len(rows))
+	for i := range rows {
+		out[i] = RecipeFavorite{UserID: rows[i].UserID, RecipeID: rows[i].RecipeID, IsFavorite: rows[i].IsFavorite}
+	}
+	return out, nil
+}
+
 // DeleteRecipeFavorite removes a user's recipe favorite.
 func (s *Service) DeleteRecipeFavorite(ctx context.Context, userID, recipeID int64) error {
 	return s.q.DeleteRecipeFavorite(ctx, sqlc.DeleteRecipeFavoriteParams{UserID: userID, RecipeID: recipeID})

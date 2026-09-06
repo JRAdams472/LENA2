@@ -129,6 +129,28 @@ JOIN inventory.flavor_profile fp ON ff.flavor_id = fp.flavor_id
 WHERE ff.food_id = $1
 ORDER BY fp.name;
 
+-- name: ListFoodFlavorsByItems :many
+SELECT ff.food_id, fp.flavor_id, fp.name, ff.intensity
+FROM inventory.food_flavor ff
+JOIN inventory.flavor_profile fp ON ff.flavor_id = fp.flavor_id
+WHERE ff.food_id = ANY(sqlc.arg(item_ids)::bigint[])
+ORDER BY fp.name;
+
+-- name: GetItemsByIDs :many
+SELECT *
+FROM inventory.item
+WHERE item_id = ANY(sqlc.arg(item_ids)::bigint[]);
+
+-- name: GetBrandsByIDs :many
+SELECT *
+FROM inventory.brand
+WHERE brand_id = ANY(sqlc.arg(brand_ids)::bigint[]);
+
+-- name: GetCategoriesByIDs :many
+SELECT *
+FROM inventory.category
+WHERE category_id = ANY(sqlc.arg(category_ids)::bigint[]);
+
 -- name: DeleteFoodFlavor :exec
 DELETE FROM inventory.food_flavor
 WHERE food_id = $1 AND flavor_id = $2;

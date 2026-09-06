@@ -2,9 +2,11 @@ package bff
 
 import (
 	"context"
-	"github.com/JRAdams472/LENA2/internal/grocery"
-	"github.com/graph-gophers/graphql-go"
 	"strconv"
+
+	"github.com/JRAdams472/LENA2/internal/grocery"
+	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/graph-gophers/graphql-go"
 )
 
 // GroceryList resolves a single grocery list by ID.
@@ -43,7 +45,32 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, lists: lists, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	listIDs := distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID })
+	itemsByList := make(map[int64][]grocery.GroceryListItem)
+	var items map[int64]inventory.Item
+	var ch *itemChildren
+	if len(listIDs) > 0 {
+		listItems, err := r.GroceryService.ListGroceryListItemsByLists(ctx, listIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range listItems {
+			itemsByList[it.GroceryListID] = append(itemsByList[it.GroceryListID], it)
+		}
+		items, err = loadItems(ctx, r.InventoryService, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.ItemID }))
+		if err != nil {
+			return nil, err
+		}
+		itemList := make([]inventory.Item, 0, len(items))
+		for _, it := range items {
+			itemList = append(itemList, it)
+		}
+		ch, err = loadItemChildren(ctx, r.InventoryService, itemList)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, lists: lists, itemsByList: itemsByList, items: items, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // GenerateGroceryList generates a grocery list from a meal plan.
@@ -135,11 +162,16 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 	return &groceryListItemResolver{inv: r.InventoryService, item: it}, nil
 }
 
-// groceryListResolver resolves GroceryList fields.
+// groceryListResolver resolves GroceryList fields. When items is non-nil
+// the batch-loaded rows and catalog lookups are used instead of per-list
+// service calls.
 type groceryListResolver struct {
-	g    GroceryService
-	inv  InventoryService
-	list grocery.GroceryList
+	g        GroceryService
+	inv      InventoryService
+	list     grocery.GroceryList
+	items    []grocery.GroceryListItem
+	catItems map[int64]inventory.Item
+	ch       *itemChildren
 }
 
 func (r *groceryListResolver) ID() graphql.ID {
@@ -151,21 +183,29 @@ func (r *groceryListResolver) GeneratedAt() graphql.Time {
 }
 
 func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemResolver, error) {
-	items, err := r.g.ListGroceryListItems(ctx, r.list.GroceryListID)
-	if err != nil {
-		return nil, err
+	var items []grocery.GroceryListItem
+	if r.ch != nil {
+		items = r.items
+	} else {
+		var err error
+		items, err = r.g.ListGroceryListItems(ctx, r.list.GroceryListID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*groceryListItemResolver, len(items))
 	for i := range items {
-		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i]}
+		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i], items: r.catItems, ch: r.ch}
 	}
 	return out, nil
 }
 
 // groceryListItemResolver resolves GroceryListItem fields.
 type groceryListItemResolver struct {
-	inv  InventoryService
-	item grocery.GroceryListItem
+	inv   InventoryService
+	item  grocery.GroceryListItem
+	items map[int64]inventory.Item
+	ch    *itemChildren
 }
 
 func (r *groceryListItemResolver) ID() graphql.ID {
@@ -186,6 +226,13 @@ func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, erro
 	if r.item.ItemID == nil {
 		return nil, nil
 	}
+	if r.items != nil {
+		it, ok := r.items[*r.item.ItemID]
+		if !ok {
+			return nil, nil
+		}
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+	}
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
@@ -194,18 +241,21 @@ func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, erro
 }
 
 type groceryListPageResolver struct {
-	g        GroceryService
-	inv      InventoryService
-	lists    []grocery.GroceryList
-	page     int32
-	pageSize int32
-	total    int32
+	g           GroceryService
+	inv         InventoryService
+	lists       []grocery.GroceryList
+	itemsByList map[int64][]grocery.GroceryListItem
+	items       map[int64]inventory.Item
+	ch          *itemChildren
+	page        int32
+	pageSize    int32
+	total       int32
 }
 
 func (r *groceryListPageResolver) Items() []*groceryListResolver {
 	out := make([]*groceryListResolver, len(r.lists))
 	for i := range r.lists {
-		out[i] = &groceryListResolver{g: r.g, inv: r.inv, list: r.lists[i]}
+		out[i] = &groceryListResolver{g: r.g, inv: r.inv, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, ch: r.ch}
 	}
 	return out
 }

@@ -132,6 +132,18 @@ JOIN wine.grape_variety gv ON bgv.grape_variety_id = gv.grape_variety_id
 WHERE bgv.bottle_id = $1
 ORDER BY gv.name;
 
+-- name: ListBottleGrapeVarietiesByBottles :many
+SELECT bgv.bottle_id, gv.grape_variety_id, gv.name, bgv.percentage
+FROM wine.bottle_grape_variety bgv
+JOIN wine.grape_variety gv ON bgv.grape_variety_id = gv.grape_variety_id
+WHERE bgv.bottle_id = ANY(sqlc.arg(bottle_ids)::bigint[])
+ORDER BY gv.name;
+
+-- name: GetBottlesByIDs :many
+SELECT *
+FROM wine.bottle
+WHERE bottle_id = ANY(sqlc.arg(bottle_ids)::bigint[]);
+
 -- name: DeleteBottleGrapeVariety :exec
 DELETE FROM wine.bottle_grape_variety
 WHERE bottle_id = $1 AND grape_variety_id = $2;
@@ -175,6 +187,13 @@ SELECT fp.flavor_profile_id, fp.name, bfp.intensity
 FROM wine.bottle_flavor_profile bfp
 JOIN wine.flavor_profile fp ON bfp.flavor_profile_id = fp.flavor_profile_id
 WHERE bfp.bottle_id = $1
+ORDER BY fp.name;
+
+-- name: ListBottleFlavorProfilesByBottles :many
+SELECT bfp.bottle_id, fp.flavor_profile_id, fp.name, bfp.intensity
+FROM wine.bottle_flavor_profile bfp
+JOIN wine.flavor_profile fp ON bfp.flavor_profile_id = fp.flavor_profile_id
+WHERE bfp.bottle_id = ANY(sqlc.arg(bottle_ids)::bigint[])
 ORDER BY fp.name;
 
 -- name: DeleteBottleFlavorProfile :exec

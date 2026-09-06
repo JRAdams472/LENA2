@@ -113,6 +113,8 @@ func TestResolver_MealPlans_Happy(t *testing.T) {
 		{MealPlanID: 11, UserID: mealPlanUserID, Name: "Week 2", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
 	}, nil)
 	mp.EXPECT().CountMealPlans(gomock.Any(), mealPlanUserID).Return(int64(5), nil)
+	mp.EXPECT().ListMealSlotsByPlans(gomock.Any(), []int64{10, 11}).Return(nil, nil)
+	mp.EXPECT().ListMealSlotItemsByPlans(gomock.Any(), []int64{10, 11}).Return(nil, nil)
 
 	res, err := r.MealPlans(mealPlanCtx(), struct {
 		Page     int32

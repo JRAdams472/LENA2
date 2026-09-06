@@ -274,6 +274,36 @@ func (mr *MockQuerierMockRecorder) GetBrandByID(ctx, brandID any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBrandByID", reflect.TypeOf((*MockQuerier)(nil).GetBrandByID), ctx, brandID)
 }
 
+// GetBrandsByIDs mocks base method.
+func (m *MockQuerier) GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]sqlc.InventoryBrand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBrandsByIDs", ctx, brandIds)
+	ret0, _ := ret[0].([]sqlc.InventoryBrand)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBrandsByIDs indicates an expected call of GetBrandsByIDs.
+func (mr *MockQuerierMockRecorder) GetBrandsByIDs(ctx, brandIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBrandsByIDs", reflect.TypeOf((*MockQuerier)(nil).GetBrandsByIDs), ctx, brandIds)
+}
+
+// GetCategoriesByIDs mocks base method.
+func (m *MockQuerier) GetCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]sqlc.InventoryCategory, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCategoriesByIDs", ctx, categoryIds)
+	ret0, _ := ret[0].([]sqlc.InventoryCategory)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCategoriesByIDs indicates an expected call of GetCategoriesByIDs.
+func (mr *MockQuerierMockRecorder) GetCategoriesByIDs(ctx, categoryIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCategoriesByIDs", reflect.TypeOf((*MockQuerier)(nil).GetCategoriesByIDs), ctx, categoryIds)
+}
+
 // GetCategoryByID mocks base method.
 func (m *MockQuerier) GetCategoryByID(ctx context.Context, categoryID int64) (sqlc.InventoryCategory, error) {
 	m.ctrl.T.Helper()
@@ -317,6 +347,21 @@ func (m *MockQuerier) GetItemByID(ctx context.Context, itemID int64) (sqlc.Inven
 func (mr *MockQuerierMockRecorder) GetItemByID(ctx, itemID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemByID", reflect.TypeOf((*MockQuerier)(nil).GetItemByID), ctx, itemID)
+}
+
+// GetItemsByIDs mocks base method.
+func (m *MockQuerier) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]sqlc.InventoryItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemsByIDs", ctx, itemIds)
+	ret0, _ := ret[0].([]sqlc.InventoryItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemsByIDs indicates an expected call of GetItemsByIDs.
+func (mr *MockQuerierMockRecorder) GetItemsByIDs(ctx, itemIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemsByIDs", reflect.TypeOf((*MockQuerier)(nil).GetItemsByIDs), ctx, itemIds)
 }
 
 // GetNutrientTypeByID mocks base method.
@@ -392,6 +437,21 @@ func (m *MockQuerier) ListFoodFlavorsByItem(ctx context.Context, foodID int64) (
 func (mr *MockQuerierMockRecorder) ListFoodFlavorsByItem(ctx, foodID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFoodFlavorsByItem", reflect.TypeOf((*MockQuerier)(nil).ListFoodFlavorsByItem), ctx, foodID)
+}
+
+// ListFoodFlavorsByItems mocks base method.
+func (m *MockQuerier) ListFoodFlavorsByItems(ctx context.Context, itemIds []int64) ([]sqlc.ListFoodFlavorsByItemsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFoodFlavorsByItems", ctx, itemIds)
+	ret0, _ := ret[0].([]sqlc.ListFoodFlavorsByItemsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFoodFlavorsByItems indicates an expected call of ListFoodFlavorsByItems.
+func (mr *MockQuerierMockRecorder) ListFoodFlavorsByItems(ctx, itemIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFoodFlavorsByItems", reflect.TypeOf((*MockQuerier)(nil).ListFoodFlavorsByItems), ctx, itemIds)
 }
 
 // ListFoodNutrientsByItem mocks base method.
