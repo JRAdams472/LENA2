@@ -408,6 +408,8 @@ type recipeChildren struct {
 	itemChildren *itemChildren
 	units        map[int64]inventory.Unit
 	recipeCounts map[int64]countPair
+	myRatings    map[int64]int16
+	summaries    map[int64]recipe.RatingSummary
 }
 
 // loadRecipeChildren batch-loads the recipes, their items and steps, the
@@ -423,6 +425,8 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		favorites:    make(map[int64]bool),
 		units:        make(map[int64]inventory.Unit),
 		recipeCounts: make(map[int64]countPair),
+		myRatings:    make(map[int64]int16),
+		summaries:    make(map[int64]recipe.RatingSummary),
 	}
 	if len(recipeIDs) > 0 {
 		recipes, err := rec.GetRecipesByIDs(ctx, recipeIDs)
@@ -452,6 +456,9 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		}
 		for _, f := range favs {
 			rc.favorites[f.RecipeID] = f.IsFavorite
+		}
+		if err := loadRecipeRatings(ctx, rec, userID, recipeIDs, rc); err != nil {
+			return nil, err
 		}
 	}
 	itemIDSet := make(map[int64]bool)
@@ -581,6 +588,29 @@ func loadRecipeSelectionCounts(ctx context.Context, an AnalyticsService, userID 
 		p := rc.recipeCounts[c.EntityID]
 		p.global = c.SelectCount
 		rc.recipeCounts[c.EntityID] = p
+	}
+	return nil
+}
+
+// loadRecipeRatings populates the per-user rating and aggregate rating
+// summary maps on recipeChildren for the given recipe IDs.
+func loadRecipeRatings(ctx context.Context, rec RecipeService, userID int64, recipeIDs []int64, rc *recipeChildren) error {
+	if rec == nil || len(recipeIDs) == 0 {
+		return nil
+	}
+	mine, err := rec.ListRecipeRatings(ctx, userID, recipeIDs)
+	if err != nil {
+		return fmt.Errorf("load recipe ratings: %w", err)
+	}
+	for _, m := range mine {
+		rc.myRatings[m.RecipeID] = m.Rating
+	}
+	summaries, err := rec.ListRatingSummaries(ctx, recipeIDs)
+	if err != nil {
+		return fmt.Errorf("load recipe ratings: %w", err)
+	}
+	for _, s := range summaries {
+		rc.summaries[s.RecipeID] = s
 	}
 	return nil
 }

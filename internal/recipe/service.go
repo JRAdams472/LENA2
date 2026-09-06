@@ -392,6 +392,81 @@ func (s *Service) DeleteRecipeStep(ctx context.Context, stepID int64) error {
 	return s.q.DeleteRecipeStep(ctx, stepID)
 }
 
+// RecipeRating is one user's 1-5 star rating of a recipe.
+type RecipeRating struct {
+	UserID   int64
+	RecipeID int64
+	Rating   int16
+}
+
+// RatingSummary is the aggregate rating for a recipe across all users.
+type RatingSummary struct {
+	RecipeID      int64
+	AverageRating float64
+	RatingCount   int64
+}
+
+// SetRating creates or updates a user's rating for a recipe. Ratings must
+// be in the inclusive range 1-5.
+func (s *Service) SetRating(ctx context.Context, userID, recipeID int64, rating int16, by string) (RecipeRating, error) {
+	if rating < 1 || rating > 5 {
+		return RecipeRating{}, fmt.Errorf("set rating: rating must be between 1 and 5")
+	}
+	row, err := s.q.UpsertRecipeRating(ctx, sqlc.UpsertRecipeRatingParams{
+		UserID:    userID,
+		RecipeID:  recipeID,
+		Rating:    rating,
+		CreatedBy: by,
+		UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return RecipeRating{}, fmt.Errorf("set rating: %w", err)
+	}
+	return RecipeRating{UserID: row.UserID, RecipeID: row.RecipeID, Rating: row.Rating}, nil
+}
+
+// GetUserRating returns a user's rating for a recipe, or an error wrapping
+// pgx.ErrNoRows when the user has not rated it.
+func (s *Service) GetUserRating(ctx context.Context, userID, recipeID int64) (RecipeRating, error) {
+	row, err := s.q.GetRecipeRating(ctx, sqlc.GetRecipeRatingParams{UserID: userID, RecipeID: recipeID})
+	if err != nil {
+		return RecipeRating{}, fmt.Errorf("get recipe rating: %w", err)
+	}
+	return RecipeRating{UserID: row.UserID, RecipeID: row.RecipeID, Rating: row.Rating}, nil
+}
+
+// ListRecipeRatings returns a user's ratings for a set of recipes in a
+// single query.
+func (s *Service) ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]RecipeRating, error) {
+	rows, err := s.q.ListRecipeRatings(ctx, sqlc.ListRecipeRatingsParams{UserID: userID, RecipeIds: recipeIDs})
+	if err != nil {
+		return nil, fmt.Errorf("list recipe ratings: %w", err)
+	}
+	out := make([]RecipeRating, len(rows))
+	for i := range rows {
+		out[i] = RecipeRating{UserID: rows[i].UserID, RecipeID: rows[i].RecipeID, Rating: rows[i].Rating}
+	}
+	return out, nil
+}
+
+// ListRatingSummaries returns the average rating and rating count for a set
+// of recipes in a single query. Recipes with no ratings are absent.
+func (s *Service) ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]RatingSummary, error) {
+	rows, err := s.q.ListRecipeRatingSummaries(ctx, recipeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list rating summaries: %w", err)
+	}
+	out := make([]RatingSummary, len(rows))
+	for i := range rows {
+		out[i] = RatingSummary{
+			RecipeID:      rows[i].RecipeID,
+			AverageRating: rows[i].AverageRating,
+			RatingCount:   rows[i].RatingCount,
+		}
+	}
+	return out, nil
+}
+
 func toRecipe(row sqlc.RecipeRecipe) Recipe {
 	r := Recipe{
 		RecipeID: row.RecipeID,

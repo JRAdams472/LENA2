@@ -48,6 +48,9 @@ const recipe = {
   isActive: true,
   items: [],
   steps: [{ stepNumber: 1, instruction: "Boil water" }],
+  myRating: 4,
+  averageRating: 4.25,
+  ratingCount: 4,
 };
 
 beforeEach(() => {
@@ -138,6 +141,11 @@ describe("recipe detail page", () => {
       if (body.query.includes("updateRecipe")) {
         return Promise.resolve(gql({ updateRecipe: recipe }));
       }
+      if (body.query.includes("rateRecipe")) {
+        return Promise.resolve(
+          gql({ rateRecipe: { ...recipe, myRating: 5, ratingCount: 5 } })
+        );
+      }
       if (body.query.includes("recipe(")) {
         return Promise.resolve(gql({ recipe: recipe }));
       }
@@ -151,6 +159,24 @@ describe("recipe detail page", () => {
     expect(screen.getByText("Delicious")).toBeInTheDocument();
     expect(screen.getByText("1.")).toBeInTheDocument();
     expect(screen.getByText("Boil water")).toBeInTheDocument();
+  });
+
+  it("shows the rating summary and rates the recipe", async () => {
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => expect(screen.getByText("Pasta")).toBeInTheDocument());
+    expect(screen.getByText(/4\.3 avg · 4 ratings/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "5 Stars" }));
+    await waitFor(() => {
+      expect(
+        getBodies().some(
+          (b) =>
+            b.query.includes("rateRecipe") &&
+            b.variables.recipeId === "1" &&
+            b.variables.rating === 5
+        )
+      ).toBe(true);
+    });
   });
 
   it("adds a step", async () => {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -592,6 +593,133 @@ func TestCountRecipes(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, errDB)
 		assert.ErrorContains(t, err, "count recipes:")
+	})
+}
+
+func ratingRow() sqlc.RecipeRecipeRating {
+	return sqlc.RecipeRecipeRating{
+		UserID:    3,
+		RecipeID:  7,
+		Rating:    4,
+		CreatedBy: "alice",
+		CreatedAt: time.Now(),
+		UpdatedBy: pgtype.Text{String: "alice", Valid: true},
+	}
+}
+
+func TestSetRating(t *testing.T) {
+	t.Run("success maps fields and audit params", func(t *testing.T) {
+		svc, mq := newService(t)
+		want := sqlc.UpsertRecipeRatingParams{
+			UserID:    3,
+			RecipeID:  7,
+			Rating:    4,
+			CreatedBy: "alice",
+			UpdatedBy: textOrNull("alice"),
+		}
+		mq.EXPECT().UpsertRecipeRating(gomock.Any(), want).Return(ratingRow(), nil)
+
+		got, err := svc.SetRating(context.Background(), 3, 7, 4, "alice")
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), got.UserID)
+		assert.Equal(t, int64(7), got.RecipeID)
+		assert.Equal(t, int16(4), got.Rating)
+	})
+
+	t.Run("rejects out-of-range ratings", func(t *testing.T) {
+		svc, _ := newService(t)
+		for _, r := range []int16{0, 6, -1, 100} {
+			_, err := svc.SetRating(context.Background(), 3, 7, r, "alice")
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "between 1 and 5")
+		}
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpsertRecipeRating(gomock.Any(), gomock.Any()).
+			Return(sqlc.RecipeRecipeRating{}, errDB)
+
+		_, err := svc.SetRating(context.Background(), 3, 7, 5, "alice")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "set rating:")
+	})
+}
+
+func TestGetUserRating(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeRating(gomock.Any(), sqlc.GetRecipeRatingParams{UserID: 3, RecipeID: 7}).
+			Return(ratingRow(), nil)
+
+		got, err := svc.GetUserRating(context.Background(), 3, 7)
+		require.NoError(t, err)
+		assert.Equal(t, int16(4), got.Rating)
+	})
+
+	t.Run("no rows propagates for ErrNoRows checks", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeRating(gomock.Any(), gomock.Any()).
+			Return(sqlc.RecipeRecipeRating{}, pgx.ErrNoRows)
+
+		_, err := svc.GetUserRating(context.Background(), 3, 7)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, pgx.ErrNoRows)
+	})
+}
+
+func TestListRecipeRatings(t *testing.T) {
+	t.Run("success maps rows", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRecipeRatings(gomock.Any(), sqlc.ListRecipeRatingsParams{UserID: 3, RecipeIds: []int64{7, 8}}).
+			Return([]sqlc.RecipeRecipeRating{
+				{UserID: 3, RecipeID: 7, Rating: 4},
+				{UserID: 3, RecipeID: 8, Rating: 2},
+			}, nil)
+
+		got, err := svc.ListRecipeRatings(context.Background(), 3, []int64{7, 8})
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, int16(4), got[0].Rating)
+		assert.Equal(t, int64(8), got[1].RecipeID)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRecipeRatings(gomock.Any(), gomock.Any()).Return(nil, errDB)
+
+		_, err := svc.ListRecipeRatings(context.Background(), 3, []int64{7})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "list recipe ratings:")
+	})
+}
+
+func TestListRatingSummaries(t *testing.T) {
+	t.Run("success maps rows", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRecipeRatingSummaries(gomock.Any(), []int64{7, 8}).
+			Return([]sqlc.ListRecipeRatingSummariesRow{
+				{RecipeID: 7, AverageRating: 4.5, RatingCount: 2},
+			}, nil)
+
+		got, err := svc.ListRatingSummaries(context.Background(), []int64{7, 8})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, int64(7), got[0].RecipeID)
+		assert.InDelta(t, 4.5, got[0].AverageRating, 1e-9)
+		assert.Equal(t, int64(2), got[0].RatingCount)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRecipeRatingSummaries(gomock.Any(), gomock.Any()).Return(nil, errDB)
+
+		_, err := svc.ListRatingSummaries(context.Background(), []int64{7})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "list rating summaries:")
 	})
 }
 

@@ -90,6 +90,7 @@ type Mutation {
   updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
   deleteRecipe(id: ID!): Boolean!
   setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
+  rateRecipe(recipeId: ID!, rating: Int!): Recipe!
 
   createMealPlan(input: CreateMealPlanInput!): MealPlan!
   updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!
@@ -240,6 +241,9 @@ type Recipe {
   isFavorite: Boolean!
   selectionCount: Int!
   personalSelectionCount: Int!
+  myRating: Int
+  averageRating: Float
+  ratingCount: Int!
 }
 
 type RecipeItem {

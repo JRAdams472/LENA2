@@ -12,6 +12,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -35,7 +36,8 @@ func recInt32Ptr(v int32) *int32 { return &v }
 func newRecMocks(t *testing.T) (*mock.MockRecipeService, *mock.MockInventoryService, *mock.MockUserPrefsService) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	return mock.NewMockRecipeService(ctrl), mock.NewMockInventoryService(ctrl), mock.NewMockUserPrefsService(ctrl)
+	rec := mock.NewMockRecipeService(ctrl)
+	return rec, mock.NewMockInventoryService(ctrl), mock.NewMockUserPrefsService(ctrl)
 }
 
 func TestResolver_Recipe_Recipe(t *testing.T) {
@@ -55,6 +57,8 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		inv.EXPECT().GetUnitByID(gomock.Any(), int64(3)).Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).
 			Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 
 		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
@@ -101,6 +105,8 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
 			Return(recipe.Recipe{RecipeID: 9, Name: "Bare"}, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 		r := &Resolver{RecipeService: rec}
 		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
 		require.NoError(t, err)
@@ -148,6 +154,8 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
 		inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Item{{ItemID: 3, Name: "Broth", CategoryID: 1, UnitID: 3}}, nil)
 		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 
 		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.ScaledRecipe(recCtx(), struct {
@@ -238,6 +246,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{1, 2}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{1, 2}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.Recipes(recCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)
@@ -357,6 +367,149 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 }
 
 func recBoolPtr(b bool) *bool { return &b }
+
+func TestResolver_Recipe_RateRecipe(t *testing.T) {
+	t.Run("happy path returns recipe with rating fields", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().SetRating(gomock.Any(), int64(11), int64(9), int16(5), recTestEmail).
+			Return(recipe.RecipeRating{UserID: 11, RecipeID: 9, Rating: 5}, nil)
+		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
+			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", IsActive: true}, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).
+			Return([]recipe.RecipeRating{{UserID: 11, RecipeID: 9, Rating: 5}}, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).
+			Return([]recipe.RatingSummary{{RecipeID: 9, AverageRating: 4.5, RatingCount: 2}}, nil)
+
+		r := &Resolver{RecipeService: rec}
+		res, err := r.RateRecipe(recCtx(), struct {
+			RecipeID graphql.ID
+			Rating   int32
+		}{RecipeID: "9", Rating: 5})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("9"), res.ID())
+
+		ctx := recCtx()
+		mine, err := res.MyRating(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, mine)
+		assert.Equal(t, int32(5), *mine)
+
+		avg, err := res.AverageRating(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, avg)
+		assert.InDelta(t, 4.5, *avg, 1e-9)
+
+		count, err := res.RatingCount(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int32(2), count)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.RateRecipe(context.Background(), struct {
+			RecipeID graphql.ID
+			Rating   int32
+		}{RecipeID: "9", Rating: 5})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.RateRecipe(recCtx(), struct {
+			RecipeID graphql.ID
+			Rating   int32
+		}{RecipeID: "abc", Rating: 5})
+		require.Error(t, err)
+	})
+
+	t.Run("out-of-range rating surfaces service error", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().SetRating(gomock.Any(), int64(11), int64(9), int16(0), recTestEmail).
+			Return(recipe.RecipeRating{}, errRecBoom)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.RateRecipe(recCtx(), struct {
+			RecipeID graphql.ID
+			Rating   int32
+		}{RecipeID: "9", Rating: 0})
+		require.ErrorIs(t, err, errRecBoom)
+	})
+}
+
+func TestResolver_Recipe_RatingFields(t *testing.T) {
+	t.Run("batch-loaded via recipeChildren", func(t *testing.T) {
+		rec, _, up := newRecMocks(t)
+		rec.EXPECT().ListRecipes(gomock.Any(), true, int32(25), int32(0)).
+			Return([]recipe.Recipe{{RecipeID: 1, Name: "A", IsActive: true}}, nil)
+		rec.EXPECT().CountRecipes(gomock.Any(), true).Return(int64(1), nil)
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{1}).
+			Return([]recipe.Recipe{{RecipeID: 1, Name: "A", IsActive: true}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{1}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{1}).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{1}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{1}).
+			Return([]recipe.RecipeRating{{UserID: 11, RecipeID: 1, Rating: 3}}, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{1}).
+			Return([]recipe.RatingSummary{{RecipeID: 1, AverageRating: 3, RatingCount: 1}}, nil)
+
+		r := &Resolver{RecipeService: rec, UserPrefsService: up}
+		res, err := r.Recipes(recCtx(), struct {
+			Page     int32
+			PageSize int32
+		}{Page: 1, PageSize: 25})
+		require.NoError(t, err)
+		items := res.Items()
+		require.Len(t, items, 1)
+
+		ctx := recCtx()
+		mine, err := items[0].MyRating(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, mine)
+		assert.Equal(t, int32(3), *mine)
+		count, err := items[0].RatingCount(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), count)
+	})
+
+	t.Run("lazy fallback when rc is nil", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		res := &recipeResolver{rec: rec, user: currentuser.User{UserID: 11}, recipe: recipe.Recipe{RecipeID: 9}}
+		rec.EXPECT().GetUserRating(gomock.Any(), int64(11), int64(9)).
+			Return(recipe.RecipeRating{UserID: 11, RecipeID: 9, Rating: 2}, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).
+			Return([]recipe.RatingSummary{{RecipeID: 9, AverageRating: 2, RatingCount: 1}}, nil)
+
+		ctx := recCtx()
+		mine, err := res.MyRating(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, mine)
+		assert.Equal(t, int32(2), *mine)
+		count, err := res.RatingCount(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), count)
+	})
+
+	t.Run("no ratings returns nulls and zero count", func(t *testing.T) {
+		res := &recipeResolver{
+			recipe: recipe.Recipe{RecipeID: 9},
+			rc: &recipeChildren{
+				myRatings: make(map[int64]int16),
+				summaries: make(map[int64]recipe.RatingSummary),
+			},
+		}
+		ctx := recCtx()
+		mine, err := res.MyRating(ctx)
+		require.NoError(t, err)
+		assert.Nil(t, mine)
+		avg, err := res.AverageRating(ctx)
+		require.NoError(t, err)
+		assert.Nil(t, avg)
+		count, err := res.RatingCount(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), count)
+	})
+}
 
 func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 	type args = struct {

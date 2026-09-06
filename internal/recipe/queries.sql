@@ -97,3 +97,31 @@ WHERE recipe_id = $1;
 -- name: DeleteRecipeStep :exec
 DELETE FROM recipe.recipe_step
 WHERE step_id = $1;
+
+-- name: UpsertRecipeRating :one
+INSERT INTO recipe.recipe_rating (user_id, recipe_id, rating, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, recipe_id)
+    DO UPDATE SET
+        rating     = EXCLUDED.rating,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+RETURNING *;
+
+-- name: GetRecipeRating :one
+SELECT *
+FROM recipe.recipe_rating
+WHERE user_id = $1 AND recipe_id = $2;
+
+-- name: ListRecipeRatings :many
+SELECT *
+FROM recipe.recipe_rating
+WHERE user_id = $1 AND recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[]);
+
+-- name: ListRecipeRatingSummaries :many
+SELECT recipe_id,
+       AVG(rating)::float8 AS average_rating,
+       COUNT(*)            AS rating_count
+FROM recipe.recipe_rating
+WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
+GROUP BY recipe_id;
