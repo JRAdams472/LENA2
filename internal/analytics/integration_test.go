@@ -54,8 +54,8 @@ func TestIntegrationRecordEventAndCounts(t *testing.T) {
 	require.NoError(t, err)
 
 	err = svc.RecordEvent(ctx, Event{
-		UserID:    userID,
-		EventType: EventItemSearched,
+		UserID:     userID,
+		EventType:  EventItemSearched,
 		EntityType: EntityItem,
 		SearchTerm: "milk",
 	}, itBy)
