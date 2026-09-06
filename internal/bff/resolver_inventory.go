@@ -2,16 +2,20 @@ package bff
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/graph-gophers/graphql-go"
 )
 
 // Brand resolves a single brand by ID.
 func (r *Resolver) Brand(ctx context.Context, args struct{ ID graphql.ID }) (*brandResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
@@ -22,21 +26,185 @@ func (r *Resolver) Brand(ctx context.Context, args struct{ ID graphql.ID }) (*br
 	if err != nil {
 		return nil, err
 	}
-	return &brandResolver{b: b}, nil
+	ch := &itemChildren{brandCounts: make(map[int64]countPair)}
+	if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, ch); err != nil {
+		return nil, err
+	}
+	return brandResolverWithCounts(b, ch.brandCounts[id]), nil
+}
+
+func brandResolverWithCounts(b inventory.Brand, p countPair) *brandResolver {
+	return &brandResolver{b: b, globalCount: p.global, personalCount: p.personal}
 }
 
 // Brands resolves all catalog brands.
 func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	brands, err := r.InventoryService.ListBrands(ctx)
 	if err != nil {
 		return nil, err
 	}
+	brandIDs := make([]int64, len(brands))
+	for i, b := range brands {
+		brandIDs[i] = b.BrandID
+	}
+	ch := &itemChildren{brandCounts: make(map[int64]countPair)}
+	if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, brandIDs, ch); err != nil {
+		return nil, err
+	}
 	out := make([]*brandResolver, len(brands))
-	for i := range brands {
-		out[i] = &brandResolver{b: brands[i]}
+	for i, b := range brands {
+		out[i] = brandResolverWithCounts(b, ch.brandCounts[b.BrandID])
+	}
+	return out, nil
+}
+
+// FrequentBrands returns the top brands for the current user, blended with
+// global popularity to fill the requested limit.
+func (r *Resolver) FrequentBrands(ctx context.Context, args struct{ Limit int32 }) ([]*brandResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	limit := clamp(args.Limit, 1, 100)
+	personal, err := r.AnalyticsService.TopUserSelections(ctx, u.UserID, analytics.EntityBrand, limit)
+	if err != nil {
+		return nil, fmt.Errorf("frequent brands: %w", err)
+	}
+	global, err := r.AnalyticsService.TopGlobalSelections(ctx, analytics.EntityBrand, limit)
+	if err != nil {
+		return nil, fmt.Errorf("frequent brands: %w", err)
+	}
+
+	seen := make(map[int64]bool)
+	ordered := make([]int64, 0, limit)
+	counts := make(map[int64]countPair)
+	for _, c := range personal {
+		if seen[c.EntityID] {
+			continue
+		}
+		seen[c.EntityID] = true
+		ordered = append(ordered, c.EntityID)
+		p := counts[c.EntityID]
+		p.personal = c.SelectCount
+		counts[c.EntityID] = p
+	}
+	for _, c := range global {
+		if seen[c.EntityID] {
+			continue
+		}
+		seen[c.EntityID] = true
+		ordered = append(ordered, c.EntityID)
+		p := counts[c.EntityID]
+		p.global = c.SelectCount
+		counts[c.EntityID] = p
+	}
+	if len(ordered) > int(limit) {
+		ordered = ordered[:limit]
+	}
+	if len(ordered) == 0 {
+		return nil, nil
+	}
+	brands, err := r.InventoryService.GetBrandsByIDs(ctx, ordered)
+	if err != nil {
+		return nil, fmt.Errorf("frequent brands: %w", err)
+	}
+	brandByID := make(map[int64]inventory.Brand, len(brands))
+	for _, b := range brands {
+		brandByID[b.BrandID] = b
+	}
+	out := make([]*brandResolver, 0, len(ordered))
+	for _, id := range ordered {
+		if b, ok := brandByID[id]; ok {
+			out = append(out, brandResolverWithCounts(b, counts[id]))
+		}
+	}
+	return out, nil
+}
+
+// FrequentItems returns the top items for the current user, blended with
+// global popularity to fill the requested limit.
+func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }) ([]*itemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	limit := clamp(args.Limit, 1, 100)
+	personal, err := r.AnalyticsService.TopUserSelections(ctx, u.UserID, analytics.EntityItem, limit)
+	if err != nil {
+		return nil, fmt.Errorf("frequent items: %w", err)
+	}
+	global, err := r.AnalyticsService.TopGlobalSelections(ctx, analytics.EntityItem, limit)
+	if err != nil {
+		return nil, fmt.Errorf("frequent items: %w", err)
+	}
+
+	seen := make(map[int64]bool)
+	ordered := make([]int64, 0, limit)
+	counts := make(map[int64]countPair)
+	for _, c := range personal {
+		if seen[c.EntityID] {
+			continue
+		}
+		seen[c.EntityID] = true
+		ordered = append(ordered, c.EntityID)
+		p := counts[c.EntityID]
+		p.personal = c.SelectCount
+		counts[c.EntityID] = p
+	}
+	for _, c := range global {
+		if seen[c.EntityID] {
+			continue
+		}
+		seen[c.EntityID] = true
+		ordered = append(ordered, c.EntityID)
+		p := counts[c.EntityID]
+		p.global = c.SelectCount
+		counts[c.EntityID] = p
+	}
+	if len(ordered) > int(limit) {
+		ordered = ordered[:limit]
+	}
+	if len(ordered) == 0 {
+		return nil, nil
+	}
+	items, err := r.InventoryService.GetItemsByIDs(ctx, ordered)
+	if err != nil {
+		return nil, fmt.Errorf("frequent items: %w", err)
+	}
+	ch, err := loadItemChildren(ctx, r.InventoryService, items)
+	if err != nil {
+		return nil, err
+	}
+	brandIDSet := make(map[int64]bool)
+	for _, it := range items {
+		if it.BrandID != nil {
+			brandIDSet[*it.BrandID] = true
+		}
+	}
+	brandIDs := make([]int64, 0, len(brandIDSet))
+	for id := range brandIDSet {
+		brandIDs = append(brandIDs, id)
+	}
+	slices.Sort(brandIDs)
+	if err := loadItemSelectionCounts(ctx, r.AnalyticsService, u.UserID, ordered, ch); err != nil {
+		return nil, err
+	}
+	if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, brandIDs, ch); err != nil {
+		return nil, err
+	}
+	itemByID := make(map[int64]inventory.Item, len(items))
+	for _, it := range items {
+		itemByID[it.ItemID] = it
+	}
+	out := make([]*itemResolver, 0, len(ordered))
+	for _, id := range ordered {
+		if it, ok := itemByID[id]; ok {
+			out = append(out, &itemResolver{inv: r.InventoryService, it: it, ch: ch, globalCount: counts[id].global, personalCount: counts[id].personal})
+		}
 	}
 	return out, nil
 }
@@ -107,7 +275,8 @@ func (r *Resolver) NutrientTypes(ctx context.Context) ([]*nutrientTypeResolver, 
 
 // Item resolves a single catalog item by ID.
 func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*itemResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
@@ -118,7 +287,16 @@ func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*ite
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.InventoryService, it: it}, nil
+	ch := &itemChildren{itemCounts: make(map[int64]countPair), brandCounts: make(map[int64]countPair)}
+	if err := loadItemSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, ch); err != nil {
+		return nil, err
+	}
+	if it.BrandID != nil {
+		if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{*it.BrandID}, ch); err != nil {
+			return nil, err
+		}
+	}
+	return &itemResolver{inv: r.InventoryService, it: it, ch: ch}, nil
 }
 
 // Items resolves a paginated list of catalog items.
@@ -126,7 +304,8 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
 }) (*itemPageResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	page := clamp(args.Page, 1, 1_000_000)
@@ -141,6 +320,25 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	}
 	ch, err := loadItemChildren(ctx, r.InventoryService, items)
 	if err != nil {
+		return nil, err
+	}
+	itemIDs := make([]int64, len(items))
+	brandIDSet := make(map[int64]bool)
+	for i, it := range items {
+		itemIDs[i] = it.ItemID
+		if it.BrandID != nil {
+			brandIDSet[*it.BrandID] = true
+		}
+	}
+	brandIDs := make([]int64, 0, len(brandIDSet))
+	for id := range brandIDSet {
+		brandIDs = append(brandIDs, id)
+	}
+	slices.Sort(brandIDs)
+	if err := loadItemSelectionCounts(ctx, r.AnalyticsService, u.UserID, itemIDs, ch); err != nil {
+		return nil, err
+	}
+	if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, brandIDs, ch); err != nil {
 		return nil, err
 	}
 	return &itemPageResolver{inv: r.InventoryService, items: items, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
@@ -635,9 +833,11 @@ func (r *Resolver) DeleteItem(ctx context.Context, args struct{ ID graphql.ID })
 // itemResolver resolves Item fields. When ch is non-nil its batch-loaded
 // maps are used instead of per-item service calls.
 type itemResolver struct {
-	inv InventoryService
-	it  inventory.Item
-	ch  *itemChildren
+	inv           InventoryService
+	it            inventory.Item
+	ch            *itemChildren
+	globalCount   int64
+	personalCount int64
 }
 
 func (r *itemResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.it.ItemID, 10)) }
@@ -660,12 +860,16 @@ func (r *itemResolver) Brand(ctx context.Context) (*brandResolver, error) {
 	if r.it.BrandID == nil {
 		return nil, nil
 	}
-	if r.ch != nil {
+	if r.ch != nil && r.ch.brands != nil {
 		b, ok := r.ch.brands[*r.it.BrandID]
-		if !ok {
-			return nil, nil
+		if ok {
+			out := &brandResolver{b: b}
+			if p, ok := r.ch.brandCounts[*r.it.BrandID]; ok {
+				out.globalCount = p.global
+				out.personalCount = p.personal
+			}
+			return out, nil
 		}
-		return &brandResolver{b: b}, nil
 	}
 	b, err := r.inv.GetBrandByID(ctx, *r.it.BrandID)
 	if err != nil {
@@ -675,12 +879,11 @@ func (r *itemResolver) Brand(ctx context.Context) (*brandResolver, error) {
 }
 
 func (r *itemResolver) Category(ctx context.Context) (*categoryResolver, error) {
-	if r.ch != nil {
+	if r.ch != nil && r.ch.categories != nil {
 		c, ok := r.ch.categories[r.it.CategoryID]
-		if !ok {
-			return nil, nil
+		if ok {
+			return &categoryResolver{c: c}, nil
 		}
-		return &categoryResolver{c: c}, nil
 	}
 	c, err := r.inv.GetCategoryByID(ctx, r.it.CategoryID)
 	if err != nil {
@@ -691,7 +894,7 @@ func (r *itemResolver) Category(ctx context.Context) (*categoryResolver, error) 
 
 func (r *itemResolver) Nutrients(ctx context.Context) ([]*foodNutrientResolver, error) {
 	var nutrients []inventory.FoodNutrient
-	if r.ch != nil {
+	if r.ch != nil && r.ch.nutrients != nil {
 		nutrients = r.ch.nutrients[r.it.ItemID]
 	} else {
 		var err error
@@ -709,7 +912,7 @@ func (r *itemResolver) Nutrients(ctx context.Context) ([]*foodNutrientResolver, 
 
 func (r *itemResolver) Flavors(ctx context.Context) ([]*foodFlavorResolver, error) {
 	var flavors []inventory.FoodFlavor
-	if r.ch != nil {
+	if r.ch != nil && r.ch.flavors != nil {
 		flavors = r.ch.flavors[r.it.ItemID]
 	} else {
 		var err error
@@ -725,11 +928,36 @@ func (r *itemResolver) Flavors(ctx context.Context) ([]*foodFlavorResolver, erro
 	return out, nil
 }
 
-type brandResolver struct{ b inventory.Brand }
+func (r *itemResolver) SelectionCount() int32 {
+	if r.ch != nil {
+		if p, ok := r.ch.itemCounts[r.it.ItemID]; ok {
+			return int64ToInt32(p.global)
+		}
+	}
+	return int64ToInt32(r.globalCount)
+}
+
+func (r *itemResolver) PersonalSelectionCount() int32 {
+	if r.ch != nil {
+		if p, ok := r.ch.itemCounts[r.it.ItemID]; ok {
+			return int64ToInt32(p.personal)
+		}
+	}
+	return int64ToInt32(r.personalCount)
+}
+
+type brandResolver struct {
+	b             inventory.Brand
+	globalCount   int64
+	personalCount int64
+}
 
 func (r *brandResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.b.BrandID, 10)) }
 
 func (r *brandResolver) Name() string { return r.b.Name }
+
+func (r *brandResolver) SelectionCount() int32         { return int64ToInt32(r.globalCount) }
+func (r *brandResolver) PersonalSelectionCount() int32 { return int64ToInt32(r.personalCount) }
 
 type categoryResolver struct{ c inventory.Category }
 

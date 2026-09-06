@@ -11,7 +11,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog from "@/app/components/CrudDialog";
-import { Item } from "@/lib/types";
+import { Item, Brand } from "@/lib/types";
 
 const itemFields = [
   { key: "name", label: "Name" },
@@ -54,8 +54,15 @@ export default function ItemsPage() {
 
   const brandsQuery = useQuery({
     queryKey: ["item-brands", brandInput],
-    queryFn: () => api.getBrands(brandInput),
+    queryFn: () =>
+      brandInput === ""
+        ? api.getFrequentBrands(10)
+        : api.getBrands(brandInput),
   });
+
+  const brandOptions = brandsQuery.data ?? [];
+  const selectedBrand =
+    brand === "" ? null : brandOptions.find((b) => b.brandName === brand) ?? null;
 
   const listQuery = useQuery({
     queryKey: ["items", pageNumber, pageSize, debouncedSearch, brand, inStock, isFavorite],
@@ -208,15 +215,19 @@ export default function ItemsPage() {
         />
         <Autocomplete
           size="small"
-          options={brandsQuery.data ?? []}
-          getOptionLabel={(b) => b ?? ""}
-          isOptionEqualToValue={(a, b) => a === b}
+          options={brandOptions}
+          getOptionLabel={(b) => (typeof b === "string" ? b : b?.brandName ?? "")}
+          isOptionEqualToValue={(a, b) =>
+            (typeof a === "object" && typeof b === "object" && a?.brandID === b?.brandID)
+          }
           inputValue={brandInput}
           onInputChange={(_, value) => setBrandInput(value)}
-          value={brand === "" ? null : brand}
+          value={selectedBrand}
           onChange={(_, value) => {
-            setBrand(value ?? "");
-            setBrandInput(value ?? "");
+            const b = value as Brand | null;
+            setBrand(b?.brandName ?? "");
+            setBrandInput(b?.brandName ?? "");
+            if (b) void api.recordSelection("brand", b.brandID);
           }}
           filterOptions={(options) => options}
           loading={brandsQuery.isLoading}

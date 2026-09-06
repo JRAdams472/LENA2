@@ -230,6 +230,8 @@ describe("api client: recipes", () => {
       cookTimeMinutes: 15,
       isActive: true,
       isFavorite: false,
+      selectionCount: 0,
+      personalSelectionCount: 0,
       recipeItems: [
         {
           recipeID: 0,

@@ -90,6 +90,13 @@ describe("items page", () => {
           })
         );
       }
+      if (body.query.includes("frequentBrands")) {
+        return Promise.resolve(
+          gql({
+            frequentBrands: [{ id: "2", name: "DairyCo" }],
+          })
+        );
+      }
       return Promise.resolve(
         gql({
           brands: [{ id: "2", name: "DairyCo" }],
@@ -113,7 +120,7 @@ describe("items page", () => {
     const bodies = getBodies();
     expect(bodies.some((b) => b.query.includes("items"))).toBe(true);
     expect(bodies.some((b) => b.query.includes("userItems"))).toBe(true);
-    expect(bodies.some((b) => b.query.includes("brands"))).toBe(true);
+    expect(bodies.some((b) => b.query.includes("frequentBrands"))).toBe(true);
   });
 
   it("creates an item", async () => {

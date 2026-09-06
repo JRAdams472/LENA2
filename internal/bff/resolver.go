@@ -228,11 +228,13 @@ func distinctIDs[T any](xs []T, f func(T) *int64) []int64 {
 // nested item field resolvers do not issue a query per row. When a child
 // resolver's ch field is nil it falls back to lazy service calls.
 type itemChildren struct {
-	brands     map[int64]inventory.Brand
-	categories map[int64]inventory.Category
-	nutrients  map[int64][]inventory.FoodNutrient
-	flavors    map[int64][]inventory.FoodFlavor
-	units      map[int64]inventory.Unit
+	brands      map[int64]inventory.Brand
+	categories  map[int64]inventory.Category
+	nutrients   map[int64][]inventory.FoodNutrient
+	flavors     map[int64][]inventory.FoodFlavor
+	units       map[int64]inventory.Unit
+	itemCounts  map[int64]countPair
+	brandCounts map[int64]countPair
 }
 
 // loadUnits fetches a set of units in one query, keyed by ID.
@@ -310,11 +312,13 @@ func loadItems(ctx context.Context, inv InventoryService, itemIDs []int64) (map[
 // rows referenced by items.
 func loadItemChildren(ctx context.Context, inv InventoryService, items []inventory.Item) (*itemChildren, error) {
 	ch := &itemChildren{
-		brands:     make(map[int64]inventory.Brand),
-		categories: make(map[int64]inventory.Category),
-		nutrients:  make(map[int64][]inventory.FoodNutrient),
-		flavors:    make(map[int64][]inventory.FoodFlavor),
-		units:      make(map[int64]inventory.Unit),
+		brands:      make(map[int64]inventory.Brand),
+		categories:  make(map[int64]inventory.Category),
+		nutrients:   make(map[int64][]inventory.FoodNutrient),
+		flavors:     make(map[int64][]inventory.FoodFlavor),
+		units:       make(map[int64]inventory.Unit),
+		itemCounts:  make(map[int64]countPair),
+		brandCounts: make(map[int64]countPair),
 	}
 	if len(items) == 0 {
 		return ch, nil
@@ -386,6 +390,13 @@ func loadItemChildren(ctx context.Context, inv InventoryService, items []invento
 	return ch, nil
 }
 
+// countPair holds the global and per-user selection counts for a catalog
+// entity. The zero value means no count data was loaded.
+type countPair struct {
+	global   int64
+	personal int64
+}
+
 // recipeChildren holds recipe rows batch-loaded for a list response so
 // nested recipe field resolvers do not issue a query per row.
 type recipeChildren struct {
@@ -396,6 +407,7 @@ type recipeChildren struct {
 	items        map[int64]inventory.Item
 	itemChildren *itemChildren
 	units        map[int64]inventory.Unit
+	recipeCounts map[int64]countPair
 }
 
 // loadRecipeChildren batch-loads the recipes, their items and steps, the
@@ -405,11 +417,12 @@ type recipeChildren struct {
 // overrides) with the same maps.
 func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv InventoryService, userID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
 	rc := &recipeChildren{
-		recipes:   make(map[int64]recipe.Recipe),
-		itemsBy:   make(map[int64][]recipe.RecipeItem),
-		stepsBy:   make(map[int64][]recipe.RecipeStep),
-		favorites: make(map[int64]bool),
-		units:     make(map[int64]inventory.Unit),
+		recipes:      make(map[int64]recipe.Recipe),
+		itemsBy:      make(map[int64][]recipe.RecipeItem),
+		stepsBy:      make(map[int64][]recipe.RecipeStep),
+		favorites:    make(map[int64]bool),
+		units:        make(map[int64]inventory.Unit),
+		recipeCounts: make(map[int64]countPair),
 	}
 	if len(recipeIDs) > 0 {
 		recipes, err := rec.GetRecipesByIDs(ctx, recipeIDs)
@@ -489,6 +502,87 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		return nil, err
 	}
 	return rc, nil
+}
+
+// loadItemSelectionCounts populates the per-user and global selection count
+// maps on itemChildren for the given item IDs.
+func loadItemSelectionCounts(ctx context.Context, an AnalyticsService, userID int64, itemIDs []int64, ch *itemChildren) error {
+	if an == nil || len(itemIDs) == 0 {
+		return nil
+	}
+	userCounts, err := an.GetUserSelectionCounts(ctx, userID, analytics.EntityItem, itemIDs)
+	if err != nil {
+		return fmt.Errorf("load item selection counts: %w", err)
+	}
+	globalCounts, err := an.GetGlobalSelectionCounts(ctx, analytics.EntityItem, itemIDs)
+	if err != nil {
+		return fmt.Errorf("load item selection counts: %w", err)
+	}
+	for _, c := range userCounts {
+		p := ch.itemCounts[c.EntityID]
+		p.personal = c.SelectCount
+		ch.itemCounts[c.EntityID] = p
+	}
+	for _, c := range globalCounts {
+		p := ch.itemCounts[c.EntityID]
+		p.global = c.SelectCount
+		ch.itemCounts[c.EntityID] = p
+	}
+	return nil
+}
+
+// loadBrandSelectionCounts populates the per-user and global selection count
+// maps on itemChildren for the given brand IDs.
+func loadBrandSelectionCounts(ctx context.Context, an AnalyticsService, userID int64, brandIDs []int64, ch *itemChildren) error {
+	if an == nil || len(brandIDs) == 0 {
+		return nil
+	}
+	userCounts, err := an.GetUserSelectionCounts(ctx, userID, analytics.EntityBrand, brandIDs)
+	if err != nil {
+		return fmt.Errorf("load brand selection counts: %w", err)
+	}
+	globalCounts, err := an.GetGlobalSelectionCounts(ctx, analytics.EntityBrand, brandIDs)
+	if err != nil {
+		return fmt.Errorf("load brand selection counts: %w", err)
+	}
+	for _, c := range userCounts {
+		p := ch.brandCounts[c.EntityID]
+		p.personal = c.SelectCount
+		ch.brandCounts[c.EntityID] = p
+	}
+	for _, c := range globalCounts {
+		p := ch.brandCounts[c.EntityID]
+		p.global = c.SelectCount
+		ch.brandCounts[c.EntityID] = p
+	}
+	return nil
+}
+
+// loadRecipeSelectionCounts populates the per-user and global selection count
+// map on recipeChildren for the given recipe IDs.
+func loadRecipeSelectionCounts(ctx context.Context, an AnalyticsService, userID int64, recipeIDs []int64, rc *recipeChildren) error {
+	if an == nil || len(recipeIDs) == 0 {
+		return nil
+	}
+	userCounts, err := an.GetUserSelectionCounts(ctx, userID, analytics.EntityRecipe, recipeIDs)
+	if err != nil {
+		return fmt.Errorf("load recipe selection counts: %w", err)
+	}
+	globalCounts, err := an.GetGlobalSelectionCounts(ctx, analytics.EntityRecipe, recipeIDs)
+	if err != nil {
+		return fmt.Errorf("load recipe selection counts: %w", err)
+	}
+	for _, c := range userCounts {
+		p := rc.recipeCounts[c.EntityID]
+		p.personal = c.SelectCount
+		rc.recipeCounts[c.EntityID] = p
+	}
+	for _, c := range globalCounts {
+		p := rc.recipeCounts[c.EntityID]
+		p.global = c.SelectCount
+		rc.recipeCounts[c.EntityID] = p
+	}
+	return nil
 }
 
 // bottleChildren holds wine rows batch-loaded for a list response so

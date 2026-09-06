@@ -27,7 +27,15 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
+	rc := &recipeChildren{recipeCounts: make(map[int64]countPair)}
+	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, rc); err != nil {
+		return nil, err
+	}
+	var globalCount, personalCount int64
+	if p, ok := rc.recipeCounts[id]; ok {
+		globalCount, personalCount = p.global, p.personal
+	}
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, globalCount: globalCount, personalCount: personalCount}, nil
 }
 
 // ScaledRecipe resolves a recipe with its ingredient quantities scaled to the
@@ -54,11 +62,15 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 	}
 
 	rc := &recipeChildren{
-		itemsBy:   make(map[int64][]recipe.RecipeItem),
-		stepsBy:   make(map[int64][]recipe.RecipeStep),
-		favorites: make(map[int64]bool),
-		items:     make(map[int64]inventory.Item),
-		units:     make(map[int64]inventory.Unit),
+		itemsBy:      make(map[int64][]recipe.RecipeItem),
+		stepsBy:      make(map[int64][]recipe.RecipeStep),
+		favorites:    make(map[int64]bool),
+		items:        make(map[int64]inventory.Item),
+		units:        make(map[int64]inventory.Unit),
+		recipeCounts: make(map[int64]countPair),
+	}
+	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{scaled.Recipe.RecipeID}, rc); err != nil {
+		return nil, err
 	}
 	rc.itemsBy[scaled.Recipe.RecipeID] = scaled.Items
 	rc.stepsBy[scaled.Recipe.RecipeID] = scaled.Steps
@@ -130,8 +142,12 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID }), nil)
+	recipeIDs := distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID })
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, recipeIDs, rc); err != nil {
 		return nil, err
 	}
 	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
@@ -302,12 +318,14 @@ func (r *Resolver) SetRecipeFavorite(ctx context.Context, args struct {
 // recipeResolver resolves Recipe fields. When rc is non-nil its
 // batch-loaded maps are used instead of per-recipe service calls.
 type recipeResolver struct {
-	inv    InventoryService
-	rec    RecipeService
-	up     UserPrefsService
-	user   currentuser.User
-	recipe recipe.Recipe
-	rc     *recipeChildren
+	inv           InventoryService
+	rec           RecipeService
+	up            UserPrefsService
+	user          currentuser.User
+	recipe        recipe.Recipe
+	rc            *recipeChildren
+	globalCount   int64
+	personalCount int64
 }
 
 func (r *recipeResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.recipe.RecipeID, 10)) }
@@ -412,6 +430,24 @@ func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return fav.IsFavorite, nil
+}
+
+func (r *recipeResolver) SelectionCount() int32 {
+	if r.rc != nil {
+		if p, ok := r.rc.recipeCounts[r.recipe.RecipeID]; ok {
+			return int64ToInt32(p.global)
+		}
+	}
+	return int64ToInt32(r.globalCount)
+}
+
+func (r *recipeResolver) PersonalSelectionCount() int32 {
+	if r.rc != nil {
+		if p, ok := r.rc.recipeCounts[r.recipe.RecipeID]; ok {
+			return int64ToInt32(p.personal)
+		}
+	}
+	return int64ToInt32(r.personalCount)
 }
 
 type recipeItemResolver struct {
