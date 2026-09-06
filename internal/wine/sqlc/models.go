@@ -10,6 +10,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AnalyticsGlobalSelectionCount struct {
+	EntityType     string             `json:"entity_type"`
+	EntityID       int64              `json:"entity_id"`
+	SelectCount    int64              `json:"select_count"`
+	LastSelectedAt pgtype.Timestamptz `json:"last_selected_at"`
+}
+
+type AnalyticsInteractionEvent struct {
+	EventID    int64       `json:"event_id"`
+	UserID     pgtype.Int8 `json:"user_id"`
+	EventType  string      `json:"event_type"`
+	EntityType pgtype.Text `json:"entity_type"`
+	EntityID   pgtype.Int8 `json:"entity_id"`
+	SearchTerm pgtype.Text `json:"search_term"`
+	Weight     int16       `json:"weight"`
+	Metadata   []byte      `json:"metadata"`
+	CreatedAt  time.Time   `json:"created_at"`
+}
+
+type AnalyticsUserSelectionCount struct {
+	EntityType     string             `json:"entity_type"`
+	EntityID       int64              `json:"entity_id"`
+	UserID         int64              `json:"user_id"`
+	SelectCount    int64              `json:"select_count"`
+	LastSelectedAt pgtype.Timestamptz `json:"last_selected_at"`
+}
+
 type GroceryGroceryList struct {
 	GroceryListID int64              `json:"grocery_list_id"`
 	UserID        int64              `json:"user_id"`

@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	analytics "github.com/JRAdams472/LENA2/internal/analytics"
 	grocery "github.com/JRAdams472/LENA2/internal/grocery"
 	inventory "github.com/JRAdams472/LENA2/internal/inventory"
 	mealplan "github.com/JRAdams472/LENA2/internal/mealplan"
@@ -1633,6 +1634,104 @@ func (m *MockUserPrefsService) UpsertUserItem(ctx context.Context, arg userprefs
 func (mr *MockUserPrefsServiceMockRecorder) UpsertUserItem(ctx, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserItem", reflect.TypeOf((*MockUserPrefsService)(nil).UpsertUserItem), ctx, arg, by)
+}
+
+// MockAnalyticsService is a mock of AnalyticsService interface.
+type MockAnalyticsService struct {
+	ctrl     *gomock.Controller
+	recorder *MockAnalyticsServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockAnalyticsServiceMockRecorder is the mock recorder for MockAnalyticsService.
+type MockAnalyticsServiceMockRecorder struct {
+	mock *MockAnalyticsService
+}
+
+// NewMockAnalyticsService creates a new mock instance.
+func NewMockAnalyticsService(ctrl *gomock.Controller) *MockAnalyticsService {
+	mock := &MockAnalyticsService{ctrl: ctrl}
+	mock.recorder = &MockAnalyticsServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAnalyticsService) EXPECT() *MockAnalyticsServiceMockRecorder {
+	return m.recorder
+}
+
+// GetGlobalSelectionCounts mocks base method.
+func (m *MockAnalyticsService) GetGlobalSelectionCounts(ctx context.Context, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGlobalSelectionCounts", ctx, entityType, entityIDs)
+	ret0, _ := ret[0].([]analytics.SelectionCount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGlobalSelectionCounts indicates an expected call of GetGlobalSelectionCounts.
+func (mr *MockAnalyticsServiceMockRecorder) GetGlobalSelectionCounts(ctx, entityType, entityIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGlobalSelectionCounts", reflect.TypeOf((*MockAnalyticsService)(nil).GetGlobalSelectionCounts), ctx, entityType, entityIDs)
+}
+
+// GetUserSelectionCounts mocks base method.
+func (m *MockAnalyticsService) GetUserSelectionCounts(ctx context.Context, userID int64, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserSelectionCounts", ctx, userID, entityType, entityIDs)
+	ret0, _ := ret[0].([]analytics.SelectionCount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserSelectionCounts indicates an expected call of GetUserSelectionCounts.
+func (mr *MockAnalyticsServiceMockRecorder) GetUserSelectionCounts(ctx, userID, entityType, entityIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockAnalyticsService)(nil).GetUserSelectionCounts), ctx, userID, entityType, entityIDs)
+}
+
+// RecordEvent mocks base method.
+func (m *MockAnalyticsService) RecordEvent(ctx context.Context, e analytics.Event, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordEvent", ctx, e, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordEvent indicates an expected call of RecordEvent.
+func (mr *MockAnalyticsServiceMockRecorder) RecordEvent(ctx, e, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordEvent", reflect.TypeOf((*MockAnalyticsService)(nil).RecordEvent), ctx, e, by)
+}
+
+// TopGlobalSelections mocks base method.
+func (m *MockAnalyticsService) TopGlobalSelections(ctx context.Context, entityType string, limit int32) ([]analytics.SelectionCount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TopGlobalSelections", ctx, entityType, limit)
+	ret0, _ := ret[0].([]analytics.SelectionCount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TopGlobalSelections indicates an expected call of TopGlobalSelections.
+func (mr *MockAnalyticsServiceMockRecorder) TopGlobalSelections(ctx, entityType, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TopGlobalSelections", reflect.TypeOf((*MockAnalyticsService)(nil).TopGlobalSelections), ctx, entityType, limit)
+}
+
+// TopUserSelections mocks base method.
+func (m *MockAnalyticsService) TopUserSelections(ctx context.Context, userID int64, entityType string, limit int32) ([]analytics.SelectionCount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TopUserSelections", ctx, userID, entityType, limit)
+	ret0, _ := ret[0].([]analytics.SelectionCount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TopUserSelections indicates an expected call of TopUserSelections.
+func (mr *MockAnalyticsServiceMockRecorder) TopUserSelections(ctx, userID, entityType, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TopUserSelections", reflect.TypeOf((*MockAnalyticsService)(nil).TopUserSelections), ctx, userID, entityType, limit)
 }
 
 // MockWineService is a mock of WineService interface.

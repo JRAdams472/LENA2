@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -197,6 +198,11 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	if err != nil {
 		return nil, err
 	}
+	recordEventAsync(r.AnalyticsService, u.UserID, u.Email, analytics.Event{
+		EventType:  analytics.EventRecipeCreated,
+		EntityType: analytics.EntityRecipe,
+		EntityID:   rec.RecipeID,
+	})
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 

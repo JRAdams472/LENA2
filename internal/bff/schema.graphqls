@@ -98,6 +98,8 @@ type Mutation {
   removeMealSlotItem(slotItemId: ID!): Boolean!
 
   generateGroceryList(mealPlanId: ID!): GroceryList!
+  recordSelection(entityType: String!, entityId: ID!): Boolean!
+  recordSearch(entityType: String!, term: String!): Boolean!
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
   addGroceryItem(input: AddGroceryItemInput!): GroceryListItem!
   deleteGroceryItem(groceryListItemId: ID!): Boolean!

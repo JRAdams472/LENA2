@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"github.com/graph-gophers/graphql-go"
 	"github.com/labstack/echo/v4"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -27,6 +29,7 @@ var schema string
 // Resolver is the root GraphQL resolver. It is the only package that is
 // allowed to orchestrate across domain modules.
 type Resolver struct {
+	AnalyticsService AnalyticsService
 	GroceryService   GroceryService
 	InventoryService InventoryService
 	MealPlanService  MealPlanService
@@ -36,8 +39,8 @@ type Resolver struct {
 }
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService) *Resolver {
-	return &Resolver{GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
+func NewResolver(an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService) *Resolver {
+	return &Resolver{AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -63,6 +66,24 @@ func requireAdmin(ctx context.Context) (currentuser.User, error) {
 
 func parseID(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
+}
+
+// recordEventAsync emits an analytics event in a detached, time-bounded
+// goroutine so that tracking never blocks or breaks the caller.
+func recordEventAsync(svc AnalyticsService, userID int64, by string, e analytics.Event) {
+	e.UserID = userID
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Default().Error("analytics panic recovered", "recover", r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := svc.RecordEvent(ctx, e, by); err != nil {
+			slog.Default().Error("record analytics event failed", "error", err)
+		}
+	}()
 }
 
 func optionalID(id *graphql.ID) (*int64, error) {
