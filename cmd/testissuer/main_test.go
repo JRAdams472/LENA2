@@ -58,7 +58,7 @@ func TestDiscoveryAndHealth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discovery: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var doc struct {
 		Issuer  string `json:"issuer"`
 		JWKSURI string `json:"jwks_uri"`
@@ -74,7 +74,7 @@ func TestDiscoveryAndHealth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("health: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("health status %d", resp.StatusCode)
 	}
@@ -87,7 +87,7 @@ func TestTokenEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var body struct {
 		IDToken string `json:"id_token"`
 	}
@@ -129,7 +129,7 @@ func TestTokenDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var body struct {
 		IDToken string `json:"id_token"`
 	}
