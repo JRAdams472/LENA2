@@ -25,6 +25,24 @@ test.describe("auth", () => {
     expect(res.status()).toBe(401);
   });
 
+  test("non-admin users are rejected from catalog mutations", async ({
+    request,
+  }) => {
+    // e2e@example.com is seeded admin via LENA_ADMIN_EMAILS; the second
+    // user stays a member and must be forbidden from shared-catalog writes.
+    const tokenB = await mintToken(request, SECOND_USER);
+    await expect(
+      graphql(
+        request,
+        tokenB,
+        `mutation ($input: CreateCategoryInput!) {
+          createCategory(input: $input) { id }
+        }`,
+        { input: { name: unique("Forbidden category") } }
+      )
+    ).rejects.toThrow(/forbidden/i);
+  });
+
   test("users cannot see each other's meal plans", async ({
     request,
     browser,

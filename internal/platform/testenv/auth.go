@@ -14,6 +14,18 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
+// RotateKey regenerates the issuer's signing key while keeping the same key
+// ID, so callers can simulate OIDC key rotation. The JWKS endpoint immediately
+// serves the new public key.
+func (ti *TestIssuer) RotateKey(t *testing.T) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	ti.priv = priv
+}
+
 // TestAudience is the audience claim expected by test Authenticators.
 const TestAudience = "lena-test-client"
 
@@ -50,7 +62,7 @@ func NewTestIssuer(t *testing.T) *TestIssuer {
 		})
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
-		pub, err := jwk.Import(priv.Public())
+		pub, err := jwk.Import(ti.priv.Public())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

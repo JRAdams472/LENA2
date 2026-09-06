@@ -29,6 +29,12 @@ ON CONFLICT (provider, external_subject)
         updated_at = now()
 RETURNING *;
 
+-- name: SetUserRole :exec
+UPDATE identity.users
+SET role       = $2,
+    updated_at = now()
+WHERE user_id = $1;
+
 -- name: UpdateUser :exec
 UPDATE identity.users
 SET email        = $2,

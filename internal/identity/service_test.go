@@ -42,6 +42,7 @@ func TestUpsertUser(t *testing.T) {
 					Email:           arg.Email,
 					DisplayName:     arg.DisplayName,
 					IsActive:        true,
+					Role:            RoleMember,
 				}, nil
 			})
 
@@ -54,7 +55,9 @@ func TestUpsertUser(t *testing.T) {
 			Email:           "a@b.com",
 			DisplayName:     "Alice",
 			IsActive:        true,
+			Role:            RoleMember,
 		}, got)
+		assert.False(t, got.IsAdmin())
 	})
 
 	t.Run("empty display name becomes null", func(t *testing.T) {
@@ -62,13 +65,14 @@ func TestUpsertUser(t *testing.T) {
 		mq.EXPECT().UpsertUser(ctx, gomock.Any()).DoAndReturn(
 			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.IdentityUser, error) {
 				assert.False(t, arg.DisplayName.Valid)
-				return sqlc.IdentityUser{UserID: 43, Provider: arg.Provider, Email: arg.Email}, nil
+				return sqlc.IdentityUser{UserID: 43, Provider: arg.Provider, Email: arg.Email, Role: RoleMember}, nil
 			})
 
 		got, err := svc.UpsertUser(ctx, "entra", "sub-124", "b@c.com", "")
 		require.NoError(t, err)
 		assert.Equal(t, int64(43), got.UserID)
 		assert.Equal(t, "", got.DisplayName)
+		assert.Equal(t, RoleMember, got.Role)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
@@ -94,6 +98,7 @@ func TestGetByID(t *testing.T) {
 			Email:           "a@b.com",
 			DisplayName:     pgtype.Text{String: "Alice", Valid: true},
 			IsActive:        true,
+			Role:            RoleAdmin,
 		}, nil)
 
 		got, err := svc.GetByID(ctx, 42)
@@ -104,6 +109,8 @@ func TestGetByID(t *testing.T) {
 		assert.Equal(t, "a@b.com", got.Email)
 		assert.Equal(t, "Alice", got.DisplayName)
 		assert.True(t, got.IsActive)
+		assert.Equal(t, RoleAdmin, got.Role)
+		assert.True(t, got.IsAdmin())
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
@@ -113,6 +120,27 @@ func TestGetByID(t *testing.T) {
 		_, err := svc.GetByID(ctx, 99)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "get user by id")
+		assert.ErrorIs(t, err, errDB)
+	})
+}
+
+func TestSetUserRole(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 42, Role: RoleAdmin}).Return(nil)
+
+		err := svc.SetUserRole(ctx, 42, RoleAdmin)
+		require.NoError(t, err)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetUserRole(ctx, gomock.Any()).Return(errDB)
+
+		err := svc.SetUserRole(ctx, 42, RoleAdmin)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, errDB)
 	})
 }

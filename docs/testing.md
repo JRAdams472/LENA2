@@ -45,6 +45,13 @@ Notes:
   (needed for `created_by`/`updated_by` FK columns).
 - `testenv.WithUser(ctx, userID, email)` — returns a context carrying a
   `currentuser.User` for resolver tests that need an authenticated principal.
+- `testenv.WithAdmin(ctx, userID, email)` — same, but with `IsAdmin: true`.
+  Required for shared-catalog mutations: those resolvers call
+  `requireAdmin`, which checks the persisted `identity.users.role` column
+  (`member` by default). In production, `LENA_ADMIN_EMAILS` (comma-separated)
+  promotes a matching user to `admin` on their next authenticated request.
+  In e2e, `e2e@example.com` is seeded admin and `e2e-other@example.com`
+  remains a member to exercise the `forbidden` rejection path.
 - `testenv.NewTestIssuer(t)` — in-process OIDC issuer (JWKS + token endpoint).
   `issuer.Token(t, sub, email, name)` mints a signed ID token accepted by
   `NewAuthenticator` configured with that issuer URL/audience.
