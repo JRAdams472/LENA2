@@ -26,15 +26,16 @@ func TestIntegrationRecipeCRUD(t *testing.T) {
 	active, err := svc.CreateRecipe(ctx, Recipe{
 		Name:            "IT Recipe Active",
 		Description:     "test recipe",
-		Servings:        4,
-		PrepTimeMinutes: 10,
-		CookTimeMinutes: 20,
+		Servings:        i32(4),
+		PrepTimeMinutes: i32(10),
+		CookTimeMinutes: i32(20),
 		IsActive:        true,
 	}, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, active.RecipeID)
 	assert.Equal(t, "IT Recipe Active", active.Name)
-	assert.Equal(t, int32(4), active.Servings)
+	require.NotNil(t, active.Servings)
+	assert.Equal(t, int32(4), *active.Servings)
 	assert.True(t, active.IsActive)
 
 	inactive, err := svc.CreateRecipe(ctx, Recipe{
@@ -47,8 +48,10 @@ func TestIntegrationRecipeCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "IT Recipe Active", got.Name)
 	assert.Equal(t, "test recipe", got.Description)
-	assert.Equal(t, int32(10), got.PrepTimeMinutes)
-	assert.Equal(t, int32(20), got.CookTimeMinutes)
+	require.NotNil(t, got.PrepTimeMinutes)
+	assert.Equal(t, int32(10), *got.PrepTimeMinutes)
+	require.NotNil(t, got.CookTimeMinutes)
+	assert.Equal(t, int32(20), *got.CookTimeMinutes)
 
 	// Active/inactive list filtering.
 	actives, err := svc.ListRecipes(ctx, true, 100, 0)
@@ -78,15 +81,16 @@ func TestIntegrationRecipeCRUD(t *testing.T) {
 	require.NoError(t, svc.UpdateRecipe(ctx, active.RecipeID, Recipe{
 		Name:            "IT Recipe Updated",
 		Description:     "updated",
-		Servings:        2,
-		PrepTimeMinutes: 5,
-		CookTimeMinutes: 15,
+		Servings:        i32(2),
+		PrepTimeMinutes: i32(5),
+		CookTimeMinutes: i32(15),
 		IsActive:        false,
 	}, itBy))
 	got, err = svc.GetRecipeByID(ctx, active.RecipeID)
 	require.NoError(t, err)
 	assert.Equal(t, "IT Recipe Updated", got.Name)
-	assert.Equal(t, int32(2), got.Servings)
+	require.NotNil(t, got.Servings)
+	assert.Equal(t, int32(2), *got.Servings)
 	assert.False(t, got.IsActive)
 
 	// Unique constraint on recipe name.
@@ -192,4 +196,113 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 	require.NoError(t, svc.DeleteRecipe(ctx, rec.RecipeID))
 	_, err = svc.GetRecipeByID(ctx, rec.RecipeID)
 	assert.Error(t, err)
+}
+
+func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	invSvc := inventory.NewService(pool)
+	cat, err := invSvc.CreateCategory(ctx, "IT Children Category", "", itBy)
+	require.NoError(t, err)
+	item, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name:       "IT Children Item",
+		CategoryID: cat.CategoryID,
+		Unit:       "g",
+	}, itBy)
+	require.NoError(t, err)
+
+	t.Run("success creates recipe with item and step", func(t *testing.T) {
+		rec, err := svc.CreateRecipeWithChildren(ctx, Recipe{
+			Name:            "Children Recipe",
+			Description:     "with children",
+			Servings:        i32(4),
+			PrepTimeMinutes: i32(10),
+			CookTimeMinutes: i32(20),
+			IsActive:        true,
+		}, []RecipeItem{
+			{ItemID: item.ItemID, Quantity: 2.5, Unit: "cup", Notes: "chopped", IsOptional: true},
+		}, []RecipeStep{
+			{StepNumber: 1, Instruction: "Mix"},
+		}, itBy)
+		require.NoError(t, err)
+		require.NotZero(t, rec.RecipeID)
+
+		items, err := svc.ListRecipeItems(ctx, rec.RecipeID)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		assert.Equal(t, item.ItemID, items[0].ItemID)
+
+		steps, err := svc.ListRecipeSteps(ctx, rec.RecipeID)
+		require.NoError(t, err)
+		require.Len(t, steps, 1)
+		assert.Equal(t, "Mix", steps[0].Instruction)
+	})
+
+	t.Run("bad item id rolls back recipe creation", func(t *testing.T) {
+		_, err := svc.CreateRecipeWithChildren(ctx, Recipe{
+			Name:        "Bad Children Recipe",
+			Description: "should not persist",
+			IsActive:    true,
+		}, []RecipeItem{
+			{ItemID: 99999999, Quantity: 1, Unit: "g"},
+		}, nil, itBy)
+		require.Error(t, err)
+
+		// Confirm no recipe was persisted: the unique name query should find none.
+		lists, err := svc.ListRecipes(ctx, true, 100, 0)
+		require.NoError(t, err)
+		for _, r := range lists {
+			assert.NotEqual(t, "Bad Children Recipe", r.Name)
+		}
+	})
+}
+
+func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	invSvc := inventory.NewService(pool)
+	cat, err := invSvc.CreateCategory(ctx, "IT Update Children Category", "", itBy)
+	require.NoError(t, err)
+	item, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name:       "IT Update Children Item",
+		CategoryID: cat.CategoryID,
+		Unit:       "g",
+	}, itBy)
+	require.NoError(t, err)
+
+	rec, err := svc.CreateRecipe(ctx, Recipe{Name: "Update Children Recipe", IsActive: true}, itBy)
+	require.NoError(t, err)
+	require.NoError(t, svc.AddRecipeItem(ctx, RecipeItem{RecipeID: rec.RecipeID, ItemID: item.ItemID, Quantity: 1, Unit: "cup"}))
+	_, err = svc.AddRecipeStep(ctx, rec.RecipeID, 1, "First", itBy)
+	require.NoError(t, err)
+
+	// Updating with a non-existent item should fail and leave prior children intact.
+	err = svc.UpdateRecipeWithChildren(ctx, rec.RecipeID, Recipe{Name: "Update Children Recipe", IsActive: true}, []RecipeItem{
+		{ItemID: 99999999, Quantity: 1, Unit: "g"},
+	}, []RecipeStep{{StepNumber: 2, Instruction: "Second"}}, itBy)
+	require.Error(t, err)
+
+	items, err := svc.ListRecipeItems(ctx, rec.RecipeID)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, item.ItemID, items[0].ItemID)
+
+	steps, err := svc.ListRecipeSteps(ctx, rec.RecipeID)
+	require.NoError(t, err)
+	require.Len(t, steps, 1)
+	assert.Equal(t, "First", steps[0].Instruction)
 }

@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	CountUserBottles(ctx context.Context, userID int64) (int64, error)
+	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavoriteParams) error
 	DeleteUserBottle(ctx context.Context, arg DeleteUserBottleParams) error
 	DeleteUserItem(ctx context.Context, arg DeleteUserItemParams) error

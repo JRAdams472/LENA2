@@ -91,7 +91,7 @@ func TestResolver_MealPlan_Happy(t *testing.T) {
 	assert.Equal(t, graphql.ID("50"), itemRes.ID())
 	assert.Equal(t, "Flour", itemRes.Name())
 
-	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(20)).Return(recipe.Recipe{RecipeID: 20, Name: "Pasta", Servings: 4}, nil)
+	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(20)).Return(recipe.Recipe{RecipeID: 20, Name: "Pasta", Servings: mealPlanPtrInt32(4)}, nil)
 
 	recipeRes, err := slot.Recipe(mealPlanCtx())
 	require.NoError(t, err)
@@ -112,6 +112,7 @@ func TestResolver_MealPlans_Happy(t *testing.T) {
 		{MealPlanID: 10, UserID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
 		{MealPlanID: 11, UserID: mealPlanUserID, Name: "Week 2", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
 	}, nil)
+	mp.EXPECT().CountMealPlans(gomock.Any(), mealPlanUserID).Return(int64(5), nil)
 
 	res, err := r.MealPlans(mealPlanCtx(), struct {
 		Page     int32
@@ -128,7 +129,7 @@ func TestResolver_MealPlans_Happy(t *testing.T) {
 	pi := res.PageInfo()
 	assert.Equal(t, int32(2), pi.PageNumber())
 	assert.Equal(t, int32(10), pi.PageSize())
-	assert.Equal(t, int32(2), pi.TotalCount())
+	assert.Equal(t, int32(5), pi.TotalCount())
 }
 
 func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
@@ -147,23 +148,22 @@ func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
 		{SlotID: 100, MealPlanID: 10, DayOfWeek: 1, MealType: "dinner", RecipeID: mealPlanPtrInt64(20), Servings: mealPlanPtrInt32(2)},
 	}, nil)
 
-	mp.EXPECT().ListMealSlotItems(gomock.Any(), int64(100)).Return([]mealplan.MealSlotItem{
+	mp.EXPECT().ListMealSlotItemsByPlan(gomock.Any(), int64(10)).Return([]mealplan.MealSlotItem{
 		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1, Unit: "cup", IsFromRecipe: true},
 	}, nil)
 
-	inv.EXPECT().ListFoodNutrientsByItem(gomock.Any(), int64(50)).Return([]inventory.FoodNutrient{
-		{NutrientID: 1, Name: "Protein", Unit: "g", Amount: 5},
-		{NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 10},
+	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{20}).Return([]recipe.Recipe{
+		{RecipeID: 20, Name: "Pasta", Servings: mealPlanPtrInt32(4)},
 	}, nil)
-
-	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(20)).Return(recipe.Recipe{RecipeID: 20, Name: "Pasta", Servings: 4}, nil)
-	rec.EXPECT().ListRecipeItems(gomock.Any(), int64(20)).Return([]recipe.RecipeItem{
+	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{20}).Return([]recipe.RecipeItem{
 		{RecipeID: 20, ItemID: 50, Quantity: 0.5, Unit: "cup"},
 		{RecipeID: 20, ItemID: 60, Quantity: 1, Unit: "oz"},
 	}, nil)
 
-	inv.EXPECT().ListFoodNutrientsByItem(gomock.Any(), int64(60)).Return([]inventory.FoodNutrient{
-		{NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 3},
+	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), gomock.Any()).Return([]inventory.FoodNutrient{
+		{ItemID: 50, NutrientID: 1, Name: "Protein", Unit: "g", Amount: 5},
+		{ItemID: 50, NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 10},
+		{ItemID: 60, NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 3},
 	}, nil)
 
 	res, err := r.Nutrition(mealPlanCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "10"})
@@ -272,7 +272,7 @@ func TestResolver_MealPlan_AddMealSlot_Happy(t *testing.T) {
 	assert.Equal(t, graphql.ID("100"), res.ID())
 	assert.Equal(t, int32(1), res.DayOfWeek())
 
-	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(20)).Return(recipe.Recipe{RecipeID: 20, Name: "Pasta", Servings: 4}, nil)
+	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(20)).Return(recipe.Recipe{RecipeID: 20, Name: "Pasta", Servings: mealPlanPtrInt32(4)}, nil)
 
 	recipeRes, err := res.Recipe(mealPlanCtx())
 	require.NoError(t, err)

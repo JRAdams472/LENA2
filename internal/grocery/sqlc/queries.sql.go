@@ -59,6 +59,19 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 	return i, err
 }
 
+const countGroceryLists = `-- name: CountGroceryLists :one
+SELECT COUNT(*)
+FROM grocery.grocery_list
+WHERE user_id = $1
+`
+
+func (q *Queries) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroceryLists, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createGroceryList = `-- name: CreateGroceryList :one
 INSERT INTO grocery.grocery_list (user_id, meal_plan_id, created_by, updated_by)
 VALUES ($1, $2, $3, $4)

@@ -98,6 +98,19 @@ func (q *Queries) AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams
 	return i, err
 }
 
+const countMealPlans = `-- name: CountMealPlans :one
+SELECT COUNT(*)
+FROM mealplan.meal_plan
+WHERE user_id = $1
+`
+
+func (q *Queries) CountMealPlans(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countMealPlans, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMealPlan = `-- name: CreateMealPlan :one
 INSERT INTO mealplan.meal_plan (user_id, name, week_start_date, week_start_day_of_week, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -283,6 +296,45 @@ ORDER BY slot_item_id
 
 func (q *Queries) ListMealSlotItems(ctx context.Context, slotID int64) ([]MealplanMealSlotItem, error) {
 	rows, err := q.db.Query(ctx, listMealSlotItems, slotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MealplanMealSlotItem{}
+	for rows.Next() {
+		var i MealplanMealSlotItem
+		if err := rows.Scan(
+			&i.SlotItemID,
+			&i.SlotID,
+			&i.ItemID,
+			&i.Quantity,
+			&i.Unit,
+			&i.IsFromRecipe,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMealSlotItemsByPlan = `-- name: ListMealSlotItemsByPlan :many
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.unit, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at
+FROM mealplan.meal_slot_item msi
+JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
+WHERE ms.meal_plan_id = $1
+ORDER BY msi.slot_item_id
+`
+
+func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlotItem, error) {
+	rows, err := q.db.Query(ctx, listMealSlotItemsByPlan, mealPlanID)
 	if err != nil {
 		return nil, err
 	}

@@ -23,6 +23,10 @@ const (
 )
 
 func wineCtx() context.Context {
+	return testenv.WithAdmin(context.Background(), wineUserID, wineEmail)
+}
+
+func wineUserCtx() context.Context {
 	return testenv.WithUser(context.Background(), wineUserID, wineEmail)
 }
 
@@ -31,6 +35,7 @@ func newWineTestResolver(m *mock.MockWineService) *Resolver {
 }
 
 func winePtrInt32(v int32) *int32       { return &v }
+func winePtrInt16(v int16) *int16       { return &v }
 func winePtrFloat64(v float64) *float64 { return &v }
 func winePtrString(v string) *string    { return &v }
 func winePtrBool(v bool) *bool          { return &v }
@@ -169,13 +174,13 @@ func TestResolver_Wine_Bottle_Happy(t *testing.T) {
 
 	b := wine.Bottle{
 		BottleID: 101, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020,
-		Vineyard: "Chateau", Abv: 13.5, Acidity: 3, TanninLevel: 4, Body: 5,
-		Sweetness: 2, OakIntegration: true, BottleSize: "750ml",
+		Vineyard: "Chateau", Abv: winePtrFloat64(13.5), Acidity: winePtrInt16(3), TanninLevel: winePtrInt16(4), Body: winePtrInt16(5),
+		Sweetness: winePtrInt16(2), OakIntegration: true, BottleSize: "750ml",
 	}
 	m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(b, nil)
 	m.EXPECT().ListBottleGrapeVarieties(gomock.Any(), int64(101)).Return([]wine.BottleGrapeVariety{
-		{GrapeVarietyID: 20, Name: "Cabernet", Percentage: 80},
-		{GrapeVarietyID: 21, Name: "Merlot", Percentage: 20},
+		{GrapeVarietyID: 20, Name: "Cabernet", Percentage: winePtrInt16(80)},
+		{GrapeVarietyID: 21, Name: "Merlot", Percentage: winePtrInt16(20)},
 	}, nil)
 	m.EXPECT().ListBottleFlavorProfiles(gomock.Any(), int64(101)).Return([]wine.BottleFlavorProfile{
 		{FlavorProfileID: 30, Name: "Fruity", Intensity: 7},
@@ -225,6 +230,7 @@ func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 	m.EXPECT().ListBottles(gomock.Any(), int32(10), int32(0)).Return([]wine.Bottle{
 		{BottleID: 1, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020, BottleSize: "750ml"},
 	}, nil)
+	m.EXPECT().CountBottles(gomock.Any()).Return(int64(5), nil)
 
 	res, err := r.Bottles(wineCtx(), struct {
 		Page     int32
@@ -238,7 +244,7 @@ func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 	pi := res.PageInfo()
 	assert.Equal(t, int32(1), pi.PageNumber())
 	assert.Equal(t, int32(10), pi.PageSize())
-	assert.Equal(t, int32(1), pi.TotalCount())
+	assert.Equal(t, int32(5), pi.TotalCount())
 }
 
 func TestResolver_Wine_Type_Mutations(t *testing.T) {
@@ -554,8 +560,8 @@ func TestResolver_Wine_Bottle_Mutations(t *testing.T) {
 
 	want := wine.Bottle{
 		TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020,
-		Vineyard: "Chateau", Abv: 13.5, Acidity: 3, TanninLevel: 4, Body: 5,
-		Sweetness: 2, OakIntegration: true, BottleSize: "750ml",
+		Vineyard: "Chateau", Abv: winePtrFloat64(13.5), Acidity: winePtrInt16(3), TanninLevel: winePtrInt16(4), Body: winePtrInt16(5),
+		Sweetness: winePtrInt16(2), OakIntegration: true, BottleSize: "750ml",
 	}
 	created := want
 	created.BottleID = 101
@@ -578,8 +584,8 @@ func TestResolver_Wine_Bottle_Mutations(t *testing.T) {
 	t.Run("Update", func(t *testing.T) {
 		existing := wine.Bottle{
 			BottleID: 101, TypeID: 9, CountryID: 8, RegionID: 7, VintageYear: 2019,
-			Vineyard: "Old", Abv: 12, Acidity: 2, TanninLevel: 3, Body: 4,
-			Sweetness: 1, OakIntegration: false, BottleSize: "750ml",
+			Vineyard: "Old", Abv: winePtrFloat64(12), Acidity: winePtrInt16(2), TanninLevel: winePtrInt16(3), Body: winePtrInt16(4),
+			Sweetness: winePtrInt16(1), OakIntegration: false, BottleSize: "750ml",
 		}
 		updated := want
 		updated.BottleID = 101
@@ -626,6 +632,12 @@ func TestResolver_Wine_Bottle_Mutations(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, ok)
 	})
+
+	t.Run("Delete forbidden for non-admin", func(t *testing.T) {
+		ok, err := r.DeleteBottle(wineUserCtx(), struct{ ID graphql.ID }{ID: "101"})
+		assert.False(t, ok)
+		require.ErrorContains(t, err, "forbidden")
+	})
 }
 
 func TestResolver_Wine_BottleJunctions(t *testing.T) {
@@ -634,8 +646,8 @@ func TestResolver_Wine_BottleJunctions(t *testing.T) {
 	r := newWineTestResolver(m)
 
 	t.Run("AddBottleGrapeVariety", func(t *testing.T) {
-		m.EXPECT().AddBottleGrapeVariety(gomock.Any(), int64(101), int64(201), int16(80), wineEmail).Return(wine.BottleGrapeVariety{
-			GrapeVarietyID: 201, Name: "Cabernet", Percentage: 80,
+		m.EXPECT().AddBottleGrapeVariety(gomock.Any(), int64(101), int64(201), winePtrInt16(80), wineEmail).Return(wine.BottleGrapeVariety{
+			GrapeVarietyID: 201, Name: "Cabernet", Percentage: winePtrInt16(80),
 		}, nil)
 
 		res, err := r.AddBottleGrapeVariety(wineCtx(), struct{ Input addBottleGrapeVarietyInput }{

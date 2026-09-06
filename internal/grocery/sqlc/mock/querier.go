@@ -56,6 +56,21 @@ func (mr *MockQuerierMockRecorder) AddGroceryListItem(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockQuerier)(nil).AddGroceryListItem), ctx, arg)
 }
 
+// CountGroceryLists mocks base method.
+func (m *MockQuerier) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, userID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountGroceryLists indicates an expected call of CountGroceryLists.
+func (mr *MockQuerierMockRecorder) CountGroceryLists(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockQuerier)(nil).CountGroceryLists), ctx, userID)
+}
+
 // CreateGroceryList mocks base method.
 func (m *MockQuerier) CreateGroceryList(ctx context.Context, arg sqlc.CreateGroceryListParams) (sqlc.GroceryGroceryList, error) {
 	m.ctrl.T.Helper()

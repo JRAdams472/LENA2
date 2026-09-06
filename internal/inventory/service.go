@@ -5,6 +5,7 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -192,6 +193,15 @@ func (s *Service) ListItems(ctx context.Context, limit, offset int32) ([]Item, e
 	return out, nil
 }
 
+// CountItems returns the total number of catalog items.
+func (s *Service) CountItems(ctx context.Context) (int64, error) {
+	n, err := s.q.CountItems(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count items: %w", err)
+	}
+	return n, nil
+}
+
 // UpdateItem modifies an existing item. All business logic about who can
 // modify catalog data lives in Go, not in SQL triggers or procedures.
 func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by string) error {
@@ -337,6 +347,7 @@ func (s *Service) DeleteNutrientType(ctx context.Context, nutrientID int64) erro
 
 // FoodNutrient is a nutrient value for a catalog item.
 type FoodNutrient struct {
+	ItemID     int64
 	NutrientID int64
 	Name       string
 	Unit       string
@@ -351,25 +362,61 @@ func (s *Service) ListFoodNutrientsByItem(ctx context.Context, itemID int64) ([]
 	}
 	out := make([]FoodNutrient, len(rows))
 	for i := range rows {
-		out[i] = toFoodNutrient(rows[i])
+		fn, err := toFoodNutrient(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list food nutrients by item: %w", err)
+		}
+		out[i] = fn
+	}
+	return out, nil
+}
+
+// ListFoodNutrientsByItems returns nutrient values for a set of items in a
+// single query; each result carries the item it belongs to.
+func (s *Service) ListFoodNutrientsByItems(ctx context.Context, itemIDs []int64) ([]FoodNutrient, error) {
+	rows, err := s.q.ListFoodNutrientsByItems(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list food nutrients by items: %w", err)
+	}
+	out := make([]FoodNutrient, len(rows))
+	for i := range rows {
+		amount, err := numericToFloat64(rows[i].Amount)
+		if err != nil {
+			return nil, fmt.Errorf("list food nutrients by items: item %d nutrient %d: %w", rows[i].FoodID, rows[i].NutrientID, err)
+		}
+		out[i] = FoodNutrient{
+			ItemID:     rows[i].FoodID,
+			NutrientID: rows[i].NutrientID,
+			Name:       rows[i].Name,
+			Unit:       rows[i].Unit.String,
+			Amount:     amount,
+		}
 	}
 	return out, nil
 }
 
 // CreateFoodNutrient adds a nutrient value to an item.
 func (s *Service) CreateFoodNutrient(ctx context.Context, itemID, nutrientID int64, amount float64, by string) (FoodNutrient, error) {
+	n, err := numericFromFloat64(amount)
+	if err != nil {
+		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
+	}
 	row, err := s.q.CreateFoodNutrient(ctx, sqlc.CreateFoodNutrientParams{
 		FoodID:     itemID,
 		NutrientID: nutrientID,
-		Amount:     numericFromFloat64(amount),
+		Amount:     n,
 		CreatedBy:  by,
 	})
 	if err != nil {
 		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
 	}
+	result, err := numericToFloat64(row.Amount)
+	if err != nil {
+		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
+	}
 	return FoodNutrient{
 		NutrientID: row.NutrientID,
-		Amount:     numericToFloat64(row.Amount),
+		Amount:     result,
 	}, nil
 }
 
@@ -475,17 +522,17 @@ func toNutrientType(row sqlc.InventoryNutrientType) NutrientType {
 	}
 }
 
-func toFoodNutrient(row sqlc.ListFoodNutrientsByItemRow) FoodNutrient {
-	var amount float64
-	if v, err := row.Amount.Float64Value(); err == nil {
-		amount = v.Float64
+func toFoodNutrient(row sqlc.ListFoodNutrientsByItemRow) (FoodNutrient, error) {
+	amount, err := numericToFloat64(row.Amount)
+	if err != nil {
+		return FoodNutrient{}, err
 	}
 	return FoodNutrient{
 		NutrientID: row.NutrientID,
 		Name:       row.Name,
 		Unit:       row.Unit.String,
 		Amount:     amount,
-	}
+	}, nil
 }
 
 func toFoodFlavor(row sqlc.ListFoodFlavorsByItemRow) FoodFlavor {
@@ -496,20 +543,27 @@ func toFoodFlavor(row sqlc.ListFoodFlavorsByItemRow) FoodFlavor {
 	}
 }
 
-func numericFromFloat64(f float64) pgtype.Numeric {
+func numericFromFloat64(f float64) (pgtype.Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
+	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: %w", f, err)
 	}
 	n.Valid = true
-	return n
+	return n, nil
 }
 
-func numericToFloat64(n pgtype.Numeric) float64 {
-	if v, err := n.Float64Value(); err == nil {
-		return v.Float64
+func numericToFloat64(n pgtype.Numeric) (float64, error) {
+	if !n.Valid {
+		return 0, nil
 	}
-	return 0
+	v, err := n.Float64Value()
+	if err != nil {
+		return 0, fmt.Errorf("convert numeric to float64: %w", err)
+	}
+	return v.Float64, nil
 }
 
 func optInt64(v *int64) pgtype.Int8 {

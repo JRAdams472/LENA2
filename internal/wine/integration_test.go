@@ -279,11 +279,11 @@ func TestIntegrationBottleCRUDAndJunctions(t *testing.T) {
 		RegionID:       region.RegionID,
 		VintageYear:    2015,
 		Vineyard:       "IT Vineyard",
-		Abv:            13.5,
-		Acidity:        3,
-		TanninLevel:    4,
-		Body:           4,
-		Sweetness:      1,
+		Abv:            f64(13.5),
+		Acidity:        i16(3),
+		TanninLevel:    i16(4),
+		Body:           i16(4),
+		Sweetness:      i16(1),
 		OakIntegration: true,
 		BottleSize:     "750ml",
 	}, itBy)
@@ -291,7 +291,8 @@ func TestIntegrationBottleCRUDAndJunctions(t *testing.T) {
 	require.NotZero(t, bottle.BottleID)
 	assert.Equal(t, int32(2015), bottle.VintageYear)
 	assert.Equal(t, "IT Vineyard", bottle.Vineyard)
-	assert.InDelta(t, 13.5, bottle.Abv, 0.001)
+	require.NotNil(t, bottle.Abv)
+	assert.InDelta(t, 13.5, *bottle.Abv, 0.001)
 
 	got, err := svc.GetBottleByID(ctx, bottle.BottleID)
 	require.NoError(t, err)
@@ -313,7 +314,7 @@ func TestIntegrationBottleCRUDAndJunctions(t *testing.T) {
 		RegionID:    region.RegionID,
 		VintageYear: 2016,
 		Vineyard:    "IT Vineyard Updated",
-		Abv:         14.0,
+		Abv:         f64(14.0),
 		BottleSize:  "1.5L",
 	}, itBy))
 	got, err = svc.GetBottleByID(ctx, bottle.BottleID)
@@ -323,10 +324,11 @@ func TestIntegrationBottleCRUDAndJunctions(t *testing.T) {
 	assert.Equal(t, "1.5L", got.BottleSize)
 
 	// Junction: bottle grape variety.
-	bgv, err := svc.AddBottleGrapeVariety(ctx, bottle.BottleID, grape.GrapeVarietyID, 85, itBy)
+	bgv, err := svc.AddBottleGrapeVariety(ctx, bottle.BottleID, grape.GrapeVarietyID, i16(85), itBy)
 	require.NoError(t, err)
 	assert.Equal(t, grape.GrapeVarietyID, bgv.GrapeVarietyID)
-	assert.Equal(t, int16(85), bgv.Percentage)
+	require.NotNil(t, bgv.Percentage)
+	assert.Equal(t, int16(85), *bgv.Percentage)
 
 	gvs, err := svc.ListBottleGrapeVarieties(ctx, bottle.BottleID)
 	require.NoError(t, err)

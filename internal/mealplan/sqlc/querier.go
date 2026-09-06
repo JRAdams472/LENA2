@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	AddMealSlot(ctx context.Context, arg AddMealSlotParams) (MealplanMealSlot, error)
 	AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams) (MealplanMealSlotItem, error)
+	CountMealPlans(ctx context.Context, userID int64) (int64, error)
 	CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) (MealplanMealPlan, error)
 	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
 	DeleteMealSlot(ctx context.Context, slotID int64) error
@@ -19,6 +20,7 @@ type Querier interface {
 	GetMealSlotByID(ctx context.Context, slotID int64) (MealplanMealSlot, error)
 	ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([]MealplanMealPlan, error)
 	ListMealSlotItems(ctx context.Context, slotID int64) ([]MealplanMealSlotItem, error)
+	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlotItem, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlot, error)
 	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) error
 	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error

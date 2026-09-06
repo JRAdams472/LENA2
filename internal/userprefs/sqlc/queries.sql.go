@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countUserBottles = `-- name: CountUserBottles :one
+SELECT COUNT(*)
+FROM wine.user_bottle
+WHERE user_id = $1
+`
+
+func (q *Queries) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countUserBottles, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUserItems = `-- name: CountUserItems :one
+SELECT COUNT(*)
+FROM inventory.user_item
+WHERE user_id = $1
+`
+
+func (q *Queries) CountUserItems(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countUserItems, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteRecipeFavorite = `-- name: DeleteRecipeFavorite :exec
 DELETE FROM recipe.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = $2

@@ -15,6 +15,11 @@ WHERE user_id = $1
 ORDER BY generated_at DESC
 LIMIT $2 OFFSET $3;
 
+-- name: CountGroceryLists :one
+SELECT COUNT(*)
+FROM grocery.grocery_list
+WHERE user_id = $1;
+
 -- name: DeleteGroceryList :exec
 DELETE FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND user_id = $2;

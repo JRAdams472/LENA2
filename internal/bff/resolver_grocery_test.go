@@ -81,6 +81,7 @@ func TestResolver_GroceryLists_Happy(t *testing.T) {
 	}
 	// page=2, pageSize=10 -> limit=10, offset=10
 	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(10)).Return(lists, nil)
+	g.EXPECT().CountGroceryLists(gomock.Any(), grocUserID).Return(int64(5), nil)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32
@@ -97,7 +98,7 @@ func TestResolver_GroceryLists_Happy(t *testing.T) {
 	pi := res.PageInfo()
 	assert.Equal(t, int32(2), pi.PageNumber())
 	assert.Equal(t, int32(10), pi.PageSize())
-	assert.Equal(t, int32(2), pi.TotalCount())
+	assert.Equal(t, int32(5), pi.TotalCount())
 }
 
 func TestResolver_GroceryLists_ClampsPageArgs(t *testing.T) {
@@ -107,6 +108,7 @@ func TestResolver_GroceryLists_ClampsPageArgs(t *testing.T) {
 
 	// page clamps to 1, pageSize clamps to 100.
 	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(100), int32(0)).Return(nil, nil)
+	g.EXPECT().CountGroceryLists(gomock.Any(), grocUserID).Return(int64(0), nil)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32
@@ -115,6 +117,7 @@ func TestResolver_GroceryLists_ClampsPageArgs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), res.PageInfo().PageNumber())
 	assert.Equal(t, int32(100), res.PageInfo().PageSize())
+	assert.Equal(t, int32(0), res.PageInfo().TotalCount())
 }
 
 func TestResolver_GroceryLists_Unauthorized(t *testing.T) {

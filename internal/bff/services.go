@@ -15,6 +15,7 @@ import (
 type GroceryService interface {
 	GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (grocery.GroceryList, error)
 	ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]grocery.GroceryList, error)
+	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
 	Generate(ctx context.Context, userID int64, mealPlanID int64, by string) (grocery.GroceryList, error)
 	GetGroceryListItemByID(ctx context.Context, groceryListItemID int64) (grocery.GroceryListItem, error)
 	UpdateGroceryListItem(ctx context.Context, groceryListItemID int64, arg grocery.GroceryListItem, by string) error
@@ -35,6 +36,7 @@ type InventoryService interface {
 	ListNutrientTypes(ctx context.Context) ([]inventory.NutrientType, error)
 	GetItemByID(ctx context.Context, itemID int64) (inventory.Item, error)
 	ListItems(ctx context.Context, limit, offset int32) ([]inventory.Item, error)
+	CountItems(ctx context.Context) (int64, error)
 	CreateBrand(ctx context.Context, name string) (inventory.Brand, error)
 	CreateCategory(ctx context.Context, name, description, by string) (inventory.Category, error)
 	CreateFlavorProfile(ctx context.Context, name, by string) (inventory.FlavorProfile, error)
@@ -45,6 +47,7 @@ type InventoryService interface {
 	CreateFoodFlavor(ctx context.Context, itemID, flavorID int64, intensity int16, by string) (inventory.FoodFlavor, error)
 	DeleteFoodFlavor(ctx context.Context, itemID, flavorID int64) error
 	ListFoodNutrientsByItem(ctx context.Context, itemID int64) ([]inventory.FoodNutrient, error)
+	ListFoodNutrientsByItems(ctx context.Context, itemIDs []int64) ([]inventory.FoodNutrient, error)
 	ListFoodFlavorsByItem(ctx context.Context, itemID int64) ([]inventory.FoodFlavor, error)
 	UpdateItem(ctx context.Context, itemID int64, arg inventory.Item, by string) error
 	DeleteItem(ctx context.Context, itemID int64) error
@@ -66,8 +69,10 @@ var _ InventoryService = (*inventory.Service)(nil)
 type MealPlanService interface {
 	GetMealPlanByID(ctx context.Context, mealPlanID, userID int64) (mealplan.MealPlan, error)
 	ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error)
+	CountMealPlans(ctx context.Context, userID int64) (int64, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]mealplan.MealSlot, error)
 	ListMealSlotItems(ctx context.Context, slotID int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]mealplan.MealSlotItem, error)
 	CreateMealPlan(ctx context.Context, arg mealplan.MealPlan, by string) (mealplan.MealPlan, error)
 	UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error
 	DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error
@@ -83,7 +88,12 @@ var _ MealPlanService = (*mealplan.Service)(nil)
 type RecipeService interface {
 	GetRecipeByID(ctx context.Context, recipeID int64) (recipe.Recipe, error)
 	ListRecipes(ctx context.Context, active bool, limit, offset int32) ([]recipe.Recipe, error)
+	CountRecipes(ctx context.Context, active bool) (int64, error)
+	GetRecipesByIDs(ctx context.Context, recipeIDs []int64) ([]recipe.Recipe, error)
+	ListRecipeItemsByRecipes(ctx context.Context, recipeIDs []int64) ([]recipe.RecipeItem, error)
 	CreateRecipe(ctx context.Context, arg recipe.Recipe, by string) (recipe.Recipe, error)
+	CreateRecipeWithChildren(ctx context.Context, arg recipe.Recipe, items []recipe.RecipeItem, steps []recipe.RecipeStep, by string) (recipe.Recipe, error)
+	UpdateRecipeWithChildren(ctx context.Context, recipeID int64, arg recipe.Recipe, items []recipe.RecipeItem, steps []recipe.RecipeStep, by string) error
 	AddRecipeItem(ctx context.Context, arg recipe.RecipeItem) error
 	AddRecipeStep(ctx context.Context, recipeID int64, stepNumber int32, instruction, by string) (recipe.RecipeStep, error)
 	UpdateRecipe(ctx context.Context, recipeID int64, arg recipe.Recipe, by string) error
@@ -100,6 +110,8 @@ var _ RecipeService = (*recipe.Service)(nil)
 type UserPrefsService interface {
 	ListUserBottles(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserBottle, error)
 	ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserItem, error)
+	CountUserBottles(ctx context.Context, userID int64) (int64, error)
+	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	SetRecipeFavorite(ctx context.Context, userID, recipeID int64, isFavorite bool, by string) (userprefs.RecipeFavorite, error)
 	UpsertUserItem(ctx context.Context, arg userprefs.UserItem, by string) (userprefs.UserItem, error)
 	DeleteUserItem(ctx context.Context, userItemID, userID int64) error
@@ -113,6 +125,7 @@ var _ UserPrefsService = (*userprefs.Service)(nil)
 type WineService interface {
 	GetBottleByID(ctx context.Context, bottleID int64) (wine.Bottle, error)
 	ListBottles(ctx context.Context, limit, offset int32) ([]wine.Bottle, error)
+	CountBottles(ctx context.Context) (int64, error)
 	ListTypes(ctx context.Context) ([]wine.Type, error)
 	ListCountries(ctx context.Context) ([]wine.Country, error)
 	ListRegions(ctx context.Context, countryID int64) ([]wine.Region, error)
@@ -128,7 +141,7 @@ type WineService interface {
 	CreateBottle(ctx context.Context, arg wine.Bottle, by string) (wine.Bottle, error)
 	UpdateBottle(ctx context.Context, bottleID int64, arg wine.Bottle, by string) error
 	DeleteBottle(ctx context.Context, bottleID int64) error
-	AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage int16, by string) (wine.BottleGrapeVariety, error)
+	AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage *int16, by string) (wine.BottleGrapeVariety, error)
 	RemoveBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64) error
 	AddBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64, intensity int16, by string) (wine.BottleFlavorProfile, error)
 	RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64) error

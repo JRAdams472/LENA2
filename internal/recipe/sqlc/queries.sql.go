@@ -73,6 +73,19 @@ func (q *Queries) AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (R
 	return i, err
 }
 
+const countRecipes = `-- name: CountRecipes :one
+SELECT COUNT(*)
+FROM recipe.recipe
+WHERE is_active = $1
+`
+
+func (q *Queries) CountRecipes(ctx context.Context, isActive bool) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecipes, isActive)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createRecipe = `-- name: CreateRecipe :one
 INSERT INTO recipe.recipe (name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -128,6 +141,16 @@ func (q *Queries) DeleteRecipe(ctx context.Context, recipeID int64) error {
 	return err
 }
 
+const deleteRecipeItems = `-- name: DeleteRecipeItems :exec
+DELETE FROM recipe.recipe_item
+WHERE recipe_id = $1
+`
+
+func (q *Queries) DeleteRecipeItems(ctx context.Context, recipeID int64) error {
+	_, err := q.db.Exec(ctx, deleteRecipeItems, recipeID)
+	return err
+}
+
 const deleteRecipeStep = `-- name: DeleteRecipeStep :exec
 DELETE FROM recipe.recipe_step
 WHERE step_id = $1
@@ -135,6 +158,16 @@ WHERE step_id = $1
 
 func (q *Queries) DeleteRecipeStep(ctx context.Context, stepID int64) error {
 	_, err := q.db.Exec(ctx, deleteRecipeStep, stepID)
+	return err
+}
+
+const deleteRecipeSteps = `-- name: DeleteRecipeSteps :exec
+DELETE FROM recipe.recipe_step
+WHERE recipe_id = $1
+`
+
+func (q *Queries) DeleteRecipeSteps(ctx context.Context, recipeID int64) error {
+	_, err := q.db.Exec(ctx, deleteRecipeSteps, recipeID)
 	return err
 }
 
@@ -163,6 +196,44 @@ func (q *Queries) GetRecipeByID(ctx context.Context, recipeID int64) (RecipeReci
 	return i, err
 }
 
+const getRecipesByIDs = `-- name: GetRecipesByIDs :many
+SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe
+WHERE recipe_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error) {
+	rows, err := q.db.Query(ctx, getRecipesByIDs, recipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipe{}
+	for rows.Next() {
+		var i RecipeRecipe
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.Name,
+			&i.Description,
+			&i.Servings,
+			&i.PrepTimeMinutes,
+			&i.CookTimeMinutes,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecipeItems = `-- name: ListRecipeItems :many
 SELECT recipe_id, item_id, quantity, unit, notes, is_optional
 FROM recipe.recipe_item
@@ -172,6 +243,40 @@ ORDER BY item_id
 
 func (q *Queries) ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error) {
 	rows, err := q.db.Query(ctx, listRecipeItems, recipeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeItem{}
+	for rows.Next() {
+		var i RecipeRecipeItem
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.ItemID,
+			&i.Quantity,
+			&i.Unit,
+			&i.Notes,
+			&i.IsOptional,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecipeItemsByRecipes = `-- name: ListRecipeItemsByRecipes :many
+SELECT recipe_id, item_id, quantity, unit, notes, is_optional
+FROM recipe.recipe_item
+WHERE recipe_id = ANY($1::bigint[])
+ORDER BY item_id
+`
+
+func (q *Queries) ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error) {
+	rows, err := q.db.Query(ctx, listRecipeItemsByRecipes, recipeIds)
 	if err != nil {
 		return nil, err
 	}

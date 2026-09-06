@@ -27,6 +27,11 @@ WHERE user_id = $1
 ORDER BY updated_at DESC NULLS LAST
 LIMIT $2 OFFSET $3;
 
+-- name: CountUserItems :one
+SELECT COUNT(*)
+FROM inventory.user_item
+WHERE user_id = $1;
+
 -- name: DeleteUserItem :exec
 DELETE FROM inventory.user_item
 WHERE user_item_id = $1 AND user_id = $2;
@@ -62,6 +67,11 @@ FROM wine.user_bottle
 WHERE user_id = $1
 ORDER BY updated_at DESC NULLS LAST
 LIMIT $2 OFFSET $3;
+
+-- name: CountUserBottles :one
+SELECT COUNT(*)
+FROM wine.user_bottle
+WHERE user_id = $1;
 
 -- name: DeleteUserBottle :exec
 DELETE FROM wine.user_bottle

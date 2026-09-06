@@ -5,6 +5,7 @@ package wine
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -358,15 +359,15 @@ func (s *Service) DeleteGrapeVariety(ctx context.Context, grapeVarietyID int64) 
 type BottleGrapeVariety struct {
 	GrapeVarietyID int64
 	Name           string
-	Percentage     int16
+	Percentage     *int16
 }
 
 // AddBottleGrapeVariety links a grape variety to a bottle.
-func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage int16, by string) (BottleGrapeVariety, error) {
+func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage *int16, by string) (BottleGrapeVariety, error) {
 	row, err := s.q.CreateBottleGrapeVariety(ctx, sqlc.CreateBottleGrapeVarietyParams{
 		BottleID:       bottleID,
 		GrapeVarietyID: grapeVarietyID,
-		Percentage:     int2OrNull(percentage),
+		Percentage:     optInt2(percentage),
 		CreatedBy:      by,
 	})
 	if err != nil {
@@ -374,7 +375,7 @@ func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVari
 	}
 	return BottleGrapeVariety{
 		GrapeVarietyID: row.GrapeVarietyID,
-		Percentage:     int16Value(row.Percentage),
+		Percentage:     int16Ptr(row.Percentage),
 	}, nil
 }
 
@@ -504,7 +505,8 @@ func (s *Service) RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavo
 	})
 }
 
-// Bottle is a catalog wine bottle definition.
+// Bottle is a catalog wine bottle definition. Nullable tasting-note fields
+// are pointers so a real 0 is distinguishable from "not set".
 type Bottle struct {
 	BottleID       int64
 	TypeID         int64
@@ -512,28 +514,32 @@ type Bottle struct {
 	RegionID       int64
 	VintageYear    int32
 	Vineyard       string
-	Abv            float64
-	Acidity        int16
-	TanninLevel    int16
-	Body           int16
-	Sweetness      int16
+	Abv            *float64
+	Acidity        *int16
+	TanninLevel    *int16
+	Body           *int16
+	Sweetness      *int16
 	OakIntegration bool
 	BottleSize     string
 }
 
 // CreateBottle adds a new bottle definition.
 func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bottle, error) {
+	abv, err := optNumeric(arg.Abv)
+	if err != nil {
+		return Bottle{}, fmt.Errorf("create bottle: %w", err)
+	}
 	row, err := s.q.CreateBottle(ctx, sqlc.CreateBottleParams{
 		TypeID:         arg.TypeID,
 		CountryID:      arg.CountryID,
 		RegionID:       arg.RegionID,
 		VintageYear:    arg.VintageYear,
 		Vineyard:       textOrNull(arg.Vineyard),
-		Abv:            numericOrNull(arg.Abv),
-		Acidity:        int2OrNull(arg.Acidity),
-		TanninLevel:    int2OrNull(arg.TanninLevel),
-		Body:           int2OrNull(arg.Body),
-		Sweetness:      int2OrNull(arg.Sweetness),
+		Abv:            abv,
+		Acidity:        optInt2(arg.Acidity),
+		TanninLevel:    optInt2(arg.TanninLevel),
+		Body:           optInt2(arg.Body),
+		Sweetness:      optInt2(arg.Sweetness),
 		OakIntegration: boolOrNull(arg.OakIntegration),
 		BottleSize:     arg.BottleSize,
 		CreatedBy:      by,
@@ -542,7 +548,11 @@ func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bott
 	if err != nil {
 		return Bottle{}, fmt.Errorf("create bottle: %w", err)
 	}
-	return toBottle(row), nil
+	b, err := toBottle(row)
+	if err != nil {
+		return Bottle{}, fmt.Errorf("create bottle: %w", err)
+	}
+	return b, nil
 }
 
 // GetBottleByID returns a bottle by its primary key.
@@ -551,7 +561,11 @@ func (s *Service) GetBottleByID(ctx context.Context, bottleID int64) (Bottle, er
 	if err != nil {
 		return Bottle{}, fmt.Errorf("get bottle by id: %w", err)
 	}
-	return toBottle(row), nil
+	b, err := toBottle(row)
+	if err != nil {
+		return Bottle{}, fmt.Errorf("get bottle by id: %w", err)
+	}
+	return b, nil
 }
 
 // ListBottles returns a paginated list of bottles.
@@ -562,13 +576,30 @@ func (s *Service) ListBottles(ctx context.Context, limit, offset int32) ([]Bottl
 	}
 	out := make([]Bottle, len(rows))
 	for i := range rows {
-		out[i] = toBottle(rows[i])
+		b, err := toBottle(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list bottles: %w", err)
+		}
+		out[i] = b
 	}
 	return out, nil
 }
 
+// CountBottles returns the total number of catalog bottles.
+func (s *Service) CountBottles(ctx context.Context) (int64, error) {
+	n, err := s.q.CountBottles(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count bottles: %w", err)
+	}
+	return n, nil
+}
+
 // UpdateBottle modifies an existing bottle.
 func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, by string) error {
+	abv, err := optNumeric(arg.Abv)
+	if err != nil {
+		return fmt.Errorf("update bottle: %w", err)
+	}
 	return s.q.UpdateBottle(ctx, sqlc.UpdateBottleParams{
 		BottleID:       bottleID,
 		TypeID:         arg.TypeID,
@@ -576,11 +607,11 @@ func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, 
 		RegionID:       arg.RegionID,
 		VintageYear:    arg.VintageYear,
 		Vineyard:       textOrNull(arg.Vineyard),
-		Abv:            numericOrNull(arg.Abv),
-		Acidity:        int2OrNull(arg.Acidity),
-		TanninLevel:    int2OrNull(arg.TanninLevel),
-		Body:           int2OrNull(arg.Body),
-		Sweetness:      int2OrNull(arg.Sweetness),
+		Abv:            abv,
+		Acidity:        optInt2(arg.Acidity),
+		TanninLevel:    optInt2(arg.TanninLevel),
+		Body:           optInt2(arg.Body),
+		Sweetness:      optInt2(arg.Sweetness),
 		OakIntegration: boolOrNull(arg.OakIntegration),
 		BottleSize:     arg.BottleSize,
 		UpdatedBy:      textOrNull(by),
@@ -643,7 +674,7 @@ func toBottleGrapeVariety(row sqlc.ListBottleGrapeVarietiesRow) BottleGrapeVarie
 	return BottleGrapeVariety{
 		GrapeVarietyID: row.GrapeVarietyID,
 		Name:           row.Name,
-		Percentage:     int16Value(row.Percentage),
+		Percentage:     int16Ptr(row.Percentage),
 	}
 }
 
@@ -671,14 +702,14 @@ func toBottleFlavorProfileFromRow(row sqlc.WineBottleFlavorProfile) BottleFlavor
 	}
 }
 
-func int16Value(v pgtype.Int2) int16 {
-	if v.Valid {
-		return v.Int16
+func int16Ptr(v pgtype.Int2) *int16 {
+	if !v.Valid {
+		return nil
 	}
-	return 0
+	return &v.Int16
 }
 
-func toBottle(row sqlc.WineBottle) Bottle {
+func toBottle(row sqlc.WineBottle) (Bottle, error) {
 	b := Bottle{
 		BottleID:    row.BottleID,
 		TypeID:      row.TypeID,
@@ -687,27 +718,23 @@ func toBottle(row sqlc.WineBottle) Bottle {
 		VintageYear: row.VintageYear,
 		Vineyard:    row.Vineyard.String,
 		BottleSize:  row.BottleSize,
+		Acidity:     int16Ptr(row.Acidity),
+		TanninLevel: int16Ptr(row.TanninLevel),
+		Body:        int16Ptr(row.Body),
+		Sweetness:   int16Ptr(row.Sweetness),
 	}
 	if row.Abv.Valid {
-		f8, _ := row.Abv.Float64Value()
-		b.Abv = f8.Float64
-	}
-	if row.Acidity.Valid {
-		b.Acidity = row.Acidity.Int16
-	}
-	if row.TanninLevel.Valid {
-		b.TanninLevel = row.TanninLevel.Int16
-	}
-	if row.Body.Valid {
-		b.Body = row.Body.Int16
-	}
-	if row.Sweetness.Valid {
-		b.Sweetness = row.Sweetness.Int16
+		f8, err := row.Abv.Float64Value()
+		if err != nil {
+			return Bottle{}, fmt.Errorf("bottle %d abv: %w", row.BottleID, err)
+		}
+		v := f8.Float64
+		b.Abv = &v
 	}
 	if row.OakIntegration.Valid {
 		b.OakIntegration = row.OakIntegration.Bool
 	}
-	return b
+	return b, nil
 }
 
 func textOrNull(s string) pgtype.Text {
@@ -717,23 +744,30 @@ func textOrNull(s string) pgtype.Text {
 	return pgtype.Text{String: s, Valid: true}
 }
 
-func numericOrNull(f float64) pgtype.Numeric {
-	if f == 0 {
-		return pgtype.Numeric{}
+func numericFromFloat64(f float64) (pgtype.Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
 	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: %w", f, err)
 	}
 	n.Valid = true
-	return n
+	return n, nil
 }
 
-func int2OrNull(v int16) pgtype.Int2 {
-	if v == 0 {
+func optNumeric(f *float64) (pgtype.Numeric, error) {
+	if f == nil {
+		return pgtype.Numeric{}, nil
+	}
+	return numericFromFloat64(*f)
+}
+
+func optInt2(v *int16) pgtype.Int2 {
+	if v == nil {
 		return pgtype.Int2{}
 	}
-	return pgtype.Int2{Int16: v, Valid: true}
+	return pgtype.Int2{Int16: *v, Valid: true}
 }
 
 func boolOrNull(v bool) pgtype.Bool {

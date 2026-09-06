@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -667,7 +668,8 @@ func TestDeleteNutrientType(t *testing.T) {
 
 func TestListFoodNutrientsByItem(t *testing.T) {
 	ctx := context.Background()
-	amount := numericFromFloat64(12.5)
+	amount, err := numericFromFloat64(12.5)
+	require.NoError(t, err)
 
 	s, q := newTestService(t)
 	q.EXPECT().ListFoodNutrientsByItem(ctx, int64(11)).Return([]sqlc.ListFoodNutrientsByItemRow{
@@ -695,13 +697,17 @@ func TestListFoodNutrientsByItem_Error(t *testing.T) {
 
 func TestCreateFoodNutrient(t *testing.T) {
 	ctx := context.Background()
+	amount, err := numericFromFloat64(12.5)
+	require.NoError(t, err)
+
 	s, q := newTestService(t)
 	q.EXPECT().CreateFoodNutrient(ctx, gomock.Cond(func(arg sqlc.CreateFoodNutrientParams) bool {
+		v, err := numericToFloat64(arg.Amount)
 		return arg.FoodID == 11 && arg.NutrientID == 4 && arg.CreatedBy == "alice" &&
-			numericToFloat64(arg.Amount) == 12.5
+			err == nil && v == 12.5
 	})).Return(sqlc.InventoryFoodNutrient{
 		NutrientID: 4,
-		Amount:     numericFromFloat64(12.5),
+		Amount:     amount,
 	}, nil)
 
 	fn, err := s.CreateFoodNutrient(ctx, 11, 4, 12.5, "alice")
@@ -788,4 +794,72 @@ func TestDeleteFoodFlavor(t *testing.T) {
 
 	q.EXPECT().DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{FoodID: 11, FlavorID: 9}).Return(errBoom)
 	assert.ErrorIs(t, s.DeleteFoodFlavor(ctx, 11, 9), errBoom)
+}
+
+func TestCountItems(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().CountItems(ctx).Return(int64(42), nil)
+
+	got, err := s.CountItems(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), got)
+}
+
+func TestCountItems_Error(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().CountItems(ctx).Return(int64(0), errBoom)
+
+	_, err := s.CountItems(ctx)
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "count items:")
+}
+
+func TestListFoodNutrientsByItems(t *testing.T) {
+	ctx := context.Background()
+	amount, err := numericFromFloat64(12.5)
+	require.NoError(t, err)
+
+	s, q := newTestService(t)
+	q.EXPECT().ListFoodNutrientsByItems(ctx, []int64{11, 12}).Return([]sqlc.ListFoodNutrientsByItemsRow{
+		{FoodID: 11, NutrientID: 4, Name: "Sodium", Unit: pgtype.Text{String: "mg", Valid: true}, Amount: amount},
+		{FoodID: 12, NutrientID: 5, Name: "Sugar", Unit: pgtype.Text{String: "g", Valid: true}, Amount: amount},
+	}, nil)
+
+	fns, err := s.ListFoodNutrientsByItems(ctx, []int64{11, 12})
+	require.NoError(t, err)
+	require.Len(t, fns, 2)
+	assert.Equal(t, int64(11), fns[0].ItemID)
+	assert.Equal(t, int64(4), fns[0].NutrientID)
+	assert.InDelta(t, 12.5, fns[0].Amount, 1e-9)
+	assert.Equal(t, int64(12), fns[1].ItemID)
+	assert.Equal(t, int64(5), fns[1].NutrientID)
+	assert.InDelta(t, 12.5, fns[1].Amount, 1e-9)
+}
+
+func TestListFoodNutrientsByItems_Error(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().ListFoodNutrientsByItems(ctx, []int64{11}).Return(nil, errBoom)
+
+	_, err := s.ListFoodNutrientsByItems(ctx, []int64{11})
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "list food nutrients by items:")
+}
+
+func TestNumericHelpers(t *testing.T) {
+	t.Run("numericFromFloat64 rejects NaN", func(t *testing.T) {
+		_, err := numericFromFloat64(math.NaN())
+		require.Error(t, err)
+	})
+
+	t.Run("numericToFloat64 returns zero for invalid numeric", func(t *testing.T) {
+		v, err := numericToFloat64(pgtype.Numeric{})
+		require.NoError(t, err)
+		assert.Equal(t, 0.0, v)
+	})
 }

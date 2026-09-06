@@ -11,11 +11,16 @@ import (
 type Querier interface {
 	AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) error
 	AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (RecipeRecipeStep, error)
+	CountRecipes(ctx context.Context, isActive bool) (int64, error)
 	CreateRecipe(ctx context.Context, arg CreateRecipeParams) (RecipeRecipe, error)
 	DeleteRecipe(ctx context.Context, recipeID int64) error
+	DeleteRecipeItems(ctx context.Context, recipeID int64) error
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
+	DeleteRecipeSteps(ctx context.Context, recipeID int64) error
 	GetRecipeByID(ctx context.Context, recipeID int64) (RecipeRecipe, error)
+	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
+	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]RecipeRecipeStep, error)
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)
 	RemoveRecipeItem(ctx context.Context, arg RemoveRecipeItemParams) error
