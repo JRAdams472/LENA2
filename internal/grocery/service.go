@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JRAdams472/LENA2/internal/grocery/sqlc"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 )
 
 // Service provides grocery list operations.
@@ -22,7 +22,7 @@ type Service struct {
 }
 
 // NewService creates a grocery Service using the given connection pool.
-func NewService(pool *pgxpool.Pool) *Service {
+func NewService(pool dbtx.Pool) *Service {
 	return &Service{q: sqlc.New(pool)}
 }
 
