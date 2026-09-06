@@ -759,10 +759,6 @@ function toGroceryList(g: GqlGroceryList): GroceryList {
   };
 }
 
-function unsupported(name: string): never {
-  throw new ApiError(501, `${name} is not supported by the GraphQL API`);
-}
-
 /* ------------------------------------------------------------------ */
 /* Shared selection sets                                               */
 /* ------------------------------------------------------------------ */
