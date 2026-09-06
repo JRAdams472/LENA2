@@ -29,10 +29,17 @@ type AuthConfig struct {
 	AdminEmails []string
 }
 
+// identityStore is the subset of identity.Service the authenticator needs;
+// declared as an interface so tests can substitute a fake.
+type identityStore interface {
+	UpsertUser(ctx context.Context, provider, subject, email, displayName string) (identity.User, error)
+	SetUserRole(ctx context.Context, userID int64, role string) error
+}
+
 // Authenticator validates OIDC ID tokens and resolves the current user.
 type Authenticator struct {
 	cfg      AuthConfig
-	identity *identity.Service
+	identity identityStore
 	httpc    *http.Client
 
 	mu   sync.Mutex
@@ -47,7 +54,7 @@ type cachedKeySet struct {
 const jwksCacheTTL = time.Hour
 
 // NewAuthenticator creates an Authenticator backed by the given identity service.
-func NewAuthenticator(cfg AuthConfig, identitySvc *identity.Service) *Authenticator {
+func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) *Authenticator {
 	return &Authenticator{
 		cfg:      cfg,
 		identity: identitySvc,
