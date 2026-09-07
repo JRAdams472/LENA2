@@ -1,6 +1,6 @@
 module github.com/JRAdams472/LENA2
 
-go 1.26.0
+go 1.23.4
 
 require (
 	github.com/exaring/otelpgx v0.11.1
