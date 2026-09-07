@@ -3,7 +3,6 @@ package bff
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -114,7 +113,7 @@ func (r *Resolver) Shutdown(ctx context.Context) error {
 func userFromContext(ctx context.Context) (currentuser.User, error) {
 	u, ok := currentuser.FromContext(ctx)
 	if !ok {
-		return currentuser.User{}, errors.New("unauthorized")
+		return currentuser.User{}, errUnauthenticated()
 	}
 	return u, nil
 }
@@ -127,13 +126,17 @@ func requireAdmin(ctx context.Context) (currentuser.User, error) {
 		return currentuser.User{}, err
 	}
 	if !u.IsAdmin {
-		return currentuser.User{}, errors.New("forbidden: admin role required")
+		return currentuser.User{}, errForbidden()
 	}
 	return u, nil
 }
 
 func parseID(s string) (int64, error) {
-	return strconv.ParseInt(s, 10, 64)
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, badInputf("invalid id %q", s)
+	}
+	return v, nil
 }
 
 // recordEventAsync emits an analytics event on the bounded background
@@ -189,7 +192,7 @@ func int32Ptr(v int32) *int32 {
 // int16 at the cast.
 func checkedInt16(v int32, field string, min, max int16) (int16, error) {
 	if v < int32(min) || v > int32(max) {
-		return 0, fmt.Errorf("%s must be between %d and %d", field, min, max)
+		return 0, badInputf("%s must be between %d and %d", field, min, max)
 	}
 	return int16(v), nil
 }
@@ -345,7 +348,7 @@ func loadUnits(ctx context.Context, inv InventoryService, unitIDs []int64) (map[
 func resolveUnitID(ctx context.Context, inv InventoryService, name string) (int64, error) {
 	u, err := inv.GetUnitByName(ctx, strings.TrimSpace(name))
 	if err != nil {
-		return 0, fmt.Errorf("unknown unit %q", name)
+		return 0, badInputf("unknown unit %q", name)
 	}
 	return u.UnitID, nil
 }
@@ -767,6 +770,7 @@ func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) (echo.Handl
 			return err
 		}
 		resp := parsed.Exec(c.Request().Context(), req.Query, req.OperationName, req.Variables)
+		sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
 		return c.JSON(http.StatusOK, resp)
 	}, nil
 }

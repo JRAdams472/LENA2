@@ -62,7 +62,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		return nil, err
 	}
 	if args.Servings <= 0 {
-		return nil, errors.New("servings must be positive")
+		return nil, badInputf("servings must be positive")
 	}
 
 	scaled, err := r.RecipeService.ScaleRecipe(ctx, id, args.Servings)

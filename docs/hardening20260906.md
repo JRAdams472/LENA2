@@ -40,7 +40,7 @@ Startup panic in the handler constructor. NewGraphQLHandler panics on a schema-p
 
 Fix all findings — input-range validation at the GraphQL boundary, an authenticated `/metrics` endpoint, a bounded shutdown-aware async worker, deterministic ID ordering, and lifecycle/constructor cleanups — verified by `go build ./...`, `go test ./...` (short mode), `golangci-lint`, and `sqlc generate` for touched queries.
 
-**Execution note (2026-09-07):** `phase-24` merged as the audit register only; the fixes below landed later. `phase-25` shipped the auth/authorization items (LENA-001/002/003/011/029 plus cross-user integration tests) and step 7 below. `phase-26` implements the rest: steps 2–6, 8–14.
+**Execution note (2026-09-07):** `phase-24` merged as the audit register only; the fixes below landed later. `phase-25` shipped the auth/authorization items (LENA-001/002/003/011/029 plus cross-user integration tests) and step 7 below. `phase-26` implemented the rest: steps 2–6, 8–14. `phase-27` then shipped the two remaining Criticals: LENA-004 (HTTP read/write/idle timeouts on `e.Server` plus a `BodyLimit` middleware on `/graphql`, configurable via `LENA_HTTP_*` / `LENA_GRAPHQL_BODY_LIMIT`) and LENA-006 (`sanitizeQueryErrors` in `internal/bff/errors.go` masks internal resolver errors behind "internal server error" + `extensions.code`, marks client-safe errors UNAUTHENTICATED/FORBIDDEN/BAD_USER_INPUT/NOT_FOUND, and logs the original with the request id).
 
 ### Context verified during exploration
 
@@ -186,7 +186,7 @@ Fix all findings — input-range validation at the GraphQL boundary, an authenti
 
 ---
 
-## Follow-on phase — Performance Metrics & Observability (`phase-27`)
+## Follow-on phase — Performance Metrics & Observability (`phase-28`)
 
 Motivation: the Playwright e2e suite now takes >5 minutes and there is no data showing where that time goes — or whether API latency is drifting. This phase adds request-level and dependency-level performance metrics so slowdowns are measurable before they are felt. It also naturally covers audit findings LENA-049 (`HTTPMetrics` silently degrading), LENA-050 (telemetry `Setup` without timeout), and LENA-063 (pgxpool without explicit sizing/statement timeout) where they overlap.
 

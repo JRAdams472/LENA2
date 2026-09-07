@@ -138,6 +138,12 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 
 	e := echo.New()
 	e.HideBanner = true
+	// Bound connection lifecycle: without timeouts the server is exposed
+	// to slowloris and large-body resource exhaustion.
+	e.Server.ReadHeaderTimeout = cfg.HTTPReadHeaderTimeout
+	e.Server.ReadTimeout = cfg.HTTPReadTimeout
+	e.Server.WriteTimeout = cfg.HTTPWriteTimeout
+	e.Server.IdleTimeout = cfg.HTTPIdleTimeout
 	e.Use(middleware.Recover())
 	e.Use(otelecho.Middleware(cfg.ServiceName))
 	e.Use(middleware.RequestID())
@@ -206,9 +212,16 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	if err != nil {
 		return nil, nil, err
 	}
-	e.POST("/graphql", handler,
-		authenticator.Middleware(),
+	// An empty body limit disables the middleware (tests and embedders that
+	// do not load config defaults); the rate limiter already treats <= 0 as
+	// disabled.
+	graphqlMW := []echo.MiddlewareFunc{authenticator.Middleware()}
+	if cfg.GraphQLBodyLimit != "" {
+		graphqlMW = append([]echo.MiddlewareFunc{middleware.BodyLimit(cfg.GraphQLBodyLimit)}, graphqlMW...)
+	}
+	graphqlMW = append(graphqlMW,
 		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst))
+	e.POST("/graphql", handler, graphqlMW...)
 	return e, resolver, nil
 }
 

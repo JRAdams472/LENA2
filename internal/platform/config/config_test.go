@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,11 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, "client-id", cfg.GoogleClientID)
 	assert.Equal(t, "aud1,aud2", cfg.AuthAudiences)
 	assert.Empty(t, cfg.AdminEmails)
+	assert.Equal(t, "64K", cfg.GraphQLBodyLimit)
+	assert.Equal(t, 5*time.Second, cfg.HTTPReadHeaderTimeout)
+	assert.Equal(t, 15*time.Second, cfg.HTTPReadTimeout)
+	assert.Equal(t, 30*time.Second, cfg.HTTPWriteTimeout)
+	assert.Equal(t, 60*time.Second, cfg.HTTPIdleTimeout)
 }
 
 // TestLoadOptionalGoogleClientID asserts GOOGLE_CLIENT_ID is optional: it is
@@ -47,6 +53,8 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("LENA_LOG_LEVEL", "debug")
 	t.Setenv("LENA_AUTH_ISSUERS", "https://issuer.example.com")
 	t.Setenv("LENA_CORS_ALLOWED_ORIGINS", "https://app.example.com")
+	t.Setenv("LENA_GRAPHQL_BODY_LIMIT", "128K")
+	t.Setenv("LENA_HTTP_READ_TIMEOUT", "20s")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -54,6 +62,8 @@ func TestLoadOverrides(t *testing.T) {
 	assert.Equal(t, "debug", cfg.LogLevel)
 	assert.Equal(t, "https://issuer.example.com", cfg.AuthIssuers)
 	assert.Equal(t, "https://app.example.com", cfg.CORSAllowedOrigins)
+	assert.Equal(t, "128K", cfg.GraphQLBodyLimit)
+	assert.Equal(t, 20*time.Second, cfg.HTTPReadTimeout)
 }
 
 func TestLoadMissingRequired(t *testing.T) {

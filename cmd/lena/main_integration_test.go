@@ -31,17 +31,26 @@ func TestIntegration(t *testing.T) {
 	issuer := testenv.NewTestIssuer(t)
 
 	cfg := config.Config{
-		DatabaseURL:        pool.Config().ConnString(),
-		Port:               "0",
-		CORSAllowedOrigins: "*",
-		AuthIssuers:        issuer.URL,
-		AuthAudiences:      testenv.TestAudience,
-		LogLevel:           "error",
+		DatabaseURL:           pool.Config().ConnString(),
+		Port:                  "0",
+		CORSAllowedOrigins:    "*",
+		AuthIssuers:           issuer.URL,
+		AuthAudiences:         testenv.TestAudience,
+		LogLevel:              "error",
+		HTTPReadHeaderTimeout: 2 * time.Second,
+		HTTPReadTimeout:       3 * time.Second,
+		HTTPWriteTimeout:      4 * time.Second,
+		HTTPIdleTimeout:       5 * time.Second,
 	}
 
 	log := logger.New(cfg.LogLevel)
 	e, resolver, err := newServer(cfg, pool, log, nil)
 	require.NoError(t, err)
+	// HTTP timeouts must be wired onto the underlying server.
+	assert.Equal(t, cfg.HTTPReadHeaderTimeout, e.Server.ReadHeaderTimeout)
+	assert.Equal(t, cfg.HTTPReadTimeout, e.Server.ReadTimeout)
+	assert.Equal(t, cfg.HTTPWriteTimeout, e.Server.WriteTimeout)
+	assert.Equal(t, cfg.HTTPIdleTimeout, e.Server.IdleTimeout)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

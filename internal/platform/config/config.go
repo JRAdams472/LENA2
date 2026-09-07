@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -32,6 +33,17 @@ type Config struct {
 	GraphQLMaxQueryLength     int `envconfig:"GRAPHQL_MAX_QUERY_LENGTH" default:"8192"`
 	GraphQLRateLimitPerMinute int `envconfig:"GRAPHQL_RATE_LIMIT_PER_MINUTE" default:"120"`
 	GraphQLRateLimitBurst     int `envconfig:"GRAPHQL_RATE_LIMIT_BURST" default:"20"`
+	// GraphQLBodyLimit caps the HTTP request body accepted by /graphql
+	// (echo BodyLimit syntax, e.g. "64K"). The query-length limit above
+	// applies to the query string inside the body, this applies to the
+	// whole payload before it is read.
+	GraphQLBodyLimit string `envconfig:"GRAPHQL_BODY_LIMIT" default:"64K"`
+	// HTTP server timeouts. Without them the server is exposed to
+	// slowloris-style connection exhaustion.
+	HTTPReadHeaderTimeout time.Duration `envconfig:"HTTP_READ_HEADER_TIMEOUT" default:"5s"`
+	HTTPReadTimeout       time.Duration `envconfig:"HTTP_READ_TIMEOUT" default:"15s"`
+	HTTPWriteTimeout      time.Duration `envconfig:"HTTP_WRITE_TIMEOUT" default:"30s"`
+	HTTPIdleTimeout       time.Duration `envconfig:"HTTP_IDLE_TIMEOUT" default:"60s"`
 }
 
 // Load reads configuration from environment variables.
