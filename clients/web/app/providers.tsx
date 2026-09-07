@@ -7,6 +7,7 @@ import { ReactNode, useState } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { ApiError } from "@/lib/api";
 import { AuthProvider } from "@/app/auth/AuthProvider";
+import SilentReAuth from "@/app/auth/SilentReAuth";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 const CLIENT_ID_PLACEHOLDER = "__YOUR_GOOGLE_CLIENT_ID__";
@@ -38,15 +39,16 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(makeQueryClient);
 
   return (
-    <AuthProvider>
-      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <AuthProvider>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider theme={theme}>
             <CssBaseline />
+            <SilentReAuth />
             {children}
           </ThemeProvider>
         </QueryClientProvider>
-      </GoogleOAuthProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }

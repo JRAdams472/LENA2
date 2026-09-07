@@ -5,6 +5,7 @@ import Providers from "@/app/providers";
 jest.mock("@react-oauth/google", () => ({
   GoogleLogin: () => <button data-testid="google-login">Sign in with Google</button>,
   googleLogout: jest.fn(),
+  useGoogleOneTapLogin: jest.fn(),
   GoogleOAuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 

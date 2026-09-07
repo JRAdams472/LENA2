@@ -32,6 +32,9 @@ services:
       # The whole e2e suite authenticates as the same user, so the default
       # per-user GraphQL rate limit would 429 mid-run; disable it here.
       LENA_GRAPHQL_RATE_LIMIT_PER_MINUTE: "0"
+      # All e2e traffic arrives through Caddy from one runner IP, so the
+      # pre-auth IP limiter would 429 mid-run for the same reason.
+      LENA_IP_RATE_LIMIT_PER_MINUTE: "0"
     depends_on:
       db-seed:
         condition: service_completed_successfully

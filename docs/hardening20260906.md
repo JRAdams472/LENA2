@@ -205,7 +205,54 @@ Scope: the remaining in-scope Major findings that are not the mobile rewrite and
 - `go build ./...` and `go test -short ./...` still pass (Go code is not touched, but workflows must invoke the same commands).
 - Web image builds (`docker build clients/web`) and the web Dockerfile lint passes.
 
-## Follow-on phase — Performance Metrics & Observability (`phase-30`)
+## Phase 30 — Remaining Major findings (`phase-30`)
+
+Scope: the last two in-scope Major findings. LENA-027/028 (mobile client) remain out of scope per the scope note at the top — the mobile app is scheduled for a rewrite. After this phase every non-mobile Major and Critical finding in `docs/code-audit.md` is remediated; only Minor/Info findings and the performance/observability work below remain.
+
+**Status (2026-09-07):** implemented on `phase-30` — verified by `go build ./...`, `go vet ./...`, `go test -short` (bff/platform/cmd green), web `jest` (293 tests) + `eslint` + `tsc --noEmit` clean. `golangci-lint` is not installed locally; CI runs it.
+
+### Issues to remediate
+
+1. **LENA-007** — Rate limiter ordering and client-IP extraction:
+   - Add an IP-keyed limiter (`bff.IPRateLimiter`) that runs **before** `authenticator.Middleware()` on `/graphql`, so unauthenticated floods (incl. the JWKS-refresh amplification in LENA-003) are throttled. The existing user-keyed `GraphQLRateLimiter` stays after auth.
+   - New config knobs `LENA_IP_RATE_LIMIT_PER_MINUTE` (default 300) / `LENA_IP_RATE_LIMIT_BURST` (default 60) — looser than the per-user limit since an IP can front multiple users (NAT).
+   - Set `e.IPExtractor = echo.ExtractIPFromXFFHeader()` so `c.RealIP()` honours `X-Forwarded-For` from Caddy. Echo's default trust set (loopback + private nets) matches the compose deployment where the only reachable peer is the Caddy container on the docker network; port 8080 is no longer published to the host (LENA-025).
+   - Middleware order on `/graphql`: `BodyLimit` → `IPRateLimiter` → `authenticator` → `GraphQLRateLimiter`.
+2. **LENA-017** — Google ID token in `localStorage` + no renewal:
+   - Move the token to `sessionStorage` (per-tab, cleared on tab close — the "at minimum" option in the audit hint). On read, migrate any legacy `localStorage["lena_id_token"]` value into `sessionStorage` and delete the localStorage copy so existing sessions are cleaned up.
+   - Add silent re-auth: a `SilentReAuth` component inside `GoogleOAuthProvider` calls `useGoogleOneTapLogin` with `auto_select: true` and `disabled: isAuthenticated`. When the token expires or a 401 signs the user out, `disabled` flips and GIS re-prompts; users with an active Google session get a fresh ID token without interaction.
+   - `api.ts` default token getter reads `sessionStorage`.
+   - `e2e/auth.setup.ts`: `context.storageState` does not persist `sessionStorage`, so the saved auth file keeps seeding `localStorage` (the app migrates it on first load). Construct the storage-state JSON explicitly so the token is present in the saved file even though the app deletes it from the live page.
+
+### Files to modify
+
+- `internal/platform/config/config.go` — `IPRateLimitPerMinute`/`IPRateLimitBurst`.
+- `internal/bff/ratelimit.go` — `IPRateLimiter`, shared store constructor.
+- `cmd/lena/main.go` — `e.IPExtractor`, middleware order.
+- `internal/bff/ratelimit_test.go` — per-IP limiting, IP independence, disabled.
+- `.env.example` — document the new knobs.
+- `clients/web/app/auth/AuthProvider.tsx` — sessionStorage store + migration.
+- `clients/web/app/auth/SilentReAuth.tsx` — new component.
+- `clients/web/app/providers.tsx` — `GoogleOAuthProvider` must wrap `AuthProvider` (GIS context needed by `SilentReAuth`); render `SilentReAuth`.
+- `clients/web/lib/api.ts` — default getter.
+- Tests: `__tests__/app/auth-gate.test.tsx`, `__tests__/app/login/page.test.tsx`, `__tests__/components/AdminLayout.test.tsx`, `__tests__/app/providers.test.tsx` (add `useGoogleOneTapLogin` mock), `e2e/auth.setup.ts`.
+
+### Verification
+
+- `go build ./...`, `go test ./... -short`, `golangci-lint run`.
+- `npm test` / `npx eslint` in `clients/web`.
+- e2e: `npx playwright test` (requires the compose stack).
+- Manual: burst of unauthenticated `/graphql` POSTs → 429 after the IP budget; sign in, delete the sessionStorage token's validity (or wait for expiry / revoke) → One Tap auto_select silently renews without showing the login screen.
+
+### Risks
+
+- One Tap `auto_select` only signs in silently when the user has exactly one eligible Google session that previously consented; otherwise the One Tap UI may appear (dismissible, `cancel_on_tap_outside`). That is the documented GIS behaviour, not a bug.
+- `sessionStorage` is still readable by same-tab XSS; the full fix (HttpOnly cookie via a BFF session endpoint) is a larger architectural change and remains a candidate follow-up.
+- IP-based limiting can share a bucket across users behind the same NAT/proxy — mitigated by the looser IP budget.
+
+---
+
+## Follow-on phase — Performance Metrics & Observability (`phase-31`)
 
 Motivation: the Playwright e2e suite now takes >5 minutes and there is no data showing where that time goes — or whether API latency is drifting. This phase adds request-level and dependency-level performance metrics so slowdowns are measurable before they are felt. It also naturally covers audit findings LENA-049 (`HTTPMetrics` silently degrading), LENA-050 (telemetry `Setup` without timeout), and LENA-063 (pgxpool without explicit sizing/statement timeout) where they overlap.
 

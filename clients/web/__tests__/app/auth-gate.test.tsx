@@ -28,6 +28,7 @@ describe("auth gate", () => {
   beforeEach(() => {
     mockedUsePathname.mockReturnValue("/");
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it("renders the login screen when unauthenticated", () => {
@@ -45,7 +46,7 @@ describe("auth gate", () => {
 
   it("renders the app when authenticated", async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
-    localStorage.setItem("lena_id_token", makeToken("test@example.com", future));
+    sessionStorage.setItem("lena_id_token", makeToken("test@example.com", future));
 
     render(
       <AuthProvider>
@@ -63,7 +64,7 @@ describe("auth gate", () => {
 
   it("treats an expired token as unauthenticated", () => {
     const past = Math.floor(Date.now() / 1000) - 3600;
-    localStorage.setItem("lena_id_token", makeToken("old@example.com", past));
+    sessionStorage.setItem("lena_id_token", makeToken("old@example.com", past));
 
     render(
       <AuthProvider>
@@ -78,7 +79,7 @@ describe("auth gate", () => {
   });
 
   it("treats a malformed token as unauthenticated", () => {
-    localStorage.setItem("lena_id_token", "not-a-jwt");
+    sessionStorage.setItem("lena_id_token", "not-a-jwt");
 
     render(
       <AuthProvider>
@@ -96,7 +97,7 @@ describe("auth gate", () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     const header = btoa(JSON.stringify({ alg: "none" }));
     const payload = btoa(JSON.stringify({ sub: "123", exp: future }));
-    localStorage.setItem("lena_id_token", `${header}.${payload}.sig`);
+    sessionStorage.setItem("lena_id_token", `${header}.${payload}.sig`);
 
     render(
       <AuthProvider>
@@ -112,7 +113,7 @@ describe("auth gate", () => {
 
   it("signs out via the app bar and clears the stored token", async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
-    localStorage.setItem("lena_id_token", makeToken("test@example.com", future));
+    sessionStorage.setItem("lena_id_token", makeToken("test@example.com", future));
 
     render(
       <AuthProvider>
@@ -131,6 +132,27 @@ describe("auth gate", () => {
     await waitFor(() => {
       expect(screen.getByTestId("google-login")).toBeInTheDocument();
     });
+    expect(sessionStorage.getItem("lena_id_token")).toBeNull();
+    expect(localStorage.getItem("lena_id_token")).toBeNull();
+  });
+
+  it("migrates a legacy localStorage token into sessionStorage", async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    const token = makeToken("legacy@example.com", future);
+    localStorage.setItem("lena_id_token", token);
+
+    render(
+      <AuthProvider>
+        <AdminLayout>
+          <div data-testid="app-content">App</div>
+        </AdminLayout>
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("app-content")).toBeInTheDocument();
+    });
+    expect(sessionStorage.getItem("lena_id_token")).toBe(token);
     expect(localStorage.getItem("lena_id_token")).toBeNull();
   });
 });

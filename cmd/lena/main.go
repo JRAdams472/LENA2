@@ -138,6 +138,11 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 
 	e := echo.New()
 	e.HideBanner = true
+	// The API sits behind Caddy, which appends X-Forwarded-For. Echo's
+	// default trust set (loopback and private ranges) matches the compose
+	// topology where the only reachable peer is the Caddy container on the
+	// internal docker network — port 8080 is not published to the host.
+	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 	// Bound connection lifecycle: without timeouts the server is exposed
 	// to slowloris and large-body resource exhaustion.
 	e.Server.ReadHeaderTimeout = cfg.HTTPReadHeaderTimeout
@@ -212,15 +217,20 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	if err != nil {
 		return nil, nil, err
 	}
+	// Middleware order matters: the body limit runs first (cheapest drop),
+	// then the IP-keyed limiter throttles unauthenticated floods before
+	// they reach auth, then the authenticator, then the per-user limiter.
 	// An empty body limit disables the middleware (tests and embedders that
-	// do not load config defaults); the rate limiter already treats <= 0 as
+	// do not load config defaults); the rate limiters already treat <= 0 as
 	// disabled.
-	graphqlMW := []echo.MiddlewareFunc{authenticator.Middleware()}
+	graphqlMW := []echo.MiddlewareFunc{
+		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst),
+		authenticator.Middleware(),
+		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst),
+	}
 	if cfg.GraphQLBodyLimit != "" {
 		graphqlMW = append([]echo.MiddlewareFunc{middleware.BodyLimit(cfg.GraphQLBodyLimit)}, graphqlMW...)
 	}
-	graphqlMW = append(graphqlMW,
-		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst))
 	e.POST("/graphql", handler, graphqlMW...)
 	return e, resolver, nil
 }

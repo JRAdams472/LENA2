@@ -33,6 +33,11 @@ type Config struct {
 	GraphQLMaxQueryLength     int `envconfig:"GRAPHQL_MAX_QUERY_LENGTH" default:"8192"`
 	GraphQLRateLimitPerMinute int `envconfig:"GRAPHQL_RATE_LIMIT_PER_MINUTE" default:"120"`
 	GraphQLRateLimitBurst     int `envconfig:"GRAPHQL_RATE_LIMIT_BURST" default:"20"`
+	// IP-keyed limiting applied before authentication so unauthenticated
+	// traffic (including JWKS-refresh amplification) is throttled. Looser
+	// than the per-user limit because one IP can front several users.
+	IPRateLimitPerMinute int `envconfig:"IP_RATE_LIMIT_PER_MINUTE" default:"300"`
+	IPRateLimitBurst     int `envconfig:"IP_RATE_LIMIT_BURST" default:"60"`
 	// GraphQLBodyLimit caps the HTTP request body accepted by /graphql
 	// (echo BodyLimit syntax, e.g. "64K"). The query-length limit above
 	// applies to the query string inside the body, this applies to the

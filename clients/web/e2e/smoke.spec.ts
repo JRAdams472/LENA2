@@ -35,6 +35,8 @@ test.describe("smoke", () => {
     const res = await request.post(API_URL, {
       data: { query: "{ __typename }" },
     });
-    expect(res.status()).toBe(401);
+    // 401 from the authenticator, or 429 if the pre-auth IP rate limiter
+    // (LENA_IP_RATE_LIMIT_*) has already exhausted this client's budget.
+    expect([401, 429]).toContain(res.status());
   });
 });
