@@ -1,3 +1,4 @@
+// Package config provides platform plumbing for the LENA2 service.
 package config
 
 import (
@@ -27,6 +28,10 @@ type Config struct {
 	// OTLPEndpoint is the OTLP gRPC collector endpoint for traces; empty
 	// disables trace export while metrics remain available on /metrics.
 	OTLPEndpoint string `envconfig:"OTEL_EXPORTER_OTLP_ENDPOINT" default:""`
+	// OTLPInsecure disables TLS on the OTLP gRPC exporter. Defaults to true
+	// to preserve existing behaviour (collector on the private compose
+	// network); set false when exporting to a TLS-enabled collector.
+	OTLPInsecure bool `envconfig:"OTEL_EXPORTER_OTLP_INSECURE" default:"true"`
 	// GraphQL hardening knobs: maximum query depth, maximum raw query
 	// length in bytes, and per-user request rate limiting.
 	GraphQLMaxDepth           int `envconfig:"GRAPHQL_MAX_DEPTH" default:"15"`

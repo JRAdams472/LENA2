@@ -1,3 +1,4 @@
+// Package postgres provides platform plumbing for the LENA2 service.
 package postgres
 
 import (

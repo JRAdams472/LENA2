@@ -870,96 +870,96 @@ func TestResolver_Wine_InvalidID(t *testing.T) {
 			return (&Resolver{}).Regions(ctx, struct{ CountryID graphql.ID }{CountryID: "abc"})
 		}},
 		{"UpdateType", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateType(wineCtx(), struct {
+			return (&Resolver{}).UpdateType(ctx, struct {
 				ID    graphql.ID
 				Input updateTypeInput
 			}{ID: "abc", Input: updateTypeInput{Name: winePtrString("Red")}})
 		}},
 		{"DeleteType", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteType(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteType(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"UpdateCountry", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateCountry(wineCtx(), struct {
+			return (&Resolver{}).UpdateCountry(ctx, struct {
 				ID    graphql.ID
 				Input updateCountryInput
 			}{ID: "abc", Input: updateCountryInput{Name: winePtrString("France")}})
 		}},
 		{"DeleteCountry", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteCountry(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteCountry(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"CreateRegion", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).CreateRegion(wineCtx(), struct{ Input createRegionInput }{
+			return (&Resolver{}).CreateRegion(ctx, struct{ Input createRegionInput }{
 				Input: createRegionInput{CountryID: "abc", Name: "Bordeaux"},
 			})
 		}},
 		{"UpdateRegion", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateRegion(wineCtx(), struct {
+			return (&Resolver{}).UpdateRegion(ctx, struct {
 				ID    graphql.ID
 				Input updateRegionInput
 			}{ID: "abc", Input: updateRegionInput{Name: winePtrString("Bordeaux")}})
 		}},
 		{"DeleteRegion", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteRegion(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteRegion(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"UpdateVintage", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateVintage(wineCtx(), struct {
+			return (&Resolver{}).UpdateVintage(ctx, struct {
 				ID    graphql.ID
 				Input updateVintageInput
 			}{ID: "abc", Input: updateVintageInput{Year: winePtrInt32(2020)}})
 		}},
 		{"DeleteVintage", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteVintage(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteVintage(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"UpdateGrapeVariety", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateGrapeVariety(wineCtx(), struct {
+			return (&Resolver{}).UpdateGrapeVariety(ctx, struct {
 				ID    graphql.ID
 				Input updateGrapeVarietyInput
 			}{ID: "abc", Input: updateGrapeVarietyInput{Name: winePtrString("Cab")}})
 		}},
 		{"DeleteGrapeVariety", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteGrapeVariety(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteGrapeVariety(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"UpdateWineFlavorProfile", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateWineFlavorProfile(wineCtx(), struct {
+			return (&Resolver{}).UpdateWineFlavorProfile(ctx, struct {
 				ID    graphql.ID
 				Input updateWineFlavorProfileInput
 			}{ID: "abc", Input: updateWineFlavorProfileInput{Name: winePtrString("Fruity")}})
 		}},
 		{"DeleteWineFlavorProfile", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteWineFlavorProfile(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteWineFlavorProfile(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"CreateBottle", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).CreateBottle(wineCtx(), struct{ Input createBottleInput }{
+			return (&Resolver{}).CreateBottle(ctx, struct{ Input createBottleInput }{
 				Input: createBottleInput{TypeID: "abc", CountryID: "2", RegionID: "3", VintageYear: 2020, BottleSize: "750ml"},
 			})
 		}},
 		{"UpdateBottle", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).UpdateBottle(wineCtx(), struct {
+			return (&Resolver{}).UpdateBottle(ctx, struct {
 				ID    graphql.ID
 				Input updateBottleInput
 			}{ID: "abc", Input: updateBottleInput{BottleSize: winePtrString("750ml")}})
 		}},
 		{"DeleteBottle", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).DeleteBottle(wineCtx(), struct{ ID graphql.ID }{ID: "abc"})
+			return (&Resolver{}).DeleteBottle(ctx, struct{ ID graphql.ID }{ID: "abc"})
 		}},
 		{"AddBottleGrapeVariety", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).AddBottleGrapeVariety(wineCtx(), struct{ Input addBottleGrapeVarietyInput }{
+			return (&Resolver{}).AddBottleGrapeVariety(ctx, struct{ Input addBottleGrapeVarietyInput }{
 				Input: addBottleGrapeVarietyInput{BottleID: "abc", GrapeVarietyID: "201"},
 			})
 		}},
 		{"RemoveBottleGrapeVariety", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).RemoveBottleGrapeVariety(wineCtx(), struct {
+			return (&Resolver{}).RemoveBottleGrapeVariety(ctx, struct {
 				BottleID       graphql.ID
 				GrapeVarietyID graphql.ID
 			}{BottleID: "abc", GrapeVarietyID: "201"})
 		}},
 		{"AddBottleFlavorProfile", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).AddBottleFlavorProfile(wineCtx(), struct{ Input addBottleFlavorProfileInput }{
+			return (&Resolver{}).AddBottleFlavorProfile(ctx, struct{ Input addBottleFlavorProfileInput }{
 				Input: addBottleFlavorProfileInput{BottleID: "abc", FlavorProfileID: "301", Intensity: 4},
 			})
 		}},
 		{"RemoveBottleFlavorProfile", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).RemoveBottleFlavorProfile(wineCtx(), struct {
+			return (&Resolver{}).RemoveBottleFlavorProfile(ctx, struct {
 				BottleID        graphql.ID
 				FlavorProfileID graphql.ID
 			}{BottleID: "abc", FlavorProfileID: "301"})

@@ -680,7 +680,7 @@ func doGraphQL(t *testing.T, srv *httptest.Server, token, query string, vars map
 	})
 	require.NoError(t, err)
 
-	req, err := http.NewRequest(http.MethodPost, srv.URL+"/graphql", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/graphql", bytes.NewReader(payload))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {

@@ -15,7 +15,7 @@ func TestRedactsPII(t *testing.T) {
 	handler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{
 		Level:     slog.LevelInfo,
 		AddSource: true,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if isSensitive(a.Key) {
 				a.Value = slog.StringValue("[REDACTED]")
 			}
@@ -83,7 +83,7 @@ func captureLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{
 		Level:     level,
 		AddSource: true,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if isSensitive(a.Key) {
 				a.Value = slog.StringValue("[REDACTED]")
 			}

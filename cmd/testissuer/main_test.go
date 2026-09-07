@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -51,10 +52,19 @@ func testMux(t *testing.T) (*httptest.Server, jwk.Key, string) {
 	return srv, signingKey, srv.URL
 }
 
+// httpGet issues a GET with a context so the noctx linter is satisfied.
+func httpGet(url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(req)
+}
+
 func TestDiscoveryAndHealth(t *testing.T) {
 	srv, _, issuer := testMux(t)
 
-	resp, err := http.Get(srv.URL + "/.well-known/openid-configuration")
+	resp, err := httpGet(srv.URL + "/.well-known/openid-configuration")
 	if err != nil {
 		t.Fatalf("discovery: %v", err)
 	}
@@ -70,7 +80,7 @@ func TestDiscoveryAndHealth(t *testing.T) {
 		t.Fatalf("unexpected discovery doc: %+v", doc)
 	}
 
-	resp, err = http.Get(srv.URL + "/health")
+	resp, err = httpGet(srv.URL + "/health")
 	if err != nil {
 		t.Fatalf("health: %v", err)
 	}
@@ -83,7 +93,7 @@ func TestDiscoveryAndHealth(t *testing.T) {
 func TestTokenEndpoint(t *testing.T) {
 	srv, _, issuer := testMux(t)
 
-	resp, err := http.Get(srv.URL + "/token?sub=sub-42&email=e2e@example.com&name=E2E&aud=custom-aud")
+	resp, err := httpGet(srv.URL + "/token?sub=sub-42&email=e2e@example.com&name=E2E&aud=custom-aud")
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
@@ -129,7 +139,7 @@ func TestTokenEndpoint(t *testing.T) {
 func TestTokenEndpointUnverified(t *testing.T) {
 	srv, _, _ := testMux(t)
 
-	resp, err := http.Get(srv.URL + "/token?verified=false")
+	resp, err := httpGet(srv.URL + "/token?verified=false")
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
@@ -153,7 +163,7 @@ func TestTokenEndpointUnverified(t *testing.T) {
 func TestTokenDefaults(t *testing.T) {
 	srv, _, _ := testMux(t)
 
-	resp, err := http.Get(srv.URL + "/token")
+	resp, err := httpGet(srv.URL + "/token")
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}

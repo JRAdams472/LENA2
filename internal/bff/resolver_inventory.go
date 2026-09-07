@@ -998,7 +998,7 @@ func (r *nutrientTypeResolver) Unit() string { return r.n.Unit }
 // foodNutrientResolver resolves an item's nutrient value.
 type foodNutrientResolver struct{ nutrient inventory.FoodNutrient }
 
-func (r *foodNutrientResolver) Nutrient(ctx context.Context) (*nutrientTypeResolver, error) {
+func (r *foodNutrientResolver) Nutrient(context.Context) (*nutrientTypeResolver, error) {
 	return &nutrientTypeResolver{n: inventory.NutrientType{
 		NutrientID: r.nutrient.NutrientID,
 		Name:       r.nutrient.Name,
@@ -1011,7 +1011,7 @@ func (r *foodNutrientResolver) Amount() float64 { return r.nutrient.Amount }
 // foodFlavorResolver resolves an item's flavor profile.
 type foodFlavorResolver struct{ flavor inventory.FoodFlavor }
 
-func (r *foodFlavorResolver) Flavor(ctx context.Context) (*flavorProfileResolver, error) {
+func (r *foodFlavorResolver) Flavor(context.Context) (*flavorProfileResolver, error) {
 	return &flavorProfileResolver{f: inventory.FlavorProfile{
 		FlavorID: r.flavor.FlavorID,
 		Name:     r.flavor.Name,

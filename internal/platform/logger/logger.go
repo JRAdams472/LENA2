@@ -1,3 +1,4 @@
+// Package logger provides platform plumbing for the LENA2 service.
 package logger
 
 import (
@@ -53,7 +54,7 @@ func New(level string) *slog.Logger {
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level:     lv,
 		AddSource: true,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if isSensitive(a.Key) {
 				a.Value = slog.StringValue("[REDACTED]")
 			}

@@ -295,13 +295,13 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/graphql", nil))
+	e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("missing token: got %d, want 401", rec.Code)
 	}
 
 	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-3", "u@example.com", nil)
-	req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
 	req.Header.Set(echo.HeaderAuthorization, "Bearer "+raw)
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -325,7 +325,7 @@ func TestExtractBearer(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req, err := http.NewRequest(http.MethodPost, "/graphql", nil)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
 			if err != nil {
 				t.Fatalf("unexpected error building request: %v", err)
 			}

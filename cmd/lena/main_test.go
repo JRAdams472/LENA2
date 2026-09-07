@@ -20,11 +20,13 @@ func TestBuildCORSConfig(t *testing.T) {
 		t.Error("wildcard should accept any origin")
 	}
 
+	// Origins are trimmed: "a, b" must allow both, not silently drop the
+	// whitespace-prefixed second origin.
 	explicit := buildCORSConfig("https://app.example.com, https://admin.example.com")
 	if !explicit.AllowCredentials {
 		t.Error("explicit allowlist should allow credentials")
 	}
-	want := []string{"https://app.example.com", " https://admin.example.com"}
+	want := []string{"https://app.example.com", "https://admin.example.com"}
 	if !reflect.DeepEqual(explicit.AllowOrigins, want) {
 		t.Errorf("AllowOrigins = %v, want %v", explicit.AllowOrigins, want)
 	}

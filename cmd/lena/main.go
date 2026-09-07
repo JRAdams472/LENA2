@@ -1,7 +1,9 @@
+// Command lena runs the LENA2 GraphQL BFF API server.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -63,7 +65,7 @@ func run() int {
 	}
 	defer pool.Close()
 
-	tel, err := telemetry.Setup(context.Background(), cfg.ServiceName, cfg.OTLPEndpoint, pool)
+	tel, err := telemetry.Setup(context.Background(), cfg.ServiceName, cfg.OTLPEndpoint, cfg.OTLPInsecure, pool)
 	if err != nil {
 		log.Error("telemetry setup failed", "error", err)
 		return 1
@@ -84,7 +86,7 @@ func run() int {
 	go func() {
 		addr := ":" + cfg.Port
 		log.Info("starting server", "addr", addr)
-		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+		if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
 	}()
@@ -247,10 +249,10 @@ func buildCORSConfig(allowedOrigins string) middleware.CORSConfig {
 		MaxAge:       86400,
 	}
 	if allowedOrigins == "*" {
-		cfg.AllowOriginFunc = func(origin string) (bool, error) { return true, nil }
+		cfg.AllowOriginFunc = func(string) (bool, error) { return true, nil }
 		cfg.AllowCredentials = false
 	} else {
-		cfg.AllowOrigins = strings.Split(allowedOrigins, ",")
+		cfg.AllowOrigins = splitAndTrim(allowedOrigins)
 		cfg.AllowCredentials = true
 	}
 	return cfg

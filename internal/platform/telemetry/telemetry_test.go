@@ -13,7 +13,7 @@ import (
 )
 
 func TestSetupAndHTTPMetrics(t *testing.T) {
-	tel, err := Setup(context.Background(), "lena2-test", "", nil)
+	tel, err := Setup(context.Background(), "lena2-test", "", true, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { tel.Shutdown(context.Background()) })
 
@@ -22,11 +22,11 @@ func TestSetupAndHTTPMetrics(t *testing.T) {
 	e.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ping", nil))
+	e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ping", nil))
 	require.Equal(t, http.StatusNoContent, rec.Code)
 
 	rec = httptest.NewRecorder()
-	tel.MetricsHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	tel.MetricsHandler().ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "http_server_requests_total")
 	assert.Contains(t, rec.Body.String(), `route="/ping"`)
@@ -35,7 +35,7 @@ func TestSetupAndHTTPMetrics(t *testing.T) {
 func TestSetupWithOTLPEndpoint(t *testing.T) {
 	// The gRPC trace exporter dials lazily, so an unreachable endpoint is
 	// fine here — this exercises the exporter/tracer-provider branch.
-	tel, err := Setup(context.Background(), "lena2-test", "localhost:1", nil)
+	tel, err := Setup(context.Background(), "lena2-test", "localhost:1", true, nil)
 	require.NoError(t, err)
 	tel.Shutdown(context.Background())
 }
@@ -47,12 +47,12 @@ func TestSetupWithPool(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	tel, err := Setup(context.Background(), "lena2-test-pool", "", pool)
+	tel, err := Setup(context.Background(), "lena2-test-pool", "", true, pool)
 	require.NoError(t, err)
 	t.Cleanup(func() { tel.Shutdown(context.Background()) })
 
 	rec := httptest.NewRecorder()
-	tel.MetricsHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	tel.MetricsHandler().ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "db_pool_connections")
 }

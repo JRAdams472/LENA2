@@ -664,7 +664,7 @@ type bottleGrapeVarietyResolver struct {
 	variety wine.BottleGrapeVariety
 }
 
-func (r *bottleGrapeVarietyResolver) GrapeVariety(ctx context.Context) (*grapeVarietyResolver, error) {
+func (r *bottleGrapeVarietyResolver) GrapeVariety(context.Context) (*grapeVarietyResolver, error) {
 	return &grapeVarietyResolver{g: wine.GrapeVariety{
 		GrapeVarietyID: r.variety.GrapeVarietyID,
 		Name:           r.variety.Name,
@@ -713,7 +713,7 @@ type bottleFlavorProfileResolver struct {
 	flavor wine.BottleFlavorProfile
 }
 
-func (r *bottleFlavorProfileResolver) FlavorProfile(ctx context.Context) (*wineFlavorProfileResolver, error) {
+func (r *bottleFlavorProfileResolver) FlavorProfile(context.Context) (*wineFlavorProfileResolver, error) {
 	return &wineFlavorProfileResolver{fp: wine.WineFlavorProfile{
 		FlavorProfileID: r.flavor.FlavorProfileID,
 		Name:            r.flavor.Name,
