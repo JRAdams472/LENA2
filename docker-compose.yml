@@ -110,7 +110,7 @@ services:
       - web
 
   seq:
-    image: datalust/seq:2024.3
+    image: datalust/seq:2024.1
     container_name: lena2-seq
     environment:
       ACCEPT_EULA: "Y"
@@ -118,7 +118,7 @@ services:
       - seq_data:/data
 
   seq-gelf:
-    image: datalust/seq-input-gelf:2024.3
+    image: datalust/seq-input-gelf:4.0.02323
     container_name: lena2-seq-gelf
     environment:
       SEQ_ADDRESS: http://seq:5341
