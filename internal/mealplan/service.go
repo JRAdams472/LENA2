@@ -129,8 +129,12 @@ type MealSlot struct {
 	ReplacementNote string
 }
 
-// AddMealSlot adds a slot to a plan.
-func (s *Service) AddMealSlot(ctx context.Context, arg MealSlot, by string) (MealSlot, error) {
+// AddMealSlot adds a slot to a plan owned by the user; the ownership
+// check fails with the same not-found error as GetMealPlanByID.
+func (s *Service) AddMealSlot(ctx context.Context, arg MealSlot, userID int64, by string) (MealSlot, error) {
+	if _, err := s.q.GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: arg.MealPlanID, UserID: userID}); err != nil {
+		return MealSlot{}, fmt.Errorf("add meal slot: %w", err)
+	}
 	row, err := s.q.AddMealSlot(ctx, sqlc.AddMealSlotParams{
 		MealPlanID:      arg.MealPlanID,
 		DayOfWeek:       arg.DayOfWeek,
@@ -147,18 +151,19 @@ func (s *Service) AddMealSlot(ctx context.Context, arg MealSlot, by string) (Mea
 	return toMealSlot(row), nil
 }
 
-// GetMealSlotByID returns a slot by id.
-func (s *Service) GetMealSlotByID(ctx context.Context, slotID int64) (MealSlot, error) {
-	row, err := s.q.GetMealSlotByID(ctx, slotID)
+// GetMealSlotByID returns a slot belonging to the user's plan.
+func (s *Service) GetMealSlotByID(ctx context.Context, slotID, userID int64) (MealSlot, error) {
+	row, err := s.q.GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: slotID, UserID: userID})
 	if err != nil {
 		return MealSlot{}, fmt.Errorf("get meal slot: %w", err)
 	}
 	return toMealSlot(row), nil
 }
 
-// ListMealSlotsForPlan returns all slots for a plan, ordered by day and type.
-func (s *Service) ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]MealSlot, error) {
-	rows, err := s.q.ListMealSlotsForPlan(ctx, mealPlanID)
+// ListMealSlotsForPlan returns all slots for a plan owned by the user,
+// ordered by day and type.
+func (s *Service) ListMealSlotsForPlan(ctx context.Context, mealPlanID, userID int64) ([]MealSlot, error) {
+	rows, err := s.q.ListMealSlotsForPlan(ctx, sqlc.ListMealSlotsForPlanParams{MealPlanID: mealPlanID, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("list meal slots: %w", err)
 	}
@@ -169,9 +174,10 @@ func (s *Service) ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([
 	return out, nil
 }
 
-// ListMealSlotsByPlans returns all slots for a set of plans in a single query.
-func (s *Service) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64) ([]MealSlot, error) {
-	rows, err := s.q.ListMealSlotsByPlans(ctx, mealPlanIDs)
+// ListMealSlotsByPlans returns all slots for a set of plans owned by the
+// user in a single query.
+func (s *Service) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]MealSlot, error) {
+	rows, err := s.q.ListMealSlotsByPlans(ctx, sqlc.ListMealSlotsByPlansParams{MealPlanIds: mealPlanIDs, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("list meal slots by plans: %w", err)
 	}
@@ -182,10 +188,12 @@ func (s *Service) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64)
 	return out, nil
 }
 
-// UpdateMealSlot updates a slot's recipe, servings or note.
-func (s *Service) UpdateMealSlot(ctx context.Context, slotID int64, arg MealSlot, by string) error {
+// UpdateMealSlot updates a slot's recipe, servings or note on a plan
+// owned by the user.
+func (s *Service) UpdateMealSlot(ctx context.Context, slotID, userID int64, arg MealSlot, by string) error {
 	return s.q.UpdateMealSlot(ctx, sqlc.UpdateMealSlotParams{
 		SlotID:          slotID,
+		UserID:          userID,
 		DayOfWeek:       arg.DayOfWeek,
 		MealType:        arg.MealType,
 		RecipeID:        optInt8(arg.RecipeID),
@@ -195,9 +203,9 @@ func (s *Service) UpdateMealSlot(ctx context.Context, slotID int64, arg MealSlot
 	})
 }
 
-// DeleteMealSlot removes a slot.
-func (s *Service) DeleteMealSlot(ctx context.Context, slotID int64) error {
-	return s.q.DeleteMealSlot(ctx, slotID)
+// DeleteMealSlot removes a slot from a plan owned by the user.
+func (s *Service) DeleteMealSlot(ctx context.Context, slotID, userID int64) error {
+	return s.q.DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: slotID, UserID: userID})
 }
 
 // MealSlotItem is an item override attached to a slot.
@@ -211,8 +219,13 @@ type MealSlotItem struct {
 	IsFromRecipe bool
 }
 
-// AddMealSlotItem adds an item override to a slot.
-func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, by string) (MealSlotItem, error) {
+// AddMealSlotItem adds an item override to a slot on a plan owned by the
+// user; the ownership check fails with the same not-found error as
+// GetMealSlotByID.
+func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, userID int64, by string) (MealSlotItem, error) {
+	if _, err := s.q.GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: arg.SlotID, UserID: userID}); err != nil {
+		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", err)
+	}
 	qty, err := numericFromFloat64(arg.Quantity)
 	if err != nil {
 		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", err)
@@ -237,29 +250,30 @@ func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, by stri
 	return msi, nil
 }
 
-// ListMealSlotItems returns all item overrides for a slot.
-func (s *Service) ListMealSlotItems(ctx context.Context, slotID int64) ([]MealSlotItem, error) {
-	rows, err := s.q.ListMealSlotItems(ctx, slotID)
+// ListMealSlotItems returns all item overrides for a slot on a plan owned
+// by the user.
+func (s *Service) ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]MealSlotItem, error) {
+	rows, err := s.q.ListMealSlotItems(ctx, sqlc.ListMealSlotItemsParams{SlotID: slotID, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("list meal slot items: %w", err)
 	}
 	return toMealSlotItems(rows)
 }
 
-// ListMealSlotItemsByPlan returns all item overrides across every slot of a
-// plan in a single query.
-func (s *Service) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealSlotItem, error) {
-	rows, err := s.q.ListMealSlotItemsByPlan(ctx, mealPlanID)
+// ListMealSlotItemsByPlan returns all item overrides across every slot of
+// a plan owned by the user in a single query.
+func (s *Service) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]MealSlotItem, error) {
+	rows, err := s.q.ListMealSlotItemsByPlan(ctx, sqlc.ListMealSlotItemsByPlanParams{MealPlanID: mealPlanID, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("list meal slot items by plan: %w", err)
 	}
 	return toMealSlotItems(rows)
 }
 
-// ListMealSlotItemsByPlans returns all item overrides across every slot of a
-// set of plans in a single query.
-func (s *Service) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64) ([]MealSlotItem, error) {
-	rows, err := s.q.ListMealSlotItemsByPlans(ctx, mealPlanIDs)
+// ListMealSlotItemsByPlans returns all item overrides across every slot
+// of a set of plans owned by the user in a single query.
+func (s *Service) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]MealSlotItem, error) {
+	rows, err := s.q.ListMealSlotItemsByPlans(ctx, sqlc.ListMealSlotItemsByPlansParams{MealPlanIds: mealPlanIDs, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("list meal slot items by plans: %w", err)
 	}
@@ -278,9 +292,10 @@ func toMealSlotItems(rows []sqlc.MealplanMealSlotItem) ([]MealSlotItem, error) {
 	return out, nil
 }
 
-// DeleteMealSlotItem removes an item override.
-func (s *Service) DeleteMealSlotItem(ctx context.Context, slotItemID int64) error {
-	return s.q.DeleteMealSlotItem(ctx, slotItemID)
+// DeleteMealSlotItem removes an item override from a plan owned by the
+// user.
+func (s *Service) DeleteMealSlotItem(ctx context.Context, slotItemID, userID int64) error {
+	return s.q.DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: slotItemID, UserID: userID})
 }
 
 func toMealPlan(row sqlc.MealplanMealPlan) MealPlan {

@@ -156,6 +156,7 @@ func TestAddGroceryListItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
 		mq.EXPECT().AddGroceryListItem(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, arg sqlc.AddGroceryListItemParams) (sqlc.GroceryGroceryListItem, error) {
 				assert.Equal(t, int64(3), arg.GroceryListID)
@@ -179,7 +180,7 @@ func TestAddGroceryListItem(t *testing.T) {
 				}, nil
 			})
 
-		got, err := s.AddGroceryListItem(ctx, in, "tester")
+		got, err := s.AddGroceryListItem(ctx, in, 42, "tester")
 		require.NoError(t, err)
 		assert.Equal(t, int64(900), got.GroceryListItemID)
 		assert.Equal(t, int64(3), got.GroceryListID)
@@ -194,8 +195,9 @@ func TestAddGroceryListItem(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
 		mq.EXPECT().AddGroceryListItem(ctx, gomock.Any()).Return(sqlc.GroceryGroceryListItem{}, errDB)
-		_, err := s.AddGroceryListItem(ctx, in, "tester")
+		_, err := s.AddGroceryListItem(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add grocery list item")
 		assert.ErrorIs(t, err, errDB)
 	})
@@ -206,13 +208,13 @@ func TestListGroceryListItems(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListGroceryListItems(ctx, int64(3)).
+		mq.EXPECT().ListGroceryListItems(ctx, sqlc.ListGroceryListItemsParams{GroceryListID: 3, UserID: 42}).
 			Return([]sqlc.GroceryGroceryListItem{
 				{GroceryListItemID: 900, GroceryListID: 3, Source: "manual"},
 				{GroceryListItemID: 901, GroceryListID: 3, Source: "recipe", IsChecked: true},
 			}, nil)
 
-		got, err := s.ListGroceryListItems(ctx, 3)
+		got, err := s.ListGroceryListItems(ctx, 3, 42)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.Equal(t, "manual", got[0].Source)
@@ -222,7 +224,7 @@ func TestListGroceryListItems(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().ListGroceryListItems(ctx, gomock.Any()).Return(nil, errDB)
-		_, err := s.ListGroceryListItems(ctx, 3)
+		_, err := s.ListGroceryListItems(ctx, 3, 42)
 		assert.ErrorContains(t, err, "list grocery list items")
 		assert.ErrorIs(t, err, errDB)
 	})
@@ -233,7 +235,7 @@ func TestGetGroceryListItemByID(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetGroceryListItemByID(ctx, int64(900)).
+		mq.EXPECT().GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: 900, UserID: 42}).
 			Return(sqlc.GroceryGroceryListItem{
 				GroceryListItemID: 900,
 				GroceryListID:     3,
@@ -241,7 +243,7 @@ func TestGetGroceryListItemByID(t *testing.T) {
 				IsChecked:         true,
 			}, nil)
 
-		got, err := s.GetGroceryListItemByID(ctx, 900)
+		got, err := s.GetGroceryListItemByID(ctx, 900, 42)
 		require.NoError(t, err)
 		assert.Equal(t, int64(900), got.GroceryListItemID)
 		assert.Equal(t, "milk", got.ManualItemName)
@@ -251,7 +253,7 @@ func TestGetGroceryListItemByID(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().GetGroceryListItemByID(ctx, gomock.Any()).Return(sqlc.GroceryGroceryListItem{}, errDB)
-		_, err := s.GetGroceryListItemByID(ctx, 900)
+		_, err := s.GetGroceryListItemByID(ctx, 900, 42)
 		assert.ErrorContains(t, err, "get grocery list item")
 		assert.ErrorIs(t, err, errDB)
 	})
@@ -285,13 +287,13 @@ func TestUpdateGroceryListItem(t *testing.T) {
 				return nil
 			})
 
-		require.NoError(t, s.UpdateGroceryListItem(ctx, 900, in, "tester"))
+		require.NoError(t, s.UpdateGroceryListItem(ctx, 900, 42, in, "tester"))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().UpdateGroceryListItem(ctx, gomock.Any()).Return(errDB)
-		assert.ErrorIs(t, s.UpdateGroceryListItem(ctx, 900, in, "tester"), errDB)
+		assert.ErrorIs(t, s.UpdateGroceryListItem(ctx, 900, 42, in, "tester"), errDB)
 	})
 }
 
@@ -300,14 +302,14 @@ func TestDeleteGroceryListItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryListItem(ctx, int64(900)).Return(nil)
-		require.NoError(t, s.DeleteGroceryListItem(ctx, 900))
+		mq.EXPECT().DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: 900, UserID: 42}).Return(nil)
+		require.NoError(t, s.DeleteGroceryListItem(ctx, 900, 42))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().DeleteGroceryListItem(ctx, gomock.Any()).Return(errDB)
-		assert.ErrorIs(t, s.DeleteGroceryListItem(ctx, 900), errDB)
+		assert.ErrorIs(t, s.DeleteGroceryListItem(ctx, 900, 42), errDB)
 	})
 }
 

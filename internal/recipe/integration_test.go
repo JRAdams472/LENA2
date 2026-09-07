@@ -385,7 +385,7 @@ func TestIntegrationRatingRecency(t *testing.T) {
 	require.NoError(t, err)
 	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
 		MealPlanID: plan.MealPlanID, DayOfWeek: 1, MealType: "dinner", RecipeID: &recent.RecipeID,
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 
 	got, err := svc.ListRatingRecencySuggestions(ctx, userA, 4, 10)

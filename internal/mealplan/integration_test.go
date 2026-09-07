@@ -114,18 +114,18 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		MealType:   "dinner",
 		RecipeID:   &recipeID,
 		Servings:   &servings,
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, slot.SlotID)
 	assert.Equal(t, plan.MealPlanID, slot.MealPlanID)
 
-	gotSlot, err := svc.GetMealSlotByID(ctx, slot.SlotID)
+	gotSlot, err := svc.GetMealSlotByID(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Equal(t, slot.SlotID, gotSlot.SlotID)
 	require.NotNil(t, gotSlot.RecipeID)
 	assert.Equal(t, recipeID, *gotSlot.RecipeID)
 
-	slots, err := svc.ListMealSlotsForPlan(ctx, plan.MealPlanID)
+	slots, err := svc.ListMealSlotsForPlan(ctx, plan.MealPlanID, userA)
 	require.NoError(t, err)
 	require.Len(t, slots, 1)
 
@@ -136,18 +136,18 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		Quantity:     1.5,
 		UnitID:       itUnitID(t, ctx, invSvc, "cup"),
 		IsFromRecipe: true,
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, slotItem.SlotItemID)
 
-	items, err := svc.ListMealSlotItems(ctx, slot.SlotID)
+	items, err := svc.ListMealSlotItems(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, slotItem.SlotItemID, items[0].SlotItemID)
 	assert.InDelta(t, 1.5, items[0].Quantity, 0.0001)
 
-	require.NoError(t, svc.DeleteMealSlotItem(ctx, slotItem.SlotItemID))
-	items, err = svc.ListMealSlotItems(ctx, slot.SlotID)
+	require.NoError(t, svc.DeleteMealSlotItem(ctx, slotItem.SlotItemID, userA))
+	items, err = svc.ListMealSlotItems(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Empty(t, items)
 
@@ -156,19 +156,19 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		ItemID:   &itemID,
 		Quantity: 2.0,
 		UnitID:   itUnitID(t, ctx, invSvc, "tbsp"),
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, slotItem2.SlotItemID)
 
 	newServings := int32(2)
-	require.NoError(t, svc.UpdateMealSlot(ctx, slot.SlotID, MealSlot{
+	require.NoError(t, svc.UpdateMealSlot(ctx, slot.SlotID, userA, MealSlot{
 		DayOfWeek:       2,
 		MealType:        "lunch",
 		RecipeID:        &recipeID,
 		Servings:        &newServings,
 		ReplacementNote: "no nuts",
 	}, itBy))
-	gotSlot, err = svc.GetMealSlotByID(ctx, slot.SlotID)
+	gotSlot, err = svc.GetMealSlotByID(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Equal(t, int16(2), gotSlot.DayOfWeek)
 	assert.Equal(t, "lunch", gotSlot.MealType)
@@ -180,11 +180,11 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	_, err = svc.GetMealPlanByID(ctx, plan.MealPlanID, userA)
 	require.NoError(t, err, "plan should still exist after wrong-user delete")
 
-	require.NoError(t, svc.DeleteMealSlot(ctx, slot.SlotID))
-	_, err = svc.GetMealSlotByID(ctx, slot.SlotID)
+	require.NoError(t, svc.DeleteMealSlot(ctx, slot.SlotID, userA))
+	_, err = svc.GetMealSlotByID(ctx, slot.SlotID, userA)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, pgx.ErrNoRows)
-	items, err = svc.ListMealSlotItems(ctx, slot.SlotID)
+	items, err = svc.ListMealSlotItems(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Empty(t, items)
 
@@ -192,14 +192,14 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 		MealPlanID: plan.MealPlanID,
 		DayOfWeek:  3,
 		MealType:   "breakfast",
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 	_, err = svc.AddMealSlotItem(ctx, MealSlotItem{
 		SlotID:   slot2.SlotID,
 		ItemID:   &itemID,
 		Quantity: 1.0,
 		UnitID:   itUnitID(t, ctx, invSvc, "each"),
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 
 	require.NoError(t, svc.DeleteMealPlan(ctx, plan.MealPlanID, userA))
@@ -207,7 +207,93 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, pgx.ErrNoRows)
 
-	slots, err = svc.ListMealSlotsForPlan(ctx, plan.MealPlanID)
+	slots, err = svc.ListMealSlotsForPlan(ctx, plan.MealPlanID, userA)
 	require.NoError(t, err)
 	assert.Empty(t, slots)
+}
+
+// TestIntegrationMealPlanCrossUserDenied verifies that every slot and
+// slot-item operation is scoped to the owning user (LENA-001).
+func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testenv.MustUser(ctx, t, pool, "meal-xu-a@example.com")
+	userB := testenv.MustUser(ctx, t, pool, "meal-xu-b@example.com")
+
+	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+	plan, err := svc.CreateMealPlan(ctx, MealPlan{
+		UserID: userA, Name: "Owned", WeekStartDate: week, IsActive: true,
+	}, itBy)
+	require.NoError(t, err)
+
+	slot, err := svc.AddMealSlot(ctx, MealSlot{
+		MealPlanID: plan.MealPlanID, DayOfWeek: 1, MealType: "dinner",
+	}, userA, itBy)
+	require.NoError(t, err)
+
+	invSvc := inventory.NewService(pool)
+	brand, err := invSvc.CreateBrand(ctx, "IT XU Brand")
+	require.NoError(t, err)
+	cat, err := invSvc.CreateCategory(ctx, "IT XU Category", "", itBy)
+	require.NoError(t, err)
+	item, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name: "IT XU Item", BrandID: &brand.BrandID, CategoryID: cat.CategoryID,
+		UnitID: itUnitID(t, ctx, invSvc, "g"),
+	}, itBy)
+	require.NoError(t, err)
+	itemID := item.ItemID
+	slotItem, err := svc.AddMealSlotItem(ctx, MealSlotItem{
+		SlotID: slot.SlotID, ItemID: &itemID, Quantity: 1, UnitID: itUnitID(t, ctx, invSvc, "g"),
+	}, userA, itBy)
+	require.NoError(t, err)
+
+	// Reads and writes as userB must see or affect nothing.
+	_, err = svc.AddMealSlot(ctx, MealSlot{MealPlanID: plan.MealPlanID, DayOfWeek: 2, MealType: "lunch"}, userB, itBy)
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+
+	_, err = svc.GetMealSlotByID(ctx, slot.SlotID, userB)
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+
+	slots, err := svc.ListMealSlotsForPlan(ctx, plan.MealPlanID, userB)
+	require.NoError(t, err)
+	assert.Empty(t, slots)
+
+	slots, err = svc.ListMealSlotsByPlans(ctx, []int64{plan.MealPlanID}, userB)
+	require.NoError(t, err)
+	assert.Empty(t, slots)
+
+	_, err = svc.AddMealSlotItem(ctx, MealSlotItem{
+		SlotID: slot.SlotID, ItemID: &itemID, Quantity: 1, UnitID: itUnitID(t, ctx, invSvc, "g"),
+	}, userB, itBy)
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+
+	items, err := svc.ListMealSlotItems(ctx, slot.SlotID, userB)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+
+	items, err = svc.ListMealSlotItemsByPlan(ctx, plan.MealPlanID, userB)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+
+	items, err = svc.ListMealSlotItemsByPlans(ctx, []int64{plan.MealPlanID}, userB)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+
+	require.NoError(t, svc.UpdateMealSlot(ctx, slot.SlotID, userB, MealSlot{DayOfWeek: 6, MealType: "snack"}, itBy))
+	got, err := svc.GetMealSlotByID(ctx, slot.SlotID, userA)
+	require.NoError(t, err)
+	assert.Equal(t, "dinner", got.MealType, "wrong-user update must not mutate the slot")
+
+	require.NoError(t, svc.DeleteMealSlotItem(ctx, slotItem.SlotItemID, userB))
+	items, err = svc.ListMealSlotItems(ctx, slot.SlotID, userA)
+	require.NoError(t, err)
+	assert.Len(t, items, 1, "wrong-user delete must not remove the slot item")
+
+	require.NoError(t, svc.DeleteMealSlot(ctx, slot.SlotID, userB))
+	_, err = svc.GetMealSlotByID(ctx, slot.SlotID, userA)
+	require.NoError(t, err, "wrong-user delete must not remove the slot")
 }

@@ -55,14 +55,14 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	slotItemsBySlot := make(map[int64][]mealplan.MealSlotItem)
 	var rc *recipeChildren
 	if len(planIDs) > 0 {
-		slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs)
+		slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs, u.UserID)
 		if err != nil {
 			return nil, err
 		}
 		for _, s := range slots {
 			slotsByPlan[s.MealPlanID] = append(slotsByPlan[s.MealPlanID], s)
 		}
-		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs)
+		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs, u.UserID)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.UserID); err != nil {
 		return nil, err
 	}
-	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID)
+	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	// Batch-load instead of per-slot/per-recipe fan-out: one query for all
 	// slot items, one for all referenced recipes, one for all their items,
 	// and one for the nutrients of every distinct item involved.
-	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID)
+	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, u.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +356,7 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 		RecipeID:        recipeID,
 		Servings:        args.Input.Servings,
 		ReplacementNote: derefString(args.Input.ReplacementNote),
-	}, u.Email)
+	}, u.UserID, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -372,14 +372,15 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 
 // RemoveMealSlot removes a slot from a meal plan.
 func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graphql.ID }) (bool, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return false, err
 	}
 	slotID, err := parseID(string(args.SlotID))
 	if err != nil {
 		return false, err
 	}
-	if err := r.MealPlanService.DeleteMealSlot(ctx, slotID); err != nil {
+	if err := r.MealPlanService.DeleteMealSlot(ctx, slotID, u.UserID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -418,7 +419,7 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 		Quantity:     args.Input.Quantity,
 		UnitID:       unitID,
 		IsFromRecipe: isFromRecipe,
-	}, u.Email)
+	}, u.UserID, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -427,14 +428,15 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 
 // RemoveMealSlotItem removes an item from a slot.
 func (r *Resolver) RemoveMealSlotItem(ctx context.Context, args struct{ SlotItemID graphql.ID }) (bool, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return false, err
 	}
 	slotItemID, err := parseID(string(args.SlotItemID))
 	if err != nil {
 		return false, err
 	}
-	if err := r.MealPlanService.DeleteMealSlotItem(ctx, slotItemID); err != nil {
+	if err := r.MealPlanService.DeleteMealSlotItem(ctx, slotItemID, u.UserID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -471,7 +473,7 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 		slots = r.slots
 	} else {
 		var err error
-		slots, err = r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID)
+		slots, err = r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID, r.user.UserID)
 		if err != nil {
 			return nil, err
 		}
@@ -535,7 +537,7 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 		ch = r.rc.itemChildren
 	} else {
 		var err error
-		items, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID)
+		items, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID, r.user.UserID)
 		if err != nil {
 			return nil, err
 		}

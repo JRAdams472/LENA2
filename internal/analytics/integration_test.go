@@ -122,7 +122,7 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	require.NoError(t, err)
 	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
 		MealPlanID: planA.MealPlanID, DayOfWeek: 1, MealType: "dinner", RecipeID: &histA.RecipeID,
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 
 	// userB's menu history: a recipe sharing none of the new recipe's items.
@@ -139,7 +139,7 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	require.NoError(t, err)
 	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
 		MealPlanID: planB.MealPlanID, DayOfWeek: 1, MealType: "dinner", RecipeID: &histB.RecipeID,
-	}, itBy)
+	}, userB, itBy)
 	require.NoError(t, err)
 
 	// New recipe shares items 1,2 with userA's history (Jaccard 2/3) and
