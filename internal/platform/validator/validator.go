@@ -1,3 +1,4 @@
+// Package validator wraps go-playground/validator behind a shared instance.
 package validator
 
 import (

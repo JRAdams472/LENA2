@@ -24,7 +24,7 @@ func newGraphQLTracer() *graphQLTracer {
 	return &graphQLTracer{tr: otel.Tracer("lena2/graphql")}
 }
 
-func (t *graphQLTracer) TraceQuery(ctx context.Context, queryString, operationName string, _ map[string]any, _ map[string]*introspection.Type) (context.Context, tracer.QueryFinishFunc) {
+func (t *graphQLTracer) TraceQuery(ctx context.Context, _, operationName string, _ map[string]any, _ map[string]*introspection.Type) (context.Context, tracer.QueryFinishFunc) {
 	name := operationName
 	if name == "" {
 		name = "anonymous"

@@ -188,22 +188,23 @@ func int32Ptr(v int32) *int32 {
 
 // int16Ptr converts a nullable GraphQL int32 input to *int16 for the
 // checkedInt16 converts a GraphQL int32 to int16, rejecting values outside
-// [min, max] so out-of-range input can never wrap around into a "valid"
+// [lo, hi] so out-of-range input can never wrap around into a "valid"
 // int16 at the cast.
-func checkedInt16(v int32, field string, min, max int16) (int16, error) {
-	if v < int32(min) || v > int32(max) {
-		return 0, badInputf("%s must be between %d and %d", field, min, max)
+func checkedInt16(v int32, field string, lo, hi int16) (int16, error) {
+	if v < int32(lo) || v > int32(hi) {
+		return 0, badInputf("%s must be between %d and %d", field, lo, hi)
 	}
+	//nolint:gosec // v is range-checked against [lo, hi] immediately above.
 	return int16(v), nil
 }
 
 // checkedInt16Ptr is checkedInt16 for nullable GraphQL int32 input,
 // preserving nil.
-func checkedInt16Ptr(v *int32, field string, min, max int16) (*int16, error) {
+func checkedInt16Ptr(v *int32, field string, lo, hi int16) (*int16, error) {
 	if v == nil {
 		return nil, nil
 	}
-	i, err := checkedInt16(*v, field, min, max)
+	i, err := checkedInt16(*v, field, lo, hi)
 	if err != nil {
 		return nil, err
 	}
@@ -224,15 +225,16 @@ func int64ToInt32(n int64) int32 {
 	if n > math.MaxInt32 {
 		return math.MaxInt32
 	}
+	//nolint:gosec // n is saturated at MaxInt32 immediately above.
 	return int32(n)
 }
 
-func clamp(v, min, max int32) int32 {
-	if v < min {
-		return min
+func clamp(v, lo, hi int32) int32 {
+	if v < lo {
+		return lo
 	}
-	if v > max {
-		return max
+	if v > hi {
+		return hi
 	}
 	return v
 }

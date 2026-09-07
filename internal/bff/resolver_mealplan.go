@@ -359,6 +359,9 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 	if err != nil {
 		return nil, err
 	}
+	if s := args.Input.Servings; s != nil && *s <= 0 {
+		return nil, badInputf("servings must be positive")
+	}
 	slot, err := r.MealPlanService.AddMealSlot(ctx, mealplan.MealSlot{
 		MealPlanID:      mealPlanID,
 		DayOfWeek:       dayOfWeek,
@@ -417,6 +420,9 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	unitID, err := resolveUnitID(ctx, r.InventoryService, args.Input.Unit)
 	if err != nil {
 		return nil, err
+	}
+	if args.Input.Quantity <= 0 {
+		return nil, badInputf("quantity must be positive")
 	}
 	isFromRecipe := false
 	if args.Input.IsFromRecipe != nil {

@@ -6,21 +6,38 @@ run:
 linters:
   default: none
   enable:
+    - bodyclose
     - errcheck
+    - errorlint
+    - gocritic
+    - gosec
     - govet
     - ineffassign
     - misspell
+    - noctx
+    - revive
+    - sqlclosecheck
     - staticcheck
     - unused
-    - gosec
 
-  settings:
-    gosec:
-      excludes:
-        - G104
-        # G115 is noisy for bounded int conversions already limited by page sizes and schema inputs.
-        - G115
+  # G104 (unhandled errors) and G115 (integer overflow) are intentionally
+  # no longer excluded: ignored errors and unchecked narrowing were the
+  # root cause of LENA-005/LENA-011. Any remaining flags are fixed or
+  # suppressed inline with //nolint and a justification.
 
   exclusions:
+    rules:
+      # graphql-go resolver methods must be exported for schema binding but
+      # intentionally return package-private *Resolver types.
+      - linters: [revive]
+        text: "unexported-return"
+      # Domain types mirror table names (recipe.RecipeItem,
+      # wine.WineFlavorProfile); renaming would churn the whole API.
+      - linters: [revive]
+        text: "stutters"
+      # Test helpers take *testing.T first, ctx second — established idiom.
+      - linters: [revive]
+        text: "context-as-argument"
+        path: (_test\.go|platform/testenv)
     paths:
       - migrations

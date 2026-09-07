@@ -72,7 +72,7 @@ func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 
 	e := echo.New()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/graphql",
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql",
 		strings.NewReader(`{"query":"{ brands { id name } }"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	c := e.NewContext(req.WithContext(testenv.WithUser(req.Context(), 1, "u@example.com")), rec)
@@ -94,7 +94,7 @@ func TestGraphQLHandler_PassesClientErrors(t *testing.T) {
 
 	e := echo.New()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/graphql",
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql",
 		strings.NewReader(`{"query":"{ me { id } }"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	c := e.NewContext(req.WithContext(context.Background()), rec)

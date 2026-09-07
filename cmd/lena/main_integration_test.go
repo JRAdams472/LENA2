@@ -60,7 +60,7 @@ func TestIntegration(t *testing.T) {
 	defer srv.Close()
 
 	t.Run("health returns 200", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/health")
+		resp, err := httpGet(srv.URL + "/health")
 		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -70,7 +70,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("ready returns 200", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/ready")
+		resp, err := httpGet(srv.URL + "/ready")
 		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -105,6 +105,15 @@ func TestIntegration(t *testing.T) {
 	})
 }
 
+// httpGet issues a GET with a context so the noctx linter is satisfied.
+func httpGet(url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(req)
+}
+
 type graphQLResponse struct {
 	Data json.RawMessage `json:"data"`
 }
@@ -115,7 +124,7 @@ func graphQLRequest(t *testing.T, baseURL, token, query string, vars map[string]
 		"variables": vars,
 	})
 	require.NoError(t, err)
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/graphql", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, baseURL+"/graphql", bytes.NewReader(payload))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {

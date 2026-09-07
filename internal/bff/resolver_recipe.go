@@ -188,6 +188,9 @@ func parseRecipeChildren(ctx context.Context, inv InventoryService, items []reci
 		if err != nil {
 			return nil, nil, err
 		}
+		if ri.Quantity <= 0 {
+			return nil, nil, badInputf("item quantity must be positive")
+		}
 		outItems = append(outItems, recipe.RecipeItem{
 			ItemID:       itemID,
 			IngredientID: ingredientID,
@@ -214,6 +217,9 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	u, err := requireAdmin(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if s := args.Input.Servings; s != nil && *s <= 0 {
+		return nil, badInputf("servings must be positive")
 	}
 	items, steps, err := parseRecipeChildren(ctx, r.InventoryService, args.Input.Items, args.Input.Steps)
 	if err != nil {
@@ -267,6 +273,9 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 	}
 	servings := existing.Servings
 	if args.Input.Servings != nil {
+		if *args.Input.Servings <= 0 {
+			return nil, badInputf("servings must be positive")
+		}
 		servings = args.Input.Servings
 	}
 	prep := existing.PrepTimeMinutes
@@ -422,8 +431,8 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 		}
 		return cmp.Compare(a, b)
 	})
-	if int32(len(recipeIDs)) > limit {
-		recipeIDs = recipeIDs[:limit]
+	if limit >= 0 && len(recipeIDs) > int(limit) {
+		recipeIDs = recipeIDs[:int(limit)]
 	}
 
 	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)

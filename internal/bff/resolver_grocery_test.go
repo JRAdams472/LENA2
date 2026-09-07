@@ -14,6 +14,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
@@ -211,9 +212,13 @@ func TestResolver_GroceryList_ItemsSubResolverError(t *testing.T) {
 func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
-	r := &Resolver{GroceryService: g}
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{GroceryService: g, MealPlanService: mp}
 
 	mealPlanID := int64(55)
+	// The plan must belong to the caller before a list is linked to it.
+	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
+		Return(mealplan.MealPlan{MealPlanID: mealPlanID, UserID: grocUserID}, nil)
 	g.EXPECT().Generate(gomock.Any(), grocUserID, mealPlanID, grocEmail).
 		Return(grocery.GroceryList{GroceryListID: 21, UserID: grocUserID, MealPlanID: &mealPlanID}, nil)
 
@@ -232,9 +237,27 @@ func TestResolver_GenerateGroceryList_Unauthorized(t *testing.T) {
 func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
-	r := &Resolver{GroceryService: g}
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{GroceryService: g, MealPlanService: mp}
 
+	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
+		Return(mealplan.MealPlan{MealPlanID: 55, UserID: grocUserID}, nil)
 	g.EXPECT().Generate(gomock.Any(), grocUserID, int64(55), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
+
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	assert.Nil(t, res)
+	assert.ErrorIs(t, err, errGrocBoom)
+}
+
+func TestResolver_GenerateGroceryList_ForeignPlanRejected(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{GroceryService: g, MealPlanService: mp}
+
+	// Another user's plan must never reach Generate.
+	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
+		Return(mealplan.MealPlan{}, errGrocBoom)
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
 	assert.Nil(t, res)
@@ -295,11 +318,34 @@ func TestResolver_AddGroceryItem_ServiceError(t *testing.T) {
 	inv.EXPECT().GetUnitByName(gomock.Any(), "bunch").Return(inventory.Unit{UnitID: 19, Name: "bunch"}, nil)
 	g.EXPECT().AddGroceryListItem(gomock.Any(), gomock.Any(), grocUserID, grocEmail).Return(grocery.GroceryListItem{}, errGrocBoom)
 
+	manual := "Eggs"
 	res, err := r.AddGroceryItem(grocCtx(), struct{ Input addGroceryItemInput }{
-		Input: addGroceryItemInput{GroceryListID: "11", Quantity: 1, Unit: "bunch"},
+		Input: addGroceryItemInput{GroceryListID: "11", Quantity: 1, Unit: "bunch", ManualItemName: &manual},
 	})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errGrocBoom)
+}
+
+func TestResolver_AddGroceryItem_Rejected(t *testing.T) {
+	// LENA-034/035: no identifier, or a non-positive quantity, must be
+	// rejected before the service call.
+	tests := []struct {
+		name  string
+		input addGroceryItemInput
+	}{
+		{"no identifier", addGroceryItemInput{GroceryListID: "11", Quantity: 1}},
+		{"blank manual name", addGroceryItemInput{GroceryListID: "11", Quantity: 1, ManualItemName: ptrToGrocString("  ")}},
+		{"zero quantity", addGroceryItemInput{GroceryListID: "11", Quantity: 0, ManualItemName: ptrToGrocString("Eggs")}},
+		{"negative quantity", addGroceryItemInput{GroceryListID: "11", Quantity: -2, ManualItemName: ptrToGrocString("Eggs")}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Resolver{}
+			res, err := r.AddGroceryItem(grocCtx(), struct{ Input addGroceryItemInput }{Input: tc.input})
+			assert.Nil(t, res)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestResolver_ToggleGroceryItemChecked_Happy(t *testing.T) {
@@ -398,4 +444,5 @@ func TestResolver_DeleteGroceryItem_ServiceError(t *testing.T) {
 	assert.ErrorIs(t, err, errGrocBoom)
 }
 
-func ptrToGrocInt64(v int64) *int64 { return &v }
+func ptrToGrocInt64(v int64) *int64    { return &v }
+func ptrToGrocString(v string) *string { return &v }

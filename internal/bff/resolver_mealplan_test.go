@@ -407,46 +407,46 @@ func TestResolver_MealPlan_InvalidID(t *testing.T) {
 		name string
 		call func(context.Context) (any, error)
 	}{
-		{"MealPlan", func(ctx context.Context) (any, error) {
+		{"MealPlan", func(context.Context) (any, error) {
 			return (&Resolver{}).MealPlan(mealPlanCtx(), struct{ ID graphql.ID }{ID: "abc"})
 		}},
-		{"DeleteMealPlan", func(ctx context.Context) (any, error) {
+		{"DeleteMealPlan", func(context.Context) (any, error) {
 			return (&Resolver{}).DeleteMealPlan(mealPlanCtx(), struct{ ID graphql.ID }{ID: "abc"})
 		}},
-		{"UpdateMealPlan", func(ctx context.Context) (any, error) {
+		{"UpdateMealPlan", func(context.Context) (any, error) {
 			return (&Resolver{}).UpdateMealPlan(mealPlanCtx(), struct {
 				ID    graphql.ID
 				Input createMealPlanInput
 			}{ID: "abc", Input: createMealPlanInput{Name: "Week 1", WeekStartDate: "2025-06-02"}})
 		}},
-		{"AddMealSlot_MealPlanID", func(ctx context.Context) (any, error) {
+		{"AddMealSlot_MealPlanID", func(context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlot(mealPlanCtx(), struct{ Input addMealSlotInput }{
 				Input: addMealSlotInput{MealPlanID: "abc", DayOfWeek: 1, MealType: "dinner"},
 			})
 		}},
-		{"AddMealSlot_RecipeID", func(ctx context.Context) (any, error) {
+		{"AddMealSlot_RecipeID", func(context.Context) (any, error) {
 			recipeID := graphql.ID("abc")
 			return (&Resolver{}).AddMealSlot(mealPlanCtx(), struct{ Input addMealSlotInput }{
 				Input: addMealSlotInput{MealPlanID: "10", DayOfWeek: 1, MealType: "dinner", RecipeID: &recipeID},
 			})
 		}},
-		{"RemoveMealSlot", func(ctx context.Context) (any, error) {
+		{"RemoveMealSlot", func(context.Context) (any, error) {
 			return (&Resolver{}).RemoveMealSlot(mealPlanCtx(), struct{ SlotID graphql.ID }{SlotID: "abc"})
 		}},
-		{"AddMealSlotItem_SlotID", func(ctx context.Context) (any, error) {
+		{"AddMealSlotItem_SlotID", func(context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlotItem(mealPlanCtx(), struct{ Input addMealSlotItemInput }{
 				Input: addMealSlotItemInput{SlotID: "abc", ItemID: "50", Quantity: 1, Unit: "cup"},
 			})
 		}},
-		{"AddMealSlotItem_ItemID", func(ctx context.Context) (any, error) {
+		{"AddMealSlotItem_ItemID", func(context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlotItem(mealPlanCtx(), struct{ Input addMealSlotItemInput }{
 				Input: addMealSlotItemInput{SlotID: "100", ItemID: "abc", Quantity: 1, Unit: "cup"},
 			})
 		}},
-		{"RemoveMealSlotItem", func(ctx context.Context) (any, error) {
+		{"RemoveMealSlotItem", func(context.Context) (any, error) {
 			return (&Resolver{}).RemoveMealSlotItem(mealPlanCtx(), struct{ SlotItemID graphql.ID }{SlotItemID: "abc"})
 		}},
-		{"Nutrition", func(ctx context.Context) (any, error) {
+		{"Nutrition", func(context.Context) (any, error) {
 			return (&Resolver{}).Nutrition(mealPlanCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "abc"})
 		}},
 	}

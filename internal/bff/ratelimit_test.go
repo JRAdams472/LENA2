@@ -1,6 +1,7 @@
 package bff
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,7 +30,7 @@ func TestGraphQLRateLimiter_LimitsPerUser(t *testing.T) {
 	codes := make([]int, 3)
 	for i := range codes {
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/graphql", nil))
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil))
 		codes[i] = rec.Code
 	}
 	assert.Equal(t, []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests}, codes)
@@ -49,7 +50,7 @@ func TestGraphQLRateLimiter_UsersAreIndependent(t *testing.T) {
 
 	do := func() int {
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/graphql", nil))
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil))
 		return rec.Code
 	}
 
@@ -70,7 +71,7 @@ func TestGraphQLRateLimiter_IdentifiesByUserNotIP(t *testing.T) {
 
 	do := func(ip string) int {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
 		req.RemoteAddr = ip + ":1234"
 		e.ServeHTTP(rec, req)
 		return rec.Code
@@ -90,7 +91,7 @@ func TestIPRateLimiter_LimitsPerIP(t *testing.T) {
 	codes := make([]int, 3)
 	for i := range codes {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
 		req.RemoteAddr = "10.0.0.9:1234"
 		e.ServeHTTP(rec, req)
 		codes[i] = rec.Code
@@ -105,7 +106,7 @@ func TestIPRateLimiter_IPsAreIndependent(t *testing.T) {
 
 	do := func(ip string) int {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
 		req.RemoteAddr = ip + ":1234"
 		e.ServeHTTP(rec, req)
 		return rec.Code
@@ -124,7 +125,7 @@ func TestIPRateLimiter_UsesXForwardedFor(t *testing.T) {
 
 	do := func(xff string) int {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
 		// A private (trusted) direct peer, as in the Caddy deployment.
 		req.RemoteAddr = "172.18.0.4:1234"
 		req.Header.Set(echo.HeaderXForwardedFor, xff)
@@ -144,7 +145,7 @@ func TestIPRateLimiter_Disabled(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/graphql", nil))
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil))
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
 }
@@ -156,7 +157,7 @@ func TestGraphQLRateLimiter_Disabled(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/graphql", nil))
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil))
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
 }

@@ -35,7 +35,7 @@ type Telemetry struct {
 // MetricsHandler. Setup never returns (nil, nil): either it fails with a
 // non-nil error or it returns a usable *Telemetry. Callers may still pass
 // a nil *Telemetry explicitly (tests) — newServer supports that.
-func Setup(ctx context.Context, serviceName, otlpEndpoint string, pool *pgxpool.Pool) (*Telemetry, error) {
+func Setup(ctx context.Context, serviceName, otlpEndpoint string, insecure bool, pool *pgxpool.Pool) (*Telemetry, error) {
 	res, err := resource.New(ctx, resource.WithAttributes(semconv.ServiceName(serviceName)))
 	if err != nil {
 		return nil, fmt.Errorf("otel resource: %w", err)
@@ -43,9 +43,11 @@ func Setup(ctx context.Context, serviceName, otlpEndpoint string, pool *pgxpool.
 
 	t := &Telemetry{}
 	if otlpEndpoint != "" {
-		exp, err := otlptracegrpc.New(ctx,
-			otlptracegrpc.WithEndpoint(otlpEndpoint),
-			otlptracegrpc.WithInsecure())
+		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(otlpEndpoint)}
+		if insecure {
+			opts = append(opts, otlptracegrpc.WithInsecure())
+		}
+		exp, err := otlptracegrpc.New(ctx, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("otel trace exporter: %w", err)
 		}

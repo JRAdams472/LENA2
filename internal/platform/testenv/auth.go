@@ -56,14 +56,14 @@ func NewTestIssuer(t *testing.T) *TestIssuer {
 	ti := &TestIssuer{priv: priv, keyID: "test-key", Audience: TestAudience}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"issuer":   ti.URL,
 			"jwks_uri": ti.URL + "/jwks",
 		})
 	})
-	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
 		pub, err := jwk.Import(ti.priv.Public())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

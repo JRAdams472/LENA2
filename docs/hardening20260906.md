@@ -252,7 +252,30 @@ Scope: the last two in-scope Major findings. LENA-027/028 (mobile client) remain
 
 ---
 
-## Follow-on phase — Performance Metrics & Observability (`phase-31`)
+## Phase 31 — Remaining P1/P2 Minor & Info findings (`phase-31`)
+
+Scope: every Minor/Info finding in `docs/code-audit.md` still open at priority P1/P2. All P3 items remain open for a later cleanup phase (or the performance phase below where they overlap: LENA-049/050/063).
+
+**Status (2026-09-07):** implemented on `phase-31` — `go build`, `go vet`, `gofmt`, `go test -short` and `golangci-lint run` (v2.13.2, now run locally) all clean. Migration `0018` adds the CHECK constraints; it must apply cleanly against the e2e/CI database.
+
+### Issues to remediate
+
+1. **LENA-030** — OTLP trace exporter hard-codes `WithInsecure()`: make TLS configurable via `LENA_OTEL_EXPORTER_OTLP_INSECURE` (default `true` to preserve current behaviour; document that production should set `false` or use a collector on the private network).
+2. **LENA-032** — CORS origins split without trimming: use `splitAndTrim` in `buildCORSConfig` so `"a, b"` doesn't silently drop `b`.
+3. **LENA-034** (remainder) — `dayOfWeek`/`weekStartDayOfWeek` are already validated 0–6 (phase-26). Add resolver/service validation for `servings` (meal slots and recipes, > 0 when set) and grocery `quantity` (> 0), plus `CHECK` constraints in a new migration.
+4. **LENA-035** — `grocery_list_item` allows a row with no `item_id`/`ingredient_id`/`manual_item_name`: validate in `AddGroceryItem` (reject when all three are absent) and add `CHECK (item_id IS NOT NULL OR ingredient_id IS NOT NULL OR manual_item_name IS NOT NULL)` in the same migration.
+5. **LENA-037** — `GenerateGroceryList` doesn't verify plan ownership: call `MealPlanService.GetMealPlanByID(ctx, mealPlanID, userID)` in the resolver before `Generate` so a foreign plan ID returns not-found instead of an FK-violation/existence oracle. Document that aggregation is still pending (the mutation only creates the list container).
+6. **LENA-059** — cross-user authorization tests: **already satisfied** by phase-25 (`TestIntegrationGroceryCrossUserDenied`, `TestIntegrationMealPlanCrossUserDenied`, userprefs cross-user tests, `bff_integration_test.go` isolation checks, e2e "users cannot see each other's meal plans"). No code change — closed out here.
+7. **LENA-060** — `.golangci.yml` hardening: drop the G104/G115 gosec exclusions (fix or `//nolint` the flagged sites) and enable `revive`, `errorlint`, `gocritic`, `bodyclose`, `noctx`, `sqlclosecheck`. Fix fallout or document justified exclusions.
+8. **LENA-071** — CI static-analysis gap: add a `govulncheck` step to the `go` job and a `.github/dependabot.yml` covering gomod (root), npm (`clients/web`), github-actions, and docker.
+
+### Verification
+
+- `go build ./...`, `go vet ./...`, `gofmt`, `go test -short`, `golangci-lint run` (CI), `docker compose config`, migration applies cleanly (e2e stack).
+
+---
+
+## Follow-on phase — Performance Metrics & Observability (`phase-32`)
 
 Motivation: the Playwright e2e suite now takes >5 minutes and there is no data showing where that time goes — or whether API latency is drifting. This phase adds request-level and dependency-level performance metrics so slowdowns are measurable before they are felt. It also naturally covers audit findings LENA-049 (`HTTPMetrics` silently degrading), LENA-050 (telemetry `Setup` without timeout), and LENA-063 (pgxpool without explicit sizing/statement timeout) where they overlap.
 

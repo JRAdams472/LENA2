@@ -89,6 +89,12 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 	if err != nil {
 		return nil, err
 	}
+	// Verify the plan belongs to the caller before creating a list linked
+	// to it — otherwise the mutation is an existence oracle on other
+	// users' plan IDs via the FK error.
+	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.UserID); err != nil {
+		return nil, err
+	}
 	list, err := r.GroceryService.Generate(ctx, u.UserID, mealPlanID, u.Email)
 	if err != nil {
 		return nil, err
@@ -159,6 +165,13 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 	if err != nil {
 		return nil, err
 	}
+	manualName := derefString(args.Input.ManualItemName)
+	if itemID == nil && ingredientID == nil && strings.TrimSpace(manualName) == "" {
+		return nil, badInputf("grocery item requires an itemId, ingredientId or manualItemName")
+	}
+	if args.Input.Quantity <= 0 {
+		return nil, badInputf("quantity must be positive")
+	}
 	// The unit is optional for grocery items; an empty string means unset.
 	var unitID *int64
 	if u := strings.TrimSpace(args.Input.Unit); u != "" {
@@ -172,7 +185,7 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 		GroceryListID:  groceryListID,
 		ItemID:         itemID,
 		IngredientID:   ingredientID,
-		ManualItemName: derefString(args.Input.ManualItemName),
+		ManualItemName: manualName,
 		QuantityNeeded: args.Input.Quantity,
 		UnitID:         unitID,
 		Source:         "manual",
