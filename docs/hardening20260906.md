@@ -2,6 +2,8 @@
 
 Code audit findings and the concrete remediation plan (phase-24 and follow-on audit-remediation phases).
 
+> **Scope note:** Mobile client findings (anything under `clients/mobile`) are out of scope for these remediation phases. The mobile app is scheduled for a near-future rewrite with new specs and will be addressed separately; ignore those findings when planning the hardening phases below.
+
 ## Findings
 
 ### Bugs / correctness
