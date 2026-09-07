@@ -60,6 +60,7 @@ function renderWithAuth(element: React.ReactElement) {
 beforeEach(() => {
   mockPush.mockReset();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -79,7 +80,7 @@ describe("login screen", () => {
     renderWithAuth(<LoginScreen />);
     fireEvent.click(screen.getByTestId("google-login"));
     await waitFor(() => {
-      expect(localStorage.getItem("lena_id_token")).toBe(makeToken());
+      expect(sessionStorage.getItem("lena_id_token")).toBe(makeToken());
       expect(mockPush).toHaveBeenCalledWith("/");
     });
   });

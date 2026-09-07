@@ -45,10 +45,13 @@ export class ApiError extends Error {
 
 // Default getter reads the persisted token so early requests (fired before
 // AuthProvider's effect registers the real getter) still authenticate.
+// The token lives in sessionStorage (per-tab); AuthProvider migrates any
+// legacy localStorage copy.
 let authTokenGetter: (() => string | null) | null = () =>
   typeof window === "undefined"
     ? null
-    : window.localStorage.getItem("lena_id_token");
+    : window.sessionStorage.getItem("lena_id_token") ??
+      window.localStorage.getItem("lena_id_token");
 let onUnauthorized: (() => void) | null = null;
 
 export function setAuthTokenGetter(getter: () => string | null) {

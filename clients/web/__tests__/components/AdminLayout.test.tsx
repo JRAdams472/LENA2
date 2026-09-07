@@ -29,7 +29,7 @@ function makeToken(email: string, exp: number) {
 
 function signIn(email = "admin@example.com") {
   const future = Math.floor(Date.now() / 1000) + 3600;
-  localStorage.setItem("lena_id_token", makeToken(email, future));
+  sessionStorage.setItem("lena_id_token", makeToken(email, future));
 }
 
 function renderLayout() {
@@ -45,6 +45,7 @@ function renderLayout() {
 describe("AdminLayout", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     mockedUsePathname.mockReturnValue("/");
   });
 
@@ -106,6 +107,7 @@ describe("AdminLayout", () => {
     await waitFor(() =>
       expect(screen.getByTestId("google-login")).toBeInTheDocument()
     );
+    expect(sessionStorage.getItem("lena_id_token")).toBeNull();
     expect(localStorage.getItem("lena_id_token")).toBeNull();
     expect(screen.queryByTestId("page-content")).not.toBeInTheDocument();
   });

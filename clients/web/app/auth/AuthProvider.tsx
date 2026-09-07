@@ -60,20 +60,25 @@ const tokenStore = (() => {
   const listeners = new Set<() => void>();
   return {
     subscribe(callback: () => void) {
-      if (typeof window === "undefined") return () => {};
-      const handler = (e: StorageEvent) => {
-        if (e.key === TOKEN_KEY) callback();
-      };
-      window.addEventListener("storage", handler);
+      // sessionStorage is per-tab, so there are no cross-tab "storage"
+      // events to relay — subscribers only need intra-tab notifications,
+      // which setToken delivers directly.
       listeners.add(callback);
       return () => {
-        window.removeEventListener("storage", handler);
         listeners.delete(callback);
       };
     },
     getSnapshot(): string | null {
       if (typeof window === "undefined") return null;
-      const stored = window.localStorage.getItem(TOKEN_KEY);
+      // Migrate tokens persisted by older versions (and by the e2e
+      // storage-state seed) from localStorage into the per-tab store,
+      // then remove the persistent copy.
+      const legacy = window.localStorage.getItem(TOKEN_KEY);
+      if (legacy) {
+        window.sessionStorage.setItem(TOKEN_KEY, legacy);
+        window.localStorage.removeItem(TOKEN_KEY);
+      }
+      const stored = window.sessionStorage.getItem(TOKEN_KEY);
       if (!stored) return null;
       if (isTokenExpired(stored)) return null;
       return stored;
@@ -81,9 +86,10 @@ const tokenStore = (() => {
     setToken(value: string | null) {
       if (typeof window === "undefined") return;
       if (value === null) {
+        window.sessionStorage.removeItem(TOKEN_KEY);
         window.localStorage.removeItem(TOKEN_KEY);
       } else {
-        window.localStorage.setItem(TOKEN_KEY, value);
+        window.sessionStorage.setItem(TOKEN_KEY, value);
       }
       listeners.forEach((cb) => cb());
     },
