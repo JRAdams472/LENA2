@@ -29,6 +29,15 @@ type AnalyticsInteractionEvent struct {
 	CreatedAt  time.Time   `json:"created_at"`
 }
 
+type AnalyticsRecipeRecommendation struct {
+	RecommendationID int64          `json:"recommendation_id"`
+	UserID           int64          `json:"user_id"`
+	RecipeID         int64          `json:"recipe_id"`
+	Reason           string         `json:"reason"`
+	Score            pgtype.Numeric `json:"score"`
+	GeneratedAt      time.Time      `json:"generated_at"`
+}
+
 type AnalyticsUserSelectionCount struct {
 	EntityType     string             `json:"entity_type"`
 	EntityID       int64              `json:"entity_id"`

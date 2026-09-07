@@ -723,6 +723,58 @@ func TestListRatingSummaries(t *testing.T) {
 	})
 }
 
+func TestListRatingRecencySuggestions(t *testing.T) {
+	recent := time.Now().AddDate(0, 0, -30)
+	stale := time.Now().AddDate(0, 0, -90)
+
+	t.Run("dedupes per recipe, never-planned first", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRatingRecencyRows(gomock.Any(), sqlc.ListRatingRecencyRowsParams{UserID: 3, Rating: 4}).
+			Return([]sqlc.ListRatingRecencyRowsRow{
+				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: stale, Valid: true}},
+				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: recent, Valid: true}},
+				{RecipeID: 8, Rating: 4, LastUsed: pgtype.Date{}},
+			}, nil)
+
+		got, err := svc.ListRatingRecencySuggestions(context.Background(), 3, 4, 10)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		// Recipe 8 was never planned: score 1 sorts first.
+		assert.Equal(t, int64(8), got[0].RecipeID)
+		assert.Nil(t, got[0].LastUsed)
+		assert.InDelta(t, 1.0, got[0].Score, 1e-9)
+		// Recipe 7 keeps its most recent use: ~30 days → score ~1/6.
+		assert.Equal(t, int64(7), got[1].RecipeID)
+		require.NotNil(t, got[1].LastUsed)
+		assert.True(t, got[1].LastUsed.Equal(recent))
+		assert.InDelta(t, 30.0/180.0, got[1].Score, 0.02)
+	})
+
+	t.Run("limit truncates", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRatingRecencyRows(gomock.Any(), gomock.Any()).
+			Return([]sqlc.ListRatingRecencyRowsRow{
+				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: recent, Valid: true}},
+				{RecipeID: 8, Rating: 4, LastUsed: pgtype.Date{}},
+			}, nil)
+
+		got, err := svc.ListRatingRecencySuggestions(context.Background(), 3, 4, 1)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, int64(8), got[0].RecipeID)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListRatingRecencyRows(gomock.Any(), gomock.Any()).Return(nil, errDB)
+
+		_, err := svc.ListRatingRecencySuggestions(context.Background(), 3, 4, 10)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "list rating recency suggestions:")
+	})
+}
+
 func TestGetRecipesByIDs(t *testing.T) {
 	t.Run("success maps rows", func(t *testing.T) {
 		svc, mq := newService(t)

@@ -20,6 +20,7 @@ import {
   Recipe,
   RecipeItem,
   RecipeStep,
+  RecipeRecommendation,
   MealPlan,
   MealSlot,
   MealSlotItem,
@@ -243,6 +244,12 @@ interface GqlRecipe {
 interface GqlRecipePage {
   items: GqlRecipe[];
   pageInfo: GqlPageInfo;
+}
+
+interface GqlRecipeRecommendation {
+  recipe: GqlRecipe;
+  reason: string;
+  score: number;
 }
 
 interface GqlGrapeVariety {
@@ -1810,6 +1817,18 @@ export const api = {
       `mutation ($recipeId: ID!, $isFavorite: Boolean!) { setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite) }`,
       { recipeId: String(id), isFavorite }
     );
+  },
+
+  getRecommendedRecipes: async (limit = 10): Promise<RecipeRecommendation[]> => {
+    const data = await request<{ recommendedRecipes: GqlRecipeRecommendation[] }>(
+      `query ($limit: Int) { recommendedRecipes(limit: $limit) { recipe { ${RECIPE_FIELDS} } reason score } }`,
+      { limit }
+    );
+    return (data.recommendedRecipes ?? []).map((r) => ({
+      recipe: toRecipe(r.recipe),
+      reason: r.reason,
+      score: r.score,
+    }));
   },
 
   rateRecipe: async (id: number, rating: number): Promise<Recipe> => {

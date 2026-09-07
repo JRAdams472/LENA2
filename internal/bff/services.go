@@ -127,6 +127,7 @@ type RecipeService interface {
 	GetUserRating(ctx context.Context, userID, recipeID int64) (recipe.RecipeRating, error)
 	ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]recipe.RecipeRating, error)
 	ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error)
+	ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]recipe.RatingRecencySuggestion, error)
 }
 
 var _ RecipeService = (*recipe.Service)(nil)
@@ -154,6 +155,8 @@ type AnalyticsService interface {
 	GetGlobalSelectionCounts(ctx context.Context, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error)
 	TopUserSelections(ctx context.Context, userID int64, entityType string, limit int32) ([]analytics.SelectionCount, error)
 	TopGlobalSelections(ctx context.Context, entityType string, limit int32) ([]analytics.SelectionCount, error)
+	ListRecipeRecommendations(ctx context.Context, userID int64, reason string, limit int32) ([]analytics.Recommendation, error)
+	ComputeIngredientOverlapSuggestions(ctx context.Context, newRecipeID int64) (int, error)
 }
 
 var _ AnalyticsService = (*analytics.Service)(nil)

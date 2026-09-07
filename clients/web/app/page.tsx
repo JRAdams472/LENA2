@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, Fragment } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import Typography from "@mui/material/Typography";
@@ -10,6 +11,16 @@ import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
+
+const REASON_LABELS: Record<string, string> = {
+  ingredient_overlap: "Similar to your menu",
+  rating_recency: "Due for a revisit",
+  collaborative_filtering: "Recommended for you",
+};
+
+function reasonLabel(reason: string) {
+  return REASON_LABELS[reason] ?? "Recommended for you";
+}
 
 function isDateInRange(date: Date, weekStartDate: string) {
   const start = new Date(weekStartDate);
@@ -53,6 +64,11 @@ export default function Dashboard() {
     queryKey: ["recipes"],
     queryFn: () => api.getRecipes(),
     enabled: !!activePlanId,
+  });
+
+  const suggestionsQuery = useQuery({
+    queryKey: ["recommendedRecipes"],
+    queryFn: () => api.getRecommendedRecipes(10),
   });
 
   const todaySlots = useMemo(() => {
@@ -111,6 +127,39 @@ export default function Dashboard() {
                 </Fragment>
               );
             })}
+          </Box>
+        )}
+      </Paper>
+
+      <Paper sx={{ p: 2, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Suggested for You
+        </Typography>
+        {suggestionsQuery.isLoading && <CircularProgress />}
+        {suggestionsQuery.error && (
+          <Alert severity="error">
+            {(suggestionsQuery.error as Error).message}
+          </Alert>
+        )}
+        {!suggestionsQuery.isLoading &&
+          !suggestionsQuery.error &&
+          (suggestionsQuery.data ?? []).length === 0 && (
+            <Typography color="text.secondary">
+              No suggestions yet — rate some recipes and plan a few meals.
+            </Typography>
+          )}
+        {(suggestionsQuery.data ?? []).length > 0 && (
+          <Box component="ul" sx={{ m: 0, pl: 2 }}>
+            {(suggestionsQuery.data ?? []).map((s) => (
+              <li key={`${s.recipe.recipeID}-${s.reason}`}>
+                <Link href={`/recipes/${s.recipe.recipeID}`}>
+                  {s.recipe.recipeName}
+                </Link>{" "}
+                <Typography component="span" variant="body2" color="text.secondary">
+                  — {reasonLabel(s.reason)}
+                </Typography>
+              </li>
+            ))}
           </Box>
         )}
       </Paper>

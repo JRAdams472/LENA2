@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -367,6 +368,110 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 }
 
 func recBoolPtr(b bool) *bool { return &b }
+
+func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
+	t.Run("merges, dedupes, and sorts by score", func(t *testing.T) {
+		rec, _, up := newRecMocks(t)
+		an := mock.NewMockAnalyticsService(gomock.NewController(t))
+		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), analytics.ReasonIngredientOverlap, int32(10)).
+			Return([]analytics.Recommendation{
+				{RecipeID: 7, Reason: analytics.ReasonIngredientOverlap, Score: 0.9},
+			}, nil)
+		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), int64(11), int16(ratingRecencyMinRating), int32(10)).
+			Return([]recipe.RatingRecencySuggestion{
+				{RecipeID: 8, Score: 1},
+				{RecipeID: 7, Score: 0.5},
+			}, nil)
+		// Score order: 8 (1.0) before 7 (0.9); 7 keeps its overlap reason.
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{8, 7}).Return([]recipe.Recipe{
+			{RecipeID: 7, Name: "A"},
+			{RecipeID: 8, Name: "B"},
+		}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{8, 7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{8, 7}).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{8, 7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{8, 7}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{8, 7}).Return(nil, nil)
+		an.EXPECT().GetUserSelectionCounts(gomock.Any(), int64(11), analytics.EntityRecipe, []int64{8, 7}).Return(nil, nil)
+		an.EXPECT().GetGlobalSelectionCounts(gomock.Any(), analytics.EntityRecipe, []int64{8, 7}).Return(nil, nil)
+
+		r := &Resolver{RecipeService: rec, UserPrefsService: up, AnalyticsService: an}
+		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, res, 2)
+		assert.Equal(t, graphql.ID("8"), res[0].Recipe().ID())
+		assert.Equal(t, analytics.ReasonRatingRecency, res[0].Reason())
+		assert.InDelta(t, 1.0, res[0].Score(), 1e-9)
+		assert.Equal(t, graphql.ID("7"), res[1].Recipe().ID())
+		assert.Equal(t, analytics.ReasonIngredientOverlap, res[1].Reason())
+		assert.InDelta(t, 0.9, res[1].Score(), 1e-9)
+	})
+
+	t.Run("recency wins when its score is higher", func(t *testing.T) {
+		rec, _, up := newRecMocks(t)
+		an := mock.NewMockAnalyticsService(gomock.NewController(t))
+		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).
+			Return([]analytics.Recommendation{
+				{RecipeID: 7, Reason: analytics.ReasonIngredientOverlap, Score: 0.4},
+			}, nil)
+		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), int64(11), int16(ratingRecencyMinRating), int32(10)).
+			Return([]recipe.RatingRecencySuggestion{{RecipeID: 7, Score: 0.8}}, nil)
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{7}).Return([]recipe.Recipe{{RecipeID: 7, Name: "A"}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{7}).Return(nil, nil)
+		an.EXPECT().GetUserSelectionCounts(gomock.Any(), int64(11), analytics.EntityRecipe, []int64{7}).Return(nil, nil)
+		an.EXPECT().GetGlobalSelectionCounts(gomock.Any(), analytics.EntityRecipe, []int64{7}).Return(nil, nil)
+
+		r := &Resolver{RecipeService: rec, UserPrefsService: up, AnalyticsService: an}
+		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		assert.Equal(t, analytics.ReasonRatingRecency, res[0].Reason())
+		assert.InDelta(t, 0.8, res[0].Score(), 1e-9)
+	})
+
+	t.Run("empty when nothing suggests", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		an := mock.NewMockAnalyticsService(gomock.NewController(t))
+		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).Return(nil, nil)
+		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), int64(11), int16(ratingRecencyMinRating), int32(10)).Return(nil, nil)
+
+		r := &Resolver{RecipeService: rec, AnalyticsService: an}
+		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		assert.Empty(t, res)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{}
+		_, err := r.RecommendedRecipes(context.Background(), struct{ Limit int32 }{Limit: 10})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("overlap error propagates", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		an := mock.NewMockAnalyticsService(gomock.NewController(t))
+		an.EXPECT().ListRecipeRecommendations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errRecBoom)
+
+		r := &Resolver{RecipeService: rec, AnalyticsService: an}
+		_, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
+		require.ErrorIs(t, err, errRecBoom)
+	})
+
+	t.Run("recency error propagates", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		an := mock.NewMockAnalyticsService(gomock.NewController(t))
+		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).Return(nil, nil)
+		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errRecBoom)
+
+		r := &Resolver{RecipeService: rec, AnalyticsService: an}
+		_, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
+		require.ErrorIs(t, err, errRecBoom)
+	})
+}
 
 func TestResolver_Recipe_RateRecipe(t *testing.T) {
 	t.Run("happy path returns recipe with rating fields", func(t *testing.T) {

@@ -266,6 +266,54 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 	return items, nil
 }
 
+const listRatingRecencyRows = `-- name: ListRatingRecencyRows :many
+SELECT rr.recipe_id,
+       rr.rating,
+       h.week_start_date AS last_used
+FROM recipe.recipe_rating rr
+LEFT JOIN (
+    SELECT ms.recipe_id, mp.user_id, mp.week_start_date
+    FROM mealplan.meal_slot ms
+    JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
+    WHERE ms.recipe_id IS NOT NULL
+) h ON h.recipe_id = rr.recipe_id AND h.user_id = rr.user_id
+WHERE rr.user_id = $1 AND rr.rating >= $2
+`
+
+type ListRatingRecencyRowsParams struct {
+	UserID int64 `json:"user_id"`
+	Rating int16 `json:"rating"`
+}
+
+type ListRatingRecencyRowsRow struct {
+	RecipeID int64       `json:"recipe_id"`
+	Rating   int16       `json:"rating"`
+	LastUsed pgtype.Date `json:"last_used"`
+}
+
+// For one user: every (rated recipe, meal-plan week it appeared) pair for
+// recipes rated at or above a threshold. last_used is NULL for ratings
+// with no matching slot; callers aggregate to the most recent week.
+func (q *Queries) ListRatingRecencyRows(ctx context.Context, arg ListRatingRecencyRowsParams) ([]ListRatingRecencyRowsRow, error) {
+	rows, err := q.db.Query(ctx, listRatingRecencyRows, arg.UserID, arg.Rating)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRatingRecencyRowsRow{}
+	for rows.Next() {
+		var i ListRatingRecencyRowsRow
+		if err := rows.Scan(&i.RecipeID, &i.Rating, &i.LastUsed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecipeItems = `-- name: ListRecipeItems :many
 SELECT recipe_id, item_id, quantity, notes, is_optional, ingredient_id, unit_id, recipe_item_id, section_name, display_order
 FROM recipe.recipe_item

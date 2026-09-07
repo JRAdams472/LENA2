@@ -20,6 +20,10 @@ type Querier interface {
 	GetRecipeByID(ctx context.Context, recipeID int64) (RecipeRecipe, error)
 	GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error)
 	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
+	// For one user: every (rated recipe, meal-plan week it appeared) pair for
+	// recipes rated at or above a threshold. last_used is NULL for ratings
+	// with no matching slot; callers aggregate to the most recent week.
+	ListRatingRecencyRows(ctx context.Context, arg ListRatingRecencyRowsParams) ([]ListRatingRecencyRowsRow, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
 	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
 	ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error)
