@@ -71,6 +71,21 @@ func (mr *MockQuerierMockRecorder) GetUserSelectionCounts(ctx, arg any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockQuerier)(nil).GetUserSelectionCounts), ctx, arg)
 }
 
+// IngredientOverlapScores mocks base method.
+func (m *MockQuerier) IngredientOverlapScores(ctx context.Context, arg sqlc.IngredientOverlapScoresParams) ([]sqlc.IngredientOverlapScoresRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IngredientOverlapScores", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.IngredientOverlapScoresRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IngredientOverlapScores indicates an expected call of IngredientOverlapScores.
+func (mr *MockQuerierMockRecorder) IngredientOverlapScores(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IngredientOverlapScores", reflect.TypeOf((*MockQuerier)(nil).IngredientOverlapScores), ctx, arg)
+}
+
 // InsertInteractionEvent mocks base method.
 func (m *MockQuerier) InsertInteractionEvent(ctx context.Context, arg sqlc.InsertInteractionEventParams) error {
 	m.ctrl.T.Helper()
@@ -83,6 +98,21 @@ func (m *MockQuerier) InsertInteractionEvent(ctx context.Context, arg sqlc.Inser
 func (mr *MockQuerierMockRecorder) InsertInteractionEvent(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertInteractionEvent", reflect.TypeOf((*MockQuerier)(nil).InsertInteractionEvent), ctx, arg)
+}
+
+// ListRecipeRecommendations mocks base method.
+func (m *MockQuerier) ListRecipeRecommendations(ctx context.Context, arg sqlc.ListRecipeRecommendationsParams) ([]sqlc.AnalyticsRecipeRecommendation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeRecommendations", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.AnalyticsRecipeRecommendation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeRecommendations indicates an expected call of ListRecipeRecommendations.
+func (mr *MockQuerierMockRecorder) ListRecipeRecommendations(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeRecommendations", reflect.TypeOf((*MockQuerier)(nil).ListRecipeRecommendations), ctx, arg)
 }
 
 // TopGlobalSelections mocks base method.
@@ -127,6 +157,20 @@ func (m *MockQuerier) UpsertGlobalSelectionCount(ctx context.Context, arg sqlc.U
 func (mr *MockQuerierMockRecorder) UpsertGlobalSelectionCount(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertGlobalSelectionCount", reflect.TypeOf((*MockQuerier)(nil).UpsertGlobalSelectionCount), ctx, arg)
+}
+
+// UpsertRecipeRecommendation mocks base method.
+func (m *MockQuerier) UpsertRecipeRecommendation(ctx context.Context, arg sqlc.UpsertRecipeRecommendationParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertRecipeRecommendation", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertRecipeRecommendation indicates an expected call of UpsertRecipeRecommendation.
+func (mr *MockQuerierMockRecorder) UpsertRecipeRecommendation(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertRecipeRecommendation", reflect.TypeOf((*MockQuerier)(nil).UpsertRecipeRecommendation), ctx, arg)
 }
 
 // UpsertUserSelectionCount mocks base method.

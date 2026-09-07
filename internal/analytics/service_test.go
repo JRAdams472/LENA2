@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -14,6 +15,14 @@ import (
 )
 
 var errBoom = errors.New("boom")
+
+func mustNum(f float64) pgtype.Numeric {
+	n, err := numericFromFloat64(f)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
 
 func newTestService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
@@ -114,4 +123,92 @@ func TestTopGlobalSelections(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, counts, 1)
 	assert.Equal(t, int64(3), counts[0].EntityID)
+}
+
+func TestComputeIngredientOverlapSuggestions(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("upserts one row per qualifying user", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().IngredientOverlapScores(gomock.Any(), sqlc.IngredientOverlapScoresParams{
+			RecipeID: 7,
+			MinScore: mustNum(OverlapMinScore),
+		}).Return([]sqlc.IngredientOverlapScoresRow{
+			{UserID: 1, Score: 0.5},
+			{UserID: 2, Score: 0.75},
+		}, nil)
+		q.EXPECT().UpsertRecipeRecommendation(gomock.Any(), sqlc.UpsertRecipeRecommendationParams{
+			UserID: 1, RecipeID: 7, Reason: ReasonIngredientOverlap, Score: mustNum(0.5),
+		}).Return(nil)
+		q.EXPECT().UpsertRecipeRecommendation(gomock.Any(), sqlc.UpsertRecipeRecommendationParams{
+			UserID: 2, RecipeID: 7, Reason: ReasonIngredientOverlap, Score: mustNum(0.75),
+		}).Return(nil)
+
+		n, err := s.ComputeIngredientOverlapSuggestions(ctx, 7)
+		require.NoError(t, err)
+		assert.Equal(t, 2, n)
+	})
+
+	t.Run("no qualifying users writes nothing", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().IngredientOverlapScores(gomock.Any(), gomock.Any()).
+			Return([]sqlc.IngredientOverlapScoresRow{}, nil)
+
+		n, err := s.ComputeIngredientOverlapSuggestions(ctx, 7)
+		require.NoError(t, err)
+		assert.Equal(t, 0, n)
+	})
+
+	t.Run("query error propagates", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().IngredientOverlapScores(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+
+		_, err := s.ComputeIngredientOverlapSuggestions(ctx, 7)
+		assert.ErrorIs(t, err, errBoom)
+		assert.ErrorContains(t, err, "compute ingredient overlap")
+	})
+
+	t.Run("upsert error stops after partial writes", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().IngredientOverlapScores(gomock.Any(), gomock.Any()).
+			Return([]sqlc.IngredientOverlapScoresRow{
+				{UserID: 1, Score: 0.5},
+				{UserID: 2, Score: 0.75},
+			}, nil)
+		q.EXPECT().UpsertRecipeRecommendation(gomock.Any(), gomock.Any()).Return(errBoom)
+
+		n, err := s.ComputeIngredientOverlapSuggestions(ctx, 7)
+		assert.ErrorIs(t, err, errBoom)
+		assert.Equal(t, 0, n)
+	})
+}
+
+func TestListRecipeRecommendations(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success maps rows", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().ListRecipeRecommendations(gomock.Any(), sqlc.ListRecipeRecommendationsParams{
+			UserID: 3, Reason: ReasonIngredientOverlap, Limit: 10,
+		}).Return([]sqlc.AnalyticsRecipeRecommendation{
+			{RecommendationID: 5, UserID: 3, RecipeID: 7, Reason: ReasonIngredientOverlap, Score: mustNum(0.8)},
+		}, nil)
+
+		recs, err := s.ListRecipeRecommendations(ctx, 3, ReasonIngredientOverlap, 10)
+		require.NoError(t, err)
+		require.Len(t, recs, 1)
+		assert.Equal(t, int64(5), recs[0].RecommendationID)
+		assert.Equal(t, int64(7), recs[0].RecipeID)
+		assert.Equal(t, ReasonIngredientOverlap, recs[0].Reason)
+		assert.InDelta(t, 0.8, recs[0].Score, 1e-9)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().ListRecipeRecommendations(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+
+		_, err := s.ListRecipeRecommendations(ctx, 3, ReasonIngredientOverlap, 10)
+		assert.ErrorIs(t, err, errBoom)
+		assert.ErrorContains(t, err, "list recipe recommendations")
+	})
 }

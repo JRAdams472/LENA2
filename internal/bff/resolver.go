@@ -86,6 +86,28 @@ func recordEventAsync(svc AnalyticsService, userID int64, by string, e analytics
 	}()
 }
 
+// computeOverlapAsync recomputes ingredient-overlap recommendations for a
+// newly created recipe in a detached, time-bounded goroutine so recipe
+// creation stays fast. If recommendation volume outgrows this in-process
+// approach, it should move to a proper job queue.
+func computeOverlapAsync(svc AnalyticsService, newRecipeID int64) {
+	if svc == nil {
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Default().Error("analytics panic recovered", "recover", r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := svc.ComputeIngredientOverlapSuggestions(ctx, newRecipeID); err != nil {
+			slog.Default().Error("compute ingredient overlap suggestions failed", "error", err)
+		}
+	}()
+}
+
 func optionalID(id *graphql.ID) (*int64, error) {
 	if id == nil {
 		return nil, nil

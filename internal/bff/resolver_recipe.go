@@ -1,8 +1,10 @@
 package bff
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
@@ -231,6 +233,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 		EntityType: analytics.EntityRecipe,
 		EntityID:   rec.RecipeID,
 	})
+	computeOverlapAsync(r.AnalyticsService, rec.RecipeID)
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
@@ -366,6 +369,103 @@ func (r *Resolver) RateRecipe(ctx context.Context, args struct {
 	}
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc}, nil
 }
+
+// ratingRecencyMinRating is the minimum star rating for a recipe to be
+// suggested under the rating_recency reason.
+const ratingRecencyMinRating = 4
+
+// RecommendedRecipes merges cached ingredient-overlap recommendations with
+// live rating-recency suggestions, deduplicates by recipe keeping the
+// highest score, and returns up to limit results sorted by score.
+func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit int32 }) ([]*recipeRecommendationResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	limit := clamp(args.Limit, 1, 50)
+
+	overlap, err := r.AnalyticsService.ListRecipeRecommendations(ctx, u.UserID, analytics.ReasonIngredientOverlap, limit)
+	if err != nil {
+		return nil, err
+	}
+	recency, err := r.RecipeService.ListRatingRecencySuggestions(ctx, u.UserID, ratingRecencyMinRating, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	type scoredRec struct {
+		reason string
+		score  float64
+	}
+	best := make(map[int64]scoredRec, len(overlap)+len(recency))
+	for _, o := range overlap {
+		best[o.RecipeID] = scoredRec{reason: analytics.ReasonIngredientOverlap, score: o.Score}
+	}
+	for _, s := range recency {
+		if cur, ok := best[s.RecipeID]; !ok || s.Score > cur.score {
+			best[s.RecipeID] = scoredRec{reason: analytics.ReasonRatingRecency, score: s.Score}
+		}
+	}
+	recipeIDs := make([]int64, 0, len(best))
+	for id := range best {
+		recipeIDs = append(recipeIDs, id)
+	}
+	slices.SortFunc(recipeIDs, func(a, b int64) int {
+		if best[a].score != best[b].score {
+			return cmp.Compare(best[b].score, best[a].score)
+		}
+		return cmp.Compare(a, b)
+	})
+	if int32(len(recipeIDs)) > limit {
+		recipeIDs = recipeIDs[:limit]
+	}
+
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, recipeIDs, rc); err != nil {
+		return nil, err
+	}
+	out := make([]*recipeRecommendationResolver, 0, len(recipeIDs))
+	for _, id := range recipeIDs {
+		rec, ok := rc.recipes[id]
+		if !ok {
+			continue
+		}
+		out = append(out, &recipeRecommendationResolver{
+			inv:    r.InventoryService,
+			rec:    r.RecipeService,
+			up:     r.UserPrefsService,
+			user:   u,
+			recipe: rec,
+			reason: best[id].reason,
+			score:  best[id].score,
+			rc:     rc,
+		})
+	}
+	return out, nil
+}
+
+// recipeRecommendationResolver resolves a scored recipe suggestion.
+type recipeRecommendationResolver struct {
+	inv    InventoryService
+	rec    RecipeService
+	up     UserPrefsService
+	user   currentuser.User
+	recipe recipe.Recipe
+	reason string
+	score  float64
+	rc     *recipeChildren
+}
+
+func (r *recipeRecommendationResolver) Recipe() *recipeResolver {
+	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipe, rc: r.rc}
+}
+
+func (r *recipeRecommendationResolver) Reason() string { return r.reason }
+
+func (r *recipeRecommendationResolver) Score() float64 { return r.score }
 
 // recipeResolver resolves Recipe fields. When rc is non-nil its
 // batch-loaded maps are used instead of per-recipe service calls.

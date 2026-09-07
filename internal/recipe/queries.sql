@@ -125,3 +125,19 @@ SELECT recipe_id,
 FROM recipe.recipe_rating
 WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
 GROUP BY recipe_id;
+
+-- name: ListRatingRecencyRows :many
+-- For one user: every (rated recipe, meal-plan week it appeared) pair for
+-- recipes rated at or above a threshold. last_used is NULL for ratings
+-- with no matching slot; callers aggregate to the most recent week.
+SELECT rr.recipe_id,
+       rr.rating,
+       h.week_start_date AS last_used
+FROM recipe.recipe_rating rr
+LEFT JOIN (
+    SELECT ms.recipe_id, mp.user_id, mp.week_start_date
+    FROM mealplan.meal_slot ms
+    JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
+    WHERE ms.recipe_id IS NOT NULL
+) h ON h.recipe_id = rr.recipe_id AND h.user_id = rr.user_id
+WHERE rr.user_id = $1 AND rr.rating >= $2;

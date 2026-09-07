@@ -198,6 +198,12 @@ export interface Recipe extends AuditableEntity {
   ratingCount: number;
 }
 
+export interface RecipeRecommendation {
+  recipe: Recipe;
+  reason: string;
+  score: number;
+}
+
 export interface RecipeItem {
   recipeID: number;
   itemID: number;

@@ -19,6 +19,7 @@ type Query {
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
+  recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
   userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
   userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
   bottle(id: ID!): Bottle
@@ -244,6 +245,12 @@ type Recipe {
   myRating: Int
   averageRating: Float
   ratingCount: Int!
+}
+
+type RecipeRecommendation {
+  recipe: Recipe!
+  reason: String!
+  score: Float!
 }
 
 type RecipeItem {

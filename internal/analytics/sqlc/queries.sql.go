@@ -85,6 +85,73 @@ func (q *Queries) GetUserSelectionCounts(ctx context.Context, arg GetUserSelecti
 	return items, nil
 }
 
+const ingredientOverlapScores = `-- name: IngredientOverlapScores :many
+WITH new_items AS (
+    SELECT item_id
+    FROM recipe.recipe_item
+    WHERE recipe_id = $2::bigint
+),
+hist AS (
+    SELECT DISTINCT mp.user_id, ms.recipe_id
+    FROM mealplan.meal_slot ms
+    JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
+    WHERE ms.recipe_id IS NOT NULL AND ms.recipe_id <> $2::bigint
+),
+scored AS (
+    SELECT h.user_id, MAX(s.score) AS score
+    FROM hist h
+    CROSS JOIN LATERAL (
+        SELECT
+            COUNT(*) FILTER (WHERE n.item_id IS NOT NULL)::numeric
+            / NULLIF(
+                (SELECT COUNT(*) FROM new_items) + COUNT(*)
+                - COUNT(*) FILTER (WHERE n.item_id IS NOT NULL),
+                0
+            ) AS score
+        FROM recipe.recipe_item ri
+        LEFT JOIN new_items n ON n.item_id = ri.item_id
+        WHERE ri.recipe_id = h.recipe_id
+    ) s
+    GROUP BY h.user_id
+)
+SELECT user_id, score::float8 AS score
+FROM scored
+WHERE score >= $1::numeric
+`
+
+type IngredientOverlapScoresParams struct {
+	MinScore pgtype.Numeric `json:"min_score"`
+	RecipeID int64          `json:"recipe_id"`
+}
+
+type IngredientOverlapScoresRow struct {
+	UserID int64   `json:"user_id"`
+	Score  float64 `json:"score"`
+}
+
+// For a newly created recipe ($1), compute each user's best Jaccard
+// similarity between the new recipe's item set and the item sets of the
+// recipes in that user's meal-plan history (|intersection| / |union|).
+func (q *Queries) IngredientOverlapScores(ctx context.Context, arg IngredientOverlapScoresParams) ([]IngredientOverlapScoresRow, error) {
+	rows, err := q.db.Query(ctx, ingredientOverlapScores, arg.MinScore, arg.RecipeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngredientOverlapScoresRow{}
+	for rows.Next() {
+		var i IngredientOverlapScoresRow
+		if err := rows.Scan(&i.UserID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertInteractionEvent = `-- name: InsertInteractionEvent :exec
 INSERT INTO analytics.interaction_event (
     user_id, event_type, entity_type, entity_id, search_term, weight, metadata, created_at
@@ -113,6 +180,47 @@ func (q *Queries) InsertInteractionEvent(ctx context.Context, arg InsertInteract
 		arg.Metadata,
 	)
 	return err
+}
+
+const listRecipeRecommendations = `-- name: ListRecipeRecommendations :many
+SELECT recommendation_id, user_id, recipe_id, reason, score, generated_at
+FROM analytics.recipe_recommendation
+WHERE user_id = $1 AND reason = $2
+ORDER BY score DESC
+LIMIT $3
+`
+
+type ListRecipeRecommendationsParams struct {
+	UserID int64  `json:"user_id"`
+	Reason string `json:"reason"`
+	Limit  int32  `json:"limit"`
+}
+
+func (q *Queries) ListRecipeRecommendations(ctx context.Context, arg ListRecipeRecommendationsParams) ([]AnalyticsRecipeRecommendation, error) {
+	rows, err := q.db.Query(ctx, listRecipeRecommendations, arg.UserID, arg.Reason, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AnalyticsRecipeRecommendation{}
+	for rows.Next() {
+		var i AnalyticsRecipeRecommendation
+		if err := rows.Scan(
+			&i.RecommendationID,
+			&i.UserID,
+			&i.RecipeID,
+			&i.Reason,
+			&i.Score,
+			&i.GeneratedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const topGlobalSelections = `-- name: TopGlobalSelections :many
@@ -211,6 +319,32 @@ type UpsertGlobalSelectionCountParams struct {
 
 func (q *Queries) UpsertGlobalSelectionCount(ctx context.Context, arg UpsertGlobalSelectionCountParams) error {
 	_, err := q.db.Exec(ctx, upsertGlobalSelectionCount, arg.EntityType, arg.EntityID)
+	return err
+}
+
+const upsertRecipeRecommendation = `-- name: UpsertRecipeRecommendation :exec
+INSERT INTO analytics.recipe_recommendation (user_id, recipe_id, reason, score)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, recipe_id, reason)
+    DO UPDATE SET
+        score        = EXCLUDED.score,
+        generated_at = now()
+`
+
+type UpsertRecipeRecommendationParams struct {
+	UserID   int64          `json:"user_id"`
+	RecipeID int64          `json:"recipe_id"`
+	Reason   string         `json:"reason"`
+	Score    pgtype.Numeric `json:"score"`
+}
+
+func (q *Queries) UpsertRecipeRecommendation(ctx context.Context, arg UpsertRecipeRecommendationParams) error {
+	_, err := q.db.Exec(ctx, upsertRecipeRecommendation,
+		arg.UserID,
+		arg.RecipeID,
+		arg.Reason,
+		arg.Score,
+	)
 	return err
 }
 

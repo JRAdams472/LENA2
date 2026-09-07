@@ -1346,6 +1346,21 @@ func (mr *MockRecipeServiceMockRecorder) GetUserRating(ctx, userID, recipeID any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserRating", reflect.TypeOf((*MockRecipeService)(nil).GetUserRating), ctx, userID, recipeID)
 }
 
+// ListRatingRecencySuggestions mocks base method.
+func (m *MockRecipeService) ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]recipe.RatingRecencySuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRatingRecencySuggestions", ctx, userID, minRating, limit)
+	ret0, _ := ret[0].([]recipe.RatingRecencySuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRatingRecencySuggestions indicates an expected call of ListRatingRecencySuggestions.
+func (mr *MockRecipeServiceMockRecorder) ListRatingRecencySuggestions(ctx, userID, minRating, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingRecencySuggestions", reflect.TypeOf((*MockRecipeService)(nil).ListRatingRecencySuggestions), ctx, userID, minRating, limit)
+}
+
 // ListRatingSummaries mocks base method.
 func (m *MockRecipeService) ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error) {
 	m.ctrl.T.Helper()
@@ -1720,6 +1735,21 @@ func (m *MockAnalyticsService) EXPECT() *MockAnalyticsServiceMockRecorder {
 	return m.recorder
 }
 
+// ComputeIngredientOverlapSuggestions mocks base method.
+func (m *MockAnalyticsService) ComputeIngredientOverlapSuggestions(ctx context.Context, newRecipeID int64) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ComputeIngredientOverlapSuggestions", ctx, newRecipeID)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ComputeIngredientOverlapSuggestions indicates an expected call of ComputeIngredientOverlapSuggestions.
+func (mr *MockAnalyticsServiceMockRecorder) ComputeIngredientOverlapSuggestions(ctx, newRecipeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ComputeIngredientOverlapSuggestions", reflect.TypeOf((*MockAnalyticsService)(nil).ComputeIngredientOverlapSuggestions), ctx, newRecipeID)
+}
+
 // GetGlobalSelectionCounts mocks base method.
 func (m *MockAnalyticsService) GetGlobalSelectionCounts(ctx context.Context, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error) {
 	m.ctrl.T.Helper()
@@ -1748,6 +1778,21 @@ func (m *MockAnalyticsService) GetUserSelectionCounts(ctx context.Context, userI
 func (mr *MockAnalyticsServiceMockRecorder) GetUserSelectionCounts(ctx, userID, entityType, entityIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockAnalyticsService)(nil).GetUserSelectionCounts), ctx, userID, entityType, entityIDs)
+}
+
+// ListRecipeRecommendations mocks base method.
+func (m *MockAnalyticsService) ListRecipeRecommendations(ctx context.Context, userID int64, reason string, limit int32) ([]analytics.Recommendation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeRecommendations", ctx, userID, reason, limit)
+	ret0, _ := ret[0].([]analytics.Recommendation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeRecommendations indicates an expected call of ListRecipeRecommendations.
+func (mr *MockAnalyticsServiceMockRecorder) ListRecipeRecommendations(ctx, userID, reason, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeRecommendations", reflect.TypeOf((*MockAnalyticsService)(nil).ListRecipeRecommendations), ctx, userID, reason, limit)
 }
 
 // RecordEvent mocks base method.

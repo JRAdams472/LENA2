@@ -11,10 +11,16 @@ import (
 type Querier interface {
 	GetGlobalSelectionCounts(ctx context.Context, arg GetGlobalSelectionCountsParams) ([]AnalyticsGlobalSelectionCount, error)
 	GetUserSelectionCounts(ctx context.Context, arg GetUserSelectionCountsParams) ([]AnalyticsUserSelectionCount, error)
+	// For a newly created recipe ($1), compute each user's best Jaccard
+	// similarity between the new recipe's item set and the item sets of the
+	// recipes in that user's meal-plan history (|intersection| / |union|).
+	IngredientOverlapScores(ctx context.Context, arg IngredientOverlapScoresParams) ([]IngredientOverlapScoresRow, error)
 	InsertInteractionEvent(ctx context.Context, arg InsertInteractionEventParams) error
+	ListRecipeRecommendations(ctx context.Context, arg ListRecipeRecommendationsParams) ([]AnalyticsRecipeRecommendation, error)
 	TopGlobalSelections(ctx context.Context, arg TopGlobalSelectionsParams) ([]AnalyticsGlobalSelectionCount, error)
 	TopUserSelections(ctx context.Context, arg TopUserSelectionsParams) ([]AnalyticsUserSelectionCount, error)
 	UpsertGlobalSelectionCount(ctx context.Context, arg UpsertGlobalSelectionCountParams) error
+	UpsertRecipeRecommendation(ctx context.Context, arg UpsertRecipeRecommendationParams) error
 	UpsertUserSelectionCount(ctx context.Context, arg UpsertUserSelectionCountParams) error
 }
 

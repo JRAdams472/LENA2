@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -141,6 +143,103 @@ func (s *Service) RecordEvent(ctx context.Context, e Event, by string) error {
 func metadataJSON(by string) ([]byte, error) {
 	m := map[string]string{"created_by": by}
 	return json.Marshal(m)
+}
+
+// Reason values stored in analytics.recipe_recommendation.
+// ReasonCollaborativeFiltering is reserved for a future external
+// recommender job that writes into the same table.
+const (
+	ReasonIngredientOverlap      = "ingredient_overlap"
+	ReasonRatingRecency          = "rating_recency"
+	ReasonCollaborativeFiltering = "collaborative_filtering"
+)
+
+// OverlapMinScore is the minimum Jaccard similarity required to store an
+// ingredient-overlap recommendation.
+const OverlapMinScore = 0.3
+
+// Recommendation is one scored recipe suggestion for a user.
+type Recommendation struct {
+	RecommendationID int64
+	UserID           int64
+	RecipeID         int64
+	Reason           string
+	Score            float64
+}
+
+// ComputeIngredientOverlapSuggestions scores a newly created recipe against
+// every user's meal-plan history and upserts ingredient-overlap
+// recommendations for users whose best similarity clears OverlapMinScore.
+// It returns the number of recommendation rows written.
+func (s *Service) ComputeIngredientOverlapSuggestions(ctx context.Context, newRecipeID int64) (int, error) {
+	minScore, err := numericFromFloat64(OverlapMinScore)
+	if err != nil {
+		return 0, fmt.Errorf("compute ingredient overlap: %w", err)
+	}
+	rows, err := s.q.IngredientOverlapScores(ctx, sqlc.IngredientOverlapScoresParams{
+		RecipeID: newRecipeID,
+		MinScore: minScore,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("compute ingredient overlap: %w", err)
+	}
+	n := 0
+	for _, r := range rows {
+		score, err := numericFromFloat64(r.Score)
+		if err != nil {
+			return n, fmt.Errorf("compute ingredient overlap: %w", err)
+		}
+		if err := s.q.UpsertRecipeRecommendation(ctx, sqlc.UpsertRecipeRecommendationParams{
+			UserID:   r.UserID,
+			RecipeID: newRecipeID,
+			Reason:   ReasonIngredientOverlap,
+			Score:    score,
+		}); err != nil {
+			return n, fmt.Errorf("upsert recipe recommendation: %w", err)
+		}
+		n++
+	}
+	return n, nil
+}
+
+// ListRecipeRecommendations returns a user's stored recommendations for one
+// reason, highest score first.
+func (s *Service) ListRecipeRecommendations(ctx context.Context, userID int64, reason string, limit int32) ([]Recommendation, error) {
+	rows, err := s.q.ListRecipeRecommendations(ctx, sqlc.ListRecipeRecommendationsParams{
+		UserID: userID,
+		Reason: reason,
+		Limit:  limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list recipe recommendations: %w", err)
+	}
+	out := make([]Recommendation, len(rows))
+	for i := range rows {
+		score, err := rows[i].Score.Float64Value()
+		if err != nil {
+			return nil, fmt.Errorf("list recipe recommendations: %w", err)
+		}
+		out[i] = Recommendation{
+			RecommendationID: rows[i].RecommendationID,
+			UserID:           rows[i].UserID,
+			RecipeID:         rows[i].RecipeID,
+			Reason:           rows[i].Reason,
+			Score:            score.Float64,
+		}
+	}
+	return out, nil
+}
+
+func numericFromFloat64(f float64) (pgtype.Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
+	}
+	var n pgtype.Numeric
+	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {
+		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: %w", f, err)
+	}
+	n.Valid = true
+	return n, nil
 }
 
 // SelectionCount is a single entity's usage frequency for one user and/or

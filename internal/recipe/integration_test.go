@@ -3,11 +3,13 @@ package recipe
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
@@ -343,6 +345,69 @@ func TestIntegrationRecipeRatings(t *testing.T) {
 	assert.Error(t, err)
 	_, err = svc.SetRating(ctx, userA, rec.RecipeID, 6, itBy)
 	assert.Error(t, err)
+}
+
+func TestIntegrationRatingRecency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+	mpSvc := mealplan.NewService(pool)
+
+	userA := testenv.MustUser(ctx, t, pool, "recency-a@example.com")
+	userB := testenv.MustUser(ctx, t, pool, "recency-b@example.com")
+
+	recent, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Recency Recent", IsActive: true}, itBy)
+	require.NoError(t, err)
+	stale, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Recency Stale", IsActive: true}, itBy)
+	require.NoError(t, err)
+	low, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Recency Low", IsActive: true}, itBy)
+	require.NoError(t, err)
+
+	// Ratings above and below the suggestion threshold.
+	_, err = svc.SetRating(ctx, userA, recent.RecipeID, 5, itBy)
+	require.NoError(t, err)
+	_, err = svc.SetRating(ctx, userA, stale.RecipeID, 4, itBy)
+	require.NoError(t, err)
+	_, err = svc.SetRating(ctx, userA, low.RecipeID, 2, itBy)
+	require.NoError(t, err)
+	_, err = svc.SetRating(ctx, userB, stale.RecipeID, 5, itBy)
+	require.NoError(t, err)
+
+	// userA planned `recent` this week; `stale` was never planned.
+	plan, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
+		UserID: userA, Name: "IT Recency Plan", WeekStartDate: time.Now(), IsActive: true,
+	}, itBy)
+	require.NoError(t, err)
+	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
+		MealPlanID: plan.MealPlanID, DayOfWeek: 1, MealType: "dinner", RecipeID: &recent.RecipeID,
+	}, itBy)
+	require.NoError(t, err)
+
+	got, err := svc.ListRatingRecencySuggestions(ctx, userA, 4, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	// Never-planned sorts first with score 1.
+	assert.Equal(t, stale.RecipeID, got[0].RecipeID)
+	assert.InDelta(t, 1.0, got[0].Score, 1e-9)
+	// Planned this week: near-zero recency score.
+	assert.Equal(t, recent.RecipeID, got[1].RecipeID)
+	assert.Less(t, got[1].Score, 0.05)
+
+	// Ratings below the threshold are excluded (low is rated 2).
+	for _, s := range got {
+		assert.NotEqual(t, low.RecipeID, s.RecipeID)
+	}
+
+	// Suggestions are scoped per user: userB only sees `stale`.
+	gotB, err := svc.ListRatingRecencySuggestions(ctx, userB, 4, 10)
+	require.NoError(t, err)
+	require.Len(t, gotB, 1)
+	assert.Equal(t, stale.RecipeID, gotB[0].RecipeID)
 }
 
 func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
