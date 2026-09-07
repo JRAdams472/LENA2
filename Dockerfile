@@ -10,7 +10,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /build/lena ./cmd/lena
 
 # Runtime stage
-FROM alpine:3.21
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates curl
 
