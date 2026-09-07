@@ -136,6 +136,8 @@ var _ RecipeService = (*recipe.Service)(nil)
 type UserPrefsService interface {
 	ListUserBottles(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserBottle, error)
 	ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserItem, error)
+	GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*userprefs.UserBottle, error)
+	GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*userprefs.UserItem, error)
 	CountUserBottles(ctx context.Context, userID int64) (int64, error)
 	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	SetRecipeFavorite(ctx context.Context, userID, recipeID int64, isFavorite bool, by string) (userprefs.RecipeFavorite, error)

@@ -725,15 +725,14 @@ func TestListRatingSummaries(t *testing.T) {
 
 func TestListRatingRecencySuggestions(t *testing.T) {
 	recent := time.Now().AddDate(0, 0, -30)
-	stale := time.Now().AddDate(0, 0, -90)
+	recentScore := 30.0 / 180.0
 
 	t.Run("dedupes per recipe, never-planned first", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListRatingRecencyRows(gomock.Any(), sqlc.ListRatingRecencyRowsParams{UserID: 3, Rating: 4}).
-			Return([]sqlc.ListRatingRecencyRowsRow{
-				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: stale, Valid: true}},
-				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: recent, Valid: true}},
-				{RecipeID: 8, Rating: 4, LastUsed: pgtype.Date{}},
+		mq.EXPECT().ListRatingRecencySuggestions(gomock.Any(), sqlc.ListRatingRecencySuggestionsParams{UserID: 3, Rating: 4, Limit: 10}).
+			Return([]sqlc.ListRatingRecencySuggestionsRow{
+				{RecipeID: 8, Rating: 4, LastUsed: pgtype.Date{}, Score: 1.0},
+				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: recent, Valid: true}, Score: recentScore},
 			}, nil)
 
 		got, err := svc.ListRatingRecencySuggestions(context.Background(), 3, 4, 10)
@@ -747,15 +746,14 @@ func TestListRatingRecencySuggestions(t *testing.T) {
 		assert.Equal(t, int64(7), got[1].RecipeID)
 		require.NotNil(t, got[1].LastUsed)
 		assert.True(t, got[1].LastUsed.Equal(recent))
-		assert.InDelta(t, 30.0/180.0, got[1].Score, 0.02)
+		assert.InDelta(t, recentScore, got[1].Score, 0.02)
 	})
 
 	t.Run("limit truncates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListRatingRecencyRows(gomock.Any(), gomock.Any()).
-			Return([]sqlc.ListRatingRecencyRowsRow{
-				{RecipeID: 7, Rating: 5, LastUsed: pgtype.Date{Time: recent, Valid: true}},
-				{RecipeID: 8, Rating: 4, LastUsed: pgtype.Date{}},
+		mq.EXPECT().ListRatingRecencySuggestions(gomock.Any(), gomock.Eq(sqlc.ListRatingRecencySuggestionsParams{UserID: 3, Rating: 4, Limit: 1})).
+			Return([]sqlc.ListRatingRecencySuggestionsRow{
+				{RecipeID: 8, Rating: 4, LastUsed: pgtype.Date{}, Score: 1.0},
 			}, nil)
 
 		got, err := svc.ListRatingRecencySuggestions(context.Background(), 3, 4, 1)
@@ -766,7 +764,7 @@ func TestListRatingRecencySuggestions(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListRatingRecencyRows(gomock.Any(), gomock.Any()).Return(nil, errDB)
+		mq.EXPECT().ListRatingRecencySuggestions(gomock.Any(), gomock.Any()).Return(nil, errDB)
 
 		_, err := svc.ListRatingRecencySuggestions(context.Background(), 3, 4, 10)
 		require.Error(t, err)

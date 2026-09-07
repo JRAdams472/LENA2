@@ -201,19 +201,19 @@ func (mr *MockQuerierMockRecorder) GetRecipesByIDs(ctx, recipeIds any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipesByIDs", reflect.TypeOf((*MockQuerier)(nil).GetRecipesByIDs), ctx, recipeIds)
 }
 
-// ListRatingRecencyRows mocks base method.
-func (m *MockQuerier) ListRatingRecencyRows(ctx context.Context, arg sqlc.ListRatingRecencyRowsParams) ([]sqlc.ListRatingRecencyRowsRow, error) {
+// ListRatingRecencySuggestions mocks base method.
+func (m *MockQuerier) ListRatingRecencySuggestions(ctx context.Context, arg sqlc.ListRatingRecencySuggestionsParams) ([]sqlc.ListRatingRecencySuggestionsRow, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListRatingRecencyRows", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.ListRatingRecencyRowsRow)
+	ret := m.ctrl.Call(m, "ListRatingRecencySuggestions", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.ListRatingRecencySuggestionsRow)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListRatingRecencyRows indicates an expected call of ListRatingRecencyRows.
-func (mr *MockQuerierMockRecorder) ListRatingRecencyRows(ctx, arg any) *gomock.Call {
+// ListRatingRecencySuggestions indicates an expected call of ListRatingRecencySuggestions.
+func (mr *MockQuerierMockRecorder) ListRatingRecencySuggestions(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingRecencyRows", reflect.TypeOf((*MockQuerier)(nil).ListRatingRecencyRows), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingRecencySuggestions", reflect.TypeOf((*MockQuerier)(nil).ListRatingRecencySuggestions), ctx, arg)
 }
 
 // ListRecipeItems mocks base method.

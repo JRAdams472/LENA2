@@ -20,6 +20,11 @@ SELECT *
 FROM inventory.user_item
 WHERE user_item_id = $1 AND user_id = $2;
 
+-- name: GetUserItemByUserAndItem :one
+SELECT *
+FROM inventory.user_item
+WHERE user_id = $1 AND item_id = $2;
+
 -- name: ListUserItems :many
 SELECT *
 FROM inventory.user_item
@@ -60,6 +65,11 @@ RETURNING *;
 SELECT *
 FROM wine.user_bottle
 WHERE user_bottle_id = $1 AND user_id = $2;
+
+-- name: GetUserBottleByUserAndBottle :one
+SELECT *
+FROM wine.user_bottle
+WHERE user_id = $1 AND bottle_id = $2;
 
 -- name: ListUserBottles :many
 SELECT *
