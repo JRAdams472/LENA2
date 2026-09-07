@@ -159,14 +159,16 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost
           E2E_ISSUER_URL: http://localhost:8085
-        run: npx playwright test --reporter=html
+        run: npx playwright test
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: clients/web/playwright-report
+          path: |
+            clients/web/playwright-report
+            clients/web/test-results/junit.xml
           retention-days: 14
 
       - name: Upload Playwright test results

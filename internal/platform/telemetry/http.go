@@ -1,6 +1,8 @@
 package telemetry
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -12,8 +14,9 @@ import (
 // HTTPMetrics returns an Echo middleware that records request counts and
 // durations tagged by method, route, and status. The route template
 // (c.Path()) is used rather than the raw URI to keep label cardinality
-// bounded.
-func HTTPMetrics() echo.MiddlewareFunc {
+// bounded. Instrument-creation failures are returned as errors rather than
+// silently degrading to a no-op middleware (LENA-049).
+func HTTPMetrics() (echo.MiddlewareFunc, error) {
 	meter := otel.Meter("lena2/http")
 	requests, reqErr := meter.Int64Counter("http.server.requests",
 		metric.WithDescription("HTTP requests by method, route, and status"),
@@ -21,8 +24,8 @@ func HTTPMetrics() echo.MiddlewareFunc {
 	duration, durErr := meter.Float64Histogram("http.server.request.duration",
 		metric.WithDescription("HTTP request duration"),
 		metric.WithUnit("s"))
-	if reqErr != nil || durErr != nil {
-		return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
+	if err := errors.Join(reqErr, durErr); err != nil {
+		return nil, fmt.Errorf("http metrics instruments: %w", err)
 	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -37,5 +40,5 @@ func HTTPMetrics() echo.MiddlewareFunc {
 			duration.Record(c.Request().Context(), time.Since(start).Seconds(), attrs)
 			return err
 		}
-	}
+	}, nil
 }

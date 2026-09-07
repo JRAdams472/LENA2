@@ -18,7 +18,9 @@ func TestSetupAndHTTPMetrics(t *testing.T) {
 	t.Cleanup(func() { tel.Shutdown(context.Background()) })
 
 	e := echo.New()
-	e.Use(HTTPMetrics())
+	mw, err := HTTPMetrics()
+	require.NoError(t, err)
+	e.Use(mw)
 	e.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	rec := httptest.NewRecorder()
@@ -30,6 +32,8 @@ func TestSetupAndHTTPMetrics(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "http_server_requests_total")
 	assert.Contains(t, rec.Body.String(), `route="/ping"`)
+	// The duration histogram must actually emit buckets, not just exist.
+	assert.Contains(t, rec.Body.String(), "http_server_request_duration_seconds_bucket")
 }
 
 func TestSetupWithOTLPEndpoint(t *testing.T) {
