@@ -1621,6 +1621,36 @@ func (mr *MockUserPrefsServiceMockRecorder) GetRecipeFavorite(ctx, userID, recip
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).GetRecipeFavorite), ctx, userID, recipeID)
 }
 
+// GetUserBottleByUserAndBottle mocks base method.
+func (m *MockUserPrefsService) GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*userprefs.UserBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserBottleByUserAndBottle", ctx, userID, bottleID)
+	ret0, _ := ret[0].(*userprefs.UserBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserBottleByUserAndBottle indicates an expected call of GetUserBottleByUserAndBottle.
+func (mr *MockUserPrefsServiceMockRecorder) GetUserBottleByUserAndBottle(ctx, userID, bottleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByUserAndBottle", reflect.TypeOf((*MockUserPrefsService)(nil).GetUserBottleByUserAndBottle), ctx, userID, bottleID)
+}
+
+// GetUserItemByUserAndItem mocks base method.
+func (m *MockUserPrefsService) GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*userprefs.UserItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserItemByUserAndItem", ctx, userID, itemID)
+	ret0, _ := ret[0].(*userprefs.UserItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserItemByUserAndItem indicates an expected call of GetUserItemByUserAndItem.
+func (mr *MockUserPrefsServiceMockRecorder) GetUserItemByUserAndItem(ctx, userID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByUserAndItem", reflect.TypeOf((*MockUserPrefsService)(nil).GetUserItemByUserAndItem), ctx, userID, itemID)
+}
+
 // ListRecipeFavorites mocks base method.
 func (m *MockUserPrefsService) ListRecipeFavorites(ctx context.Context, userID int64, recipeIDs []int64) ([]userprefs.RecipeFavorite, error) {
 	m.ctrl.T.Helper()

@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"time"
 
@@ -478,60 +477,27 @@ type RatingRecencySuggestion struct {
 	Score    float64
 }
 
-// recencyDays is the number of days after which a highly rated recipe is
-// treated as fully "due" for a revisit.
-const recencyDays = 180.0
-
-// recencyScore maps days-since-last-use onto [0,1]; recipes never planned
-// since their rating score 1.
-func recencyScore(lastUsed *time.Time, now time.Time) float64 {
-	if lastUsed == nil {
-		return 1
-	}
-	days := now.Sub(*lastUsed).Hours() / 24
-	if days < 0 {
-		days = 0
-	}
-	if days > recencyDays {
-		return 1
-	}
-	return days / recencyDays
-}
-
 // ListRatingRecencySuggestions returns the user's recipes rated at or above
 // minRating, scored by how long it has been since each last appeared in a
 // meal plan (never-planned first), capped at limit.
 func (s *Service) ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]RatingRecencySuggestion, error) {
-	rows, err := s.q.ListRatingRecencyRows(ctx, sqlc.ListRatingRecencyRowsParams{UserID: userID, Rating: minRating})
+	rows, err := s.q.ListRatingRecencySuggestions(ctx, sqlc.ListRatingRecencySuggestionsParams{UserID: userID, Rating: minRating, Limit: limit})
 	if err != nil {
 		return nil, fmt.Errorf("list rating recency suggestions: %w", err)
 	}
-	byRecipe := make(map[int64]*RatingRecencySuggestion)
-	for i := range rows {
-		e, ok := byRecipe[rows[i].RecipeID]
-		if !ok {
-			e = &RatingRecencySuggestion{RecipeID: rows[i].RecipeID, Rating: rows[i].Rating}
-			byRecipe[rows[i].RecipeID] = e
+	out := make([]RatingRecencySuggestion, len(rows))
+	for i, r := range rows {
+		var lastUsed *time.Time
+		if r.LastUsed.Valid {
+			t := r.LastUsed.Time
+			lastUsed = &t
 		}
-		if rows[i].LastUsed.Valid && (e.LastUsed == nil || rows[i].LastUsed.Time.After(*e.LastUsed)) {
-			t := rows[i].LastUsed.Time
-			e.LastUsed = &t
+		out[i] = RatingRecencySuggestion{
+			RecipeID: r.RecipeID,
+			Rating:   r.Rating,
+			LastUsed: lastUsed,
+			Score:    r.Score,
 		}
-	}
-	now := time.Now()
-	out := make([]RatingRecencySuggestion, 0, len(byRecipe))
-	for _, e := range byRecipe {
-		e.Score = recencyScore(e.LastUsed, now)
-		out = append(out, *e)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Score != out[j].Score {
-			return out[i].Score > out[j].Score
-		}
-		return out[i].RecipeID < out[j].RecipeID
-	})
-	if int32(len(out)) > limit {
-		out = out[:limit]
 	}
 	return out, nil
 }

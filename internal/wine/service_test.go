@@ -18,6 +18,7 @@ var errDB = errors.New(`db error`)
 
 func f64(v float64) *float64 { return &v }
 func i16(v int16) *int16     { return &v }
+func b(v bool) *bool         { return &v }
 
 func mustNum(v float64) pgtype.Numeric {
 	n, err := numericFromFloat64(v)
@@ -814,7 +815,7 @@ func TestBottle(t *testing.T) {
 		TanninLevel:    i16(4),
 		Body:           i16(3),
 		Sweetness:      i16(2),
-		OakIntegration: true,
+		OakIntegration: b(true),
 		BottleSize:     `750ml`,
 	}
 
@@ -846,7 +847,7 @@ func TestBottle(t *testing.T) {
 		TanninLevel:    i16(4),
 		Body:           i16(3),
 		Sweetness:      i16(2),
-		OakIntegration: true,
+		OakIntegration: b(true),
 		BottleSize:     `750ml`,
 	}
 

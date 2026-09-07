@@ -167,6 +167,16 @@ type Recommendation struct {
 	Score            float64
 }
 
+// runInTx executes fn inside a transaction when a pool is configured; it is a
+// test seam that falls back to the default querier when the service was
+// constructed without a pool (unit-test doubles).
+func (s *Service) runInTx(ctx context.Context, fn func(*Service) error) error {
+	if s.pool == nil {
+		return fn(s)
+	}
+	return s.InTx(ctx, fn)
+}
+
 // ComputeIngredientOverlapSuggestions scores a newly created recipe against
 // every user's meal-plan history and upserts ingredient-overlap
 // recommendations for users whose best similarity clears OverlapMinScore.
@@ -183,23 +193,30 @@ func (s *Service) ComputeIngredientOverlapSuggestions(ctx context.Context, newRe
 	if err != nil {
 		return 0, fmt.Errorf("compute ingredient overlap: %w", err)
 	}
-	n := 0
-	for _, r := range rows {
-		score, err := numericFromFloat64(r.Score)
-		if err != nil {
-			return n, fmt.Errorf("compute ingredient overlap: %w", err)
+
+	written := 0
+	err = s.runInTx(ctx, func(tx *Service) error {
+		for _, r := range rows {
+			score, err := numericFromFloat64(r.Score)
+			if err != nil {
+				return fmt.Errorf("compute ingredient overlap: %w", err)
+			}
+			if err := tx.q.UpsertRecipeRecommendation(ctx, sqlc.UpsertRecipeRecommendationParams{
+				UserID:   r.UserID,
+				RecipeID: newRecipeID,
+				Reason:   ReasonIngredientOverlap,
+				Score:    score,
+			}); err != nil {
+				return fmt.Errorf("upsert recipe recommendation: %w", err)
+			}
+			written++
 		}
-		if err := s.q.UpsertRecipeRecommendation(ctx, sqlc.UpsertRecipeRecommendationParams{
-			UserID:   r.UserID,
-			RecipeID: newRecipeID,
-			Reason:   ReasonIngredientOverlap,
-			Score:    score,
-		}); err != nil {
-			return n, fmt.Errorf("upsert recipe recommendation: %w", err)
-		}
-		n++
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
-	return n, nil
+	return written, nil
 }
 
 // ListRecipeRecommendations returns a user's stored recommendations for one

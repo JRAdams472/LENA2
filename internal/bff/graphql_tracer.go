@@ -32,7 +32,6 @@ func (t *graphQLTracer) TraceQuery(ctx context.Context, queryString, operationNa
 	ctx, span := t.tr.Start(ctx, "graphql "+name,
 		oteltrace.WithAttributes(
 			attribute.String("graphql.operation.name", operationName),
-			attribute.String("graphql.operation.query", queryString),
 		))
 	return ctx, func(errs []*gqlerrors.QueryError) {
 		finishGraphQLSpan(span, errs)

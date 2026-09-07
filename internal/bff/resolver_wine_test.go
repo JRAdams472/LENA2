@@ -175,7 +175,7 @@ func TestResolver_Wine_Bottle_Happy(t *testing.T) {
 	b := wine.Bottle{
 		BottleID: 101, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020,
 		Vineyard: "Chateau", Abv: winePtrFloat64(13.5), Acidity: winePtrInt16(3), TanninLevel: winePtrInt16(4), Body: winePtrInt16(5),
-		Sweetness: winePtrInt16(2), OakIntegration: true, BottleSize: "750ml",
+		Sweetness: winePtrInt16(2), OakIntegration: winePtrBool(true), BottleSize: "750ml",
 	}
 	m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(b, nil)
 	m.EXPECT().ListBottleGrapeVarieties(gomock.Any(), int64(101)).Return([]wine.BottleGrapeVariety{
@@ -563,7 +563,7 @@ func TestResolver_Wine_Bottle_Mutations(t *testing.T) {
 	want := wine.Bottle{
 		TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020,
 		Vineyard: "Chateau", Abv: winePtrFloat64(13.5), Acidity: winePtrInt16(3), TanninLevel: winePtrInt16(4), Body: winePtrInt16(5),
-		Sweetness: winePtrInt16(2), OakIntegration: true, BottleSize: "750ml",
+		Sweetness: winePtrInt16(2), OakIntegration: winePtrBool(true), BottleSize: "750ml",
 	}
 	created := want
 	created.BottleID = 101
@@ -587,7 +587,7 @@ func TestResolver_Wine_Bottle_Mutations(t *testing.T) {
 		existing := wine.Bottle{
 			BottleID: 101, TypeID: 9, CountryID: 8, RegionID: 7, VintageYear: 2019,
 			Vineyard: "Old", Abv: winePtrFloat64(12), Acidity: winePtrInt16(2), TanninLevel: winePtrInt16(3), Body: winePtrInt16(4),
-			Sweetness: winePtrInt16(1), OakIntegration: false, BottleSize: "750ml",
+			Sweetness: winePtrInt16(1), OakIntegration: winePtrBool(false), BottleSize: "750ml",
 		}
 		updated := want
 		updated.BottleID = 101

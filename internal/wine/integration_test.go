@@ -284,7 +284,7 @@ func TestIntegrationBottleCRUDAndJunctions(t *testing.T) {
 		TanninLevel:    i16(4),
 		Body:           i16(4),
 		Sweetness:      i16(1),
-		OakIntegration: true,
+		OakIntegration: b(true),
 		BottleSize:     "750ml",
 	}, itBy)
 	require.NoError(t, err)

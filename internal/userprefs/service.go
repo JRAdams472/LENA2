@@ -6,6 +6,7 @@ package userprefs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -101,6 +102,23 @@ func (s *Service) GetUserItemByID(ctx context.Context, userItemID, userID int64)
 	return ui, nil
 }
 
+// GetUserItemByUserAndItem returns the user's pantry row for a catalog item,
+// or nil when no such row exists.
+func (s *Service) GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*UserItem, error) {
+	row, err := s.q.GetUserItemByUserAndItem(ctx, sqlc.GetUserItemByUserAndItemParams{UserID: userID, ItemID: itemID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user item: %w", err)
+	}
+	ui, err := toUserItem(row)
+	if err != nil {
+		return nil, fmt.Errorf("get user item: %w", err)
+	}
+	return &ui, nil
+}
+
 // ListUserItems returns a user's pantry items.
 func (s *Service) ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]UserItem, error) {
 	rows, err := s.q.ListUserItems(ctx, sqlc.ListUserItemsParams{UserID: userID, Limit: limit, Offset: offset})
@@ -192,6 +210,23 @@ func (s *Service) GetUserBottleByID(ctx context.Context, userBottleID, userID in
 		return UserBottle{}, fmt.Errorf("get user bottle: %w", err)
 	}
 	return ub, nil
+}
+
+// GetUserBottleByUserAndBottle returns the user's cellar holding for a bottle,
+// or nil when no such row exists.
+func (s *Service) GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*UserBottle, error) {
+	row, err := s.q.GetUserBottleByUserAndBottle(ctx, sqlc.GetUserBottleByUserAndBottleParams{UserID: userID, BottleID: bottleID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user bottle: %w", err)
+	}
+	ub, err := toUserBottle(row)
+	if err != nil {
+		return nil, fmt.Errorf("get user bottle: %w", err)
+	}
+	return &ub, nil
 }
 
 // ListUserBottles returns a user's cellar holdings.

@@ -593,7 +593,7 @@ type Bottle struct {
 	TanninLevel    *int16
 	Body           *int16
 	Sweetness      *int16
-	OakIntegration bool
+	OakIntegration *bool
 	BottleSize     string
 }
 
@@ -622,7 +622,7 @@ func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bott
 		TanninLevel:    optInt2(arg.TanninLevel),
 		Body:           optInt2(arg.Body),
 		Sweetness:      optInt2(arg.Sweetness),
-		OakIntegration: boolOrNull(arg.OakIntegration),
+		OakIntegration: optBool(arg.OakIntegration),
 		BottleSize:     arg.BottleSize,
 		CreatedBy:      by,
 		UpdatedBy:      textOrNull(by),
@@ -719,7 +719,7 @@ func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, 
 		TanninLevel:    optInt2(arg.TanninLevel),
 		Body:           optInt2(arg.Body),
 		Sweetness:      optInt2(arg.Sweetness),
-		OakIntegration: boolOrNull(arg.OakIntegration),
+		OakIntegration: optBool(arg.OakIntegration),
 		BottleSize:     arg.BottleSize,
 		UpdatedBy:      textOrNull(by),
 	})
@@ -839,7 +839,7 @@ func toBottle(row sqlc.WineBottle) (Bottle, error) {
 		b.Abv = &v
 	}
 	if row.OakIntegration.Valid {
-		b.OakIntegration = row.OakIntegration.Bool
+		b.OakIntegration = &row.OakIntegration.Bool
 	}
 	return b, nil
 }
@@ -879,4 +879,11 @@ func optInt2(v *int16) pgtype.Int2 {
 
 func boolOrNull(v bool) pgtype.Bool {
 	return pgtype.Bool{Bool: v, Valid: true}
+}
+
+func optBool(v *bool) pgtype.Bool {
+	if v == nil {
+		return pgtype.Bool{}
+	}
+	return pgtype.Bool{Bool: *v, Valid: true}
 }

@@ -297,7 +297,7 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 		TanninLevel:    tanninLevel,
 		Body:           body,
 		Sweetness:      sweetness,
-		OakIntegration: boolValue(args.Input.OakIntegration),
+		OakIntegration: args.Input.OakIntegration,
 		BottleSize:     args.Input.BottleSize,
 	}, u.Email)
 	if err != nil {
@@ -389,7 +389,7 @@ func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 	}
 	oakIntegration := existing.OakIntegration
 	if args.Input.OakIntegration != nil {
-		oakIntegration = *args.Input.OakIntegration
+		oakIntegration = args.Input.OakIntegration
 	}
 	bottleSize := existing.BottleSize
 	if args.Input.BottleSize != nil {
@@ -546,7 +546,7 @@ func (r *bottleResolver) Body() *int32 { return int16ToInt32Ptr(r.b.Body) }
 
 func (r *bottleResolver) Sweetness() *int32 { return int16ToInt32Ptr(r.b.Sweetness) }
 
-func (r *bottleResolver) OakIntegration() *bool { return &r.b.OakIntegration }
+func (r *bottleResolver) OakIntegration() *bool { return r.b.OakIntegration }
 
 func (r *bottleResolver) BottleSize() string { return r.b.BottleSize }
 

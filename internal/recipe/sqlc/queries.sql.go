@@ -266,44 +266,64 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 	return items, nil
 }
 
-const listRatingRecencyRows = `-- name: ListRatingRecencyRows :many
-SELECT rr.recipe_id,
-       rr.rating,
-       h.week_start_date AS last_used
-FROM recipe.recipe_rating rr
-LEFT JOIN (
-    SELECT ms.recipe_id, mp.user_id, mp.week_start_date
-    FROM mealplan.meal_slot ms
-    JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
-    WHERE ms.recipe_id IS NOT NULL
-) h ON h.recipe_id = rr.recipe_id AND h.user_id = rr.user_id
-WHERE rr.user_id = $1 AND rr.rating >= $2
+const listRatingRecencySuggestions = `-- name: ListRatingRecencySuggestions :many
+WITH last_used AS (
+    SELECT rr.recipe_id,
+           rr.rating,
+           MAX(mp.week_start_date) AS last_used
+    FROM recipe.recipe_rating rr
+    LEFT JOIN mealplan.meal_slot ms
+           ON ms.recipe_id = rr.recipe_id
+    LEFT JOIN mealplan.meal_plan mp
+           ON mp.meal_plan_id = ms.meal_plan_id AND mp.user_id = rr.user_id
+    WHERE rr.user_id = $1 AND rr.rating >= $2
+    GROUP BY rr.recipe_id, rr.rating
+)
+SELECT recipe_id,
+       rating,
+       last_used::date AS last_used,
+       GREATEST(LEAST(
+           CASE
+               WHEN last_used IS NULL THEN 180.0
+               ELSE (CURRENT_DATE - last_used)::float8
+           END / 180.0,
+       1.0), 0.0)::float8 AS score
+FROM last_used
+ORDER BY score DESC, recipe_id ASC
+LIMIT $3
 `
 
-type ListRatingRecencyRowsParams struct {
+type ListRatingRecencySuggestionsParams struct {
 	UserID int64 `json:"user_id"`
 	Rating int16 `json:"rating"`
+	Limit  int32 `json:"limit"`
 }
 
-type ListRatingRecencyRowsRow struct {
+type ListRatingRecencySuggestionsRow struct {
 	RecipeID int64       `json:"recipe_id"`
 	Rating   int16       `json:"rating"`
 	LastUsed pgtype.Date `json:"last_used"`
+	Score    float64     `json:"score"`
 }
 
-// For one user: every (rated recipe, meal-plan week it appeared) pair for
-// recipes rated at or above a threshold. last_used is NULL for ratings
-// with no matching slot; callers aggregate to the most recent week.
-func (q *Queries) ListRatingRecencyRows(ctx context.Context, arg ListRatingRecencyRowsParams) ([]ListRatingRecencyRowsRow, error) {
-	rows, err := q.db.Query(ctx, listRatingRecencyRows, arg.UserID, arg.Rating)
+// For one user: recipes rated at or above a threshold, scored by how long
+// it has been since each last appeared in a meal plan. Recipes never planned
+// score 1; the score clamps to [0,1] over 180 days.
+func (q *Queries) ListRatingRecencySuggestions(ctx context.Context, arg ListRatingRecencySuggestionsParams) ([]ListRatingRecencySuggestionsRow, error) {
+	rows, err := q.db.Query(ctx, listRatingRecencySuggestions, arg.UserID, arg.Rating, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListRatingRecencyRowsRow{}
+	items := []ListRatingRecencySuggestionsRow{}
 	for rows.Next() {
-		var i ListRatingRecencyRowsRow
-		if err := rows.Scan(&i.RecipeID, &i.Rating, &i.LastUsed); err != nil {
+		var i ListRatingRecencySuggestionsRow
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.Rating,
+			&i.LastUsed,
+			&i.Score,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -189,7 +189,7 @@ func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 	updated := wantArg
 	updated.UserItemID = 5
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).Return([]userprefs.UserItem{existing}, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
 	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
 
 	res, err := r.AdjustUserItem(upCtx(), struct {
@@ -209,7 +209,7 @@ func TestResolver_AdjustUserItem_NoExisting(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).Return(nil, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
 	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Eq(userprefs.UserItem{
 		UserID: upUserID, ItemID: 42, CurrentQty: 2,
 	}), upEmail).Return(userprefs.UserItem{UserItemID: 7, UserID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
@@ -240,7 +240,7 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).Return(nil, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
 	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserItem{}, errUpBoom)
 
 	res, err := r.AdjustUserItem(upCtx(), struct {
@@ -264,7 +264,7 @@ func TestResolver_SetItemFavorite_Happy(t *testing.T) {
 	updated := wantArg
 	updated.UserItemID = 5
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).Return([]userprefs.UserItem{existing}, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
 	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
 
 	res, err := r.SetItemFavorite(upCtx(), struct {
@@ -291,8 +291,8 @@ func TestResolver_DeleteUserItem_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).
-		Return([]userprefs.UserItem{{UserItemID: 5, UserID: upUserID, ItemID: 42}}, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).
+		Return(&userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42}, nil)
 	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(nil)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "42"})
@@ -306,8 +306,7 @@ func TestResolver_DeleteUserItem_NotFound(t *testing.T) {
 	r := &Resolver{UserPrefsService: up}
 
 	// ItemID 99 not present -> returns false without calling DeleteUserItem.
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).
-		Return([]userprefs.UserItem{{UserItemID: 5, UserID: upUserID, ItemID: 42}}, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(99)).Return(nil, nil)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "99"})
 	require.NoError(t, err)
@@ -326,8 +325,8 @@ func TestResolver_DeleteUserItem_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(100_000), int32(0)).
-		Return([]userprefs.UserItem{{UserItemID: 5, UserID: upUserID, ItemID: 42}}, nil)
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).
+		Return(&userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42}, nil)
 	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(errUpBoom)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "42"})
@@ -353,7 +352,7 @@ func TestResolver_AdjustUserBottle_Happy(t *testing.T) {
 	updated := wantArg
 	updated.UserBottleID = 30
 
-	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(100_000), int32(0)).Return([]userprefs.UserBottle{existing}, nil)
+	up.EXPECT().GetUserBottleByUserAndBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
 	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
 
 	res, err := r.AdjustUserBottle(upCtx(), struct {
@@ -383,7 +382,7 @@ func TestResolver_AdjustUserBottle_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(100_000), int32(0)).Return(nil, nil)
+	up.EXPECT().GetUserBottleByUserAndBottle(gomock.Any(), upUserID, int64(88)).Return(nil, nil)
 	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserBottle{}, errUpBoom)
 
 	res, err := r.AdjustUserBottle(upCtx(), struct {
@@ -406,7 +405,7 @@ func TestResolver_SetBottleFavorite_Happy(t *testing.T) {
 	updated := wantArg
 	updated.UserBottleID = 30
 
-	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(100_000), int32(0)).Return([]userprefs.UserBottle{existing}, nil)
+	up.EXPECT().GetUserBottleByUserAndBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
 	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
 
 	res, err := r.SetBottleFavorite(upCtx(), struct {

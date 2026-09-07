@@ -289,29 +289,11 @@ func (r *Resolver) SetBottleFavorite(ctx context.Context, args struct {
 }
 
 func findUserItem(ctx context.Context, svc UserPrefsService, userID, itemID int64) (*userprefs.UserItem, error) {
-	items, err := svc.ListUserItems(ctx, userID, 100_000, 0)
-	if err != nil {
-		return nil, err
-	}
-	for i := range items {
-		if items[i].ItemID == itemID {
-			return &items[i], nil
-		}
-	}
-	return nil, nil
+	return svc.GetUserItemByUserAndItem(ctx, userID, itemID)
 }
 
 func findUserBottle(ctx context.Context, svc UserPrefsService, userID, bottleID int64) (*userprefs.UserBottle, error) {
-	bottles, err := svc.ListUserBottles(ctx, userID, 100_000, 0)
-	if err != nil {
-		return nil, err
-	}
-	for i := range bottles {
-		if bottles[i].BottleID == bottleID {
-			return &bottles[i], nil
-		}
-	}
-	return nil, nil
+	return svc.GetUserBottleByUserAndBottle(ctx, userID, bottleID)
 }
 
 // userItemResolver resolves UserItem fields. When items is non-nil the

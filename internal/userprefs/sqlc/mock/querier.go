@@ -143,6 +143,21 @@ func (mr *MockQuerierMockRecorder) GetUserBottleByID(ctx, arg any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByID", reflect.TypeOf((*MockQuerier)(nil).GetUserBottleByID), ctx, arg)
 }
 
+// GetUserBottleByUserAndBottle mocks base method.
+func (m *MockQuerier) GetUserBottleByUserAndBottle(ctx context.Context, arg sqlc.GetUserBottleByUserAndBottleParams) (sqlc.WineUserBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserBottleByUserAndBottle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.WineUserBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserBottleByUserAndBottle indicates an expected call of GetUserBottleByUserAndBottle.
+func (mr *MockQuerierMockRecorder) GetUserBottleByUserAndBottle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByUserAndBottle", reflect.TypeOf((*MockQuerier)(nil).GetUserBottleByUserAndBottle), ctx, arg)
+}
+
 // GetUserItemByID mocks base method.
 func (m *MockQuerier) GetUserItemByID(ctx context.Context, arg sqlc.GetUserItemByIDParams) (sqlc.InventoryUserItem, error) {
 	m.ctrl.T.Helper()
@@ -156,6 +171,21 @@ func (m *MockQuerier) GetUserItemByID(ctx context.Context, arg sqlc.GetUserItemB
 func (mr *MockQuerierMockRecorder) GetUserItemByID(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByID", reflect.TypeOf((*MockQuerier)(nil).GetUserItemByID), ctx, arg)
+}
+
+// GetUserItemByUserAndItem mocks base method.
+func (m *MockQuerier) GetUserItemByUserAndItem(ctx context.Context, arg sqlc.GetUserItemByUserAndItemParams) (sqlc.InventoryUserItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserItemByUserAndItem", ctx, arg)
+	ret0, _ := ret[0].(sqlc.InventoryUserItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserItemByUserAndItem indicates an expected call of GetUserItemByUserAndItem.
+func (mr *MockQuerierMockRecorder) GetUserItemByUserAndItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByUserAndItem", reflect.TypeOf((*MockQuerier)(nil).GetUserItemByUserAndItem), ctx, arg)
 }
 
 // ListRecipeFavorites mocks base method.

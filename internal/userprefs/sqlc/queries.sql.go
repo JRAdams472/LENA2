@@ -142,6 +142,40 @@ func (q *Queries) GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDPa
 	return i, err
 }
 
+const getUserBottleByUserAndBottle = `-- name: GetUserBottleByUserAndBottle :one
+SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
+FROM wine.user_bottle
+WHERE user_id = $1 AND bottle_id = $2
+`
+
+type GetUserBottleByUserAndBottleParams struct {
+	UserID   int64 `json:"user_id"`
+	BottleID int64 `json:"bottle_id"`
+}
+
+func (q *Queries) GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (WineUserBottle, error) {
+	row := q.db.QueryRow(ctx, getUserBottleByUserAndBottle, arg.UserID, arg.BottleID)
+	var i WineUserBottle
+	err := row.Scan(
+		&i.UserBottleID,
+		&i.UserID,
+		&i.BottleID,
+		&i.BottleNumber,
+		&i.Quantity,
+		&i.PurchaseAt,
+		&i.PurchasePrice,
+		&i.StorageTemp,
+		&i.Location,
+		&i.Notes,
+		&i.IsFavorite,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserItemByID = `-- name: GetUserItemByID :one
 SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
 FROM inventory.user_item
@@ -155,6 +189,38 @@ type GetUserItemByIDParams struct {
 
 func (q *Queries) GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (InventoryUserItem, error) {
 	row := q.db.QueryRow(ctx, getUserItemByID, arg.UserItemID, arg.UserID)
+	var i InventoryUserItem
+	err := row.Scan(
+		&i.UserItemID,
+		&i.UserID,
+		&i.ItemID,
+		&i.CurrentQty,
+		&i.MinQty,
+		&i.PurchaseAt,
+		&i.ExpiresAt,
+		&i.Notes,
+		&i.IsFavorite,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserItemByUserAndItem = `-- name: GetUserItemByUserAndItem :one
+SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
+FROM inventory.user_item
+WHERE user_id = $1 AND item_id = $2
+`
+
+type GetUserItemByUserAndItemParams struct {
+	UserID int64 `json:"user_id"`
+	ItemID int64 `json:"item_id"`
+}
+
+func (q *Queries) GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (InventoryUserItem, error) {
+	row := q.db.QueryRow(ctx, getUserItemByUserAndItem, arg.UserID, arg.ItemID)
 	var i InventoryUserItem
 	err := row.Scan(
 		&i.UserItemID,
