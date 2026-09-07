@@ -188,7 +188,24 @@ Fix all findings — input-range validation at the GraphQL boundary, an authenti
 
 ---
 
-## Follow-on phase — Performance Metrics & Observability (`phase-29`)
+## Phase 29 — Infrastructure, CI/CD and Docker hardening
+
+Scope: the remaining in-scope Major findings that are not the mobile rewrite and not performance work.
+
+### Issues to remediate
+
+1. **LENA-023**: gate `latest` Docker image pushes on successful test results.
+2. **LENA-024**: consolidate the two overlapping CI workflows, pin Go version from `go.mod`, and pin `golangci-lint`.
+3. **LENA-025**: harden `docker-compose.yml` — remove host port mappings for DB/API/Seq, require `POSTGRES_PASSWORD`, pin image tags, tighten CORS/SSL defaults.
+4. **LENA-026**: harden `clients/web/Dockerfile` — run as `USER node`, use `npm ci` only, pin base image tags/digests.
+
+### Verification
+
+- `docker compose config` is valid.
+- `go build ./...` and `go test -short ./...` still pass (Go code is not touched, but workflows must invoke the same commands).
+- Web image builds (`docker build clients/web`) and the web Dockerfile lint passes.
+
+## Follow-on phase — Performance Metrics & Observability (`phase-30`)
 
 Motivation: the Playwright e2e suite now takes >5 minutes and there is no data showing where that time goes — or whether API latency is drifting. This phase adds request-level and dependency-level performance metrics so slowdowns are measurable before they are felt. It also naturally covers audit findings LENA-049 (`HTTPMetrics` silently degrading), LENA-050 (telemetry `Setup` without timeout), and LENA-063 (pgxpool without explicit sizing/statement timeout) where they overlap.
 

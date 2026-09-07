@@ -10,6 +10,7 @@ on:
       - main
 
 env:
+  REGISTRY: ghcr.io
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: dummy
   NEXT_PUBLIC_API_BASE_URL: /graphql
   # Baseline total statement coverage measured on hand-written code only;
@@ -25,7 +26,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.0"
+          go-version-file: go.mod
 
       # Scope to the Go source trees so stray Go files under
       # clients/web/node_modules can't break local or CI runs.
@@ -57,6 +58,21 @@ jobs:
           path: |
             coverage.out
             coverage-filtered.out
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+          args: ./cmd/... ./internal/...
 
   web:
     runs-on: ubuntu-latest
@@ -97,6 +113,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: e2e-change-me
     steps:
       - uses: actions/checkout@v4
 
@@ -153,3 +171,50 @@ jobs:
           name: playwright-test-results
           path: clients/web/test-results
           retention-days: 14
+
+  docker:
+    name: docker ${{ matrix.image }}
+    needs: [go, web, e2e]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: lena2-api
+            context: .
+            dockerfile: ./Dockerfile
+          - image: lena2-web
+            context: clients/web
+            dockerfile: clients/web/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=sha,prefix=,suffix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=/graphql
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'dummy' }}
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
