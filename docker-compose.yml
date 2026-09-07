@@ -74,7 +74,9 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://seq-gelf:12201"
+        # The GELF driver runs in the Docker daemon and resolves via the host.
+        # seq-gelf publishes 12201/udp on the host, so localhost works.
+        gelf-address: "udp://localhost:12201"
         tag: "{{.Name}}"
 
   web:
@@ -93,7 +95,7 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://seq-gelf:12201"
+        gelf-address: "udp://localhost:12201"
         tag: "{{.Name}}"
 
   caddy:
