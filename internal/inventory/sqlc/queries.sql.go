@@ -118,9 +118,14 @@ func (q *Queries) CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfi
 }
 
 const createFoodFlavor = `-- name: CreateFoodFlavor :one
-INSERT INTO inventory.food_flavor (food_id, flavor_id, intensity, created_by)
-VALUES ($1, $2, $3, $4)
-RETURNING food_id, flavor_id, intensity, created_by, created_at
+WITH ins AS (
+    INSERT INTO inventory.food_flavor (food_id, flavor_id, intensity, created_by)
+    VALUES ($1, $2, $3, $4)
+    RETURNING food_id, flavor_id, intensity
+)
+SELECT ins.food_id, fp.flavor_id, fp.name, ins.intensity
+FROM ins
+JOIN inventory.flavor_profile fp ON ins.flavor_id = fp.flavor_id
 `
 
 type CreateFoodFlavorParams struct {
@@ -130,28 +135,39 @@ type CreateFoodFlavorParams struct {
 	CreatedBy string `json:"created_by"`
 }
 
-func (q *Queries) CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (InventoryFoodFlavor, error) {
+type CreateFoodFlavorRow struct {
+	FoodID    int64  `json:"food_id"`
+	FlavorID  int64  `json:"flavor_id"`
+	Name      string `json:"name"`
+	Intensity int16  `json:"intensity"`
+}
+
+func (q *Queries) CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (CreateFoodFlavorRow, error) {
 	row := q.db.QueryRow(ctx, createFoodFlavor,
 		arg.FoodID,
 		arg.FlavorID,
 		arg.Intensity,
 		arg.CreatedBy,
 	)
-	var i InventoryFoodFlavor
+	var i CreateFoodFlavorRow
 	err := row.Scan(
 		&i.FoodID,
 		&i.FlavorID,
+		&i.Name,
 		&i.Intensity,
-		&i.CreatedBy,
-		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const createFoodNutrient = `-- name: CreateFoodNutrient :one
-INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
-VALUES ($1, $2, $3, $4)
-RETURNING food_id, nutrient_id, amount, created_by, created_at
+WITH ins AS (
+    INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
+    VALUES ($1, $2, $3, $4)
+    RETURNING food_id, nutrient_id, amount
+)
+SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount
+FROM ins
+JOIN inventory.nutrient_type nt ON ins.nutrient_id = nt.nutrient_id
 `
 
 type CreateFoodNutrientParams struct {
@@ -161,20 +177,28 @@ type CreateFoodNutrientParams struct {
 	CreatedBy  string         `json:"created_by"`
 }
 
-func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (InventoryFoodNutrient, error) {
+type CreateFoodNutrientRow struct {
+	FoodID     int64          `json:"food_id"`
+	NutrientID int64          `json:"nutrient_id"`
+	Name       string         `json:"name"`
+	Unit       pgtype.Text    `json:"unit"`
+	Amount     pgtype.Numeric `json:"amount"`
+}
+
+func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (CreateFoodNutrientRow, error) {
 	row := q.db.QueryRow(ctx, createFoodNutrient,
 		arg.FoodID,
 		arg.NutrientID,
 		arg.Amount,
 		arg.CreatedBy,
 	)
-	var i InventoryFoodNutrient
+	var i CreateFoodNutrientRow
 	err := row.Scan(
 		&i.FoodID,
 		&i.NutrientID,
+		&i.Name,
+		&i.Unit,
 		&i.Amount,
-		&i.CreatedBy,
-		&i.CreatedAt,
 	)
 	return i, err
 }

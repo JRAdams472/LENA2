@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -103,7 +104,7 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	}
 
 	issuer, ok := unverified.Issuer()
-	if !ok || !contains(a.cfg.Issuers, issuer) {
+	if !ok || !slices.Contains(a.cfg.Issuers, issuer) {
 		return currentuser.User{}, fmt.Errorf("issuer %q is not allowed", issuer)
 	}
 
@@ -285,31 +286,16 @@ func extractBearer(r *http.Request) (string, error) {
 	return token, nil
 }
 
-func contains(list []string, value string) bool {
-	for _, v := range list {
-		if v == value {
-			return true
-		}
-	}
-	return false
-}
-
 // containsFold reports whether value matches a list entry
 // case-insensitively, as is correct for email comparisons.
 func containsFold(list []string, value string) bool {
-	for _, v := range list {
-		if strings.EqualFold(v, value) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(list, func(v string) bool {
+		return strings.EqualFold(v, value)
+	})
 }
 
 func containsAny(allowed, values []string) bool {
-	for _, v := range values {
-		if contains(allowed, v) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(values, func(v string) bool {
+		return slices.Contains(allowed, v)
+	})
 }

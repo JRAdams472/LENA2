@@ -12,10 +12,12 @@ import (
 )
 
 // GraphQLRateLimiter returns a middleware that rate-limits /graphql
-// requests per authenticated user, falling back to the client IP when no
-// user is in context (e.g. before authentication). perMinute <= 0 disables
-// limiting. The limiter must run after the authenticator so the user is
-// already present in the request context.
+// requests per authenticated user. perMinute <= 0 disables limiting. The
+// limiter is wired after the authenticator so the user is already present
+// in the request context; the ip: fallback below is only a safety net for
+// misordered wiring or standalone reuse — in the normal path
+// unauthenticated requests are already rejected with 401 before reaching
+// this middleware.
 func GraphQLRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
 	if perMinute <= 0 {
 		return func(next echo.HandlerFunc) echo.HandlerFunc { return next }

@@ -270,6 +270,22 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 	if args.Input.Vineyard != nil {
 		vineyard = *args.Input.Vineyard
 	}
+	acidity, err := checkedInt16Ptr(args.Input.Acidity, "acidity", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	tanninLevel, err := checkedInt16Ptr(args.Input.TanninLevel, "tanninLevel", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	body, err := checkedInt16Ptr(args.Input.Body, "body", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	sweetness, err := checkedInt16Ptr(args.Input.Sweetness, "sweetness", 1, 5)
+	if err != nil {
+		return nil, err
+	}
 	b, err := r.WineService.CreateBottle(ctx, wine.Bottle{
 		TypeID:         typeID,
 		CountryID:      countryID,
@@ -277,10 +293,10 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 		VintageYear:    args.Input.VintageYear,
 		Vineyard:       vineyard,
 		Abv:            args.Input.Abv,
-		Acidity:        int16Ptr(args.Input.Acidity),
-		TanninLevel:    int16Ptr(args.Input.TanninLevel),
-		Body:           int16Ptr(args.Input.Body),
-		Sweetness:      int16Ptr(args.Input.Sweetness),
+		Acidity:        acidity,
+		TanninLevel:    tanninLevel,
+		Body:           body,
+		Sweetness:      sweetness,
 		OakIntegration: boolValue(args.Input.OakIntegration),
 		BottleSize:     args.Input.BottleSize,
 	}, u.Email)
@@ -345,19 +361,31 @@ func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 	}
 	acidity := existing.Acidity
 	if args.Input.Acidity != nil {
-		acidity = int16Ptr(args.Input.Acidity)
+		acidity, err = checkedInt16Ptr(args.Input.Acidity, "acidity", 1, 5)
+		if err != nil {
+			return nil, err
+		}
 	}
 	tanninLevel := existing.TanninLevel
 	if args.Input.TanninLevel != nil {
-		tanninLevel = int16Ptr(args.Input.TanninLevel)
+		tanninLevel, err = checkedInt16Ptr(args.Input.TanninLevel, "tanninLevel", 1, 5)
+		if err != nil {
+			return nil, err
+		}
 	}
 	body := existing.Body
 	if args.Input.Body != nil {
-		body = int16Ptr(args.Input.Body)
+		body, err = checkedInt16Ptr(args.Input.Body, "body", 1, 5)
+		if err != nil {
+			return nil, err
+		}
 	}
 	sweetness := existing.Sweetness
 	if args.Input.Sweetness != nil {
-		sweetness = int16Ptr(args.Input.Sweetness)
+		sweetness, err = checkedInt16Ptr(args.Input.Sweetness, "sweetness", 1, 5)
+		if err != nil {
+			return nil, err
+		}
 	}
 	oakIntegration := existing.OakIntegration
 	if args.Input.OakIntegration != nil {
@@ -404,7 +432,11 @@ func (r *Resolver) AddBottleGrapeVariety(ctx context.Context, args struct{ Input
 	if err != nil {
 		return nil, err
 	}
-	v, err := r.WineService.AddBottleGrapeVariety(ctx, bottleID, grapeVarietyID, int16Ptr(args.Input.Percentage), u.Email)
+	percentage, err := checkedInt16Ptr(args.Input.Percentage, "percentage", 0, 100)
+	if err != nil {
+		return nil, err
+	}
+	v, err := r.WineService.AddBottleGrapeVariety(ctx, bottleID, grapeVarietyID, percentage, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +479,11 @@ func (r *Resolver) AddBottleFlavorProfile(ctx context.Context, args struct{ Inpu
 	if err != nil {
 		return nil, err
 	}
-	f, err := r.WineService.AddBottleFlavorProfile(ctx, bottleID, flavorProfileID, int16(args.Input.Intensity), u.Email)
+	intensity, err := checkedInt16(args.Input.Intensity, "intensity", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.WineService.AddBottleFlavorProfile(ctx, bottleID, flavorProfileID, intensity, u.Email)
 	if err != nil {
 		return nil, err
 	}

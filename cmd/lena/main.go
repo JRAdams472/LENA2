@@ -34,16 +34,24 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+// run wires configuration, storage, telemetry and HTTP serving, then
+// blocks until a signal or a server error. Keeping the logic out of main
+// means deferred cleanup (pool close, telemetry flush, analytics drain)
+// runs on every exit path — os.Exit would otherwise skip the defers.
+func run() int {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	log := logger.New(cfg.LogLevel)
 
 	// The 10s timeout applies only to pool creation; a deferred cancel at
-	// main scope would keep the context alive for the process lifetime.
+	// run scope would keep the context alive for the process lifetime.
 	pool, err := func() (*pgxpool.Pool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -51,14 +59,14 @@ func main() {
 	}()
 	if err != nil {
 		log.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer pool.Close()
 
 	tel, err := telemetry.Setup(context.Background(), cfg.ServiceName, cfg.OTLPEndpoint, pool)
 	if err != nil {
 		log.Error("telemetry setup failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -66,29 +74,53 @@ func main() {
 		tel.Shutdown(ctx)
 	}()
 
-	e := newServer(*cfg, pool, log, tel)
+	e, resolver, err := newServer(*cfg, pool, log, tel)
+	if err != nil {
+		log.Error("server setup failed", "error", err)
+		return 1
+	}
 
+	serverErr := make(chan error, 1)
 	go func() {
 		addr := ":" + cfg.Port
 		log.Info("starting server", "addr", addr)
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-			log.Error("server error", "error", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+
+	code := 0
+	select {
+	case <-sig:
+	case err := <-serverErr:
+		log.Error("server error", "error", err)
+		code = 1
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Error("shutdown error", "error", err)
 	}
+
+	// Drain in-flight background work (analytics events, recommendation
+	// recomputation) before the pool is closed underneath it.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer drainCancel()
+	if err := resolver.Shutdown(drainCtx); err != nil {
+		log.Error("background worker drain error", "error", err)
+	}
+
+	return code
 }
 
-func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) *echo.Echo {
+// newServer builds the Echo instance and GraphQL resolver. A nil tel is
+// supported for tests and disables /metrics and HTTP metrics middleware;
+// telemetry.Setup never returns (nil, nil) in production.
+func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) (*echo.Echo, *bff.Resolver, error) {
 	identitySvc := identity.NewService(pool)
 	analyticsSvc := analytics.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
@@ -152,23 +184,32 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	})
 	e.GET("/ready", func(c echo.Context) error {
 		if err := pool.Ping(c.Request().Context()); err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not ready", "error": err.Error()})
+			// Do not leak the database error string to unauthenticated callers.
+			log.Error("readiness check failed", "error", err)
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not ready"})
 		}
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	if tel != nil {
 		e.Use(telemetry.HTTPMetrics())
-		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()))
+		// /metrics requires the same bearer token as /graphql: unauthenticated
+		// exposure would leak operational data. Scrapers must present a token
+		// from a trusted issuer.
+		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), authenticator.Middleware())
 	}
 
 	resolver := bff.NewResolver(analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
-	e.POST("/graphql", bff.NewGraphQLHandler(resolver,
+	handler, err := bff.NewGraphQLHandler(resolver,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
-		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength)),
+		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))
+	if err != nil {
+		return nil, nil, err
+	}
+	e.POST("/graphql", handler,
 		authenticator.Middleware(),
 		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst))
-	return e
+	return e, resolver, nil
 }
 
 // buildCORSConfig builds the CORS middleware config. When origins are

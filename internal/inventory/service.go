@@ -470,7 +470,10 @@ func (s *Service) CreateFoodNutrient(ctx context.Context, itemID, nutrientID int
 		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
 	}
 	return FoodNutrient{
+		ItemID:     row.FoodID,
 		NutrientID: row.NutrientID,
+		Name:       row.Name,
+		Unit:       row.Unit.String,
 		Amount:     result,
 	}, nil
 }
@@ -503,7 +506,9 @@ func (s *Service) CreateFoodFlavor(ctx context.Context, itemID, flavorID int64, 
 		return FoodFlavor{}, fmt.Errorf("create food flavor: %w", err)
 	}
 	return FoodFlavor{
+		ItemID:    row.FoodID,
 		FlavorID:  row.FlavorID,
+		Name:      row.Name,
 		Intensity: row.Intensity,
 	}, nil
 }
@@ -841,9 +846,12 @@ func numericFromOptionalFloat64(f *float64) (pgtype.Numeric, error) {
 	return numericFromFloat64(*f)
 }
 
+// numericToFloat64 converts a NOT NULL numeric column to float64. Callers
+// reading nullable numerics must check .Valid themselves first — a NULL
+// reaching this function is data corruption, not a real zero.
 func numericToFloat64(n pgtype.Numeric) (float64, error) {
 	if !n.Valid {
-		return 0, nil
+		return 0, fmt.Errorf("convert numeric to float64: value is NULL")
 	}
 	v, err := n.Float64Value()
 	if err != nil {

@@ -107,6 +107,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		for itemID := range itemIDSet {
 			itemIDs = append(itemIDs, itemID)
 		}
+		slices.Sort(itemIDs)
 		items, err := r.InventoryService.GetItemsByIDs(ctx, itemIDs)
 		if err != nil {
 			return nil, err
@@ -118,6 +119,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		for unitID := range unitIDSet {
 			unitIDs = append(unitIDs, unitID)
 		}
+		slices.Sort(unitIDs)
 		units, err := r.InventoryService.GetUnitsByIDs(ctx, unitIDs)
 		if err != nil {
 			return nil, err
@@ -228,12 +230,12 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	if err != nil {
 		return nil, err
 	}
-	recordEventAsync(r.AnalyticsService, u.UserID, u.Email, analytics.Event{
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
 		EventType:  analytics.EventRecipeCreated,
 		EntityType: analytics.EntityRecipe,
 		EntityID:   rec.RecipeID,
 	})
-	computeOverlapAsync(r.AnalyticsService, rec.RecipeID)
+	r.computeOverlapAsync(rec.RecipeID)
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
@@ -344,10 +346,14 @@ func (r *Resolver) RateRecipe(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := r.RecipeService.SetRating(ctx, u.UserID, id, int16(args.Rating), u.Email); err != nil {
+	rating, err := checkedInt16(args.Rating, "rating", 1, 5)
+	if err != nil {
 		return nil, err
 	}
-	recordEventAsync(r.AnalyticsService, u.UserID, u.Email, analytics.Event{
+	if _, err := r.RecipeService.SetRating(ctx, u.UserID, id, rating, u.Email); err != nil {
+		return nil, err
+	}
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
 		EventType:  analytics.EventRatingGiven,
 		EntityType: analytics.EntityRecipe,
 		EntityID:   id,

@@ -63,7 +63,9 @@ func TestBFF_Integration(t *testing.T) {
 
 	e := echo.New()
 	e.HideBanner = true
-	e.POST("/graphql", NewGraphQLHandler(resolver), authenticator.Middleware())
+	handler, err := NewGraphQLHandler(resolver)
+	require.NoError(t, err)
+	e.POST("/graphql", handler, authenticator.Middleware())
 	srv := httptest.NewServer(e)
 	defer srv.Close()
 

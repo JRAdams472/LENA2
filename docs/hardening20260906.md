@@ -1,6 +1,6 @@
 # Hardening — 2026-09-06
 
-Code audit findings and the concrete remediation plan (phase-24).
+Code audit findings and the concrete remediation plan (phase-24 and follow-on audit-remediation phases).
 
 ## Findings
 
@@ -36,9 +36,11 @@ Inconsistent nil-telemetry handling. newServer guards with if tel != nil, but ma
 
 Startup panic in the handler constructor. NewGraphQLHandler panics on a schema-parse error rather than returning it, coupling schema validity to a panic path. resolver.go:690-693
 
-## Resolution Plan (phase-24)
+## Resolution Plan (phase-24 → executed in phases 25–26)
 
-Fix all findings on a new `phase-24` branch — input-range validation at the GraphQL boundary, an authenticated `/metrics` endpoint, a bounded shutdown-aware async worker, deterministic ID ordering, and lifecycle/constructor cleanups — verified by `go build ./...`, `go test ./...` (short mode), `golangci-lint`, and `sqlc generate` for touched queries.
+Fix all findings — input-range validation at the GraphQL boundary, an authenticated `/metrics` endpoint, a bounded shutdown-aware async worker, deterministic ID ordering, and lifecycle/constructor cleanups — verified by `go build ./...`, `go test ./...` (short mode), `golangci-lint`, and `sqlc generate` for touched queries.
+
+**Execution note (2026-09-07):** `phase-24` merged as the audit register only; the fixes below landed later. `phase-25` shipped the auth/authorization items (LENA-001/002/003/011/029 plus cross-user integration tests) and step 7 below. `phase-26` implements the rest: steps 2–6, 8–14.
 
 ### Context verified during exploration
 
@@ -181,3 +183,25 @@ Fix all findings on a new `phase-24` branch — input-range validation at the Gr
 - **Metrics auth**: Prometheus scrapers will now need a bearer token from a trusted issuer — deployment docs may need a note that scraping requires a service account token.
 - **Behavior change**: `rateRecipe` with out-of-range rating now returns a GraphQL error instead of a DB/validation error later — same observable outcome for 0/6, but wrap-around values now reject instead of silently persisting.
 - **Worker drop semantics**: analytics events are best-effort by design; a full semaphore drops + logs rather than blocking — confirmed acceptable since analytics already tolerates loss.
+
+---
+
+## Follow-on phase — Performance Metrics & Observability (`phase-27`)
+
+Motivation: the Playwright e2e suite now takes >5 minutes and there is no data showing where that time goes — or whether API latency is drifting. This phase adds request-level and dependency-level performance metrics so slowdowns are measurable before they are felt. It also naturally covers audit findings LENA-049 (`HTTPMetrics` silently degrading), LENA-050 (telemetry `Setup` without timeout), and LENA-063 (pgxpool without explicit sizing/statement timeout) where they overlap.
+
+### Implementation steps
+
+1. **GraphQL field/operation timing** (`internal/bff`, `internal/platform/telemetry`):
+   - Record a histogram `graphql_resolver_duration_ms` labeled by `{operation_type (query|mutation), field}` using graphql-go's tracer/response-extension hooks (or a thin wrapper around `exec.Resolve` if hooks are insufficient).
+   - Keep label cardinality bounded: field name only — never argument values or raw query text (consistent with LENA-022 / LENA-070).
+2. **Domain service + SQL timing**:
+   - Histogram `domain_query_duration_ms{service, query}` around generated `sqlc.Querier` calls via a single reusable `timedQuerier`-style decorator (e.g. in `internal/platform/dbtx`) applied across `grocery`, `mealplan`, `inventory`, `recipe`, `wine`, `identity`, `analytics` — rather than hand-instrumenting every method.
+   - Simpler alternative: pgx query tracing via a `pgxpool` tracer hook so Postgres spans land in existing OTel traces. Evaluate both; prefer whichever touches fewer files.
+3. **HTTP metrics verification**: `tel.HTTPMetrics` and the (now authenticated) `/metrics` endpoint exist — verify histograms actually emit buckets, surface instrument-creation errors instead of silently degrading (LENA-049), and add a bounded `route` label if missing.
+4. **CI/e2e timing visibility**:
+   - Emit per-test durations in CI via a Playwright JUnit/JSON reporter artifact so slow tests are identifiable without downloading traces.
+   - GitHub step timing is sufficient for suite-level duration — do not over-build a custom metric for this.
+5. **Out of scope**: dashboards/alerts (Seq/Grafana) — follow-up once data exists; pgxpool sizing changes (LENA-063) are adjacent but land in their own fix.
+6. **Tests**: unit test the timing decorator (correct labels, error propagation); a resolver-timing test asserting a histogram sample exists after a query; a cardinality guard test asserting labels contain no argument data.
+7. **Verification**: `go build ./...`, `go test ./...` (incl. testcontainers integration tests), `golangci-lint run`; hit `/metrics` after a few GraphQL calls and confirm the new series appear with no per-user or high-cardinality labels.

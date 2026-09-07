@@ -716,7 +716,11 @@ func (r *Resolver) AddFoodFlavor(ctx context.Context, args struct{ Input addFood
 	if err != nil {
 		return nil, err
 	}
-	f, err := r.InventoryService.CreateFoodFlavor(ctx, itemID, flavorID, int16(args.Input.Intensity), u.Email)
+	intensity, err := checkedInt16(args.Input.Intensity, "intensity", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.InventoryService.CreateFoodFlavor(ctx, itemID, flavorID, intensity, u.Email)
 	if err != nil {
 		return nil, err
 	}

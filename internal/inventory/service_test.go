@@ -705,21 +705,27 @@ func TestCreateFoodNutrient(t *testing.T) {
 		v, err := numericToFloat64(arg.Amount)
 		return arg.FoodID == 11 && arg.NutrientID == 4 && arg.CreatedBy == "alice" &&
 			err == nil && v == 12.5
-	})).Return(sqlc.InventoryFoodNutrient{
+	})).Return(sqlc.CreateFoodNutrientRow{
+		FoodID:     11,
 		NutrientID: 4,
+		Name:       "Protein",
+		Unit:       pgtype.Text{String: "g", Valid: true},
 		Amount:     amount,
 	}, nil)
 
 	fn, err := s.CreateFoodNutrient(ctx, 11, 4, 12.5, "alice")
 	require.NoError(t, err)
+	assert.Equal(t, int64(11), fn.ItemID)
 	assert.Equal(t, int64(4), fn.NutrientID)
+	assert.Equal(t, "Protein", fn.Name)
+	assert.Equal(t, "g", fn.Unit)
 	assert.InDelta(t, 12.5, fn.Amount, 1e-9)
 }
 
 func TestCreateFoodNutrient_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().CreateFoodNutrient(ctx, gomock.Any()).Return(sqlc.InventoryFoodNutrient{}, errBoom)
+	q.EXPECT().CreateFoodNutrient(ctx, gomock.Any()).Return(sqlc.CreateFoodNutrientRow{}, errBoom)
 
 	_, err := s.CreateFoodNutrient(ctx, 11, 4, 12.5, "alice")
 	assert.ErrorIs(t, err, errBoom)
@@ -744,17 +750,17 @@ func TestCreateFoodFlavor(t *testing.T) {
 		FlavorID:  2,
 		Intensity: 3,
 		CreatedBy: "alice",
-	}).Return(sqlc.InventoryFoodFlavor{FlavorID: 2, Intensity: 3}, nil)
+	}).Return(sqlc.CreateFoodFlavorRow{FoodID: 11, FlavorID: 2, Name: "Spicy", Intensity: 3}, nil)
 
 	ff, err := s.CreateFoodFlavor(ctx, 11, 2, 3, "alice")
 	require.NoError(t, err)
-	assert.Equal(t, FoodFlavor{FlavorID: 2, Intensity: 3}, ff)
+	assert.Equal(t, FoodFlavor{ItemID: 11, FlavorID: 2, Name: "Spicy", Intensity: 3}, ff)
 }
 
 func TestCreateFoodFlavor_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().CreateFoodFlavor(ctx, gomock.Any()).Return(sqlc.InventoryFoodFlavor{}, errBoom)
+	q.EXPECT().CreateFoodFlavor(ctx, gomock.Any()).Return(sqlc.CreateFoodFlavorRow{}, errBoom)
 
 	_, err := s.CreateFoodFlavor(ctx, 11, 2, 3, "alice")
 	assert.ErrorIs(t, err, errBoom)
@@ -857,10 +863,10 @@ func TestNumericHelpers(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("numericToFloat64 returns zero for invalid numeric", func(t *testing.T) {
-		v, err := numericToFloat64(pgtype.Numeric{})
-		require.NoError(t, err)
-		assert.Equal(t, 0.0, v)
+	t.Run("numericToFloat64 errors on NULL numeric", func(t *testing.T) {
+		_, err := numericToFloat64(pgtype.Numeric{})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "NULL")
 	})
 }
 

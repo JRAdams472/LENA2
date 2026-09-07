@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,13 @@ func TestIntegration(t *testing.T) {
 	}
 
 	log := logger.New(cfg.LogLevel)
-	e := newServer(cfg, pool, log, nil)
+	e, resolver, err := newServer(cfg, pool, log, nil)
+	require.NoError(t, err)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = resolver.Shutdown(ctx)
+	}()
 	srv := httptest.NewServer(e)
 	defer srv.Close()
 
