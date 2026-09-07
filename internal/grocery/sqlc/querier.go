@@ -13,11 +13,11 @@ type Querier interface {
 	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
 	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
-	DeleteGroceryListItem(ctx context.Context, groceryListItemID int64) error
+	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error
 	GetGroceryListByID(ctx context.Context, arg GetGroceryListByIDParams) (GroceryGroceryList, error)
-	GetGroceryListItemByID(ctx context.Context, groceryListItemID int64) (GroceryGroceryListItem, error)
-	ListGroceryListItems(ctx context.Context, groceryListID int64) ([]GroceryGroceryListItem, error)
-	ListGroceryListItemsByLists(ctx context.Context, groceryListIds []int64) ([]GroceryGroceryListItem, error)
+	GetGroceryListItemByID(ctx context.Context, arg GetGroceryListItemByIDParams) (GroceryGroceryListItem, error)
+	ListGroceryListItems(ctx context.Context, arg ListGroceryListItemsParams) ([]GroceryGroceryListItem, error)
+	ListGroceryListItemsByLists(ctx context.Context, arg ListGroceryListItemsByListsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error)
 	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error
 }

@@ -82,7 +82,10 @@ func newMux(issuer, audience string, jwks jwk.Set, signingKey jwk.Key) *http.Ser
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	// GET /token?sub=&email=&name=&aud= mints a signed ID token.
+	// GET /token?sub=&email=&name=&aud=&verified= mints a signed ID token.
+	// verified defaults to true because this issuer emulates a provider that
+	// has verified the user's email; pass verified=false to exercise the
+	// unverified-email path.
 	mux.HandleFunc("GET /token", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		sub := q.Get("sub")
@@ -102,6 +105,7 @@ func newMux(issuer, audience string, jwks jwk.Set, signingKey jwk.Key) *http.Ser
 			Expiration(now.Add(time.Hour)).
 			Claim("email", q.Get("email")).
 			Claim("name", q.Get("name")).
+			Claim("email_verified", q.Get("verified") != "false").
 			Build()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

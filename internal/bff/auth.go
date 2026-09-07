@@ -13,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -24,8 +25,9 @@ import (
 type AuthConfig struct {
 	Issuers   []string
 	Audiences []string
-	// AdminEmails is a bootstrap allowlist: a user whose email is listed
-	// is promoted to the persisted 'admin' role on their next request.
+	// AdminEmails is a bootstrap allowlist: a user whose *provider-verified*
+	// email is listed is promoted to the persisted 'admin' role on their
+	// next request. Tokens without email_verified=true are never promoted.
 	AdminEmails []string
 }
 
@@ -48,10 +50,17 @@ type Authenticator struct {
 
 type cachedKeySet struct {
 	set       jwk.Set
+	fetchedAt time.Time
 	expiresAt time.Time
 }
 
-const jwksCacheTTL = time.Hour
+const (
+	jwksCacheTTL = time.Hour
+	// jwksMinRefreshInterval bounds how often a forced refresh can hit the
+	// issuer: bursts of tokens signed by unknown keys must not amplify into
+	// JWKS fetch storms against the provider.
+	jwksMinRefreshInterval = 30 * time.Second
+)
 
 // NewAuthenticator creates an Authenticator backed by the given identity service.
 func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) *Authenticator {
@@ -106,16 +115,24 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
 	if err != nil {
 		// The issuer may have rotated signing keys inside our cache window.
-		// Bust the cached JWKS, re-fetch, and retry verification once.
-		if refreshed, refErr := a.keySetForIssuer(ctx, issuer, true); refErr == nil {
-			token, err = jwt.Parse([]byte(raw), jwt.WithKeySet(refreshed), jwt.WithValidate(true))
+		// Only a token whose kid is absent from the cached set can be fixed
+		// by re-fetching keys; any other failure (expiry, bad claims) is not
+		// worth a refresh. The forced refresh is rate-limited inside
+		// keySetForIssuer.
+		if kid := signingKeyID(raw); kid == "" || !a.cachedSetHasKey(issuer, kid) {
+			if refreshed, refErr := a.keySetForIssuer(ctx, issuer, true); refErr == nil {
+				token, err = jwt.Parse([]byte(raw), jwt.WithKeySet(refreshed), jwt.WithValidate(true))
+			}
 		}
 		if err != nil {
 			return currentuser.User{}, fmt.Errorf("verify token: %w", err)
 		}
 	}
 
-	audience, _ := token.Audience()
+	audience, ok := token.Audience()
+	if !ok {
+		return currentuser.User{}, fmt.Errorf("token has no audience claim")
+	}
 	if !containsAny(a.cfg.Audiences, audience) {
 		return currentuser.User{}, fmt.Errorf("audience %v is not allowed", audience)
 	}
@@ -126,18 +143,27 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	}
 
 	var email, name string
-	_ = token.Get("email", &email)
-	_ = token.Get("name", &name)
+	if err := token.Get("email", &email); err != nil {
+		return currentuser.User{}, fmt.Errorf("token email claim: %w", err)
+	}
+	if err := token.Get("name", &name); err != nil {
+		return currentuser.User{}, fmt.Errorf("token name claim: %w", err)
+	}
+
+	// A missing or non-boolean claim simply means "not verified".
+	var emailVerified bool
+	_ = token.Get("email_verified", &emailVerified)
 
 	u, err := a.identity.UpsertUser(ctx, issuer, subject, email, name)
 	if err != nil {
 		return currentuser.User{}, fmt.Errorf("upsert user: %w", err)
 	}
 
-	// Bootstrap admin access: users whose email is configured in
-	// LENA_ADMIN_EMAILS are promoted to the persisted admin role here so
-	// the role survives across logins.
-	if u.Role != identity.RoleAdmin && contains(a.cfg.AdminEmails, u.Email) {
+	// Bootstrap admin access: users whose provider-verified email is
+	// configured in LENA_ADMIN_EMAILS are promoted to the persisted admin
+	// role here so the role survives across logins. An unverified or absent
+	// email claim must never trigger promotion.
+	if u.Role != identity.RoleAdmin && emailVerified && containsFold(a.cfg.AdminEmails, u.Email) {
 		if err := a.identity.SetUserRole(ctx, u.UserID, identity.RoleAdmin); err != nil {
 			return currentuser.User{}, fmt.Errorf("promote admin user: %w", err)
 		}
@@ -158,11 +184,18 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 // fetching it if the cache is empty, stale, or forceRefresh is set (used
 // after a signature-verification failure to handle key rotation).
 func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string, forceRefresh bool) (jwk.Set, error) {
+	// The lock is held across the network fetch so concurrent callers share
+	// a single discovery/JWKS request instead of stampeding the issuer.
 	a.mu.Lock()
-	entry, ok := a.jwks[issuer]
-	a.mu.Unlock()
-	if ok && !forceRefresh && time.Now().Before(entry.expiresAt) {
-		return entry.set, nil
+	defer a.mu.Unlock()
+
+	if entry, ok := a.jwks[issuer]; ok {
+		if !forceRefresh && time.Now().Before(entry.expiresAt) {
+			return entry.set, nil
+		}
+		if forceRefresh && time.Since(entry.fetchedAt) < jwksMinRefreshInterval {
+			return entry.set, nil
+		}
 	}
 
 	jwksURI, err := a.discoverJWKSURI(ctx, issuer)
@@ -175,11 +208,34 @@ func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string, forc
 		return nil, fmt.Errorf("fetch jwks: %w", err)
 	}
 
-	a.mu.Lock()
-	a.jwks[issuer] = &cachedKeySet{set: set, expiresAt: time.Now().Add(jwksCacheTTL)}
-	a.mu.Unlock()
+	a.jwks[issuer] = &cachedKeySet{set: set, fetchedAt: time.Now(), expiresAt: time.Now().Add(jwksCacheTTL)}
 
 	return set, nil
+}
+
+// cachedSetHasKey reports whether the issuer's cached JWKS already
+// contains the given key id.
+func (a *Authenticator) cachedSetHasKey(issuer, kid string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	entry, ok := a.jwks[issuer]
+	if !ok {
+		return false
+	}
+	_, found := entry.set.LookupKeyID(kid)
+	return found
+}
+
+// signingKeyID extracts the JWS protected header's kid without verifying
+// the signature; it is used only to decide whether a JWKS refresh could
+// possibly help.
+func signingKeyID(raw string) string {
+	msg, err := jws.Parse([]byte(raw))
+	if err != nil || len(msg.Signatures()) == 0 {
+		return ""
+	}
+	kid, _ := msg.Signatures()[0].ProtectedHeaders().KeyID()
+	return kid
 }
 
 // discoverJWKSURI resolves the issuer's JWKS endpoint via OIDC discovery
@@ -232,6 +288,17 @@ func extractBearer(r *http.Request) (string, error) {
 func contains(list []string, value string) bool {
 	for _, v := range list {
 		if v == value {
+			return true
+		}
+	}
+	return false
+}
+
+// containsFold reports whether value matches a list entry
+// case-insensitively, as is correct for email comparisons.
+func containsFold(list []string, value string) bool {
+	for _, v := range list {
+		if strings.EqualFold(v, value) {
 			return true
 		}
 	}

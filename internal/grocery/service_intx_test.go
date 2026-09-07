@@ -74,7 +74,7 @@ func TestServiceInTx_BindsServiceToTransaction(t *testing.T) {
 	err := s.InTx(context.Background(), func(txSvc *Service) error {
 		// A write through the tx-bound service must hit the transaction, not
 		// the pool.
-		return txSvc.DeleteGroceryListItem(context.Background(), 1)
+		return txSvc.DeleteGroceryListItem(context.Background(), 1, 1)
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, tx.execCalls)

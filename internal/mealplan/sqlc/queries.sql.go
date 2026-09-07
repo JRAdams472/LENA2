@@ -172,22 +172,35 @@ func (q *Queries) DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) 
 }
 
 const deleteMealSlot = `-- name: DeleteMealSlot :exec
-DELETE FROM mealplan.meal_slot
-WHERE slot_id = $1
+DELETE FROM mealplan.meal_slot ms
+USING mealplan.meal_plan mp
+WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.user_id = $2
 `
 
-func (q *Queries) DeleteMealSlot(ctx context.Context, slotID int64) error {
-	_, err := q.db.Exec(ctx, deleteMealSlot, slotID)
+type DeleteMealSlotParams struct {
+	SlotID int64 `json:"slot_id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error {
+	_, err := q.db.Exec(ctx, deleteMealSlot, arg.SlotID, arg.UserID)
 	return err
 }
 
 const deleteMealSlotItem = `-- name: DeleteMealSlotItem :exec
-DELETE FROM mealplan.meal_slot_item
-WHERE slot_item_id = $1
+DELETE FROM mealplan.meal_slot_item msi
+USING mealplan.meal_slot ms, mealplan.meal_plan mp
+WHERE msi.slot_id = ms.slot_id AND ms.meal_plan_id = mp.meal_plan_id
+  AND msi.slot_item_id = $1 AND mp.user_id = $2
 `
 
-func (q *Queries) DeleteMealSlotItem(ctx context.Context, slotItemID int64) error {
-	_, err := q.db.Exec(ctx, deleteMealSlotItem, slotItemID)
+type DeleteMealSlotItemParams struct {
+	SlotItemID int64 `json:"slot_item_id"`
+	UserID     int64 `json:"user_id"`
+}
+
+func (q *Queries) DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error {
+	_, err := q.db.Exec(ctx, deleteMealSlotItem, arg.SlotItemID, arg.UserID)
 	return err
 }
 
@@ -221,13 +234,19 @@ func (q *Queries) GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams
 }
 
 const getMealSlotByID = `-- name: GetMealSlotByID :one
-SELECT slot_id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, replacement_note, created_by, created_at, updated_by, updated_at
-FROM mealplan.meal_slot
-WHERE slot_id = $1
+SELECT ms.slot_id, ms.meal_plan_id, ms.day_of_week, ms.meal_type, ms.recipe_id, ms.servings, ms.replacement_note, ms.created_by, ms.created_at, ms.updated_by, ms.updated_at
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.slot_id = $1 AND mp.user_id = $2
 `
 
-func (q *Queries) GetMealSlotByID(ctx context.Context, slotID int64) (MealplanMealSlot, error) {
-	row := q.db.QueryRow(ctx, getMealSlotByID, slotID)
+type GetMealSlotByIDParams struct {
+	SlotID int64 `json:"slot_id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams) (MealplanMealSlot, error) {
+	row := q.db.QueryRow(ctx, getMealSlotByID, arg.SlotID, arg.UserID)
 	var i MealplanMealSlot
 	err := row.Scan(
 		&i.SlotID,
@@ -291,14 +310,21 @@ func (q *Queries) ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([
 }
 
 const listMealSlotItems = `-- name: ListMealSlotItems :many
-SELECT slot_item_id, slot_id, item_id, quantity, is_from_recipe, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
-FROM mealplan.meal_slot_item
-WHERE slot_id = $1
-ORDER BY slot_item_id
+SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id, msi.unit_id
+FROM mealplan.meal_slot_item msi
+JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE msi.slot_id = $1 AND mp.user_id = $2
+ORDER BY msi.slot_item_id
 `
 
-func (q *Queries) ListMealSlotItems(ctx context.Context, slotID int64) ([]MealplanMealSlotItem, error) {
-	rows, err := q.db.Query(ctx, listMealSlotItems, slotID)
+type ListMealSlotItemsParams struct {
+	SlotID int64 `json:"slot_id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) ListMealSlotItems(ctx context.Context, arg ListMealSlotItemsParams) ([]MealplanMealSlotItem, error) {
+	rows, err := q.db.Query(ctx, listMealSlotItems, arg.SlotID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -333,12 +359,18 @@ const listMealSlotItemsByPlan = `-- name: ListMealSlotItemsByPlan :many
 SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id, msi.unit_id
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
-WHERE ms.meal_plan_id = $1
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = $1 AND mp.user_id = $2
 ORDER BY msi.slot_item_id
 `
 
-func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlotItem, error) {
-	rows, err := q.db.Query(ctx, listMealSlotItemsByPlan, mealPlanID)
+type ListMealSlotItemsByPlanParams struct {
+	MealPlanID int64 `json:"meal_plan_id"`
+	UserID     int64 `json:"user_id"`
+}
+
+func (q *Queries) ListMealSlotItemsByPlan(ctx context.Context, arg ListMealSlotItemsByPlanParams) ([]MealplanMealSlotItem, error) {
+	rows, err := q.db.Query(ctx, listMealSlotItemsByPlan, arg.MealPlanID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -373,12 +405,18 @@ const listMealSlotItemsByPlans = `-- name: ListMealSlotItemsByPlans :many
 SELECT msi.slot_item_id, msi.slot_id, msi.item_id, msi.quantity, msi.is_from_recipe, msi.created_by, msi.created_at, msi.updated_by, msi.updated_at, msi.ingredient_id, msi.unit_id
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
-WHERE ms.meal_plan_id = ANY($1::bigint[])
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = ANY($1::bigint[]) AND mp.user_id = $2
 ORDER BY msi.slot_item_id
 `
 
-func (q *Queries) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlotItem, error) {
-	rows, err := q.db.Query(ctx, listMealSlotItemsByPlans, mealPlanIds)
+type ListMealSlotItemsByPlansParams struct {
+	MealPlanIds []int64 `json:"meal_plan_ids"`
+	UserID      int64   `json:"user_id"`
+}
+
+func (q *Queries) ListMealSlotItemsByPlans(ctx context.Context, arg ListMealSlotItemsByPlansParams) ([]MealplanMealSlotItem, error) {
+	rows, err := q.db.Query(ctx, listMealSlotItemsByPlans, arg.MealPlanIds, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -410,14 +448,20 @@ func (q *Queries) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []in
 }
 
 const listMealSlotsByPlans = `-- name: ListMealSlotsByPlans :many
-SELECT slot_id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, replacement_note, created_by, created_at, updated_by, updated_at
-FROM mealplan.meal_slot
-WHERE meal_plan_id = ANY($1::bigint[])
-ORDER BY day_of_week, meal_type
+SELECT ms.slot_id, ms.meal_plan_id, ms.day_of_week, ms.meal_type, ms.recipe_id, ms.servings, ms.replacement_note, ms.created_by, ms.created_at, ms.updated_by, ms.updated_at
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = ANY($1::bigint[]) AND mp.user_id = $2
+ORDER BY ms.day_of_week, ms.meal_type
 `
 
-func (q *Queries) ListMealSlotsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlot, error) {
-	rows, err := q.db.Query(ctx, listMealSlotsByPlans, mealPlanIds)
+type ListMealSlotsByPlansParams struct {
+	MealPlanIds []int64 `json:"meal_plan_ids"`
+	UserID      int64   `json:"user_id"`
+}
+
+func (q *Queries) ListMealSlotsByPlans(ctx context.Context, arg ListMealSlotsByPlansParams) ([]MealplanMealSlot, error) {
+	rows, err := q.db.Query(ctx, listMealSlotsByPlans, arg.MealPlanIds, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -449,14 +493,20 @@ func (q *Queries) ListMealSlotsByPlans(ctx context.Context, mealPlanIds []int64)
 }
 
 const listMealSlotsForPlan = `-- name: ListMealSlotsForPlan :many
-SELECT slot_id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, replacement_note, created_by, created_at, updated_by, updated_at
-FROM mealplan.meal_slot
-WHERE meal_plan_id = $1
-ORDER BY day_of_week, meal_type
+SELECT ms.slot_id, ms.meal_plan_id, ms.day_of_week, ms.meal_type, ms.recipe_id, ms.servings, ms.replacement_note, ms.created_by, ms.created_at, ms.updated_by, ms.updated_at
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = $1 AND mp.user_id = $2
+ORDER BY ms.day_of_week, ms.meal_type
 `
 
-func (q *Queries) ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlot, error) {
-	rows, err := q.db.Query(ctx, listMealSlotsForPlan, mealPlanID)
+type ListMealSlotsForPlanParams struct {
+	MealPlanID int64 `json:"meal_plan_id"`
+	UserID     int64 `json:"user_id"`
+}
+
+func (q *Queries) ListMealSlotsForPlan(ctx context.Context, arg ListMealSlotsForPlanParams) ([]MealplanMealSlot, error) {
+	rows, err := q.db.Query(ctx, listMealSlotsForPlan, arg.MealPlanID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -522,19 +572,21 @@ func (q *Queries) UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) 
 }
 
 const updateMealSlot = `-- name: UpdateMealSlot :exec
-UPDATE mealplan.meal_slot
-SET day_of_week      = $2,
-    meal_type        = $3,
-    recipe_id        = $4,
-    servings         = $5,
-    replacement_note = $6,
-    updated_by       = $7,
+UPDATE mealplan.meal_slot ms
+SET day_of_week      = $3,
+    meal_type        = $4,
+    recipe_id        = $5,
+    servings         = $6,
+    replacement_note = $7,
+    updated_by       = $8,
     updated_at       = now()
-WHERE slot_id = $1
+FROM mealplan.meal_plan mp
+WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.user_id = $2
 `
 
 type UpdateMealSlotParams struct {
 	SlotID          int64       `json:"slot_id"`
+	UserID          int64       `json:"user_id"`
 	DayOfWeek       int16       `json:"day_of_week"`
 	MealType        string      `json:"meal_type"`
 	RecipeID        pgtype.Int8 `json:"recipe_id"`
@@ -546,6 +598,7 @@ type UpdateMealSlotParams struct {
 func (q *Queries) UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error {
 	_, err := q.db.Exec(ctx, updateMealSlot,
 		arg.SlotID,
+		arg.UserID,
 		arg.DayOfWeek,
 		arg.MealType,
 		arg.RecipeID,

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,8 +15,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
-// RotateKey regenerates the issuer's signing key while keeping the same key
-// ID, so callers can simulate OIDC key rotation. The JWKS endpoint immediately
+// RotateKey regenerates the issuer's signing key under a fresh key ID, so
+// callers can simulate OIDC key rotation. The JWKS endpoint immediately
 // serves the new public key.
 func (ti *TestIssuer) RotateKey(t *testing.T) {
 	t.Helper()
@@ -24,6 +25,7 @@ func (ti *TestIssuer) RotateKey(t *testing.T) {
 		t.Fatalf("generate rsa key: %v", err)
 	}
 	ti.priv = priv
+	ti.keyID = fmt.Sprintf("test-key-%d", time.Now().UnixNano())
 }
 
 // TestAudience is the audience claim expected by test Authenticators.
@@ -96,6 +98,7 @@ func (ti *TestIssuer) Token(t *testing.T, subject, email, displayName string) st
 		Expiration(now.Add(time.Hour)).
 		Claim("email", email).
 		Claim("name", displayName).
+		Claim("email_verified", true).
 		Build()
 	if err != nil {
 		t.Fatalf("build token: %v", err)

@@ -18,12 +18,12 @@ type GroceryService interface {
 	ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]grocery.GroceryList, error)
 	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
 	Generate(ctx context.Context, userID int64, mealPlanID int64, by string) (grocery.GroceryList, error)
-	GetGroceryListItemByID(ctx context.Context, groceryListItemID int64) (grocery.GroceryListItem, error)
-	UpdateGroceryListItem(ctx context.Context, groceryListItemID int64, arg grocery.GroceryListItem, by string) error
-	DeleteGroceryListItem(ctx context.Context, groceryListItemID int64) error
-	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, by string) (grocery.GroceryListItem, error)
-	ListGroceryListItems(ctx context.Context, groceryListID int64) ([]grocery.GroceryListItem, error)
-	ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64) ([]grocery.GroceryListItem, error)
+	GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error)
+	UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error
+	DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error
+	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, userID int64, by string) (grocery.GroceryListItem, error)
+	ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]grocery.GroceryListItem, error)
+	ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, userID int64) ([]grocery.GroceryListItem, error)
 }
 
 var _ GroceryService = (*grocery.Service)(nil)
@@ -87,18 +87,18 @@ type MealPlanService interface {
 	GetMealPlanByID(ctx context.Context, mealPlanID, userID int64) (mealplan.MealPlan, error)
 	ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error)
 	CountMealPlans(ctx context.Context, userID int64) (int64, error)
-	ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]mealplan.MealSlot, error)
-	ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64) ([]mealplan.MealSlot, error)
-	ListMealSlotItems(ctx context.Context, slotID int64) ([]mealplan.MealSlotItem, error)
-	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]mealplan.MealSlotItem, error)
-	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotsForPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlot, error)
+	ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlot, error)
+	ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlotItem, error)
 	CreateMealPlan(ctx context.Context, arg mealplan.MealPlan, by string) (mealplan.MealPlan, error)
 	UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error
 	DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error
-	AddMealSlot(ctx context.Context, arg mealplan.MealSlot, by string) (mealplan.MealSlot, error)
-	DeleteMealSlot(ctx context.Context, slotID int64) error
-	AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, by string) (mealplan.MealSlotItem, error)
-	DeleteMealSlotItem(ctx context.Context, slotItemID int64) error
+	AddMealSlot(ctx context.Context, arg mealplan.MealSlot, userID int64, by string) (mealplan.MealSlot, error)
+	DeleteMealSlot(ctx context.Context, slotID, userID int64) error
+	AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, userID int64, by string) (mealplan.MealSlotItem, error)
+	DeleteMealSlotItem(ctx context.Context, slotItemID, userID int64) error
 }
 
 var _ MealPlanService = (*mealplan.Service)(nil)

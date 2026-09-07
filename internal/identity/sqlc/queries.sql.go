@@ -173,7 +173,8 @@ INSERT INTO identity.users (
 VALUES ($1, $2, $3, $4, now(), $5, $6)
 ON CONFLICT (provider, external_subject)
     DO UPDATE SET
-        email = EXCLUDED.email,
+        -- An empty email claim must never blank out a stored address.
+        email = CASE WHEN EXCLUDED.email = '' THEN identity.users.email ELSE EXCLUDED.email END,
         display_name = EXCLUDED.display_name,
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,

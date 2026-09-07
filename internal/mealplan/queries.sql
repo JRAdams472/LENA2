@@ -40,36 +40,41 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetMealSlotByID :one
-SELECT *
-FROM mealplan.meal_slot
-WHERE slot_id = $1;
+SELECT ms.*
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.slot_id = $1 AND mp.user_id = $2;
 
 -- name: ListMealSlotsForPlan :many
-SELECT *
-FROM mealplan.meal_slot
-WHERE meal_plan_id = $1
-ORDER BY day_of_week, meal_type;
+SELECT ms.*
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = $1 AND mp.user_id = $2
+ORDER BY ms.day_of_week, ms.meal_type;
 
 -- name: ListMealSlotsByPlans :many
-SELECT *
-FROM mealplan.meal_slot
-WHERE meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[])
-ORDER BY day_of_week, meal_type;
+SELECT ms.*
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[]) AND mp.user_id = sqlc.arg(user_id)
+ORDER BY ms.day_of_week, ms.meal_type;
 
 -- name: UpdateMealSlot :exec
-UPDATE mealplan.meal_slot
-SET day_of_week      = $2,
-    meal_type        = $3,
-    recipe_id        = $4,
-    servings         = $5,
-    replacement_note = $6,
-    updated_by       = $7,
+UPDATE mealplan.meal_slot ms
+SET day_of_week      = $3,
+    meal_type        = $4,
+    recipe_id        = $5,
+    servings         = $6,
+    replacement_note = $7,
+    updated_by       = $8,
     updated_at       = now()
-WHERE slot_id = $1;
+FROM mealplan.meal_plan mp
+WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.user_id = $2;
 
 -- name: DeleteMealSlot :exec
-DELETE FROM mealplan.meal_slot
-WHERE slot_id = $1;
+DELETE FROM mealplan.meal_slot ms
+USING mealplan.meal_plan mp
+WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.user_id = $2;
 
 -- name: AddMealSlotItem :one
 INSERT INTO mealplan.meal_slot_item (slot_id, item_id, ingredient_id, quantity, unit_id, is_from_recipe, created_by, updated_by)
@@ -77,25 +82,31 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: ListMealSlotItems :many
-SELECT *
-FROM mealplan.meal_slot_item
-WHERE slot_id = $1
-ORDER BY slot_item_id;
+SELECT msi.*
+FROM mealplan.meal_slot_item msi
+JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE msi.slot_id = $1 AND mp.user_id = $2
+ORDER BY msi.slot_item_id;
 
 -- name: ListMealSlotItemsByPlan :many
 SELECT msi.*
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
-WHERE ms.meal_plan_id = $1
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = $1 AND mp.user_id = $2
 ORDER BY msi.slot_item_id;
 
 -- name: ListMealSlotItemsByPlans :many
 SELECT msi.*
 FROM mealplan.meal_slot_item msi
 JOIN mealplan.meal_slot ms ON msi.slot_id = ms.slot_id
-WHERE ms.meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[])
+JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
+WHERE ms.meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[]) AND mp.user_id = sqlc.arg(user_id)
 ORDER BY msi.slot_item_id;
 
 -- name: DeleteMealSlotItem :exec
-DELETE FROM mealplan.meal_slot_item
-WHERE slot_item_id = $1;
+DELETE FROM mealplan.meal_slot_item msi
+USING mealplan.meal_slot ms, mealplan.meal_plan mp
+WHERE msi.slot_id = ms.slot_id AND ms.meal_plan_id = mp.meal_plan_id
+  AND msi.slot_item_id = $1 AND mp.user_id = $2;

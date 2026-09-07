@@ -30,35 +30,42 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListGroceryListItems :many
-SELECT *
-FROM grocery.grocery_list_item
-WHERE grocery_list_id = $1
-ORDER BY grocery_list_item_id;
+SELECT gli.*
+FROM grocery.grocery_list_item gli
+JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
+WHERE gli.grocery_list_id = $1 AND gl.user_id = $2
+ORDER BY gli.grocery_list_item_id;
 
 -- name: ListGroceryListItemsByLists :many
-SELECT *
-FROM grocery.grocery_list_item
-WHERE grocery_list_id = ANY(sqlc.arg(grocery_list_ids)::bigint[])
-ORDER BY grocery_list_item_id;
+SELECT gli.*
+FROM grocery.grocery_list_item gli
+JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
+WHERE gli.grocery_list_id = ANY(sqlc.arg(grocery_list_ids)::bigint[]) AND gl.user_id = sqlc.arg(user_id)
+ORDER BY gli.grocery_list_item_id;
 
 -- name: GetGroceryListItemByID :one
-SELECT *
-FROM grocery.grocery_list_item
-WHERE grocery_list_item_id = $1;
+SELECT gli.*
+FROM grocery.grocery_list_item gli
+JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
+WHERE gli.grocery_list_item_id = $1 AND gl.user_id = $2;
 
 -- name: UpdateGroceryListItem :exec
-UPDATE grocery.grocery_list_item
-SET item_id          = $2,
-    ingredient_id    = $3,
-    manual_item_name = $4,
-    quantity_needed  = $5,
-    unit_id          = $6,
-    source           = $7,
-    is_checked       = $8,
-    updated_by       = $9,
+UPDATE grocery.grocery_list_item gli
+SET item_id          = $3,
+    ingredient_id    = $4,
+    manual_item_name = $5,
+    quantity_needed  = $6,
+    unit_id          = $7,
+    source           = $8,
+    is_checked       = $9,
+    updated_by       = $10,
     updated_at       = now()
-WHERE grocery_list_item_id = $1;
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1 AND gl.user_id = $2;
 
 -- name: DeleteGroceryListItem :exec
-DELETE FROM grocery.grocery_list_item
-WHERE grocery_list_item_id = $1;
+DELETE FROM grocery.grocery_list_item gli
+USING grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1 AND gl.user_id = $2;

@@ -116,31 +116,31 @@ func (mr *MockQuerierMockRecorder) DeleteMealPlan(ctx, arg any) *gomock.Call {
 }
 
 // DeleteMealSlot mocks base method.
-func (m *MockQuerier) DeleteMealSlot(ctx context.Context, slotID int64) error {
+func (m *MockQuerier) DeleteMealSlot(ctx context.Context, arg sqlc.DeleteMealSlotParams) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealSlot", ctx, slotID)
+	ret := m.ctrl.Call(m, "DeleteMealSlot", ctx, arg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealSlot indicates an expected call of DeleteMealSlot.
-func (mr *MockQuerierMockRecorder) DeleteMealSlot(ctx, slotID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) DeleteMealSlot(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlot", reflect.TypeOf((*MockQuerier)(nil).DeleteMealSlot), ctx, slotID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlot", reflect.TypeOf((*MockQuerier)(nil).DeleteMealSlot), ctx, arg)
 }
 
 // DeleteMealSlotItem mocks base method.
-func (m *MockQuerier) DeleteMealSlotItem(ctx context.Context, slotItemID int64) error {
+func (m *MockQuerier) DeleteMealSlotItem(ctx context.Context, arg sqlc.DeleteMealSlotItemParams) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealSlotItem", ctx, slotItemID)
+	ret := m.ctrl.Call(m, "DeleteMealSlotItem", ctx, arg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealSlotItem indicates an expected call of DeleteMealSlotItem.
-func (mr *MockQuerierMockRecorder) DeleteMealSlotItem(ctx, slotItemID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) DeleteMealSlotItem(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockQuerier)(nil).DeleteMealSlotItem), ctx, slotItemID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockQuerier)(nil).DeleteMealSlotItem), ctx, arg)
 }
 
 // GetMealPlanByID mocks base method.
@@ -159,18 +159,18 @@ func (mr *MockQuerierMockRecorder) GetMealPlanByID(ctx, arg any) *gomock.Call {
 }
 
 // GetMealSlotByID mocks base method.
-func (m *MockQuerier) GetMealSlotByID(ctx context.Context, slotID int64) (sqlc.MealplanMealSlot, error) {
+func (m *MockQuerier) GetMealSlotByID(ctx context.Context, arg sqlc.GetMealSlotByIDParams) (sqlc.MealplanMealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMealSlotByID", ctx, slotID)
+	ret := m.ctrl.Call(m, "GetMealSlotByID", ctx, arg)
 	ret0, _ := ret[0].(sqlc.MealplanMealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetMealSlotByID indicates an expected call of GetMealSlotByID.
-func (mr *MockQuerierMockRecorder) GetMealSlotByID(ctx, slotID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) GetMealSlotByID(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealSlotByID", reflect.TypeOf((*MockQuerier)(nil).GetMealSlotByID), ctx, slotID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealSlotByID", reflect.TypeOf((*MockQuerier)(nil).GetMealSlotByID), ctx, arg)
 }
 
 // ListMealPlans mocks base method.
@@ -189,78 +189,78 @@ func (mr *MockQuerierMockRecorder) ListMealPlans(ctx, arg any) *gomock.Call {
 }
 
 // ListMealSlotItems mocks base method.
-func (m *MockQuerier) ListMealSlotItems(ctx context.Context, slotID int64) ([]sqlc.MealplanMealSlotItem, error) {
+func (m *MockQuerier) ListMealSlotItems(ctx context.Context, arg sqlc.ListMealSlotItemsParams) ([]sqlc.MealplanMealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItems", ctx, slotID)
+	ret := m.ctrl.Call(m, "ListMealSlotItems", ctx, arg)
 	ret0, _ := ret[0].([]sqlc.MealplanMealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItems indicates an expected call of ListMealSlotItems.
-func (mr *MockQuerierMockRecorder) ListMealSlotItems(ctx, slotID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListMealSlotItems(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItems), ctx, slotID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItems), ctx, arg)
 }
 
 // ListMealSlotItemsByPlan mocks base method.
-func (m *MockQuerier) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]sqlc.MealplanMealSlotItem, error) {
+func (m *MockQuerier) ListMealSlotItemsByPlan(ctx context.Context, arg sqlc.ListMealSlotItemsByPlanParams) ([]sqlc.MealplanMealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, mealPlanID)
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, arg)
 	ret0, _ := ret[0].([]sqlc.MealplanMealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItemsByPlan indicates an expected call of ListMealSlotItemsByPlan.
-func (mr *MockQuerierMockRecorder) ListMealSlotItemsByPlan(ctx, mealPlanID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListMealSlotItemsByPlan(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItemsByPlan), ctx, mealPlanID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItemsByPlan), ctx, arg)
 }
 
 // ListMealSlotItemsByPlans mocks base method.
-func (m *MockQuerier) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []int64) ([]sqlc.MealplanMealSlotItem, error) {
+func (m *MockQuerier) ListMealSlotItemsByPlans(ctx context.Context, arg sqlc.ListMealSlotItemsByPlansParams) ([]sqlc.MealplanMealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlans", ctx, mealPlanIds)
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlans", ctx, arg)
 	ret0, _ := ret[0].([]sqlc.MealplanMealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItemsByPlans indicates an expected call of ListMealSlotItemsByPlans.
-func (mr *MockQuerierMockRecorder) ListMealSlotItemsByPlans(ctx, mealPlanIds any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListMealSlotItemsByPlans(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlans", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItemsByPlans), ctx, mealPlanIds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlans", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotItemsByPlans), ctx, arg)
 }
 
 // ListMealSlotsByPlans mocks base method.
-func (m *MockQuerier) ListMealSlotsByPlans(ctx context.Context, mealPlanIds []int64) ([]sqlc.MealplanMealSlot, error) {
+func (m *MockQuerier) ListMealSlotsByPlans(ctx context.Context, arg sqlc.ListMealSlotsByPlansParams) ([]sqlc.MealplanMealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotsByPlans", ctx, mealPlanIds)
+	ret := m.ctrl.Call(m, "ListMealSlotsByPlans", ctx, arg)
 	ret0, _ := ret[0].([]sqlc.MealplanMealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotsByPlans indicates an expected call of ListMealSlotsByPlans.
-func (mr *MockQuerierMockRecorder) ListMealSlotsByPlans(ctx, mealPlanIds any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListMealSlotsByPlans(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsByPlans", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotsByPlans), ctx, mealPlanIds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsByPlans", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotsByPlans), ctx, arg)
 }
 
 // ListMealSlotsForPlan mocks base method.
-func (m *MockQuerier) ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]sqlc.MealplanMealSlot, error) {
+func (m *MockQuerier) ListMealSlotsForPlan(ctx context.Context, arg sqlc.ListMealSlotsForPlanParams) ([]sqlc.MealplanMealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotsForPlan", ctx, mealPlanID)
+	ret := m.ctrl.Call(m, "ListMealSlotsForPlan", ctx, arg)
 	ret0, _ := ret[0].([]sqlc.MealplanMealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotsForPlan indicates an expected call of ListMealSlotsForPlan.
-func (mr *MockQuerierMockRecorder) ListMealSlotsForPlan(ctx, mealPlanID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListMealSlotsForPlan(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotsForPlan), ctx, mealPlanID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotsForPlan), ctx, arg)
 }
 
 // UpdateMealPlan mocks base method.

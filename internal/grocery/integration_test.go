@@ -97,7 +97,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 		UnitID:         &lbID,
 		Source:         "manual",
 		IsChecked:      false,
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, manualItem.GroceryListItemID)
 
@@ -110,20 +110,20 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 		UnitID:         &canID,
 		Source:         "pantry",
 		IsChecked:      false,
-	}, itBy)
+	}, userA, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, catalogItem.GroceryListItemID)
 
-	items, err := svc.ListGroceryListItems(ctx, list.GroceryListID)
+	items, err := svc.ListGroceryListItems(ctx, list.GroceryListID, userA)
 	require.NoError(t, err)
 	require.Len(t, items, 2)
 
-	gotItem, err := svc.GetGroceryListItemByID(ctx, manualItem.GroceryListItemID)
+	gotItem, err := svc.GetGroceryListItemByID(ctx, manualItem.GroceryListItemID, userA)
 	require.NoError(t, err)
 	assert.Equal(t, "apples", gotItem.ManualItemName)
 	assert.False(t, gotItem.IsChecked)
 
-	require.NoError(t, svc.UpdateGroceryListItem(ctx, manualItem.GroceryListItemID, GroceryListItem{
+	require.NoError(t, svc.UpdateGroceryListItem(ctx, manualItem.GroceryListItemID, userA, GroceryListItem{
 		GroceryListID:  list.GroceryListID,
 		ManualItemName: "green apples",
 		QuantityNeeded: 3.0,
@@ -131,14 +131,14 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 		Source:         "manual",
 		IsChecked:      true,
 	}, itBy))
-	updatedItem, err := svc.GetGroceryListItemByID(ctx, manualItem.GroceryListItemID)
+	updatedItem, err := svc.GetGroceryListItemByID(ctx, manualItem.GroceryListItemID, userA)
 	require.NoError(t, err)
 	assert.Equal(t, "green apples", updatedItem.ManualItemName)
 	assert.InDelta(t, 3.0, updatedItem.QuantityNeeded, 0.0001)
 	assert.True(t, updatedItem.IsChecked)
 
-	require.NoError(t, svc.DeleteGroceryListItem(ctx, catalogItem.GroceryListItemID))
-	items, err = svc.ListGroceryListItems(ctx, list.GroceryListID)
+	require.NoError(t, svc.DeleteGroceryListItem(ctx, catalogItem.GroceryListItemID, userA))
+	items, err = svc.ListGroceryListItems(ctx, list.GroceryListID, userA)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, manualItem.GroceryListItemID, items[0].GroceryListItemID)
@@ -170,7 +170,59 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.NoError(t, svc.DeleteGroceryList(ctx, list.GroceryListID, userA))
 	_, err = svc.GetGroceryListByID(ctx, list.GroceryListID, userA)
 	require.Error(t, err)
-	items, err = svc.ListGroceryListItems(ctx, list.GroceryListID)
+	items, err = svc.ListGroceryListItems(ctx, list.GroceryListID, userA)
 	require.NoError(t, err)
 	assert.Empty(t, items)
+}
+
+// TestIntegrationGroceryCrossUserDenied verifies that every list-item
+// operation is scoped to the owning user (LENA-001).
+func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testenv.MustUser(ctx, t, pool, "grocery-xu-a@example.com")
+	userB := testenv.MustUser(ctx, t, pool, "grocery-xu-b@example.com")
+
+	list, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
+	require.NoError(t, err)
+
+	gli, err := svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID: list.GroceryListID, ManualItemName: "milk",
+		QuantityNeeded: 1, Source: "manual",
+	}, userA, itBy)
+	require.NoError(t, err)
+
+	// Reads and writes as userB must see or affect nothing.
+	_, err = svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID: list.GroceryListID, ManualItemName: "eggs",
+		QuantityNeeded: 1, Source: "manual",
+	}, userB, itBy)
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+
+	_, err = svc.GetGroceryListItemByID(ctx, gli.GroceryListItemID, userB)
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+
+	items, err := svc.ListGroceryListItems(ctx, list.GroceryListID, userB)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+
+	items, err = svc.ListGroceryListItemsByLists(ctx, []int64{list.GroceryListID}, userB)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+
+	require.NoError(t, svc.UpdateGroceryListItem(ctx, gli.GroceryListItemID, userB, GroceryListItem{
+		ManualItemName: "tampered", QuantityNeeded: 99, Source: "manual", IsChecked: true,
+	}, itBy))
+	got, err := svc.GetGroceryListItemByID(ctx, gli.GroceryListItemID, userA)
+	require.NoError(t, err)
+	assert.Equal(t, "milk", got.ManualItemName, "wrong-user update must not mutate the item")
+
+	require.NoError(t, svc.DeleteGroceryListItem(ctx, gli.GroceryListItemID, userB))
+	items, err = svc.ListGroceryListItems(ctx, list.GroceryListID, userA)
+	require.NoError(t, err)
+	assert.Len(t, items, 1, "wrong-user delete must not remove the item")
 }

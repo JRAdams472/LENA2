@@ -117,8 +117,36 @@ func TestTokenEndpoint(t *testing.T) {
 	if err := tok.Get("email", &email); err != nil || email != "e2e@example.com" {
 		t.Fatalf("email claim %q err=%v", email, err)
 	}
+	var verified bool
+	if err := tok.Get("email_verified", &verified); err != nil || !verified {
+		t.Fatalf("email_verified claim %v err=%v, want true", verified, err)
+	}
 	if exp, ok := tok.Expiration(); !ok || exp.Before(time.Now()) {
 		t.Fatal("token not valid for an hour")
+	}
+}
+
+func TestTokenEndpointUnverified(t *testing.T) {
+	srv, _, _ := testMux(t)
+
+	resp, err := http.Get(srv.URL + "/token?verified=false")
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		IDToken string `json:"id_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	tok, err := jwt.ParseInsecure([]byte(body.IDToken))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var verified bool
+	if err := tok.Get("email_verified", &verified); err != nil || verified {
+		t.Fatalf("email_verified claim %v err=%v, want false", verified, err)
 	}
 }
 

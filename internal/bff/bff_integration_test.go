@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -121,6 +122,12 @@ func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer
 		require.NoError(t, err)
 
 		issuer.RotateKey(t)
+
+		// The forced refresh is rate-limited; age the cached entry past the
+		// minimum interval so the refetch is allowed to hit the issuer.
+		authenticator.mu.Lock()
+		authenticator.jwks[issuer.URL].fetchedAt = time.Now().Add(-jwksMinRefreshInterval)
+		authenticator.mu.Unlock()
 
 		tok2 := issuer.Token(t, "rot-user", "user-a@example.com", "Rot User")
 		_, err = authenticator.authenticate(context.Background(), tok2)

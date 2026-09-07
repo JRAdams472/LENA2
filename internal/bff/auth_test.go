@@ -93,7 +93,7 @@ func newJWKSIssuer(t *testing.T, initial jwk.Set) *jwksIssuer {
 	return iss
 }
 
-func signToken(t *testing.T, priv *rsa.PrivateKey, kid, issuer, audience, subject, email string) string {
+func signToken(t *testing.T, priv *rsa.PrivateKey, kid, issuer, audience, subject, email string, extraClaims map[string]any) string {
 	t.Helper()
 	key, err := jwk.Import(priv)
 	if err != nil {
@@ -101,15 +101,18 @@ func signToken(t *testing.T, priv *rsa.PrivateKey, kid, issuer, audience, subjec
 	}
 	_ = key.Set(jwk.KeyIDKey, kid)
 	now := time.Now()
-	tok, err := jwt.NewBuilder().
+	b := jwt.NewBuilder().
 		Issuer(issuer).
 		Audience([]string{audience}).
 		Subject(subject).
 		IssuedAt(now).
 		Expiration(now.Add(time.Hour)).
 		Claim("email", email).
-		Claim("name", "Test User").
-		Build()
+		Claim("name", "Test User")
+	for k, v := range extraClaims {
+		b = b.Claim(k, v)
+	}
+	tok, err := b.Build()
 	if err != nil {
 		t.Fatalf("build token: %v", err)
 	}
@@ -129,7 +132,7 @@ func TestAuthenticateValidToken(t *testing.T) {
 		Audiences: []string{"lena-client"},
 	}, store)
 
-	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-1", "user@example.com")
+	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-1", "user@example.com", nil)
 	u, err := a.authenticate(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
@@ -150,16 +153,20 @@ func TestAuthenticateKeyRotation(t *testing.T) {
 	}, store)
 
 	// Warm the cache with key set A.
-	rawA := signToken(t, privA, "key-a", iss.server.URL, "lena-client", "sub-1", "u@example.com")
+	rawA := signToken(t, privA, "key-a", iss.server.URL, "lena-client", "sub-1", "u@example.com", nil)
 	if _, err := a.authenticate(context.Background(), rawA); err != nil {
 		t.Fatalf("warm-up authenticate: %v", err)
 	}
 
 	// Issuer rotates to key set B; a token signed with B fails the first
 	// verify against the cached set A, then succeeds after the forced
-	// cache-bust re-fetch.
+	// cache-bust re-fetch. Age the cached entry past the minimum refresh
+	// interval so the forced refresh is allowed to hit the issuer.
+	a.mu.Lock()
+	a.jwks[iss.server.URL].fetchedAt = time.Now().Add(-jwksMinRefreshInterval)
+	a.mu.Unlock()
 	iss.set.Store(setB)
-	rawB := signToken(t, privB, "key-b", iss.server.URL, "lena-client", "sub-1", "u@example.com")
+	rawB := signToken(t, privB, "key-b", iss.server.URL, "lena-client", "sub-1", "u@example.com", nil)
 	u, err := a.authenticate(context.Background(), rawB)
 	if err != nil {
 		t.Fatalf("authenticate after rotation: %v", err)
@@ -184,13 +191,13 @@ func TestAuthenticateRejects(t *testing.T) {
 		}
 	})
 	t.Run("disallowed issuer", func(t *testing.T) {
-		raw := signToken(t, priv, "key-a", "https://evil.example.com", "lena-client", "s", "e@x.com")
+		raw := signToken(t, priv, "key-a", "https://evil.example.com", "lena-client", "s", "e@x.com", nil)
 		if _, err := a.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
 	})
 	t.Run("wrong audience", func(t *testing.T) {
-		raw := signToken(t, priv, "key-a", iss.server.URL, "other-client", "s", "e@x.com")
+		raw := signToken(t, priv, "key-a", iss.server.URL, "other-client", "s", "e@x.com", nil)
 		if _, err := a.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
@@ -201,7 +208,7 @@ func TestAuthenticateRejects(t *testing.T) {
 			Issuers:   []string{iss.server.URL},
 			Audiences: []string{"lena-client"},
 		}, bad)
-		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com")
+		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com", nil)
 		if _, err := a2.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
@@ -218,7 +225,8 @@ func TestAuthenticateAdminPromotion(t *testing.T) {
 		AdminEmails: []string{"admin@example.com"},
 	}, store)
 
-	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-9", "admin@example.com")
+	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-9", "admin@example.com",
+		map[string]any{"email_verified": true})
 	u, err := a.authenticate(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
@@ -228,6 +236,42 @@ func TestAuthenticateAdminPromotion(t *testing.T) {
 	}
 	if atomic.LoadInt32(&store.roleCalls) != 1 || store.lastUserID != 9 || store.lastRole != identity.RoleAdmin {
 		t.Fatalf("expected SetUserRole(9, admin), got calls=%d uid=%d role=%s", store.roleCalls, store.lastUserID, store.lastRole)
+	}
+}
+
+// An allowlisted email must not promote when the provider did not verify
+// it, or when the claim is absent entirely.
+func TestAuthenticateAdminPromotionRequiresVerifiedEmail(t *testing.T) {
+	priv, set := newJWKSKey(t, "key-a")
+	iss := newJWKSIssuer(t, set)
+
+	for _, tc := range []struct {
+		name  string
+		extra map[string]any
+	}{
+		{name: "claim absent", extra: nil},
+		{name: "claim false", extra: map[string]any{"email_verified": false}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeIdentityStore{user: identity.User{UserID: 9, Role: identity.RoleMember}}
+			a := NewAuthenticator(AuthConfig{
+				Issuers:     []string{iss.server.URL},
+				Audiences:   []string{"lena-client"},
+				AdminEmails: []string{"admin@example.com"},
+			}, store)
+
+			raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-9", "admin@example.com", tc.extra)
+			u, err := a.authenticate(context.Background(), raw)
+			if err != nil {
+				t.Fatalf("authenticate: %v", err)
+			}
+			if u.IsAdmin {
+				t.Fatal("unverified email must not be promoted to admin")
+			}
+			if atomic.LoadInt32(&store.roleCalls) != 0 {
+				t.Fatalf("expected no SetUserRole call, got %d", store.roleCalls)
+			}
+		})
 	}
 }
 
@@ -256,7 +300,7 @@ func TestAuthMiddleware(t *testing.T) {
 		t.Fatalf("missing token: got %d, want 401", rec.Code)
 	}
 
-	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-3", "u@example.com")
+	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-3", "u@example.com", nil)
 	req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
 	req.Header.Set(echo.HeaderAuthorization, "Bearer "+raw)
 	rec = httptest.NewRecorder()

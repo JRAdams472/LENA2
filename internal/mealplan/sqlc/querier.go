@@ -14,16 +14,16 @@ type Querier interface {
 	CountMealPlans(ctx context.Context, userID int64) (int64, error)
 	CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) (MealplanMealPlan, error)
 	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
-	DeleteMealSlot(ctx context.Context, slotID int64) error
-	DeleteMealSlotItem(ctx context.Context, slotItemID int64) error
+	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error
+	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error
 	GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams) (MealplanMealPlan, error)
-	GetMealSlotByID(ctx context.Context, slotID int64) (MealplanMealSlot, error)
+	GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams) (MealplanMealSlot, error)
 	ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([]MealplanMealPlan, error)
-	ListMealSlotItems(ctx context.Context, slotID int64) ([]MealplanMealSlotItem, error)
-	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlotItem, error)
-	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlotItem, error)
-	ListMealSlotsByPlans(ctx context.Context, mealPlanIds []int64) ([]MealplanMealSlot, error)
-	ListMealSlotsForPlan(ctx context.Context, mealPlanID int64) ([]MealplanMealSlot, error)
+	ListMealSlotItems(ctx context.Context, arg ListMealSlotItemsParams) ([]MealplanMealSlotItem, error)
+	ListMealSlotItemsByPlan(ctx context.Context, arg ListMealSlotItemsByPlanParams) ([]MealplanMealSlotItem, error)
+	ListMealSlotItemsByPlans(ctx context.Context, arg ListMealSlotItemsByPlansParams) ([]MealplanMealSlotItem, error)
+	ListMealSlotsByPlans(ctx context.Context, arg ListMealSlotsByPlansParams) ([]MealplanMealSlot, error)
+	ListMealSlotsForPlan(ctx context.Context, arg ListMealSlotsForPlanParams) ([]MealplanMealSlot, error)
 	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) error
 	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error
 }
