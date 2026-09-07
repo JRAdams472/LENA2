@@ -23,14 +23,14 @@ type Service struct {
 
 // NewService creates a wine Service using the given connection pool.
 func NewService(pool dbtx.Pool) *Service {
-	return &Service{q: sqlc.New(pool), pool: pool}
+	return &Service{q: sqlc.New(dbtx.NewTimedExecer(pool, "wine")), pool: pool}
 }
 
 // WithTx returns a copy of the service whose queries run on tx. Callers that
 // hold a transaction can bind a service to it and compose multiple service
 // operations into one atomic unit of work.
 func (s *Service) WithTx(tx pgx.Tx) *Service {
-	return &Service{q: sqlc.New(tx), pool: s.pool}
+	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "wine")), pool: s.pool}
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is

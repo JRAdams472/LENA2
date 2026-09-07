@@ -294,3 +294,12 @@ Motivation: the Playwright e2e suite now takes >5 minutes and there is no data s
 5. **Out of scope**: dashboards/alerts (Seq/Grafana) — follow-up once data exists; pgxpool sizing changes (LENA-063) are adjacent but land in their own fix.
 6. **Tests**: unit test the timing decorator (correct labels, error propagation); a resolver-timing test asserting a histogram sample exists after a query; a cardinality guard test asserting labels contain no argument data.
 7. **Verification**: `go build ./...`, `go test ./...` (incl. testcontainers integration tests), `golangci-lint run`; hit `/metrics` after a few GraphQL calls and confirm the new series appear with no per-user or high-cardinality labels.
+
+**Status (2026-09-07):** implemented on `phase-32` — `go build`, `go vet`, `gofmt`, `go test -short`, and `golangci-lint run` (v2.13.2) all clean.
+
+- `graphql_resolver_duration_ms{operation_type, field}` recorded for non-trivial resolver fields in `graphQLTracer.TraceField`; operation type propagates from the root field via context so nested resolvers inherit it. Labels are schema-derived names only.
+- `domain_query_duration_ms{service, query}` recorded by `dbtx.NewTimedExecer` (`internal/platform/dbtx/timed.go`), applied at every `sqlc.New` call site across all 8 domain services including `WithTx` paths. Query names are parsed from the sqlc `-- name:` comment; unlabeled statements fall back to `unknown`. Durations cover row streaming (sampled on `Rows.Close`/`Row.Scan`).
+- LENA-049: `telemetry.HTTPMetrics()` now returns `(echo.MiddlewareFunc, error)`; `newServer` propagates the error instead of silently degrading. Duration histogram bucket emission is asserted in `telemetry_test.go`.
+- LENA-050: `telemetry.Setup` in `cmd/lena` now runs under a 10s startup timeout.
+- CI: Playwright config emits a JUnit report (`test-results/junit.xml`) in CI; the workflow uploads it with the `playwright-report` artifact.
+- Tests: `dbtx/timed_test.go` covers labels, close-timing, and error propagation; `graphql_tracer_test.go` covers resolver-duration export, nested-field operation-type inheritance, and the argument-value cardinality guard.

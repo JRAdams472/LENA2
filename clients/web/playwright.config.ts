@@ -8,7 +8,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: "html",
+  // CI emits a JUnit report alongside the HTML report so per-test durations
+  // are identifiable from the uploaded artifact without downloading traces.
+  reporter: process.env.CI
+    ? [["html"], ["junit", { outputFile: "test-results/junit.xml" }]]
+    : "html",
   use: {
     // The docker compose stack (Caddy) fronts both the web app and /graphql.
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost",

@@ -65,7 +65,11 @@ func run() int {
 	}
 	defer pool.Close()
 
-	tel, err := telemetry.Setup(context.Background(), cfg.ServiceName, cfg.OTLPEndpoint, cfg.OTLPInsecure, pool)
+	// Telemetry setup dials the OTLP endpoint; bound it so a hung collector
+	// can't stall startup indefinitely (LENA-050).
+	telCtx, telCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	tel, err := telemetry.Setup(telCtx, cfg.ServiceName, cfg.OTLPEndpoint, cfg.OTLPInsecure, pool)
+	telCancel()
 	if err != nil {
 		log.Error("telemetry setup failed", "error", err)
 		return 1
@@ -205,7 +209,11 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	})
 
 	if tel != nil {
-		e.Use(telemetry.HTTPMetrics())
+		httpMetrics, err := telemetry.HTTPMetrics()
+		if err != nil {
+			return nil, nil, fmt.Errorf("http metrics middleware: %w", err)
+		}
+		e.Use(httpMetrics)
 		// /metrics requires the same bearer token as /graphql: unauthenticated
 		// exposure would leak operational data. Scrapers must present a token
 		// from a trusted issuer.
