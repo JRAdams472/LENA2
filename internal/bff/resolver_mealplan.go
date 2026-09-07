@@ -248,7 +248,7 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 	}
 	d, err := time.Parse("2006-01-02", args.Input.WeekStartDate)
 	if err != nil {
-		return nil, err
+		return nil, badInputf("invalid weekStartDate %q, want YYYY-MM-DD", args.Input.WeekStartDate)
 	}
 	dayOfWeek, err := checkedInt16(int32Value(args.Input.WeekStartDayOfWeek), "weekStartDayOfWeek", 0, 6)
 	if err != nil {
@@ -296,7 +296,7 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 		if d, err := time.Parse("2006-01-02", args.Input.WeekStartDate); err == nil {
 			weekStart = d
 		} else {
-			return nil, err
+			return nil, badInputf("invalid weekStartDate %q, want YYYY-MM-DD", args.Input.WeekStartDate)
 		}
 	}
 	dayOfWeek := existing.WeekStartDayOfWeek
