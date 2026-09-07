@@ -350,13 +350,13 @@ func TestExtractBearer(t *testing.T) {
 	}
 }
 
-func TestContains(t *testing.T) {
-	list := []string{"https://accounts.google.com", "https://example.com"}
-	if !contains(list, "https://accounts.google.com") {
-		t.Fatal("expected list to contain issuer")
+func TestContainsFold(t *testing.T) {
+	list := []string{"Admin@Example.com"}
+	if !containsFold(list, "admin@example.com") {
+		t.Fatal("expected case-insensitive match")
 	}
-	if contains(list, "https://evil.example.com") {
-		t.Fatal("expected list to not contain unknown issuer")
+	if containsFold(list, "other@example.com") {
+		t.Fatal("expected no match")
 	}
 }
 

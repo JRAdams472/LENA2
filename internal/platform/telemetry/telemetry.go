@@ -32,7 +32,9 @@ type Telemetry struct {
 // exported to otlpEndpoint when non-empty; when empty the global no-op
 // provider remains so instrumentation stays cheap and local development
 // needs no collector. Metrics are always exported in Prometheus format via
-// MetricsHandler.
+// MetricsHandler. Setup never returns (nil, nil): either it fails with a
+// non-nil error or it returns a usable *Telemetry. Callers may still pass
+// a nil *Telemetry explicitly (tests) — newServer supports that.
 func Setup(ctx context.Context, serviceName, otlpEndpoint string, pool *pgxpool.Pool) (*Telemetry, error) {
 	res, err := resource.New(ctx, resource.WithAttributes(semconv.ServiceName(serviceName)))
 	if err != nil {

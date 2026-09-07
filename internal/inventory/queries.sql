@@ -109,18 +109,28 @@ WHERE fn.food_id = ANY(sqlc.arg(item_ids)::bigint[])
 ORDER BY nt.name;
 
 -- name: CreateFoodNutrient :one
-INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
-VALUES ($1, $2, $3, $4)
-RETURNING *;
+WITH ins AS (
+    INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
+    VALUES ($1, $2, $3, $4)
+    RETURNING food_id, nutrient_id, amount
+)
+SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount
+FROM ins
+JOIN inventory.nutrient_type nt ON ins.nutrient_id = nt.nutrient_id;
 
 -- name: DeleteFoodNutrient :exec
 DELETE FROM inventory.food_nutrient
 WHERE food_id = $1 AND nutrient_id = $2;
 
 -- name: CreateFoodFlavor :one
-INSERT INTO inventory.food_flavor (food_id, flavor_id, intensity, created_by)
-VALUES ($1, $2, $3, $4)
-RETURNING *;
+WITH ins AS (
+    INSERT INTO inventory.food_flavor (food_id, flavor_id, intensity, created_by)
+    VALUES ($1, $2, $3, $4)
+    RETURNING food_id, flavor_id, intensity
+)
+SELECT ins.food_id, fp.flavor_id, fp.name, ins.intensity
+FROM ins
+JOIN inventory.flavor_profile fp ON ins.flavor_id = fp.flavor_id;
 
 -- name: ListFoodFlavorsByItem :many
 SELECT fp.flavor_id, fp.name, ff.intensity

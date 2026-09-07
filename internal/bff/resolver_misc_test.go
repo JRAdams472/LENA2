@@ -2,13 +2,18 @@ package bff
 
 import (
 	"context"
+	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
@@ -136,4 +141,96 @@ func TestMisc_BoolValue(t *testing.T) {
 	assert.False(t, boolValue(nil))
 	v := true
 	assert.True(t, boolValue(&v))
+}
+
+func TestMisc_CheckedInt16(t *testing.T) {
+	v, err := checkedInt16(3, "rating", 1, 5)
+	require.NoError(t, err)
+	assert.Equal(t, int16(3), v)
+
+	for _, bad := range []int32{0, 6, -1, 65537, math.MinInt32} {
+		_, err := checkedInt16(bad, "rating", 1, 5)
+		assert.ErrorContains(t, err, "rating must be between 1 and 5", "input %d", bad)
+	}
+}
+
+func TestMisc_CheckedInt16Ptr(t *testing.T) {
+	got, err := checkedInt16Ptr(nil, "acidity", 1, 5)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	in := int32(4)
+	got, err = checkedInt16Ptr(&in, "acidity", 1, 5)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, int16(4), *got)
+
+	bad := int32(40000)
+	got, err = checkedInt16Ptr(&bad, "acidity", 1, 5)
+	assert.Nil(t, got)
+	assert.Error(t, err)
+}
+
+func TestMisc_UnitName_PreloadedMiss(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	inv := mock.NewMockInventoryService(ctrl)
+
+	// A preloaded map that lacks the requested id must surface an error,
+	// not silently render an empty unit name.
+	units := map[int64]inventory.Unit{3: {UnitID: 3, Name: "cup"}}
+	_, err := unitName(context.Background(), inv, units, 99)
+	assert.ErrorContains(t, err, "unit 99 missing from preloaded set")
+
+	// Hit and lazy paths unchanged.
+	name, err := unitName(context.Background(), inv, units, 3)
+	require.NoError(t, err)
+	assert.Equal(t, "cup", name)
+}
+
+func TestResolver_AsyncWorkerBoundsAndDrains(t *testing.T) {
+	r := &Resolver{}
+
+	var running, maxSeen atomic.Int32
+
+	// Saturate the worker: every submitted task blocks until its context
+	// is cancelled by Shutdown.
+	for i := 0; i < asyncWorkerCap; i++ {
+		r.runAsync("blocked", time.Minute, func(ctx context.Context) error {
+			cur := running.Add(1)
+			for {
+				if m := maxSeen.Load(); cur > m && !maxSeen.CompareAndSwap(m, cur) {
+					continue
+				}
+				break
+			}
+			defer running.Add(-1)
+			<-ctx.Done()
+			return nil
+		})
+	}
+	// Give the goroutines a moment to start.
+	time.Sleep(50 * time.Millisecond)
+
+	// The (cap+1)th task must be dropped, not queued.
+	var dropped atomic.Int32
+	for i := 0; i < asyncWorkerCap; i++ {
+		r.runAsync("dropped", time.Second, func(context.Context) error {
+			dropped.Add(1)
+			return nil
+		})
+	}
+	assert.Zero(t, dropped.Load())
+	assert.LessOrEqual(t, maxSeen.Load(), int32(asyncWorkerCap))
+
+	// Shutdown cancels in-flight tasks and returns once they exit.
+	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, r.Shutdown(shCtx))
+}
+
+func TestResolver_ShutdownOnUnusedResolver(t *testing.T) {
+	r := &Resolver{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assert.NoError(t, r.Shutdown(ctx))
 }

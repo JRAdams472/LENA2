@@ -117,10 +117,10 @@ func (mr *MockQuerierMockRecorder) CreateFlavorProfile(ctx, arg any) *gomock.Cal
 }
 
 // CreateFoodFlavor mocks base method.
-func (m *MockQuerier) CreateFoodFlavor(ctx context.Context, arg sqlc.CreateFoodFlavorParams) (sqlc.InventoryFoodFlavor, error) {
+func (m *MockQuerier) CreateFoodFlavor(ctx context.Context, arg sqlc.CreateFoodFlavorParams) (sqlc.CreateFoodFlavorRow, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateFoodFlavor", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryFoodFlavor)
+	ret0, _ := ret[0].(sqlc.CreateFoodFlavorRow)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -132,10 +132,10 @@ func (mr *MockQuerierMockRecorder) CreateFoodFlavor(ctx, arg any) *gomock.Call {
 }
 
 // CreateFoodNutrient mocks base method.
-func (m *MockQuerier) CreateFoodNutrient(ctx context.Context, arg sqlc.CreateFoodNutrientParams) (sqlc.InventoryFoodNutrient, error) {
+func (m *MockQuerier) CreateFoodNutrient(ctx context.Context, arg sqlc.CreateFoodNutrientParams) (sqlc.CreateFoodNutrientRow, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateFoodNutrient", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryFoodNutrient)
+	ret0, _ := ret[0].(sqlc.CreateFoodNutrientRow)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

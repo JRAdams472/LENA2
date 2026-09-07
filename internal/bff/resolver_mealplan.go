@@ -250,15 +250,18 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 	if err != nil {
 		return nil, err
 	}
-	var dayOfWeek int32 = 1
-	if args.Input.WeekStartDayOfWeek != nil {
-		dayOfWeek = *args.Input.WeekStartDayOfWeek
+	dayOfWeek, err := checkedInt16(int32Value(args.Input.WeekStartDayOfWeek), "weekStartDayOfWeek", 0, 6)
+	if err != nil {
+		return nil, err
+	}
+	if args.Input.WeekStartDayOfWeek == nil {
+		dayOfWeek = 1
 	}
 	mp, err := r.MealPlanService.CreateMealPlan(ctx, mealplan.MealPlan{
 		UserID:             u.UserID,
 		Name:               args.Input.Name,
 		WeekStartDate:      d,
-		WeekStartDayOfWeek: int16(dayOfWeek),
+		WeekStartDayOfWeek: dayOfWeek,
 		IsActive:           true,
 	}, u.Email)
 	if err != nil {
@@ -298,7 +301,10 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 	}
 	dayOfWeek := existing.WeekStartDayOfWeek
 	if args.Input.WeekStartDayOfWeek != nil {
-		dayOfWeek = int16(*args.Input.WeekStartDayOfWeek)
+		dayOfWeek, err = checkedInt16(*args.Input.WeekStartDayOfWeek, "weekStartDayOfWeek", 0, 6)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := r.MealPlanService.UpdateMealPlan(ctx, id, u.UserID, mealplan.MealPlan{
 		Name:               name,
@@ -349,9 +355,13 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 		}
 		recipeID = &rid
 	}
+	dayOfWeek, err := checkedInt16(args.Input.DayOfWeek, "dayOfWeek", 0, 6)
+	if err != nil {
+		return nil, err
+	}
 	slot, err := r.MealPlanService.AddMealSlot(ctx, mealplan.MealSlot{
 		MealPlanID:      mealPlanID,
-		DayOfWeek:       int16(args.Input.DayOfWeek),
+		DayOfWeek:       dayOfWeek,
 		MealType:        args.Input.MealType,
 		RecipeID:        recipeID,
 		Servings:        args.Input.Servings,
@@ -361,7 +371,7 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 		return nil, err
 	}
 	if slot.RecipeID != nil {
-		recordEventAsync(r.AnalyticsService, u.UserID, u.Email, analytics.Event{
+		r.recordEventAsync(u.UserID, u.Email, analytics.Event{
 			EventType:  analytics.EventMenuAdd,
 			EntityType: analytics.EntityRecipe,
 			EntityID:   *slot.RecipeID,

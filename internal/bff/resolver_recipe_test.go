@@ -529,16 +529,16 @@ func TestResolver_Recipe_RateRecipe(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("out-of-range rating surfaces service error", func(t *testing.T) {
-		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().SetRating(gomock.Any(), int64(11), int64(9), int16(0), recTestEmail).
-			Return(recipe.RecipeRating{}, errRecBoom)
-		r := &Resolver{RecipeService: rec}
-		_, err := r.RateRecipe(recCtx(), struct {
-			RecipeID graphql.ID
-			Rating   int32
-		}{RecipeID: "9", Rating: 0})
-		require.ErrorIs(t, err, errRecBoom)
+	t.Run("out-of-range rating rejected before service call", func(t *testing.T) {
+		for _, rating := range []int32{0, 6, -1, 65537} {
+			rec, _, _ := newRecMocks(t)
+			r := &Resolver{RecipeService: rec}
+			_, err := r.RateRecipe(recCtx(), struct {
+				RecipeID graphql.ID
+				Rating   int32
+			}{RecipeID: "9", Rating: rating})
+			require.ErrorContains(t, err, "rating must be between 1 and 5")
+		}
 	})
 }
 

@@ -379,8 +379,21 @@ type BottleGrapeVariety struct {
 	Percentage     *int16
 }
 
+// checkScore validates a 1–5 tasting-scale field (acidity, tannin, body,
+// sweetness, intensity) when set. These columns have no DB CHECK
+// constraint, so the service is the only enforcement point.
+func checkScore(v *int16, field string) error {
+	if v != nil && (*v < 1 || *v > 5) {
+		return fmt.Errorf("%s must be between 1 and 5", field)
+	}
+	return nil
+}
+
 // AddBottleGrapeVariety links a grape variety to a bottle.
 func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage *int16, by string) (BottleGrapeVariety, error) {
+	if percentage != nil && (*percentage < 0 || *percentage > 100) {
+		return BottleGrapeVariety{}, fmt.Errorf("percentage must be between 0 and 100")
+	}
 	row, err := s.q.CreateBottleGrapeVariety(ctx, sqlc.CreateBottleGrapeVarietyParams{
 		BottleID:       bottleID,
 		GrapeVarietyID: grapeVarietyID,
@@ -510,6 +523,9 @@ type BottleFlavorProfile struct {
 
 // AddBottleFlavorProfile adds a flavor profile to a bottle.
 func (s *Service) AddBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64, intensity int16, by string) (BottleFlavorProfile, error) {
+	if err := checkScore(&intensity, "intensity"); err != nil {
+		return BottleFlavorProfile{}, err
+	}
 	row, err := s.q.CreateBottleFlavorProfile(ctx, sqlc.CreateBottleFlavorProfileParams{
 		BottleID:        bottleID,
 		FlavorProfileID: flavorProfileID,
@@ -583,6 +599,14 @@ type Bottle struct {
 
 // CreateBottle adds a new bottle definition.
 func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bottle, error) {
+	for _, f := range []struct {
+		name string
+		v    *int16
+	}{{"acidity", arg.Acidity}, {"tannin level", arg.TanninLevel}, {"body", arg.Body}, {"sweetness", arg.Sweetness}} {
+		if err := checkScore(f.v, f.name); err != nil {
+			return Bottle{}, fmt.Errorf("create bottle: %w", err)
+		}
+	}
 	abv, err := optNumeric(arg.Abv)
 	if err != nil {
 		return Bottle{}, fmt.Errorf("create bottle: %w", err)
@@ -671,6 +695,14 @@ func (s *Service) CountBottles(ctx context.Context) (int64, error) {
 
 // UpdateBottle modifies an existing bottle.
 func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, by string) error {
+	for _, f := range []struct {
+		name string
+		v    *int16
+	}{{"acidity", arg.Acidity}, {"tannin level", arg.TanninLevel}, {"body", arg.Body}, {"sweetness", arg.Sweetness}} {
+		if err := checkScore(f.v, f.name); err != nil {
+			return fmt.Errorf("update bottle: %w", err)
+		}
+	}
 	abv, err := optNumeric(arg.Abv)
 	if err != nil {
 		return fmt.Errorf("update bottle: %w", err)

@@ -1052,25 +1052,41 @@ func TestJunction(t *testing.T) {
 		mq.EXPECT().CreateBottleFlavorProfile(ctx, gomock.Eq(sqlc.CreateBottleFlavorProfileParams{
 			BottleID:        1,
 			FlavorProfileID: 2,
-			Intensity:       7,
+			Intensity:       4,
 			CreatedBy:       `user`,
 		})).Return(sqlc.WineBottleFlavorProfile{
 			BottleID:        1,
 			FlavorProfileID: 2,
-			Intensity:       7,
+			Intensity:       4,
 			CreatedBy:       `user`,
 		}, nil)
 
-		got, err := svc.AddBottleFlavorProfile(ctx, 1, 2, 7, `user`)
+		got, err := svc.AddBottleFlavorProfile(ctx, 1, 2, 4, `user`)
 		require.NoError(t, err)
-		assert.Equal(t, BottleFlavorProfile{FlavorProfileID: 2, Intensity: 7}, got)
+		assert.Equal(t, BottleFlavorProfile{FlavorProfileID: 2, Intensity: 4}, got)
+	})
+
+	t.Run(`AddBottleFlavorProfile rejects out-of-range intensity`, func(t *testing.T) {
+		svc, _ := newService(t)
+		for _, v := range []int16{0, 6, -1, 300} {
+			_, err := svc.AddBottleFlavorProfile(ctx, 1, 2, v, `user`)
+			assert.ErrorContains(t, err, "intensity must be between 1 and 5")
+		}
+	})
+
+	t.Run(`AddBottleGrapeVariety rejects out-of-range percentage`, func(t *testing.T) {
+		svc, _ := newService(t)
+		for _, v := range []int16{-1, 101} {
+			_, err := svc.AddBottleGrapeVariety(ctx, 1, 2, &v, `user`)
+			assert.ErrorContains(t, err, "percentage must be between 0 and 100")
+		}
 	})
 
 	t.Run(`AddBottleFlavorProfile error`, func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().CreateBottleFlavorProfile(ctx, gomock.Any()).Return(sqlc.WineBottleFlavorProfile{}, errDB)
 
-		_, err := svc.AddBottleFlavorProfile(ctx, 1, 2, 7, `user`)
+		_, err := svc.AddBottleFlavorProfile(ctx, 1, 2, 4, `user`)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, `add bottle flavor profile`)
 		assert.ErrorIs(t, err, errDB)
@@ -1079,13 +1095,13 @@ func TestJunction(t *testing.T) {
 	t.Run(`ListBottleFlavorProfiles success`, func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListBottleFlavorProfiles(ctx, int64(1)).Return([]sqlc.ListBottleFlavorProfilesRow{
-			{FlavorProfileID: 2, Name: `Oak`, Intensity: 7},
+			{FlavorProfileID: 2, Name: `Oak`, Intensity: 4},
 		}, nil)
 
 		got, err := svc.ListBottleFlavorProfiles(ctx, 1)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, BottleFlavorProfile{BottleID: 1, FlavorProfileID: 2, Name: `Oak`, Intensity: 7}, got[0])
+		assert.Equal(t, BottleFlavorProfile{BottleID: 1, FlavorProfileID: 2, Name: `Oak`, Intensity: 4}, got[0])
 	})
 
 	t.Run(`ListBottleFlavorProfiles error`, func(t *testing.T) {

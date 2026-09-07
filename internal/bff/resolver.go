@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
@@ -36,11 +37,78 @@ type Resolver struct {
 	RecipeService    RecipeService
 	UserPrefsService UserPrefsService
 	WineService      WineService
+
+	// bg carries detached analytics/recommendation work: at most
+	// asyncWorkerCap in-flight goroutines, all scoped to a cancelable
+	// context that Shutdown drains. Lazily initialized so tests can keep
+	// constructing Resolver literals.
+	bgOnce   sync.Once
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
+	bgSem    chan struct{}
+	bgWG     sync.WaitGroup
 }
+
+// asyncWorkerCap bounds the number of in-flight background tasks.
+const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
 func NewResolver(an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService) *Resolver {
 	return &Resolver{AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
+}
+
+func (r *Resolver) ensureBG() {
+	r.bgOnce.Do(func() {
+		r.bgCtx, r.bgCancel = context.WithCancel(context.Background())
+		r.bgSem = make(chan struct{}, asyncWorkerCap)
+	})
+}
+
+// runAsync executes fn in a detached, bounded, shutdown-aware goroutine.
+// When the worker is saturated the task is dropped and logged —
+// analytics work is best-effort and must never block the request path.
+func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx context.Context) error) {
+	r.ensureBG()
+	select {
+	case r.bgSem <- struct{}{}:
+	default:
+		slog.Default().Warn("async worker saturated; dropping task", "task", name)
+		return
+	}
+	r.bgWG.Add(1)
+	go func() {
+		defer r.bgWG.Done()
+		defer func() { <-r.bgSem }()
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Default().Error("async task panic recovered", "task", name, "recover", rec)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(r.bgCtx, timeout)
+		defer cancel()
+		if err := fn(ctx); err != nil {
+			slog.Default().Error("async task failed", "task", name, "error", err)
+		}
+	}()
+}
+
+// Shutdown cancels pending background work and waits for in-flight tasks
+// to finish or ctx to expire. Call it during graceful shutdown so
+// analytics writes are not silently dropped on process exit.
+func (r *Resolver) Shutdown(ctx context.Context) error {
+	r.ensureBG()
+	r.bgCancel()
+	done := make(chan struct{})
+	go func() {
+		r.bgWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func userFromContext(ctx context.Context) (currentuser.User, error) {
@@ -68,44 +136,27 @@ func parseID(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
-// recordEventAsync emits an analytics event in a detached, time-bounded
-// goroutine so that tracking never blocks or breaks the caller.
-func recordEventAsync(svc AnalyticsService, userID int64, by string, e analytics.Event) {
+// recordEventAsync emits an analytics event on the bounded background
+// worker so that tracking never blocks or breaks the caller.
+func (r *Resolver) recordEventAsync(userID int64, by string, e analytics.Event) {
 	e.UserID = userID
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Default().Error("analytics panic recovered", "recover", r)
-			}
-		}()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := svc.RecordEvent(ctx, e, by); err != nil {
-			slog.Default().Error("record analytics event failed", "error", err)
-		}
-	}()
+	r.runAsync("record analytics event", 5*time.Second, func(ctx context.Context) error {
+		return r.AnalyticsService.RecordEvent(ctx, e, by)
+	})
 }
 
 // computeOverlapAsync recomputes ingredient-overlap recommendations for a
-// newly created recipe in a detached, time-bounded goroutine so recipe
+// newly created recipe on the bounded background worker so recipe
 // creation stays fast. If recommendation volume outgrows this in-process
 // approach, it should move to a proper job queue.
-func computeOverlapAsync(svc AnalyticsService, newRecipeID int64) {
-	if svc == nil {
+func (r *Resolver) computeOverlapAsync(newRecipeID int64) {
+	if r.AnalyticsService == nil {
 		return
 	}
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Default().Error("analytics panic recovered", "recover", r)
-			}
-		}()
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if _, err := svc.ComputeIngredientOverlapSuggestions(ctx, newRecipeID); err != nil {
-			slog.Default().Error("compute ingredient overlap suggestions failed", "error", err)
-		}
-	}()
+	r.runAsync("compute ingredient overlap suggestions", 30*time.Second, func(ctx context.Context) error {
+		_, err := r.AnalyticsService.ComputeIngredientOverlapSuggestions(ctx, newRecipeID)
+		return err
+	})
 }
 
 func optionalID(id *graphql.ID) (*int64, error) {
@@ -133,13 +184,27 @@ func int32Ptr(v int32) *int32 {
 }
 
 // int16Ptr converts a nullable GraphQL int32 input to *int16 for the
-// service layer's pointer-or-null convention.
-func int16Ptr(v *int32) *int16 {
-	if v == nil {
-		return nil
+// checkedInt16 converts a GraphQL int32 to int16, rejecting values outside
+// [min, max] so out-of-range input can never wrap around into a "valid"
+// int16 at the cast.
+func checkedInt16(v int32, field string, min, max int16) (int16, error) {
+	if v < int32(min) || v > int32(max) {
+		return 0, fmt.Errorf("%s must be between %d and %d", field, min, max)
 	}
-	i := int16(*v)
-	return &i
+	return int16(v), nil
+}
+
+// checkedInt16Ptr is checkedInt16 for nullable GraphQL int32 input,
+// preserving nil.
+func checkedInt16Ptr(v *int32, field string, min, max int16) (*int16, error) {
+	if v == nil {
+		return nil, nil
+	}
+	i, err := checkedInt16(*v, field, min, max)
+	if err != nil {
+		return nil, err
+	}
+	return &i, nil
 }
 
 // int16ToInt32Ptr renders a nullable int16 service field as *int32.
@@ -292,7 +357,7 @@ func unitName(ctx context.Context, inv InventoryService, units map[int64]invento
 		if u, ok := units[unitID]; ok {
 			return u.Name, nil
 		}
-		return "", nil
+		return "", fmt.Errorf("unit %d missing from preloaded set", unitID)
 	}
 	u, err := inv.GetUnitByID(ctx, unitID)
 	if err != nil {
@@ -684,12 +749,13 @@ func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []in
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
 // Extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength) are
-// applied on top of the built-in tracer.
-func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) echo.HandlerFunc {
+// applied on top of the built-in tracer. A schema parse failure is
+// returned as an error rather than panicking.
+func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
 	opts := append([]graphql.SchemaOpt{graphql.Tracer(newGraphQLTracer())}, schemaOpts...)
 	parsed, err := graphql.ParseSchema(schema, r, opts...)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("parse graphql schema: %w", err)
 	}
 	return func(c echo.Context) error {
 		var req struct {
@@ -702,5 +768,5 @@ func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) echo.Handle
 		}
 		resp := parsed.Exec(c.Request().Context(), req.Query, req.OperationName, req.Variables)
 		return c.JSON(http.StatusOK, resp)
-	}
+	}, nil
 }

@@ -677,22 +677,22 @@ func TestResolver_Wine_BottleJunctions(t *testing.T) {
 	})
 
 	t.Run("AddBottleFlavorProfile", func(t *testing.T) {
-		m.EXPECT().AddBottleFlavorProfile(gomock.Any(), int64(101), int64(301), int16(7), wineEmail).Return(wine.BottleFlavorProfile{
-			FlavorProfileID: 301, Name: "Fruity", Intensity: 7,
+		m.EXPECT().AddBottleFlavorProfile(gomock.Any(), int64(101), int64(301), int16(4), wineEmail).Return(wine.BottleFlavorProfile{
+			FlavorProfileID: 301, Name: "Fruity", Intensity: 4,
 		}, nil)
 
 		res, err := r.AddBottleFlavorProfile(wineCtx(), struct{ Input addBottleFlavorProfileInput }{
 			Input: addBottleFlavorProfileInput{
 				BottleID:        "101",
 				FlavorProfileID: "301",
-				Intensity:       7,
+				Intensity:       4,
 			},
 		})
 		require.NoError(t, err)
 		fp, err := res.FlavorProfile(wineCtx())
 		require.NoError(t, err)
 		assert.Equal(t, graphql.ID("301"), fp.ID())
-		assert.Equal(t, int32(7), res.Intensity())
+		assert.Equal(t, int32(4), res.Intensity())
 	})
 
 	t.Run("RemoveBottleFlavorProfile", func(t *testing.T) {
@@ -834,7 +834,7 @@ func TestResolver_Wine_Unauthorized(t *testing.T) {
 		}},
 		{"AddBottleFlavorProfile", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).AddBottleFlavorProfile(ctx, struct{ Input addBottleFlavorProfileInput }{
-				Input: addBottleFlavorProfileInput{BottleID: "101", FlavorProfileID: "301", Intensity: 7},
+				Input: addBottleFlavorProfileInput{BottleID: "101", FlavorProfileID: "301", Intensity: 4},
 			})
 		}},
 		{"RemoveBottleFlavorProfile", func(ctx context.Context) (any, error) {
@@ -955,7 +955,7 @@ func TestResolver_Wine_InvalidID(t *testing.T) {
 		}},
 		{"AddBottleFlavorProfile", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).AddBottleFlavorProfile(wineCtx(), struct{ Input addBottleFlavorProfileInput }{
-				Input: addBottleFlavorProfileInput{BottleID: "abc", FlavorProfileID: "301", Intensity: 7},
+				Input: addBottleFlavorProfileInput{BottleID: "abc", FlavorProfileID: "301", Intensity: 4},
 			})
 		}},
 		{"RemoveBottleFlavorProfile", func(ctx context.Context) (any, error) {

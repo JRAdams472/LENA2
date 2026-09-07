@@ -59,6 +59,27 @@ func TestGraphQLRateLimiter_UsersAreIndependent(t *testing.T) {
 	assert.Equal(t, http.StatusOK, do())
 }
 
+// A user in context must be rate-limited by user id, not by IP: two
+// requests from different IPs for the same user share one bucket. This
+// guards the intended middleware ordering (authenticator before limiter).
+func TestGraphQLRateLimiter_IdentifiesByUserNotIP(t *testing.T) {
+	e := echo.New()
+	e.Use(withUser(7))
+	e.Use(GraphQLRateLimiter(60, 1))
+	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+
+	do := func(ip string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+		req.RemoteAddr = ip + ":1234"
+		e.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	assert.Equal(t, http.StatusOK, do("10.0.0.1"))
+	assert.Equal(t, http.StatusTooManyRequests, do("10.0.0.2"))
+}
+
 func TestGraphQLRateLimiter_Disabled(t *testing.T) {
 	e := echo.New()
 	e.Use(GraphQLRateLimiter(0, 0))

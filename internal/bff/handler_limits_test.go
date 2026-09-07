@@ -29,7 +29,8 @@ func postGraphQL(t *testing.T, h echo.HandlerFunc, query string) *graphql.Respon
 }
 
 func TestGraphQLHandler_MaxDepth(t *testing.T) {
-	h := NewGraphQLHandler(&Resolver{}, graphql.MaxDepth(2))
+	h, err := NewGraphQLHandler(&Resolver{}, graphql.MaxDepth(2))
+	require.NoError(t, err)
 	// Query depth 3 exceeds the limit and must be rejected at validation.
 	resp := postGraphQL(t, h, `{ items { items { id name } } }`)
 	require.NotEmpty(t, resp.Errors)
@@ -37,7 +38,8 @@ func TestGraphQLHandler_MaxDepth(t *testing.T) {
 }
 
 func TestGraphQLHandler_MaxDepthAllowed(t *testing.T) {
-	h := NewGraphQLHandler(&Resolver{}, graphql.MaxDepth(10))
+	h, err := NewGraphQLHandler(&Resolver{}, graphql.MaxDepth(10))
+	require.NoError(t, err)
 	// A shallow query is not rejected by the depth rule; it may still fail
 	// downstream (no services configured) but must not be a validation
 	// depth error.
@@ -48,7 +50,8 @@ func TestGraphQLHandler_MaxDepthAllowed(t *testing.T) {
 }
 
 func TestGraphQLHandler_MaxQueryLength(t *testing.T) {
-	h := NewGraphQLHandler(&Resolver{}, graphql.MaxQueryLength(8))
+	h, err := NewGraphQLHandler(&Resolver{}, graphql.MaxQueryLength(8))
+	require.NoError(t, err)
 	resp := postGraphQL(t, h, `{ me { email } }`)
 	require.NotEmpty(t, resp.Errors)
 }
