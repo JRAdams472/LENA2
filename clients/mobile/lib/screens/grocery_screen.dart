@@ -31,7 +31,7 @@ const String itemsQuery = r'''
       }
     }
   }
-'';
+''';
 
 const String toggleGroceryItemMutation = r'''
   mutation ToggleGroceryItem($id: ID!) {
@@ -40,13 +40,13 @@ const String toggleGroceryItemMutation = r'''
       isChecked
     }
   }
-'';
+''';
 
 const String deleteGroceryItemMutation = r'''
   mutation DeleteGroceryItem($groceryListItemId: ID!) {
     deleteGroceryItem(groceryListItemId: $groceryListItemId)
   }
-'';
+''';
 
 const String addGroceryItemMutation = r'''
   mutation AddGroceryItem($input: AddGroceryItemInput!) {
@@ -54,7 +54,7 @@ const String addGroceryItemMutation = r'''
       id
     }
   }
-'';
+''';
 
 class GroceryScreen extends StatefulWidget {
   const GroceryScreen({super.key});

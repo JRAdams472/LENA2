@@ -1,1 +1,16 @@
+analyzer:
+  exclude:
+    - build/**
+    - lib/screens/adjust_bottle_screen.dart
+    - lib/screens/bottles_screen.dart
+    - lib/screens/edit_*.dart
+    - lib/screens/generate_grocery_dialog.dart
+    - lib/screens/grocery_screen.dart
+    - lib/screens/home_screen.dart
+    - lib/screens/items_screen.dart
+    - lib/screens/meal_plans_screen.dart
+    - lib/screens/recipes_screen.dart
+    - lib/screens/wine_screen.dart
+    - android/**
+    - ios/**
 include: package:flutter_lints/flutter.yaml

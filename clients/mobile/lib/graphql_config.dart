@@ -14,18 +14,19 @@ final AuthLink authLink = AuthLink(
 );
 
 final ErrorLink errorLink = ErrorLink(
-  errorHandler: (response) {
-    final errors = response.exception?.graphqlErrors;
+  onGraphQLError: (request, forward, response) {
+    final errors = response.errors;
     if (errors != null) {
       final unauthorized = errors.any(
         (e) =>
-            (e.message.toLowerCase().contains('unauthenticated')) ||
-            (e.message.toLowerCase().contains('unauthorized')),
+            e.message.toLowerCase().contains('unauthenticated') ||
+            e.message.toLowerCase().contains('unauthorized'),
       );
       if (unauthorized) {
         authService.signOut();
       }
     }
+    return null;
   },
 );
 

@@ -58,16 +58,28 @@ class DashboardScreen extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (result.hasException) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('Error: ${result.exception.toString()}'),
-            TextButton(
-              onPressed: refetch,
-              child: const Text('Retry'),
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Error: ${result.exception.toString()}',
+                  textAlign: TextAlign.center,
+                  softWrap: true,
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: refetch,
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
     }

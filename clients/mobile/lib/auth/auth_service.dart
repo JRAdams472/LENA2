@@ -51,7 +51,12 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    _idToken = await _storage.read(key: _tokenKey);
+    try {
+      _idToken = await _storage.read(key: _tokenKey);
+    } catch (e) {
+      _idToken = null;
+      debugPrint('Failed to read stored token: $e');
+    }
     _isLoading = false;
     notifyListeners();
   }
