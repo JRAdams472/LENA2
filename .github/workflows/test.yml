@@ -63,6 +63,7 @@ jobs:
           path: |
             coverage.out
             coverage-filtered.out
+          retention-days: 2
 
   lint:
     runs-on: ubuntu-latest
@@ -115,6 +116,7 @@ jobs:
         with:
           name: jest-coverage
           path: clients/web/coverage
+          retention-days: 2
 
   e2e:
     runs-on: ubuntu-latest
