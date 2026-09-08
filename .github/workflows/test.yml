@@ -169,7 +169,7 @@ jobs:
           path: |
             clients/web/playwright-report
             clients/web/test-results/junit.xml
-          retention-days: 14
+          retention-days: 2
 
       - name: Upload Playwright test results
         if: failure()
@@ -177,7 +177,7 @@ jobs:
         with:
           name: playwright-test-results
           path: clients/web/test-results
-          retention-days: 14
+          retention-days: 2
 
   docker:
     name: docker ${{ matrix.image }}
