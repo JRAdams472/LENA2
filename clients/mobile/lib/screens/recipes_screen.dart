@@ -19,13 +19,13 @@ const String recipesQuery = r'''
       }
     }
   }
-'';
+''';
 
 const String setRecipeFavorite = r'''
   mutation SetRecipeFavorite($recipeId: ID!, $isFavorite: Boolean!) {
     setRecipeFavorite(recipeId: $recipeId, isFavorite: $isFavorite)
   }
-'';
+''';
 
 class RecipesScreen extends StatelessWidget {
   const RecipesScreen({super.key});
