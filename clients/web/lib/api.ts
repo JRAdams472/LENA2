@@ -189,6 +189,8 @@ interface GqlItem {
   unit: string;
   nutrients: GqlFoodNutrient[];
   flavors: GqlFoodFlavor[];
+  status: string;
+  submittedByMe: boolean;
   selectionCount: number;
   personalSelectionCount: number;
 }
@@ -529,6 +531,8 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
     expiryDate: ui?.expiresAt ?? null,
     notes: ui?.notes ?? null,
     isFavorite: ui?.isFavorite ?? false,
+    status: i.status,
+    submittedByMe: i.submittedByMe,
     category: i.category
       ? {
           ...audit(),
@@ -823,7 +827,7 @@ const BRAND_FIELDS = `
 `;
 
 const ITEM_FIELDS = `
-  id name upc12 upc14 unit selectionCount personalSelectionCount
+  id name upc12 upc14 unit status submittedByMe selectionCount personalSelectionCount
   brand { ${BRAND_FIELDS} }
   category { id name description }
   nutrients { amount nutrient { id name unit } }
@@ -1086,7 +1090,55 @@ export const api = {
     return toItem(data.item);
   },
 
-  createItem: async (item: Omit<Item, keyof AuditableEntity>): Promise<Item> => {
+  getItemByUpc: async (code: string): Promise<Item | null> => {
+    const data = await request<{ itemByUpc: GqlItem | null }>(
+      `query ($code: String!) { itemByUpc(code: $code) { ${ITEM_FIELDS} } }`,
+      { code }
+    );
+    return data.itemByUpc ? toItem(data.itemByUpc) : null;
+  },
+
+  getPendingItems: async (
+    page: number,
+    pageSize: number
+  ): Promise<PagedResult<Item>> => {
+    const data = await request<{ pendingItems: GqlItemPage }>(
+      `query ($page: Int, $pageSize: Int) { pendingItems(page: $page, pageSize: $pageSize) { items { ${ITEM_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
+    );
+    return {
+      items: (data.pendingItems.items ?? []).map((i) => toItem(i)),
+      pageNumber: data.pendingItems.pageInfo.pageNumber,
+      pageSize: data.pendingItems.pageInfo.pageSize,
+      totalCount: data.pendingItems.pageInfo.totalCount,
+      totalPages: Math.max(
+        1,
+        Math.ceil(
+          data.pendingItems.pageInfo.totalCount / data.pendingItems.pageInfo.pageSize
+        )
+      ),
+    };
+  },
+
+  approveItem: async (id: number): Promise<Item> => {
+    const data = await request<{ approveItem: GqlItem }>(
+      `mutation ($id: ID!) { approveItem(id: $id) { ${ITEM_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toItem(data.approveItem);
+  },
+
+  rejectItem: async (id: number): Promise<Item> => {
+    const data = await request<{ rejectItem: GqlItem }>(
+      `mutation ($id: ID!) { rejectItem(id: $id) { ${ITEM_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toItem(data.rejectItem);
+  },
+
+  createItem: async (
+    item: Omit<Item, keyof AuditableEntity | "status" | "submittedByMe">
+  ): Promise<Item> => {
     const data = await request<{ createItem: GqlItem }>(
       `mutation ($input: CreateItemInput!) { createItem(input: $input) { ${ITEM_FIELDS} } }`,
       {

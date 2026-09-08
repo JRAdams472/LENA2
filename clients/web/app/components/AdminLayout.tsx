@@ -100,6 +100,7 @@ const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?
     ],
   },
   { label: "Users", href: "/users", adminOnly: true },
+  { label: "Pending Items", href: "/items/pending", adminOnly: true },
   { label: "Profile", href: "/profile" },
 ];
 

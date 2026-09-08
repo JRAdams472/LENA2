@@ -71,6 +71,8 @@ export interface Item extends AuditableEntity {
   expiryDate: string | null;
   notes: string | null;
   isFavorite: boolean;
+  status: string;
+  submittedByMe: boolean;
   category: Category | null;
   foodNutrients: FoodNutrient[] | null;
   foodFlavors: FoodFlavor[] | null;
