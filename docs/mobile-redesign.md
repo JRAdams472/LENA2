@@ -76,6 +76,11 @@ Existing rows default to `approved`. `.down.sql` drops index + columns.
   - Unique violations (name+brand, UPC) → `BAD_USER_INPUT`, not 500.
 - `services.go`: extended `InventoryService`; `internal/bff/mock/` + `internal/inventory/sqlc/mock/` regenerated.
 
+## Progress log
+
+- **2026-09-08** — `mobile-redesign-p0` implemented, verified (build/vet/gofmt/`go test -short` green; golangci-lint only flags a vendored file inside `clients/web/node_modules`), merged via **PR #70**. Local `main` synced to `5ac33c0`. Next: create branch `mobile-redesign-p1` and implement the section below. Note: testcontainers integration tests were skipped under `-short` — run `go test ./internal/inventory -run Integration` (Docker) if DB-level verification is wanted.
+- **2026-09-08** — `mobile-redesign-p1` implemented. `toggleGroceryItemChecked` now syncs catalog-item grocery check-offs to `inventory.user_item` in one `pgx` transaction, and the new `incrementUserItem(itemId, delta)` mutation adds/removes pantry stock with automatic delete at zero. Verified `go build ./...`, `go vet ./...`, `gofmt`, `go test -short ./...`, and `golangci-lint run ./...` (only the same vendored `clients/web/node_modules` file is flagged).
+
 ## mobile-redesign-p1 — Backend: grocery check-off ↔ inventory sync + scan quantity mutation
 
 - `resolver_grocery.go` `ToggleGroceryItemChecked`: wrap toggle + inventory adjustment in **one pgx transaction** via `dbtx.InTx` on the shared pool, using `WithTx` instances of `grocery.Service` and `userprefs.Service`.

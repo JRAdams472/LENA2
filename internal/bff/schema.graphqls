@@ -102,6 +102,7 @@ type Mutation {
   adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
   deleteUserItem(itemId: ID!): Boolean!
+  incrementUserItem(itemId: ID!, delta: Float!): UserItem
 
   addFoodNutrient(input: AddFoodNutrientInput!): FoodNutrient!
   removeFoodNutrient(itemId: ID!, nutrientId: ID!): Boolean!

@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/graph-gophers/graphql-go"
+	"github.com/jackc/pgx/v5"
 )
 
 // UserBottles resolves the current user's wine cellar.
@@ -184,6 +186,100 @@ func (r *Resolver) DeleteUserItem(ctx context.Context, args struct{ ItemID graph
 		return false, err
 	}
 	return true, nil
+}
+
+// IncrementUserItem adds or removes a delta from a user's pantry stock for a
+// single catalog item. The result is floored at a non-negative quantity, and
+// the row is deleted when the quantity drops to zero or below.
+func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
+	ItemID graphql.ID
+	Delta  float64
+}) (*userItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	if args.Delta == 0 {
+		return nil, badInputf("delta cannot be zero")
+	}
+
+	// Shared-pool transaction path.
+	up, ok := r.UserPrefsService.(*userprefs.Service)
+	if r.Pool != nil && ok {
+		var result *userprefs.UserItem
+		if err := dbtx.InTx(ctx, r.Pool, func(tx pgx.Tx) error {
+			upTx := up.WithTx(tx)
+			existing, err := upTx.GetUserItemByUserAndItem(ctx, u.UserID, itemID)
+			if err != nil {
+				return err
+			}
+			result, err = applyUserItemDelta(ctx, upTx, existing, u.UserID, itemID, args.Delta, u.Email)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		if result == nil {
+			return nil, nil
+		}
+		return &userItemResolver{inv: r.InventoryService, item: *result}, nil
+	}
+
+	// Fallback for tests without a real transactional pool.
+	existing, err := r.UserPrefsService.GetUserItemByUserAndItem(ctx, u.UserID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := applyUserItemDelta(ctx, r.UserPrefsService, existing, u.UserID, itemID, args.Delta, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+	return &userItemResolver{inv: r.InventoryService, item: *result}, nil
+}
+
+func applyUserItemDelta(ctx context.Context, svc UserPrefsService, existing *userprefs.UserItem, userID, itemID int64, delta float64, by string) (*userprefs.UserItem, error) {
+	if existing == nil {
+		if delta < 0 {
+			return nil, nil
+		}
+		created, err := svc.UpsertUserItem(ctx, userprefs.UserItem{
+			UserID:     userID,
+			ItemID:     itemID,
+			CurrentQty: delta,
+		}, by)
+		if err != nil {
+			return nil, err
+		}
+		return &created, nil
+	}
+	newQty := existing.CurrentQty + delta
+	if newQty <= 0 {
+		if err := svc.DeleteUserItem(ctx, existing.UserItemID, userID); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	updated, err := svc.UpsertUserItem(ctx, userprefs.UserItem{
+		UserItemID: existing.UserItemID,
+		UserID:     userID,
+		ItemID:     itemID,
+		CurrentQty: newQty,
+		MinQty:     existing.MinQty,
+		PurchaseAt: existing.PurchaseAt,
+		ExpiresAt:  existing.ExpiresAt,
+		Notes:      existing.Notes,
+		IsFavorite: existing.IsFavorite,
+	}, by)
+	if err != nil {
+		return nil, err
+	}
+	return &updated, nil
 }
 
 // AdjustUserBottle updates the quantity of a user's wine cellar holding.
