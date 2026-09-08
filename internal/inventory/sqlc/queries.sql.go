@@ -26,10 +26,24 @@ func (q *Queries) CountIngredients(ctx context.Context) (int64, error) {
 const countItems = `-- name: CountItems :one
 SELECT COUNT(*)
 FROM inventory.item
+WHERE status = 'approved' OR submitted_by_user_id = $1
 `
 
-func (q *Queries) CountItems(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countItems)
+func (q *Queries) CountItems(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error) {
+	row := q.db.QueryRow(ctx, countItems, submittedByUserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPendingItems = `-- name: CountPendingItems :one
+SELECT COUNT(*)
+FROM inventory.item
+WHERE status = 'pending'
+`
+
+func (q *Queries) CountPendingItems(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingItems)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -243,20 +257,22 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 }
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
+INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, status, submitted_by_user_id, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
 `
 
 type CreateItemParams struct {
-	Name       string      `json:"name"`
-	BrandID    pgtype.Int8 `json:"brand_id"`
-	Upc12      pgtype.Text `json:"upc12"`
-	Upc14      pgtype.Text `json:"upc14"`
-	CategoryID int64       `json:"category_id"`
-	UnitID     int64       `json:"unit_id"`
-	CreatedBy  string      `json:"created_by"`
-	UpdatedBy  pgtype.Text `json:"updated_by"`
+	Name              string      `json:"name"`
+	BrandID           pgtype.Int8 `json:"brand_id"`
+	Upc12             pgtype.Text `json:"upc12"`
+	Upc14             pgtype.Text `json:"upc14"`
+	CategoryID        int64       `json:"category_id"`
+	UnitID            int64       `json:"unit_id"`
+	Status            string      `json:"status"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	CreatedBy         string      `json:"created_by"`
+	UpdatedBy         pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (InventoryItem, error) {
@@ -267,6 +283,8 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Invento
 		arg.Upc14,
 		arg.CategoryID,
 		arg.UnitID,
+		arg.Status,
+		arg.SubmittedByUserID,
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
@@ -283,6 +301,10 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Invento
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.UnitID,
+		&i.Status,
+		&i.SubmittedByUserID,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
@@ -409,6 +431,16 @@ type DeleteFoodNutrientParams struct {
 
 func (q *Queries) DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error {
 	_, err := q.db.Exec(ctx, deleteFoodNutrient, arg.FoodID, arg.NutrientID)
+	return err
+}
+
+const deleteFoodNutrientsByItem = `-- name: DeleteFoodNutrientsByItem :exec
+DELETE FROM inventory.food_nutrient
+WHERE food_id = $1
+`
+
+func (q *Queries) DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) error {
+	_, err := q.db.Exec(ctx, deleteFoodNutrientsByItem, foodID)
 	return err
 }
 
@@ -619,7 +651,7 @@ func (q *Queries) GetIngredientsByIDs(ctx context.Context, ingredientIds []int64
 }
 
 const getItemByID = `-- name: GetItemByID :one
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM inventory.item
 WHERE item_id = $1
 `
@@ -639,12 +671,53 @@ func (q *Queries) GetItemByID(ctx context.Context, itemID int64) (InventoryItem,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.UnitID,
+		&i.Status,
+		&i.SubmittedByUserID,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
+	)
+	return i, err
+}
+
+const getItemByUpc = `-- name: GetItemByUpc :one
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+FROM inventory.item
+WHERE (upc12 = $1 OR upc14 = $1)
+  AND (status = 'approved' OR submitted_by_user_id = $2)
+`
+
+type GetItemByUpcParams struct {
+	Upc12             pgtype.Text `json:"upc12"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+}
+
+// Barcode lookup: the caller passes the normalized code plus their user id
+// so pending items they submitted are still found.
+func (q *Queries) GetItemByUpc(ctx context.Context, arg GetItemByUpcParams) (InventoryItem, error) {
+	row := q.db.QueryRow(ctx, getItemByUpc, arg.Upc12, arg.SubmittedByUserID)
+	var i InventoryItem
+	err := row.Scan(
+		&i.ItemID,
+		&i.Name,
+		&i.BrandID,
+		&i.Upc12,
+		&i.Upc14,
+		&i.CategoryID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.UnitID,
+		&i.Status,
+		&i.SubmittedByUserID,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
 
 const getItemsByIDs = `-- name: GetItemsByIDs :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM inventory.item
 WHERE item_id = ANY($1::bigint[])
 `
@@ -670,6 +743,10 @@ func (q *Queries) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]Invento
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1078,19 +1155,22 @@ func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams
 }
 
 const listItems = `-- name: ListItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM inventory.item
+WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY name
-LIMIT $1 OFFSET $2
+LIMIT $2 OFFSET $3
 `
 
 type ListItemsParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Limit             int32       `json:"limit"`
+	Offset            int32       `json:"offset"`
 }
 
+// Items are visible when approved, or when the caller submitted them.
 func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error) {
-	rows, err := q.db.Query(ctx, listItems, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listItems, arg.SubmittedByUserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -1110,6 +1190,10 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Invento
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1141,6 +1225,55 @@ func (q *Queries) ListNutrientTypes(ctx context.Context) ([]InventoryNutrientTyp
 			&i.Name,
 			&i.Unit,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingItems = `-- name: ListPendingItems :many
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+FROM inventory.item
+WHERE status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2
+`
+
+type ListPendingItemsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, listPendingItems, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.Name,
+			&i.BrandID,
+			&i.Upc12,
+			&i.Upc14,
+			&i.CategoryID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1187,6 +1320,35 @@ func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setItemStatus = `-- name: SetItemStatus :exec
+UPDATE inventory.item
+SET status              = $2,
+    approved_by_user_id = $3,
+    approved_at         = $4,
+    updated_by          = $5,
+    updated_at          = now()
+WHERE item_id = $1
+`
+
+type SetItemStatusParams struct {
+	ItemID           int64              `json:"item_id"`
+	Status           string             `json:"status"`
+	ApprovedByUserID pgtype.Int8        `json:"approved_by_user_id"`
+	ApprovedAt       pgtype.Timestamptz `json:"approved_at"`
+	UpdatedBy        pgtype.Text        `json:"updated_by"`
+}
+
+func (q *Queries) SetItemStatus(ctx context.Context, arg SetItemStatusParams) error {
+	_, err := q.db.Exec(ctx, setItemStatus,
+		arg.ItemID,
+		arg.Status,
+		arg.ApprovedByUserID,
+		arg.ApprovedAt,
+		arg.UpdatedBy,
+	)
+	return err
 }
 
 const updateBrand = `-- name: UpdateBrand :one

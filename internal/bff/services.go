@@ -38,8 +38,14 @@ type InventoryService interface {
 	ListFlavorProfiles(ctx context.Context) ([]inventory.FlavorProfile, error)
 	ListNutrientTypes(ctx context.Context) ([]inventory.NutrientType, error)
 	GetItemByID(ctx context.Context, itemID int64) (inventory.Item, error)
-	ListItems(ctx context.Context, limit, offset int32) ([]inventory.Item, error)
-	CountItems(ctx context.Context) (int64, error)
+	GetItemByUpc(ctx context.Context, code string, userID int64) (inventory.Item, error)
+	ListItems(ctx context.Context, userID int64, limit, offset int32) ([]inventory.Item, error)
+	CountItems(ctx context.Context, userID int64) (int64, error)
+	SubmitItem(ctx context.Context, arg inventory.Item, userID int64, by string) (inventory.Item, error)
+	ListPendingItems(ctx context.Context, limit, offset int32) ([]inventory.Item, error)
+	CountPendingItems(ctx context.Context) (int64, error)
+	SetItemStatus(ctx context.Context, itemID int64, status string, approverUserID int64, by string) error
+	SetItemNutrients(ctx context.Context, itemID int64, entries []inventory.NutrientEntry, by string) error
 	CreateBrand(ctx context.Context, name string) (inventory.Brand, error)
 	CreateCategory(ctx context.Context, name, description, by string) (inventory.Category, error)
 	CreateFlavorProfile(ctx context.Context, name, by string) (inventory.FlavorProfile, error)

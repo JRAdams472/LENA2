@@ -3,10 +3,13 @@ package inventory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -288,6 +291,7 @@ func TestCreateItem(t *testing.T) {
 		Upc14:      pgtype.Text{},
 		CategoryID: 3,
 		UnitID:     14,
+		Status:     ItemStatusApproved,
 		CreatedBy:  "alice",
 		UpdatedBy:  pgtype.Text{String: "alice", Valid: true},
 	}).Return(sqlc.InventoryItem{
@@ -336,6 +340,241 @@ func TestCreateItem_Error(t *testing.T) {
 	assert.ErrorContains(t, err, "create item:")
 }
 
+func TestSubmitItem(t *testing.T) {
+	ctx := context.Background()
+
+	s, q := newTestService(t)
+	q.EXPECT().CreateItem(ctx, sqlc.CreateItemParams{
+		Name:              "Scan Bar",
+		Upc12:             pgtype.Text{String: "012345678901", Valid: true},
+		CategoryID:        3,
+		UnitID:            14,
+		Status:            ItemStatusPending,
+		SubmittedByUserID: pgtype.Int8{Int64: 42, Valid: true},
+		CreatedBy:         "bob",
+		UpdatedBy:         pgtype.Text{String: "bob", Valid: true},
+	}).Return(sqlc.InventoryItem{
+		ItemID:            21,
+		Name:              "Scan Bar",
+		CategoryID:        3,
+		UnitID:            14,
+		Status:            ItemStatusPending,
+		SubmittedByUserID: pgtype.Int8{Int64: 42, Valid: true},
+	}, nil)
+
+	it, err := s.SubmitItem(ctx, Item{
+		Name:       "Scan Bar",
+		Upc12:      "012345678901",
+		CategoryID: 3,
+		UnitID:     14,
+	}, 42, "bob")
+	require.NoError(t, err)
+	assert.Equal(t, int64(21), it.ItemID)
+	assert.Equal(t, ItemStatusPending, it.Status)
+	require.NotNil(t, it.SubmittedByUserID)
+	assert.Equal(t, int64(42), *it.SubmittedByUserID)
+}
+
+func TestSubmitItem_Error(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().CreateItem(ctx, gomock.Any()).Return(sqlc.InventoryItem{}, errBoom)
+
+	_, err := s.SubmitItem(ctx, Item{Name: "X"}, 42, "bob")
+	assert.ErrorIs(t, err, errBoom)
+	assert.ErrorContains(t, err, "submit item:")
+}
+
+func TestGetItemByUpc(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().GetItemByUpc(ctx, sqlc.GetItemByUpcParams{
+		Upc12:             pgtype.Text{String: "012345678901", Valid: true},
+		SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+	}).Return(sqlc.InventoryItem{
+		ItemID: 11,
+		Name:   "Milk",
+		Status: ItemStatusApproved,
+	}, nil)
+
+	it, err := s.GetItemByUpc(ctx, "012345678901", 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(11), it.ItemID)
+	assert.Equal(t, ItemStatusApproved, it.Status)
+}
+
+func TestGetItemByUpc_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().GetItemByUpc(ctx, gomock.Any()).Return(sqlc.InventoryItem{}, pgx.ErrNoRows)
+
+	_, err := s.GetItemByUpc(ctx, "000000000000", 7)
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+}
+
+func TestListPendingItems(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().ListPendingItems(ctx, sqlc.ListPendingItemsParams{Limit: 10, Offset: 0}).
+		Return([]sqlc.InventoryItem{{ItemID: 5, Name: "Pending Bar", Status: ItemStatusPending}}, nil)
+
+	items, err := s.ListPendingItems(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, ItemStatusPending, items[0].Status)
+}
+
+func TestCountPendingItems(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().CountPendingItems(ctx).Return(int64(3), nil)
+
+	got, err := s.CountPendingItems(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), got)
+}
+
+func TestSetItemStatus_Approve(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().SetItemStatus(ctx, gomock.Cond(func(arg sqlc.SetItemStatusParams) bool {
+		return arg.ItemID == 11 &&
+			arg.Status == ItemStatusApproved &&
+			arg.ApprovedByUserID.Valid && arg.ApprovedByUserID.Int64 == 9 &&
+			arg.ApprovedAt.Valid
+	})).Return(nil)
+
+	require.NoError(t, s.SetItemStatus(ctx, 11, ItemStatusApproved, 9, "admin@example.com"))
+}
+
+func TestSetItemStatus_Reject(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().SetItemStatus(ctx, gomock.Cond(func(arg sqlc.SetItemStatusParams) bool {
+		return arg.ItemID == 11 &&
+			arg.Status == ItemStatusRejected &&
+			!arg.ApprovedByUserID.Valid &&
+			!arg.ApprovedAt.Valid
+	})).Return(nil)
+
+	require.NoError(t, s.SetItemStatus(ctx, 11, ItemStatusRejected, 9, "admin@example.com"))
+}
+
+func TestSetItemNutrients(t *testing.T) {
+	ctx := context.Background()
+	tx := &invStubTx{row: invFakeRow{values: []any{int64(11), int64(2), "Protein", pgtype.Text{String: "g", Valid: true}, mustNumeric(t, 12.5)}}}
+	s := NewService(&invStubPool{tx: tx})
+
+	err := s.SetItemNutrients(ctx, 11, []NutrientEntry{{NutrientID: 2, Amount: 12.5}}, "bob")
+	require.NoError(t, err)
+	// 1 DELETE + 1 INSERT, then commit.
+	assert.Equal(t, 1, tx.execCalls)
+	assert.Equal(t, 1, tx.rowCalls)
+	assert.True(t, tx.committed)
+	assert.False(t, tx.rolledBack)
+}
+
+func TestSetItemNutrients_BadAmount(t *testing.T) {
+	ctx := context.Background()
+	tx := &invStubTx{}
+	s := NewService(&invStubPool{tx: tx})
+
+	err := s.SetItemNutrients(ctx, 11, []NutrientEntry{{NutrientID: 2, Amount: math.NaN()}}, "bob")
+	assert.ErrorContains(t, err, "set food nutrients:")
+	assert.True(t, tx.rolledBack)
+	assert.False(t, tx.committed)
+}
+
+// invStubTx is a pgx.Tx stand-in for inventory InTx tests; QueryRow returns
+// the configured fake row and Exec is counted.
+type invStubTx struct {
+	row        pgx.Row
+	execCalls  int
+	rowCalls   int
+	closed     bool
+	committed  bool
+	rolledBack bool
+}
+
+func (f *invStubTx) Begin(context.Context) (pgx.Tx, error) { return nil, errors.New("nested tx") }
+func (f *invStubTx) Commit(context.Context) error {
+	f.committed = true
+	f.closed = true
+	return nil
+}
+func (f *invStubTx) Rollback(context.Context) error {
+	if !f.closed {
+		f.rolledBack = true
+		f.closed = true
+	}
+	return nil
+}
+func (f *invStubTx) CopyFrom(context.Context, pgx.Identifier, []string, pgx.CopyFromSource) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+func (f *invStubTx) SendBatch(context.Context, *pgx.Batch) pgx.BatchResults { return nil }
+func (f *invStubTx) LargeObjects() pgx.LargeObjects                         { return pgx.LargeObjects{} }
+func (f *invStubTx) Prepare(context.Context, string, string) (*pgconn.StatementDescription, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *invStubTx) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	f.execCalls++
+	return pgconn.CommandTag{}, nil
+}
+func (f *invStubTx) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *invStubTx) QueryRow(context.Context, string, ...any) pgx.Row {
+	f.rowCalls++
+	return f.row
+}
+func (f *invStubTx) Conn() *pgx.Conn { return nil }
+
+// invStubPool satisfies dbtx.Pool for tests.
+type invStubPool struct {
+	tx *invStubTx
+}
+
+func (p *invStubPool) Begin(context.Context) (pgx.Tx, error) { return p.tx, nil }
+func (p *invStubPool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, errors.New("not implemented")
+}
+func (p *invStubPool) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, errors.New("not implemented")
+}
+func (p *invStubPool) QueryRow(context.Context, string, ...any) pgx.Row { return nil }
+
+// invFakeRow is a pgx.Row that assigns the configured values into Scan's
+// destinations in order.
+type invFakeRow struct {
+	values []any
+}
+
+func (r invFakeRow) Scan(dest ...any) error {
+	for i, v := range r.values {
+		switch d := dest[i].(type) {
+		case *int64:
+			*d = v.(int64)
+		case *string:
+			*d = v.(string)
+		case *pgtype.Text:
+			*d = v.(pgtype.Text)
+		case *pgtype.Numeric:
+			*d = v.(pgtype.Numeric)
+		default:
+			return fmt.Errorf("invFakeRow: unsupported dest type %T", dest[i])
+		}
+	}
+	return nil
+}
+
+func mustNumeric(t *testing.T, f float64) pgtype.Numeric {
+	t.Helper()
+	n, err := numericFromFloat64(f)
+	require.NoError(t, err)
+	return n
+}
+
 func TestGetItemByID(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
@@ -371,10 +610,14 @@ func TestGetItemByID_Error(t *testing.T) {
 func TestListItems(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().ListItems(ctx, sqlc.ListItemsParams{Limit: 10, Offset: 20}).
+	q.EXPECT().ListItems(ctx, sqlc.ListItemsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+		Limit:             10,
+		Offset:            20,
+	}).
 		Return([]sqlc.InventoryItem{{ItemID: 1, Name: "A"}}, nil)
 
-	items, err := s.ListItems(ctx, 10, 20)
+	items, err := s.ListItems(ctx, 7, 10, 20)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "A", items[0].Name)
@@ -385,7 +628,7 @@ func TestListItems_Error(t *testing.T) {
 	s, q := newTestService(t)
 	q.EXPECT().ListItems(ctx, gomock.Any()).Return(nil, errBoom)
 
-	_, err := s.ListItems(ctx, 10, 20)
+	_, err := s.ListItems(ctx, 7, 10, 20)
 	assert.ErrorIs(t, err, errBoom)
 	assert.ErrorContains(t, err, "list items:")
 }
@@ -806,9 +1049,9 @@ func TestCountItems(t *testing.T) {
 	ctx := context.Background()
 
 	s, q := newTestService(t)
-	q.EXPECT().CountItems(ctx).Return(int64(42), nil)
+	q.EXPECT().CountItems(ctx, pgtype.Int8{Int64: 7, Valid: true}).Return(int64(42), nil)
 
-	got, err := s.CountItems(ctx)
+	got, err := s.CountItems(ctx, 7)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), got)
 }
@@ -817,9 +1060,9 @@ func TestCountItems_Error(t *testing.T) {
 	ctx := context.Background()
 
 	s, q := newTestService(t)
-	q.EXPECT().CountItems(ctx).Return(int64(0), errBoom)
+	q.EXPECT().CountItems(ctx, gomock.Any()).Return(int64(0), errBoom)
 
-	_, err := s.CountItems(ctx)
+	_, err := s.CountItems(ctx, 7)
 	assert.ErrorIs(t, err, errBoom)
 	assert.ErrorContains(t, err, "count items:")
 }

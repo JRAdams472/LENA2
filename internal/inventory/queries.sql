@@ -39,8 +39,8 @@ FROM inventory.category
 ORDER BY name;
 
 -- name: CreateItem :one
-INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, status, submitted_by_user_id, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetItemByID :one
@@ -49,14 +49,46 @@ FROM inventory.item
 WHERE item_id = $1;
 
 -- name: ListItems :many
+-- Items are visible when approved, or when the caller submitted them.
 SELECT *
 FROM inventory.item
+WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY name
-LIMIT $1 OFFSET $2;
+LIMIT $2 OFFSET $3;
 
 -- name: CountItems :one
 SELECT COUNT(*)
-FROM inventory.item;
+FROM inventory.item
+WHERE status = 'approved' OR submitted_by_user_id = $1;
+
+-- name: GetItemByUpc :one
+-- Barcode lookup: the caller passes the normalized code plus their user id
+-- so pending items they submitted are still found.
+SELECT *
+FROM inventory.item
+WHERE (upc12 = $1 OR upc14 = $1)
+  AND (status = 'approved' OR submitted_by_user_id = $2);
+
+-- name: ListPendingItems :many
+SELECT *
+FROM inventory.item
+WHERE status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2;
+
+-- name: CountPendingItems :one
+SELECT COUNT(*)
+FROM inventory.item
+WHERE status = 'pending';
+
+-- name: SetItemStatus :exec
+UPDATE inventory.item
+SET status              = $2,
+    approved_by_user_id = $3,
+    approved_at         = $4,
+    updated_by          = $5,
+    updated_at          = now()
+WHERE item_id = $1;
 
 -- name: UpdateItem :exec
 UPDATE inventory.item
@@ -121,6 +153,10 @@ JOIN inventory.nutrient_type nt ON ins.nutrient_id = nt.nutrient_id;
 -- name: DeleteFoodNutrient :exec
 DELETE FROM inventory.food_nutrient
 WHERE food_id = $1 AND nutrient_id = $2;
+
+-- name: DeleteFoodNutrientsByItem :exec
+DELETE FROM inventory.food_nutrient
+WHERE food_id = $1;
 
 -- name: CreateFoodFlavor :one
 WITH ins AS (

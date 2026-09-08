@@ -146,7 +146,7 @@ func TestIntegrationItemCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, item.ItemID, got.ItemID)
 
-	items, err := svc.ListItems(ctx, 100, 0)
+	items, err := svc.ListItems(ctx, 0, 100, 0)
 	require.NoError(t, err)
 	var found bool
 	for _, it := range items {

@@ -2,14 +2,19 @@ package bff
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/graph-gophers/graphql-go"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Brand resolves a single brand by ID.
@@ -287,6 +292,9 @@ func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*ite
 	if err != nil {
 		return nil, err
 	}
+	if !itemVisibleTo(it, u) {
+		return nil, nil
+	}
 	ch := &itemChildren{itemCounts: make(map[int64]countPair), brandCounts: make(map[int64]countPair)}
 	if err := loadItemSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, ch); err != nil {
 		return nil, err
@@ -310,11 +318,11 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	}
 	page := clamp(args.Page, 1, 1_000_000)
 	pageSize := clamp(args.PageSize, 1, 100)
-	items, err := r.InventoryService.ListItems(ctx, pageSize, (page-1)*pageSize)
+	items, err := r.InventoryService.ListItems(ctx, u.UserID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.InventoryService.CountItems(ctx)
+	total, err := r.InventoryService.CountItems(ctx, u.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -654,14 +662,223 @@ func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItem
 		UnitID:     unitID,
 	}, u.Email)
 	if err != nil {
+		return nil, itemWriteError(err)
+	}
+	return &itemResolver{inv: r.InventoryService, it: it}, nil
+}
+
+// ItemByUpc resolves a catalog item by barcode. Digit length selects the
+// column: 12 → upc12, 13 → left-padded to GTIN-14 → upc14, 14 → upc14.
+// Other lengths and non-numeric input return null (scan "not found"),
+// except empty/non-digit input which is a client error.
+func (r *Resolver) ItemByUpc(ctx context.Context, args struct{ Code string }) (*itemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	code := strings.TrimSpace(args.Code)
+	if code == "" {
+		return nil, badInputf("code must not be empty")
+	}
+	for _, ch := range code {
+		if !unicode.IsDigit(ch) {
+			return nil, badInputf("code must contain only digits")
+		}
+	}
+	switch len(code) {
+	case 12:
+	case 13:
+		code = "0" + code
+	case 14:
+	default:
+		return nil, nil
+	}
+	it, err := r.InventoryService.GetItemByUpc(ctx, code, u.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &itemResolver{inv: r.InventoryService, it: it}, nil
 }
 
+// PendingItems resolves the admin queue of user-submitted items awaiting
+// approval, oldest first.
+func (r *Resolver) PendingItems(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*itemPageResolver, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	items, err := r.InventoryService.ListPendingItems(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.InventoryService.CountPendingItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ch, err := loadItemChildren(ctx, r.InventoryService, items)
+	if err != nil {
+		return nil, err
+	}
+	return &itemPageResolver{inv: r.InventoryService, items: items, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// SubmitItem creates a catalog item in 'pending' status on behalf of the
+// current user. Pending items are visible to (and editable by) their
+// submitter until an admin approves or rejects them.
+func (r *Resolver) SubmitItem(ctx context.Context, args struct{ Input createItemInput }) (*itemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	brandID, err := optionalID(args.Input.BrandID)
+	if err != nil {
+		return nil, err
+	}
+	catID, err := parseID(string(args.Input.CategoryID))
+	if err != nil {
+		return nil, err
+	}
+	unitID, err := resolveUnitID(ctx, r.InventoryService, args.Input.Unit)
+	if err != nil {
+		return nil, err
+	}
+	it, err := r.InventoryService.SubmitItem(ctx, inventory.Item{
+		Name:       args.Input.Name,
+		BrandID:    brandID,
+		Upc12:      derefString(args.Input.Upc12),
+		Upc14:      derefString(args.Input.Upc14),
+		CategoryID: catID,
+		UnitID:     unitID,
+	}, u.UserID, u.Email)
+	if err != nil {
+		return nil, itemWriteError(err)
+	}
+	return &itemResolver{inv: r.InventoryService, it: it}, nil
+}
+
+// ApproveItem marks a pending item approved so it becomes visible to all
+// users. Admin only.
+func (r *Resolver) ApproveItem(ctx context.Context, args struct{ ID graphql.ID }) (*itemResolver, error) {
+	return r.setItemStatus(ctx, args.ID, inventory.ItemStatusApproved)
+}
+
+// RejectItem marks a pending item rejected so it is hidden from everyone.
+// Admin only.
+func (r *Resolver) RejectItem(ctx context.Context, args struct{ ID graphql.ID }) (*itemResolver, error) {
+	return r.setItemStatus(ctx, args.ID, inventory.ItemStatusRejected)
+}
+
+func (r *Resolver) setItemStatus(ctx context.Context, id graphql.ID, status string) (*itemResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(id))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.InventoryService.SetItemStatus(ctx, itemID, status, u.UserID, u.Email); err != nil {
+		return nil, err
+	}
+	it, err := r.InventoryService.GetItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.InventoryService, it: it}, nil
+}
+
+// SetItemNutrients replaces all nutrient values on an item in one
+// transaction. Admins may edit any item; other users may edit only their
+// own pending submissions.
+func (r *Resolver) SetItemNutrients(ctx context.Context, args struct {
+	ItemID  graphql.ID
+	Entries []itemNutrientEntryInput
+}) (*itemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return nil, err
+	}
+	it, err := r.InventoryService.GetItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if !canModifyItem(it, u) {
+		return nil, errForbidden()
+	}
+	entries := make([]inventory.NutrientEntry, len(args.Entries))
+	seen := make(map[int64]bool)
+	for i, e := range args.Entries {
+		nutrientID, err := parseID(string(e.NutrientID))
+		if err != nil {
+			return nil, err
+		}
+		if seen[nutrientID] {
+			return nil, badInputf("duplicate nutrientId %d", nutrientID)
+		}
+		seen[nutrientID] = true
+		if e.Amount < 0 {
+			return nil, badInputf("amount must not be negative")
+		}
+		entries[i] = inventory.NutrientEntry{NutrientID: nutrientID, Amount: e.Amount}
+	}
+	if err := r.InventoryService.SetItemNutrients(ctx, itemID, entries, u.Email); err != nil {
+		return nil, itemWriteError(err)
+	}
+	updated, err := r.InventoryService.GetItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+}
+
+// itemVisibleTo reports whether a catalog item may be shown to the user:
+// approved items are public, pending items are visible to their submitter
+// and to admins, rejected items are hidden from everyone but admins.
+func itemVisibleTo(it inventory.Item, u currentuser.User) bool {
+	switch it.Status {
+	case "", inventory.ItemStatusApproved:
+		return true
+	case inventory.ItemStatusPending:
+		return u.IsAdmin || (it.SubmittedByUserID != nil && *it.SubmittedByUserID == u.UserID)
+	default:
+		return u.IsAdmin
+	}
+}
+
+// canModifyItem reports whether the user may edit catalog item it: admins
+// always may; the submitter may while the item is still pending.
+func canModifyItem(it inventory.Item, u currentuser.User) bool {
+	if u.IsAdmin {
+		return true
+	}
+	return it.Status == inventory.ItemStatusPending &&
+		it.SubmittedByUserID != nil && *it.SubmittedByUserID == u.UserID
+}
+
+// itemWriteError maps a service-layer write failure to a client-safe error:
+// unique violations (duplicate name+brand or UPC) become BAD_USER_INPUT.
+func itemWriteError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return badInputf("an item with that name, brand or barcode already exists")
+	}
+	return err
+}
+
 // AddFoodNutrient adds a nutrient value to a catalog item.
 func (r *Resolver) AddFoodNutrient(ctx context.Context, args struct{ Input addFoodNutrientInput }) (*foodNutrientResolver, error) {
-	u, err := requireAdmin(ctx)
+	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -671,6 +888,9 @@ func (r *Resolver) AddFoodNutrient(ctx context.Context, args struct{ Input addFo
 	}
 	nutrientID, err := parseID(string(args.Input.NutrientID))
 	if err != nil {
+		return nil, err
+	}
+	if err := r.requireItemModifiable(ctx, itemID, u); err != nil {
 		return nil, err
 	}
 	n, err := r.InventoryService.CreateFoodNutrient(ctx, itemID, nutrientID, args.Input.Amount, u.Email)
@@ -685,7 +905,8 @@ func (r *Resolver) RemoveFoodNutrient(ctx context.Context, args struct {
 	ItemID     graphql.ID
 	NutrientID graphql.ID
 }) (bool, error) {
-	if _, err := requireAdmin(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return false, err
 	}
 	itemID, err := parseID(string(args.ItemID))
@@ -696,6 +917,9 @@ func (r *Resolver) RemoveFoodNutrient(ctx context.Context, args struct {
 	if err != nil {
 		return false, err
 	}
+	if err := r.requireItemModifiable(ctx, itemID, u); err != nil {
+		return false, err
+	}
 	if err := r.InventoryService.DeleteFoodNutrient(ctx, itemID, nutrientID); err != nil {
 		return false, err
 	}
@@ -704,7 +928,7 @@ func (r *Resolver) RemoveFoodNutrient(ctx context.Context, args struct {
 
 // AddFoodFlavor adds a flavor profile to a catalog item.
 func (r *Resolver) AddFoodFlavor(ctx context.Context, args struct{ Input addFoodFlavorInput }) (*foodFlavorResolver, error) {
-	u, err := requireAdmin(ctx)
+	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -720,6 +944,9 @@ func (r *Resolver) AddFoodFlavor(ctx context.Context, args struct{ Input addFood
 	if err != nil {
 		return nil, err
 	}
+	if err := r.requireItemModifiable(ctx, itemID, u); err != nil {
+		return nil, err
+	}
 	f, err := r.InventoryService.CreateFoodFlavor(ctx, itemID, flavorID, intensity, u.Email)
 	if err != nil {
 		return nil, err
@@ -732,7 +959,8 @@ func (r *Resolver) RemoveFoodFlavor(ctx context.Context, args struct {
 	ItemID   graphql.ID
 	FlavorID graphql.ID
 }) (bool, error) {
-	if _, err := requireAdmin(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return false, err
 	}
 	itemID, err := parseID(string(args.ItemID))
@@ -743,18 +971,22 @@ func (r *Resolver) RemoveFoodFlavor(ctx context.Context, args struct {
 	if err != nil {
 		return false, err
 	}
+	if err := r.requireItemModifiable(ctx, itemID, u); err != nil {
+		return false, err
+	}
 	if err := r.InventoryService.DeleteFoodFlavor(ctx, itemID, flavorID); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// UpdateItem modifies an existing catalog item.
+// UpdateItem modifies an existing catalog item. Admins may edit any item;
+// other users may edit only their own pending submissions.
 func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 	ID    graphql.ID
 	Input updateItemInput
 }) (*itemResolver, error) {
-	u, err := requireAdmin(ctx)
+	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -765,6 +997,9 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 	existing, err := r.InventoryService.GetItemByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !canModifyItem(existing, u) {
+		return nil, errForbidden()
 	}
 	brandID := existing.BrandID
 	if args.Input.BrandID != nil {
@@ -950,6 +1185,38 @@ func (r *itemResolver) PersonalSelectionCount() int32 {
 	return int64ToInt32(r.personalCount)
 }
 
+// Status is the moderation state of the catalog row: "approved" for normal
+// items, "pending" for user submissions awaiting review, "rejected" for
+// declined submissions.
+func (r *itemResolver) Status() string {
+	if r.it.Status == "" {
+		return inventory.ItemStatusApproved
+	}
+	return r.it.Status
+}
+
+// SubmittedByMe reports whether the current user submitted this item.
+func (r *itemResolver) SubmittedByMe(ctx context.Context) bool {
+	if r.it.SubmittedByUserID == nil {
+		return false
+	}
+	u, ok := currentuser.FromContext(ctx)
+	return ok && *r.it.SubmittedByUserID == u.UserID
+}
+
+// requireItemModifiable loads the item and returns errForbidden unless the
+// user may edit it (admin, or submitter of a still-pending item).
+func (r *Resolver) requireItemModifiable(ctx context.Context, itemID int64, u currentuser.User) error {
+	it, err := r.InventoryService.GetItemByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if !canModifyItem(it, u) {
+		return errForbidden()
+	}
+	return nil
+}
+
 type brandResolver struct {
 	b             inventory.Brand
 	globalCount   int64
@@ -1080,6 +1347,11 @@ type updateItemInput struct {
 
 type addFoodNutrientInput struct {
 	ItemID     graphql.ID
+	NutrientID graphql.ID
+	Amount     float64
+}
+
+type itemNutrientEntryInput struct {
 	NutrientID graphql.ID
 	Amount     float64
 }

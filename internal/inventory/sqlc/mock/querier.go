@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	sqlc "github.com/JRAdams472/LENA2/internal/inventory/sqlc"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,18 +58,33 @@ func (mr *MockQuerierMockRecorder) CountIngredients(ctx any) *gomock.Call {
 }
 
 // CountItems mocks base method.
-func (m *MockQuerier) CountItems(ctx context.Context) (int64, error) {
+func (m *MockQuerier) CountItems(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountItems", ctx)
+	ret := m.ctrl.Call(m, "CountItems", ctx, submittedByUserID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountItems indicates an expected call of CountItems.
-func (mr *MockQuerierMockRecorder) CountItems(ctx any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) CountItems(ctx, submittedByUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountItems", reflect.TypeOf((*MockQuerier)(nil).CountItems), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountItems", reflect.TypeOf((*MockQuerier)(nil).CountItems), ctx, submittedByUserID)
+}
+
+// CountPendingItems mocks base method.
+func (m *MockQuerier) CountPendingItems(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPendingItems", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPendingItems indicates an expected call of CountPendingItems.
+func (mr *MockQuerierMockRecorder) CountPendingItems(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPendingItems", reflect.TypeOf((*MockQuerier)(nil).CountPendingItems), ctx)
 }
 
 // CreateBrand mocks base method.
@@ -276,6 +292,20 @@ func (mr *MockQuerierMockRecorder) DeleteFoodNutrient(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFoodNutrient", reflect.TypeOf((*MockQuerier)(nil).DeleteFoodNutrient), ctx, arg)
 }
 
+// DeleteFoodNutrientsByItem mocks base method.
+func (m *MockQuerier) DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteFoodNutrientsByItem", ctx, foodID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteFoodNutrientsByItem indicates an expected call of DeleteFoodNutrientsByItem.
+func (mr *MockQuerierMockRecorder) DeleteFoodNutrientsByItem(ctx, foodID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFoodNutrientsByItem", reflect.TypeOf((*MockQuerier)(nil).DeleteFoodNutrientsByItem), ctx, foodID)
+}
+
 // DeleteIngredient mocks base method.
 func (m *MockQuerier) DeleteIngredient(ctx context.Context, ingredientID int64) error {
 	m.ctrl.T.Helper()
@@ -436,6 +466,21 @@ func (m *MockQuerier) GetItemByID(ctx context.Context, itemID int64) (sqlc.Inven
 func (mr *MockQuerierMockRecorder) GetItemByID(ctx, itemID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemByID", reflect.TypeOf((*MockQuerier)(nil).GetItemByID), ctx, itemID)
+}
+
+// GetItemByUpc mocks base method.
+func (m *MockQuerier) GetItemByUpc(ctx context.Context, arg sqlc.GetItemByUpcParams) (sqlc.InventoryItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemByUpc", ctx, arg)
+	ret0, _ := ret[0].(sqlc.InventoryItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemByUpc indicates an expected call of GetItemByUpc.
+func (mr *MockQuerierMockRecorder) GetItemByUpc(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemByUpc", reflect.TypeOf((*MockQuerier)(nil).GetItemByUpc), ctx, arg)
 }
 
 // GetItemsByIDs mocks base method.
@@ -663,6 +708,21 @@ func (mr *MockQuerierMockRecorder) ListNutrientTypes(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNutrientTypes", reflect.TypeOf((*MockQuerier)(nil).ListNutrientTypes), ctx)
 }
 
+// ListPendingItems mocks base method.
+func (m *MockQuerier) ListPendingItems(ctx context.Context, arg sqlc.ListPendingItemsParams) ([]sqlc.InventoryItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPendingItems", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.InventoryItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPendingItems indicates an expected call of ListPendingItems.
+func (mr *MockQuerierMockRecorder) ListPendingItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPendingItems", reflect.TypeOf((*MockQuerier)(nil).ListPendingItems), ctx, arg)
+}
+
 // ListUnits mocks base method.
 func (m *MockQuerier) ListUnits(ctx context.Context) ([]sqlc.InventoryUnit, error) {
 	m.ctrl.T.Helper()
@@ -676,6 +736,20 @@ func (m *MockQuerier) ListUnits(ctx context.Context) ([]sqlc.InventoryUnit, erro
 func (mr *MockQuerierMockRecorder) ListUnits(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockQuerier)(nil).ListUnits), ctx)
+}
+
+// SetItemStatus mocks base method.
+func (m *MockQuerier) SetItemStatus(ctx context.Context, arg sqlc.SetItemStatusParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetItemStatus", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetItemStatus indicates an expected call of SetItemStatus.
+func (mr *MockQuerierMockRecorder) SetItemStatus(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemStatus", reflect.TypeOf((*MockQuerier)(nil).SetItemStatus), ctx, arg)
 }
 
 // UpdateBrand mocks base method.

@@ -6,11 +6,14 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CountIngredients(ctx context.Context) (int64, error)
-	CountItems(ctx context.Context) (int64, error)
+	CountItems(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error)
+	CountPendingItems(ctx context.Context) (int64, error)
 	CreateBrand(ctx context.Context, name string) (InventoryBrand, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (InventoryCategory, error)
 	CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfileParams) (InventoryFlavorProfile, error)
@@ -25,6 +28,7 @@ type Querier interface {
 	DeleteFlavorProfile(ctx context.Context, flavorID int64) error
 	DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) error
 	DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error
+	DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) error
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
 	DeleteItem(ctx context.Context, itemID int64) error
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
@@ -36,6 +40,9 @@ type Querier interface {
 	GetIngredientByID(ctx context.Context, ingredientID int64) (InventoryIngredient, error)
 	GetIngredientsByIDs(ctx context.Context, ingredientIds []int64) ([]InventoryIngredient, error)
 	GetItemByID(ctx context.Context, itemID int64) (InventoryItem, error)
+	// Barcode lookup: the caller passes the normalized code plus their user id
+	// so pending items they submitted are still found.
+	GetItemByUpc(ctx context.Context, arg GetItemByUpcParams) (InventoryItem, error)
 	GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
 	GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit, error)
@@ -49,9 +56,12 @@ type Querier interface {
 	ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error)
 	ListFoodNutrientsByItems(ctx context.Context, itemIds []int64) ([]ListFoodNutrientsByItemsRow, error)
 	ListIngredients(ctx context.Context, arg ListIngredientsParams) ([]InventoryIngredient, error)
+	// Items are visible when approved, or when the caller submitted them.
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
+	ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error)
 	ListUnits(ctx context.Context) ([]InventoryUnit, error)
+	SetItemStatus(ctx context.Context, arg SetItemStatusParams) error
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)
 	UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfileParams) (InventoryFlavorProfile, error)

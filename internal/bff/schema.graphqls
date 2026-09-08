@@ -12,6 +12,12 @@ type Query {
   nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
   items(page: Int = 1, pageSize: Int = 25): ItemPage!
+  # Barcode lookup: matches upc12 for 12-digit codes and upc14 for
+  # 13/14-digit codes (13-digit EAN is left-padded to GTIN-14). Returns
+  # null when nothing visible to the caller matches.
+  itemByUpc(code: String!): Item
+  # Admin-only: catalog items submitted by users awaiting approval.
+  pendingItems(page: Int = 1, pageSize: Int = 25): ItemPage!
   frequentItems(limit: Int = 10): [Item!]!
   ingredient(id: ID!): Ingredient
   ingredients(page: Int = 1, pageSize: Int = 25): IngredientPage!
@@ -75,6 +81,19 @@ type Mutation {
   createItem(input: CreateItemInput!): Item!
   updateItem(id: ID!, input: UpdateItemInput!): Item!
   deleteItem(id: ID!): Boolean!
+  # Any authenticated user: submit a new catalog item in 'pending' status.
+  # It is visible to (and editable by) the submitter until an admin approves
+  # or rejects it.
+  submitItem(input: CreateItemInput!): Item!
+  # Admin-only moderation of user-submitted items. Rejected items are
+  # hidden from everyone.
+  approveItem(id: ID!): Item!
+  rejectItem(id: ID!): Item!
+  # Replace all nutrient values on an item atomically. Allowed for admins
+  # and for the submitter while the item is still pending. This is the
+  # single write path for nutrition data — the manual entry form and a
+  # future label-scan/OCR pipeline both feed it.
+  setItemNutrients(itemId: ID!, entries: [ItemNutrientEntryInput!]!): Item!
 
   createIngredient(input: CreateIngredientInput!): Ingredient!
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient!
@@ -208,6 +227,16 @@ type Item {
   flavors: [FoodFlavor!]!
   selectionCount: Int!
   personalSelectionCount: Int!
+  # One of "pending", "approved", "rejected". Catalog rows are approved;
+  # user submissions start pending until an admin moderates them.
+  status: String!
+  # True when the current user submitted this (pending) item.
+  submittedByMe: Boolean!
+}
+
+input ItemNutrientEntryInput {
+  nutrientId: ID!
+  amount: Float!
 }
 
 type ItemPage {
