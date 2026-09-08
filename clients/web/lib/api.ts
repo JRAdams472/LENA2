@@ -409,6 +409,18 @@ interface GqlUser {
   id: string;
   email: string;
   displayName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  backupEmail: string | null;
+  role: string;
+  isActive: boolean;
+  isProtected: boolean;
+  lastLoginAt: string | null;
+}
+
+interface GqlUserPage {
+  items: GqlUser[];
+  pageInfo: GqlPageInfo;
 }
 
 /* ------------------------------------------------------------------ */
@@ -419,6 +431,21 @@ const num = (id: string | number | null | undefined): number => {
   const n = Number(id);
   return Number.isFinite(n) ? n : 0;
 };
+
+const toUser = (u: GqlUser): User => ({
+  userID: num(u.id),
+  email: u.email,
+  displayName: u.displayName ?? null,
+  firstName: u.firstName ?? null,
+  lastName: u.lastName ?? null,
+  backupEmail: u.backupEmail ?? null,
+  role: u.role === "admin" ? "admin" : "member",
+  isActive: u.isActive !== false,
+  isProtected: u.isProtected === true,
+  lastLoginAt: u.lastLoginAt ?? null,
+  externalSubject: null,
+  provider: null,
+});
 
 const audit = (): AuditableEntity => ({
   createdBy: "",
@@ -925,15 +952,56 @@ export const api = {
   // Auth
   getMe: async (): Promise<User> => {
     const data = await request<{ me: GqlUser }>(
-      `query { me { id email displayName } }`
+      `query { me { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`
+    );
+    return toUser(data.me);
+  },
+
+  // Profile (self-service)
+  updateMyProfile: async (input: {
+    firstName?: string;
+    lastName?: string;
+    backupEmail?: string;
+  }): Promise<User> => {
+    const data = await request<{ updateMyProfile: GqlUser }>(
+      `mutation ($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`,
+      { input }
+    );
+    return toUser(data.updateMyProfile);
+  },
+
+  // Admin user management
+  getUsers: async (
+    page: number,
+    pageSize: number
+  ): Promise<PagedResult<User>> => {
+    const data = await request<{ users: GqlUserPage }>(
+      `query ($page: Int, $pageSize: Int) { users(page: $page, pageSize: $pageSize) { items { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
     );
     return {
-      userID: num(data.me.id),
-      email: data.me.email,
-      displayName: data.me.displayName,
-      externalSubject: null,
-      provider: null,
+      items: data.users.items.map(toUser),
+      pageNumber: data.users.pageInfo.pageNumber,
+      pageSize: data.users.pageInfo.pageSize,
+      totalCount: data.users.pageInfo.totalCount,
+      totalPages: Math.ceil(data.users.pageInfo.totalCount / data.users.pageInfo.pageSize) || 1,
     };
+  },
+
+  setUserRole: async (userId: number, role: "member" | "admin"): Promise<User> => {
+    const data = await request<{ setUserRole: GqlUser }>(
+      `mutation ($userId: ID!, $role: String!) { setUserRole(userId: $userId, role: $role) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`,
+      { userId: String(userId), role }
+    );
+    return toUser(data.setUserRole);
+  },
+
+  setUserActive: async (userId: number, isActive: boolean): Promise<User> => {
+    const data = await request<{ setUserActive: GqlUser }>(
+      `mutation ($userId: ID!, $isActive: Boolean!) { setUserActive(userId: $userId, isActive: $isActive) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`,
+      { userId: String(userId), isActive }
+    );
+    return toUser(data.setUserActive);
   },
 
   // Items

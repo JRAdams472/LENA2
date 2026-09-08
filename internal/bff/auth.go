@@ -5,6 +5,7 @@ package bff
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -158,6 +159,13 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	u, err := a.identity.UpsertUser(ctx, issuer, subject, email, name)
 	if err != nil {
 		return currentuser.User{}, fmt.Errorf("upsert user: %w", err)
+	}
+
+	// Banned users are rejected on every request: the JWT stays
+	// cryptographically valid until expiry, but the API refuses to serve
+	// the account while is_active is false.
+	if !u.IsActive {
+		return currentuser.User{}, errors.New("account is disabled")
 	}
 
 	// Bootstrap admin access: users whose provider-verified email is

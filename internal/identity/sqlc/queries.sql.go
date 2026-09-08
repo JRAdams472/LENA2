@@ -11,8 +11,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT count(*)
+FROM identity.users
+WHERE role = 'admin'
+  AND is_active
+`
+
+func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAdmins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUsers = `-- name: CountUsers :one
+SELECT count(*)
+FROM identity.users
+`
+
+func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
 FROM identity.users
 WHERE user_id = $1
 `
@@ -33,12 +59,15 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (IdentityUser, 
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.Role,
+		&i.FirstName,
+		&i.LastName,
+		&i.BackupEmail,
 	)
 	return i, err
 }
 
 const getUserByProviderSubject = `-- name: GetUserByProviderSubject :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
 FROM identity.users
 WHERE provider = $1
   AND external_subject = $2
@@ -65,12 +94,15 @@ func (q *Queries) GetUserByProviderSubject(ctx context.Context, arg GetUserByPro
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.Role,
+		&i.FirstName,
+		&i.LastName,
+		&i.BackupEmail,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
 FROM identity.users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -103,6 +135,9 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.Role,
+			&i.FirstName,
+			&i.LastName,
+			&i.BackupEmail,
 		); err != nil {
 			return nil, err
 		}
@@ -112,6 +147,25 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 		return nil, err
 	}
 	return items, nil
+}
+
+const setUserActive = `-- name: SetUserActive :exec
+UPDATE identity.users
+SET is_active  = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE user_id = $1
+`
+
+type SetUserActiveParams struct {
+	UserID    int64       `json:"user_id"`
+	IsActive  bool        `json:"is_active"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) error {
+	_, err := q.db.Exec(ctx, setUserActive, arg.UserID, arg.IsActive, arg.UpdatedBy)
+	return err
 }
 
 const setUserRole = `-- name: SetUserRole :exec
@@ -160,6 +214,35 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
 	return err
 }
 
+const updateUserProfile = `-- name: UpdateUserProfile :exec
+UPDATE identity.users
+SET first_name   = $2,
+    last_name    = $3,
+    backup_email = $4,
+    updated_by   = $5,
+    updated_at   = now()
+WHERE user_id = $1
+`
+
+type UpdateUserProfileParams struct {
+	UserID      int64       `json:"user_id"`
+	FirstName   pgtype.Text `json:"first_name"`
+	LastName    pgtype.Text `json:"last_name"`
+	BackupEmail pgtype.Text `json:"backup_email"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error {
+	_, err := q.db.Exec(ctx, updateUserProfile,
+		arg.UserID,
+		arg.FirstName,
+		arg.LastName,
+		arg.BackupEmail,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
 const upsertUser = `-- name: UpsertUser :one
 INSERT INTO identity.users (
     provider,
@@ -179,7 +262,7 @@ ON CONFLICT (provider, external_subject)
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
-RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role
+RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
 `
 
 type UpsertUserParams struct {
@@ -214,6 +297,9 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (Identit
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.Role,
+		&i.FirstName,
+		&i.LastName,
+		&i.BackupEmail,
 	)
 	return i, err
 }

@@ -303,3 +303,16 @@ Motivation: the Playwright e2e suite now takes >5 minutes and there is no data s
 - LENA-050: `telemetry.Setup` in `cmd/lena` now runs under a 10s startup timeout.
 - CI: Playwright config emits a JUnit report (`test-results/junit.xml`) in CI; the workflow uploads it with the `playwright-report` artifact.
 - Tests: `dbtx/timed_test.go` covers labels, close-timing, and error propagation; `graphql_tracer_test.go` covers resolver-duration export, nested-field operation-type inheritance, and the argument-value cardinality guard.
+
+---
+
+## Phase 33 — User Management & Self-Service Profile (`phase-33`)
+
+**Status (2026-09-08):** implemented on `phase-33` — `go build`/`vet`/`gofmt`/`go test -short` and `golangci-lint` clean; web `tsc`/`eslint`/`jest` (302 tests) clean.
+
+- Migration `0019` adds `first_name`, `last_name`, `backup_email` (with CHECK) to `identity.users`.
+- GraphQL: `users(page)` (admin-only), `setUserRole`, `setUserActive` (ban/unban), `updateMyProfile`; `User` gains `firstName`/`lastName`/`backupEmail`/`role`/`isActive`/`isProtected`/`lastLoginAt`.
+- Bans are enforced in `authenticate()`: `is_active=false` → 401 on every request; banned users are never promoted via `LENA_ADMIN_EMAILS`.
+- Guards in the identity service: no self role/active changes, no demoting/banning the last active admin, and `LENA_PROTECTED_EMAILS` (compose default `aipaloovik@gmail.com`) members can never be demoted or banned.
+- Web: `/profile` (first/last name + backup email, all users) and `/users` (admin-only table with role select + ban/unban confirm; self and protected rows disabled); nav gated by `useMe` which reads role from the API, not the JWT.
+

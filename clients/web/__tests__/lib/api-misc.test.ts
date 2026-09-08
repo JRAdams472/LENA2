@@ -119,6 +119,13 @@ describe("api client: auth and helpers", () => {
       userID: 7,
       email: "a@b.c",
       displayName: "Ann",
+      firstName: null,
+      lastName: null,
+      backupEmail: null,
+      role: "member",
+      isActive: true,
+      isProtected: false,
+      lastLoginAt: null,
       externalSubject: null,
       provider: null,
     });

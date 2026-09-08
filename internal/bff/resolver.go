@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -36,6 +37,7 @@ type Resolver struct {
 	RecipeService    RecipeService
 	UserPrefsService UserPrefsService
 	WineService      WineService
+	IdentityService  IdentityService
 
 	// bg carries detached analytics/recommendation work: at most
 	// asyncWorkerCap in-flight goroutines, all scoped to a cancelable
@@ -52,8 +54,8 @@ type Resolver struct {
 const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService) *Resolver {
-	return &Resolver{AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc}
+func NewResolver(an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService) *Resolver {
+	return &Resolver{AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn}
 }
 
 func (r *Resolver) ensureBG() {
@@ -246,13 +248,28 @@ func timeToGraphQL(t *time.Time) *graphql.Time {
 	return &graphql.Time{Time: *t}
 }
 
-// Me resolves the current authenticated user.
+// Me resolves the current authenticated user. When the identity service
+// is wired the profile fields are read fresh from identity.users so role,
+// name, and backup-email changes are reflected immediately.
 func (r *Resolver) Me(ctx context.Context) (*userResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &userResolver{u: u}, nil
+	if r.IdentityService != nil {
+		return r.userByID(ctx, u.UserID)
+	}
+	role := identity.RoleMember
+	if u.IsAdmin {
+		role = identity.RoleAdmin
+	}
+	return &userResolver{u: identity.User{
+		UserID:      u.UserID,
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		Role:        role,
+		IsActive:    true,
+	}}, nil
 }
 
 func derefString(s *string) string {
@@ -278,7 +295,8 @@ func boolValue(v *bool) bool {
 
 // userResolver resolves User fields.
 type userResolver struct {
-	u currentuser.User
+	u         identity.User
+	protected bool
 }
 
 func (r *userResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.u.UserID, 10)) }
@@ -286,6 +304,25 @@ func (r *userResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.u
 func (r *userResolver) Email() string { return r.u.Email }
 
 func (r *userResolver) DisplayName() *string { return nilIfEmpty(r.u.DisplayName) }
+
+func (r *userResolver) FirstName() *string { return nilIfEmpty(r.u.FirstName) }
+
+func (r *userResolver) LastName() *string { return nilIfEmpty(r.u.LastName) }
+
+func (r *userResolver) BackupEmail() *string { return nilIfEmpty(r.u.BackupEmail) }
+
+func (r *userResolver) Role() string { return r.u.Role }
+
+func (r *userResolver) IsActive() bool { return r.u.IsActive }
+
+func (r *userResolver) IsProtected() bool { return r.protected }
+
+func (r *userResolver) LastLoginAt() *graphql.Time {
+	if r.u.LastLoginAt == nil {
+		return nil
+	}
+	return &graphql.Time{Time: *r.u.LastLoginAt}
+}
 
 type pageInfoResolver struct {
 	page     int32

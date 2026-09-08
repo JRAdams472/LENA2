@@ -17,6 +17,13 @@ export interface User {
   userID: number;
   email: string;
   displayName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  backupEmail: string | null;
+  role: "member" | "admin";
+  isActive: boolean;
+  isProtected: boolean;
+  lastLoginAt: string | null;
   externalSubject: string | null;
   provider: string | null;
 }

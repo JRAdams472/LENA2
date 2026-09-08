@@ -16,8 +16,22 @@ This document describes the public GraphQL API exposed by the BFF at `/graphql`.
 | Field | Type | Description |
 |---|---|---|
 | `id` | `ID!` | LENA internal user ID |
-| `email` | `String!` | Primary email address |
-| `displayName` | `String` | Optional display name |
+| `email` | `String!` | Primary email address (from the OIDC token) |
+| `displayName` | `String` | Display name from the OIDC token |
+| `firstName` | `String` | User-provided first name (self-service profile) |
+| `lastName` | `String` | User-provided last name |
+| `backupEmail` | `String` | Optional secondary contact email |
+| `role` | `String!` | `member` or `admin` |
+| `isActive` | `Boolean!` | `false` means banned — every request is rejected with 401 |
+| `isProtected` | `Boolean!` | `true` when the email is in `LENA_PROTECTED_EMAILS` — can never be demoted or banned |
+| `lastLoginAt` | `Time` | Last successful authentication |
+
+### User management
+
+- `users(page: Int, pageSize: Int): UserPage!` — **admin only.** Paged list of all users (`UserPage { items: [User!]!, pageInfo: PageInfo! }`).
+- `setUserRole(userId: ID!, role: String!): User!` — **admin only.** `role` must be `member` or `admin`. Rejects self-modification, protected admins, and demoting the last active admin (`FORBIDDEN`).
+- `setUserActive(userId: ID!, isActive: Boolean!): User!` — **admin only.** `isActive: false` bans the user: every subsequent request is rejected with 401 until unbanned. Same guards as `setUserRole`.
+- `updateMyProfile(input: UpdateProfileInput!): User!` — any authenticated user, own record only. `UpdateProfileInput { firstName, lastName, backupEmail }`; omitted fields are unchanged, empty strings clear the field. `backupEmail` must be a valid address (`BAD_USER_INPUT` otherwise).
 
 ### Catalog — `Brand`, `Category`, `Item`
 

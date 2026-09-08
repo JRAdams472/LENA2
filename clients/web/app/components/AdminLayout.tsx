@@ -27,6 +27,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Button from "@mui/material/Button";
 import { useAuth } from "@/app/auth/AuthProvider";
+import { useMe } from "@/app/auth/useMe";
 import LoginScreen from "@/app/components/LoginScreen";
 
 const DRAWER_WIDTH = 260;
@@ -57,10 +58,11 @@ const Main = styled("main")(({ theme }) => ({
 interface NavItem {
   label: string;
   href: string;
+  adminOnly?: boolean;
   children?: NavItem[];
 }
 
-const NAVIGATION: { label: string; href?: string; children?: NavItem[] }[] = [
+const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?: NavItem[] }[] = [
   { label: "Dashboard", href: "/" },
   {
     label: "Inventory",
@@ -97,6 +99,8 @@ const NAVIGATION: { label: string; href?: string; children?: NavItem[] }[] = [
       { label: "Grocery Lists", href: "/grocery-lists" },
     ],
   },
+  { label: "Users", href: "/users", adminOnly: true },
+  { label: "Profile", href: "/profile" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -115,6 +119,7 @@ export default function AdminLayout({
   const theme = useTheme();
   const pathname = usePathname() ?? "";
   const { user, signOut } = useAuth();
+  const { isAdmin } = useMe();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(
@@ -153,7 +158,7 @@ export default function AdminLayout({
         </Typography>
       </Box>
       <List component="nav" aria-label="main navigation">
-        {NAVIGATION.map((group) => {
+        {NAVIGATION.filter((item) => !item.adminOnly || isAdmin).map((group) => {
           if (group.children) {
             const active = isGroupActive(pathname, group.children);
             const icon =
