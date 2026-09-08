@@ -5,6 +5,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/grocery"
+	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -149,6 +150,20 @@ type UserPrefsService interface {
 }
 
 var _ UserPrefsService = (*userprefs.Service)(nil)
+
+// IdentityService is the subset of *identity.Service used by the resolver
+// for profile reads and admin user-management operations.
+type IdentityService interface {
+	GetByID(ctx context.Context, userID int64) (identity.User, error)
+	ListUsers(ctx context.Context, limit, offset int32) ([]identity.User, error)
+	CountUsers(ctx context.Context) (int64, error)
+	IsProtected(email string) bool
+	AdminSetRole(ctx context.Context, actorID, targetID int64, role string) error
+	AdminSetActive(ctx context.Context, actorID, targetID int64, active bool, by string) error
+	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error
+}
+
+var _ IdentityService = (*identity.Service)(nil)
 
 // AnalyticsService is the subset of *analytics.Service used by the resolver.
 type AnalyticsService interface {

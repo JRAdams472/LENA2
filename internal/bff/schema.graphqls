@@ -35,6 +35,8 @@ type Query {
   nutrition(mealPlanId: ID!): [NutritionSummary!]!
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
+  # Admin-only: paged list of all registered users.
+  users(page: Int = 1, pageSize: Int = 25): UserPage!
 }
 
 type Mutation {
@@ -117,6 +119,19 @@ type Mutation {
   removeBottleFlavorProfile(bottleId: ID!, flavorProfileId: ID!): Boolean!
   adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
   setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
+
+  # Self-service profile update (first/last name, backup email).
+  updateMyProfile(input: UpdateProfileInput!): User!
+  # Admin-only user management. Rejects self-modification, protected
+  # admins, and removing the last active admin.
+  setUserRole(userId: ID!, role: String!): User!
+  setUserActive(userId: ID!, isActive: Boolean!): User!
+}
+
+input UpdateProfileInput {
+  firstName: String
+  lastName: String
+  backupEmail: String
 }
 
 type PageInfo {
@@ -129,6 +144,20 @@ type User {
   id: ID!
   email: String!
   displayName: String
+  firstName: String
+  lastName: String
+  backupEmail: String
+  role: String!
+  isActive: Boolean!
+  # True when the user's email is in LENA_PROTECTED_EMAILS: such admins
+  # can never be demoted or banned via the API.
+  isProtected: Boolean!
+  lastLoginAt: Time
+}
+
+type UserPage {
+  items: [User!]!
+  pageInfo: PageInfo!
 }
 
 type Category {

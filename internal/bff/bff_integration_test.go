@@ -59,6 +59,7 @@ func TestBFF_Integration(t *testing.T) {
 		recipe.NewService(pool),
 		userprefs.NewService(pool),
 		wine.NewService(pool),
+		identitySvc,
 	)
 
 	e := echo.New()

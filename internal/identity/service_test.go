@@ -144,3 +144,175 @@ func TestSetUserRole(t *testing.T) {
 		assert.ErrorIs(t, err, errDB)
 	})
 }
+
+func adminRow(userID int64, email string) sqlc.IdentityUser {
+	return sqlc.IdentityUser{UserID: userID, Email: email, Role: RoleAdmin, IsActive: true}
+}
+
+func memberRow(userID int64, email string) sqlc.IdentityUser {
+	return sqlc.IdentityUser{UserID: userID, Email: email, Role: RoleMember, IsActive: true}
+}
+
+func TestAdminSetRole(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("promotes a member", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 2, Role: RoleAdmin}).Return(nil)
+
+		require.NoError(t, svc.AdminSetRole(ctx, 1, 2, RoleAdmin))
+	})
+
+	t.Run("demoting an admin requires another active admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(3), nil)
+		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 2, Role: RoleMember}).Return(nil)
+
+		require.NoError(t, svc.AdminSetRole(ctx, 1, 2, RoleMember))
+	})
+
+	t.Run("cannot demote self", func(t *testing.T) {
+		svc, _ := newService(t)
+		err := svc.AdminSetRole(ctx, 2, 2, RoleMember)
+		assert.ErrorIs(t, err, ErrSelfModification)
+	})
+
+	t.Run("cannot demote the last active admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(1), nil)
+
+		err := svc.AdminSetRole(ctx, 1, 2, RoleMember)
+		assert.ErrorIs(t, err, ErrLastAdmin)
+	})
+
+	t.Run("cannot demote a protected admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		svc = svc.WithProtectedEmails([]string{"Boss@Example.com"})
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "boss@example.com"), nil)
+
+		err := svc.AdminSetRole(ctx, 1, 2, RoleMember)
+		assert.ErrorIs(t, err, ErrProtectedUser)
+	})
+}
+
+func TestAdminSetActive(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("bans a member", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		mq.EXPECT().SetUserActive(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.SetUserActiveParams) error {
+				assert.Equal(t, int64(2), arg.UserID)
+				assert.False(t, arg.IsActive)
+				assert.Equal(t, pgtype.Text{String: "admin@b.com", Valid: true}, arg.UpdatedBy)
+				return nil
+			})
+
+		require.NoError(t, svc.AdminSetActive(ctx, 1, 2, false, "admin@b.com"))
+	})
+
+	t.Run("cannot ban self", func(t *testing.T) {
+		svc, _ := newService(t)
+		err := svc.AdminSetActive(ctx, 2, 2, false, "a@b.com")
+		assert.ErrorIs(t, err, ErrSelfModification)
+	})
+
+	t.Run("cannot ban a protected admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		svc = svc.WithProtectedEmails([]string{"boss@example.com"})
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "BOSS@example.com"), nil)
+
+		err := svc.AdminSetActive(ctx, 1, 2, false, "a@b.com")
+		assert.ErrorIs(t, err, ErrProtectedUser)
+	})
+
+	t.Run("cannot ban the last active admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(1), nil)
+
+		err := svc.AdminSetActive(ctx, 1, 2, false, "a@b.com")
+		assert.ErrorIs(t, err, ErrLastAdmin)
+	})
+
+	t.Run("unban has no admin guard", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		mq.EXPECT().SetUserActive(ctx, gomock.Any()).Return(nil)
+
+		require.NoError(t, svc.AdminSetActive(ctx, 1, 2, true, "admin@b.com"))
+	})
+}
+
+func TestUpdateProfile(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("passes profile fields", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpdateUserProfileParams) error {
+				assert.Equal(t, int64(7), arg.UserID)
+				assert.Equal(t, pgtype.Text{String: "Ada", Valid: true}, arg.FirstName)
+				assert.Equal(t, pgtype.Text{String: "Lovelace", Valid: true}, arg.LastName)
+				assert.Equal(t, pgtype.Text{String: "alt@b.com", Valid: true}, arg.BackupEmail)
+				assert.Equal(t, pgtype.Text{String: "a@b.com", Valid: true}, arg.UpdatedBy)
+				return nil
+			})
+
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "alt@b.com", "a@b.com"))
+	})
+
+	t.Run("empty fields become null", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpdateUserProfileParams) error {
+				assert.False(t, arg.FirstName.Valid)
+				assert.False(t, arg.BackupEmail.Valid)
+				return nil
+			})
+
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "Lovelace", "", "a@b.com"))
+	})
+}
+
+func TestListAndCountUsers(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("list maps rows", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListUsers(ctx, sqlc.ListUsersParams{Limit: 25, Offset: 50}).Return([]sqlc.IdentityUser{
+			adminRow(1, "a@b.com"),
+			memberRow(2, "m@b.com"),
+		}, nil)
+
+		users, err := svc.ListUsers(ctx, 25, 50)
+		require.NoError(t, err)
+		require.Len(t, users, 2)
+		assert.Equal(t, "a@b.com", users[0].Email)
+		assert.True(t, users[0].IsAdmin())
+	})
+
+	t.Run("count", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountUsers(ctx).Return(int64(17), nil)
+
+		n, err := svc.CountUsers(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(17), n)
+	})
+}
+
+func TestIsProtected(t *testing.T) {
+	svc, _ := newService(t)
+	assert.False(t, svc.IsProtected("a@b.com"))
+
+	svc = svc.WithProtectedEmails([]string{" Boss@Example.com ", "", "second@b.com"})
+	assert.True(t, svc.IsProtected("boss@example.com"))
+	assert.True(t, svc.IsProtected("BOSS@EXAMPLE.COM"))
+	assert.True(t, svc.IsProtected("second@b.com"))
+	assert.False(t, svc.IsProtected("other@b.com"))
+}

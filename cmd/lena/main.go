@@ -127,7 +127,8 @@ func run() int {
 // supported for tests and disables /metrics and HTTP metrics middleware;
 // telemetry.Setup never returns (nil, nil) in production.
 func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) (*echo.Echo, *bff.Resolver, error) {
-	identitySvc := identity.NewService(pool)
+	identitySvc := identity.NewService(pool).
+		WithProtectedEmails(splitAndTrim(cfg.ProtectedEmails))
 	analyticsSvc := analytics.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
@@ -220,7 +221,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), authenticator.Middleware())
 	}
 
-	resolver := bff.NewResolver(analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc)
+	resolver := bff.NewResolver(analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc)
 	handler, err := bff.NewGraphQLHandler(resolver,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))

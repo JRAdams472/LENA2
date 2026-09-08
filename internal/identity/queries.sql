@@ -50,3 +50,29 @@ SELECT *
 FROM identity.users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2;
+
+-- name: CountUsers :one
+SELECT count(*)
+FROM identity.users;
+
+-- name: CountActiveAdmins :one
+SELECT count(*)
+FROM identity.users
+WHERE role = 'admin'
+  AND is_active;
+
+-- name: SetUserActive :exec
+UPDATE identity.users
+SET is_active  = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE user_id = $1;
+
+-- name: UpdateUserProfile :exec
+UPDATE identity.users
+SET first_name   = $2,
+    last_name    = $3,
+    backup_email = $4,
+    updated_by   = $5,
+    updated_at   = now()
+WHERE user_id = $1;

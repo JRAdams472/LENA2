@@ -19,7 +19,11 @@ type Config struct {
 	GoogleClientID string `envconfig:"GOOGLE_CLIENT_ID" default:""`
 	// AdminEmails is a comma-separated bootstrap list of emails promoted to
 	// the 'admin' role on their next authenticated request.
-	AdminEmails        string `envconfig:"ADMIN_EMAILS" default:""`
+	AdminEmails string `envconfig:"ADMIN_EMAILS" default:""`
+	// ProtectedEmails is a comma-separated list of admin emails that can
+	// never be demoted or deactivated (banned) — the escape hatch that
+	// keeps an owner from being locked out of their own deployment.
+	ProtectedEmails    string `envconfig:"PROTECTED_EMAILS" default:""`
 	AuthIssuers        string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
 	AuthAudiences      string `envconfig:"AUTH_AUDIENCES" required:"true"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost"`

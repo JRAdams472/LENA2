@@ -9,11 +9,15 @@ import (
 )
 
 type Querier interface {
+	CountActiveAdmins(ctx context.Context) (int64, error)
+	CountUsers(ctx context.Context) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	GetUserByProviderSubject(ctx context.Context, arg GetUserByProviderSubjectParams) (IdentityUser, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
+	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error)
 }
 

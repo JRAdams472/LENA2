@@ -16,6 +16,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -24,6 +26,7 @@ import (
 // fakeIdentityStore records UpsertUser/SetUserRole calls for assertions.
 type fakeIdentityStore struct {
 	user       identity.User
+	inactive   bool
 	upsertErr  error
 	roleCalls  int32
 	lastRole   string
@@ -39,6 +42,7 @@ func (f *fakeIdentityStore) UpsertUser(_ context.Context, provider, subject, ema
 	u.Provider = provider
 	u.ExternalSubject = subject
 	u.Email = email
+	u.IsActive = !f.inactive
 	return u, nil
 }
 
@@ -212,6 +216,30 @@ func TestAuthenticateRejects(t *testing.T) {
 		if _, err := a2.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
+	})
+	t.Run("banned user is rejected", func(t *testing.T) {
+		banned := &fakeIdentityStore{user: identity.User{UserID: 5, Role: identity.RoleMember}, inactive: true}
+		a2 := NewAuthenticator(AuthConfig{
+			Issuers:   []string{iss.server.URL},
+			Audiences: []string{"lena-client"},
+		}, banned)
+		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com", nil)
+		_, err := a2.authenticate(context.Background(), raw)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "disabled")
+	})
+	t.Run("banned admin-list email is not promoted", func(t *testing.T) {
+		banned := &fakeIdentityStore{user: identity.User{UserID: 6, Role: identity.RoleMember}, inactive: true}
+		a2 := NewAuthenticator(AuthConfig{
+			Issuers:     []string{iss.server.URL},
+			Audiences:   []string{"lena-client"},
+			AdminEmails: []string{"e@x.com"},
+		}, banned)
+		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com",
+			map[string]any{"email_verified": true})
+		_, err := a2.authenticate(context.Background(), raw)
+		require.Error(t, err)
+		assert.Zero(t, atomic.LoadInt32(&banned.roleCalls))
 	})
 }
 

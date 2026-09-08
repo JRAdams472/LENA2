@@ -86,6 +86,9 @@ type IdentityUser struct {
 	UpdatedBy       pgtype.Text        `json:"updated_by"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	Role            string             `json:"role"`
+	FirstName       pgtype.Text        `json:"first_name"`
+	LastName        pgtype.Text        `json:"last_name"`
+	BackupEmail     pgtype.Text        `json:"backup_email"`
 }
 
 type InventoryBrand struct {
