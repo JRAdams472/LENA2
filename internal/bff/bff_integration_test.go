@@ -52,6 +52,7 @@ func TestBFF_Integration(t *testing.T) {
 	}, identitySvc)
 
 	resolver := NewResolver(
+		pool,
 		analytics.NewService(pool),
 		grocery.NewService(pool),
 		inventory.NewService(pool),

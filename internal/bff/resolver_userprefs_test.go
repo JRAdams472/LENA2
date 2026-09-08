@@ -320,6 +320,97 @@ func TestResolver_DeleteUserItem_Unauthorized(t *testing.T) {
 	assert.EqualError(t, err, "unauthorized")
 }
 
+func TestResolver_IncrementUserItem_PositiveExisting(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	existing := userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 3}
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).
+		Return(userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 5}, nil)
+
+	res, err := r.IncrementUserItem(upCtx(), struct {
+		ItemID graphql.ID
+		Delta  float64
+	}{ItemID: "42", Delta: 2})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, graphql.ID("5"), res.ID())
+	assert.Equal(t, 5.0, res.CurrentQty())
+}
+
+func TestResolver_IncrementUserItem_PositiveNew(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).
+		Return(userprefs.UserItem{UserItemID: 7, UserID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
+
+	res, err := r.IncrementUserItem(upCtx(), struct {
+		ItemID graphql.ID
+		Delta  float64
+	}{ItemID: "42", Delta: 2})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, graphql.ID("7"), res.ID())
+	assert.Equal(t, 2.0, res.CurrentQty())
+}
+
+func TestResolver_IncrementUserItem_NegativeDelete(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	existing := userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 2}
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(nil)
+
+	res, err := r.IncrementUserItem(upCtx(), struct {
+		ItemID graphql.ID
+		Delta  float64
+	}{ItemID: "42", Delta: -3})
+	require.NoError(t, err)
+	assert.Nil(t, res)
+}
+
+func TestResolver_IncrementUserItem_NegativeNoExisting(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+
+	res, err := r.IncrementUserItem(upCtx(), struct {
+		ItemID graphql.ID
+		Delta  float64
+	}{ItemID: "42", Delta: -2})
+	require.NoError(t, err)
+	assert.Nil(t, res)
+}
+
+func TestResolver_IncrementUserItem_ZeroDelta(t *testing.T) {
+	r := &Resolver{}
+	res, err := r.IncrementUserItem(upCtx(), struct {
+		ItemID graphql.ID
+		Delta  float64
+	}{ItemID: "42", Delta: 0})
+	assert.Nil(t, res)
+	require.Error(t, err)
+}
+
+func TestResolver_IncrementUserItem_Unauthorized(t *testing.T) {
+	r := &Resolver{}
+	res, err := r.IncrementUserItem(context.Background(), struct {
+		ItemID graphql.ID
+		Delta  float64
+	}{ItemID: "42", Delta: 1})
+	assert.Nil(t, res)
+	assert.EqualError(t, err, "unauthorized")
+}
+
 func TestResolver_DeleteUserItem_ServiceError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)

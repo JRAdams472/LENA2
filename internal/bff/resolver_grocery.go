@@ -7,7 +7,10 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/graph-gophers/graphql-go"
+	"github.com/jackc/pgx/v5"
 )
 
 // GroceryList resolves a single grocery list by ID.
@@ -103,6 +106,9 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 }
 
 // ToggleGroceryItemChecked flips the checked state of a grocery list item.
+// When the resolver has its shared pool and the item references a catalog
+// item, the flip and the inventory adjustment are run inside a single
+// transaction so pantry quantities always match the list state.
 func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ GroceryListItemID graphql.ID }) (*groceryListItemResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -116,6 +122,97 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 	if err != nil {
 		return nil, err
 	}
+
+	// Use a real shared-pool transaction for catalog items when both
+	// domain services are concrete.
+	g, okG := r.GroceryService.(*grocery.Service)
+	up, okU := r.UserPrefsService.(*userprefs.Service)
+	if r.Pool != nil && okG && okU && it.ItemID != nil {
+		var updated grocery.GroceryListItem
+		if err := dbtx.InTx(ctx, r.Pool, func(tx pgx.Tx) error {
+			gTx := g.WithTx(tx)
+			upTx := up.WithTx(tx)
+
+			current, err := gTx.GetGroceryListItemByID(ctx, id, u.UserID)
+			if err != nil {
+				return err
+			}
+
+			flipped := current
+			flipped.IsChecked = !current.IsChecked
+			if err := gTx.UpdateGroceryListItem(ctx, id, u.UserID, flipped, u.Email); err != nil {
+				return err
+			}
+
+			existing, err := upTx.GetUserItemByUserAndItem(ctx, u.UserID, *current.ItemID)
+			if err != nil {
+				return err
+			}
+
+			if current.IsChecked {
+				// Uncheck: subtract the needed quantity, floored at 0.
+				if existing != nil {
+					newQty := existing.CurrentQty - current.QuantityNeeded
+					if newQty < 0 {
+						newQty = 0
+					}
+					if _, err := upTx.UpsertUserItem(ctx, userprefs.UserItem{
+						UserItemID: existing.UserItemID,
+						UserID:     u.UserID,
+						ItemID:     *current.ItemID,
+						CurrentQty: newQty,
+						MinQty:     existing.MinQty,
+						PurchaseAt: existing.PurchaseAt,
+						ExpiresAt:  existing.ExpiresAt,
+						Notes:      existing.Notes,
+						IsFavorite: existing.IsFavorite,
+					}, u.Email); err != nil {
+						return err
+					}
+				}
+			} else {
+				// Check: add the needed quantity, creating the pantry row
+				// if this is the first time.
+				if existing == nil {
+					if _, err := upTx.UpsertUserItem(ctx, userprefs.UserItem{
+						UserID:     u.UserID,
+						ItemID:     *current.ItemID,
+						CurrentQty: current.QuantityNeeded,
+					}, u.Email); err != nil {
+						return err
+					}
+				} else {
+					newQty := existing.CurrentQty + current.QuantityNeeded
+					if _, err := upTx.UpsertUserItem(ctx, userprefs.UserItem{
+						UserItemID: existing.UserItemID,
+						UserID:     u.UserID,
+						ItemID:     *current.ItemID,
+						CurrentQty: newQty,
+						MinQty:     existing.MinQty,
+						PurchaseAt: existing.PurchaseAt,
+						ExpiresAt:  existing.ExpiresAt,
+						Notes:      existing.Notes,
+						IsFavorite: existing.IsFavorite,
+					}, u.Email); err != nil {
+						return err
+					}
+				}
+			}
+
+			u2, err := gTx.GetGroceryListItemByID(ctx, id, u.UserID)
+			if err != nil {
+				return err
+			}
+			updated = u2
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		return &groceryListItemResolver{inv: r.InventoryService, item: updated}, nil
+	}
+
+	// Fallback for tests without a real pool, or for manual/ingredient rows
+	// where there is no catalog item to sync.
 	it.IsChecked = !it.IsChecked
 	if err := r.GroceryService.UpdateGroceryListItem(ctx, id, u.UserID, it, u.Email); err != nil {
 		return nil, err
