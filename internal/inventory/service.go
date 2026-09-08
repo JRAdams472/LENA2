@@ -184,33 +184,124 @@ func (s *Service) DeleteCategory(ctx context.Context, categoryID int64) error {
 	return s.q.DeleteCategory(ctx, categoryID)
 }
 
+// Item approval statuses. User-submitted items start pending and stay
+// visible only to their creator until an admin approves them; rejected
+// items are hidden from everyone.
+const (
+	ItemStatusPending  = "pending"
+	ItemStatusApproved = "approved"
+	ItemStatusRejected = "rejected"
+)
+
 // Item is a catalog food item.
 type Item struct {
-	ItemID     int64
-	Name       string
-	BrandID    *int64
-	Upc12      string
-	Upc14      string
-	CategoryID int64
-	UnitID     int64
+	ItemID            int64
+	Name              string
+	BrandID           *int64
+	Upc12             string
+	Upc14             string
+	CategoryID        int64
+	UnitID            int64
+	Status            string
+	SubmittedByUserID *int64
+	ApprovedByUserID  *int64
+	ApprovedAt        *time.Time
 }
 
-// CreateItem adds a new item to the catalog.
+// CreateItem adds a new item to the catalog. The item is immediately
+// approved; this is the trusted (admin) create path.
 func (s *Service) CreateItem(ctx context.Context, arg Item, by string) (Item, error) {
 	row, err := s.q.CreateItem(ctx, sqlc.CreateItemParams{
-		Name:       arg.Name,
-		BrandID:    optInt64(arg.BrandID),
-		Upc12:      textOrNull(arg.Upc12),
-		Upc14:      textOrNull(arg.Upc14),
-		CategoryID: arg.CategoryID,
-		UnitID:     arg.UnitID,
-		CreatedBy:  by,
-		UpdatedBy:  textOrNull(by),
+		Name:              arg.Name,
+		BrandID:           optInt64(arg.BrandID),
+		Upc12:             textOrNull(arg.Upc12),
+		Upc14:             textOrNull(arg.Upc14),
+		CategoryID:        arg.CategoryID,
+		UnitID:            arg.UnitID,
+		Status:            ItemStatusApproved,
+		SubmittedByUserID: optInt64(arg.SubmittedByUserID),
+		CreatedBy:         by,
+		UpdatedBy:         textOrNull(by),
 	})
 	if err != nil {
 		return Item{}, fmt.Errorf("create item: %w", err)
 	}
 	return toItem(row), nil
+}
+
+// SubmitItem adds a new item to the catalog in 'pending' status on behalf
+// of the submitting user, who keeps visibility until an admin approves it.
+func (s *Service) SubmitItem(ctx context.Context, arg Item, userID int64, by string) (Item, error) {
+	row, err := s.q.CreateItem(ctx, sqlc.CreateItemParams{
+		Name:              arg.Name,
+		BrandID:           optInt64(arg.BrandID),
+		Upc12:             textOrNull(arg.Upc12),
+		Upc14:             textOrNull(arg.Upc14),
+		CategoryID:        arg.CategoryID,
+		UnitID:            arg.UnitID,
+		Status:            ItemStatusPending,
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		CreatedBy:         by,
+		UpdatedBy:         textOrNull(by),
+	})
+	if err != nil {
+		return Item{}, fmt.Errorf("submit item: %w", err)
+	}
+	return toItem(row), nil
+}
+
+// GetItemByUpc returns the item whose upc12 or upc14 equals the normalized
+// code, limited to items visible to the given user (approved or their own
+// pending submissions). Returns pgx.ErrNoRows when nothing matches.
+func (s *Service) GetItemByUpc(ctx context.Context, code string, userID int64) (Item, error) {
+	row, err := s.q.GetItemByUpc(ctx, sqlc.GetItemByUpcParams{
+		Upc12:             textOrNull(code),
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+	})
+	if err != nil {
+		return Item{}, fmt.Errorf("get item by upc: %w", err)
+	}
+	return toItem(row), nil
+}
+
+// ListPendingItems returns items awaiting admin approval, oldest first.
+func (s *Service) ListPendingItems(ctx context.Context, limit, offset int32) ([]Item, error) {
+	rows, err := s.q.ListPendingItems(ctx, sqlc.ListPendingItemsParams{Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, fmt.Errorf("list pending items: %w", err)
+	}
+	out := make([]Item, len(rows))
+	for i := range rows {
+		out[i] = toItem(rows[i])
+	}
+	return out, nil
+}
+
+// CountPendingItems returns the number of items awaiting approval.
+func (s *Service) CountPendingItems(ctx context.Context) (int64, error) {
+	n, err := s.q.CountPendingItems(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count pending items: %w", err)
+	}
+	return n, nil
+}
+
+// SetItemStatus marks an item approved or rejected. Approving records the
+// approving user and timestamp; rejecting clears them.
+func (s *Service) SetItemStatus(ctx context.Context, itemID int64, status string, approverUserID int64, by string) error {
+	var approvedAt pgtype.Timestamptz
+	var approver pgtype.Int8
+	if status == ItemStatusApproved {
+		approvedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+		approver = pgtype.Int8{Int64: approverUserID, Valid: true}
+	}
+	return s.q.SetItemStatus(ctx, sqlc.SetItemStatusParams{
+		ItemID:           itemID,
+		Status:           status,
+		ApprovedByUserID: approver,
+		ApprovedAt:       approvedAt,
+		UpdatedBy:        textOrNull(by),
+	})
 }
 
 // GetItemByID returns an item by its primary key.
@@ -235,9 +326,14 @@ func (s *Service) GetItemsByIDs(ctx context.Context, itemIDs []int64) ([]Item, e
 	return out, nil
 }
 
-// ListItems returns a paginated list of items ordered by name.
-func (s *Service) ListItems(ctx context.Context, limit, offset int32) ([]Item, error) {
-	rows, err := s.q.ListItems(ctx, sqlc.ListItemsParams{Limit: limit, Offset: offset})
+// ListItems returns a paginated list of items visible to the given user:
+// approved items plus the user's own pending submissions, ordered by name.
+func (s *Service) ListItems(ctx context.Context, userID int64, limit, offset int32) ([]Item, error) {
+	rows, err := s.q.ListItems(ctx, sqlc.ListItemsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Limit:             limit,
+		Offset:            offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list items: %w", err)
 	}
@@ -248,9 +344,9 @@ func (s *Service) ListItems(ctx context.Context, limit, offset int32) ([]Item, e
 	return out, nil
 }
 
-// CountItems returns the total number of catalog items.
-func (s *Service) CountItems(ctx context.Context) (int64, error) {
-	n, err := s.q.CountItems(ctx)
+// CountItems returns the number of items visible to the given user.
+func (s *Service) CountItems(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountItems(ctx, pgtype.Int8{Int64: userID, Valid: true})
 	if err != nil {
 		return 0, fmt.Errorf("count items: %w", err)
 	}
@@ -483,6 +579,40 @@ func (s *Service) DeleteFoodNutrient(ctx context.Context, itemID, nutrientID int
 	return s.q.DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{
 		FoodID:     itemID,
 		NutrientID: nutrientID,
+	})
+}
+
+// NutrientEntry is a single nutrient value in a SetItemNutrients call.
+type NutrientEntry struct {
+	NutrientID int64
+	Amount     float64
+}
+
+// SetItemNutrients replaces all nutrient values on an item atomically: the
+// existing rows are deleted and the given entries inserted in one
+// transaction. This is the single write path for nutrition data; both the
+// manual mobile form and a future OCR label-scan pipeline feed it the same
+// entry list.
+func (s *Service) SetItemNutrients(ctx context.Context, itemID int64, entries []NutrientEntry, by string) error {
+	return s.InTx(ctx, func(tx *Service) error {
+		if err := tx.q.DeleteFoodNutrientsByItem(ctx, itemID); err != nil {
+			return fmt.Errorf("clear food nutrients: %w", err)
+		}
+		for _, e := range entries {
+			n, err := numericFromFloat64(e.Amount)
+			if err != nil {
+				return fmt.Errorf("set food nutrients: %w", err)
+			}
+			if _, err := tx.q.CreateFoodNutrient(ctx, sqlc.CreateFoodNutrientParams{
+				FoodID:     itemID,
+				NutrientID: e.NutrientID,
+				Amount:     n,
+				CreatedBy:  by,
+			}); err != nil {
+				return fmt.Errorf("set food nutrients: %w", err)
+			}
+		}
+		return nil
 	})
 }
 
@@ -774,9 +904,19 @@ func toItem(row sqlc.InventoryItem) Item {
 		Upc14:      row.Upc14.String,
 		CategoryID: row.CategoryID,
 		UnitID:     row.UnitID,
+		Status:     row.Status,
 	}
 	if row.BrandID.Valid {
 		it.BrandID = &row.BrandID.Int64
+	}
+	if row.SubmittedByUserID.Valid {
+		it.SubmittedByUserID = &row.SubmittedByUserID.Int64
+	}
+	if row.ApprovedByUserID.Valid {
+		it.ApprovedByUserID = &row.ApprovedByUserID.Int64
+	}
+	if row.ApprovedAt.Valid {
+		it.ApprovedAt = &row.ApprovedAt.Time
 	}
 	return it
 }

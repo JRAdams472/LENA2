@@ -3,13 +3,17 @@ package bff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/graph-gophers/graphql-go"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
@@ -267,11 +271,11 @@ func TestResolver_Inventory_Items(t *testing.T) {
 
 	t.Run("happy path", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListItems(gomock.Any(), int32(10), int32(10)).Return([]inventory.Item{
+		inv.EXPECT().ListItems(gomock.Any(), int64(7), int32(10), int32(10)).Return([]inventory.Item{
 			{ItemID: 1, Name: "Milk"},
 			{ItemID: 2, Name: "Eggs"},
 		}, nil)
-		inv.EXPECT().CountItems(gomock.Any()).Return(int64(5), nil)
+		inv.EXPECT().CountItems(gomock.Any(), int64(7)).Return(int64(5), nil)
 		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{0}).Return(nil, nil)
 		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
@@ -288,8 +292,8 @@ func TestResolver_Inventory_Items(t *testing.T) {
 
 	t.Run("clamps page and page size", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListItems(gomock.Any(), int32(100), int32(0)).Return([]inventory.Item{}, nil)
-		inv.EXPECT().CountItems(gomock.Any()).Return(int64(0), nil)
+		inv.EXPECT().ListItems(gomock.Any(), int64(7), int32(100), int32(0)).Return([]inventory.Item{}, nil)
+		inv.EXPECT().CountItems(gomock.Any(), int64(7)).Return(int64(0), nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Items(invCtx(), pageArgs{Page: 0, PageSize: 500})
 		require.NoError(t, err)
@@ -307,7 +311,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListItems(gomock.Any(), int32(10), int32(0)).Return(nil, errInvBoom)
+		inv.EXPECT().ListItems(gomock.Any(), int64(7), int32(10), int32(0)).Return(nil, errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 10})
 		require.ErrorIs(t, err, errInvBoom)
@@ -594,8 +598,11 @@ func TestResolver_Inventory_FoodNutrientMutations(t *testing.T) {
 		NutrientID graphql.ID
 	}
 
+	approvedItem := inventory.Item{ItemID: 5, Status: inventory.ItemStatusApproved}
+
 	t.Run("add", func(t *testing.T) {
 		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).Return(approvedItem, nil)
 		inv.EXPECT().CreateFoodNutrient(gomock.Any(), int64(5), int64(2), 300.0, invTestEmail).
 			Return(inventory.FoodNutrient{NutrientID: 2, Name: "Sodium", Unit: "mg", Amount: 300}, nil)
 		r := &Resolver{InventoryService: inv}
@@ -612,6 +619,7 @@ func TestResolver_Inventory_FoodNutrientMutations(t *testing.T) {
 
 	t.Run("remove", func(t *testing.T) {
 		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).Return(approvedItem, nil)
 		inv.EXPECT().DeleteFoodNutrient(gomock.Any(), int64(5), int64(2)).Return(nil)
 		r := &Resolver{InventoryService: inv}
 		ok, err := r.RemoveFoodNutrient(invCtx(), removeArgs{ItemID: "5", NutrientID: "2"})
@@ -621,6 +629,7 @@ func TestResolver_Inventory_FoodNutrientMutations(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).Return(approvedItem, nil)
 		inv.EXPECT().DeleteFoodNutrient(gomock.Any(), int64(5), int64(2)).Return(errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		ok, err := r.RemoveFoodNutrient(invCtx(), removeArgs{ItemID: "5", NutrientID: "2"})
@@ -646,9 +655,11 @@ func TestResolver_Inventory_FoodFlavorMutations(t *testing.T) {
 		ItemID   graphql.ID
 		FlavorID graphql.ID
 	}
+	approvedItem := inventory.Item{ItemID: 5, Status: inventory.ItemStatusApproved}
 
 	t.Run("add", func(t *testing.T) {
 		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).Return(approvedItem, nil)
 		inv.EXPECT().CreateFoodFlavor(gomock.Any(), int64(5), int64(9), int16(3), invTestEmail).
 			Return(inventory.FoodFlavor{FlavorID: 9, Name: "Spicy", Intensity: 3}, nil)
 		r := &Resolver{InventoryService: inv}
@@ -664,6 +675,7 @@ func TestResolver_Inventory_FoodFlavorMutations(t *testing.T) {
 
 	t.Run("remove", func(t *testing.T) {
 		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(5)).Return(approvedItem, nil)
 		inv.EXPECT().DeleteFoodFlavor(gomock.Any(), int64(5), int64(9)).Return(nil)
 		r := &Resolver{InventoryService: inv}
 		ok, err := r.RemoveFoodFlavor(invCtx(), removeArgs{ItemID: "5", FlavorID: "9"})
@@ -840,3 +852,354 @@ func TestResolver_Inventory_IngredientMutations(t *testing.T) {
 		require.ErrorContains(t, err, "unauthorized")
 	})
 }
+
+func TestResolver_ItemByUpc(t *testing.T) {
+	type args = struct{ Code string }
+
+	t.Run("upc12 found", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByUpc(gomock.Any(), "012345678901", int64(7)).
+			Return(inventory.Item{ItemID: 3, Name: "Milk", Status: inventory.ItemStatusApproved}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.ItemByUpc(invUserCtx(), args{Code: "012345678901"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Equal(t, graphql.ID("3"), res.ID())
+	})
+
+	t.Run("ean13 is padded to upc14", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByUpc(gomock.Any(), "04012345678901", int64(7)).
+			Return(inventory.Item{ItemID: 4, Name: "Bread", Status: inventory.ItemStatusApproved}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.ItemByUpc(invUserCtx(), args{Code: "4012345678901"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	})
+
+	t.Run("upc14 found", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByUpc(gomock.Any(), "12345678901234", int64(7)).
+			Return(inventory.Item{ItemID: 5}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.ItemByUpc(invUserCtx(), args{Code: "12345678901234"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	})
+
+	t.Run("not found returns nil", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByUpc(gomock.Any(), "999999999999", int64(7)).
+			Return(inventory.Item{}, fmt.Errorf("get item by upc: %w", pgx.ErrNoRows))
+		r := &Resolver{InventoryService: inv}
+		res, err := r.ItemByUpc(invUserCtx(), args{Code: "999999999999"})
+		require.NoError(t, err)
+		assert.Nil(t, res)
+	})
+
+	t.Run("bad length returns nil", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		res, err := r.ItemByUpc(invUserCtx(), args{Code: "12345"})
+		require.NoError(t, err)
+		assert.Nil(t, res)
+	})
+
+	t.Run("non-digit input rejected", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.ItemByUpc(invUserCtx(), args{Code: "12A45678901"})
+		require.ErrorContains(t, err, "digits")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.ItemByUpc(context.Background(), args{Code: "012345678901"})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+}
+
+func TestResolver_PendingItems(t *testing.T) {
+	type pageArgs = struct {
+		Page     int32
+		PageSize int32
+	}
+
+	t.Run("admin sees pending", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().ListPendingItems(gomock.Any(), int32(25), int32(0)).Return([]inventory.Item{
+			{ItemID: 9, Name: "Scan Bar", Status: inventory.ItemStatusPending},
+		}, nil)
+		inv.EXPECT().CountPendingItems(gomock.Any()).Return(int64(1), nil)
+		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{0}).Return(nil, nil)
+		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{9}).Return(nil, nil)
+		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{9}).Return(nil, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.PendingItems(invCtx(), pageArgs{Page: 1, PageSize: 25})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 1)
+		assert.Equal(t, "pending", res.Items()[0].Status())
+	})
+
+	t.Run("forbidden for non-admin", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.PendingItems(invUserCtx(), pageArgs{Page: 1, PageSize: 25})
+		require.ErrorContains(t, err, "forbidden")
+	})
+}
+
+func TestResolver_SubmitItem(t *testing.T) {
+	type args = struct{ Input createItemInput }
+
+	t.Run("creates pending item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetUnitByName(gomock.Any(), "each").Return(inventory.Unit{UnitID: 1, Name: "each"}, nil)
+		inv.EXPECT().SubmitItem(gomock.Any(), gomock.Cond(func(it inventory.Item) bool {
+			return it.Name == "Scan Bar" && it.Upc12 == "012345678901" && it.CategoryID == 3 && it.UnitID == 1
+		}), int64(7), invTestEmail).Return(inventory.Item{
+			ItemID:            21,
+			Name:              "Scan Bar",
+			Status:            inventory.ItemStatusPending,
+			SubmittedByUserID: ptrInt64(7),
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.SubmitItem(invUserCtx(), args{Input: createItemInput{
+			Name:       "Scan Bar",
+			Upc12:      invStrPtr("012345678901"),
+			CategoryID: "3",
+			Unit:       "each",
+		}})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("21"), res.ID())
+		assert.Equal(t, "pending", res.Status())
+		assert.True(t, res.SubmittedByMe(invUserCtx()))
+	})
+
+	t.Run("duplicate upc is a friendly error", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetUnitByName(gomock.Any(), "each").Return(inventory.Unit{UnitID: 1}, nil)
+		inv.EXPECT().SubmitItem(gomock.Any(), gomock.Any(), int64(7), invTestEmail).
+			Return(inventory.Item{}, &pgconn.PgError{Code: "23505"})
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SubmitItem(invUserCtx(), args{Input: createItemInput{
+			Name:       "Scan Bar",
+			CategoryID: "3",
+			Unit:       "each",
+		}})
+		require.ErrorContains(t, err, "already exists")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.SubmitItem(context.Background(), args{})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+}
+
+func TestResolver_ApproveRejectItem(t *testing.T) {
+	type idArgs = struct{ ID graphql.ID }
+
+	t.Run("approve marks approved", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SetItemStatus(gomock.Any(), int64(9), inventory.ItemStatusApproved, int64(7), invTestEmail).Return(nil)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(9)).Return(inventory.Item{ItemID: 9, Status: inventory.ItemStatusApproved}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.ApproveItem(invCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		assert.Equal(t, "approved", res.Status())
+	})
+
+	t.Run("reject marks rejected", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SetItemStatus(gomock.Any(), int64(9), inventory.ItemStatusRejected, int64(7), invTestEmail).Return(nil)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(9)).Return(inventory.Item{ItemID: 9, Status: inventory.ItemStatusRejected}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.RejectItem(invCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		assert.Equal(t, "rejected", res.Status())
+	})
+
+	t.Run("forbidden for non-admin", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.ApproveItem(invUserCtx(), idArgs{ID: "9"})
+		require.ErrorContains(t, err, "forbidden")
+		_, err = r.RejectItem(invUserCtx(), idArgs{ID: "9"})
+		require.ErrorContains(t, err, "forbidden")
+	})
+}
+
+func TestResolver_SetItemNutrients(t *testing.T) {
+	type args = struct {
+		ItemID  graphql.ID
+		Entries []itemNutrientEntryInput
+	}
+	pendingMine := inventory.Item{
+		ItemID:            11,
+		Status:            inventory.ItemStatusPending,
+		SubmittedByUserID: ptrInt64(7),
+	}
+
+	t.Run("creator sets nutrients on pending item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		inv.EXPECT().SetItemNutrients(gomock.Any(), int64(11), []inventory.NutrientEntry{
+			{NutrientID: 2, Amount: 12.5},
+		}, invTestEmail).Return(nil)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.SetItemNutrients(invUserCtx(), args{
+			ItemID:  "11",
+			Entries: []itemNutrientEntryInput{{NutrientID: "2", Amount: 12.5}},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("11"), res.ID())
+	})
+
+	t.Run("other user cannot set nutrients on pending item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SetItemNutrients(testenv.WithUser(context.Background(), 99, "other@example.com"), args{
+			ItemID:  "11",
+			Entries: []itemNutrientEntryInput{{NutrientID: "2", Amount: 1}},
+		})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
+	t.Run("non-admin cannot set nutrients on approved item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(inventory.Item{
+			ItemID: 11,
+			Status: inventory.ItemStatusApproved,
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SetItemNutrients(invUserCtx(), args{ItemID: "11"})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
+	t.Run("duplicate nutrient rejected", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SetItemNutrients(invUserCtx(), args{
+			ItemID: "11",
+			Entries: []itemNutrientEntryInput{
+				{NutrientID: "2", Amount: 1},
+				{NutrientID: "2", Amount: 2},
+			},
+		})
+		require.ErrorContains(t, err, "duplicate")
+	})
+
+	t.Run("negative amount rejected", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SetItemNutrients(invUserCtx(), args{
+			ItemID:  "11",
+			Entries: []itemNutrientEntryInput{{NutrientID: "2", Amount: -1}},
+		})
+		require.ErrorContains(t, err, "negative")
+	})
+}
+
+func TestResolver_ItemVisibility(t *testing.T) {
+	type idArgs = struct{ ID graphql.ID }
+	pendingOther := inventory.Item{
+		ItemID:            11,
+		Status:            inventory.ItemStatusPending,
+		SubmittedByUserID: ptrInt64(99),
+	}
+
+	t.Run("pending item hidden from other users", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingOther, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.Item(invUserCtx(), idArgs{ID: "11"})
+		require.NoError(t, err)
+		assert.Nil(t, res)
+	})
+
+	t.Run("pending item visible to submitter", func(t *testing.T) {
+		inv := newInvMock(t)
+		mine := inventory.Item{ItemID: 11, Status: inventory.ItemStatusPending, SubmittedByUserID: ptrInt64(7)}
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(mine, nil)
+		an := newAnalyticsMock(t)
+		an.EXPECT().GetUserSelectionCounts(gomock.Any(), int64(7), analytics.EntityItem, []int64{11}).Return(nil, nil)
+		an.EXPECT().GetGlobalSelectionCounts(gomock.Any(), analytics.EntityItem, []int64{11}).Return(nil, nil)
+		r := &Resolver{InventoryService: inv, AnalyticsService: an}
+		res, err := r.Item(invUserCtx(), idArgs{ID: "11"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	})
+
+	t.Run("pending item visible to admin", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingOther, nil)
+		an := newAnalyticsMock(t)
+		an.EXPECT().GetUserSelectionCounts(gomock.Any(), int64(7), analytics.EntityItem, []int64{11}).Return(nil, nil)
+		an.EXPECT().GetGlobalSelectionCounts(gomock.Any(), analytics.EntityItem, []int64{11}).Return(nil, nil)
+		r := &Resolver{InventoryService: inv, AnalyticsService: an}
+		res, err := r.Item(invCtx(), idArgs{ID: "11"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	})
+
+	t.Run("rejected item hidden from non-admin", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(inventory.Item{
+			ItemID: 11, Status: inventory.ItemStatusRejected, SubmittedByUserID: ptrInt64(7),
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.Item(invUserCtx(), idArgs{ID: "11"})
+		require.NoError(t, err)
+		assert.Nil(t, res)
+	})
+}
+
+func TestResolver_UpdateItem_CreatorCanEditPending(t *testing.T) {
+	type args = struct {
+		ID    graphql.ID
+		Input updateItemInput
+	}
+	pendingMine := inventory.Item{
+		ItemID:            11,
+		Name:              "Scan Bar",
+		Status:            inventory.ItemStatusPending,
+		SubmittedByUserID: ptrInt64(7),
+		CategoryID:        3,
+		UnitID:            1,
+	}
+
+	t.Run("submitter updates pending item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		inv.EXPECT().UpdateItem(gomock.Any(), int64(11), gomock.Cond(func(it inventory.Item) bool {
+			return it.Name == "Renamed"
+		}), invTestEmail).Return(nil)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.UpdateItem(invUserCtx(), args{ID: "11", Input: updateItemInput{Name: invStrPtr("Renamed")}})
+		require.NoError(t, err)
+	})
+
+	t.Run("non-admin cannot update approved item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(inventory.Item{
+			ItemID: 11, Status: inventory.ItemStatusApproved,
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.UpdateItem(invUserCtx(), args{ID: "11", Input: updateItemInput{Name: invStrPtr("Renamed")}})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
+	t.Run("non-submitter cannot update pending item", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(inventory.Item{
+			ItemID: 11, Status: inventory.ItemStatusPending, SubmittedByUserID: ptrInt64(99),
+		}, nil)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.UpdateItem(invUserCtx(), args{ID: "11", Input: updateItemInput{Name: invStrPtr("Renamed")}})
+		require.ErrorContains(t, err, "forbidden")
+	})
+}
+
+func ptrInt64(v int64) *int64 { return &v }

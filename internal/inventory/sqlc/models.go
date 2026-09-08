@@ -147,17 +147,21 @@ type InventoryIngredient struct {
 }
 
 type InventoryItem struct {
-	ItemID     int64              `json:"item_id"`
-	Name       string             `json:"name"`
-	BrandID    pgtype.Int8        `json:"brand_id"`
-	Upc12      pgtype.Text        `json:"upc12"`
-	Upc14      pgtype.Text        `json:"upc14"`
-	CategoryID int64              `json:"category_id"`
-	CreatedBy  string             `json:"created_by"`
-	CreatedAt  time.Time          `json:"created_at"`
-	UpdatedBy  pgtype.Text        `json:"updated_by"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	UnitID     int64              `json:"unit_id"`
+	ItemID            int64              `json:"item_id"`
+	Name              string             `json:"name"`
+	BrandID           pgtype.Int8        `json:"brand_id"`
+	Upc12             pgtype.Text        `json:"upc12"`
+	Upc14             pgtype.Text        `json:"upc14"`
+	CategoryID        int64              `json:"category_id"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	UnitID            int64              `json:"unit_id"`
+	Status            string             `json:"status"`
+	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
+	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
+	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
 }
 
 type InventoryNutrientType struct {
