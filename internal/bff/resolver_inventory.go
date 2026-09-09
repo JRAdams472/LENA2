@@ -983,14 +983,18 @@ func canModifyItem(it inventory.Item, u currentuser.User) bool {
 }
 
 // parseNetWeightInput validates and normalizes the net weight fields from a
-// create/update item input. netWeight is required on creation.
+// create/update item input. Both fields are optional; a missing or zero weight
+// is stored as NULL.
 func parseNetWeightInput(netWeight *float64, isMetric *bool) (*float64, bool, error) {
-	if netWeight == nil || *netWeight <= 0 {
-		return nil, false, badInputf("netWeight is required")
-	}
 	metric := false
 	if isMetric != nil {
 		metric = *isMetric
+	}
+	if netWeight == nil || *netWeight == 0 {
+		return nil, metric, nil
+	}
+	if *netWeight < 0 {
+		return nil, false, badInputf("netWeight must be non-negative")
 	}
 	return netWeight, metric, nil
 }
