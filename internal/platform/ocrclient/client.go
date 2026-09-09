@@ -60,7 +60,7 @@ func (c *Client) ExtractText(ctx context.Context, image []byte) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("ocr request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

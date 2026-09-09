@@ -26,7 +26,7 @@ import (
 
 func ensureWindowsDockerHost() {
 	if runtime.GOOS == "windows" && os.Getenv("DOCKER_HOST") == "" {
-		os.Setenv("DOCKER_HOST", "npipe:////./pipe/docker_engine")
+		_ = os.Setenv("DOCKER_HOST", "npipe:////./pipe/docker_engine")
 	}
 }
 
@@ -164,8 +164,8 @@ func repoRoot() (string, error) {
 }
 
 var (
-	copySyntaxRE = regexp.MustCompile("^\\\\copy\\s+(\\S+)\\s+\\(([^)]+)\\)\\s+FROM\\s+'([^']+)'\\s+WITH\\s+\\(([^)]+)\\)\\s*;?")
-	copyLineRE   = regexp.MustCompile("(?m)^\\\\copy\\s+.*?;")
+	copySyntaxRE = regexp.MustCompile(`^\\copy\s+(\S+)\s+\(([^)]+)\)\s+FROM\s+'([^']+)'\s+WITH\s+\(([^)]+)\)\s*;?`)
+	copyLineRE   = regexp.MustCompile(`(?m)^\\copy\s+.*?;`)
 )
 
 func execFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
@@ -234,7 +234,7 @@ func runCopy(ctx context.Context, pool *pgxpool.Pool, root, stmt string) error {
 	if err != nil {
 		return fmt.Errorf("open copy source %s: %w", filePath, err)
 	}
-	defer cf.Close()
+	defer func() { _ = cf.Close() }()
 
 	r := csv.NewReader(cf)
 	if strings.Contains(options, "header") {
