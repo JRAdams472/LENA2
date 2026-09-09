@@ -668,9 +668,11 @@ func TestUpdateItem_Error(t *testing.T) {
 func TestDeleteItem(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
+	q.EXPECT().DeleteUserItemsByItem(ctx, int64(11)).Return(nil)
 	q.EXPECT().DeleteItem(ctx, int64(11)).Return(nil)
 	assert.NoError(t, s.DeleteItem(ctx, 11))
 
+	q.EXPECT().DeleteUserItemsByItem(ctx, int64(9)).Return(nil)
 	q.EXPECT().DeleteItem(ctx, int64(9)).Return(errBoom)
 	assert.ErrorIs(t, s.DeleteItem(ctx, 9), errBoom)
 }
