@@ -542,6 +542,16 @@ func (q *Queries) DeleteNutrientType(ctx context.Context, nutrientID int64) erro
 	return err
 }
 
+const deleteUserItemsByItem = `-- name: DeleteUserItemsByItem :exec
+DELETE FROM inventory.user_item
+WHERE item_id = $1
+`
+
+func (q *Queries) DeleteUserItemsByItem(ctx context.Context, itemID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserItemsByItem, itemID)
+	return err
+}
+
 const findBrandByNormalizedName = `-- name: FindBrandByNormalizedName :one
 SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM inventory.brand

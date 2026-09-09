@@ -162,6 +162,10 @@ SET name        = $2,
     is_metric   = $10
 WHERE item_id = $1;
 
+-- name: DeleteUserItemsByItem :exec
+DELETE FROM inventory.user_item
+WHERE item_id = $1;
+
 -- name: DeleteItem :exec
 DELETE FROM inventory.item
 WHERE item_id = $1;

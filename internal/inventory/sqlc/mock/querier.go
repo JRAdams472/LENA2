@@ -378,6 +378,20 @@ func (mr *MockQuerierMockRecorder) DeleteNutrientType(ctx, nutrientID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNutrientType", reflect.TypeOf((*MockQuerier)(nil).DeleteNutrientType), ctx, nutrientID)
 }
 
+// DeleteUserItemsByItem mocks base method.
+func (m *MockQuerier) DeleteUserItemsByItem(ctx context.Context, itemID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUserItemsByItem", ctx, itemID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteUserItemsByItem indicates an expected call of DeleteUserItemsByItem.
+func (mr *MockQuerierMockRecorder) DeleteUserItemsByItem(ctx, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserItemsByItem", reflect.TypeOf((*MockQuerier)(nil).DeleteUserItemsByItem), ctx, itemID)
+}
+
 // FindBrandByNormalizedName mocks base method.
 func (m *MockQuerier) FindBrandByNormalizedName(ctx context.Context, regexpReplace string) (sqlc.InventoryBrand, error) {
 	m.ctrl.T.Helper()
