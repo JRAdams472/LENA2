@@ -415,7 +415,18 @@ CREATE TABLE grocery.grocery_list_item (
 );
 ```
 
-## 9. Data-Isolation Notes
+## 9. Mobile redesign catalog approval columns
+
+The `inventory.item` table gained approval/ownership columns during the mobile redesign (migration `0020_item_approval`):
+
+- `status VARCHAR(20) NOT NULL DEFAULT 'approved'` — `approved` (visible to all), `pending` (visible to creator and admins only), or `rejected` (hidden).
+- `submitted_by_user_id BIGINT REFERENCES identity.users(user_id)` — non-null for user-submitted items.
+- `approved_by_user_id BIGINT REFERENCES identity.users(user_id)` — set when an admin approves a pending item.
+- `approved_at TIMESTAMPTZ` — approval timestamp.
+
+These support the mobile scan-and-submit flow: a user scans an unknown UPC, submits a new catalog item with optional nutrients, and an admin approves it via the web `/items/pending` page before it is visible to all users.
+
+## 10. Data-Isolation Notes
 
 - `identity.users` is the only table referenced by foreign keys from other schemas for scoping.
 - All catalog tables are global and may be mutated by any authenticated user initially.

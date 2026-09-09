@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "phase-*"
+      - "mobile-redesign-*"
   pull_request:
     branches:
       - main
@@ -181,9 +182,35 @@ jobs:
           path: clients/web/test-results
           retention-days: 2
 
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify Flutter version
+        run: flutter --version
+
+      - name: Install mobile dependencies
+        working-directory: clients/mobile
+        run: flutter pub get
+
+      - name: Analyze Flutter code
+        working-directory: clients/mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: clients/mobile
+        run: flutter test
+
   docker:
     name: docker ${{ matrix.image }}
-    needs: [go, web, e2e]
+    needs: [go, web, e2e, mobile]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
