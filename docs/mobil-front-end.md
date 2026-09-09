@@ -1,3 +1,7 @@
+> **Superseded for LENA2.** The current mobile client lives in `clients/mobile` and is being redesigned in `docs/mobile-redesign.md` with a Flutter app using the GraphQL BFF.
+>
+> This document is preserved for historical context on the earlier native Android and .NET API hardening work.
+
 Repository: JRAdams472/LENA. Two deliverables, in this order.
 
 ## Deliverable 1 — Flutter mobile Google sign-in (Phase M5), replacing the native Android app

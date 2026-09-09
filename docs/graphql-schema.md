@@ -330,3 +330,15 @@ mutation Toggle($id: ID!) {
 - All queries and mutations require a valid `Authorization: Bearer <id_token>` header.
 - Pagination defaults to `page: 1` and `pageSize: 25`.
 - Nullable `pageInfo.totalCount` in the resolver currently reflects the number of records returned for the requested page, not a global database count.
+
+## Mobile redesign additions
+
+Added for the Flutter mobile redesign (`mobile-redesign-p0` through `p4`):
+
+- `Item.status: String!` and `Item.submittedByMe: Boolean!` for admin approval visibility.
+- `itemByUpc(code: String!): Item` — UPC lookup respecting status/visibility rules.
+- `submitItem(input: CreateItemInput!): Item!` — user item submission (creates a `pending` item).
+- `approveItem(id: ID!): Item!` / `rejectItem(id: ID!): Item!` — admin moderation.
+- `setItemNutrients(itemId: ID!, nutrients: [FoodNutrientInput!]!): [FoodNutrient!]!` — write path for nutrition data.
+- `incrementUserItem(itemId: ID!, delta: Float!): UserItem` — delta-based pantry adjustment used by grocery sync and scan add/remove.
+- `pendingItems(page: Int = 1, pageSize: Int = 25): ItemPage!` — admin-only list of pending items.
