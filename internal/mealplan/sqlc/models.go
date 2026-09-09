@@ -162,6 +162,8 @@ type InventoryItem struct {
 	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
 	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
 	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
+	NetWeight         pgtype.Numeric     `json:"net_weight"`
+	IsMetric          bool               `json:"is_metric"`
 }
 
 type InventoryNutrientType struct {

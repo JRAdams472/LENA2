@@ -259,7 +259,7 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 const createItem = `-- name: CreateItem :one
 INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, status, submitted_by_user_id, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 `
 
 type CreateItemParams struct {
@@ -305,6 +305,8 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Invento
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NetWeight,
+		&i.IsMetric,
 	)
 	return i, err
 }
@@ -651,7 +653,7 @@ func (q *Queries) GetIngredientsByIDs(ctx context.Context, ingredientIds []int64
 }
 
 const getItemByID = `-- name: GetItemByID :one
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 FROM inventory.item
 WHERE item_id = $1
 `
@@ -675,12 +677,14 @@ func (q *Queries) GetItemByID(ctx context.Context, itemID int64) (InventoryItem,
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NetWeight,
+		&i.IsMetric,
 	)
 	return i, err
 }
 
 const getItemByUpc = `-- name: GetItemByUpc :one
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 FROM inventory.item
 WHERE (upc12 = $1 OR upc14 = $1)
   AND (status = 'approved' OR submitted_by_user_id = $2)
@@ -712,12 +716,14 @@ func (q *Queries) GetItemByUpc(ctx context.Context, arg GetItemByUpcParams) (Inv
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NetWeight,
+		&i.IsMetric,
 	)
 	return i, err
 }
 
 const getItemsByIDs = `-- name: GetItemsByIDs :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 FROM inventory.item
 WHERE item_id = ANY($1::bigint[])
 `
@@ -747,6 +753,8 @@ func (q *Queries) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]Invento
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
 		); err != nil {
 			return nil, err
 		}
@@ -1155,7 +1163,7 @@ func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams
 }
 
 const listItems = `-- name: ListItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY name
@@ -1194,6 +1202,8 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Invento
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
 		); err != nil {
 			return nil, err
 		}
@@ -1237,7 +1247,7 @@ func (q *Queries) ListNutrientTypes(ctx context.Context) ([]InventoryNutrientTyp
 }
 
 const listPendingItems = `-- name: ListPendingItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 FROM inventory.item
 WHERE status = 'pending'
 ORDER BY created_at
@@ -1274,6 +1284,8 @@ func (q *Queries) ListPendingItems(ctx context.Context, arg ListPendingItemsPara
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
 		); err != nil {
 			return nil, err
 		}
