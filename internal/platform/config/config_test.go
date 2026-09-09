@@ -29,7 +29,7 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, "client-id", cfg.GoogleClientID)
 	assert.Equal(t, "aud1,aud2", cfg.AuthAudiences)
 	assert.Empty(t, cfg.AdminEmails)
-	assert.Equal(t, "64K", cfg.GraphQLBodyLimit)
+	assert.Equal(t, "4M", cfg.GraphQLBodyLimit)
 	assert.Equal(t, 5*time.Second, cfg.HTTPReadHeaderTimeout)
 	assert.Equal(t, 15*time.Second, cfg.HTTPReadTimeout)
 	assert.Equal(t, 30*time.Second, cfg.HTTPWriteTimeout)

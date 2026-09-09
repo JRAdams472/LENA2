@@ -10,11 +10,11 @@ INSERT INTO inventory.category (name, description, created_by) VALUES
   ('Pantry', 'Dry goods and shelf-stable staples', 'seed')
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO inventory.brand (name) VALUES
-  ('Generic'),
-  ('Organic Valley'),
-  ('Kroger'),
-  ('Trader Joe''s')
+INSERT INTO inventory.brand (name, status, created_by, updated_by) VALUES
+  ('Generic', 'approved', 'seed', 'seed'),
+  ('Organic Valley', 'approved', 'seed', 'seed'),
+  ('Kroger', 'approved', 'seed', 'seed'),
+  ('Trader Joe''s', 'approved', 'seed', 'seed')
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO inventory.flavor_profile (name, is_active, created_by) VALUES

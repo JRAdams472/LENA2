@@ -33,20 +33,20 @@ func TestCreateBrand(t *testing.T) {
 	now := time.Now()
 
 	s, q := newTestService(t)
-	q.EXPECT().CreateBrand(ctx, "Acme").
-		Return(sqlc.InventoryBrand{BrandID: 7, Name: "Acme", CreatedAt: now}, nil)
+	q.EXPECT().CreateBrand(ctx, sqlc.CreateBrandParams{Name: "Acme", CreatedBy: "admin@example.com"}).
+		Return(sqlc.InventoryBrand{BrandID: 7, Name: "Acme", CreatedAt: now, Status: BrandStatusApproved}, nil)
 
-	b, err := s.CreateBrand(ctx, "Acme")
+	b, err := s.CreateBrand(ctx, "Acme", "admin@example.com")
 	require.NoError(t, err)
-	assert.Equal(t, Brand{BrandID: 7, Name: "Acme", CreatedAt: now}, b)
+	assert.Equal(t, Brand{BrandID: 7, Name: "Acme", CreatedAt: now, Status: BrandStatusApproved}, b)
 }
 
 func TestCreateBrand_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().CreateBrand(ctx, "Acme").Return(sqlc.InventoryBrand{}, errBoom)
+	q.EXPECT().CreateBrand(ctx, gomock.Any()).Return(sqlc.InventoryBrand{}, errBoom)
 
-	_, err := s.CreateBrand(ctx, "Acme")
+	_, err := s.CreateBrand(ctx, "Acme", "admin@example.com")
 	assert.ErrorIs(t, err, errBoom)
 	assert.ErrorContains(t, err, "create brand:")
 }
@@ -294,6 +294,8 @@ func TestCreateItem(t *testing.T) {
 		Status:     ItemStatusApproved,
 		CreatedBy:  "alice",
 		UpdatedBy:  pgtype.Text{String: "alice", Valid: true},
+		NetWeight:  pgtype.Numeric{},
+		IsMetric:   false,
 	}).Return(sqlc.InventoryItem{
 		ItemID:     11,
 		Name:       "Apple",
@@ -353,6 +355,8 @@ func TestSubmitItem(t *testing.T) {
 		SubmittedByUserID: pgtype.Int8{Int64: 42, Valid: true},
 		CreatedBy:         "bob",
 		UpdatedBy:         pgtype.Text{String: "bob", Valid: true},
+		NetWeight:         pgtype.Numeric{},
+		IsMetric:          false,
 	}).Return(sqlc.InventoryItem{
 		ItemID:            21,
 		Name:              "Scan Bar",
@@ -645,6 +649,8 @@ func TestUpdateItem(t *testing.T) {
 		CategoryID: 3,
 		UnitID:     11,
 		UpdatedBy:  pgtype.Text{String: "bob", Valid: true},
+		NetWeight:  pgtype.Numeric{},
+		IsMetric:   false,
 	}).Return(nil)
 
 	err := s.UpdateItem(ctx, 11, Item{Name: "Pear", CategoryID: 3, UnitID: 11}, "bob")

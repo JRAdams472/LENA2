@@ -44,15 +44,18 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	userB := testenv.MustUser(ctx, t, pool, "meal-b@example.com")
 
 	invSvc := inventory.NewService(pool)
-	brand, err := invSvc.CreateBrand(ctx, "IT Meal Brand")
+	brand, err := invSvc.CreateBrand(ctx, "IT Meal Brand", itBy)
 	require.NoError(t, err)
 	cat, err := invSvc.CreateCategory(ctx, "IT Meal Category", "", itBy)
 	require.NoError(t, err)
+	netWeight := 100.0
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
 		Name:       "IT Meal Item",
 		BrandID:    &brand.BrandID,
 		CategoryID: cat.CategoryID,
 		UnitID:     itUnitID(t, ctx, invSvc, "g"),
+		NetWeight:  &netWeight,
+		IsMetric:   true,
 	}, itBy)
 	require.NoError(t, err)
 
@@ -236,13 +239,16 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	require.NoError(t, err)
 
 	invSvc := inventory.NewService(pool)
-	brand, err := invSvc.CreateBrand(ctx, "IT XU Brand")
+	brand, err := invSvc.CreateBrand(ctx, "IT XU Brand", itBy)
 	require.NoError(t, err)
 	cat, err := invSvc.CreateCategory(ctx, "IT XU Category", "", itBy)
 	require.NoError(t, err)
+	netWeight := 200.0
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
 		Name: "IT XU Item", BrandID: &brand.BrandID, CategoryID: cat.CategoryID,
-		UnitID: itUnitID(t, ctx, invSvc, "g"),
+		UnitID:    itUnitID(t, ctx, invSvc, "g"),
+		NetWeight: &netWeight,
+		IsMetric:  true,
 	}, itBy)
 	require.NoError(t, err)
 	itemID := item.ItemID

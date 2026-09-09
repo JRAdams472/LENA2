@@ -74,9 +74,9 @@ func TestResolver_Inventory_Brand(t *testing.T) {
 func TestResolver_Inventory_Brands(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListBrands(gomock.Any()).Return([]inventory.Brand{
-			{BrandID: 1, Name: "Acme"},
-			{BrandID: 2, Name: "Beta"},
+		inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(7)).Return([]inventory.Brand{
+			{BrandID: 1, Name: "Acme", Status: inventory.BrandStatusApproved},
+			{BrandID: 2, Name: "Beta", Status: inventory.BrandStatusApproved},
 		}, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Brands(invCtx())
@@ -95,7 +95,7 @@ func TestResolver_Inventory_Brands(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListBrands(gomock.Any()).Return(nil, errInvBoom)
+		inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(7)).Return(nil, errInvBoom)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.Brands(invCtx())
 		require.ErrorIs(t, err, errInvBoom)
@@ -320,7 +320,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 
 func TestResolver_Inventory_CreateBrand(t *testing.T) {
 	inv := newInvMock(t)
-	inv.EXPECT().CreateBrand(gomock.Any(), "Acme").Return(inventory.Brand{BrandID: 1, Name: "Acme"}, nil)
+	inv.EXPECT().CreateBrand(gomock.Any(), "Acme", gomock.Any()).Return(inventory.Brand{BrandID: 1, Name: "Acme", Status: inventory.BrandStatusApproved}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.CreateBrand(invCtx(), struct{ Input createBrandInput }{Input: createBrandInput{Name: "Acme"}})
 	require.NoError(t, err)
@@ -415,15 +415,19 @@ func TestResolver_Inventory_DeleteCategory(t *testing.T) {
 func TestResolver_Inventory_CreateItem(t *testing.T) {
 	inv := newInvMock(t)
 	brandID := graphql.ID("8")
-	expected := inventory.Item{Name: "Milk", BrandID: invInt64Ptr(8), Upc12: "0123", CategoryID: 2, UnitID: 9}
-	inv.EXPECT().GetUnitByName(gomock.Any(), "gal").Return(inventory.Unit{UnitID: 9, Name: "gallon"}, nil)
+	expected := inventory.Item{
+		Name: "Milk", BrandID: invInt64Ptr(8), Upc12: "0123", CategoryID: 2,
+		UnitID: 9, NetWeight: invFloat64Ptr(32), IsMetric: false,
+	}
+	inv.EXPECT().GetUnitByName(gomock.Any(), "gal").Return(inventory.Unit{UnitID: 9, Name: "gallon"}, nil).AnyTimes()
 	inv.EXPECT().CreateItem(gomock.Any(), expected, invTestEmail).
-		Return(inventory.Item{ItemID: 5, Name: "Milk", BrandID: invInt64Ptr(8), CategoryID: 2, UnitID: 9}, nil)
+		Return(inventory.Item{ItemID: 5, Name: "Milk", BrandID: invInt64Ptr(8), CategoryID: 2, UnitID: 9, NetWeight: invFloat64Ptr(32), IsMetric: false}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.CreateItem(invCtx(), struct{ Input createItemInput }{
 		Input: createItemInput{
 			Name: "Milk", BrandID: &brandID, Upc12: invStrPtr("0123"),
 			CategoryID: "2", Unit: "gal",
+			NetWeight: invFloat64Ptr(32), IsMetric: invBoolPtr(false),
 		},
 	})
 	require.NoError(t, err)
@@ -442,9 +446,17 @@ func TestResolver_Inventory_CreateItem(t *testing.T) {
 		Input: createItemInput{Name: "Milk", CategoryID: "abc"},
 	})
 	require.Error(t, err)
+
+	_, err = r.CreateItem(invCtx(), struct{ Input createItemInput }{
+		Input: createItemInput{
+			Name: "Milk", CategoryID: "2", Unit: "gal",
+		},
+	})
+	require.ErrorContains(t, err, "netWeight is required")
 }
 
-func invInt64Ptr(v int64) *int64 { return &v }
+func invInt64Ptr(v int64) *int64       { return &v }
+func invFloat64Ptr(v float64) *float64 { return &v }
 
 func TestResolver_Inventory_UpdateItem(t *testing.T) {
 	type args = struct {
@@ -953,12 +965,15 @@ func TestResolver_SubmitItem(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().GetUnitByName(gomock.Any(), "each").Return(inventory.Unit{UnitID: 1, Name: "each"}, nil)
 		inv.EXPECT().SubmitItem(gomock.Any(), gomock.Cond(func(it inventory.Item) bool {
-			return it.Name == "Scan Bar" && it.Upc12 == "012345678901" && it.CategoryID == 3 && it.UnitID == 1
+			return it.Name == "Scan Bar" && it.Upc12 == "012345678901" && it.CategoryID == 3 && it.UnitID == 1 &&
+				it.NetWeight != nil && *it.NetWeight == 16 && it.IsMetric == false
 		}), int64(7), invTestEmail).Return(inventory.Item{
 			ItemID:            21,
 			Name:              "Scan Bar",
 			Status:            inventory.ItemStatusPending,
 			SubmittedByUserID: ptrInt64(7),
+			NetWeight:         invFloat64Ptr(16),
+			IsMetric:          false,
 		}, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.SubmitItem(invUserCtx(), args{Input: createItemInput{
@@ -966,6 +981,8 @@ func TestResolver_SubmitItem(t *testing.T) {
 			Upc12:      invStrPtr("012345678901"),
 			CategoryID: "3",
 			Unit:       "each",
+			NetWeight:  invFloat64Ptr(16),
+			IsMetric:   invBoolPtr(false),
 		}})
 		require.NoError(t, err)
 		assert.Equal(t, graphql.ID("21"), res.ID())
@@ -983,6 +1000,8 @@ func TestResolver_SubmitItem(t *testing.T) {
 			Name:       "Scan Bar",
 			CategoryID: "3",
 			Unit:       "each",
+			NetWeight:  invFloat64Ptr(16),
+			IsMetric:   invBoolPtr(false),
 		}})
 		require.ErrorContains(t, err, "already exists")
 	})

@@ -46,7 +46,13 @@ type InventoryService interface {
 	CountPendingItems(ctx context.Context) (int64, error)
 	SetItemStatus(ctx context.Context, itemID int64, status string, approverUserID int64, by string) error
 	SetItemNutrients(ctx context.Context, itemID int64, entries []inventory.NutrientEntry, by string) error
-	CreateBrand(ctx context.Context, name string) (inventory.Brand, error)
+	CreateBrand(ctx context.Context, name, by string) (inventory.Brand, error)
+	SubmitBrand(ctx context.Context, name string, userID int64, by string) (inventory.Brand, error)
+	SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]inventory.Brand, error)
+	ListBrandsVisible(ctx context.Context, userID int64) ([]inventory.Brand, error)
+	ListPendingBrands(ctx context.Context, limit, offset int32) ([]inventory.Brand, error)
+	CountPendingBrands(ctx context.Context) (int64, error)
+	SetBrandStatus(ctx context.Context, brandID int64, status string, approverUserID int64, by string) error
 	CreateCategory(ctx context.Context, name, description, by string) (inventory.Category, error)
 	CreateFlavorProfile(ctx context.Context, name, by string) (inventory.FlavorProfile, error)
 	CreateNutrientType(ctx context.Context, name, unit string) (inventory.NutrientType, error)
@@ -72,6 +78,7 @@ type InventoryService interface {
 	UpdateFlavorProfile(ctx context.Context, flavorID int64, name string, isActive bool, by string) (inventory.FlavorProfile, error)
 	DeleteFlavorProfile(ctx context.Context, flavorID int64) error
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (inventory.NutrientType, error)
+	GetNutrientTypeByName(ctx context.Context, name string) (inventory.NutrientType, error)
 	UpdateNutrientType(ctx context.Context, nutrientID int64, name, unit string) (inventory.NutrientType, error)
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
 	GetIngredientByID(ctx context.Context, ingredientID int64) (inventory.Ingredient, error)

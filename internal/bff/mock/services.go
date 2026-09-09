@@ -250,6 +250,21 @@ func (mr *MockInventoryServiceMockRecorder) CountItems(ctx, userID any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountItems", reflect.TypeOf((*MockInventoryService)(nil).CountItems), ctx, userID)
 }
 
+// CountPendingBrands mocks base method.
+func (m *MockInventoryService) CountPendingBrands(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPendingBrands", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPendingBrands indicates an expected call of CountPendingBrands.
+func (mr *MockInventoryServiceMockRecorder) CountPendingBrands(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPendingBrands", reflect.TypeOf((*MockInventoryService)(nil).CountPendingBrands), ctx)
+}
+
 // CountPendingItems mocks base method.
 func (m *MockInventoryService) CountPendingItems(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -266,18 +281,18 @@ func (mr *MockInventoryServiceMockRecorder) CountPendingItems(ctx any) *gomock.C
 }
 
 // CreateBrand mocks base method.
-func (m *MockInventoryService) CreateBrand(ctx context.Context, name string) (inventory.Brand, error) {
+func (m *MockInventoryService) CreateBrand(ctx context.Context, name, by string) (inventory.Brand, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateBrand", ctx, name)
+	ret := m.ctrl.Call(m, "CreateBrand", ctx, name, by)
 	ret0, _ := ret[0].(inventory.Brand)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateBrand indicates an expected call of CreateBrand.
-func (mr *MockInventoryServiceMockRecorder) CreateBrand(ctx, name any) *gomock.Call {
+func (mr *MockInventoryServiceMockRecorder) CreateBrand(ctx, name, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBrand", reflect.TypeOf((*MockInventoryService)(nil).CreateBrand), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBrand", reflect.TypeOf((*MockInventoryService)(nil).CreateBrand), ctx, name, by)
 }
 
 // CreateCategory mocks base method.
@@ -662,6 +677,21 @@ func (mr *MockInventoryServiceMockRecorder) GetNutrientTypeByID(ctx, nutrientID 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNutrientTypeByID", reflect.TypeOf((*MockInventoryService)(nil).GetNutrientTypeByID), ctx, nutrientID)
 }
 
+// GetNutrientTypeByName mocks base method.
+func (m *MockInventoryService) GetNutrientTypeByName(ctx context.Context, name string) (inventory.NutrientType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNutrientTypeByName", ctx, name)
+	ret0, _ := ret[0].(inventory.NutrientType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNutrientTypeByName indicates an expected call of GetNutrientTypeByName.
+func (mr *MockInventoryServiceMockRecorder) GetNutrientTypeByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNutrientTypeByName", reflect.TypeOf((*MockInventoryService)(nil).GetNutrientTypeByName), ctx, name)
+}
+
 // GetUnitByID mocks base method.
 func (m *MockInventoryService) GetUnitByID(ctx context.Context, unitID int64) (inventory.Unit, error) {
 	m.ctrl.T.Helper()
@@ -720,6 +750,21 @@ func (m *MockInventoryService) ListBrands(ctx context.Context) ([]inventory.Bran
 func (mr *MockInventoryServiceMockRecorder) ListBrands(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrands", reflect.TypeOf((*MockInventoryService)(nil).ListBrands), ctx)
+}
+
+// ListBrandsVisible mocks base method.
+func (m *MockInventoryService) ListBrandsVisible(ctx context.Context, userID int64) ([]inventory.Brand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBrandsVisible", ctx, userID)
+	ret0, _ := ret[0].([]inventory.Brand)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBrandsVisible indicates an expected call of ListBrandsVisible.
+func (mr *MockInventoryServiceMockRecorder) ListBrandsVisible(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrandsVisible", reflect.TypeOf((*MockInventoryService)(nil).ListBrandsVisible), ctx, userID)
 }
 
 // ListCategories mocks base method.
@@ -857,6 +902,21 @@ func (mr *MockInventoryServiceMockRecorder) ListNutrientTypes(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNutrientTypes", reflect.TypeOf((*MockInventoryService)(nil).ListNutrientTypes), ctx)
 }
 
+// ListPendingBrands mocks base method.
+func (m *MockInventoryService) ListPendingBrands(ctx context.Context, limit, offset int32) ([]inventory.Brand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPendingBrands", ctx, limit, offset)
+	ret0, _ := ret[0].([]inventory.Brand)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPendingBrands indicates an expected call of ListPendingBrands.
+func (mr *MockInventoryServiceMockRecorder) ListPendingBrands(ctx, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPendingBrands", reflect.TypeOf((*MockInventoryService)(nil).ListPendingBrands), ctx, limit, offset)
+}
+
 // ListPendingItems mocks base method.
 func (m *MockInventoryService) ListPendingItems(ctx context.Context, limit, offset int32) ([]inventory.Item, error) {
 	m.ctrl.T.Helper()
@@ -887,6 +947,35 @@ func (mr *MockInventoryServiceMockRecorder) ListUnits(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockInventoryService)(nil).ListUnits), ctx)
 }
 
+// SearchBrands mocks base method.
+func (m *MockInventoryService) SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]inventory.Brand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBrands", ctx, term, userID, limit)
+	ret0, _ := ret[0].([]inventory.Brand)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchBrands indicates an expected call of SearchBrands.
+func (mr *MockInventoryServiceMockRecorder) SearchBrands(ctx, term, userID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBrands", reflect.TypeOf((*MockInventoryService)(nil).SearchBrands), ctx, term, userID, limit)
+}
+
+// SetBrandStatus mocks base method.
+func (m *MockInventoryService) SetBrandStatus(ctx context.Context, brandID int64, status string, approverUserID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetBrandStatus", ctx, brandID, status, approverUserID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetBrandStatus indicates an expected call of SetBrandStatus.
+func (mr *MockInventoryServiceMockRecorder) SetBrandStatus(ctx, brandID, status, approverUserID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBrandStatus", reflect.TypeOf((*MockInventoryService)(nil).SetBrandStatus), ctx, brandID, status, approverUserID, by)
+}
+
 // SetItemNutrients mocks base method.
 func (m *MockInventoryService) SetItemNutrients(ctx context.Context, itemID int64, entries []inventory.NutrientEntry, by string) error {
 	m.ctrl.T.Helper()
@@ -913,6 +1002,21 @@ func (m *MockInventoryService) SetItemStatus(ctx context.Context, itemID int64, 
 func (mr *MockInventoryServiceMockRecorder) SetItemStatus(ctx, itemID, status, approverUserID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemStatus", reflect.TypeOf((*MockInventoryService)(nil).SetItemStatus), ctx, itemID, status, approverUserID, by)
+}
+
+// SubmitBrand mocks base method.
+func (m *MockInventoryService) SubmitBrand(ctx context.Context, name string, userID int64, by string) (inventory.Brand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubmitBrand", ctx, name, userID, by)
+	ret0, _ := ret[0].(inventory.Brand)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SubmitBrand indicates an expected call of SubmitBrand.
+func (mr *MockInventoryServiceMockRecorder) SubmitBrand(ctx, name, userID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitBrand", reflect.TypeOf((*MockInventoryService)(nil).SubmitBrand), ctx, name, userID, by)
 }
 
 // SubmitItem mocks base method.

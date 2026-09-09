@@ -28,18 +28,25 @@ import (
 //go:embed schema.graphqls
 var schema string
 
+// OCRClient extracts text from an image for the nutrition-label OCR flow.
+type OCRClient interface {
+	ExtractText(ctx context.Context, image []byte) (string, error)
+}
+
 // Resolver is the root GraphQL resolver. It is the only package that is
 // allowed to orchestrate across domain modules.
 type Resolver struct {
-	Pool             dbtx.Pool
-	AnalyticsService AnalyticsService
-	GroceryService   GroceryService
-	InventoryService InventoryService
-	MealPlanService  MealPlanService
-	RecipeService    RecipeService
-	UserPrefsService UserPrefsService
-	WineService      WineService
-	IdentityService  IdentityService
+	Pool                   dbtx.Pool
+	AnalyticsService       AnalyticsService
+	GroceryService         GroceryService
+	InventoryService       InventoryService
+	MealPlanService        MealPlanService
+	RecipeService          RecipeService
+	UserPrefsService       UserPrefsService
+	WineService            WineService
+	IdentityService        IdentityService
+	OCRClient              OCRClient
+	NutritionPhotoMaxBytes int
 
 	// bg carries detached analytics/recommendation work: at most
 	// asyncWorkerCap in-flight goroutines, all scoped to a cancelable
@@ -56,8 +63,8 @@ type Resolver struct {
 const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService) *Resolver {
-	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn}
+func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, ocr OCRClient, nutritionPhotoMaxBytes int) *Resolver {
+	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes}
 }
 
 func (r *Resolver) ensureBG() {

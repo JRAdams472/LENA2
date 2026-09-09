@@ -61,6 +61,8 @@ func TestBFF_Integration(t *testing.T) {
 		userprefs.NewService(pool),
 		wine.NewService(pool),
 		identitySvc,
+		nil,
+		0,
 	)
 
 	e := echo.New()
@@ -196,11 +198,13 @@ func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIs
 	assert.Equal(t, catRes.CreateCategory.ID, catQuery.Category.ID)
 
 	// createItem
-	status, gr = doGraphQL(t, srv, tokA, `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id name category { id name } unit } }`, map[string]any{
+	status, gr = doGraphQL(t, srv, tokA, `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id name category { id name } unit netWeight isMetric } }`, map[string]any{
 		"input": map[string]any{
 			"name":       "Integration Milk",
 			"categoryId": catRes.CreateCategory.ID,
 			"unit":       "gallon",
+			"netWeight":  128.0,
+			"isMetric":   false,
 		},
 	})
 	require.Equal(t, http.StatusOK, status)

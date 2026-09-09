@@ -11,8 +11,11 @@ CREATE TEMP TABLE _upc_import (
 
 \copy _upc_import (grp_id, upc14, upc12, brand, name) FROM '/seed/Grocery_UPC_Database.csv' WITH (FORMAT csv, HEADER);
 
-INSERT INTO inventory.brand (name)
-SELECT DISTINCT NULLIF(trim(brand), '')
+INSERT INTO inventory.brand (name, status, created_by, updated_by)
+SELECT DISTINCT NULLIF(trim(brand), ''),
+       'approved',
+       'seed',
+       'seed'
 FROM _upc_import
 WHERE NULLIF(trim(brand), '') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;

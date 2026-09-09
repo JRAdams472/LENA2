@@ -35,7 +35,7 @@ func TestIntegrationBrandCRUD(t *testing.T) {
 	ctx := context.Background()
 	svc := newIntegrationService(t, ctx)
 
-	brand, err := svc.CreateBrand(ctx, "IT Brand Alpha")
+	brand, err := svc.CreateBrand(ctx, "IT Brand Alpha", itBy)
 	require.NoError(t, err)
 	require.NotZero(t, brand.BrandID)
 	assert.Equal(t, "IT Brand Alpha", brand.Name)
@@ -71,9 +71,9 @@ func TestIntegrationBrandDuplicateName(t *testing.T) {
 	ctx := context.Background()
 	svc := newIntegrationService(t, ctx)
 
-	_, err := svc.CreateBrand(ctx, "IT Brand Dup")
+	_, err := svc.CreateBrand(ctx, "IT Brand Dup", itBy)
 	require.NoError(t, err)
-	_, err = svc.CreateBrand(ctx, "IT Brand Dup")
+	_, err = svc.CreateBrand(ctx, "IT Brand Dup", itBy)
 	assert.Error(t, err, "duplicate brand name should violate unique constraint")
 }
 
@@ -125,15 +125,18 @@ func TestIntegrationItemCRUD(t *testing.T) {
 
 	cat, err := svc.CreateCategory(ctx, "IT Item Category", "", itBy)
 	require.NoError(t, err)
-	brand, err := svc.CreateBrand(ctx, "IT Item Brand")
+	brand, err := svc.CreateBrand(ctx, "IT Item Brand", itBy)
 	require.NoError(t, err)
 
+	alphaWeight := 100.0
 	item, err := svc.CreateItem(ctx, Item{
 		Name:       "IT Item Alpha",
 		BrandID:    &brand.BrandID,
 		Upc12:      "123456789012",
 		CategoryID: cat.CategoryID,
 		UnitID:     unitID(t, ctx, svc, "g"),
+		NetWeight:  &alphaWeight,
+		IsMetric:   true,
 	}, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, item.ItemID)
@@ -146,15 +149,10 @@ func TestIntegrationItemCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, item.ItemID, got.ItemID)
 
-	items, err := svc.ListItems(ctx, 0, 100, 0)
+	byIDs, err := svc.GetItemsByIDs(ctx, []int64{item.ItemID})
 	require.NoError(t, err)
-	var found bool
-	for _, it := range items {
-		if it.ItemID == item.ItemID {
-			found = true
-		}
-	}
-	assert.True(t, found)
+	require.Len(t, byIDs, 1)
+	assert.Equal(t, item.ItemID, byIDs[0].ItemID)
 
 	ozID := unitID(t, ctx, svc, "oz")
 	require.NoError(t, svc.UpdateItem(ctx, item.ItemID, Item{
@@ -162,6 +160,8 @@ func TestIntegrationItemCRUD(t *testing.T) {
 		BrandID:    &brand.BrandID,
 		CategoryID: cat.CategoryID,
 		UnitID:     ozID,
+		NetWeight:  item.NetWeight,
+		IsMetric:   item.IsMetric,
 	}, itBy))
 	got, err = svc.GetItemByID(ctx, item.ItemID)
 	require.NoError(t, err)
@@ -262,10 +262,13 @@ func TestIntegrationFoodJunctions(t *testing.T) {
 
 	cat, err := svc.CreateCategory(ctx, "IT Junction Category", "", itBy)
 	require.NoError(t, err)
+	junctionWeight := 50.0
 	item, err := svc.CreateItem(ctx, Item{
 		Name:       "IT Junction Item",
 		CategoryID: cat.CategoryID,
 		UnitID:     unitID(t, ctx, svc, "g"),
+		NetWeight:  &junctionWeight,
+		IsMetric:   true,
 	}, itBy)
 	require.NoError(t, err)
 	nt, err := svc.CreateNutrientType(ctx, "IT Junction Nutrient", "mg")

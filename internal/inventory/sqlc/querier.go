@@ -13,8 +13,13 @@ import (
 type Querier interface {
 	CountIngredients(ctx context.Context) (int64, error)
 	CountItems(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error)
+	CountPendingBrands(ctx context.Context) (int64, error)
 	CountPendingItems(ctx context.Context) (int64, error)
-	CreateBrand(ctx context.Context, name string) (InventoryBrand, error)
+	// Admin-only fast path: brand is immediately approved.
+	CreateBrand(ctx context.Context, arg CreateBrandParams) (InventoryBrand, error)
+	// User-submitted brand: starts pending, visible only to the submitter
+	// until an admin approves it.
+	CreateBrandPending(ctx context.Context, arg CreateBrandPendingParams) (InventoryBrand, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (InventoryCategory, error)
 	CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfileParams) (InventoryFlavorProfile, error)
 	CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (CreateFoodFlavorRow, error)
@@ -32,6 +37,9 @@ type Querier interface {
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
 	DeleteItem(ctx context.Context, itemID int64) error
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
+	// Special characters (apostrophes, periods, etc.) and case are ignored so
+	// "Bush", "Bushs", and "Bush's" all match the same brand.
+	FindBrandByNormalizedName(ctx context.Context, regexpReplace string) (InventoryBrand, error)
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
 	GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error)
 	GetCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]InventoryCategory, error)
@@ -45,10 +53,13 @@ type Querier interface {
 	GetItemByUpc(ctx context.Context, arg GetItemByUpcParams) (InventoryItem, error)
 	GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
+	GetNutrientTypeByName(ctx context.Context, lower string) (InventoryNutrientType, error)
 	GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit, error)
 	GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error)
 	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
+	// Brands are visible when approved, or when the caller submitted them.
+	ListBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) ([]InventoryBrand, error)
 	ListCategories(ctx context.Context) ([]InventoryCategory, error)
 	ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProfile, error)
 	ListFoodFlavorsByItem(ctx context.Context, foodID int64) ([]ListFoodFlavorsByItemRow, error)
@@ -59,8 +70,11 @@ type Querier interface {
 	// Items are visible when approved, or when the caller submitted them.
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
+	ListPendingBrands(ctx context.Context, arg ListPendingBrandsParams) ([]InventoryBrand, error)
 	ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error)
 	ListUnits(ctx context.Context) ([]InventoryUnit, error)
+	SearchBrands(ctx context.Context, arg SearchBrandsParams) ([]InventoryBrand, error)
+	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) error
 	SetItemStatus(ctx context.Context, arg SetItemStatusParams) error
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)

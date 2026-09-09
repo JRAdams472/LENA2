@@ -4,6 +4,7 @@ package inventory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -41,20 +42,58 @@ func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
+// Brand approval statuses. User-submitted brands start pending and stay
+// visible only to their creator until an admin approves them; rejected brands
+// are hidden from everyone.
+const (
+	BrandStatusPending  = "pending"
+	BrandStatusApproved = "approved"
+	BrandStatusRejected = "rejected"
+)
+
 // Brand is a catalog brand.
 type Brand struct {
-	BrandID   int64
-	Name      string
-	CreatedAt time.Time
+	BrandID           int64
+	Name              string
+	CreatedAt         time.Time
+	Status            string
+	SubmittedByUserID *int64
+	ApprovedByUserID  *int64
+	ApprovedAt        *time.Time
 }
 
-// CreateBrand adds a new brand.
-func (s *Service) CreateBrand(ctx context.Context, name string) (Brand, error) {
-	row, err := s.q.CreateBrand(ctx, name)
+// CreateBrand adds a new approved brand (admin fast path).
+func (s *Service) CreateBrand(ctx context.Context, name, by string) (Brand, error) {
+	row, err := s.q.CreateBrand(ctx, sqlc.CreateBrandParams{
+		Name:      name,
+		CreatedBy: by,
+	})
 	if err != nil {
 		return Brand{}, fmt.Errorf("create brand: %w", err)
 	}
-	return Brand{BrandID: row.BrandID, Name: row.Name, CreatedAt: row.CreatedAt}, nil
+	return toBrand(row), nil
+}
+
+// SubmitBrand returns an existing brand whose normalized name matches, or
+// creates a new pending brand on behalf of the submitting user.
+func (s *Service) SubmitBrand(ctx context.Context, name string, userID int64, by string) (Brand, error) {
+	existing, err := s.q.FindBrandByNormalizedName(ctx, name)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Brand{}, fmt.Errorf("find brand by normalized name: %w", err)
+	}
+	if err == nil {
+		return toBrand(existing), nil
+	}
+
+	row, err := s.q.CreateBrandPending(ctx, sqlc.CreateBrandPendingParams{
+		Name:              name,
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		CreatedBy:         by,
+	})
+	if err != nil {
+		return Brand{}, fmt.Errorf("submit brand: %w", err)
+	}
+	return toBrand(row), nil
 }
 
 // GetBrandByID returns a brand by its primary key.
@@ -63,7 +102,7 @@ func (s *Service) GetBrandByID(ctx context.Context, brandID int64) (Brand, error
 	if err != nil {
 		return Brand{}, fmt.Errorf("get brand by id: %w", err)
 	}
-	return Brand{BrandID: row.BrandID, Name: row.Name, CreatedAt: row.CreatedAt}, nil
+	return toBrand(row), nil
 }
 
 // ListBrands returns all brands ordered by name.
@@ -74,9 +113,81 @@ func (s *Service) ListBrands(ctx context.Context) ([]Brand, error) {
 	}
 	out := make([]Brand, len(rows))
 	for i := range rows {
-		out[i] = Brand{BrandID: rows[i].BrandID, Name: rows[i].Name, CreatedAt: rows[i].CreatedAt}
+		out[i] = toBrand(rows[i])
 	}
 	return out, nil
+}
+
+// ListBrandsVisible returns brands visible to the given user: approved brands
+// plus any pending brands they submitted.
+func (s *Service) ListBrandsVisible(ctx context.Context, userID int64) ([]Brand, error) {
+	rows, err := s.q.ListBrandsVisible(ctx, pgtype.Int8{Int64: userID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("list brands visible: %w", err)
+	}
+	out := make([]Brand, len(rows))
+	for i := range rows {
+		out[i] = toBrand(rows[i])
+	}
+	return out, nil
+}
+
+// SearchBrands returns brands visible to the given user whose normalized name
+// contains the normalized search term.
+func (s *Service) SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]Brand, error) {
+	rows, err := s.q.SearchBrands(ctx, sqlc.SearchBrandsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		RegexpReplace:     term,
+		Limit:             limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search brands: %w", err)
+	}
+	out := make([]Brand, len(rows))
+	for i := range rows {
+		out[i] = toBrand(rows[i])
+	}
+	return out, nil
+}
+
+// ListPendingBrands returns brands awaiting admin approval, oldest first.
+func (s *Service) ListPendingBrands(ctx context.Context, limit, offset int32) ([]Brand, error) {
+	rows, err := s.q.ListPendingBrands(ctx, sqlc.ListPendingBrandsParams{Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, fmt.Errorf("list pending brands: %w", err)
+	}
+	out := make([]Brand, len(rows))
+	for i := range rows {
+		out[i] = toBrand(rows[i])
+	}
+	return out, nil
+}
+
+// CountPendingBrands returns the number of brands awaiting approval.
+func (s *Service) CountPendingBrands(ctx context.Context) (int64, error) {
+	n, err := s.q.CountPendingBrands(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count pending brands: %w", err)
+	}
+	return n, nil
+}
+
+// SetBrandStatus marks a brand approved or rejected. Approving records the
+// approving user and timestamp; rejecting clears them.
+func (s *Service) SetBrandStatus(ctx context.Context, brandID int64, status string, approverUserID int64, by string) error {
+	var approvedAt pgtype.Timestamptz
+	var approver pgtype.Int8
+	if status == BrandStatusApproved {
+		approvedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+		approver = pgtype.Int8{Int64: approverUserID, Valid: true}
+	}
+	return s.q.SetBrandStatus(ctx, sqlc.SetBrandStatusParams{
+		BrandID:          brandID,
+		Status:           status,
+		ApprovedByUserID: approver,
+		ApprovedAt:       approvedAt,
+		UpdatedBy:        textOrNull(by),
+	})
 }
 
 // GetBrandsByIDs returns a set of brands in a single query.
@@ -87,7 +198,7 @@ func (s *Service) GetBrandsByIDs(ctx context.Context, brandIDs []int64) ([]Brand
 	}
 	out := make([]Brand, len(rows))
 	for i := range rows {
-		out[i] = Brand{BrandID: rows[i].BrandID, Name: rows[i].Name, CreatedAt: rows[i].CreatedAt}
+		out[i] = toBrand(rows[i])
 	}
 	return out, nil
 }
@@ -98,7 +209,7 @@ func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name string) (
 	if err != nil {
 		return Brand{}, fmt.Errorf("update brand: %w", err)
 	}
-	return Brand{BrandID: row.BrandID, Name: row.Name, CreatedAt: row.CreatedAt}, nil
+	return toBrand(row), nil
 }
 
 // DeleteBrand removes a brand from the catalog.
@@ -206,11 +317,17 @@ type Item struct {
 	SubmittedByUserID *int64
 	ApprovedByUserID  *int64
 	ApprovedAt        *time.Time
+	NetWeight         *float64
+	IsMetric          bool
 }
 
 // CreateItem adds a new item to the catalog. The item is immediately
 // approved; this is the trusted (admin) create path.
 func (s *Service) CreateItem(ctx context.Context, arg Item, by string) (Item, error) {
+	netWeight, err := numericFromOptionalFloat64(arg.NetWeight)
+	if err != nil {
+		return Item{}, fmt.Errorf("create item: %w", err)
+	}
 	row, err := s.q.CreateItem(ctx, sqlc.CreateItemParams{
 		Name:              arg.Name,
 		BrandID:           optInt64(arg.BrandID),
@@ -222,6 +339,8 @@ func (s *Service) CreateItem(ctx context.Context, arg Item, by string) (Item, er
 		SubmittedByUserID: optInt64(arg.SubmittedByUserID),
 		CreatedBy:         by,
 		UpdatedBy:         textOrNull(by),
+		NetWeight:         netWeight,
+		IsMetric:          arg.IsMetric,
 	})
 	if err != nil {
 		return Item{}, fmt.Errorf("create item: %w", err)
@@ -232,6 +351,10 @@ func (s *Service) CreateItem(ctx context.Context, arg Item, by string) (Item, er
 // SubmitItem adds a new item to the catalog in 'pending' status on behalf
 // of the submitting user, who keeps visibility until an admin approves it.
 func (s *Service) SubmitItem(ctx context.Context, arg Item, userID int64, by string) (Item, error) {
+	netWeight, err := numericFromOptionalFloat64(arg.NetWeight)
+	if err != nil {
+		return Item{}, fmt.Errorf("submit item: %w", err)
+	}
 	row, err := s.q.CreateItem(ctx, sqlc.CreateItemParams{
 		Name:              arg.Name,
 		BrandID:           optInt64(arg.BrandID),
@@ -243,6 +366,8 @@ func (s *Service) SubmitItem(ctx context.Context, arg Item, userID int64, by str
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 		CreatedBy:         by,
 		UpdatedBy:         textOrNull(by),
+		NetWeight:         netWeight,
+		IsMetric:          arg.IsMetric,
 	})
 	if err != nil {
 		return Item{}, fmt.Errorf("submit item: %w", err)
@@ -356,6 +481,10 @@ func (s *Service) CountItems(ctx context.Context, userID int64) (int64, error) {
 // UpdateItem modifies an existing item. All business logic about who can
 // modify catalog data lives in Go, not in SQL triggers or procedures.
 func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by string) error {
+	netWeight, err := numericFromOptionalFloat64(arg.NetWeight)
+	if err != nil {
+		return fmt.Errorf("update item: %w", err)
+	}
 	return s.q.UpdateItem(ctx, sqlc.UpdateItemParams{
 		ItemID:     itemID,
 		Name:       arg.Name,
@@ -365,6 +494,8 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 		CategoryID: arg.CategoryID,
 		UnitID:     arg.UnitID,
 		UpdatedBy:  textOrNull(by),
+		NetWeight:  netWeight,
+		IsMetric:   arg.IsMetric,
 	})
 }
 
@@ -461,6 +592,16 @@ func (s *Service) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (Nu
 	row, err := s.q.GetNutrientTypeByID(ctx, nutrientID)
 	if err != nil {
 		return NutrientType{}, fmt.Errorf("get nutrient type by id: %w", err)
+	}
+	return toNutrientType(row), nil
+}
+
+// GetNutrientTypeByName returns a nutrient type matching the given name
+// case-insensitively, or pgx.ErrNoRows if none exists.
+func (s *Service) GetNutrientTypeByName(ctx context.Context, name string) (NutrientType, error) {
+	row, err := s.q.GetNutrientTypeByName(ctx, name)
+	if err != nil {
+		return NutrientType{}, fmt.Errorf("get nutrient type by name: %w", err)
 	}
 	return toNutrientType(row), nil
 }
@@ -896,6 +1037,25 @@ func toCategory(row sqlc.InventoryCategory) Category {
 	}
 }
 
+func toBrand(row sqlc.InventoryBrand) Brand {
+	b := Brand{
+		BrandID:   row.BrandID,
+		Name:      row.Name,
+		CreatedAt: row.CreatedAt,
+		Status:    row.Status,
+	}
+	if row.SubmittedByUserID.Valid {
+		b.SubmittedByUserID = &row.SubmittedByUserID.Int64
+	}
+	if row.ApprovedByUserID.Valid {
+		b.ApprovedByUserID = &row.ApprovedByUserID.Int64
+	}
+	if row.ApprovedAt.Valid {
+		b.ApprovedAt = &row.ApprovedAt.Time
+	}
+	return b
+}
+
 func toItem(row sqlc.InventoryItem) Item {
 	it := Item{
 		ItemID:     row.ItemID,
@@ -905,6 +1065,7 @@ func toItem(row sqlc.InventoryItem) Item {
 		CategoryID: row.CategoryID,
 		UnitID:     row.UnitID,
 		Status:     row.Status,
+		IsMetric:   row.IsMetric,
 	}
 	if row.BrandID.Valid {
 		it.BrandID = &row.BrandID.Int64
@@ -917,6 +1078,9 @@ func toItem(row sqlc.InventoryItem) Item {
 	}
 	if row.ApprovedAt.Valid {
 		it.ApprovedAt = &row.ApprovedAt.Time
+	}
+	if v, err := numericToOptionalFloat64(row.NetWeight); err == nil {
+		it.NetWeight = v
 	}
 	return it
 }
@@ -998,6 +1162,19 @@ func numericToFloat64(n pgtype.Numeric) (float64, error) {
 		return 0, fmt.Errorf("convert numeric to float64: %w", err)
 	}
 	return v.Float64, nil
+}
+
+// numericToOptionalFloat64 converts a nullable numeric column to a *float64.
+func numericToOptionalFloat64(n pgtype.Numeric) (*float64, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	v, err := n.Float64Value()
+	if err != nil {
+		return nil, fmt.Errorf("convert numeric to float64: %w", err)
+	}
+	f := v.Float64
+	return &f, nil
 }
 
 func optInt64(v *int64) pgtype.Int8 {
