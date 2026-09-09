@@ -181,10 +181,10 @@ export default function DataTable<T extends object>({
                     );
                   })}
                   <TableCell>
-                    <IconButton onClick={() => onEdit(row)} size="small" aria-label="Edit">
+                    <IconButton onClick={() => onEdit(row)} size="small" aria-label="Edit" data-testid="row-edit-button">
                       <EditIcon />
                     </IconButton>
-                    <IconButton onClick={() => onDelete(row)} size="small" aria-label="Delete">
+                    <IconButton onClick={() => onDelete(row)} size="small" aria-label="Delete" data-testid="row-delete-button">
                       <DeleteIcon />
                     </IconButton>
                     {extraActions?.(row)}

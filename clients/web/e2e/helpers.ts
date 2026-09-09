@@ -71,5 +71,5 @@ export function unique(prefix: string): string {
 /** Returns a unique two-letter code (e.g. for country iso_code, which is unique). */
 export function uniqueCode(): string {
   const a = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  return `Z${a[Math.floor(Math.random() * a.length)]}`;
+  return `X${a[Math.floor(Math.random() * a.length)]}`;
 }

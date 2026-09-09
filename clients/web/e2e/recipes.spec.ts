@@ -27,7 +27,7 @@ test.describe("recipes", () => {
     dialog = page.getByRole("dialog");
     await dialog.getByLabel("Description").fill("updated by e2e");
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("updated by e2e")).toBeVisible();
+    await expect(page.getByText("updated by e2e").first()).toBeVisible();
 
     // Manage link navigates to the detail page.
     await row.getByRole("link", { name: "Manage" }).click();
