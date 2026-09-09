@@ -94,7 +94,7 @@ async function createViaDialog(page: Page, fields: FieldFill[]) {
 async function deleteRow(page: Page, text: string) {
   page.once("dialog", (d) => d.accept());
   const row = page.getByRole("row", { name: new RegExp(text) }).first();
-  await row.locator("button").last().click();
+  await row.getByRole("button", { name: "Delete" }).click();
 }
 
 for (const catalog of catalogs) {

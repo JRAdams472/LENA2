@@ -45,7 +45,7 @@ test.describe("items", () => {
 
       // Delete it.
       page.once("dialog", (d) => d.accept());
-      await row.locator("button").nth(1).click();
+      await row.getByRole("button", { name: "Delete" }).click();
       await expect(page.getByText(itemName)).toHaveCount(0);
     } finally {
       await graphql(
