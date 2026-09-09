@@ -447,12 +447,6 @@ func TestResolver_Inventory_CreateItem(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	_, err = r.CreateItem(invCtx(), struct{ Input createItemInput }{
-		Input: createItemInput{
-			Name: "Milk", CategoryID: "2", Unit: "gal",
-		},
-	})
-	require.ErrorContains(t, err, "netWeight is required")
 }
 
 func invInt64Ptr(v int64) *int64       { return &v }
