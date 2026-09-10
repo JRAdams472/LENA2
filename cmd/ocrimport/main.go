@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
+	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
 )
 
 const version = "0.0.1"
@@ -26,6 +29,8 @@ func main() {
 	switch cmd {
 	case "import":
 		importCmd()
+	case "ocr":
+		ocrCmd()
 	case "review":
 		reviewCmd()
 	case "persist":
@@ -45,14 +50,14 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "Usage: ocrimport <command> [flags]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Commands:")
-	fmt.Fprintln(os.Stderr, "  import   Scan --inbox and enqueue source pages for OCR/LLM processing")
+	fmt.Fprintln(os.Stderr, "  import   Scan --inbox and enqueue source pages")
+	fmt.Fprintln(os.Stderr, "  ocr      Run the local OCR service over pending source pages")
 	fmt.Fprintln(os.Stderr, "  review   Start the human-review step (not yet implemented)")
 	fmt.Fprintln(os.Stderr, "  persist  Persist approved drafts to LENA2 (not yet implemented)")
 	fmt.Fprintln(os.Stderr, "  version  Print version")
 	fmt.Fprintln(os.Stderr, "  help     Show this help")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "All commands load configuration from LENA_* environment variables.")
-	fmt.Fprintln(os.Stderr, "The import feature is disabled when LENA_OLLAMA_URL is empty.")
 }
 
 func importCmd() {
@@ -69,12 +74,6 @@ func importCmd() {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if cfg.OCRServiceURL == "" || cfg.OllamaURL == "" {
-		fmt.Fprintln(os.Stderr, "Recipe OCR import is not configured.")
-		fmt.Fprintln(os.Stderr, "Set LENA_OCR_SERVICE_URL and LENA_OLLAMA_URL to enable it.")
 		os.Exit(1)
 	}
 
@@ -114,7 +113,117 @@ func importCmd() {
 
 	fmt.Printf("import: enqueued %d page(s)\n", count)
 	fmt.Printf("work queue: %s\n", workDir)
-	fmt.Println("Next: run 'ocrimport review' when OCR and drafting are complete.")
+	fmt.Println("Next: run 'ocrimport ocr' to extract text.")
+}
+
+func ocrCmd() {
+	var workDir string
+	fset := flagSet("ocr")
+	fset.StringVar(&workDir, "work-dir", "", "Work directory; defaults to LENA_IMPORT_WORK_DIR")
+	if err := fset.Parse(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "parse ocr flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.OCRServiceURL == "" {
+		fmt.Fprintln(os.Stderr, "OCR is not configured.")
+		fmt.Fprintln(os.Stderr, "Set LENA_OCR_SERVICE_URL to enable it.")
+		os.Exit(1)
+	}
+
+	if workDir == "" {
+		workDir = cfg.ImportWorkDir
+	}
+
+	queue, err := ocrimport.Open(workDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open work queue: %v\n", err)
+		os.Exit(1)
+	}
+
+	client := ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout)
+	ctx := context.Background()
+
+	pending := queue.List()
+	processed, failed := 0, 0
+	for _, page := range pending {
+		if page.Status != ocrimport.StatusPending {
+			continue
+		}
+
+		data, err := os.ReadFile(page.SourcePath)
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("read file: %v", err))
+			fmt.Fprintf(os.Stderr, "read %s: %v\n", page.SourcePath, err)
+			failed++
+			continue
+		}
+
+		res, err := client.ExtractTextResult(ctx, data)
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("ocr: %v", err))
+			fmt.Fprintf(os.Stderr, "ocr %s: %v\n", page.SourcePath, err)
+			failed++
+			continue
+		}
+
+		minConf := float64(100)
+		for _, p := range res.Pages {
+			if p.MeanConfidence < minConf {
+				minConf = p.MeanConfidence
+			}
+		}
+		if minConf < float64(cfg.OCRConfidenceThreshold) {
+			msg := fmt.Sprintf("mean confidence %.2f below threshold %d", minConf, cfg.OCRConfidenceThreshold)
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, msg)
+			fmt.Fprintf(os.Stderr, "%s: %s\n", page.SourcePath, msg)
+			failed++
+			continue
+		}
+
+		pageDir := filepath.Join(workDir, filepath.Base(page.ID))
+		if err := os.MkdirAll(pageDir, 0o750); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("create page dir: %v", err))
+			failed++
+			continue
+		}
+		// #nosec G703 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base/Clean above.
+		if err := os.WriteFile(filepath.Join(pageDir, "ocr.txt"), []byte(res.Text), 0o600); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write ocr.txt: %v", err))
+			failed++
+			continue
+		}
+
+		jsonData, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("marshal json: %v", err))
+			failed++
+			continue
+		}
+		// #nosec G703 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base/Clean above.
+		if err := os.WriteFile(filepath.Join(pageDir, "ocr.json"), jsonData, 0o600); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write ocr.json: %v", err))
+			failed++
+			continue
+		}
+
+		if err := queue.SetStatus(page.ID, ocrimport.StatusOCR, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "update status for %s: %v\n", page.SourcePath, err)
+			failed++
+			continue
+		}
+
+		fmt.Printf("ocr: %s -> %d line(s)\n", page.SourcePath, len(res.Lines))
+		processed++
+	}
+
+	fmt.Printf("ocr: processed %d, failed %d\n", processed, failed)
 }
 
 func reviewCmd() {

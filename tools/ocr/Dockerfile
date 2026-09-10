@@ -2,9 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# curl is used by docker-compose healthcheck.
+# Tesseract OCR, poppler (for pdf2image), and curl for the healthcheck.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        poppler-utils \
+        curl && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
