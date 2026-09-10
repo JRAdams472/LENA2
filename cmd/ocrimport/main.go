@@ -281,7 +281,9 @@ func draftCmd() {
 			continue
 		}
 
-		ocrText, err := os.ReadFile(filepath.Join(page.WorkDir, "ocr.txt"))
+		pageDir := filepath.Join(workDir, filepath.Base(page.ID))
+		// #nosec G304 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base.
+		ocrText, err := os.ReadFile(filepath.Join(pageDir, "ocr.txt"))
 		if err != nil {
 			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("read ocr.txt: %v", err))
 			fmt.Fprintf(os.Stderr, "read ocr.txt for %s: %v\n", page.ID, err)
@@ -340,13 +342,15 @@ func draftCmd() {
 			failed++
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(page.WorkDir, "draft.json"), draftData, 0o600); err != nil {
+		// #nosec G703 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base above.
+		if err := os.WriteFile(filepath.Join(pageDir, "draft.json"), draftData, 0o600); err != nil {
 			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write draft.json: %v", err))
 			failed++
 			continue
 		}
 		logLines = append(logLines, "--- validation passed ---", string(draftData))
-		if err := os.WriteFile(filepath.Join(page.WorkDir, "draft.log"), []byte(joinLines(logLines)), 0o600); err != nil {
+		// #nosec G703 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base above.
+		if err := os.WriteFile(filepath.Join(pageDir, "draft.log"), []byte(joinLines(logLines)), 0o600); err != nil {
 			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write draft.log: %v", err))
 			failed++
 			continue
