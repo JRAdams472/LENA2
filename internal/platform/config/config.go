@@ -65,6 +65,36 @@ type Config struct {
 	// NutritionPhotoMaxBytes is the maximum decoded image size accepted by
 	// submitItemNutritionPhoto.
 	NutritionPhotoMaxBytes int `envconfig:"NUTRITION_PHOTO_MAX_BYTES" default:"6291456"`
+	// OllamaURL is the base URL of the local Ollama API. Empty disables the
+	// recipe OCR import feature entirely.
+	OllamaURL string `envconfig:"OLLAMA_URL" default:""`
+	// OllamaModel is the model used for structured recipe extraction.
+	OllamaModel string `envconfig:"OLLAMA_MODEL" default:"qwen2.5:7b-instruct"`
+	// OllamaTemperature is the sampling temperature for extraction. Keep it
+	// low (0.0-0.2) because the task is extraction, not generation.
+	OllamaTemperature float64 `envconfig:"OLLAMA_TEMPERATURE" default:"0.1"`
+	// OllamaNumCtx is the context window size in tokens.
+	OllamaNumCtx int `envconfig:"OLLAMA_NUM_CTX" default:"8192"`
+	// OllamaVisionModel is an optional vision model that can be used instead
+	// of the OCR + extraction pipeline. Empty means the vision path is not
+	// used.
+	OllamaVisionModel string `envconfig:"OLLAMA_VISION_MODEL" default:""`
+	// ImportWorkDir is the local directory where the importer keeps source
+	// images, OCR output, drafts, and review decisions.
+	ImportWorkDir string `envconfig:"IMPORT_WORK_DIR" default:"./import/work"`
+	// ImportAutoAcceptConfidence is the fuzzy-match score (0.0-1.0) at which
+	// an OCR'd ingredient is automatically mapped to a catalog item.
+	ImportAutoAcceptConfidence float64 `envconfig:"IMPORT_AUTO_ACCEPT_CONFIDENCE" default:"0.92"`
+	// ImportReviewThreshold is the minimum fuzzy-match score that will be
+	// shown to the admin for manual review. Anything below this is considered
+	// unmatched.
+	ImportReviewThreshold float64 `envconfig:"IMPORT_REVIEW_THRESHOLD" default:"0.75"`
+	// OCREngine selects the OCR container implementation. Options:
+	// tesseract | paddle | doctr.
+	OCREngine string `envconfig:"OCR_ENGINE" default:"tesseract"`
+	// OCRConfidenceThreshold is the minimum per-word confidence (0-100) the
+	// importer will accept before flagging a page for re-scan.
+	OCRConfidenceThreshold int `envconfig:"OCR_CONFIDENCE_THRESHOLD" default:"50"`
 }
 
 // Load reads configuration from environment variables.
