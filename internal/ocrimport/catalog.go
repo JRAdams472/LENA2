@@ -192,12 +192,14 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 			}
 		}
 
-		top := candidates
-		if len(top) > 3 {
-			top = top[:3]
-		}
-		suggestions := make([]Suggestion, 0, len(top))
-		for _, c := range top {
+		suggestions := make([]Suggestion, 0, 3)
+		for _, c := range candidates {
+			if c.score < reviewThreshold {
+				break
+			}
+			if len(suggestions) >= 3 {
+				break
+			}
 			suggestions = append(suggestions, Suggestion{ID: c.id, Name: c.name, Kind: c.kind, Score: c.score})
 		}
 		result.Suggestions = suggestions

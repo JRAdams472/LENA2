@@ -71,6 +71,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 - `/recipes` — recipe list, detail, and edit with ingredients and steps.
 - `/meal-plans` — weekly meal plans with daily slots.
 - `/grocery-lists` — shopping lists generated from meal plans, with check-off.
+- **OCR recipe import** — bulk-import scanned cookbook pages, recipe cards, and photos using local OCR and a local LLM. Admin-only; see `docs/recipe-ocr-usage.md`.
 
 ### Wine cellar
 
