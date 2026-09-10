@@ -62,6 +62,7 @@ func TestBFF_Integration(t *testing.T) {
 		wine.NewService(pool),
 		identitySvc,
 		nil,
+		nil,
 		0,
 		0,
 		"",

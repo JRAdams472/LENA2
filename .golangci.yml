@@ -41,3 +41,4 @@ linters:
         path: (_test\.go|platform/testenv)
     paths:
       - migrations
+      - clients/web/node_modules

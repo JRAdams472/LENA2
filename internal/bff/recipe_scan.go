@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -13,33 +14,34 @@ import (
 )
 
 // SubmitRecipeScan accepts a base64-encoded recipe scan (PNG/JPG/PDF) from an
-// admin and writes it to the configured import inbox. The admin must then run
-// the ocrimport CLI pipeline to OCR, draft, review, and persist the recipe.
+// admin, writes it to the configured import inbox, and enqueues server-side
+// OCR processing. It returns the created RecipeImport.
 func (r *Resolver) SubmitRecipeScan(ctx context.Context, args struct {
 	FileBase64 string
-}) (bool, error) {
-	if _, err := requireAdmin(ctx); err != nil {
-		return false, err
+}) (*recipeImportResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	inbox := strings.TrimSpace(r.ImportInbox)
 	if inbox == "" {
-		return false, badInputf("import inbox is not configured")
+		return nil, badInputf("import inbox is not configured")
 	}
 
 	encoded := strings.TrimSpace(args.FileBase64)
 	if encoded == "" {
-		return false, badInputf("fileBase64 is required")
+		return nil, badInputf("fileBase64 is required")
 	}
 
 	mediaType, data, err := splitDataURI(encoded)
 	if err != nil {
-		return false, badInputf("invalid fileBase64 data URI: %v", err)
+		return nil, badInputf("invalid fileBase64 data URI: %v", err)
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		return false, badInputf("fileBase64 is not valid base64")
+		return nil, badInputf("fileBase64 is not valid base64")
 	}
 
 	maxBytes := r.RecipeScanMaxBytes
@@ -47,31 +49,42 @@ func (r *Resolver) SubmitRecipeScan(ctx context.Context, args struct {
 		maxBytes = 20 * 1024 * 1024
 	}
 	if len(decoded) > maxBytes {
-		return false, badInputf("recipe scan exceeds maximum size of %d bytes", maxBytes)
+		return nil, badInputf("recipe scan exceeds maximum size of %d bytes", maxBytes)
 	}
 
 	ext := extensionForMediaType(mediaType)
 	if ext == "" {
-		return false, badInputf("unsupported media type %q", mediaType)
+		return nil, badInputf("unsupported media type %q", mediaType)
 	}
 
 	// Sanitize the target directory so files are written only inside the inbox.
 	if err := os.MkdirAll(inbox, 0o700); err != nil {
-		return false, fmt.Errorf("create import inbox: %w", err)
+		return nil, fmt.Errorf("create import inbox: %w", err)
 	}
 
 	suffix, err := randomHex(8)
 	if err != nil {
-		return false, fmt.Errorf("generate filename: %w", err)
+		return nil, fmt.Errorf("generate filename: %w", err)
 	}
 	filename := fmt.Sprintf("scan-%d-%s%s", time.Now().UnixMilli(), suffix, ext)
 	path := filepath.Join(inbox, filename)
 	// #nosec G304 -- path is constructed inside the configured inbox using a generated filename.
 	if err := os.WriteFile(path, decoded, 0o600); err != nil {
-		return false, fmt.Errorf("write recipe scan: %w", err)
+		return nil, fmt.Errorf("write recipe scan: %w", err)
 	}
 
-	return true, nil
+	sourceHash := hashBytes(decoded)
+	submittedBy := &u.UserID
+	ri, err := r.RecipeImportService.Create(ctx, filename, path, sourceHash, submittedBy, u.Email)
+	if err != nil {
+		return nil, fmt.Errorf("create recipe import: %w", err)
+	}
+	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService}, nil
+}
+
+func hashBytes(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }
 
 // splitDataURI extracts the media type and base64 payload from a data URI.

@@ -8,7 +8,10 @@ import (
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/ocrimport"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -145,6 +148,22 @@ type RecipeService interface {
 }
 
 var _ RecipeService = (*recipe.Service)(nil)
+
+// RecipeImportService is the subset of *recipeimport.Service used by the resolver.
+type RecipeImportService interface {
+	Create(ctx context.Context, sourceFilename, sourcePath, sourceHash string, submittedByUserID *int64, createdBy string) (*recipeimport.RecipeImport, error)
+	Get(ctx context.Context, id int64) (*recipeimport.RecipeImport, error)
+	List(ctx context.Context, status string, page, pageSize int32) ([]recipeimport.RecipeImport, error)
+	Count(ctx context.Context, status string) (int64, error)
+	ListPending(ctx context.Context, page, pageSize int32) ([]recipeimport.RecipeImport, error)
+	UpdateReview(ctx context.Context, id int64, review *ocrimport.ReviewRecipe, updatedBy string) (*recipeimport.RecipeImport, error)
+	Approve(ctx context.Context, id int64, approvedBy currentuser.User) (*recipe.Recipe, *recipeimport.RecipeImport, error)
+	Reject(ctx context.Context, id int64) error
+	Retry(ctx context.Context, id int64) error
+	Shutdown(ctx context.Context) error
+}
+
+var _ RecipeImportService = (*recipeimport.Service)(nil)
 
 // UserPrefsService is the subset of *userprefs.Service used by the resolver.
 type UserPrefsService interface {

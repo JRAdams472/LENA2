@@ -68,6 +68,25 @@ func TestValidateDraft(t *testing.T) {
 		}
 		assert.NoError(t, ValidateDraft(d))
 	})
+
+	t.Run("profanity detected skips validation", func(t *testing.T) {
+		d := &RecipeDraft{
+			ProfanityDetected: true,
+			ProfanityReason:   strPtr("deny-list match"),
+		}
+		assert.NoError(t, ValidateDraft(d))
+	})
+
+	t.Run("JSON schema includes profanity fields", func(t *testing.T) {
+		schema := JSONSchema()
+		props := schema["properties"].(map[string]interface{})
+		assert.Contains(t, props, "profanityDetected")
+		assert.Contains(t, props, "profanityReason")
+	})
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 func TestJSONSchema(t *testing.T) {

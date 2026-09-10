@@ -45,6 +45,7 @@ type Resolver struct {
 	UserPrefsService       UserPrefsService
 	WineService            WineService
 	IdentityService        IdentityService
+	RecipeImportService    RecipeImportService
 	OCRClient              OCRClient
 	NutritionPhotoMaxBytes int
 	RecipeScanMaxBytes     int
@@ -65,8 +66,8 @@ type Resolver struct {
 const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int, importInbox string) *Resolver {
-	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, ImportInbox: importInbox}
+func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, recipeImport RecipeImportService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int, importInbox string) *Resolver {
+	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, ImportInbox: importInbox}
 }
 
 func (r *Resolver) ensureBG() {
@@ -106,7 +107,8 @@ func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx cont
 
 // Shutdown cancels pending background work and waits for in-flight tasks
 // to finish or ctx to expire. Call it during graceful shutdown so
-// analytics writes are not silently dropped on process exit.
+// analytics writes and recipe import workers are not silently dropped on
+// process exit.
 func (r *Resolver) Shutdown(ctx context.Context) error {
 	r.ensureBG()
 	r.bgCancel()
@@ -115,6 +117,16 @@ func (r *Resolver) Shutdown(ctx context.Context) error {
 		r.bgWG.Wait()
 		close(done)
 	}()
+
+	// Drain the recipe import worker pool in parallel.
+	if r.RecipeImportService != nil {
+		go func() {
+			if err := r.RecipeImportService.Shutdown(ctx); err != nil {
+				slog.Default().Error("recipe import service shutdown", "error", err)
+			}
+		}()
+	}
+
 	select {
 	case <-done:
 		return nil

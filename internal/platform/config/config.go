@@ -83,9 +83,6 @@ type Config struct {
 	// of the OCR + extraction pipeline. Empty means the vision path is not
 	// used.
 	OllamaVisionModel string `envconfig:"OLLAMA_VISION_MODEL" default:""`
-	// ImportWorkDir is the local directory where the importer keeps source
-	// images, OCR output, drafts, and review decisions.
-	ImportWorkDir string `envconfig:"IMPORT_WORK_DIR" default:"./import/work"`
 	// ImportInbox is the directory where source images/PDFs are placed before
 	// the importer processes them. The new submitRecipeScan mutation also
 	// writes uploaded admin scans here.
@@ -97,20 +94,15 @@ type Config struct {
 	// shown to the admin for manual review. Anything below this is considered
 	// unmatched.
 	ImportReviewThreshold float64 `envconfig:"IMPORT_REVIEW_THRESHOLD" default:"0.75"`
-	// APIURL is the base URL of the LENA2 GraphQL API (e.g.
-	// http://api:8080). Used by the importer for catalog snapshots and the
-	// createRecipe mutation. Empty disables import persistence.
-	APIURL string `envconfig:"API_URL" default:""`
-	// ImportAdminToken is a bearer token used by the importer when calling
-	// admin-only GraphQL mutations. In local dev this can be a token from
-	// the test issuer or an OIDC provider.
-	ImportAdminToken string `envconfig:"IMPORT_ADMIN_TOKEN" default:""`
-	// OCREngine selects the OCR container implementation. Options:
-	// tesseract | paddle | doctr.
-	OCREngine string `envconfig:"OCR_ENGINE" default:"tesseract"`
+	// ImportWorkerConcurrency controls how many recipe imports are processed
+	// in parallel. Defaults to 1 to avoid GPU contention.
+	ImportWorkerConcurrency int `envconfig:"IMPORT_WORKER_CONCURRENCY" default:"1"`
 	// OCRConfidenceThreshold is the minimum per-word confidence (0-100) the
 	// importer will accept before flagging a page for re-scan.
 	OCRConfidenceThreshold int `envconfig:"OCR_CONFIDENCE_THRESHOLD" default:"50"`
+	// ProfanityExtraTerms is a comma-separated list of additional English
+	// terms the profanity detector should flag beyond the built-in deny-list.
+	ProfanityExtraTerms string `envconfig:"PROFANITY_EXTRA_TERMS" default:""`
 }
 
 // Load reads configuration from environment variables.

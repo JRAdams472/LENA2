@@ -90,7 +90,10 @@ const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?
   },
   {
     label: "Recipes",
-    children: [{ label: "Recipes", href: "/recipes" }],
+    children: [
+      { label: "Recipes", href: "/recipes" },
+      { label: "Pending Reviews", href: "/recipes/pending", adminOnly: true },
+    ],
   },
   {
     label: "Meal Planning",

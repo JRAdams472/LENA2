@@ -264,6 +264,29 @@ type RecipeRecipe struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type RecipeRecipeImport struct {
+	RecipeImportID    int64              `json:"recipe_import_id"`
+	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
+	SourceFilename    string             `json:"source_filename"`
+	SourcePath        string             `json:"source_path"`
+	SourceHash        pgtype.Text        `json:"source_hash"`
+	OcrText           pgtype.Text        `json:"ocr_text"`
+	OcrJson           []byte             `json:"ocr_json"`
+	DraftJson         []byte             `json:"draft_json"`
+	ReviewJson        []byte             `json:"review_json"`
+	ProfanityFlag     bool               `json:"profanity_flag"`
+	ProfanityReason   pgtype.Text        `json:"profanity_reason"`
+	Status            string             `json:"status"`
+	RecipeID          pgtype.Int8        `json:"recipe_id"`
+	ErrorMessage      pgtype.Text        `json:"error_message"`
+	CreatedBy         string             `json:"created_by"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
+	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
+}
+
 type RecipeRecipeItem struct {
 	RecipeID     int64          `json:"recipe_id"`
 	ItemID       int64          `json:"item_id"`
