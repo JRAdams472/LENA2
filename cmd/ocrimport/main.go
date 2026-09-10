@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/bffclient"
@@ -58,7 +59,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  ocr      Run the local OCR service over pending source pages")
 	fmt.Fprintln(os.Stderr, "  draft    Convert OCR text to a RecipeDraft JSON using the local LLM")
 	fmt.Fprintln(os.Stderr, "  review   Map draft ingredients to the catalog and produce a review report")
-	fmt.Fprintln(os.Stderr, "  persist  Persist approved drafts to LENA2 (not yet implemented)")
+	fmt.Fprintln(os.Stderr, "  persist  Persist approved reviews to LENA2 via createRecipe")
 	fmt.Fprintln(os.Stderr, "  version  Print version")
 	fmt.Fprintln(os.Stderr, "  help     Show this help")
 	fmt.Fprintln(os.Stderr, "")
@@ -510,7 +511,150 @@ func reviewCmd() {
 }
 
 func persistCmd() {
-	fmt.Fprintln(os.Stderr, "persist: not yet implemented (planned for p4)")
+	var workDir string
+	var force bool
+	fset := flagSet("persist")
+	fset.StringVar(&workDir, "work-dir", "", "Work directory; defaults to LENA_IMPORT_WORK_DIR")
+	fset.BoolVar(&force, "force", false, "Re-persist recipes even when a persisted.json record exists")
+	if err := fset.Parse(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "parse persist flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.APIURL == "" {
+		fmt.Fprintln(os.Stderr, "API URL is not configured.")
+		fmt.Fprintln(os.Stderr, "Set LENA_API_URL to enable persistence.")
+		os.Exit(1)
+	}
+	if cfg.ImportAdminToken == "" {
+		fmt.Fprintln(os.Stderr, "Admin token is not configured.")
+		fmt.Fprintln(os.Stderr, "Set LENA_IMPORT_ADMIN_TOKEN to enable persistence.")
+		os.Exit(1)
+	}
+
+	if workDir == "" {
+		workDir = cfg.ImportWorkDir
+	}
+
+	queue, err := ocrimport.Open(workDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open work queue: %v\n", err)
+		os.Exit(1)
+	}
+
+	client := bffclient.New(cfg.APIURL, cfg.ImportAdminToken)
+	ctx := context.Background()
+
+	pending := queue.List()
+	processed, failed, skipped := 0, 0, 0
+	for _, page := range pending {
+		if page.Status != ocrimport.StatusReady {
+			continue
+		}
+
+		pageDir := filepath.Join(workDir, filepath.Base(page.ID))
+
+		// #nosec G304 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base.
+		reviewData, err := os.ReadFile(filepath.Join(pageDir, "review.json"))
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("read review.json: %v", err))
+			fmt.Fprintf(os.Stderr, "read review.json for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		var review ocrimport.ReviewRecipe
+		if err := json.Unmarshal(reviewData, &review); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("parse review.json: %v", err))
+			fmt.Fprintf(os.Stderr, "parse review.json for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		if !review.Approved || !review.AllResolved() {
+			msg := "review not approved or not fully resolved"
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, msg)
+			fmt.Fprintf(os.Stderr, "%s: %s\n", page.SourcePath, msg)
+			failed++
+			continue
+		}
+
+		if !force {
+			existing, err := ocrimport.LoadPersisted(pageDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "load persisted for %s: %v\n", page.ID, err)
+			}
+			if existing != nil && existing.RecipeID != "" {
+				fmt.Printf("persist: %s -> already persisted as %s\n", page.SourcePath, existing.RecipeID)
+				skipped++
+				continue
+			}
+
+			if rec, ok, err := client.GetRecipeByName(ctx, review.Name); err == nil && ok {
+				fmt.Printf("persist: %s -> recipe with name %q already exists (%s); skipping\n", page.SourcePath, review.Name, rec.ID)
+				skipped++
+				continue
+			} else if err != nil {
+				fmt.Fprintf(os.Stderr, "recipe name lookup for %s: %v\n", page.ID, err)
+			}
+		}
+
+		input, err := review.ToCreateRecipeInput()
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("invalid review: %v", err))
+			_ = ocrimport.SaveError(pageDir, ocrimport.ErrorRecord{
+				PageID:  page.ID,
+				Error:   err.Error(),
+				Created: time.Now().UTC(),
+			})
+			fmt.Fprintf(os.Stderr, "validate review %s: %v\n", page.SourcePath, err)
+			failed++
+			continue
+		}
+
+		recipeID, err := client.CreateRecipe(ctx, *input)
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("createRecipe: %v", err))
+			_ = ocrimport.SaveError(pageDir, ocrimport.ErrorRecord{
+				PageID:  page.ID,
+				Error:   err.Error(),
+				Created: time.Now().UTC(),
+			})
+			fmt.Fprintf(os.Stderr, "createRecipe %s: %v\n", page.SourcePath, err)
+			failed++
+			continue
+		}
+
+		if err := ocrimport.SavePersisted(pageDir, &ocrimport.PersistedRecord{
+			RecipeID:   recipeID,
+			Name:       review.Name,
+			SourcePath: page.SourcePath,
+			SourceHash: page.SourceHash,
+			CreatedAt:  time.Now().UTC(),
+		}); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write persisted.json: %v", err))
+			fmt.Fprintf(os.Stderr, "write persisted.json for %s: %v\n", page.SourcePath, err)
+			failed++
+			continue
+		}
+
+		if err := queue.SetStatus(page.ID, ocrimport.StatusPersisted, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "update status for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		fmt.Printf("persist: %s -> %s (%s)\n", page.SourcePath, review.Name, recipeID)
+		processed++
+	}
+
+	fmt.Printf("persist: processed %d, skipped %d, failed %d\n", processed, skipped, failed)
 }
 
 func flagSet(name string) *flag.FlagSet {
