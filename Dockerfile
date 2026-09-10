@@ -18,6 +18,9 @@ WORKDIR /app
 
 COPY --from=builder /build/lena /app/lena
 
+# Import inbox shared with the host for recipe OCR uploads.
+RUN mkdir -p /data/import/inbox /data/import/work && chown -R 65534:65534 /data/import
+
 EXPOSE 8080
 
 USER nobody

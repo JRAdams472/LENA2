@@ -154,6 +154,16 @@ Commands:
 
 ---
 
+## Logs
+
+When running with Docker Compose, application logs are shipped to Seq:
+
+- Browse the Seq UI at `http://localhost:5341`.
+- Filter by `tag = lena2-api` or `tag = lena2-web`.
+- For short-lived container output, you can also use `docker compose logs api`.
+
+---
+
 ## Further reading
 
 - `docs/recipe-ocr-phases.md` — phased implementation plan.
