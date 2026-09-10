@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // Client calls the LENA2 GraphQL API.
@@ -236,4 +237,102 @@ func (c *Client) CreateItem(ctx context.Context, input CreateItemInput) (string,
 		return "", err
 	}
 	return d.CreateItem.ID, nil
+}
+
+// Recipe is the subset of recipe fields the importer needs.
+type Recipe struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListRecipes fetches all active recipes by paging through the catalog.
+func (c *Client) ListRecipes(ctx context.Context) ([]Recipe, error) {
+	const q = `query($page: Int!, $pageSize: Int!) {
+		recipes(page: $page, pageSize: $pageSize) {
+			items { id name }
+			pageInfo { totalCount }
+		}
+	}`
+
+	var recipes []Recipe
+	pageSize := 100
+	for page := 1; ; page++ {
+		vars := map[string]interface{}{"page": page, "pageSize": pageSize}
+		type recipesData struct {
+			Recipes struct {
+				Items    []Recipe `json:"items"`
+				PageInfo pageInfo `json:"pageInfo"`
+			} `json:"recipes"`
+		}
+		var rd recipesData
+		if err := c.do(ctx, q, vars, &rd); err != nil {
+			return nil, err
+		}
+		recipes = append(recipes, rd.Recipes.Items...)
+		if len(recipes) >= rd.Recipes.PageInfo.TotalCount {
+			break
+		}
+	}
+	return recipes, nil
+}
+
+// GetRecipeByName returns the first recipe whose name matches case-insensitively.
+func (c *Client) GetRecipeByName(ctx context.Context, name string) (Recipe, bool, error) {
+	recipes, err := c.ListRecipes(ctx)
+	if err != nil {
+		return Recipe{}, false, err
+	}
+	want := strings.ToLower(strings.TrimSpace(name))
+	for _, r := range recipes {
+		if strings.ToLower(strings.TrimSpace(r.Name)) == want {
+			return r, true, nil
+		}
+	}
+	return Recipe{}, false, nil
+}
+
+// RecipeItemInput matches the GraphQL RecipeItemInput shape.
+type RecipeItemInput struct {
+	ItemID       string  `json:"itemId"`
+	IngredientID *string `json:"ingredientId,omitempty"`
+	Quantity     float64 `json:"quantity"`
+	Unit         string  `json:"unit"`
+	Section      *string `json:"section,omitempty"`
+	DisplayOrder *int    `json:"displayOrder,omitempty"`
+	Notes        *string `json:"notes,omitempty"`
+	IsOptional   *bool   `json:"isOptional,omitempty"`
+}
+
+// RecipeStepInput matches the GraphQL RecipeStepInput shape.
+type RecipeStepInput struct {
+	StepNumber  int    `json:"stepNumber"`
+	Instruction string `json:"instruction"`
+}
+
+// CreateRecipeInput matches the GraphQL CreateRecipeInput shape.
+type CreateRecipeInput struct {
+	Name            string            `json:"name"`
+	Description     *string           `json:"description,omitempty"`
+	Servings        *int              `json:"servings,omitempty"`
+	PrepTimeMinutes *int              `json:"prepTimeMinutes,omitempty"`
+	CookTimeMinutes *int              `json:"cookTimeMinutes,omitempty"`
+	Items           []RecipeItemInput `json:"items"`
+	Steps           []RecipeStepInput `json:"steps"`
+}
+
+// CreateRecipe calls the createRecipe admin mutation and returns the recipe id.
+func (c *Client) CreateRecipe(ctx context.Context, input CreateRecipeInput) (string, error) {
+	const q = `mutation($input: CreateRecipeInput!) { createRecipe(input: $input) { id name } }`
+	type createRecipeData struct {
+		CreateRecipe struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"createRecipe"`
+	}
+	vars := map[string]interface{}{"input": input}
+	var d createRecipeData
+	if err := c.do(ctx, q, vars, &d); err != nil {
+		return "", err
+	}
+	return d.CreateRecipe.ID, nil
 }
