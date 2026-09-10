@@ -174,7 +174,7 @@ func ocrCmd() {
 			continue
 		}
 
-		res, err := client.ExtractTextResult(ctx, data)
+		res, err := client.ExtractTextResult(ctx, data, filepath.Base(page.SourcePath))
 		if err != nil {
 			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("ocr: %v", err))
 			fmt.Fprintf(os.Stderr, "ocr %s: %v\n", page.SourcePath, err)
