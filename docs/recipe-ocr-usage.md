@@ -35,10 +35,10 @@ LENA_API_URL=http://api:8080
 LENA_IMPORT_ADMIN_TOKEN=<admin bearer token>
 ```
 
-For **host CLI** (`go run ./cmd/ocrimport` from PowerShell/Bash), use `localhost` URLs instead:
+For **host CLI** (`go run ./cmd/ocrimport` from PowerShell/Bash), use `localhost` URLs instead and set the matching host ports (defaults are `8000` and `11434`; change them in `.env` if those ports are already in use):
 
 ```powershell
-$env:LENA_OCR_SERVICE_URL = "http://localhost:8000"
+$env:LENA_OCR_SERVICE_URL  = "http://localhost:8000"
 $env:LENA_OLLAMA_URL       = "http://localhost:11434"
 $env:LENA_API_URL          = "http://localhost"        # Caddy routes /graphql to the API
 $env:LENA_IMPORT_ADMIN_TOKEN = "<admin bearer token>"
@@ -50,7 +50,7 @@ Start the import services:
 docker compose -f docker-compose.yml -f docker-compose.import.yml --profile import up -d
 ```
 
-This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` does not depend on Ollama. `docker-compose.import.yml` exposes `ocr` on `127.0.0.1:8000` and `ollama` on `127.0.0.1:11434` so the host `go run` CLI can reach them.
+This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` does not depend on Ollama. `docker-compose.import.yml` exposes `ocr` on `127.0.0.1:${LENA_OCR_HOST_PORT:-8000}` and `ollama` on `127.0.0.1:${LENA_OLLAMA_HOST_PORT:-11434}` so the host `go run` CLI can reach them. If you already have Ollama running locally on port `11434`, set `LENA_OLLAMA_HOST_PORT` to another port (e.g. `11435`) in `.env` and point `LENA_OLLAMA_URL` at `http://localhost:11435`.
 
 ---
 
