@@ -47,6 +47,8 @@ type Resolver struct {
 	IdentityService        IdentityService
 	OCRClient              OCRClient
 	NutritionPhotoMaxBytes int
+	RecipeScanMaxBytes     int
+	ImportInbox            string
 
 	// bg carries detached analytics/recommendation work: at most
 	// asyncWorkerCap in-flight goroutines, all scoped to a cancelable
@@ -63,8 +65,8 @@ type Resolver struct {
 const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, ocr OCRClient, nutritionPhotoMaxBytes int) *Resolver {
-	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes}
+func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int, importInbox string) *Resolver {
+	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, ImportInbox: importInbox}
 }
 
 func (r *Resolver) ensureBG() {

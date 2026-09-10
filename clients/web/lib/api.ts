@@ -1942,6 +1942,15 @@ export const api = {
     );
   },
 
+  // Admin-only: upload a recipe scan to the import inbox. The ocrimport CLI
+  // pipeline must still be run to OCR, draft, review, and persist it.
+  submitRecipeScan: async (fileBase64: string): Promise<void> => {
+    await request<{ submitRecipeScan: boolean }>(
+      `mutation ($fileBase64: String!) { submitRecipeScan(fileBase64: $fileBase64) }`,
+      { fileBase64 }
+    );
+  },
+
   getRecommendedRecipes: async (limit = 10): Promise<RecipeRecommendation[]> => {
     const data = await request<{ recommendedRecipes: GqlRecipeRecommendation[] }>(
       `query ($limit: Int) { recommendedRecipes(limit: $limit) { recipe { ${RECIPE_FIELDS} } reason score } }`,

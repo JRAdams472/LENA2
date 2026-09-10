@@ -103,6 +103,11 @@ type Mutation {
   # returns true once the job is queued, not once it finishes.
   submitItemNutritionPhoto(itemId: ID!, photoBase64: String!): Boolean!
 
+  # Accepts a base64-encoded recipe scan from an admin and writes it to the
+  # configured import inbox. Returns true once the file is written; the admin
+  # must then run the ocrimport CLI pipeline to produce the recipe.
+  submitRecipeScan(fileBase64: String!): Boolean!
+
   createIngredient(input: CreateIngredientInput!): Ingredient!
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient!
   deleteIngredient(id: ID!): Boolean!

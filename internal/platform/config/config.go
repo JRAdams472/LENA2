@@ -65,6 +65,9 @@ type Config struct {
 	// NutritionPhotoMaxBytes is the maximum decoded image size accepted by
 	// submitItemNutritionPhoto.
 	NutritionPhotoMaxBytes int `envconfig:"NUTRITION_PHOTO_MAX_BYTES" default:"6291456"`
+	// RecipeScanMaxBytes is the maximum decoded recipe scan (image or PDF)
+	// accepted by submitRecipeScan.
+	RecipeScanMaxBytes int `envconfig:"RECIPE_SCAN_MAX_BYTES" default:"20971520"`
 	// OllamaURL is the base URL of the local Ollama API. Empty disables the
 	// recipe OCR import feature entirely.
 	OllamaURL string `envconfig:"OLLAMA_URL" default:""`
@@ -82,6 +85,10 @@ type Config struct {
 	// ImportWorkDir is the local directory where the importer keeps source
 	// images, OCR output, drafts, and review decisions.
 	ImportWorkDir string `envconfig:"IMPORT_WORK_DIR" default:"./import/work"`
+	// ImportInbox is the directory where source images/PDFs are placed before
+	// the importer processes them. The new submitRecipeScan mutation also
+	// writes uploaded admin scans here.
+	ImportInbox string `envconfig:"IMPORT_INBOX" default:"./import/inbox"`
 	// ImportAutoAcceptConfidence is the fuzzy-match score (0.0-1.0) at which
 	// an OCR'd ingredient is automatically mapped to a catalog item.
 	ImportAutoAcceptConfidence float64 `envconfig:"IMPORT_AUTO_ACCEPT_CONFIDENCE" default:"0.92"`

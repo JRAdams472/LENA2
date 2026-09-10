@@ -70,7 +70,7 @@ func importCmd() {
 	var inbox string
 	var workDir string
 	fset := flagSet("import")
-	fset.StringVar(&inbox, "inbox", "./import/inbox", "Directory containing scanned recipe pages (png, jpg, pdf)")
+	fset.StringVar(&inbox, "inbox", "", "Directory containing scanned recipe pages (png, jpg, pdf); defaults to LENA_IMPORT_INBOX")
 	fset.StringVar(&workDir, "work-dir", "", "Work directory; defaults to LENA_IMPORT_WORK_DIR")
 	if err := fset.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "parse import flags: %v\n", err)
@@ -83,6 +83,9 @@ func importCmd() {
 		os.Exit(1)
 	}
 
+	if inbox == "" {
+		inbox = cfg.ImportInbox
+	}
 	if workDir == "" {
 		workDir = cfg.ImportWorkDir
 	}

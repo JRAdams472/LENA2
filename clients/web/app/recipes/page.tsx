@@ -1,17 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import TextField from "@mui/material/TextField";
-import Switch from "@mui/material/Switch";
+import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
+import TextField from "@mui/material/TextField";
 import Link from "next/link";
-import { api, asEntity } from "@/lib/api";
+import { api, asEntity, ApiError } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import { Recipe } from "@/lib/types";
+import { useMe } from "@/app/auth/useMe";
 
 function toRow(recipe: Recipe) {
   return {
@@ -41,6 +49,7 @@ const recipeFields: FieldDef<Recipe>[] = [
 ];
 
 export default function RecipesPage() {
+  const { isAdmin } = useMe();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogData, setDialogData] = useState<Record<string, unknown>>({});
@@ -50,6 +59,13 @@ export default function RecipesPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
+
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -84,6 +100,46 @@ export default function RecipesPage() {
       api.deleteRecipe(row.recipeID as number),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recipes"] }),
   });
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleUploadClick = () => {
+    setUploadError(null);
+    setUploadSuccess(null);
+    setUploadOpen(true);
+  };
+
+  const handleUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadFile(e.target.files?.[0] ?? null);
+    setUploadError(null);
+  };
+
+  const handleUpload = async () => {
+    if (!uploadFile) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fileBase64 = await fileToBase64(uploadFile);
+      await api.submitRecipeScan(fileBase64);
+      setUploadSuccess(`Saved ${uploadFile.name} to the import inbox. Run the ocrimport CLI pipeline to extract it.`);
+      setUploadFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      setUploadOpen(false);
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "Failed to upload recipe scan";
+      setUploadError(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleCreate = () => {
     setIsCreate(true);
@@ -126,6 +182,11 @@ export default function RecipesPage() {
 
   return (
     <Box>
+      {uploadSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setUploadSuccess(null)}>
+          {uploadSuccess}
+        </Alert>
+      )}
       <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}>
         <TextField
           size="small"
@@ -143,6 +204,11 @@ export default function RecipesPage() {
           }
           label="Favorites"
         />
+        {isAdmin && (
+          <Button variant="outlined" onClick={handleUploadClick}>
+            Upload Recipe Scan
+          </Button>
+        )}
       </Box>
       <DataTable
         title="Recipes"
@@ -175,6 +241,52 @@ export default function RecipesPage() {
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
       />
+      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Upload Recipe Scan</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Choose a PNG, JPG, or PDF recipe scan. The file is written to the
+            import inbox for the admin CLI pipeline (ocrimport).
+          </DialogContentText>
+          {uploadError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setUploadError(null)}>
+              {uploadError}
+            </Alert>
+          )}
+          <Button
+            variant="outlined"
+            component="label"
+            disabled={uploading}
+          >
+            Choose File
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".png,.jpg,.jpeg,.pdf"
+              hidden
+              onChange={handleUploadFileChange}
+            />
+          </Button>
+          {uploadFile && (
+            <Box sx={{ mt: 2 }}>
+              Selected: <strong>{uploadFile.name}</strong>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadOpen(false)} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleUpload}
+            disabled={!uploadFile || uploading}
+            startIcon={uploading ? <CircularProgress size={16} /> : null}
+          >
+            {uploading ? "Uploading..." : "Upload"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
