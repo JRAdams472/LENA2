@@ -89,6 +89,14 @@ type Config struct {
 	// shown to the admin for manual review. Anything below this is considered
 	// unmatched.
 	ImportReviewThreshold float64 `envconfig:"IMPORT_REVIEW_THRESHOLD" default:"0.75"`
+	// APIURL is the base URL of the LENA2 GraphQL API (e.g.
+	// http://api:8080). Used by the importer for catalog snapshots and the
+	// createRecipe mutation. Empty disables import persistence.
+	APIURL string `envconfig:"API_URL" default:""`
+	// ImportAdminToken is a bearer token used by the importer when calling
+	// admin-only GraphQL mutations. In local dev this can be a token from
+	// the test issuer or an OIDC provider.
+	ImportAdminToken string `envconfig:"IMPORT_ADMIN_TOKEN" default:""`
 	// OCREngine selects the OCR container implementation. Options:
 	// tesseract | paddle | doctr.
 	OCREngine string `envconfig:"OCR_ENGINE" default:"tesseract"`
