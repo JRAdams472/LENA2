@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -12,7 +13,7 @@ import (
 type Config struct {
 	Port        string `envconfig:"PORT" default:"8080"`
 	LogLevel    string `envconfig:"LOG_LEVEL" default:"info"`
-	DatabaseURL string `envconfig:"DATABASE_URL" required:"true"`
+	DatabaseURL string `envconfig:"DATABASE_URL"`
 	// GoogleClientID is the Google OAuth client ID handed to clients (e.g.
 	// NEXT_PUBLIC_GOOGLE_CLIENT_ID); it is not used for server-side
 	// audience validation, so it is optional here.
@@ -25,7 +26,7 @@ type Config struct {
 	// keeps an owner from being locked out of their own deployment.
 	ProtectedEmails    string `envconfig:"PROTECTED_EMAILS" default:""`
 	AuthIssuers        string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
-	AuthAudiences      string `envconfig:"AUTH_AUDIENCES" required:"true"`
+	AuthAudiences      string `envconfig:"AUTH_AUDIENCES"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost"`
 	// ServiceName is the OpenTelemetry service.name resource attribute.
 	ServiceName string `envconfig:"OTEL_SERVICE_NAME" default:"lena2"`
@@ -119,4 +120,20 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 	return &cfg, nil
+}
+
+// ValidateServer checks the fields required by the LENA2 API server.
+// The ocrimport CLI reuses Load but does not need these values.
+func (c *Config) ValidateServer() error {
+	var missing []string
+	if c.DatabaseURL == "" {
+		missing = append(missing, "DATABASE_URL")
+	}
+	if c.AuthAudiences == "" {
+		missing = append(missing, "AUTH_AUDIENCES")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required server configuration: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }

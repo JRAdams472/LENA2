@@ -66,19 +66,20 @@ func TestLoadOverrides(t *testing.T) {
 	assert.Equal(t, 20*time.Second, cfg.HTTPReadTimeout)
 }
 
-func TestLoadMissingRequired(t *testing.T) {
+func TestValidateServer(t *testing.T) {
 	cases := []struct {
 		name    string
 		envVars map[string]string
+		missing string
 	}{
-		{"missing all", map[string]string{}},
+		{"missing all", map[string]string{}, "DATABASE_URL, AUTH_AUDIENCES"},
 		{"missing database url", map[string]string{
 			"LENA_AUTH_AUDIENCES": "aud",
-		}},
+		}, "DATABASE_URL"},
 		{"missing auth audiences", map[string]string{
 			"LENA_DATABASE_URL":     "postgres://x",
 			"LENA_GOOGLE_CLIENT_ID": "id",
-		}},
+		}, "AUTH_AUDIENCES"},
 	}
 
 	for _, tc := range cases {
@@ -87,9 +88,11 @@ func TestLoadMissingRequired(t *testing.T) {
 				t.Setenv(k, v)
 			}
 			cfg, err := Load()
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+			err = cfg.ValidateServer()
 			require.Error(t, err)
-			assert.Nil(t, cfg)
-			assert.Contains(t, err.Error(), "failed to load config")
+			assert.Contains(t, err.Error(), tc.missing)
 		})
 	}
 }
