@@ -1,8 +1,8 @@
 # Recipe OCR Import Operator Guide
 
-The recipe OCR import feature lets an admin bulk-import printed recipes (cookbook pages, recipe cards, scanned PDFs) into LENA2 using only local services: a containerized OCR engine extracts text, a local Ollama model structures the text into a `RecipeDraft`, a mapping step reconciles free-text ingredients and units against the existing `inventory` catalog, and the existing admin `createRecipe` mutation persists the result.
+The recipe OCR import feature lets an admin bulk-import printed recipes (cookbook pages, recipe cards, scanned PDFs) into LENA2 using only local services: a containerized OCR engine extracts text, a local Ollama model structures the text into a `RecipeDraft`, and the web review UI reconciles free-text ingredients and units against the existing `inventory` catalog before persisting the recipe.
 
-- **Admin-only** — every stage that writes or approves is gated behind an admin bearer token.
+- **Admin-only** — upload, review, and approval are gated behind the admin role.
 - **Local-only** — no cloud OCR or cloud LLM is used. The only external network activity is the one-time `ollama pull` of model weights.
 - **Human review is mandatory** — the LLM produces a draft; the admin must reconcile every ingredient to a catalog `itemId` and a canonical unit before persistence.
 
@@ -12,12 +12,9 @@ The recipe OCR import feature lets an admin bulk-import printed recipes (cookboo
 
 The feature is off by default. Set the environment variables in your `.env` file or shell, then start the optional `import` compose profile.
 
-For **Docker Compose** (the default), use the container names:
-
 ```env
 # OCR
 LENA_OCR_SERVICE_URL=http://ocr:8000   # empty = feature disabled
-LENA_OCR_ENGINE=tesseract              # tesseract | paddle | doctr
 LENA_OCR_CONFIDENCE_THRESHOLD=50
 
 # Ollama
@@ -28,20 +25,12 @@ LENA_OLLAMA_NUM_CTX=8192
 LENA_OLLAMA_VISION_MODEL=              # optional, e.g. qwen2.5-vl:7b
 
 # Importer
-LENA_IMPORT_WORK_DIR=./import/work
+LENA_IMPORT_INBOX=./import/inbox
+LENA_RECIPE_SCAN_MAX_BYTES=20971520
 LENA_IMPORT_AUTO_ACCEPT_CONFIDENCE=0.92
 LENA_IMPORT_REVIEW_THRESHOLD=0.75
-LENA_API_URL=http://api:8080
-LENA_IMPORT_ADMIN_TOKEN=<admin bearer token>
-```
-
-For **host CLI** (`go run ./cmd/ocrimport` from PowerShell/Bash), use `localhost` URLs instead and set the matching host ports (defaults are `8000` and `11434`; change them in `.env` if those ports are already in use):
-
-```powershell
-$env:LENA_OCR_SERVICE_URL  = "http://localhost:8000"
-$env:LENA_OLLAMA_URL       = "http://localhost:11434"
-$env:LENA_API_URL          = "http://localhost"        # Caddy routes /graphql to the API
-$env:LENA_IMPORT_ADMIN_TOKEN = "<admin bearer token>"
+LENA_IMPORT_WORKER_CONCURRENCY=1
+LENA_PROFANITY_EXTRA_TERMS=            # comma-separated extra deny-list terms
 ```
 
 Start the import services:
@@ -50,118 +39,55 @@ Start the import services:
 docker compose -f docker-compose.yml -f docker-compose.import.yml --profile import up -d
 ```
 
-This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` does not depend on Ollama. `docker-compose.import.yml` exposes `ocr` on `127.0.0.1:${LENA_OCR_HOST_PORT:-8000}` and `ollama` on `127.0.0.1:${LENA_OLLAMA_HOST_PORT:-11434}` so the host `go run` CLI can reach them. If you already have Ollama running locally on port `11434`, set `LENA_OLLAMA_HOST_PORT` to another port (e.g. `11435`) in `.env` and point `LENA_OLLAMA_URL` at `http://localhost:11435`.
+This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` starts and remains healthy when OCR or Ollama are not configured.
+
+`docker-compose.import.yml` exposes `ocr` on `127.0.0.1:${LENA_OCR_HOST_PORT:-8000}` and `ollama` on `127.0.0.1:${LENA_OLLAMA_HOST_PORT:-11434}`. If you already have Ollama running locally on port `11434`, set `LENA_OLLAMA_HOST_PORT` to another port (e.g. `11435`) in `.env` and point `LENA_OLLAMA_URL` at `http://localhost:11435`.
 
 ---
 
 ## Workflow
 
-Scanned pages can be submitted in two ways:
-
-1. **Web upload (admin only)** — on the `/recipes` page, click *Upload Recipe Scan*, choose a PNG, JPG, or PDF, and the file is written to `LENA_IMPORT_INBOX`.
-2. **Filesystem drop** — copy files directly into `./import/inbox`.
-
-Then run the pipeline one stage at a time:
-
-```bash
-# 1. Enqueue source pages
-go run ./cmd/ocrimport import --inbox ./import/inbox
-
-# 2. Extract text from each page
-go run ./cmd/ocrimport ocr
-
-# 3. Ask the local LLM to structure OCR text into RecipeDraft JSON
-go run ./cmd/ocrimport draft
-
-# 4. Map draft ingredients to the catalog and produce a review report
-go run ./cmd/ocrimport review
-
-# 5. Review the generated `work/<page-id>/review.md` files and edit
-#    `work/<page-id>/review.json` to set `itemId` and `unit` for each item.
-#    Once resolved, set `approved: true` in the same JSON file.
-
-# 6. Persist approved recipes to LENA2 via createRecipe
-go run ./cmd/ocrimport persist
-```
-
-Each stage writes artifacts into `LENA_IMPORT_WORK_DIR/<page-id>/`:
-
-- `ocr.txt` and `ocr.json` — raw OCR text and structured line/confidence output.
-- `draft.json` and `draft.log` — the LLM `RecipeDraft` and the raw prompt/response log.
-- `review.json` and `review.md` — mapping decisions and a human-readable review report.
-- `persisted.json` — record of a successfully imported recipe.
-- `error.json` — record of a failed stage, including the original GraphQL error.
-
----
-
-## Artifacts per stage
-
-| Stage | Input | Output | Status |
-|---|---|---|---|
-| `import` | `inbox/*.png`, `*.jpg`, `*.pdf` | `work/queue.json` entries and per-page work dirs | `pending` |
-| `ocr` | source image/PDF | `ocr.txt`, `ocr.json` | `ocred` or `failed` |
-| `draft` | `ocr.txt` | `draft.json`, `draft.log` | `drafted` or `failed` |
-| `review` | `draft.json` | `review.json`, `review.md` | `reviewing` or `ready` |
-| `persist` | `review.json` + admin approval | `persisted.json` or `error.json` | `persisted` or `failed` |
-
-The work queue is a local `queue.json` file; it is not part of the LENA2 Postgres schema.
+1. **Upload** — on the `/recipes` page, click *Upload Recipe Scan*, choose a PNG, JPG, or PDF, and the file is written to `LENA_IMPORT_INBOX` and enqueued for background processing.
+2. **Review** — open `/recipes/pending` to see imports in progress. The list refreshes every 5 seconds. Click *Review* on a completed import to open the editor.
+3. **Edit** — correct the recipe name, description, servings, prep/cook times, ingredients, and steps. For each ingredient, set the catalog `itemId` and `unitId` (or unit name). Add or remove ingredients and steps as needed.
+4. **Approve** — once every ingredient is reconciled, click *Save Review* then *Approve*. The recipe is persisted through the existing recipe service and appears under `/recipes`.
+5. **Retry / Reject** — a failed, profanity-flagged, or rejected import can be retried from the pending list. Rejected imports are removed from the active queue.
 
 ---
 
 ## Review and approval
 
-The `review` command uses fuzzy string matching to propose catalog items:
+The review UI uses fuzzy string matching to propose catalog items:
 
-- **≥ 0.92** — auto-accepted.
-- **0.75–0.92** — suggested; the top 3 candidates appear in `review.md`.
-- **< 0.75** — unmatched and flagged for manual review.
+- **≥ `LENA_IMPORT_AUTO_ACCEPT_CONFIDENCE`** — auto-accepted during the background draft stage.
+- **`LENA_IMPORT_REVIEW_THRESHOLD` – auto-accept** — suggested; shown in the review editor for the admin to pick.
+- **< `LENA_IMPORT_REVIEW_THRESHOLD`** — unmatched and flagged for manual review.
 
-For each unmatched or suggested line, edit `review.json` and set:
+For each unmatched or suggested line, set:
 
 - `itemId` — the catalog `inventory.item` id.
-- `unit` — the canonical unit name that `resolveUnitID` accepts (e.g. `cup`, `tbsp`, `oz`, `each`).
-- `approved: true` — mark the entire recipe ready for persistence.
+- `unitId` — the catalog `inventory.unit` id, or the canonical unit name.
+- `approved` — mark the ingredient resolved.
 
-Re-running `ocrimport review` preserves existing `itemId`/`unit` decisions and only re-maps items that are still empty, so a model change or re-scan does not lose manual work.
+Saving the review re-runs catalog validation and moves the import to `ready` when every item is resolved.
 
 ---
 
 ## Idempotency
 
-`ocrimport persist` skips a page if any of the following are true:
-
-- `persisted.json` already exists for the page (use `--force` to override).
-- A recipe with the same name already exists in LENA2 (unless `--force` is used).
-
-Duplicate-name checks are case-insensitive and performed client-side by listing existing recipes before calling `createRecipe`.
-
----
-
-## Commands
-
-```
-Usage: ocrimport <command> [flags]
-
-Commands:
-  import   Scan --inbox and enqueue source pages
-  ocr      Run the local OCR service over pending source pages
-  draft    Convert OCR text to a RecipeDraft JSON using the local LLM
-  review   Map draft ingredients to the catalog and produce a review report
-  persist  Persist approved reviews to LENA2 via createRecipe
-  version  Print version
-  help     Show this help
-```
+- The API skips a file whose SHA-256 hash already exists in `recipe.recipe_import` (a duplicate upload returns the existing import).
+- Approval creates a new recipe; re-approving an already `persisted` import is rejected by the service.
+- Retrying resets the import to `pending` and re-runs the full OCR/draft/mapping pipeline.
 
 ---
 
 ## Troubleshooting
 
-- **`OCR is not configured.`** — set `LENA_OCR_URL`.
-- **`Ollama is not configured.`** — set `LENA_OLLAMA_URL`.
-- **`API URL is not configured.`** — set `LENA_API_URL` for `review`/`persist`.
-- **`Admin token is not configured.`** — `persist` requires `LENA_IMPORT_ADMIN_TOKEN` because `createRecipe` is admin-only.
+- **`OCR is not configured.`** — set `LENA_OCR_SERVICE_URL` to the OCR service address, or leave it empty to disable the feature.
+- **`Ollama is not configured.`** — set `LENA_OLLAMA_URL`, or leave it empty to disable structured extraction.
 - **Low OCR confidence** — pages with mean word confidence below `LENA_OCR_CONFIDENCE_THRESHOLD` are marked `failed`; rescan or adjust preprocessing.
-- **GPU not present** — Ollama falls back to CPU and a 7B model becomes very slow. The importer should warn if the model is not GPU-resident.
+- **Profanity detected** — the import is held in `profanity` status. Review the `profanityReason` and edit the offending text, then retry.
+- **GPU not present** — Ollama falls back to CPU and a 7B model becomes very slow. Consider reducing `LENA_OLLAMA_NUM_CTX` or using a smaller model on CPU-only hosts.
 
 ---
 
@@ -177,6 +103,6 @@ When running with Docker Compose, application logs are shipped to Seq:
 
 ## Further reading
 
-- `docs/recipe-ocr-phases.md` — phased implementation plan.
+- `docs/recipe-ocr-ui-plan.md` — implementation plan for the web review UI.
 - `docs/recipe-ocr-import.md` — original design doc with architecture decisions and risks.
 - `docker-compose.import.yml` — optional import service definitions.

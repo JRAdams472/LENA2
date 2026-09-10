@@ -27,6 +27,11 @@ import {
   MealPlanNutrition,
   GroceryList,
   GroceryListItem,
+  RecipeImport,
+  RecipeImportDraft,
+  RecipeImportDraftItem,
+  RecipeImportReview,
+  RecipeImportReviewItem,
   PagedResult,
 } from "./types";
 
@@ -255,6 +260,90 @@ interface GqlRecipeRecommendation {
   recipe: GqlRecipe;
   reason: string;
   score: number;
+}
+
+interface GqlRecipeImportDraftItem {
+  quantity: number | null;
+  unit: string | null;
+  ingredient: string;
+  section: string | null;
+  notes: string | null;
+  isOptional: boolean;
+}
+
+interface GqlRecipeImportDraftStep {
+  stepNumber: number;
+  instruction: string;
+}
+
+interface GqlRecipeImportDraft {
+  name: string | null;
+  description: string | null;
+  servings: number | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  sourceHint: string | null;
+  items: GqlRecipeImportDraftItem[];
+  steps: GqlRecipeImportDraftStep[];
+}
+
+interface GqlRecipeImportSuggestion {
+  id: string;
+  name: string;
+  kind: string;
+  score: number;
+}
+
+interface GqlRecipeImportReviewItem {
+  draftItem: GqlRecipeImportDraftItem;
+  itemId: string | null;
+  itemName: string | null;
+  unit: string | null;
+  unitId: string | null;
+  confidence: number;
+  suggestions: GqlRecipeImportSuggestion[];
+  status: string;
+  notes: string | null;
+  approved: boolean;
+}
+
+interface GqlRecipeImportReviewStep {
+  stepNumber: number;
+  instruction: string;
+}
+
+interface GqlRecipeImportReview {
+  pageId: string | null;
+  name: string | null;
+  description: string | null;
+  servings: number | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  sourceHint: string | null;
+  items: GqlRecipeImportReviewItem[];
+  steps: GqlRecipeImportReviewStep[];
+  approved: boolean;
+}
+
+interface GqlRecipeImport {
+  id: string;
+  status: string;
+  sourceFilename: string;
+  ocrText: string | null;
+  draft: GqlRecipeImportDraft | null;
+  review: GqlRecipeImportReview | null;
+  recipe: GqlRecipe | null;
+  profanityFlag: boolean;
+  profanityReason: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+  createdBy: string;
+}
+
+interface GqlRecipeImportPage {
+  items: GqlRecipeImport[];
+  pageInfo: GqlPageInfo;
 }
 
 interface GqlGrapeVariety {
@@ -597,6 +686,104 @@ function toRecipe(r: GqlRecipe): Recipe {
   };
 }
 
+function toRecipeImportDraftItem(item: GqlRecipeImportDraftItem): RecipeImportDraftItem {
+  return {
+    quantity: item.quantity,
+    unit: item.unit,
+    ingredient: item.ingredient,
+    section: item.section,
+    notes: item.notes,
+    isOptional: item.isOptional,
+  };
+}
+
+function toRecipeImportReviewItem(item: GqlRecipeImportReviewItem): RecipeImportReviewItem {
+  return {
+    ...toRecipeImportDraftItem(item.draftItem),
+    itemId: item.itemId,
+    itemName: item.itemName,
+    unitId: item.unitId,
+    confidence: item.confidence,
+    suggestions: item.suggestions ?? [],
+    status: item.status,
+    approved: item.approved,
+  };
+}
+
+function toRecipeImportDraft(draft: GqlRecipeImportDraft | null): RecipeImportDraft | null {
+  if (!draft) return null;
+  return {
+    name: draft.name,
+    description: draft.description,
+    servings: draft.servings,
+    prepTimeMinutes: draft.prepTimeMinutes,
+    cookTimeMinutes: draft.cookTimeMinutes,
+    sourceHint: draft.sourceHint,
+    items: (draft.items ?? []).map(toRecipeImportDraftItem),
+    steps: (draft.steps ?? []).map((s) => ({ stepNumber: s.stepNumber, instruction: s.instruction })),
+  };
+}
+
+function toRecipeImportReview(review: GqlRecipeImportReview | null): RecipeImportReview | null {
+  if (!review) return null;
+  return {
+    pageId: review.pageId,
+    name: review.name,
+    description: review.description,
+    servings: review.servings,
+    prepTimeMinutes: review.prepTimeMinutes,
+    cookTimeMinutes: review.cookTimeMinutes,
+    sourceHint: review.sourceHint,
+    items: (review.items ?? []).map(toRecipeImportReviewItem),
+    steps: (review.steps ?? []).map((s) => ({ stepNumber: s.stepNumber, instruction: s.instruction })),
+    approved: review.approved,
+  };
+}
+
+function toRecipeImport(r: GqlRecipeImport): RecipeImport {
+  return {
+    ...audit(),
+    recipeImportID: num(r.id),
+    status: r.status,
+    sourceFilename: r.sourceFilename,
+    ocrText: r.ocrText,
+    draft: toRecipeImportDraft(r.draft),
+    review: toRecipeImportReview(r.review),
+    recipeID: r.recipe ? num(r.recipe.id) : null,
+    recipe: r.recipe ? toRecipe(r.recipe) : null,
+    profanityFlag: r.profanityFlag,
+    profanityReason: r.profanityReason,
+    errorMessage: r.errorMessage,
+  };
+}
+
+function toRecipeImportReviewInput(review: RecipeImportReview): Record<string, unknown> {
+  return {
+    name: review.name,
+    description: review.description,
+    servings: review.servings,
+    prepTimeMinutes: review.prepTimeMinutes,
+    cookTimeMinutes: review.cookTimeMinutes,
+    sourceHint: review.sourceHint,
+    items: review.items.map((it) => ({
+      ingredient: it.ingredient,
+      quantity: it.quantity,
+      unit: it.unit,
+      section: it.section,
+      notes: it.notes,
+      isOptional: it.isOptional,
+      itemId: it.itemId,
+      itemName: it.itemName,
+      unitId: it.unitId,
+      approved: it.approved,
+    })),
+    steps: review.steps.map((s) => ({
+      stepNumber: s.stepNumber,
+      instruction: s.instruction,
+    })),
+  };
+}
+
 function toCategory(c: GqlCategory): Category {
   return {
     ...audit(),
@@ -838,6 +1025,14 @@ const RECIPE_FIELDS = `
   id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount myRating averageRating ratingCount
   items { quantity unit notes isOptional item { ${ITEM_FIELDS} } }
   steps { stepNumber instruction }
+`;
+
+const RECIPE_IMPORT_FIELDS = `
+  id status sourceFilename ocrText createdAt updatedAt createdBy
+  profanityFlag profanityReason errorMessage
+  draft { name description servings prepTimeMinutes cookTimeMinutes sourceHint items { quantity unit ingredient section notes isOptional } steps { stepNumber instruction } }
+  review { pageId name description servings prepTimeMinutes cookTimeMinutes sourceHint approved items { draftItem { quantity unit ingredient section notes isOptional } itemId itemName unit unitId confidence status notes approved suggestions { id name kind score } } steps { stepNumber instruction } }
+  recipe { ${RECIPE_FIELDS} }
 `;
 
 const BOTTLE_FIELDS = `
@@ -1942,13 +2137,64 @@ export const api = {
     );
   },
 
-  // Admin-only: upload a recipe scan to the import inbox. The ocrimport CLI
-  // pipeline must still be run to OCR, draft, review, and persist it.
-  submitRecipeScan: async (fileBase64: string): Promise<void> => {
-    await request<{ submitRecipeScan: boolean }>(
-      `mutation ($fileBase64: String!) { submitRecipeScan(fileBase64: $fileBase64) }`,
+  // Admin-only: upload a recipe scan to the import inbox and enqueue
+  // server-side OCR processing. Returns the created import job.
+  submitRecipeScan: async (fileBase64: string): Promise<RecipeImport> => {
+    const data = await request<{ submitRecipeScan: GqlRecipeImport }>(
+      `mutation ($fileBase64: String!) { submitRecipeScan(fileBase64: $fileBase64) { ${RECIPE_IMPORT_FIELDS} } }`,
       { fileBase64 }
     );
+    return toRecipeImport(data.submitRecipeScan);
+  },
+
+  getPendingRecipeImports: async (pageNumber = 1, pageSize = 25): Promise<PagedResult<RecipeImport>> => {
+    const data = await request<{ pendingRecipeImports: GqlRecipeImportPage }>(
+      `query ($page: Int, $pageSize: Int) { pendingRecipeImports(page: $page, pageSize: $pageSize) { items { ${RECIPE_IMPORT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page: pageNumber, pageSize }
+    );
+    return toPaged(data.pendingRecipeImports.items.map(toRecipeImport), data.pendingRecipeImports.pageInfo);
+  },
+
+  getRecipeImport: async (id: number): Promise<RecipeImport> => {
+    const data = await request<{ recipeImport: GqlRecipeImport | null }>(
+      `query ($id: ID!) { recipeImport(id: $id) { ${RECIPE_IMPORT_FIELDS} } }`,
+      { id: String(id) }
+    );
+    if (!data.recipeImport) throw new ApiError(404, `Recipe import ${id} not found`);
+    return toRecipeImport(data.recipeImport);
+  },
+
+  updateRecipeImport: async (id: number, review: RecipeImportReview): Promise<RecipeImport> => {
+    const data = await request<{ updateRecipeImport: GqlRecipeImport }>(
+      `mutation ($id: ID!, $input: RecipeImportReviewInput!) { updateRecipeImport(id: $id, input: $input) { ${RECIPE_IMPORT_FIELDS} } }`,
+      { id: String(id), input: toRecipeImportReviewInput(review) }
+    );
+    return toRecipeImport(data.updateRecipeImport);
+  },
+
+  approveRecipeImport: async (id: number): Promise<Recipe> => {
+    const data = await request<{ approveRecipeImport: GqlRecipe | null }>(
+      `mutation ($id: ID!) { approveRecipeImport(id: $id) { ${RECIPE_FIELDS} } }`,
+      { id: String(id) }
+    );
+    if (!data.approveRecipeImport) throw new ApiError(404, `Recipe import ${id} not found`);
+    return toRecipe(data.approveRecipeImport);
+  },
+
+  rejectRecipeImport: async (id: number): Promise<RecipeImport> => {
+    const data = await request<{ rejectRecipeImport: GqlRecipeImport }>(
+      `mutation ($id: ID!) { rejectRecipeImport(id: $id) { ${RECIPE_IMPORT_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toRecipeImport(data.rejectRecipeImport);
+  },
+
+  retryRecipeImport: async (id: number): Promise<RecipeImport> => {
+    const data = await request<{ retryRecipeImport: GqlRecipeImport }>(
+      `mutation ($id: ID!) { retryRecipeImport(id: $id) { ${RECIPE_IMPORT_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toRecipeImport(data.retryRecipeImport);
   },
 
   getRecommendedRecipes: async (limit = 10): Promise<RecipeRecommendation[]> => {

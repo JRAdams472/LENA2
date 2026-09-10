@@ -65,6 +65,7 @@ export default function RecipesPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [uploadImportId, setUploadImportId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -124,10 +125,13 @@ export default function RecipesPage() {
     if (!uploadFile) return;
     setUploading(true);
     setUploadError(null);
+    setUploadSuccess(null);
+    setUploadImportId(null);
     try {
       const fileBase64 = await fileToBase64(uploadFile);
-      await api.submitRecipeScan(fileBase64);
-      setUploadSuccess(`Saved ${uploadFile.name} to the import inbox. Run the ocrimport CLI pipeline to extract it.`);
+      const imported = await api.submitRecipeScan(fileBase64);
+      setUploadImportId(imported.recipeImportID);
+      setUploadSuccess(`Saved ${uploadFile.name} and enqueued import ${imported.recipeImportID} for OCR processing.`);
       setUploadFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -184,7 +188,10 @@ export default function RecipesPage() {
     <Box>
       {uploadSuccess && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setUploadSuccess(null)}>
-          {uploadSuccess}
+          {uploadSuccess}{" "}
+          {uploadImportId !== null && (
+            <Link href={`/recipes/pending/${uploadImportId}`}>Review import</Link>
+          )}
         </Alert>
       )}
       <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}>

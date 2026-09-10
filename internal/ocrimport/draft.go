@@ -9,14 +9,16 @@ import (
 // RecipeDraft is the LLM-structured recipe before catalog mapping. It mirrors
 // CreateRecipeInput but uses free-text ingredient names instead of item IDs.
 type RecipeDraft struct {
-	Name            string      `json:"name"`
-	Description     *string     `json:"description,omitempty"`
-	Servings        *int        `json:"servings,omitempty"`
-	PrepTimeMinutes *int        `json:"prepTimeMinutes,omitempty"`
-	CookTimeMinutes *int        `json:"cookTimeMinutes,omitempty"`
-	Items           []DraftItem `json:"items"`
-	Steps           []DraftStep `json:"steps"`
-	SourceHint      *string     `json:"sourceHint,omitempty"`
+	Name              string      `json:"name"`
+	Description       *string     `json:"description,omitempty"`
+	Servings          *int        `json:"servings,omitempty"`
+	PrepTimeMinutes   *int        `json:"prepTimeMinutes,omitempty"`
+	CookTimeMinutes   *int        `json:"cookTimeMinutes,omitempty"`
+	Items             []DraftItem `json:"items"`
+	Steps             []DraftStep `json:"steps"`
+	SourceHint        *string     `json:"sourceHint,omitempty"`
+	ProfanityDetected bool        `json:"profanityDetected,omitempty"`
+	ProfanityReason   *string     `json:"profanityReason,omitempty"`
 }
 
 // DraftItem is one ingredient line extracted from a recipe.
@@ -37,9 +39,14 @@ type DraftStep struct {
 
 // ValidateDraft checks that a RecipeDraft is well-formed enough to continue
 // to catalog mapping. Unparseable or empty fields become a detailed error.
+// If profanity was detected the LLM is trusted and validation is skipped
+// so the job can be quarantined.
 func ValidateDraft(d *RecipeDraft) error {
 	if d == nil {
 		return errors.New("draft is nil")
+	}
+	if d.ProfanityDetected {
+		return nil
 	}
 	if d.Name == "" {
 		return errors.New("draft is missing a recipe name")
@@ -136,8 +143,14 @@ func JSONSchema() map[string]interface{} {
 				"type":        "string",
 				"description": "Page, book, or source reference, if any.",
 			},
+			"profanityDetected": map[string]interface{}{
+				"type": "boolean",
+			},
+			"profanityReason": map[string]interface{}{
+				"type":        "string",
+				"description": "Explanation of any profanity detected in the source.",
+			},
 		},
-		"required": []string{"name", "items", "steps"},
 	}
 }
 

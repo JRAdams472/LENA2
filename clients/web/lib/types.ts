@@ -311,3 +311,77 @@ export interface GroceryListItem extends AuditableEntity {
   isChecked: boolean;
   groceryList?: GroceryList | null;
 }
+
+export interface RecipeImportDraftItem {
+  quantity: number | null;
+  unit: string | null;
+  ingredient: string;
+  section: string | null;
+  notes: string | null;
+  isOptional: boolean;
+}
+
+export interface RecipeImportDraftStep {
+  stepNumber: number;
+  instruction: string;
+}
+
+export interface RecipeImportDraft {
+  name: string | null;
+  description: string | null;
+  servings: number | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  sourceHint: string | null;
+  items: RecipeImportDraftItem[];
+  steps: RecipeImportDraftStep[];
+}
+
+export interface RecipeImportSuggestion {
+  id: string;
+  name: string;
+  kind: string;
+  score: number;
+}
+
+export interface RecipeImportReviewItem extends RecipeImportDraftItem {
+  itemId: string | null;
+  itemName: string | null;
+  unitId: string | null;
+  confidence: number;
+  suggestions: RecipeImportSuggestion[];
+  status: string;
+  approved: boolean;
+}
+
+export interface RecipeImportReviewStep {
+  stepNumber: number;
+  instruction: string;
+}
+
+export interface RecipeImportReview {
+  pageId: string | null;
+  name: string | null;
+  description: string | null;
+  servings: number | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  sourceHint: string | null;
+  items: RecipeImportReviewItem[];
+  steps: RecipeImportReviewStep[];
+  approved: boolean;
+}
+
+export interface RecipeImport extends AuditableEntity {
+  recipeImportID: number;
+  status: string;
+  sourceFilename: string;
+  ocrText: string | null;
+  draft: RecipeImportDraft | null;
+  review: RecipeImportReview | null;
+  recipeID: number | null;
+  recipe: Recipe | null;
+  profanityFlag: boolean;
+  profanityReason: string | null;
+  errorMessage: string | null;
+}

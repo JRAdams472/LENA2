@@ -39,3 +39,6 @@ Thumbs.db
 # Temp
 /tmp/
 *.tmp
+
+# Recipe scan import runtime artifacts
+/import/

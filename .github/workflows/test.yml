@@ -90,11 +90,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build ocrimport
-        run: go build ./cmd/ocrimport
-
-      - name: OCR import unit tests
-        run: go test ./cmd/ocrimport/... ./internal/ocrimport/... ./internal/platform/ollamaclient/... ./internal/platform/bffclient/...
+      - name: Recipe import unit tests
+        run: go test ./internal/recipeimport/... ./internal/ocrimport/... ./internal/platform/ollamaclient/... ./internal/platform/profanity/...
 
   web:
     runs-on: ubuntu-latest

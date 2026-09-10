@@ -4,22 +4,73 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/JRAdams472/LENA2/internal/platform/bffclient"
 )
+
+// CatalogItem is a canonical catalog row used for ingredient matching.
+type CatalogItem interface {
+	ID() string
+	Name() string
+}
+
+// CatalogIngredient is a generic ingredient used for fuzzy suggestions.
+type CatalogIngredient interface {
+	ID() string
+	Name() string
+}
+
+// CatalogUnit is a canonical unit of measure.
+type CatalogUnit interface {
+	ID() string
+	Name() string
+	Abbreviation() string
+}
+
+// CatalogCategory is a catalog category used only for future enrichment.
+type CatalogCategory interface {
+	ID() string
+	Name() string
+}
+
+// Catalog provides a snapshot of the inventory catalog to CatalogSnapshot.
+type Catalog interface {
+	Items() []CatalogItem
+	Ingredients() []CatalogIngredient
+	Units() []CatalogUnit
+	Categories() []CatalogCategory
+}
+
+// StaticCatalog is a simple in-memory Catalog used by tests and adapters.
+type StaticCatalog struct {
+	ItemsField       []CatalogItem
+	IngredientsField []CatalogIngredient
+	UnitsField       []CatalogUnit
+	CategoriesField  []CatalogCategory
+}
+
+// Items returns the catalog items.
+func (c *StaticCatalog) Items() []CatalogItem { return c.ItemsField }
+
+// Ingredients returns the catalog ingredients.
+func (c *StaticCatalog) Ingredients() []CatalogIngredient { return c.IngredientsField }
+
+// Units returns the catalog units.
+func (c *StaticCatalog) Units() []CatalogUnit { return c.UnitsField }
+
+// Categories returns the catalog categories.
+func (c *StaticCatalog) Categories() []CatalogCategory { return c.CategoriesField }
 
 // CatalogSnapshot is an in-memory view of the LENA2 inventory catalog used for
 // mapping free-text ingredients and units to canonical catalog rows.
 type CatalogSnapshot struct {
-	Items       []bffclient.Item
-	Ingredients []bffclient.Ingredient
-	Units       []bffclient.Unit
-	Categories  []bffclient.Category
+	Items       []CatalogItem
+	Ingredients []CatalogIngredient
+	Units       []CatalogUnit
+	Categories  []CatalogCategory
 
-	itemIndex       map[string][]bffclient.Item
-	ingredientIndex map[string][]bffclient.Ingredient
-	unitByName      map[string]bffclient.Unit
-	unitByAbbr      map[string]bffclient.Unit
+	itemIndex       map[string][]CatalogItem
+	ingredientIndex map[string][]CatalogIngredient
+	unitByName      map[string]CatalogUnit
+	unitByAbbr      map[string]CatalogUnit
 	unitAliases     map[string]string // raw normalized form -> canonical unit name
 }
 
@@ -46,31 +97,36 @@ type MatchResult struct {
 }
 
 // NewCatalogSnapshot builds a snapshot with normalized lookup indexes.
-func NewCatalogSnapshot(c *bffclient.Catalog) *CatalogSnapshot {
+func NewCatalogSnapshot(catalog Catalog) *CatalogSnapshot {
+	items := catalog.Items()
+	ingredients := catalog.Ingredients()
+	units := catalog.Units()
+	categories := catalog.Categories()
+
 	s := &CatalogSnapshot{
-		Items:           c.Items,
-		Ingredients:     c.Ingredients,
-		Units:           c.Units,
-		Categories:      c.Categories,
-		itemIndex:       make(map[string][]bffclient.Item),
-		ingredientIndex: make(map[string][]bffclient.Ingredient),
-		unitByName:      make(map[string]bffclient.Unit),
-		unitByAbbr:      make(map[string]bffclient.Unit),
-		unitAliases:     buildUnitAliases(c.Units),
+		Items:           items,
+		Ingredients:     ingredients,
+		Units:           units,
+		Categories:      categories,
+		itemIndex:       make(map[string][]CatalogItem),
+		ingredientIndex: make(map[string][]CatalogIngredient),
+		unitByName:      make(map[string]CatalogUnit),
+		unitByAbbr:      make(map[string]CatalogUnit),
+		unitAliases:     buildUnitAliases(units),
 	}
 
-	for _, it := range c.Items {
-		key := NormalizeName(it.Name)
+	for _, it := range items {
+		key := NormalizeName(it.Name())
 		s.itemIndex[key] = append(s.itemIndex[key], it)
 	}
-	for _, in := range c.Ingredients {
-		key := NormalizeName(in.Name)
+	for _, in := range ingredients {
+		key := NormalizeName(in.Name())
 		s.ingredientIndex[key] = append(s.ingredientIndex[key], in)
 	}
-	for _, u := range c.Units {
-		s.unitByName[strings.ToLower(u.Name)] = u
-		if u.Abbreviation != "" {
-			s.unitByAbbr[strings.ToLower(u.Abbreviation)] = u
+	for _, u := range units {
+		s.unitByName[strings.ToLower(u.Name())] = u
+		if u.Abbreviation() != "" {
+			s.unitByAbbr[strings.ToLower(u.Abbreviation())] = u
 		}
 	}
 	return s
@@ -84,13 +140,13 @@ func (s *CatalogSnapshot) ItemCount() int { return len(s.Items) }
 
 // ResolveUnit turns a raw unit string into a canonical catalog unit. It uses a
 // static alias table and then matches lower-cased name or abbreviation.
-func (s *CatalogSnapshot) ResolveUnit(raw string) (bffclient.Unit, bool) {
+func (s *CatalogSnapshot) ResolveUnit(raw string) (CatalogUnit, bool) {
 	if raw == "" {
 		// Unquantified ingredients default to "each" if available.
 		if u, ok := s.unitByName["each"]; ok {
 			return u, true
 		}
-		return bffclient.Unit{}, false
+		return nil, false
 	}
 
 	clean := strings.ToLower(strings.TrimSpace(raw))
@@ -120,7 +176,7 @@ func (s *CatalogSnapshot) ResolveUnit(raw string) (bffclient.Unit, bool) {
 		}
 	}
 
-	return bffclient.Unit{}, false
+	return nil, false
 }
 
 // MatchItem maps a raw ingredient string to the catalog. It returns the best
@@ -141,8 +197,8 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 	if items, ok := s.itemIndex[query]; ok && len(items) > 0 {
 		it := items[0]
 		return MatchResult{
-			ItemID:     it.ID,
-			ItemName:   it.Name,
+			ItemID:     it.ID(),
+			ItemName:   it.Name(),
 			Confidence: 1.0,
 			Status:     "accepted",
 		}
@@ -153,11 +209,11 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		in := ings[0]
 		return MatchResult{
 			ItemID:      "",
-			ItemName:    in.Name,
+			ItemName:    in.Name(),
 			Confidence:  1.0,
 			Status:      "suggested",
-			Notes:       fmt.Sprintf("matched generic ingredient %s; create or choose a catalog item", in.ID),
-			Suggestions: []Suggestion{{ID: in.ID, Name: in.Name, Kind: "ingredient", Score: 1.0}},
+			Notes:       fmt.Sprintf("matched generic ingredient %s; create or choose a catalog item", in.ID()),
+			Suggestions: []Suggestion{{ID: in.ID(), Name: in.Name(), Kind: "ingredient", Score: 1.0}},
 		}
 	}
 
@@ -171,12 +227,12 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 	candidates := make([]scored, 0, len(s.Items)+len(s.Ingredients))
 
 	for _, it := range s.Items {
-		score := Similarity(raw, it.Name)
-		candidates = append(candidates, scored{it.ID, it.Name, "item", score})
+		score := Similarity(raw, it.Name())
+		candidates = append(candidates, scored{it.ID(), it.Name(), "item", score})
 	}
 	for _, in := range s.Ingredients {
-		score := Similarity(raw, in.Name)
-		candidates = append(candidates, scored{in.ID, in.Name, "ingredient", score})
+		score := Similarity(raw, in.Name())
+		candidates = append(candidates, scored{in.ID(), in.Name(), "ingredient", score})
 	}
 
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].score > candidates[j].score })
@@ -236,13 +292,13 @@ func (s *CatalogSnapshot) MapDraftItem(d DraftItem, autoAccept, reviewThreshold 
 		result.Notes += fmt.Sprintf("unknown unit %q", derefString(d.Unit))
 		return result
 	}
-	result.Unit = unit.Name
-	result.UnitID = unit.ID
+	result.Unit = unit.Name()
+	result.UnitID = unit.ID()
 
 	return result
 }
 
-func buildUnitAliases(units []bffclient.Unit) map[string]string {
+func buildUnitAliases(units []CatalogUnit) map[string]string {
 	aliases := map[string]string{
 		"tbs":   "tablespoon",
 		"tbsp":  "tablespoon",
@@ -263,9 +319,9 @@ func buildUnitAliases(units []bffclient.Unit) map[string]string {
 	}
 
 	for _, u := range units {
-		aliases[strings.ToLower(u.Name)] = u.Name
-		if u.Abbreviation != "" {
-			aliases[strings.ToLower(u.Abbreviation)] = u.Name
+		aliases[strings.ToLower(u.Name())] = u.Name()
+		if u.Abbreviation() != "" {
+			aliases[strings.ToLower(u.Abbreviation())] = u.Name()
 		}
 	}
 

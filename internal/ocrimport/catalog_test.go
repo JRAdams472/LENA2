@@ -3,25 +3,50 @@ package ocrimport
 import (
 	"testing"
 
-	"github.com/JRAdams472/LENA2/internal/platform/bffclient"
 	"github.com/stretchr/testify/assert"
 )
 
+type testUnit struct {
+	id           string
+	name         string
+	abbreviation string
+}
+
+func (u testUnit) ID() string           { return u.id }
+func (u testUnit) Name() string         { return u.name }
+func (u testUnit) Abbreviation() string { return u.abbreviation }
+
+type testItem struct {
+	id   string
+	name string
+}
+
+func (i testItem) ID() string   { return i.id }
+func (i testItem) Name() string { return i.name }
+
+type testIngredient struct {
+	id   string
+	name string
+}
+
+func (i testIngredient) ID() string   { return i.id }
+func (i testIngredient) Name() string { return i.name }
+
 func sampleCatalog() *CatalogSnapshot {
-	return NewCatalogSnapshot(&bffclient.Catalog{
-		Units: []bffclient.Unit{
-			{ID: "1", Name: "tablespoon", Abbreviation: "tbsp"},
-			{ID: "2", Name: "teaspoon", Abbreviation: "tsp"},
-			{ID: "3", Name: "cup", Abbreviation: "c"},
-			{ID: "4", Name: "ounce", Abbreviation: "oz"},
-			{ID: "5", Name: "each", Abbreviation: "ea"},
+	return NewCatalogSnapshot(&StaticCatalog{
+		UnitsField: []CatalogUnit{
+			testUnit{id: "1", name: "tablespoon", abbreviation: "tbsp"},
+			testUnit{id: "2", name: "teaspoon", abbreviation: "tsp"},
+			testUnit{id: "3", name: "cup", abbreviation: "c"},
+			testUnit{id: "4", name: "ounce", abbreviation: "oz"},
+			testUnit{id: "5", name: "each", abbreviation: "ea"},
 		},
-		Items: []bffclient.Item{
-			{ID: "10", Name: "All-Purpose Flour", Unit: "cup", Category: bffclient.Category{ID: "1", Name: "Baking"}},
-			{ID: "11", Name: "Unsalted Butter", Unit: "tablespoon", Category: bffclient.Category{ID: "2", Name: "Dairy"}},
+		ItemsField: []CatalogItem{
+			testItem{id: "10", name: "All-Purpose Flour"},
+			testItem{id: "11", name: "Unsalted Butter"},
 		},
-		Ingredients: []bffclient.Ingredient{
-			{ID: "20", Name: "Sugar", DefaultUnit: "cup"},
+		IngredientsField: []CatalogIngredient{
+			testIngredient{id: "20", name: "Sugar"},
 		},
 	})
 }
@@ -32,19 +57,19 @@ func TestResolveUnit(t *testing.T) {
 	t.Run("tablespoons plural", func(t *testing.T) {
 		u, ok := s.ResolveUnit("tablespoons")
 		assert.True(t, ok)
-		assert.Equal(t, "tablespoon", u.Name)
+		assert.Equal(t, "tablespoon", u.Name())
 	})
 
 	t.Run("abbreviation tbsp", func(t *testing.T) {
 		u, ok := s.ResolveUnit("tbsp")
 		assert.True(t, ok)
-		assert.Equal(t, "tablespoon", u.Name)
+		assert.Equal(t, "tablespoon", u.Name())
 	})
 
 	t.Run("empty unit defaults to each", func(t *testing.T) {
 		u, ok := s.ResolveUnit("")
 		assert.True(t, ok)
-		assert.Equal(t, "each", u.Name)
+		assert.Equal(t, "each", u.Name())
 	})
 
 	t.Run("unknown unit", func(t *testing.T) {

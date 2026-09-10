@@ -45,6 +45,12 @@ type Query {
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
   # Admin-only: paged list of all registered users.
   users(page: Int = 1, pageSize: Int = 25): UserPage!
+  # Admin-only: a single recipe import job.
+  recipeImport(id: ID!): RecipeImport
+  # Admin-only: paged list of recipe imports.
+  recipeImports(page: Int = 1, pageSize: Int = 25, status: String): RecipeImportPage!
+  # Admin-only: pending recipe imports for review.
+  pendingRecipeImports(page: Int = 1, pageSize: Int = 25): RecipeImportPage!
 }
 
 type Mutation {
@@ -103,10 +109,17 @@ type Mutation {
   # returns true once the job is queued, not once it finishes.
   submitItemNutritionPhoto(itemId: ID!, photoBase64: String!): Boolean!
 
-  # Accepts a base64-encoded recipe scan from an admin and writes it to the
-  # configured import inbox. Returns true once the file is written; the admin
-  # must then run the ocrimport CLI pipeline to produce the recipe.
-  submitRecipeScan(fileBase64: String!): Boolean!
+  # Accepts a base64-encoded recipe scan from an admin, writes it to the
+  # configured import inbox, and enqueues server-side OCR processing.
+  submitRecipeScan(fileBase64: String!): RecipeImport!
+  # Admin-only: update recipe metadata and ingredient mappings for review.
+  updateRecipeImport(id: ID!, input: RecipeImportReviewInput!): RecipeImport!
+  # Admin-only: persist an approved review as a catalog recipe.
+  approveRecipeImport(id: ID!): Recipe!
+  # Admin-only: reject a recipe import.
+  rejectRecipeImport(id: ID!): RecipeImport!
+  # Admin-only: retry a failed/profanity/rejected import.
+  retryRecipeImport(id: ID!): RecipeImport!
 
   createIngredient(input: CreateIngredientInput!): Ingredient!
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient!
@@ -772,4 +785,117 @@ input AddBottleFlavorProfileInput {
   bottleId: ID!
   flavorProfileId: ID!
   intensity: Int!
+}
+
+type RecipeImport {
+  id: ID!
+  status: String!
+  sourceFilename: String!
+  ocrText: String
+  draft: RecipeImportDraft
+  review: RecipeImportReview
+  recipe: Recipe
+  profanityFlag: Boolean!
+  profanityReason: String
+  errorMessage: String
+  createdAt: Time!
+  updatedAt: Time
+  createdBy: String!
+}
+
+type RecipeImportDraft {
+  name: String
+  description: String
+  servings: Int
+  prepTimeMinutes: Int
+  cookTimeMinutes: Int
+  items: [RecipeImportDraftItem!]!
+  steps: [RecipeImportDraftStep!]!
+  sourceHint: String
+}
+
+type RecipeImportDraftItem {
+  quantity: Float
+  unit: String
+  ingredient: String!
+  section: String
+  notes: String
+  isOptional: Boolean!
+}
+
+type RecipeImportDraftStep {
+  stepNumber: Int!
+  instruction: String!
+}
+
+type RecipeImportReview {
+  pageId: String
+  name: String
+  description: String
+  servings: Int
+  prepTimeMinutes: Int
+  cookTimeMinutes: Int
+  sourceHint: String
+  items: [RecipeImportReviewItem!]!
+  steps: [RecipeImportReviewStep!]!
+  approved: Boolean!
+}
+
+type RecipeImportReviewItem {
+  draftItem: RecipeImportDraftItem!
+  itemId: ID
+  itemName: String
+  unit: String
+  unitId: ID
+  confidence: Float!
+  suggestions: [RecipeImportSuggestion!]!
+  status: String!
+  notes: String
+  approved: Boolean!
+}
+
+type RecipeImportSuggestion {
+  id: ID!
+  name: String!
+  kind: String!
+  score: Float!
+}
+
+type RecipeImportReviewStep {
+  stepNumber: Int!
+  instruction: String!
+}
+
+type RecipeImportPage {
+  items: [RecipeImport!]!
+  pageInfo: PageInfo!
+}
+
+input RecipeImportReviewInput {
+  name: String
+  description: String
+  servings: Int
+  prepTimeMinutes: Int
+  cookTimeMinutes: Int
+  sourceHint: String
+  items: [RecipeImportReviewItemInput!]!
+  steps: [RecipeImportReviewStepInput!]!
+}
+
+input RecipeImportReviewItemInput {
+  ingredient: String!
+  quantity: Float
+  unit: String
+  section: String
+  notes: String
+  isOptional: Boolean!
+  itemId: ID
+  itemName: String
+  unitId: ID
+  approved: Boolean!
+}
+
+input RecipeImportReviewStepInput {
+  stepNumber: Int!
+  instruction: String!
 }

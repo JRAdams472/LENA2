@@ -29,9 +29,12 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
+	"github.com/JRAdams472/LENA2/internal/platform/ollamaclient"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
+	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/platform/telemetry"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -143,6 +146,21 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	wineSvc := wine.NewService(pool)
 	ocrClient := ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout)
 
+	var ollamaClient *ollamaclient.Client
+	if cfg.OllamaURL != "" {
+		ollamaClient = ollamaclient.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaTemperature, cfg.OllamaNumCtx)
+	}
+	profanityDetector := profanity.New(cfg.ProfanityExtraTerms)
+	recipeImportSvc := recipeimport.NewService(
+		pool,
+		ocrClient,
+		ollamaClient,
+		inventorySvc,
+		recipeSvc,
+		profanityDetector,
+		recipeimport.ConfigFromPlatform(&cfg),
+	)
+
 	authenticator := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
 		Audiences:   splitAndTrim(cfg.AuthAudiences),
@@ -227,7 +245,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), authenticator.Middleware())
 	}
 
-	resolver := bff.NewResolver(pool, analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc, ocrClient, cfg.NutritionPhotoMaxBytes, cfg.RecipeScanMaxBytes, cfg.ImportInbox)
+	resolver := bff.NewResolver(pool, analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc, recipeImportSvc, ocrClient, cfg.NutritionPhotoMaxBytes, cfg.RecipeScanMaxBytes, cfg.ImportInbox)
 	handler, err := bff.NewGraphQLHandler(resolver,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))
