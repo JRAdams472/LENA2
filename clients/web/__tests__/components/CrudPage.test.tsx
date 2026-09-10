@@ -115,7 +115,7 @@ describe("CrudPage", () => {
     renderPage({ updateFn });
 
     await waitFor(() => screen.getByText("Alpha"));
-    const editButtons = screen.getAllByRole("button", { name: "" });
+    const editButtons = screen.getAllByTestId("row-edit-button");
     fireEvent.click(editButtons[0]);
 
     const nameField = await screen.findByLabelText("Name");
@@ -137,9 +137,8 @@ describe("CrudPage", () => {
     renderPage({ deleteFn });
 
     await waitFor(() => screen.getByText("Alpha"));
-    const row = screen.getByText("Alpha").closest("tr")!;
-    const buttons = row.querySelectorAll("button");
-    fireEvent.click(buttons[buttons.length - 1]);
+    const deleteButtons = screen.getAllByTestId("row-delete-button");
+    fireEvent.click(deleteButtons[0]);
 
     await waitFor(() => expect(deleteFn).toHaveBeenCalledWith(rows[0], expect.anything()));
   });
@@ -150,9 +149,8 @@ describe("CrudPage", () => {
     renderPage({ deleteFn });
 
     await waitFor(() => screen.getByText("Alpha"));
-    const row = screen.getByText("Alpha").closest("tr")!;
-    const buttons = row.querySelectorAll("button");
-    fireEvent.click(buttons[buttons.length - 1]);
+    const deleteButtons = screen.getAllByTestId("row-delete-button");
+    fireEvent.click(deleteButtons[0]);
 
     expect(window.confirm).toHaveBeenCalled();
     expect(deleteFn).not.toHaveBeenCalled();
@@ -164,9 +162,8 @@ describe("CrudPage", () => {
     });
 
     await waitFor(() => screen.getByText("Alpha"));
-    const row = screen.getByText("Alpha").closest("tr")!;
-    const buttons = row.querySelectorAll("button");
-    fireEvent.click(buttons[buttons.length - 1]);
+    const deleteButtons = screen.getAllByTestId("row-delete-button");
+    fireEvent.click(deleteButtons[0]);
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("delete failed")
