@@ -14,15 +14,16 @@ import (
 // Status describes where a source page is in the import pipeline.
 type Status string
 
+// Page status values used by the work queue.
 const (
-	StatusPending    Status = "pending"
-	StatusOCR        Status = "ocred"
-	StatusDraft      Status = "drafted"
-	StatusReview     Status = "reviewing"
-	StatusReady      Status = "ready"
-	StatusPersisted  Status = "persisted"
-	StatusFailed     Status = "failed"
-	StatusRejected   Status = "rejected"
+	StatusPending   Status = "pending"
+	StatusOCR       Status = "ocred"
+	StatusDraft     Status = "drafted"
+	StatusReview    Status = "reviewing"
+	StatusReady     Status = "ready"
+	StatusPersisted Status = "persisted"
+	StatusFailed    Status = "failed"
+	StatusRejected  Status = "rejected"
 )
 
 // Page is one source recipe page and its progress through the pipeline.
@@ -47,7 +48,7 @@ type Queue struct {
 
 // Open loads or creates a queue at the given work directory.
 func Open(workDir string) (*Queue, error) {
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(workDir, 0o750); err != nil {
 		return nil, fmt.Errorf("create work dir: %w", err)
 	}
 	q := &Queue{
@@ -82,7 +83,7 @@ func (q *Queue) Add(sourcePath string) (string, error) {
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	if err := os.MkdirAll(page.WorkDir, 0o755); err != nil {
+	if err := os.MkdirAll(page.WorkDir, 0o750); err != nil {
 		return "", fmt.Errorf("create page dir: %w", err)
 	}
 	q.pages = append(q.pages, page)
@@ -133,7 +134,7 @@ func (q *Queue) saveLocked() error {
 	if err != nil {
 		return fmt.Errorf("marshal queue: %w", err)
 	}
-	if err := os.WriteFile(q.path, data, 0o644); err != nil {
+	if err := os.WriteFile(q.path, data, 0o600); err != nil {
 		return fmt.Errorf("write queue: %w", err)
 	}
 	return nil
