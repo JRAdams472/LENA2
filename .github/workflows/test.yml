@@ -81,6 +81,21 @@ jobs:
           version: v2.13.2
           args: ./cmd/... ./internal/...
 
+  ocr-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build ocrimport
+        run: go build ./cmd/ocrimport
+
+      - name: OCR import unit tests
+        run: go test ./cmd/ocrimport/... ./internal/ocrimport/... ./internal/platform/ollamaclient/... ./internal/platform/bffclient/...
+
   web:
     runs-on: ubuntu-latest
     steps:
