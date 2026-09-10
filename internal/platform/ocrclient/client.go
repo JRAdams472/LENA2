@@ -68,7 +68,7 @@ func New(baseURL string, timeout time.Duration) *Client {
 // ExtractText POSTs the image to /ocr and returns the extracted text.
 // It is the simple interface used by the existing nutrition-label OCR flow.
 func (c *Client) ExtractText(ctx context.Context, image []byte) (string, error) {
-	res, err := c.ExtractTextResult(ctx, image)
+	res, err := c.ExtractTextResult(ctx, image, "image.jpg")
 	if err != nil {
 		return "", err
 	}
@@ -76,11 +76,15 @@ func (c *Client) ExtractText(ctx context.Context, image []byte) (string, error) 
 }
 
 // ExtractTextResult POSTs the image to /ocr and returns the full structured
-// OCR result. It is used by the recipe import pipeline.
-func (c *Client) ExtractTextResult(ctx context.Context, image []byte) (*Result, error) {
+// OCR result. It is used by the recipe import pipeline. filename is sent as
+// the multipart filename so the service can detect PDFs by extension.
+func (c *Client) ExtractTextResult(ctx context.Context, image []byte, filename string) (*Result, error) {
+	if filename == "" {
+		filename = "image.jpg"
+	}
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	part, err := w.CreateFormFile("image", "image.jpg")
+	part, err := w.CreateFormFile("image", filename)
 	if err != nil {
 		return nil, fmt.Errorf("create form file: %w", err)
 	}
