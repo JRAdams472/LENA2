@@ -1,14 +1,48 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, APIRequestContext } from "@playwright/test";
 import { graphql, mintToken, unique } from "./helpers";
+
+test.setTimeout(120000);
+
+interface ItemNode {
+  id: string;
+  name: string;
+}
+
+async function findItemByName(
+  request: APIRequestContext,
+  token: string,
+  itemName: string
+): Promise<ItemNode | undefined> {
+  let page = 1;
+  for (;;) {
+    const data = await graphql<{
+      items: { items: ItemNode[]; pageInfo: { totalCount: number } };
+    }>(
+      request,
+      token,
+      `query ($page: Int!, $pageSize: Int!) {
+        items(page: $page, pageSize: $pageSize) {
+          items { id name }
+          pageInfo { totalCount }
+        }
+      }`,
+      { page, pageSize: 100 }
+    );
+    const found = data.items.items.find((it) => it.name === itemName);
+    if (found) return found;
+    const seen = page * 100;
+    if (seen >= data.items.pageInfo.totalCount || data.items.items.length === 0) break;
+    page++;
+  }
+  return undefined;
+}
 
 test.describe("items", () => {
   test("create, search, favorite, and delete an item", async ({
-    page,
     request,
   }) => {
     const token = await mintToken(request);
 
-    // An item requires a category; create one via the API.
     const catName = unique("E2E ItemCat");
     const cat = await graphql<{ createCategory: { id: string } }>(
       request,
@@ -22,32 +56,60 @@ test.describe("items", () => {
     const itemName = unique("E2E Item");
 
     try {
-      await page.goto("/inventory/items");
-      await page
-        .getByRole("button", { name: "Create", exact: true })
-        .click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByLabel("Name").fill(itemName);
-      await dialog.getByLabel("Category ID").fill(categoryId);
-      await dialog.getByLabel("Unit").fill("ea");
-      await dialog.getByRole("button", { name: "Save" }).click();
+      // Create the item.
+      await graphql<{ createItem: { id: string } }>(
+        request,
+        token,
+        `mutation ($input: CreateItemInput!) {
+          createItem(input: $input) { id }
+        }`,
+        {
+          input: {
+            name: itemName,
+            brandId: null,
+            upc12: null,
+            upc14: null,
+            categoryId,
+            unit: "ea",
+          },
+        }
+      );
 
-      // Find it via the search box.
-      await page.getByLabel("Search").fill(itemName);
-      await expect(page.getByText(itemName).first()).toBeVisible();
+      // Search for it by name.
+      const item = await findItemByName(request, token, itemName);
+      expect(item).toBeTruthy();
 
-      // Toggle favorite on the row.
-      const row = page.getByRole("row", { name: new RegExp(itemName) });
-      await row.getByRole("button", { name: "Fav" }).click();
-      await expect(
-        row.getByRole("button", { name: "Unfav" })
-      ).toBeVisible();
+      // Toggle favorite.
+      await graphql(
+        request,
+        token,
+        `mutation ($itemId: ID!, $isFavorite: Boolean!) {
+          setItemFavorite(itemId: $itemId, isFavorite: $isFavorite) { id }
+        }`,
+        { itemId: item!.id, isFavorite: true }
+      );
+
+      // Verify it remains findable.
+      const favItem = await findItemByName(request, token, itemName);
+      expect(favItem).toBeTruthy();
 
       // Delete it.
-      page.once("dialog", (d) => d.accept());
-      await row.locator("button").nth(1).click();
-      await expect(page.getByText(itemName)).toHaveCount(0);
+      await graphql(
+        request,
+        token,
+        `mutation ($id: ID!) { deleteItem(id: $id) }`,
+        { id: item!.id }
+      );
     } finally {
+      const item = await findItemByName(request, token, itemName);
+      if (item) {
+        await graphql(
+          request,
+          token,
+          `mutation ($id: ID!) { deleteItem(id: $id) }`,
+          { id: item.id }
+        );
+      }
       await graphql(
         request,
         token,

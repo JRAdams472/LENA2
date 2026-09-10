@@ -3,13 +3,18 @@ package testenv
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -19,10 +24,17 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 )
 
+func ensureWindowsDockerHost() {
+	if runtime.GOOS == "windows" && os.Getenv("DOCKER_HOST") == "" {
+		_ = os.Setenv("DOCKER_HOST", "npipe:////./pipe/docker_engine")
+	}
+}
+
 // NewTestDB starts a PostgreSQL 16 container, applies all migrations, and
 // returns a connection pool and a terminate callback. Callers are responsible
 // for calling the returned cleanup function.
 func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error) {
+	ensureWindowsDockerHost()
 	// postgres logs "ready to accept connections" twice: once during initdb
 	// bootstrap and once after the real startup. Wait for the second
 	// occurrence plus the port, otherwise the first connection hits EOF.
@@ -151,6 +163,11 @@ func repoRoot() (string, error) {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..")), nil
 }
 
+var (
+	copySyntaxRE = regexp.MustCompile(`^\\copy\s+(\S+)\s+\(([^)]+)\)\s+FROM\s+'([^']+)'\s+WITH\s+\(([^)]+)\)\s*;?`)
+	copyLineRE   = regexp.MustCompile(`(?m)^\\copy\s+.*?;`)
+)
+
 func execFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
 	path = filepath.Clean(path)
 	// #nosec G304 -- migration paths are globbed from the repo's migrations/ directory.
@@ -158,6 +175,123 @@ func execFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
 	if err != nil {
 		return err
 	}
-	_, err = pool.Exec(ctx, string(content))
-	return err
+
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+
+	text := string(content)
+	last := 0
+	for _, loc := range copyLineRE.FindAllStringIndex(text, -1) {
+		if loc[0] > last {
+			stmt := strings.TrimSpace(text[last:loc[0]])
+			if stmt != "" {
+				if _, err := pool.Exec(ctx, stmt); err != nil {
+					return err
+				}
+			}
+		}
+		if err := runCopy(ctx, pool, root, text[loc[0]:loc[1]]); err != nil {
+			return err
+		}
+		last = loc[1]
+	}
+
+	if last < len(text) {
+		stmt := strings.TrimSpace(text[last:])
+		if stmt != "" {
+			if _, err := pool.Exec(ctx, stmt); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
+
+func runCopy(ctx context.Context, pool *pgxpool.Pool, root, stmt string) error {
+	m := copySyntaxRE.FindStringSubmatch(stmt)
+	if m == nil {
+		return fmt.Errorf("unsupported \\copy syntax: %s", stmt)
+	}
+
+	tableName := m[1]
+	columns := strings.Split(m[2], ",")
+	for i := range columns {
+		columns[i] = strings.TrimSpace(columns[i])
+	}
+	filePath := m[3]
+	options := strings.ToLower(m[4])
+
+	// Map Docker container path to repo-local path.
+	if strings.HasPrefix(filePath, "/seed/") {
+		filePath = filepath.Join(root, "migrations", "seed", strings.TrimPrefix(filePath, "/seed/"))
+	} else if !filepath.IsAbs(filePath) {
+		filePath = filepath.Join(root, filePath)
+	}
+
+	cf, err := os.Open(filepath.Clean(filePath))
+	if err != nil {
+		return fmt.Errorf("open copy source %s: %w", filePath, err)
+	}
+	defer func() { _ = cf.Close() }()
+
+	r := csv.NewReader(cf)
+	if strings.Contains(options, "header") {
+		if _, err := r.Read(); err != nil {
+			return fmt.Errorf("skip csv header: %w", err)
+		}
+	}
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	src := &csvCopySource{reader: r, columns: columns}
+	_, err = conn.CopyFrom(ctx, pgx.Identifier{tableName}, columns, src)
+	if err != nil {
+		return fmt.Errorf("copy from %s: %w", filePath, err)
+	}
+	return nil
+}
+
+type csvCopySource struct {
+	reader  *csv.Reader
+	columns []string
+	record  []string
+	err     error
+}
+
+func (s *csvCopySource) Next() bool {
+	if s.err != nil {
+		return false
+	}
+	rec, err := s.reader.Read()
+	if err != nil {
+		if err == io.EOF {
+			return false
+		}
+		s.err = err
+		return false
+	}
+	s.record = rec
+	return true
+}
+
+func (s *csvCopySource) Values() ([]interface{}, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if len(s.record) < len(s.columns) {
+		return nil, fmt.Errorf("csv row has %d fields, expected at least %d", len(s.record), len(s.columns))
+	}
+	values := make([]interface{}, len(s.columns))
+	for i := range s.columns {
+		values[i] = strings.TrimSpace(s.record[i])
+	}
+	return values, nil
+}
+
+func (s *csvCopySource) Err() error { return s.err }

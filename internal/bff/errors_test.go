@@ -63,8 +63,8 @@ func TestSanitizeQueryErrors(t *testing.T) {
 func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	inv := mock.NewMockInventoryService(ctrl)
-	inv.EXPECT().ListBrands(gomock.Any()).
-		Return(nil, errors.New(`list brands: ERROR: relation "inventory.brand" does not exist (SQLSTATE 42P01)`))
+	inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(1)).
+		Return(nil, errors.New(`list brands visible: ERROR: relation "inventory.brand" does not exist (SQLSTATE 42P01)`))
 
 	r := &Resolver{InventoryService: inv}
 	h, err := NewGraphQLHandler(r)

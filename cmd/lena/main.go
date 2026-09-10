@@ -28,6 +28,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
+	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
 	"github.com/JRAdams472/LENA2/internal/platform/telemetry"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -136,6 +137,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	recipeSvc := recipe.NewService(pool)
 	userPrefsSvc := userprefs.NewService(pool)
 	wineSvc := wine.NewService(pool)
+	ocrClient := ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout)
 
 	authenticator := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
@@ -221,7 +223,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), authenticator.Middleware())
 	}
 
-	resolver := bff.NewResolver(pool, analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc)
+	resolver := bff.NewResolver(pool, analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc, ocrClient, cfg.NutritionPhotoMaxBytes)
 	handler, err := bff.NewGraphQLHandler(resolver,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))

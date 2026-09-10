@@ -92,9 +92,16 @@ type IdentityUser struct {
 }
 
 type InventoryBrand struct {
-	BrandID   int64     `json:"brand_id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	BrandID           int64              `json:"brand_id"`
+	Name              string             `json:"name"`
+	CreatedAt         time.Time          `json:"created_at"`
+	CreatedBy         string             `json:"created_by"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	Status            string             `json:"status"`
+	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
+	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
+	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
 }
 
 type InventoryCategory struct {
@@ -162,6 +169,8 @@ type InventoryItem struct {
 	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
 	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
 	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
+	NetWeight         pgtype.Numeric     `json:"net_weight"`
+	IsMetric          bool               `json:"is_metric"`
 }
 
 type InventoryNutrientType struct {

@@ -1,6 +1,14 @@
 -- name: CreateBrand :one
-INSERT INTO inventory.brand (name)
-VALUES ($1)
+-- Admin-only fast path: brand is immediately approved.
+INSERT INTO inventory.brand (name, status, created_by, updated_by)
+VALUES ($1, 'approved', $2, $2)
+RETURNING *;
+
+-- name: CreateBrandPending :one
+-- User-submitted brand: starts pending, visible only to the submitter
+-- until an admin approves it.
+INSERT INTO inventory.brand (name, status, submitted_by_user_id, created_by, updated_by)
+VALUES ($1, 'pending', $2, $3, $3)
 RETURNING *;
 
 -- name: GetBrandByID :one
@@ -8,10 +16,55 @@ SELECT *
 FROM inventory.brand
 WHERE brand_id = $1;
 
+-- name: FindBrandByNormalizedName :one
+-- Special characters (apostrophes, periods, etc.) and case are ignored so
+-- "Bush", "Bushs", and "Bush's" all match the same brand.
+SELECT *
+FROM inventory.brand
+WHERE lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
+    = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'));
+
+-- name: SearchBrands :many
+SELECT *
+FROM inventory.brand
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
+      LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
+ORDER BY name
+LIMIT $3;
+
 -- name: ListBrands :many
 SELECT *
 FROM inventory.brand
 ORDER BY name;
+
+-- name: ListBrandsVisible :many
+-- Brands are visible when approved, or when the caller submitted them.
+SELECT *
+FROM inventory.brand
+WHERE status = 'approved' OR submitted_by_user_id = $1
+ORDER BY name;
+
+-- name: ListPendingBrands :many
+SELECT *
+FROM inventory.brand
+WHERE status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2;
+
+-- name: CountPendingBrands :one
+SELECT COUNT(*)
+FROM inventory.brand
+WHERE status = 'pending';
+
+-- name: SetBrandStatus :exec
+UPDATE inventory.brand
+SET status              = $2,
+    approved_by_user_id = $3,
+    approved_at         = $4,
+    updated_by          = $5,
+    updated_at          = now()
+WHERE brand_id = $1;
 
 -- name: CreateCategory :one
 INSERT INTO inventory.category (name, description, is_active, created_by, updated_by)
@@ -33,14 +86,19 @@ SELECT *
 FROM inventory.nutrient_type
 WHERE nutrient_id = $1;
 
+-- name: GetNutrientTypeByName :one
+SELECT *
+FROM inventory.nutrient_type
+WHERE lower(name) = lower($1);
+
 -- name: ListCategories :many
 SELECT *
 FROM inventory.category
 ORDER BY name;
 
 -- name: CreateItem :one
-INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, status, submitted_by_user_id, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, status, submitted_by_user_id, created_by, updated_by, net_weight, is_metric)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetItemByID :one
@@ -99,7 +157,13 @@ SET name        = $2,
     category_id = $6,
     unit_id     = $7,
     updated_by  = $8,
-    updated_at  = now()
+    updated_at  = now(),
+    net_weight  = $9,
+    is_metric   = $10
+WHERE item_id = $1;
+
+-- name: DeleteUserItemsByItem :exec
+DELETE FROM inventory.user_item
 WHERE item_id = $1;
 
 -- name: DeleteItem :exec
@@ -205,7 +269,7 @@ WHERE food_id = $1 AND flavor_id = $2;
 UPDATE inventory.brand
 SET name = $2
 WHERE brand_id = $1
-RETURNING brand_id, name, created_at;
+RETURNING *;
 
 -- name: DeleteBrand :exec
 DELETE FROM inventory.brand

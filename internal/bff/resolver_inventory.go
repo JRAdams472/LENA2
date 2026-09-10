@@ -42,13 +42,14 @@ func brandResolverWithCounts(b inventory.Brand, p countPair) *brandResolver {
 	return &brandResolver{b: b, globalCount: p.global, personalCount: p.personal}
 }
 
-// Brands resolves all catalog brands.
+// Brands resolves catalog brands visible to the caller: approved brands plus
+// any pending brands the caller submitted.
 func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	brands, err := r.InventoryService.ListBrands(ctx)
+	brands, err := r.InventoryService.ListBrandsVisible(ctx, u.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +66,108 @@ func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
 		out[i] = brandResolverWithCounts(b, ch.brandCounts[b.BrandID])
 	}
 	return out, nil
+}
+
+// SearchBrands returns brands visible to the caller whose normalized name
+// contains the search term.
+func (r *Resolver) SearchBrands(ctx context.Context, args struct {
+	Term  string
+	Limit int32
+}) ([]*brandResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	limit := clamp(args.Limit, 1, 50)
+	if limit == 0 {
+		limit = 20
+	}
+	term := strings.TrimSpace(args.Term)
+	if term == "" {
+		return nil, nil
+	}
+	brands, err := r.InventoryService.SearchBrands(ctx, term, u.UserID, limit)
+	if err != nil {
+		return nil, err
+	}
+	brandIDs := make([]int64, len(brands))
+	for i, b := range brands {
+		brandIDs[i] = b.BrandID
+	}
+	ch := &itemChildren{brandCounts: make(map[int64]countPair)}
+	if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, brandIDs, ch); err != nil {
+		return nil, err
+	}
+	out := make([]*brandResolver, len(brands))
+	for i, b := range brands {
+		out[i] = brandResolverWithCounts(b, ch.brandCounts[b.BrandID])
+	}
+	return out, nil
+}
+
+// SubmitBrand creates a new pending brand on behalf of the current user, or
+// returns an existing brand whose normalized name matches.
+func (r *Resolver) SubmitBrand(ctx context.Context, args struct{ Input createBrandInput }) (*brandResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.SubmitBrand(ctx, strings.TrimSpace(args.Input.Name), u.UserID, u.Email)
+	if err != nil {
+		return nil, brandWriteError(err)
+	}
+	return &brandResolver{b: b}, nil
+}
+
+// PendingBrands resolves the admin queue of user-submitted brands awaiting
+// approval, oldest first.
+func (r *Resolver) PendingBrands(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*brandPageResolver, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	brands, err := r.InventoryService.ListPendingBrands(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.InventoryService.CountPendingBrands(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &brandPageResolver{brands: brands, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// ApproveBrand marks a pending brand approved.
+func (r *Resolver) ApproveBrand(ctx context.Context, args struct{ ID graphql.ID }) (*brandResolver, error) {
+	return r.setBrandStatus(ctx, args.ID, inventory.BrandStatusApproved)
+}
+
+// RejectBrand marks a pending brand rejected.
+func (r *Resolver) RejectBrand(ctx context.Context, args struct{ ID graphql.ID }) (*brandResolver, error) {
+	return r.setBrandStatus(ctx, args.ID, inventory.BrandStatusRejected)
+}
+
+func (r *Resolver) setBrandStatus(ctx context.Context, id graphql.ID, status string) (*brandResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	brandID, err := parseID(string(id))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.InventoryService.SetBrandStatus(ctx, brandID, status, u.UserID, u.Email); err != nil {
+		return nil, err
+	}
+	b, err := r.InventoryService.GetBrandByID(ctx, brandID)
+	if err != nil {
+		return nil, err
+	}
+	return &brandResolver{b: b}, nil
 }
 
 // FrequentBrands returns the top brands for the current user, blended with
@@ -352,12 +455,13 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	return &itemPageResolver{inv: r.InventoryService, items: items, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
-// CreateBrand adds a new brand.
+// CreateBrand adds a new approved brand (admin fast path).
 func (r *Resolver) CreateBrand(ctx context.Context, args struct{ Input createBrandInput }) (*brandResolver, error) {
-	if _, err := requireAdmin(ctx); err != nil {
+	u, err := requireAdmin(ctx)
+	if err != nil {
 		return nil, err
 	}
-	b, err := r.InventoryService.CreateBrand(ctx, args.Input.Name)
+	b, err := r.InventoryService.CreateBrand(ctx, args.Input.Name, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -653,6 +757,10 @@ func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItem
 	if err != nil {
 		return nil, err
 	}
+	netWeight, isMetric, err := parseNetWeightInput(args.Input.NetWeight, args.Input.IsMetric)
+	if err != nil {
+		return nil, err
+	}
 	it, err := r.InventoryService.CreateItem(ctx, inventory.Item{
 		Name:       args.Input.Name,
 		BrandID:    brandID,
@@ -660,6 +768,8 @@ func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItem
 		Upc14:      derefString(args.Input.Upc14),
 		CategoryID: catID,
 		UnitID:     unitID,
+		NetWeight:  netWeight,
+		IsMetric:   isMetric,
 	}, u.Email)
 	if err != nil {
 		return nil, itemWriteError(err)
@@ -749,6 +859,10 @@ func (r *Resolver) SubmitItem(ctx context.Context, args struct{ Input createItem
 	if err != nil {
 		return nil, err
 	}
+	netWeight, isMetric, err := parseNetWeightInput(args.Input.NetWeight, args.Input.IsMetric)
+	if err != nil {
+		return nil, err
+	}
 	it, err := r.InventoryService.SubmitItem(ctx, inventory.Item{
 		Name:       args.Input.Name,
 		BrandID:    brandID,
@@ -756,6 +870,8 @@ func (r *Resolver) SubmitItem(ctx context.Context, args struct{ Input createItem
 		Upc14:      derefString(args.Input.Upc14),
 		CategoryID: catID,
 		UnitID:     unitID,
+		NetWeight:  netWeight,
+		IsMetric:   isMetric,
 	}, u.UserID, u.Email)
 	if err != nil {
 		return nil, itemWriteError(err)
@@ -866,12 +982,39 @@ func canModifyItem(it inventory.Item, u currentuser.User) bool {
 		it.SubmittedByUserID != nil && *it.SubmittedByUserID == u.UserID
 }
 
+// parseNetWeightInput validates and normalizes the net weight fields from a
+// create/update item input. Both fields are optional; a missing or zero weight
+// is stored as NULL.
+func parseNetWeightInput(netWeight *float64, isMetric *bool) (*float64, bool, error) {
+	metric := false
+	if isMetric != nil {
+		metric = *isMetric
+	}
+	if netWeight == nil || *netWeight == 0 {
+		return nil, metric, nil
+	}
+	if *netWeight < 0 {
+		return nil, false, badInputf("netWeight must be non-negative")
+	}
+	return netWeight, metric, nil
+}
+
 // itemWriteError maps a service-layer write failure to a client-safe error:
 // unique violations (duplicate name+brand or UPC) become BAD_USER_INPUT.
 func itemWriteError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return badInputf("an item with that name, brand or barcode already exists")
+	}
+	return err
+}
+
+// brandWriteError maps a service-layer brand write failure to a client-safe
+// error: unique name violations become BAD_USER_INPUT.
+func brandWriteError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return badInputf("a brand with that name already exists")
 	}
 	return err
 }
@@ -1037,6 +1180,17 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 	if args.Input.Upc14 != nil {
 		upc14 = *args.Input.Upc14
 	}
+	netWeight := existing.NetWeight
+	isMetric := existing.IsMetric
+	if args.Input.NetWeight != nil {
+		if *args.Input.NetWeight <= 0 {
+			return nil, badInputf("netWeight must be greater than zero")
+		}
+		netWeight = args.Input.NetWeight
+	}
+	if args.Input.IsMetric != nil {
+		isMetric = *args.Input.IsMetric
+	}
 	if err := r.InventoryService.UpdateItem(ctx, id, inventory.Item{
 		Name:       name,
 		BrandID:    brandID,
@@ -1044,6 +1198,8 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 		Upc14:      upc14,
 		CategoryID: categoryID,
 		UnitID:     unitID,
+		NetWeight:  netWeight,
+		IsMetric:   isMetric,
 	}, u.Email); err != nil {
 		return nil, err
 	}
@@ -1204,6 +1360,10 @@ func (r *itemResolver) SubmittedByMe(ctx context.Context) bool {
 	return ok && *r.it.SubmittedByUserID == u.UserID
 }
 
+func (r *itemResolver) NetWeight() *float64 { return r.it.NetWeight }
+
+func (r *itemResolver) IsMetric() bool { return r.it.IsMetric }
+
 // requireItemModifiable loads the item and returns errForbidden unless the
 // user may edit it (admin, or submitter of a still-pending item).
 func (r *Resolver) requireItemModifiable(ctx context.Context, itemID int64, u currentuser.User) error {
@@ -1229,6 +1389,16 @@ func (r *brandResolver) Name() string { return r.b.Name }
 
 func (r *brandResolver) SelectionCount() int32         { return int64ToInt32(r.globalCount) }
 func (r *brandResolver) PersonalSelectionCount() int32 { return int64ToInt32(r.personalCount) }
+
+func (r *brandResolver) Status() string { return r.b.Status }
+
+func (r *brandResolver) SubmittedByMe(ctx context.Context) bool {
+	if r.b.SubmittedByUserID == nil {
+		return false
+	}
+	u, ok := currentuser.FromContext(ctx)
+	return ok && *r.b.SubmittedByUserID == u.UserID
+}
 
 type categoryResolver struct{ c inventory.Category }
 
@@ -1308,6 +1478,25 @@ func (r *itemPageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 
+type brandPageResolver struct {
+	brands   []inventory.Brand
+	page     int32
+	pageSize int32
+	total    int32
+}
+
+func (r *brandPageResolver) Items() []*brandResolver {
+	out := make([]*brandResolver, len(r.brands))
+	for i := range r.brands {
+		out[i] = &brandResolver{b: r.brands[i]}
+	}
+	return out
+}
+
+func (r *brandPageResolver) PageInfo() *pageInfoResolver {
+	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
+}
+
 // Inputs map directly to the GraphQL input types.
 type createBrandInput struct {
 	Name string
@@ -1334,6 +1523,8 @@ type createItemInput struct {
 	Upc14      *string
 	CategoryID graphql.ID
 	Unit       string
+	NetWeight  *float64
+	IsMetric   *bool
 }
 
 type updateItemInput struct {
@@ -1343,6 +1534,8 @@ type updateItemInput struct {
 	Upc14      *string
 	CategoryID *graphql.ID
 	Unit       *string
+	NetWeight  *float64
+	IsMetric   *bool
 }
 
 type addFoodNutrientInput struct {

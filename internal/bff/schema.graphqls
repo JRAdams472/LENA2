@@ -5,6 +5,8 @@ type Query {
   me: User!
   brand(id: ID!): Brand
   brands: [Brand!]!
+  searchBrands(term: String!, limit: Int = 20): [Brand!]!
+  pendingBrands(page: Int = 1, pageSize: Int = 25): BrandPage!
   frequentBrands(limit: Int = 10): [Brand!]!
   category(id: ID!): Category
   categories: [Category!]!
@@ -47,8 +49,11 @@ type Query {
 
 type Mutation {
   createBrand(input: CreateBrandInput!): Brand!
+  submitBrand(input: CreateBrandInput!): Brand!
   updateBrand(id: ID!, input: UpdateBrandInput!): Brand!
   deleteBrand(id: ID!): Boolean!
+  approveBrand(id: ID!): Brand!
+  rejectBrand(id: ID!): Brand!
   createCategory(input: CreateCategoryInput!): Category!
   updateCategory(id: ID!, input: UpdateCategoryInput!): Category!
   deleteCategory(id: ID!): Boolean!
@@ -94,6 +99,9 @@ type Mutation {
   # single write path for nutrition data — the manual entry form and a
   # future label-scan/OCR pipeline both feed it.
   setItemNutrients(itemId: ID!, entries: [ItemNutrientEntryInput!]!): Item!
+  # Kicks off server-side OCR + nutrient extraction in the background;
+  # returns true once the job is queued, not once it finishes.
+  submitItemNutritionPhoto(itemId: ID!, photoBase64: String!): Boolean!
 
   createIngredient(input: CreateIngredientInput!): Ingredient!
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient!
@@ -192,6 +200,13 @@ type Brand {
   name: String!
   selectionCount: Int!
   personalSelectionCount: Int!
+  status: String!
+  submittedByMe: Boolean!
+}
+
+type BrandPage {
+  items: [Brand!]!
+  pageInfo: PageInfo!
 }
 
 type FlavorProfile {
@@ -233,6 +248,8 @@ type Item {
   status: String!
   # True when the current user submitted this (pending) item.
   submittedByMe: Boolean!
+  netWeight: Float
+  isMetric: Boolean!
 }
 
 input ItemNutrientEntryInput {
@@ -605,6 +622,8 @@ input CreateItemInput {
   upc14: String
   categoryId: ID!
   unit: String!
+  netWeight: Float
+  isMetric: Boolean
 }
 
 input CreateRecipeInput {
@@ -640,6 +659,8 @@ input UpdateItemInput {
   upc14: String
   categoryId: ID
   unit: String
+  netWeight: Float
+  isMetric: Boolean
 }
 
 input CreateMealPlanInput {

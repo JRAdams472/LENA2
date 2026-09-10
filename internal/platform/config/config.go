@@ -51,13 +51,20 @@ type Config struct {
 	// (echo BodyLimit syntax, e.g. "64K"). The query-length limit above
 	// applies to the query string inside the body, this applies to the
 	// whole payload before it is read.
-	GraphQLBodyLimit string `envconfig:"GRAPHQL_BODY_LIMIT" default:"64K"`
+	GraphQLBodyLimit string `envconfig:"GRAPHQL_BODY_LIMIT" default:"4M"`
 	// HTTP server timeouts. Without them the server is exposed to
 	// slowloris-style connection exhaustion.
 	HTTPReadHeaderTimeout time.Duration `envconfig:"HTTP_READ_HEADER_TIMEOUT" default:"5s"`
 	HTTPReadTimeout       time.Duration `envconfig:"HTTP_READ_TIMEOUT" default:"15s"`
 	HTTPWriteTimeout      time.Duration `envconfig:"HTTP_WRITE_TIMEOUT" default:"30s"`
 	HTTPIdleTimeout       time.Duration `envconfig:"HTTP_IDLE_TIMEOUT" default:"60s"`
+	// OCRServiceURL is the base URL of the OCR microservice.
+	OCRServiceURL string `envconfig:"OCR_SERVICE_URL" default:"http://ocr:8000"`
+	// OCRTimeout caps the call to the OCR service.
+	OCRTimeout time.Duration `envconfig:"OCR_TIMEOUT" default:"20s"`
+	// NutritionPhotoMaxBytes is the maximum decoded image size accepted by
+	// submitItemNutritionPhoto.
+	NutritionPhotoMaxBytes int `envconfig:"NUTRITION_PHOTO_MAX_BYTES" default:"6291456"`
 }
 
 // Load reads configuration from environment variables.

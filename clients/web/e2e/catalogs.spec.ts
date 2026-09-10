@@ -93,8 +93,8 @@ async function createViaDialog(page: Page, fields: FieldFill[]) {
 
 async function deleteRow(page: Page, text: string) {
   page.once("dialog", (d) => d.accept());
-  const row = page.getByRole("row", { name: new RegExp(text) }).first();
-  await row.locator("button").last().click();
+  const row = page.getByRole("row").filter({ hasText: text }).first();
+  await row.getByRole("button", { name: "Delete" }).click();
 }
 
 for (const catalog of catalogs) {
@@ -142,6 +142,26 @@ test("catalog CRUD: Regions (needs a country)", async ({
     await deleteRow(page, regionName);
     await expect(page.getByText(regionName)).toHaveCount(0);
   } finally {
+    // Clean up the region before deleting its country.
+    const regions = await graphql<{
+      regions: { id: string; name: string }[];
+    }>(
+      request,
+      token,
+      `query ($countryId: ID!) {
+        regions(countryId: $countryId) { id name }
+      }`,
+      { countryId }
+    );
+    const region = regions.regions.find((r) => r.name === regionName);
+    if (region) {
+      await graphql(
+        request,
+        token,
+        `mutation ($id: ID!) { deleteRegion(id: $id) }`,
+        { id: region.id }
+      );
+    }
     await graphql(
       request,
       token,
