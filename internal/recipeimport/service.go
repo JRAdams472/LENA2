@@ -366,7 +366,7 @@ func (s *Service) Process(ctx context.Context, id int64) error {
 		return fmt.Errorf("read source file: %w", err)
 	}
 
-	res, err := s.ocr.ExtractTextResult(ctx, data)
+	res, err := s.ocr.ExtractTextResult(ctx, data, ri.SourceFilename)
 	if err != nil {
 		return fmt.Errorf("ocr: %w", err)
 	}
