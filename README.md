@@ -265,6 +265,5 @@ flutter test
 - `docs/auth-oidc.md` — authentication flow.
 - `docs/graphql-schema.md` — GraphQL API reference.
 - `docs/postgres-data-model.md` — database schema overview.
-- `docs/mobile-redesign.md` — mobile redesign plan (p0–p5).
 - `clients/web/README.md` — web client setup.
 - `clients/mobile/README.md` — Flutter client setup.
