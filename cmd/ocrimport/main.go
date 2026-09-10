@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
+	"github.com/JRAdams472/LENA2/internal/platform/bffclient"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
 	"github.com/JRAdams472/LENA2/internal/platform/ollamaclient"
@@ -56,7 +57,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  import   Scan --inbox and enqueue source pages")
 	fmt.Fprintln(os.Stderr, "  ocr      Run the local OCR service over pending source pages")
 	fmt.Fprintln(os.Stderr, "  draft    Convert OCR text to a RecipeDraft JSON using the local LLM")
-	fmt.Fprintln(os.Stderr, "  review   Start the human-review step (not yet implemented)")
+	fmt.Fprintln(os.Stderr, "  review   Map draft ingredients to the catalog and produce a review report")
 	fmt.Fprintln(os.Stderr, "  persist  Persist approved drafts to LENA2 (not yet implemented)")
 	fmt.Fprintln(os.Stderr, "  version  Print version")
 	fmt.Fprintln(os.Stderr, "  help     Show this help")
@@ -378,7 +379,134 @@ func joinLines(lines []string) string {
 }
 
 func reviewCmd() {
-	fmt.Fprintln(os.Stderr, "review: not yet implemented (planned for p3)")
+	var workDir string
+	var approve bool
+	fset := flagSet("review")
+	fset.StringVar(&workDir, "work-dir", "", "Work directory; defaults to LENA_IMPORT_WORK_DIR")
+	fset.BoolVar(&approve, "approve", false, "Mark the recipe approved if all items resolve")
+	if err := fset.Parse(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "parse review flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.APIURL == "" {
+		fmt.Fprintln(os.Stderr, "API URL is not configured.")
+		fmt.Fprintln(os.Stderr, "Set LENA_API_URL to enable catalog mapping.")
+		os.Exit(1)
+	}
+
+	if workDir == "" {
+		workDir = cfg.ImportWorkDir
+	}
+
+	queue, err := ocrimport.Open(workDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open work queue: %v\n", err)
+		os.Exit(1)
+	}
+
+	client := bffclient.New(cfg.APIURL, cfg.ImportAdminToken)
+	ctx := context.Background()
+
+	catalogData, err := client.ListCatalog(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "catalog snapshot: %v\n", err)
+		os.Exit(1)
+	}
+	catalog := ocrimport.NewCatalogSnapshot(catalogData)
+
+	pending := queue.List()
+	processed, failed := 0, 0
+	for _, page := range pending {
+		if page.Status != ocrimport.StatusDraft {
+			continue
+		}
+
+		pageDir := filepath.Join(workDir, filepath.Base(page.ID))
+
+		// #nosec G304 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base.
+		draftData, err := os.ReadFile(filepath.Join(pageDir, "draft.json"))
+		if err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("read draft.json: %v", err))
+			fmt.Fprintf(os.Stderr, "read draft.json for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		var draft ocrimport.RecipeDraft
+		if err := json.Unmarshal(draftData, &draft); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("parse draft.json: %v", err))
+			fmt.Fprintf(os.Stderr, "parse draft.json for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		// #nosec G304 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base.
+		ocrText, err := os.ReadFile(filepath.Join(pageDir, "ocr.txt"))
+		if err != nil {
+			ocrText = []byte("(ocr text not available)")
+		}
+
+		existing, _ := ocrimport.LoadReview(pageDir)
+
+		mapped := &ocrimport.ReviewRecipe{
+			PageID:      page.ID,
+			Name:        draft.Name,
+			Description: draft.Description,
+			Servings:    draft.Servings,
+			PrepTime:    draft.PrepTimeMinutes,
+			CookTime:    draft.CookTimeMinutes,
+			SourceHint:  draft.SourceHint,
+			Steps:       draft.Steps,
+			Items:       make([]ocrimport.MatchResult, 0, len(draft.Items)),
+		}
+		for _, dItem := range draft.Items {
+			mapped.Items = append(mapped.Items, catalog.MapDraftItem(dItem, cfg.ImportAutoAcceptConfidence, cfg.ImportReviewThreshold))
+		}
+
+		mapped = ocrimport.MergeExistingReview(existing, mapped)
+
+		if approve && mapped.AllResolved() {
+			mapped.Approved = true
+		}
+
+		if err := ocrimport.SaveReview(pageDir, mapped); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write review.json: %v", err))
+			fmt.Fprintf(os.Stderr, "write review.json for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		report := ocrimport.RenderReviewMarkdown(mapped, string(ocrText))
+		// #nosec G703 -- pageDir is re-derived from the importer-generated queue id and sanitized with filepath.Base above.
+		if err := os.WriteFile(filepath.Join(pageDir, "review.md"), []byte(report), 0o600); err != nil {
+			_ = queue.SetStatus(page.ID, ocrimport.StatusFailed, fmt.Sprintf("write review.md: %v", err))
+			fmt.Fprintf(os.Stderr, "write review.md for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		newStatus := ocrimport.StatusReview
+		if mapped.Approved && mapped.AllResolved() {
+			newStatus = ocrimport.StatusReady
+		}
+		if err := queue.SetStatus(page.ID, newStatus, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "update status for %s: %v\n", page.ID, err)
+			failed++
+			continue
+		}
+
+		fmt.Printf("review: %s -> %s (%d items, %s)\n", page.SourcePath, draft.Name, len(mapped.Items), newStatus)
+		processed++
+	}
+
+	fmt.Printf("review: processed %d, failed %d\n", processed, failed)
 }
 
 func persistCmd() {
