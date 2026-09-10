@@ -45,7 +45,12 @@ This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` ser
 
 ## Workflow
 
-Place scanned pages in `./import/inbox` (PNG, JPG, or PDF). Then run the pipeline one stage at a time:
+Scanned pages can be submitted in two ways:
+
+1. **Web upload (admin only)** — on the `/recipes` page, click *Upload Recipe Scan*, choose a PNG, JPG, or PDF, and the file is written to `LENA_IMPORT_INBOX`.
+2. **Filesystem drop** — copy files directly into `./import/inbox`.
+
+Then run the pipeline one stage at a time:
 
 ```bash
 # 1. Enqueue source pages

@@ -5,6 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RecipesPage from "@/app/recipes/page";
 import RecipeDetailPage from "@/app/recipes/[id]/page";
 
+jest.mock("../../../app/auth/useMe");
+import { useMe } from "../../../app/auth/useMe";
+
+const mockedUseMe = useMe as jest.Mock;
+
 const mockFetch = global.fetch as jest.Mock;
 
 jest.mock("next/navigation", () => ({
@@ -64,6 +69,7 @@ afterEach(() => {
 
 describe("recipes page", () => {
   beforeEach(() => {
+    mockedUseMe.mockReturnValue({ me: { role: "admin" }, isAdmin: true, isLoading: false });
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
       if (body.query.includes("createRecipe")) {

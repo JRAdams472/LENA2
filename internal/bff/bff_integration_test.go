@@ -63,6 +63,8 @@ func TestBFF_Integration(t *testing.T) {
 		identitySvc,
 		nil,
 		0,
+		0,
+		"",
 	)
 
 	e := echo.New()
