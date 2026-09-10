@@ -64,6 +64,11 @@ services:
       LENA_ADMIN_EMAILS: ${LENA_ADMIN_EMAILS:-}
       # Protected admins can never be demoted or banned via the API.
       LENA_PROTECTED_EMAILS: ${LENA_PROTECTED_EMAILS:-aipaloovik@gmail.com}
+      # Writable import inbox shared with the host so uploaded scans are
+      # available to the ocrimport CLI pipeline.
+      LENA_IMPORT_INBOX: ${LENA_IMPORT_INBOX:-/data/import/inbox}
+    volumes:
+      - ./import:/data/import
     depends_on:
       db-seed:
         condition: service_completed_successfully
@@ -119,6 +124,9 @@ services:
     container_name: lena2-seq
     environment:
       ACCEPT_EULA: "Y"
+    ports:
+      # Seq UI/API: http://localhost:5341
+      - "5341:80"
     volumes:
       - seq_data:/data
 
