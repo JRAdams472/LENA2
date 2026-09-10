@@ -11,6 +11,8 @@ services:
     environment:
       OLLAMA_KEEP_ALIVE: "10m"
       OLLAMA_MAX_LOADED_MODELS: "1"
+    ports:
+      - "127.0.0.1:11434:11434"
     healthcheck:
       test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -41,6 +43,8 @@ services:
       context: ./tools/ocr
     container_name: lena2-ocr
     profiles: ["import"]
+    ports:
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s

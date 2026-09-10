@@ -12,9 +12,11 @@ The recipe OCR import feature lets an admin bulk-import printed recipes (cookboo
 
 The feature is off by default. Set the environment variables in your `.env` file or shell, then start the optional `import` compose profile.
 
+For **Docker Compose** (the default), use the container names:
+
 ```env
 # OCR
-LENA_OCR_URL=http://ocr:8000           # empty = feature disabled
+LENA_OCR_SERVICE_URL=http://ocr:8000   # empty = feature disabled
 LENA_OCR_ENGINE=tesseract              # tesseract | paddle | doctr
 LENA_OCR_CONFIDENCE_THRESHOLD=50
 
@@ -33,13 +35,22 @@ LENA_API_URL=http://api:8080
 LENA_IMPORT_ADMIN_TOKEN=<admin bearer token>
 ```
 
+For **host CLI** (`go run ./cmd/ocrimport` from PowerShell/Bash), use `localhost` URLs instead:
+
+```powershell
+$env:LENA_OCR_SERVICE_URL = "http://localhost:8000"
+$env:LENA_OLLAMA_URL       = "http://localhost:11434"
+$env:LENA_API_URL          = "http://localhost"        # Caddy routes /graphql to the API
+$env:LENA_IMPORT_ADMIN_TOKEN = "<admin bearer token>"
+```
+
 Start the import services:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.import.yml --profile import up -d
 ```
 
-This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` does not depend on Ollama.
+This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` does not depend on Ollama. `docker-compose.import.yml` exposes `ocr` on `127.0.0.1:8000` and `ollama` on `127.0.0.1:11434` so the host `go run` CLI can reach them.
 
 ---
 
