@@ -50,6 +50,10 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		return 1
 	}
+	if err := cfg.ValidateServer(); err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		return 1
+	}
 
 	log := logger.New(cfg.LogLevel)
 
