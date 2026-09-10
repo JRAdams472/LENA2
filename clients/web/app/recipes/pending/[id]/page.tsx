@@ -263,7 +263,7 @@ export default function PendingRecipeDetailPage() {
                   size="small"
                   sx={{ flex: 1 }}
                 />
-                <IconButton onClick={() => removeItem(i)} color="error" size="small">
+                <IconButton onClick={() => removeItem(i)} color="error" size="small" aria-label="Remove ingredient">
                   <DeleteIcon />
                 </IconButton>
               </Stack>
@@ -288,7 +288,7 @@ export default function PendingRecipeDetailPage() {
                   size="small"
                   fullWidth
                 />
-                <IconButton onClick={() => removeStep(i)} color="error" size="small">
+                <IconButton onClick={() => removeStep(i)} color="error" size="small" aria-label="Remove step">
                   <DeleteIcon />
                 </IconButton>
               </Stack>
