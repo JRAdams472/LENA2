@@ -58,3 +58,31 @@ Phase 1 totals: 0 critical · 4 high · 9 medium · 5 low.
 | A2-22 | Low | error handling | `internal/bff/resolver.go:420-434` | Preloaded-map miss in `unitName` returns `INTERNAL` instead of falling back |
 
 Phase 2 totals: 0 critical · 2 high · 10 medium · 10 low.
+
+## Phase 3 — Domain services (`audit/phase-3-domains.md`)
+
+| ID | Severity | Category | Location | Summary |
+|----|----------|----------|----------|---------|
+| A3-01 | High | bug | all `internal/*/queries.sql` UPDATE/DELETE; e.g. `grocery/service.go:99-101,199-222`, `mealplan/service.go:104-119,193-209`, `inventory/service.go:483-513`, `wine/service.go:697-731` | Every mutation is `:exec`; zero-row updates/deletes return `nil`, hiding not-found and ownership failures |
+| A3-02 | High | bug / concurrency | `internal/recipeimport/service.go:166-252,316-327`; `recipeimport/queries.sql:31-92` | Unguarded status transitions; `Approve` non-atomic and re-runnable (duplicate recipes); admin decisions overwritable by worker |
+| A3-03 | High | bug | `internal/recipeimport/service.go:330-358` | In-memory job queue: orphaned jobs after restart, no per-job timeout, `Retry` during `processing` runs two workers |
+| A3-04 | Medium | poor design | `wine/service.go:385-396`; `recipe/service.go:109-114,413-415`; `analytics/service.go:96-101`; `recipeimport/service.go:166-232` | Validation errors are untyped strings → BFF returns `INTERNAL`; only `identity` exports sentinels |
+| A3-05 | Medium | concurrency | `internal/identity/service.go:160-213` | Last-admin guard is check-then-act outside a transaction; concurrent demotions can leave zero admins |
+| A3-06 | Medium | bug | `internal/userprefs/service.go:61-90`; `userprefs/queries.sql:1-16` | No atomic quantity adjust; full-row upsert ignores `UserItemID` — root cause of A2-01 |
+| A3-07 | Medium | bug / poor design | `internal/inventory/service.go:505-513`; `inventory/queries.sql:165-171` | `DeleteItem` two statements without tx; inventory deletes `user_item` rows owned by userprefs |
+| A3-08 | Medium | bug / concurrency | `internal/inventory/service.go:79-97`; `inventory/queries.sql:19-34` | `SubmitBrand` check-then-create; resurfaces rejected/foreign pending brands; normalized name unindexed and not unique |
+| A3-09 | Medium | bug | `internal/recipeimport/service.go:137-163` | `ListPending` applies same offset to eight per-status queries; pages skip/duplicate rows |
+| A3-10 | Medium | bug | `internal/ocrimport/review.go:57-64`; `ocrimport/catalog.go:263-268`; `recipeimport/service.go:230-232,446-449` | `AllResolved` accepts fuzzy "suggested" matches; imports auto-mark `ready` and persist without admin acceptance |
+| A3-11 | Medium | poor design | `internal/grocery/service.go:224-231` | `Generate` creates an empty list; no layer implements aggregation (confirms A1-04) |
+| A3-12 | Medium | poor design | all `WithTx`/`InTx` (e.g. `grocery/service.go:34-43`); `inventory/service.go:745-766`; `analytics/service.go:170-178` | `InTx` on a tx-bound service opens a new pool transaction; `runInTx` nil-pool test seam in production |
+| A3-13 | Medium | cognitive complexity | `internal/recipeimport/service.go:350-455`; `ocrimport/workqueue.go:18-27` | 105-line `Process` driven by magic status strings; two incompatible status vocabularies |
+| A3-14 | Low | performance | `analytics/queries.sql:66-100`; `recipeimport/catalog.go:41-98`; `ocrimport/catalog.go:222-233` | O(users×recipes) overlap query per recipe create; full catalog load + fuzzy sweep per import job |
+| A3-15 | Low | bug | `internal/identity/queries.sql:12-31`; `migrations/0002_create_identity.up.sql:13` | Email not unique; `UpsertUser` nulls `display_name` on empty claim |
+| A3-16 | Low | code smell | `internal/{analytics,grocery,identity,inventory,mealplan,recipe,userprefs,wine}/service.go` | pgtype helper functions duplicated in eight packages |
+| A3-17 | Low | code smell | `internal/ocrimport/workqueue.go`; `ocrimport/review.go:27-52,67-205` | Dead CLI-era file-backed queue/review code with no non-test callers |
+| A3-18 | Low | bug | `inventory/queries.sql:89-92,183-186,366-369`; `migrations/0003_create_inventory.up.sql:30,56` | Case-insensitive lookups vs case-sensitive `UNIQUE`; `:one` returns arbitrary row on near-duplicates |
+| A3-19 | Low | code smell | `inventory/queries.sql:183-186,268-272`; `identity/queries.sql:33-37`; `wine/service.go:382-384` | Inconsistent audit columns; stale "no DB CHECK" comment |
+| A3-20 | Low | bug | `internal/recipeimport/service.go:330-347,513-526` | Goroutine-per-job fan-out; double `Shutdown` panics; `MarkFailed` error discarded |
+| A3-21 | Low | poor design | `mealplan/service.go:134-152`; `grocery/service.go:121-149`; `userprefs/service.go:61-90,169-200`; `inventory/service.go:177-191,416-430` | Near-zero domain validation; relies on DB `CHECK`s that surface as `INTERNAL` |
+
+Phase 3 totals: 0 critical · 3 high · 10 medium · 8 low.
