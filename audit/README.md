@@ -14,8 +14,8 @@ files produced are Markdown reports in `audit/` plus the running findings log
 |---|---|---|---|---|
 | 1 | Architecture & design (docs vs. code, modular-monolith boundaries, BFF orchestration, `internal/platform/`) | `audit/phase-1-architecture.md` | done — 18 findings (4 high / 9 med / 5 low) | `66c87b5` |
 | 2 | BFF & GraphQL API layer (`internal/bff/*.go`, `cmd/lena/main.go`) | `audit/phase-2-bff.md` | done — 22 findings (2 high / 10 med / 10 low) | `6f9472f` |
-| 3 | Domain services (`inventory`, `recipe`, `mealplan`, `grocery`, `wine`, `identity`, `userprefs`, `analytics`, `ocrimport`, `recipeimport`) | `audit/phase-3-domains.md` | **not started — next** | — |
-| 4 | Unit & integration tests (`*_test.go`, `internal/bff/mock/`, `generate.go`; run `go test ./...` + coverage) | `audit/phase-4-tests.md` | not started | — |
+| 3 | Domain services (`inventory`, `recipe`, `mealplan`, `grocery`, `wine`, `identity`, `userprefs`, `analytics`, `ocrimport`, `recipeimport`) | `audit/phase-3-domains.md` | done — 21 findings (3 high / 10 med / 8 low) | `74c0ae3` |
+| 4 | Unit & integration tests (`*_test.go`, `internal/bff/mock/`, `generate.go`; run `go test ./...` + coverage) | `audit/phase-4-tests.md` | **not started — next** | — |
 | 5 | Docker, deployment & CI (`Dockerfile`, `docker-compose*.yml`, `Caddyfile`, `.dockerignore`, `.env.example`, `scripts/`; flag empty `.github/workflows/`) | `audit/phase-5-docker-deploy.md` | not started | — |
 | 6 | Security & exploit review (auth/authz, rate limiting, GraphQL DoS, SQL injection surface, OCR/import file handling, SSRF, CORS, secrets; run `go vet ./...` + `golangci-lint`) | `audit/phase-6-security.md` + `audit/summary.md` | not started | — |
 
