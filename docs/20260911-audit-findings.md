@@ -86,3 +86,28 @@ Phase 2 totals: 0 critical · 2 high · 10 medium · 10 low.
 | A3-21 | Low | poor design | `mealplan/service.go:134-152`; `grocery/service.go:121-149`; `userprefs/service.go:61-90,169-200`; `inventory/service.go:177-191,416-430` | Near-zero domain validation; relies on DB `CHECK`s that surface as `INTERNAL` |
 
 Phase 3 totals: 0 critical · 3 high · 10 medium · 8 low.
+
+## Phase 4 — Unit & integration tests (`audit/phase-4-tests.md`)
+
+Execution: `go test -race -count=1 -coverprofile ... ./cmd/... ./internal/...` — all packages pass once `postgres:16-alpine` is available locally (first run: 22 integration tests failed on Docker Hub `429 Too Many Requests`). Coverage: 65.7% filtered (hand-written code, CI floor 60%), 41.6% raw. 215 hand-written functions at 0%.
+
+| ID | Severity | Category | Location | Summary |
+|----|----------|----------|----------|---------|
+| A4-01 | High | bug (test gap) | `bff/resolver_grocery.go:130-190`; `bff/resolver_grocery_test.go`; `bff/bff_integration_test.go:559-593` | Transactional grocery→pantry sync never executed under test (29.8% fn coverage); unit tests use `Pool == nil`, integration toggles a manual item |
+| A4-02 | High | poor design (test gap) | `internal/recipeimport/*` (20%; `Process`, `Retry`, `Shutdown`, `store.go` 0%); `bff/resolver_recipe_import.go` (0%, 69 funcs); `ocrimport/review.go`, `workqueue.go` (0%) | Recipe-import pipeline, SQL store, and admin GraphQL surface effectively untested |
+| A4-03 | High | bug (tautological assertion) | `grocery/integration_test.go:220-231`; `mealplan/integration_test.go` cross-user test | Tests `require.NoError` on wrong-user UPDATE/DELETE, codifying the A3-01 silent-success bug |
+| A4-04 | Medium | security (test gap) | `bff/bff_integration_test.go:51,148` | E2E suite runs every mutation as admin; no HTTP-level non-admin authorization test |
+| A4-05 | Medium | code smell | `bff/bff_integration_test.go:684-711` | `doGraphQL` discards decode errors and only logs GraphQL errors; partial-success responses pass |
+| A4-06 | Medium | security (test gap) | `bff/nutrition_ocr.go`; `bff/recipe_scan.go`; `platform/ocrclient/` (no tests) | OCR/scan upload paths (data-URI parsing, inbox writes, async fan-out) 0% covered |
+| A4-07 | Medium | bug (test gap) | `inventory/service.go:79-194`; `bff/resolver_inventory.go:73-175,1014` | Brand moderation flow (`SubmitBrand`, `SearchBrands`, `PendingBrands`, `Approve/RejectBrand`, `brandWriteError`) 0% covered |
+| A4-08 | Medium | antipattern | `internal/*/service_test.go`; `bff/resolver_*_test.go` (353 `gomock.Any()`) | Two mock layers mirror the implementation; SQL predicates and `:exec` semantics never observed by unit tests |
+| A4-09 | Medium | code smell | `recipeimport/service_test.go:18-201,252-270` | Hand-rolled `memoryStore` diverges from SQL store; `Approve` tested only from pre-set `ready`; setup errors discarded |
+| A4-10 | Medium | bug (test gap) | repository-wide | No concurrency tests for A2-01/A3-05/A3-06/A3-08; `-race` cannot detect DB-level lost updates |
+| A4-11 | Low | code smell (flaky) | `bff/resolver_misc_test.go:190-229` | Async-worker test relies on `time.Sleep(50ms)` and asserts a non-event |
+| A4-12 | Low | antipattern | `platform/testenv/testenv.go`; every `integration_test.go` | One Postgres container per test function (~8 min wall); unauthenticated Docker Hub pull failed with 429 |
+| A4-13 | Low | poor design | `.github/workflows/test.yml`; `tools/coveragefilter/main.go` | Single 60% global floor hides 0% files/packages; filter is path-based only |
+| A4-14 | Low | code smell | `bff/bff_integration_test.go:137-139` | Test mutates `Authenticator` private state instead of injecting a clock |
+| A4-15 | Low | poor design (test gap) | `cmd/lena/main_test.go`; `cmd/lena/main_integration_test.go` | Bootstrap tests cover CORS/health/401 only; shutdown, rate-limit wiring, body limits untested |
+| A4-16 | Low | code smell (test gap) | `{identity,mealplan,userprefs,wine}/service.go` `WithTx`/`InTx` (0%) | Transaction binding untested outside grocery; A3-12 composition never exercised |
+
+Phase 4 totals: 0 critical · 3 high · 7 medium · 6 low.
