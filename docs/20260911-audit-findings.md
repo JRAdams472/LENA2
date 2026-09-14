@@ -111,3 +111,30 @@ Execution: `go test -race -count=1 -coverprofile ... ./cmd/... ./internal/...` �
 | A4-16 | Low | code smell (test gap) | `{identity,mealplan,userprefs,wine}/service.go` `WithTx`/`InTx` (0%) | Transaction binding untested outside grocery; A3-12 composition never exercised |
 
 Phase 4 totals: 0 critical · 3 high · 7 medium · 6 low.
+
+## Phase 5 — Docker, deployment & CI (`audit/phase-5-docker-deploy.md`)
+
+Note: the task brief's premise that `.github/workflows/` is empty is stale — `test.yml` (build/vet/govulncheck/gofmt/race tests/coverage gate/lint/web/e2e/Flutter/publish) and `cleanup.yml` exist. Findings below audit the pipeline that exists.
+
+| ID | Severity | Category | Location | Summary |
+|----|----------|----------|----------|---------|
+| A5-01 | High | security | `docker-compose.yml:6-8,24,59`; `docs/deployment.md:32,45,104` | API and migrations run as the PostgreSQL superuser; documented `lena_app` least-privilege role is not implemented |
+| A5-02 | High | bug | `Dockerfile:22-26`; `docker-compose.yml:70-71`; `bff/recipe_scan.go:61` | Bind mount `./import:/data/import` overrides image `chown`; `nobody` cannot write inbox → recipe-scan uploads fail on fresh checkout |
+| A5-03 | Medium | security | `docker-compose.yml:60,62`; `test.yml:265`; `clients/web/Dockerfile:13-16` | `dummy` fallbacks for Google client ID / auth audiences let a non-functional auth config start silently |
+| A5-04 | Medium | security | `docker-compose.yml:66` | Personal e-mail hard-coded as default `LENA_PROTECTED_EMAILS` |
+| A5-05 | Medium | poor design | all `Dockerfile`s; `docker-compose.import.yml:5,30`; `go.mod:3` | Mutable image tags, no digests, `ollama:latest`; builder Go 1.27 vs `go.mod` 1.26.6; mixed Alpine bases |
+| A5-06 | Medium | poor design | `Dockerfile:9-10`; `.dockerignore` | `COPY . .` ships whole repo into builder; `.dockerignore` misses `clients/mobile`, `tools`, `import`, `audit`, CSVs |
+| A5-07 | Medium | security | `docker-compose.yml:82-88,103-107,127-129,138-139` | Seq UI (5341) and GELF UDP (12201) published on all interfaces, unauthenticated; logs leave network as plaintext UDP |
+| A5-08 | Medium | poor design | `docker-compose.yml:75-76,82-88,100-107` | GELF driver + `seq-gelf` mandatory for `api`/`web`; daemon-side `localhost` breaks on Desktop/rootless/remote Docker |
+| A5-09 | Medium | security | `.github/workflows/test.yml` (all `uses:`), `:42` | Actions pinned by major tag not SHA; `govulncheck@latest`; no top-level `permissions:` |
+| A5-10 | Medium | bug | `docker-compose.yml:32-49`; `migrations/seed/` | Seed job re-runs every `up`, outside migration versioning; API blocked on seed success; CSV unreferenced |
+| A5-11 | Low | security | `docker-compose.yml:24,59`; `config.go:36-39` | `sslmode=disable` default; `OTLPInsecure` defaults `true` |
+| A5-12 | Low | poor design | `Caddyfile`; `docker-compose.yml:112-113` | No TLS, security headers, body-size limit, or timeouts at edge; `/ready` not routed |
+| A5-13 | Low | code smell | `docker-compose*.yml` `container_name` | Fixed container names prevent parallel stacks |
+| A5-14 | Low | code smell | `README.md:225,264`; `docs/deployment.md` | Docs reference non-existent `ci.yml`/`docker.yml`, `lena_app`, `LENA_DB_PASSWORD`, `auto_https off`, unprefixed env names |
+| A5-15 | Low | poor design | `test.yml:134-195,223-268` | E2E and publish build separately (published image ≠ tested image); `needs` omits `lint`; no cache/SBOM/provenance/scan; Docker Hub pulls unauthenticated |
+| A5-16 | Low | poor design | `tools/ocr/Dockerfile`; `tools/ocr/app.py:120-146` | OCR sidecar runs as root; no upload size/page cap; 300 dpi rasterisation unbounded |
+| A5-17 | Low | code smell | `scripts/run-local.ps1:35-42,59-66` | Windows-only helper exports all `.env` secrets; infinite health loop; no POSIX equivalent |
+| A5-18 | Low | poor design | `Dockerfile:15`; `docker-compose.yml:77-81`; `main.go:224-234` | `curl` in runtime image only for probe; compose probes `/health` (no DB check) instead of `/ready`; no image `HEALTHCHECK` |
+
+Phase 5 totals: 0 critical · 2 high · 8 medium · 8 low.
