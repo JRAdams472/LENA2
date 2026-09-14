@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/exaring/otelpgx v0.12.0
 	github.com/go-playground/validator/v10 v10.30.4
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/lestrrat-go/jwx/v3 v3.3.0
