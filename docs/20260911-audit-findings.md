@@ -138,3 +138,32 @@ Note: the task brief's premise that `.github/workflows/` is empty is stale — `
 | A5-18 | Low | poor design | `Dockerfile:15`; `docker-compose.yml:77-81`; `main.go:224-234` | `curl` in runtime image only for probe; compose probes `/health` (no DB check) instead of `/ready`; no image `HEALTHCHECK` |
 
 Phase 5 totals: 0 critical · 2 high · 8 medium · 8 low.
+
+## Phase 6 — Security & exploit review (`audit/phase-6-security.md`)
+
+Tooling: `go vet` clean; `golangci-lint` v2.13.2 (repo config incl. gosec) 0 issues; no credentials found in repo or history. All 107 mutations verified to have an auth gate (59 `requireAdmin`, 46 `userFromContext`/`canModifyItem`, 4 delegating to admin helpers). Findings below are manual.
+
+| ID | Severity | Category | Location | Summary |
+|----|----------|----------|----------|---------|
+| A6-01 | High | possible exploit | `bff/nutrition_ocr.go:20-60`; `resolver_inventory.go:499` | Members create global `NutrientType` rows via OCR text of their own pending item, bypassing admin-only `CreateNutrientType`; labels unfiltered |
+| A6-02 | Medium | security | `bff/auth.go:107-140` | Issuer and audience validated as independent flat lists, not pairs; multi-issuer configs cross-accept tokens |
+| A6-03 | Medium | security | `bff/auth.go:175-180`; `identity/queries.sql:12-24` | Admin bootstrap / protected lists keyed on e-mail while identity keyed on `(provider, subject)`; any trusted issuer asserting the e-mail gets admin |
+| A6-04 | Medium | possible exploit | `cmd/lena/main.go:176`; `Caddyfile`; `bff/ratelimit.go:36-40` | IP limiter keyed on `X-Forwarded-For` with no trusted-proxy config; spoofable if `api:8080` is ever reachable directly |
+| A6-05 | Medium | security | `cmd/lena/main.go:249-269`; `config.go:42-55` | No query cost limit or per-request deadline; depth/length limits do not bound cardinality; some lists unclamped |
+| A6-06 | Medium | security | `bff/auth.go:81-99`; `resolver_identity.go:45-80` | No security audit logging: auth failures, admin promotion, role/ban changes unrecorded |
+| A6-07 | Medium | security | `bff/recipe_scan.go:55-74`; `nutrition_ocr.go:103-116`; `tools/ocr/app.py:120-146` | Uploads trusted by declared media type; no sniffing/dimension bound; poppler/Pillow parse untrusted bytes as root |
+| A6-08 | Medium | security | `recipeimport/service.go:364-420` | OCR text → LLM prompt with no injection defence; model JSON trusted into review/recipe rows |
+| A6-09 | Low | security | `bff/auth.go:159`; `identity/queries.sql:23-30` | `UpsertUser` overwrites `email`/`display_name` every request regardless of `email_verified` |
+| A6-10 | Low | security | `cmd/lena/main.go:278-292` | CORS allows `PUT/DELETE` and credentials for a POST-only bearer API; `*` mode one env var away |
+| A6-11 | Low | security | `bff/nutrition_ocr.go:116-119`; `resolver.go:95-110` | Member-triggered OCR jobs unbounded per user; can saturate worker pool and sidecar |
+| A6-12 | Low | security | `config.go:55,68,71` | 4M body limit makes 6MB/20MB upload limits unreachable via base64; limits inconsistent |
+| A6-13 | Low | security | `bff/auth.go:195-223,256-275` | Discovery/JWKS reads unbounded bodies, follows redirects, under global mutex |
+| A6-14 | Low | security | `clients/web/lib/api.ts:53-59` | ID token in `sessionStorage` (+`localStorage` fallback); no CSP |
+| A6-15 | Low | security | `bff/resolver.go:816-830` | Introspection enabled in all environments |
+| A6-16 | Low | code smell | `inventory/queries.sql:32` | Parameterised `LIKE` safe, but empty-after-normalisation term matches whole table |
+
+Phase 6 totals: 0 critical · 1 high · 7 medium · 8 low.
+
+## Audit totals (Phases 1–6)
+
+111 findings: 0 critical · 15 high · 51 medium · 45 low. Consolidated top-15 and remediation sequencing: `audit/summary.md`.
