@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -49,6 +50,7 @@ func (r *fakeRows) Scan(_ ...any) error                          { return nil }
 func (r *fakeRows) Values() ([]any, error)                       { return nil, nil }
 func (r *fakeRows) RawValues() [][]byte                          { return nil }
 func (r *fakeRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeRows) TypeMap() *pgtype.Map                         { return nil }
 
 type fakeRow struct{ err error }
 
