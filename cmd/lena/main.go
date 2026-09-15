@@ -17,7 +17,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	// otelecho is deprecated in favour of github.com/labstack/echo-opentelemetry,
+	// which requires Echo v5; we are on v4, so keep otelecho until that upgrade.
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho" //nolint:staticcheck
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
