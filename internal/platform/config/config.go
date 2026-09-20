@@ -127,5 +127,10 @@ func (c *Config) ValidateServer() error {
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required server configuration: %s", strings.Join(missing, ", "))
 	}
+
+	if strings.Contains(c.AuthAudiences, "dummy") && !strings.Contains(c.AuthIssuers, "testissuer") {
+		return fmt.Errorf("AUTH_AUDIENCES contains the placeholder value 'dummy'; set a real audience or configure a test issuer")
+	}
+
 	return nil
 }
