@@ -135,6 +135,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       POSTGRES_PASSWORD: e2e-change-me
+      LENA_DB_PASSWORD: e2e-change-me
     steps:
       - uses: actions/checkout@v7
 
