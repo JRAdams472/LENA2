@@ -136,6 +136,7 @@ jobs:
     env:
       POSTGRES_PASSWORD: e2e-change-me
       LENA_DB_PASSWORD: e2e-change-me
+      LENA_GOOGLE_CLIENT_ID: e2e-client
     steps:
       - uses: actions/checkout@v7
 
