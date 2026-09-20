@@ -32,7 +32,7 @@ func (r *Resolver) Users(ctx context.Context, args struct {
 	}
 	out := make([]*userResolver, len(users))
 	for i, u := range users {
-		out[i] = &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Email)}
+		out[i] = &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email)}
 	}
 	return &userPageResolver{items: out, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
@@ -149,7 +149,7 @@ func (r *Resolver) userByID(ctx context.Context, userID int64) (*userResolver, e
 	if err != nil {
 		return nil, err
 	}
-	return &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Email)}, nil
+	return &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email)}, nil
 }
 
 // mapAdminGuardError translates identity guard failures into client-safe

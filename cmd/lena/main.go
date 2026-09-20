@@ -166,11 +166,14 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		recipeimport.ConfigFromPlatform(&cfg),
 	)
 
-	authenticator := bff.NewAuthenticator(bff.AuthConfig{
+	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
 		Audiences:   splitAndTrim(cfg.AuthAudiences),
 		AdminEmails: splitAndTrim(cfg.AdminEmails),
 	}, identitySvc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("auth config: %w", err)
+	}
 
 	e := echo.New()
 	e.HideBanner = true

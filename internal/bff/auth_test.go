@@ -131,7 +131,7 @@ func TestAuthenticateValidToken(t *testing.T) {
 	priv, set := newJWKSKey(t, "key-a")
 	iss := newJWKSIssuer(t, set)
 	store := &fakeIdentityStore{user: identity.User{UserID: 7, Role: identity.RoleMember}}
-	a := NewAuthenticator(AuthConfig{
+	a := mustNewAuthenticator(t, AuthConfig{
 		Issuers:   []string{iss.server.URL},
 		Audiences: []string{"lena-client"},
 	}, store)
@@ -151,7 +151,7 @@ func TestAuthenticateKeyRotation(t *testing.T) {
 	privB, setB := newJWKSKey(t, "key-b")
 	iss := newJWKSIssuer(t, setA)
 	store := &fakeIdentityStore{user: identity.User{UserID: 1, Role: identity.RoleMember}}
-	a := NewAuthenticator(AuthConfig{
+	a := mustNewAuthenticator(t, AuthConfig{
 		Issuers:   []string{iss.server.URL},
 		Audiences: []string{"lena-client"},
 	}, store)
@@ -184,7 +184,7 @@ func TestAuthenticateRejects(t *testing.T) {
 	priv, set := newJWKSKey(t, "key-a")
 	iss := newJWKSIssuer(t, set)
 	store := &fakeIdentityStore{user: identity.User{UserID: 1}}
-	a := NewAuthenticator(AuthConfig{
+	a := mustNewAuthenticator(t, AuthConfig{
 		Issuers:   []string{iss.server.URL},
 		Audiences: []string{"lena-client"},
 	}, store)
@@ -208,7 +208,7 @@ func TestAuthenticateRejects(t *testing.T) {
 	})
 	t.Run("upsert failure", func(t *testing.T) {
 		bad := &fakeIdentityStore{upsertErr: errors.New("db down")}
-		a2 := NewAuthenticator(AuthConfig{
+		a2 := mustNewAuthenticator(t, AuthConfig{
 			Issuers:   []string{iss.server.URL},
 			Audiences: []string{"lena-client"},
 		}, bad)
@@ -219,7 +219,7 @@ func TestAuthenticateRejects(t *testing.T) {
 	})
 	t.Run("banned user is rejected", func(t *testing.T) {
 		banned := &fakeIdentityStore{user: identity.User{UserID: 5, Role: identity.RoleMember}, inactive: true}
-		a2 := NewAuthenticator(AuthConfig{
+		a2 := mustNewAuthenticator(t, AuthConfig{
 			Issuers:   []string{iss.server.URL},
 			Audiences: []string{"lena-client"},
 		}, banned)
@@ -230,7 +230,7 @@ func TestAuthenticateRejects(t *testing.T) {
 	})
 	t.Run("banned admin-list email is not promoted", func(t *testing.T) {
 		banned := &fakeIdentityStore{user: identity.User{UserID: 6, Role: identity.RoleMember}, inactive: true}
-		a2 := NewAuthenticator(AuthConfig{
+		a2 := mustNewAuthenticator(t, AuthConfig{
 			Issuers:     []string{iss.server.URL},
 			Audiences:   []string{"lena-client"},
 			AdminEmails: []string{"e@x.com"},
@@ -247,7 +247,7 @@ func TestAuthenticateAdminPromotion(t *testing.T) {
 	priv, set := newJWKSKey(t, "key-a")
 	iss := newJWKSIssuer(t, set)
 	store := &fakeIdentityStore{user: identity.User{UserID: 9, Role: identity.RoleMember}}
-	a := NewAuthenticator(AuthConfig{
+	a := mustNewAuthenticator(t, AuthConfig{
 		Issuers:     []string{iss.server.URL},
 		Audiences:   []string{"lena-client"},
 		AdminEmails: []string{"admin@example.com"},
@@ -282,7 +282,7 @@ func TestAuthenticateAdminPromotionRequiresVerifiedEmail(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeIdentityStore{user: identity.User{UserID: 9, Role: identity.RoleMember}}
-			a := NewAuthenticator(AuthConfig{
+			a := mustNewAuthenticator(t, AuthConfig{
 				Issuers:     []string{iss.server.URL},
 				Audiences:   []string{"lena-client"},
 				AdminEmails: []string{"admin@example.com"},
@@ -307,7 +307,7 @@ func TestAuthMiddleware(t *testing.T) {
 	priv, set := newJWKSKey(t, "key-a")
 	iss := newJWKSIssuer(t, set)
 	store := &fakeIdentityStore{user: identity.User{UserID: 3}}
-	a := NewAuthenticator(AuthConfig{
+	a := mustNewAuthenticator(t, AuthConfig{
 		Issuers:   []string{iss.server.URL},
 		Audiences: []string{"lena-client"},
 	}, store)
@@ -336,6 +336,15 @@ func TestAuthMiddleware(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("valid token: got %d, want 200", rec.Code)
 	}
+}
+
+// mustNewAuthenticator wraps NewAuthenticator and fails the test if the
+// auth configuration is invalid, keeping test setup concise.
+func mustNewAuthenticator(t *testing.T, cfg AuthConfig, store identityStore) *Authenticator {
+	t.Helper()
+	a, err := NewAuthenticator(cfg, store)
+	require.NoError(t, err)
+	return a
 }
 
 func TestExtractBearer(t *testing.T) {

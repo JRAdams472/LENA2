@@ -60,7 +60,7 @@ func (f *fakeIdentityService) CountUsers(context.Context) (int64, error) {
 	return int64(len(f.users)), nil
 }
 
-func (f *fakeIdentityService) IsProtected(email string) bool {
+func (f *fakeIdentityService) IsProtected(_ string, email string) bool {
 	return f.protected[email]
 }
 

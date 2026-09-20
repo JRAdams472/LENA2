@@ -24,13 +24,19 @@ import (
 )
 
 // AuthConfig configures which OIDC issuers and audiences are trusted.
-// Adding a provider later only requires appending to these lists.
+// Audiences are paired with issuers by position, so a token's audience is
+// only accepted when it matches the audience entry at the same index as its
+// issuer. AdminEmails entries should be qualified as "issuer:email" so the
+// same email cannot be promoted from an unrelated trusted issuer.
 type AuthConfig struct {
 	Issuers   []string
 	Audiences []string
 	// AdminEmails is a bootstrap allowlist: a user whose *provider-verified*
 	// email is listed is promoted to the persisted 'admin' role on their
 	// next request. Tokens without email_verified=true are never promoted.
+	// Entries may be qualified as "issuer:email" (use the last colon as the
+	// separator). A bare email is accepted only when exactly one issuer is
+	// configured and is implicitly scoped to that issuer.
 	AdminEmails []string
 }
 
@@ -43,9 +49,10 @@ type identityStore interface {
 
 // Authenticator validates OIDC ID tokens and resolves the current user.
 type Authenticator struct {
-	cfg      AuthConfig
-	identity identityStore
-	httpc    *http.Client
+	identity            identityStore
+	audiencesByIssuer   map[string][]string
+	adminEmailsByIssuer map[string][]string
+	httpc               *http.Client
 
 	mu   sync.Mutex
 	jwks map[string]*cachedKeySet
@@ -76,13 +83,81 @@ var (
 )
 
 // NewAuthenticator creates an Authenticator backed by the given identity service.
-func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) *Authenticator {
-	return &Authenticator{
-		cfg:      cfg,
-		identity: identitySvc,
-		httpc:    &http.Client{Timeout: 10 * time.Second},
-		jwks:     make(map[string]*cachedKeySet),
+func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) (*Authenticator, error) {
+	audiences, err := zipIssuersAndAudiences(cfg.Issuers, cfg.Audiences)
+	if err != nil {
+		return nil, fmt.Errorf("auth config: %w", err)
 	}
+	adminEmails, err := groupAdminEmailsByIssuer(cfg.Issuers, cfg.AdminEmails)
+	if err != nil {
+		return nil, fmt.Errorf("auth config: %w", err)
+	}
+	return &Authenticator{
+		identity:            identitySvc,
+		audiencesByIssuer:   audiences,
+		adminEmailsByIssuer: adminEmails,
+		httpc:               &http.Client{Timeout: 10 * time.Second},
+		jwks:                make(map[string]*cachedKeySet),
+	}, nil
+}
+
+// zipIssuersAndAudiences pairs the ith issuer with the ith audience. This
+// prevents a token from issuer A being accepted solely because it carries
+// an audience belonging to issuer B.
+func zipIssuersAndAudiences(issuers, audiences []string) (map[string][]string, error) {
+	if len(issuers) == 0 {
+		return nil, errors.New("at least one issuer is required")
+	}
+	if len(audiences) == 0 {
+		return nil, errors.New("at least one audience is required")
+	}
+	if len(issuers) != len(audiences) {
+		return nil, fmt.Errorf("issuer count (%d) does not match audience count (%d); each issuer must have exactly one audience", len(issuers), len(audiences))
+	}
+	m := make(map[string][]string, len(issuers))
+	for i, iss := range issuers {
+		m[iss] = []string{audiences[i]}
+	}
+	return m, nil
+}
+
+// groupAdminEmailsByIssuer parses "issuer:email" entries into per-issuer
+// admin allowlists. A bare email is only allowed when a single issuer is
+// configured; otherwise the issuer prefix is required for safety.
+func groupAdminEmailsByIssuer(issuers, adminEmails []string) (map[string][]string, error) {
+	byIssuer := make(map[string][]string)
+	if len(adminEmails) == 0 {
+		return byIssuer, nil
+	}
+	singleIssuer := len(issuers) == 1
+	for _, raw := range adminEmails {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		issuer, email := splitProviderScoped(raw)
+		if issuer == "" {
+			if !singleIssuer {
+				return nil, fmt.Errorf("admin email %q is missing an issuer qualifier; required when multiple issuers are configured", raw)
+			}
+			issuer = issuers[0]
+		}
+		if !slices.Contains(issuers, issuer) {
+			return nil, fmt.Errorf("admin email %q references unknown issuer %q", raw, issuer)
+		}
+		byIssuer[issuer] = append(byIssuer[issuer], email)
+	}
+	return byIssuer, nil
+}
+
+// splitProviderScoped splits "provider:value" at the last colon, which is
+// safe because email addresses cannot contain colons. It returns an empty
+// provider when no qualifier is present.
+func splitProviderScoped(s string) (provider, value string) {
+	if i := strings.LastIndex(s, ":"); i > 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return "", strings.TrimSpace(s)
 }
 
 // Middleware validates the bearer token on every request, upserts the
@@ -158,7 +233,10 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	}
 
 	issuer, ok := unverified.Issuer()
-	if !ok || !slices.Contains(a.cfg.Issuers, issuer) {
+	if !ok {
+		return currentuser.User{}, fmt.Errorf("%w: token has no issuer", errTokenInvalid)
+	}
+	if _, ok := a.audiencesByIssuer[issuer]; !ok {
 		return currentuser.User{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
 	}
 
@@ -188,8 +266,8 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	if !ok {
 		return currentuser.User{}, fmt.Errorf("%w: token has no audience claim", errTokenInvalid)
 	}
-	if !containsAny(a.cfg.Audiences, audience) {
-		return currentuser.User{}, fmt.Errorf("%w: audience %v is not allowed", errTokenInvalid, audience)
+	if !containsAny(a.audiencesByIssuer[issuer], audience) {
+		return currentuser.User{}, fmt.Errorf("%w: audience %v is not allowed for issuer %q", errTokenInvalid, audience, issuer)
 	}
 
 	subject, ok := token.Subject()
@@ -224,8 +302,9 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	// Bootstrap admin access: users whose provider-verified email is
 	// configured in LENA_ADMIN_EMAILS are promoted to the persisted admin
 	// role here so the role survives across logins. An unverified or absent
-	// email claim must never trigger promotion.
-	if u.Role != identity.RoleAdmin && emailVerified && containsFold(a.cfg.AdminEmails, u.Email) {
+	// email claim must never trigger promotion. The admin email must be
+	// scoped to the same issuer the token came from.
+	if adminList := a.adminEmailsByIssuer[issuer]; u.Role != identity.RoleAdmin && emailVerified && containsFold(adminList, u.Email) {
 		if err := a.identity.SetUserRole(ctx, u.UserID, identity.RoleAdmin); err != nil {
 			return currentuser.User{}, fmt.Errorf("%w: promote admin user: %w", errIdentityStore, err)
 		}

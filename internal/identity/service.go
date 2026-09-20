@@ -31,17 +31,34 @@ func NewService(pool dbtx.Pool) *Service {
 }
 
 // WithProtectedEmails returns a copy of the service treating the given
-// emails (case-insensitive) as protected admins: their role and active
-// flag can never be reduced by AdminSetRole/AdminSetActive.
+// "issuer:email" entries (case-insensitive) as protected admins: their
+// role and active flag can never be reduced by AdminSetRole/AdminSetActive.
+// The last colon separates the issuer from the email. An unqualified bare
+// email is stored unscoped and is only checked when no provider is given
+// (mainly for test doubles).
 func (s *Service) WithProtectedEmails(emails []string) *Service {
 	c := *s
 	c.protected = make(map[string]bool, len(emails))
 	for _, e := range emails {
-		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
-			c.protected[e] = true
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
 		}
+		issuer, email := splitIssuerAndEmail(e)
+		key := strings.ToLower(issuer + ":" + email)
+		c.protected[key] = true
 	}
 	return &c
+}
+
+// splitIssuerAndEmail splits an "issuer:email" string at the last colon.
+// If no colon is present, both the issuer and the unmodified string are
+// returned with an empty issuer.
+func splitIssuerAndEmail(s string) (issuer, email string) {
+	if i := strings.LastIndex(s, ":"); i > 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return "", s
 }
 
 // WithTx returns a copy of the service whose queries run on tx. Callers that
@@ -95,10 +112,13 @@ type User struct {
 // IsAdmin reports whether the user holds the admin role.
 func (u User) IsAdmin() bool { return u.Role == RoleAdmin }
 
-// IsProtected reports whether the user's email is in the protected list:
-// protected admins can never be demoted or deactivated.
-func (s *Service) IsProtected(email string) bool {
-	return s.protected[strings.ToLower(email)]
+// IsProtected reports whether the user is in the issuer-scoped protected
+// list: protected admins can never be demoted or deactivated.
+func (s *Service) IsProtected(provider, email string) bool {
+	if provider == "" {
+		return s.protected[strings.ToLower(":"+email)]
+	}
+	return s.protected[strings.ToLower(provider+":"+email)]
 }
 
 // UpsertUser creates the user on first sign-in or refreshes email/display
@@ -161,7 +181,7 @@ func (s *Service) checkAdminMutation(ctx context.Context, actorID int64, target 
 	if target.UserID == actorID {
 		return ErrSelfModification
 	}
-	if s.IsProtected(target.Email) {
+	if s.IsProtected(target.Provider, target.Email) {
 		return ErrProtectedUser
 	}
 	if removesAdmin {
