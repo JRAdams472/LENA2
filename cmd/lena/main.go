@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+
 	// otelecho is deprecated in favour of github.com/labstack/echo-opentelemetry,
 	// which requires Echo v5; we are on v4, so keep otelecho until that upgrade.
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho" //nolint:staticcheck
@@ -61,6 +63,7 @@ func run() int {
 	}
 
 	log := logger.New(cfg.LogLevel)
+	slog.SetDefault(log)
 
 	// The 10s timeout applies only to pool creation; a deferred cancel at
 	// run scope would keep the context alive for the process lifetime.
@@ -171,11 +174,11 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 
 	e := echo.New()
 	e.HideBanner = true
-	// The API sits behind Caddy, which appends X-Forwarded-For. Echo's
-	// default trust set (loopback and private ranges) matches the compose
-	// topology where the only reachable peer is the Caddy container on the
-	// internal docker network — port 8080 is not published to the host.
-	e.IPExtractor = echo.ExtractIPFromXFFHeader()
+	// The API sits behind Caddy, which appends X-Forwarded-For. Only
+	// explicitly configured proxy CIDRs (plus loopback) are trusted; the
+	// default private range trust is disabled so a direct spoofed XFF
+	// cannot change the client IP used by the rate limiter.
+	e.IPExtractor = buildIPExtractor(splitAndTrim(cfg.TrustedProxyCIDRs))
 	// Bound connection lifecycle: without timeouts the server is exposed
 	// to slowloris and large-body resource exhaustion.
 	e.Server.ReadHeaderTimeout = cfg.HTTPReadHeaderTimeout
@@ -304,4 +307,22 @@ func splitAndTrim(csv string) []string {
 		}
 	}
 	return out
+}
+
+// buildIPExtractor configures how the API resolves the "real" client IP
+// from X-Forwarded-For. Only the configured proxy CIDRs and loopback are
+// trusted; private ranges are not, so a spoofed header from an untrusted
+// peer cannot alter the rate-limiter key.
+func buildIPExtractor(cidrs []string) echo.IPExtractor {
+	opts := []echo.TrustOption{echo.TrustLoopback(true), echo.TrustPrivateNet(false)}
+	for _, c := range cidrs {
+		_, ipnet, err := net.ParseCIDR(c)
+		if err != nil {
+			// Misconfiguration should fail early; warn and ignore this CIDR.
+			slog.Default().Warn("invalid trusted proxy CIDR, ignoring", "cidr", c, "error", err)
+			continue
+		}
+		opts = append(opts, echo.TrustIPRange(ipnet))
+	}
+	return echo.ExtractIPFromXFFHeader(opts...)
 }

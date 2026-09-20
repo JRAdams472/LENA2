@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/mail"
 	"strings"
 
@@ -56,6 +57,12 @@ func (r *Resolver) SetUserRole(ctx context.Context, args struct {
 	if err := r.IdentityService.AdminSetRole(ctx, actor.UserID, targetID, args.Role); err != nil {
 		return nil, mapAdminGuardError(err)
 	}
+	slog.Default().Info("audit",
+		"action", "set_user_role",
+		"actor", actor.Email,
+		"target_id", targetID,
+		"role", args.Role,
+	)
 	return r.userByID(ctx, targetID)
 }
 
@@ -76,6 +83,12 @@ func (r *Resolver) SetUserActive(ctx context.Context, args struct {
 	if err := r.IdentityService.AdminSetActive(ctx, actor.UserID, targetID, args.IsActive, actor.Email); err != nil {
 		return nil, mapAdminGuardError(err)
 	}
+	slog.Default().Info("audit",
+		"action", "set_user_active",
+		"actor", actor.Email,
+		"target_id", targetID,
+		"is_active", args.IsActive,
+	)
 	return r.userByID(ctx, targetID)
 }
 

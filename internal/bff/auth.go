@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -64,6 +65,16 @@ const (
 	jwksMinRefreshInterval = 30 * time.Second
 )
 
+// Sentinel auth errors let the middleware distinguish "your token is bad",
+// "the identity store is unreachable", and "the issuer's JWKS endpoint is
+// unreachable", mapping each to the appropriate HTTP status code.
+var (
+	errTokenInvalid  = errors.New("invalid token")
+	errKeyDiscovery  = errors.New("key discovery failed")
+	errIdentityStore = errors.New("identity store unavailable")
+	errAccountBanned = errors.New("account is disabled")
+)
+
 // NewAuthenticator creates an Authenticator backed by the given identity service.
 func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) *Authenticator {
 	return &Authenticator{
@@ -83,13 +94,18 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			raw, err := extractBearer(c.Request())
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing bearer token")
+				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 			}
 
 			ctx := c.Request().Context()
 			user, err := a.authenticate(ctx, raw)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+				a.logAuthError(c, err)
+				if errors.Is(err, errKeyDiscovery) || errors.Is(err, errIdentityStore) {
+					c.Response().Header().Set("Retry-After", "5")
+					return echo.NewHTTPError(http.StatusServiceUnavailable, err.Error())
+				}
+				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 			}
 
 			c.SetRequest(c.Request().WithContext(currentuser.WithUser(ctx, user)))
@@ -98,20 +114,57 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 	}
 }
 
+// logAuthError records the cause of an authentication failure for ops and
+// security review, redacting the raw token itself.
+func (a *Authenticator) logAuthError(c echo.Context, err error) {
+	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
+	issuer := c.Request().Header.Get("X-Issuer")
+	subject := c.Request().Header.Get("X-Subject")
+	switch {
+	case errors.Is(err, errKeyDiscovery), errors.Is(err, errIdentityStore):
+		slog.Default().Error("auth backend failure",
+			"request_id", requestID,
+			"issuer", issuer,
+			"subject_hash", hashSubject(subject),
+			"reason", err.Error(),
+		)
+	default:
+		slog.Default().Warn("auth failure",
+			"request_id", requestID,
+			"issuer", issuer,
+			"subject_hash", hashSubject(subject),
+			"reason", err.Error(),
+		)
+	}
+}
+
+// hashSubject provides a short, stable identifier for logging without
+// exposing the raw external subject.
+func hashSubject(subject string) string {
+	if subject == "" {
+		return ""
+	}
+	const limit = 16
+	if len(subject) <= limit {
+		return subject
+	}
+	return subject[:limit]
+}
+
 func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentuser.User, error) {
 	unverified, err := jwt.ParseInsecure([]byte(raw))
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("parse token: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: parse token: %w", errTokenInvalid, err)
 	}
 
 	issuer, ok := unverified.Issuer()
 	if !ok || !slices.Contains(a.cfg.Issuers, issuer) {
-		return currentuser.User{}, fmt.Errorf("issuer %q is not allowed", issuer)
+		return currentuser.User{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
 	}
 
 	keySet, err := a.keySetForIssuer(ctx, issuer, false)
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("load jwks for issuer %q: %w", issuer, err)
+		return currentuser.User{}, fmt.Errorf("%w: load jwks for issuer %q: %w", errKeyDiscovery, issuer, err)
 	}
 
 	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
@@ -127,29 +180,29 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 			}
 		}
 		if err != nil {
-			return currentuser.User{}, fmt.Errorf("verify token: %w", err)
+			return currentuser.User{}, fmt.Errorf("%w: verify token: %w", errTokenInvalid, err)
 		}
 	}
 
 	audience, ok := token.Audience()
 	if !ok {
-		return currentuser.User{}, fmt.Errorf("token has no audience claim")
+		return currentuser.User{}, fmt.Errorf("%w: token has no audience claim", errTokenInvalid)
 	}
 	if !containsAny(a.cfg.Audiences, audience) {
-		return currentuser.User{}, fmt.Errorf("audience %v is not allowed", audience)
+		return currentuser.User{}, fmt.Errorf("%w: audience %v is not allowed", errTokenInvalid, audience)
 	}
 
 	subject, ok := token.Subject()
 	if !ok || subject == "" {
-		return currentuser.User{}, fmt.Errorf("token has no subject")
+		return currentuser.User{}, fmt.Errorf("%w: token has no subject", errTokenInvalid)
 	}
 
 	var email, name string
 	if err := token.Get("email", &email); err != nil {
-		return currentuser.User{}, fmt.Errorf("token email claim: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: token email claim: %w", errTokenInvalid, err)
 	}
 	if err := token.Get("name", &name); err != nil {
-		return currentuser.User{}, fmt.Errorf("token name claim: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: token name claim: %w", errTokenInvalid, err)
 	}
 
 	// A missing or non-boolean claim simply means "not verified".
@@ -158,14 +211,14 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 
 	u, err := a.identity.UpsertUser(ctx, issuer, subject, email, name)
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("upsert user: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: upsert user: %w", errIdentityStore, err)
 	}
 
 	// Banned users are rejected on every request: the JWT stays
 	// cryptographically valid until expiry, but the API refuses to serve
 	// the account while is_active is false.
 	if !u.IsActive {
-		return currentuser.User{}, errors.New("account is disabled")
+		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
 	}
 
 	// Bootstrap admin access: users whose provider-verified email is
@@ -174,9 +227,15 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	// email claim must never trigger promotion.
 	if u.Role != identity.RoleAdmin && emailVerified && containsFold(a.cfg.AdminEmails, u.Email) {
 		if err := a.identity.SetUserRole(ctx, u.UserID, identity.RoleAdmin); err != nil {
-			return currentuser.User{}, fmt.Errorf("promote admin user: %w", err)
+			return currentuser.User{}, fmt.Errorf("%w: promote admin user: %w", errIdentityStore, err)
 		}
 		u.Role = identity.RoleAdmin
+		slog.Default().Info("audit",
+			"action", "promote_admin",
+			"actor", u.Email,
+			"target_id", u.UserID,
+			"provider", issuer,
+		)
 	}
 
 	return currentuser.User{

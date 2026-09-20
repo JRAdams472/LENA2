@@ -65,6 +65,8 @@ services:
       LENA_ADMIN_EMAILS: ${LENA_ADMIN_EMAILS:-}
       # Protected admins can never be demoted or banned via the API.
       LENA_PROTECTED_EMAILS: ${LENA_PROTECTED_EMAILS:-}
+      # Trusted proxy CIDRs for X-Forwarded-For parsing (Caddy + Docker).
+      LENA_TRUSTED_PROXY_CIDRS: ${LENA_TRUSTED_PROXY_CIDRS:-}
       # Writable import inbox (named volume so the container's chown applies).
       LENA_IMPORT_INBOX: ${LENA_IMPORT_INBOX:-/data/import/inbox}
     volumes:

@@ -24,8 +24,11 @@ type Config struct {
 	// ProtectedEmails is a comma-separated list of admin emails that can
 	// never be demoted or deactivated (banned) — the escape hatch that
 	// keeps an owner from being locked out of their own deployment.
-	ProtectedEmails    string `envconfig:"PROTECTED_EMAILS" default:""`
-	AuthIssuers        string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
+	ProtectedEmails string `envconfig:"PROTECTED_EMAILS" default:""`
+	AuthIssuers     string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
+	// TrustedProxyCIDRs is a comma-separated list of trusted proxy CIDRs
+	// for X-Forwarded-For parsing. Leave empty to trust loopback only.
+	TrustedProxyCIDRs  string `envconfig:"TRUSTED_PROXY_CIDRS" default:""`
 	AuthAudiences      string `envconfig:"AUTH_AUDIENCES"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost"`
 	// ServiceName is the OpenTelemetry service.name resource attribute.
