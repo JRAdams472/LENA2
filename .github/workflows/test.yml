@@ -12,7 +12,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  NEXT_PUBLIC_GOOGLE_CLIENT_ID: dummy
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: e2e-client
   NEXT_PUBLIC_API_BASE_URL: /graphql
   # Baseline total statement coverage measured on hand-written code only;
   # generated sqlc and gomock packages are filtered out of the profile by
@@ -262,7 +262,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=/graphql
-            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'dummy' }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'e2e-client' }}
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

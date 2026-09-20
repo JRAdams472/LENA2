@@ -24,6 +24,7 @@ services:
 
   api:
     environment:
+      LENA_DB_PASSWORD: e2e-change-me
       LENA_AUTH_ISSUERS: https://accounts.google.com,http://testissuer:8085
       LENA_AUTH_AUDIENCES: ${LENA_GOOGLE_CLIENT_ID:-dummy},lena-e2e-client
       # e2e@example.com is seeded as admin so catalog mutations work in e2e;
@@ -42,3 +43,15 @@ services:
         condition: service_started
       testissuer:
         condition: service_healthy
+
+  web:
+    build:
+      context: clients/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: e2e-client
+
+  db-seed:
+    environment:
+      LENA_DB_PASSWORD: e2e-change-me

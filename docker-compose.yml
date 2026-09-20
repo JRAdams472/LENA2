@@ -35,6 +35,7 @@ services:
     environment:
       PGUSER: ${POSTGRES_USER:-lena}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      LENA_DB_PASSWORD: ${LENA_DB_PASSWORD:?LENA_DB_PASSWORD must be set}
       PGHOST: db
       PGPORT: 5432
       PGDATABASE: ${POSTGRES_DB:-lena}
@@ -43,7 +44,7 @@ services:
     command:
       - /bin/sh
       - -c
-      - "for f in /seed/*.sql; do [ -e \"$$f\" ] || continue; psql -v ON_ERROR_STOP=1 -f \"$$f\"; done"
+      - "psql -v ON_ERROR_STOP=1 -c \"ALTER ROLE lena_app WITH PASSWORD '$LENA_DB_PASSWORD'\" && for f in /seed/*.sql; do [ -e \"$$f\" ] || continue; psql -v ON_ERROR_STOP=1 -f \"$$f\"; done"
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -56,19 +57,18 @@ services:
     environment:
       LENA_PORT: 8080
       LENA_LOG_LEVEL: ${LENA_LOG_LEVEL:-info}
-      LENA_DATABASE_URL: postgres://${POSTGRES_USER:-lena}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-lena}?sslmode=${POSTGRES_SSLMODE:-disable}
-      LENA_GOOGLE_CLIENT_ID: ${LENA_GOOGLE_CLIENT_ID:-dummy}
+      LENA_DATABASE_URL: postgres://${LENA_DB_USER:-lena_app}:${LENA_DB_PASSWORD:?LENA_DB_PASSWORD must be set}@db:5432/${POSTGRES_DB:-lena}?sslmode=${POSTGRES_SSLMODE:-disable}
+      LENA_GOOGLE_CLIENT_ID: ${LENA_GOOGLE_CLIENT_ID:?LENA_GOOGLE_CLIENT_ID must be set}
       LENA_AUTH_ISSUERS: ${LENA_AUTH_ISSUERS:-https://accounts.google.com}
-      LENA_AUTH_AUDIENCES: ${LENA_AUTH_AUDIENCES:-dummy}
+      LENA_AUTH_AUDIENCES: ${LENA_AUTH_AUDIENCES:?LENA_AUTH_AUDIENCES must be set}
       LENA_CORS_ALLOWED_ORIGINS: ${LENA_CORS_ALLOWED_ORIGINS:-http://localhost}
       LENA_ADMIN_EMAILS: ${LENA_ADMIN_EMAILS:-}
       # Protected admins can never be demoted or banned via the API.
-      LENA_PROTECTED_EMAILS: ${LENA_PROTECTED_EMAILS:-aipaloovik@gmail.com}
-      # Writable import inbox shared with the host so uploaded scans are
-      # available to the ocrimport CLI pipeline.
+      LENA_PROTECTED_EMAILS: ${LENA_PROTECTED_EMAILS:-}
+      # Writable import inbox (named volume so the container's chown applies).
       LENA_IMPORT_INBOX: ${LENA_IMPORT_INBOX:-/data/import/inbox}
     volumes:
-      - ./import:/data/import
+      - import_data:/data/import
     depends_on:
       db-seed:
         condition: service_completed_successfully
@@ -93,7 +93,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-dummy}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:?NEXT_PUBLIC_GOOGLE_CLIENT_ID must be set}
     container_name: lena2-web
     environment:
       PORT: 3000
@@ -143,3 +143,4 @@ services:
 volumes:
   pg_data:
   seq_data:
+  import_data:
