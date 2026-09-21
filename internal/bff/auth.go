@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -23,13 +24,19 @@ import (
 )
 
 // AuthConfig configures which OIDC issuers and audiences are trusted.
-// Adding a provider later only requires appending to these lists.
+// Audiences are paired with issuers by position, so a token's audience is
+// only accepted when it matches the audience entry at the same index as its
+// issuer. AdminEmails entries should be qualified as "issuer:email" so the
+// same email cannot be promoted from an unrelated trusted issuer.
 type AuthConfig struct {
 	Issuers   []string
 	Audiences []string
 	// AdminEmails is a bootstrap allowlist: a user whose *provider-verified*
 	// email is listed is promoted to the persisted 'admin' role on their
 	// next request. Tokens without email_verified=true are never promoted.
+	// Entries may be qualified as "issuer:email" (use the last colon as the
+	// separator). A bare email is accepted only when exactly one issuer is
+	// configured and is implicitly scoped to that issuer.
 	AdminEmails []string
 }
 
@@ -42,9 +49,10 @@ type identityStore interface {
 
 // Authenticator validates OIDC ID tokens and resolves the current user.
 type Authenticator struct {
-	cfg      AuthConfig
-	identity identityStore
-	httpc    *http.Client
+	identity            identityStore
+	audiencesByIssuer   map[string][]string
+	adminEmailsByIssuer map[string][]string
+	httpc               *http.Client
 
 	mu   sync.Mutex
 	jwks map[string]*cachedKeySet
@@ -64,14 +72,92 @@ const (
 	jwksMinRefreshInterval = 30 * time.Second
 )
 
+// Sentinel auth errors let the middleware distinguish "your token is bad",
+// "the identity store is unreachable", and "the issuer's JWKS endpoint is
+// unreachable", mapping each to the appropriate HTTP status code.
+var (
+	errTokenInvalid  = errors.New("invalid token")
+	errKeyDiscovery  = errors.New("key discovery failed")
+	errIdentityStore = errors.New("identity store unavailable")
+	errAccountBanned = errors.New("account is disabled")
+)
+
 // NewAuthenticator creates an Authenticator backed by the given identity service.
-func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) *Authenticator {
-	return &Authenticator{
-		cfg:      cfg,
-		identity: identitySvc,
-		httpc:    &http.Client{Timeout: 10 * time.Second},
-		jwks:     make(map[string]*cachedKeySet),
+func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) (*Authenticator, error) {
+	audiences, err := zipIssuersAndAudiences(cfg.Issuers, cfg.Audiences)
+	if err != nil {
+		return nil, fmt.Errorf("auth config: %w", err)
 	}
+	adminEmails, err := groupAdminEmailsByIssuer(cfg.Issuers, cfg.AdminEmails)
+	if err != nil {
+		return nil, fmt.Errorf("auth config: %w", err)
+	}
+	return &Authenticator{
+		identity:            identitySvc,
+		audiencesByIssuer:   audiences,
+		adminEmailsByIssuer: adminEmails,
+		httpc:               &http.Client{Timeout: 10 * time.Second},
+		jwks:                make(map[string]*cachedKeySet),
+	}, nil
+}
+
+// zipIssuersAndAudiences pairs the ith issuer with the ith audience. This
+// prevents a token from issuer A being accepted solely because it carries
+// an audience belonging to issuer B.
+func zipIssuersAndAudiences(issuers, audiences []string) (map[string][]string, error) {
+	if len(issuers) == 0 {
+		return nil, errors.New("at least one issuer is required")
+	}
+	if len(audiences) == 0 {
+		return nil, errors.New("at least one audience is required")
+	}
+	if len(issuers) != len(audiences) {
+		return nil, fmt.Errorf("issuer count (%d) does not match audience count (%d); each issuer must have exactly one audience", len(issuers), len(audiences))
+	}
+	m := make(map[string][]string, len(issuers))
+	for i, iss := range issuers {
+		m[iss] = []string{audiences[i]}
+	}
+	return m, nil
+}
+
+// groupAdminEmailsByIssuer parses "issuer:email" entries into per-issuer
+// admin allowlists. A bare email is only allowed when a single issuer is
+// configured; otherwise the issuer prefix is required for safety.
+func groupAdminEmailsByIssuer(issuers, adminEmails []string) (map[string][]string, error) {
+	byIssuer := make(map[string][]string)
+	if len(adminEmails) == 0 {
+		return byIssuer, nil
+	}
+	singleIssuer := len(issuers) == 1
+	for _, raw := range adminEmails {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		issuer, email := splitProviderScoped(raw)
+		if issuer == "" {
+			if !singleIssuer {
+				return nil, fmt.Errorf("admin email %q is missing an issuer qualifier; required when multiple issuers are configured", raw)
+			}
+			issuer = issuers[0]
+		}
+		if !slices.Contains(issuers, issuer) {
+			return nil, fmt.Errorf("admin email %q references unknown issuer %q", raw, issuer)
+		}
+		byIssuer[issuer] = append(byIssuer[issuer], email)
+	}
+	return byIssuer, nil
+}
+
+// splitProviderScoped splits "provider:value" at the last colon, which is
+// safe because email addresses cannot contain colons. It returns an empty
+// provider when no qualifier is present.
+func splitProviderScoped(s string) (provider, value string) {
+	if i := strings.LastIndex(s, ":"); i > 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return "", strings.TrimSpace(s)
 }
 
 // Middleware validates the bearer token on every request, upserts the
@@ -83,13 +169,18 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			raw, err := extractBearer(c.Request())
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing bearer token")
+				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 			}
 
 			ctx := c.Request().Context()
 			user, err := a.authenticate(ctx, raw)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+				a.logAuthError(c, err)
+				if errors.Is(err, errKeyDiscovery) || errors.Is(err, errIdentityStore) {
+					c.Response().Header().Set("Retry-After", "5")
+					return echo.NewHTTPError(http.StatusServiceUnavailable, err.Error())
+				}
+				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 			}
 
 			c.SetRequest(c.Request().WithContext(currentuser.WithUser(ctx, user)))
@@ -98,20 +189,60 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 	}
 }
 
+// logAuthError records the cause of an authentication failure for ops and
+// security review, redacting the raw token itself.
+func (a *Authenticator) logAuthError(c echo.Context, err error) {
+	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
+	issuer := c.Request().Header.Get("X-Issuer")
+	subject := c.Request().Header.Get("X-Subject")
+	switch {
+	case errors.Is(err, errKeyDiscovery), errors.Is(err, errIdentityStore):
+		slog.Default().Error("auth backend failure",
+			"request_id", requestID,
+			"issuer", issuer,
+			"subject_hash", hashSubject(subject),
+			"reason", err.Error(),
+		)
+	default:
+		slog.Default().Warn("auth failure",
+			"request_id", requestID,
+			"issuer", issuer,
+			"subject_hash", hashSubject(subject),
+			"reason", err.Error(),
+		)
+	}
+}
+
+// hashSubject provides a short, stable identifier for logging without
+// exposing the raw external subject.
+func hashSubject(subject string) string {
+	if subject == "" {
+		return ""
+	}
+	const limit = 16
+	if len(subject) <= limit {
+		return subject
+	}
+	return subject[:limit]
+}
+
 func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentuser.User, error) {
 	unverified, err := jwt.ParseInsecure([]byte(raw))
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("parse token: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: parse token: %w", errTokenInvalid, err)
 	}
 
 	issuer, ok := unverified.Issuer()
-	if !ok || !slices.Contains(a.cfg.Issuers, issuer) {
-		return currentuser.User{}, fmt.Errorf("issuer %q is not allowed", issuer)
+	if !ok {
+		return currentuser.User{}, fmt.Errorf("%w: token has no issuer", errTokenInvalid)
+	}
+	if _, ok := a.audiencesByIssuer[issuer]; !ok {
+		return currentuser.User{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
 	}
 
 	keySet, err := a.keySetForIssuer(ctx, issuer, false)
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("load jwks for issuer %q: %w", issuer, err)
+		return currentuser.User{}, fmt.Errorf("%w: load jwks for issuer %q: %w", errKeyDiscovery, issuer, err)
 	}
 
 	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
@@ -127,29 +258,29 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 			}
 		}
 		if err != nil {
-			return currentuser.User{}, fmt.Errorf("verify token: %w", err)
+			return currentuser.User{}, fmt.Errorf("%w: verify token: %w", errTokenInvalid, err)
 		}
 	}
 
 	audience, ok := token.Audience()
 	if !ok {
-		return currentuser.User{}, fmt.Errorf("token has no audience claim")
+		return currentuser.User{}, fmt.Errorf("%w: token has no audience claim", errTokenInvalid)
 	}
-	if !containsAny(a.cfg.Audiences, audience) {
-		return currentuser.User{}, fmt.Errorf("audience %v is not allowed", audience)
+	if !containsAny(a.audiencesByIssuer[issuer], audience) {
+		return currentuser.User{}, fmt.Errorf("%w: audience %v is not allowed for issuer %q", errTokenInvalid, audience, issuer)
 	}
 
 	subject, ok := token.Subject()
 	if !ok || subject == "" {
-		return currentuser.User{}, fmt.Errorf("token has no subject")
+		return currentuser.User{}, fmt.Errorf("%w: token has no subject", errTokenInvalid)
 	}
 
 	var email, name string
 	if err := token.Get("email", &email); err != nil {
-		return currentuser.User{}, fmt.Errorf("token email claim: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: token email claim: %w", errTokenInvalid, err)
 	}
 	if err := token.Get("name", &name); err != nil {
-		return currentuser.User{}, fmt.Errorf("token name claim: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: token name claim: %w", errTokenInvalid, err)
 	}
 
 	// A missing or non-boolean claim simply means "not verified".
@@ -158,25 +289,32 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 
 	u, err := a.identity.UpsertUser(ctx, issuer, subject, email, name)
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("upsert user: %w", err)
+		return currentuser.User{}, fmt.Errorf("%w: upsert user: %w", errIdentityStore, err)
 	}
 
 	// Banned users are rejected on every request: the JWT stays
 	// cryptographically valid until expiry, but the API refuses to serve
 	// the account while is_active is false.
 	if !u.IsActive {
-		return currentuser.User{}, errors.New("account is disabled")
+		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
 	}
 
 	// Bootstrap admin access: users whose provider-verified email is
 	// configured in LENA_ADMIN_EMAILS are promoted to the persisted admin
 	// role here so the role survives across logins. An unverified or absent
-	// email claim must never trigger promotion.
-	if u.Role != identity.RoleAdmin && emailVerified && containsFold(a.cfg.AdminEmails, u.Email) {
+	// email claim must never trigger promotion. The admin email must be
+	// scoped to the same issuer the token came from.
+	if adminList := a.adminEmailsByIssuer[issuer]; u.Role != identity.RoleAdmin && emailVerified && containsFold(adminList, u.Email) {
 		if err := a.identity.SetUserRole(ctx, u.UserID, identity.RoleAdmin); err != nil {
-			return currentuser.User{}, fmt.Errorf("promote admin user: %w", err)
+			return currentuser.User{}, fmt.Errorf("%w: promote admin user: %w", errIdentityStore, err)
 		}
 		u.Role = identity.RoleAdmin
+		slog.Default().Info("audit",
+			"action", "promote_admin",
+			"actor", u.Email,
+			"target_id", u.UserID,
+			"provider", issuer,
+		)
 	}
 
 	return currentuser.User{

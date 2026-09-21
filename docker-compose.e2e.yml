@@ -29,7 +29,9 @@ services:
       LENA_AUTH_AUDIENCES: ${LENA_GOOGLE_CLIENT_ID:-dummy},lena-e2e-client
       # e2e@example.com is seeded as admin so catalog mutations work in e2e;
       # e2e-other@example.com stays a member to exercise the rejection path.
-      LENA_ADMIN_EMAILS: e2e@example.com
+      # The e2e suite mints tokens from testissuer, so the bootstrap admin
+      # email must be qualified to that issuer.
+      LENA_ADMIN_EMAILS: http://testissuer:8085:e2e@example.com
       # The whole e2e suite authenticates as the same user, so the default
       # per-user GraphQL rate limit would 429 mid-run; disable it here.
       LENA_GRAPHQL_RATE_LIMIT_PER_MINUTE: "0"

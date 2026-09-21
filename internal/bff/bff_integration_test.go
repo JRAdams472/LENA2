@@ -45,7 +45,7 @@ func TestBFF_Integration(t *testing.T) {
 	issuer := testenv.NewTestIssuer(t)
 
 	identitySvc := identity.NewService(pool)
-	authenticator := NewAuthenticator(AuthConfig{
+	authenticator := mustNewAuthenticator(t, AuthConfig{
 		Issuers:     []string{issuer.URL},
 		Audiences:   []string{issuer.Audience},
 		AdminEmails: []string{"auth@example.com", "user-a@example.com"},

@@ -189,7 +189,7 @@ type IdentityService interface {
 	GetByID(ctx context.Context, userID int64) (identity.User, error)
 	ListUsers(ctx context.Context, limit, offset int32) ([]identity.User, error)
 	CountUsers(ctx context.Context) (int64, error)
-	IsProtected(email string) bool
+	IsProtected(provider, email string) bool
 	AdminSetRole(ctx context.Context, actorID, targetID int64, role string) error
 	AdminSetActive(ctx context.Context, actorID, targetID int64, active bool, by string) error
 	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error

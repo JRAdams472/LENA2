@@ -2017,17 +2017,17 @@ func (mr *MockIdentityServiceMockRecorder) GetByID(ctx, userID any) *gomock.Call
 }
 
 // IsProtected mocks base method.
-func (m *MockIdentityService) IsProtected(email string) bool {
+func (m *MockIdentityService) IsProtected(provider, email string) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsProtected", email)
+	ret := m.ctrl.Call(m, "IsProtected", provider, email)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // IsProtected indicates an expected call of IsProtected.
-func (mr *MockIdentityServiceMockRecorder) IsProtected(email any) *gomock.Call {
+func (mr *MockIdentityServiceMockRecorder) IsProtected(provider, email any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsProtected", reflect.TypeOf((*MockIdentityService)(nil).IsProtected), email)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsProtected", reflect.TypeOf((*MockIdentityService)(nil).IsProtected), provider, email)
 }
 
 // ListUsers mocks base method.

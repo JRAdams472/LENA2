@@ -9,15 +9,20 @@ import (
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
 )
 
+// nutrientLabelMaxLen matches the implicit catalog limit for nutrient type
+// names; anything longer is not a real nutrient and is ignored.
+const nutrientLabelMaxLen = 100
+
 // processNutritionPhoto decodes the image, extracts text via OCR, parses the
 // text into nutrients, and writes the resulting nutrient rows to the item.
-func processNutritionPhoto(ctx context.Context, inv InventoryService, ocr OCRClient, itemID int64, image []byte) error {
+// Unknown nutrient labels are not auto-created; only existing catalog types
+// are applied so non-admin members cannot add global reference data.
+func processNutritionPhoto(ctx context.Context, inv InventoryService, ocr OCRClient, itemID int64, image []byte, by string) error {
 	text, err := ocr.ExtractText(ctx, image)
 	if err != nil {
 		return fmt.Errorf("ocr extract text: %w", err)
@@ -30,36 +35,29 @@ func processNutritionPhoto(ctx context.Context, inv InventoryService, ocr OCRCli
 	}
 
 	entries := make([]inventory.NutrientEntry, 0, len(parsed))
-	createdTypes := 0
 	matchedTypes := 0
 	skipped := 0
+	unknown := 0
 	for _, n := range parsed {
 		label := strings.TrimSpace(n.Label)
-		if label == "" {
+		if label == "" || len(label) > nutrientLabelMaxLen {
 			skipped++
 			continue
 		}
 		nt, err := inv.GetNutrientTypeByName(ctx, label)
 		if err != nil {
-			if !strings.Contains(err.Error(), pgx.ErrNoRows.Error()) {
-				return fmt.Errorf("get nutrient type by name: %w", err)
-			}
-			// Create a new nutrient type from the OCR text.
-			nt, err = inv.CreateNutrientType(ctx, label, n.Unit)
-			if err != nil {
-				return fmt.Errorf("create nutrient type %q: %w", label, err)
-			}
-			createdTypes++
-		} else {
-			matchedTypes++
+			// Unknown labels are not created here; admins use createNutrientType.
+			unknown++
+			continue
 		}
+		matchedTypes++
 		entries = append(entries, inventory.NutrientEntry{
 			NutrientID: nt.NutrientID,
 			Amount:     n.Amount,
 		})
 	}
 
-	if err := inv.SetItemNutrients(ctx, itemID, entries, "ocr-system"); err != nil {
+	if err := inv.SetItemNutrients(ctx, itemID, entries, by); err != nil {
 		return fmt.Errorf("set item nutrients: %w", err)
 	}
 
@@ -67,8 +65,9 @@ func processNutritionPhoto(ctx context.Context, inv InventoryService, ocr OCRCli
 		"item_id", itemID,
 		"parsed", len(parsed),
 		"matched", matchedTypes,
-		"created", createdTypes,
+		"unknown", unknown,
 		"skipped", skipped,
+		"by", by,
 	)
 	return nil
 }
@@ -113,7 +112,7 @@ func (r *Resolver) SubmitItemNutritionPhoto(ctx context.Context, args struct {
 	}
 
 	r.runAsync("nutrition-ocr", 30*time.Second, func(ctx context.Context) error {
-		return processNutritionPhoto(ctx, r.InventoryService, r.OCRClient, itemID, decoded)
+		return processNutritionPhoto(ctx, r.InventoryService, r.OCRClient, itemID, decoded, u.Email)
 	})
 	return true, nil
 }

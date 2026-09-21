@@ -308,11 +308,12 @@ func TestListAndCountUsers(t *testing.T) {
 
 func TestIsProtected(t *testing.T) {
 	svc, _ := newService(t)
-	assert.False(t, svc.IsProtected("a@b.com"))
+	assert.False(t, svc.IsProtected("https://issuer.example.com", "a@b.com"))
 
-	svc = svc.WithProtectedEmails([]string{" Boss@Example.com ", "", "second@b.com"})
-	assert.True(t, svc.IsProtected("boss@example.com"))
-	assert.True(t, svc.IsProtected("BOSS@EXAMPLE.COM"))
-	assert.True(t, svc.IsProtected("second@b.com"))
-	assert.False(t, svc.IsProtected("other@b.com"))
+	svc = svc.WithProtectedEmails([]string{"https://issuer.example.com:Boss@Example.com", "", "https://issuer.example.com:second@b.com"})
+	assert.True(t, svc.IsProtected("https://issuer.example.com", "boss@example.com"))
+	assert.True(t, svc.IsProtected("https://issuer.example.com", "BOSS@EXAMPLE.COM"))
+	assert.True(t, svc.IsProtected("https://issuer.example.com", "second@b.com"))
+	assert.False(t, svc.IsProtected("https://other.example.com", "boss@example.com"))
+	assert.False(t, svc.IsProtected("https://issuer.example.com", "other@b.com"))
 }
