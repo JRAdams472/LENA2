@@ -176,6 +176,7 @@ type UserPrefsService interface {
 	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	SetRecipeFavorite(ctx context.Context, userID, recipeID int64, isFavorite bool, by string) (userprefs.RecipeFavorite, error)
 	UpsertUserItem(ctx context.Context, arg userprefs.UserItem, by string) (userprefs.UserItem, error)
+	AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error)
 	DeleteUserItem(ctx context.Context, userItemID, userID int64) error
 	UpsertUserBottle(ctx context.Context, arg userprefs.UserBottle, by string) (userprefs.UserBottle, error)
 	GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (userprefs.RecipeFavorite, error)

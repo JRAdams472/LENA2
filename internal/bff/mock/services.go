@@ -1945,6 +1945,21 @@ func (m *MockUserPrefsService) EXPECT() *MockUserPrefsServiceMockRecorder {
 	return m.recorder
 }
 
+// AdjustUserItemQuantity mocks base method.
+func (m *MockUserPrefsService) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, userID, itemID, delta, by)
+	ret0, _ := ret[0].(userprefs.UserItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdjustUserItemQuantity indicates an expected call of AdjustUserItemQuantity.
+func (mr *MockUserPrefsServiceMockRecorder) AdjustUserItemQuantity(ctx, userID, itemID, delta, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustUserItemQuantity", reflect.TypeOf((*MockUserPrefsService)(nil).AdjustUserItemQuantity), ctx, userID, itemID, delta, by)
+}
+
 // CountUserBottles mocks base method.
 func (m *MockUserPrefsService) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
 	m.ctrl.T.Helper()
