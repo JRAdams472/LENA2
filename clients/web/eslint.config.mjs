@@ -15,13 +15,6 @@ const eslintConfig = defineConfig([
     // Generated Jest coverage output:
     "coverage/**",
   ]),
-  {
-    // Work around a crash in eslint-plugin-react under ESLint 10
-    // (react/display-name uses the removed context.getFilename() API).
-    rules: {
-      "react/display-name": "off",
-    },
-  },
 ]);
 
 export default eslintConfig;
