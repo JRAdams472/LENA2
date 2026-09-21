@@ -21,6 +21,7 @@ import (
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
+	tx   pgx.Tx
 	// protected holds lowercased emails that can never be demoted from
 	// admin or deactivated (LENA_PROTECTED_EMAILS).
 	protected map[string]bool
@@ -68,13 +69,18 @@ func splitIssuerAndEmail(s string) (issuer, email string) {
 func (s *Service) WithTx(tx pgx.Tx) *Service {
 	c := *s
 	c.q = sqlc.New(dbtx.NewTimedExecer(tx, "identity"))
+	c.tx = tx
 	return &c
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is
 // bound to that transaction. The transaction commits when fn returns nil and
-// rolls back otherwise.
+// rolls back otherwise. If the service is already bound to a transaction, fn
+// runs in that transaction instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	if s.tx != nil {
+		return fn(s)
+	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
