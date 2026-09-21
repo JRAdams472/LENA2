@@ -69,3 +69,14 @@ DELETE FROM grocery.grocery_list_item gli
 USING grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
   AND gli.grocery_list_item_id = $1 AND gl.user_id = $2;
+
+-- name: ToggleGroceryListItemChecked :one
+UPDATE grocery.grocery_list_item gli
+SET is_checked = NOT gli.is_checked,
+    updated_by = $3,
+    updated_at = now()
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1
+  AND gl.user_id = $2
+RETURNING gli.*;

@@ -133,77 +133,22 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 			gTx := g.WithTx(tx)
 			upTx := up.WithTx(tx)
 
-			current, err := gTx.GetGroceryListItemByID(ctx, id, u.UserID)
+			toggled, err := gTx.ToggleGroceryListItemChecked(ctx, id, u.UserID, u.Email)
 			if err != nil {
 				return err
 			}
-
-			flipped := current
-			flipped.IsChecked = !current.IsChecked
-			if err := gTx.UpdateGroceryListItem(ctx, id, u.UserID, flipped, u.Email); err != nil {
-				return err
-			}
-
-			existing, err := upTx.GetUserItemByUserAndItem(ctx, u.UserID, *current.ItemID)
-			if err != nil {
-				return err
-			}
-
-			if current.IsChecked {
-				// Uncheck: subtract the needed quantity, floored at 0.
-				if existing != nil {
-					newQty := existing.CurrentQty - current.QuantityNeeded
-					if newQty < 0 {
-						newQty = 0
-					}
-					if _, err := upTx.UpsertUserItem(ctx, userprefs.UserItem{
-						UserItemID: existing.UserItemID,
-						UserID:     u.UserID,
-						ItemID:     *current.ItemID,
-						CurrentQty: newQty,
-						MinQty:     existing.MinQty,
-						PurchaseAt: existing.PurchaseAt,
-						ExpiresAt:  existing.ExpiresAt,
-						Notes:      existing.Notes,
-						IsFavorite: existing.IsFavorite,
-					}, u.Email); err != nil {
-						return err
-					}
-				}
-			} else {
-				// Check: add the needed quantity, creating the pantry row
-				// if this is the first time.
-				if existing == nil {
-					if _, err := upTx.UpsertUserItem(ctx, userprefs.UserItem{
-						UserID:     u.UserID,
-						ItemID:     *current.ItemID,
-						CurrentQty: current.QuantityNeeded,
-					}, u.Email); err != nil {
-						return err
-					}
+			if toggled.ItemID != nil {
+				var delta float64
+				if toggled.IsChecked {
+					delta = toggled.QuantityNeeded
 				} else {
-					newQty := existing.CurrentQty + current.QuantityNeeded
-					if _, err := upTx.UpsertUserItem(ctx, userprefs.UserItem{
-						UserItemID: existing.UserItemID,
-						UserID:     u.UserID,
-						ItemID:     *current.ItemID,
-						CurrentQty: newQty,
-						MinQty:     existing.MinQty,
-						PurchaseAt: existing.PurchaseAt,
-						ExpiresAt:  existing.ExpiresAt,
-						Notes:      existing.Notes,
-						IsFavorite: existing.IsFavorite,
-					}, u.Email); err != nil {
-						return err
-					}
+					delta = -toggled.QuantityNeeded
+				}
+				if _, err := upTx.AdjustUserItemQuantity(ctx, u.UserID, *toggled.ItemID, delta, u.Email); err != nil {
+					return err
 				}
 			}
-
-			u2, err := gTx.GetGroceryListItemByID(ctx, id, u.UserID)
-			if err != nil {
-				return err
-			}
-			updated = u2
+			updated = toggled
 			return nil
 		}); err != nil {
 			return nil, err
@@ -213,11 +158,7 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 
 	// Fallback for tests without a real pool, or for manual/ingredient rows
 	// where there is no catalog item to sync.
-	it.IsChecked = !it.IsChecked
-	if err := r.GroceryService.UpdateGroceryListItem(ctx, id, u.UserID, it, u.Email); err != nil {
-		return nil, err
-	}
-	updated, err := r.GroceryService.GetGroceryListItemByID(ctx, id, u.UserID)
+	updated, err := r.GroceryService.ToggleGroceryListItemChecked(ctx, id, u.UserID, u.Email)
 	if err != nil {
 		return nil, err
 	}

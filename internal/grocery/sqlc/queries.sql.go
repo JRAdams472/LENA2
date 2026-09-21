@@ -338,6 +338,45 @@ func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsPara
 	return items, nil
 }
 
+const toggleGroceryListItemChecked = `-- name: ToggleGroceryListItemChecked :one
+UPDATE grocery.grocery_list_item gli
+SET is_checked = NOT gli.is_checked,
+    updated_by = $3,
+    updated_at = now()
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1
+  AND gl.user_id = $2
+RETURNING gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
+`
+
+type ToggleGroceryListItemCheckedParams struct {
+	GroceryListItemID int64       `json:"grocery_list_item_id"`
+	UserID            int64       `json:"user_id"`
+	UpdatedBy         pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error) {
+	row := q.db.QueryRow(ctx, toggleGroceryListItemChecked, arg.GroceryListItemID, arg.UserID, arg.UpdatedBy)
+	var i GroceryGroceryListItem
+	err := row.Scan(
+		&i.GroceryListItemID,
+		&i.GroceryListID,
+		&i.ItemID,
+		&i.ManualItemName,
+		&i.QuantityNeeded,
+		&i.Source,
+		&i.IsChecked,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.IngredientID,
+		&i.UnitID,
+	)
+	return i, err
+}
+
 const updateGroceryListItem = `-- name: UpdateGroceryListItem :exec
 UPDATE grocery.grocery_list_item gli
 SET item_id          = $3,

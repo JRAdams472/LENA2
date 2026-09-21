@@ -226,6 +226,24 @@ func (s *Service) DeleteGroceryListItem(ctx context.Context, groceryListItemID, 
 	return s.q.DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: groceryListItemID, UserID: userID})
 }
 
+// ToggleGroceryListItemChecked flips the checked state of an item and
+// returns the post-toggle row in one atomic statement.
+func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (GroceryListItem, error) {
+	row, err := s.q.ToggleGroceryListItemChecked(ctx, sqlc.ToggleGroceryListItemCheckedParams{
+		GroceryListItemID: groceryListItemID,
+		UserID:            userID,
+		UpdatedBy:         textOrNull(by),
+	})
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
+	gli, err := toGroceryListItem(row)
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
+	return gli, nil
+}
+
 // Generate creates a new grocery list and seeds it from a meal plan.
 // Actual item totals and pantry subtraction are calculated in Go so the
 // SQL stays free of business logic.

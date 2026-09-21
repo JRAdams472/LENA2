@@ -24,6 +24,7 @@ type GroceryService interface {
 	Generate(ctx context.Context, userID int64, mealPlanID int64, by string) (grocery.GroceryList, error)
 	GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error)
 	UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error
+	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error)
 	DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error
 	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, userID int64, by string) (grocery.GroceryListItem, error)
 	ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]grocery.GroceryListItem, error)

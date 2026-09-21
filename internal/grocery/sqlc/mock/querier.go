@@ -189,6 +189,21 @@ func (mr *MockQuerierMockRecorder) ListGroceryLists(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockQuerier)(nil).ListGroceryLists), ctx, arg)
 }
 
+// ToggleGroceryListItemChecked mocks base method.
+func (m *MockQuerier) ToggleGroceryListItemChecked(ctx context.Context, arg sqlc.ToggleGroceryListItemCheckedParams) (sqlc.GroceryGroceryListItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ToggleGroceryListItemChecked", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryGroceryListItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ToggleGroceryListItemChecked indicates an expected call of ToggleGroceryListItemChecked.
+func (mr *MockQuerierMockRecorder) ToggleGroceryListItemChecked(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockQuerier)(nil).ToggleGroceryListItemChecked), ctx, arg)
+}
+
 // UpdateGroceryListItem mocks base method.
 func (m *MockQuerier) UpdateGroceryListItem(ctx context.Context, arg sqlc.UpdateGroceryListItemParams) error {
 	m.ctrl.T.Helper()
