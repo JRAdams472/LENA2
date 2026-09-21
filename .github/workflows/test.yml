@@ -46,9 +46,12 @@ jobs:
         run: test -z "$(gofmt -l cmd internal)"
 
       - name: Go test with coverage
-        # Use -coverpkg=all so tests that call generated sqlc code also
-        # attribute statements to the sqlc packages in the coverage profile.
-        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic -coverpkg=all ./cmd/... ./internal/...
+        # Use -coverpkg over the same package tree so tests that call
+        # generated sqlc code also attribute statements to the sqlc packages
+        # without pulling in the whole module (e.g. clients/web).
+        run: |
+          coverpkg=$(go list -f '{{.ImportPath}}' ./cmd/... ./internal/... | tr '\n' ',' | sed 's/,$//')
+          go test -race -count=1 -coverprofile=coverage.out -covermode=atomic -coverpkg="$coverpkg" ./cmd/... ./internal/...
 
       - name: Filter generated code from coverage
         run: go run ./tools/coveragefilter < coverage.out > coverage-filtered.out
