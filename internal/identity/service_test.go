@@ -159,7 +159,7 @@ func TestAdminSetRole(t *testing.T) {
 	t.Run("promotes a member", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
-		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 2, Role: RoleAdmin}).Return(nil)
+		mq.EXPECT().ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: 2, Role: RoleAdmin}).Return(int64(1), nil)
 
 		require.NoError(t, svc.AdminSetRole(ctx, 1, 2, RoleAdmin))
 	})
@@ -167,8 +167,7 @@ func TestAdminSetRole(t *testing.T) {
 	t.Run("demoting an admin requires another active admin", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
-		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(3), nil)
-		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 2, Role: RoleMember}).Return(nil)
+		mq.EXPECT().ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: 2, Role: RoleMember}).Return(int64(1), nil)
 
 		require.NoError(t, svc.AdminSetRole(ctx, 1, 2, RoleMember))
 	})
@@ -182,7 +181,7 @@ func TestAdminSetRole(t *testing.T) {
 	t.Run("cannot demote the last active admin", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
-		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(1), nil)
+		mq.EXPECT().ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: 2, Role: RoleMember}).Return(int64(0), nil)
 
 		err := svc.AdminSetRole(ctx, 1, 2, RoleMember)
 		assert.ErrorIs(t, err, ErrLastAdmin)
@@ -204,12 +203,12 @@ func TestAdminSetActive(t *testing.T) {
 	t.Run("bans a member", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
-		mq.EXPECT().SetUserActive(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.SetUserActiveParams) error {
+		mq.EXPECT().ConditionalSetUserActive(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.ConditionalSetUserActiveParams) (int64, error) {
 				assert.Equal(t, int64(2), arg.UserID)
 				assert.False(t, arg.IsActive)
 				assert.Equal(t, pgtype.Text{String: "admin@b.com", Valid: true}, arg.UpdatedBy)
-				return nil
+				return 1, nil
 			})
 
 		require.NoError(t, svc.AdminSetActive(ctx, 1, 2, false, "admin@b.com"))
@@ -233,7 +232,7 @@ func TestAdminSetActive(t *testing.T) {
 	t.Run("cannot ban the last active admin", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
-		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(1), nil)
+		mq.EXPECT().ConditionalSetUserActive(ctx, gomock.Any()).Return(int64(0), nil)
 
 		err := svc.AdminSetActive(ctx, 1, 2, false, "a@b.com")
 		assert.ErrorIs(t, err, ErrLastAdmin)
@@ -242,7 +241,7 @@ func TestAdminSetActive(t *testing.T) {
 	t.Run("unban has no admin guard", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
-		mq.EXPECT().SetUserActive(ctx, gomock.Any()).Return(nil)
+		mq.EXPECT().ConditionalSetUserActive(ctx, gomock.Any()).Return(int64(1), nil)
 
 		require.NoError(t, svc.AdminSetActive(ctx, 1, 2, true, "admin@b.com"))
 	})

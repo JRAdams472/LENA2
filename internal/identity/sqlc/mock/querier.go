@@ -186,3 +186,33 @@ func (mr *MockQuerierMockRecorder) UpsertUser(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUser", reflect.TypeOf((*MockQuerier)(nil).UpsertUser), ctx, arg)
 }
+
+// ConditionalSetUserRole mocks base method.
+func (m *MockQuerier) ConditionalSetUserRole(ctx context.Context, arg sqlc.ConditionalSetUserRoleParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConditionalSetUserRole", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConditionalSetUserRole indicates an expected call of ConditionalSetUserRole.
+func (mr *MockQuerierMockRecorder) ConditionalSetUserRole(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConditionalSetUserRole", reflect.TypeOf((*MockQuerier)(nil).ConditionalSetUserRole), ctx, arg)
+}
+
+// ConditionalSetUserActive mocks base method.
+func (m *MockQuerier) ConditionalSetUserActive(ctx context.Context, arg sqlc.ConditionalSetUserActiveParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConditionalSetUserActive", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConditionalSetUserActive indicates an expected call of ConditionalSetUserActive.
+func (mr *MockQuerierMockRecorder) ConditionalSetUserActive(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConditionalSetUserActive", reflect.TypeOf((*MockQuerier)(nil).ConditionalSetUserActive), ctx, arg)
+}

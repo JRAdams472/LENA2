@@ -42,7 +42,7 @@ func (s *Service) WithTx(tx pgx.Tx) *Service {
 // rolls back otherwise. If the service is already bound to a transaction, fn
 // runs in that transaction instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
-	if s.tx != nil {
+	if s.tx != nil || s.pool == nil {
 		return fn(s)
 	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })

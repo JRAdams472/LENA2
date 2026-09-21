@@ -16,6 +16,9 @@ var (
 	// ErrValidation indicates input failed business-level validation before
 	// reaching storage.
 	ErrValidation = errors.New("validation error")
+	// ErrLastAdmin indicates the requested change would leave zero active
+	// administrators in the system.
+	ErrLastAdmin = errors.New("last active admin")
 )
 
 // ValidationError wraps ErrValidation with optional field and message detail.

@@ -11,6 +11,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const conditionalSetUserActive = `-- name: ConditionalSetUserActive :execrows
+UPDATE identity.users AS u
+SET is_active  = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE u.user_id = $1
+  AND ($2 = true OR (
+    SELECT count(*) FROM identity.users AS other
+    WHERE other.role = 'admin'
+      AND other.is_active
+      AND other.user_id <> u.user_id
+  ) >= 1)
+`
+
+type ConditionalSetUserActiveParams struct {
+	UserID    int64       `json:"user_id"`
+	IsActive  bool        `json:"is_active"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) ConditionalSetUserActive(ctx context.Context, arg ConditionalSetUserActiveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, conditionalSetUserActive, arg.UserID, arg.IsActive, arg.UpdatedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const conditionalSetUserRole = `-- name: ConditionalSetUserRole :execrows
+UPDATE identity.users AS u
+SET role       = $2,
+    updated_at = now()
+WHERE u.user_id = $1
+  AND ($2 = 'admin' OR (
+    SELECT count(*) FROM identity.users AS other
+    WHERE other.role = 'admin'
+      AND other.is_active
+      AND other.user_id <> u.user_id
+  ) >= 1)
+`
+
+type ConditionalSetUserRoleParams struct {
+	UserID int64  `json:"user_id"`
+	Role   string `json:"role"`
+}
+
+func (q *Queries) ConditionalSetUserRole(ctx context.Context, arg ConditionalSetUserRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, conditionalSetUserRole, arg.UserID, arg.Role)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countActiveAdmins = `-- name: CountActiveAdmins :one
 SELECT count(*)
 FROM identity.users
