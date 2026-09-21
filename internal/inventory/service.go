@@ -517,16 +517,17 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 }
 
 // DeleteItem removes an item from the catalog. Dependent user-item rows are
-// removed first so the catalog delete cannot be blocked by a foreign-key
-// reference, even when the cascading relationship is not in place.
+// removed inside the same transaction so the catalog delete is atomic.
 func (s *Service) DeleteItem(ctx context.Context, itemID int64) error {
-	if err := s.q.DeleteUserItemsByItem(ctx, itemID); err != nil {
-		return fmt.Errorf("delete user items for item: %w", err)
-	}
-	if err := s.q.DeleteItem(ctx, itemID); err != nil {
-		return fmt.Errorf("delete item: %w", err)
-	}
-	return nil
+	return s.InTx(ctx, func(tx *Service) error {
+		if err := tx.q.DeleteUserItemsByItem(ctx, itemID); err != nil {
+			return err
+		}
+		if err := tx.q.DeleteItem(ctx, itemID); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // FlavorProfile is a catalog food flavor profile.
