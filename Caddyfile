@@ -1,6 +1,10 @@
-{$CADDY_ADDR:-:80} {
-    trusted_proxies private_ranges
+{
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
 
+{$CADDY_ADDR:-:80} {
     handle /graphql {
         reverse_proxy api:8080
     }
