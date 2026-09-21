@@ -15,6 +15,21 @@ ON CONFLICT (user_id, item_id)
         updated_at  = now()
 RETURNING *;
 
+-- name: AdjustUserItemQuantity :one
+-- Atomically adjust the user's pantry quantity by delta, clamping at 0.
+-- Creates the row if it does not yet exist, preserving all other fields
+-- on an existing row.
+INSERT INTO inventory.user_item (
+    user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, updated_by
+)
+VALUES ($1, $2, GREATEST(0::numeric, sqlc.arg(delta)::numeric), 0::numeric, NULL, NULL, NULL, false, $3, $3)
+ON CONFLICT (user_id, item_id)
+    DO UPDATE SET
+        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + EXCLUDED.current_qty),
+        updated_by  = EXCLUDED.updated_by,
+        updated_at  = now()
+RETURNING *;
+
 -- name: GetUserItemByID :one
 SELECT *
 FROM inventory.user_item

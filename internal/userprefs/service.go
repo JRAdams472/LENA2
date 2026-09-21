@@ -95,6 +95,25 @@ func (s *Service) UpsertUserItem(ctx context.Context, arg UserItem, by string) (
 	return ui, nil
 }
 
+// AdjustUserItemQuantity atomically adds delta to the user's pantry stock
+// for itemID, clamping at 0, and creates the row if it does not exist.
+func (s *Service) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (UserItem, error) {
+	d, err := numericFromFloat64(delta)
+	if err != nil {
+		return UserItem{}, fmt.Errorf("adjust user item quantity: %w", err)
+	}
+	row, err := s.q.AdjustUserItemQuantity(ctx, sqlc.AdjustUserItemQuantityParams{
+		UserID:    userID,
+		ItemID:    itemID,
+		CreatedBy: by,
+		Delta:     d,
+	})
+	if err != nil {
+		return UserItem{}, fmt.Errorf("adjust user item quantity: %w", domainerr.FromStorage(err))
+	}
+	return toUserItem(row)
+}
+
 // GetUserItemByID returns a pantry item owned by the user.
 func (s *Service) GetUserItemByID(ctx context.Context, userItemID, userID int64) (UserItem, error) {
 	row, err := s.q.GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: userItemID, UserID: userID})
