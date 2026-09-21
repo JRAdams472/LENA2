@@ -2,8 +2,13 @@ package inventory
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +23,14 @@ func newIntegrationService(t *testing.T, ctx context.Context) *Service {
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	return NewService(pool)
+}
+
+func newIntegrationServiceWithPool(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
+	t.Helper()
+	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	return NewService(pool), pool
 }
 
 // unitID returns the id of a seeded unit by name or abbreviation.
@@ -361,4 +374,66 @@ func TestIntegrationIngredientCRUD(t *testing.T) {
 	require.NoError(t, svc.DeleteIngredient(ctx, in.IngredientID))
 	_, err = svc.GetIngredientByID(ctx, in.IngredientID)
 	assert.Error(t, err)
+}
+
+func TestIntegrationSubmitBrandConcurrent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationServiceWithPool(t, ctx)
+
+	userA := testenv.MustUser(ctx, t, pool, "brand-concurrent-a@example.com")
+	userB := testenv.MustUser(ctx, t, pool, "brand-concurrent-b@example.com")
+	name := fmt.Sprintf("Concurrent Brand %d", time.Now().UnixNano())
+
+	results := make(chan struct {
+		brandID int64
+		err     error
+	}, 2)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		b, err := svc.SubmitBrand(ctx, name, userA, itBy)
+		results <- struct {
+			brandID int64
+			err     error
+		}{b.BrandID, err}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		b, err := svc.SubmitBrand(ctx, name, userB, itBy)
+		results <- struct {
+			brandID int64
+			err     error
+		}{b.BrandID, err}
+	}()
+	wg.Wait()
+	close(results)
+
+	var ids []int64
+	var gotErr bool
+	for r := range results {
+		if r.err != nil {
+			require.True(t, strings.Contains(r.err.Error(), "conflict"))
+			gotErr = true
+			continue
+		}
+		require.NotZero(t, r.brandID)
+		ids = append(ids, r.brandID)
+	}
+	assert.True(t, gotErr, "one concurrent submit should conflict")
+	require.Len(t, ids, 1)
+
+	brands, err := svc.ListBrands(ctx)
+	require.NoError(t, err)
+	var count int
+	for _, b := range brands {
+		if b.BrandID == ids[0] {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "only one brand row should exist for the normalized name")
 }
