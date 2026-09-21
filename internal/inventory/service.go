@@ -81,25 +81,36 @@ func (s *Service) CreateBrand(ctx context.Context, name, by string) (Brand, erro
 }
 
 // SubmitBrand returns an existing brand whose normalized name matches, or
-// creates a new pending brand on behalf of the submitting user.
+// creates a new pending brand on behalf of the submitting user. The write is
+// race-free: a single INSERT ... ON CONFLICT ensures only one non-rejected
+// brand exists per normalized name.
 func (s *Service) SubmitBrand(ctx context.Context, name string, userID int64, by string) (Brand, error) {
-	existing, err := s.q.FindBrandByNormalizedName(ctx, name)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Brand{}, fmt.Errorf("find brand by normalized name: %w", err)
-	}
-	if err == nil {
-		return toBrand(existing), nil
-	}
-
-	row, err := s.q.CreateBrandPending(ctx, sqlc.CreateBrandPendingParams{
+	row, err := s.q.UpsertBrand(ctx, sqlc.UpsertBrandParams{
 		Name:              name,
+		Status:            BrandStatusPending,
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 		CreatedBy:         by,
 	})
-	if err != nil {
-		return Brand{}, fmt.Errorf("submit brand: %w", err)
+	if err == nil {
+		return toBrand(row), nil
 	}
-	return toBrand(row), nil
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.FromStorage(err))
+	}
+
+	// A non-rejected normalized name already exists; resolve it and reject
+	// foreign-pending or rejected brands that the caller should not see.
+	existing, err := s.q.FindBrandByNormalizedName(ctx, name)
+	if err != nil {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.FromStorage(err))
+	}
+	if existing.Status == BrandStatusPending && (!existing.SubmittedByUserID.Valid || existing.SubmittedByUserID.Int64 != userID) {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.ErrConflict)
+	}
+	if existing.Status == BrandStatusRejected {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.ErrConflict)
+	}
+	return toBrand(existing), nil
 }
 
 // GetBrandByID returns a brand by its primary key.

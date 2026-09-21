@@ -102,6 +102,7 @@ type InventoryBrand struct {
 	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
 	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
 	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
+	NameNormalized    pgtype.Text        `json:"name_normalized"`
 }
 
 type InventoryCategory struct {

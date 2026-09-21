@@ -16,20 +16,28 @@ SELECT *
 FROM inventory.brand
 WHERE brand_id = $1;
 
+-- name: UpsertBrand :one
+-- Race-free submit: if an approved or own-pending normalized name already
+-- exists, return the existing row; otherwise create a new pending brand.
+INSERT INTO inventory.brand (name, status, submitted_by_user_id, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $4)
+ON CONFLICT (name_normalized) WHERE status <> 'rejected' DO NOTHING
+RETURNING *;
+
 -- name: FindBrandByNormalizedName :one
 -- Special characters (apostrophes, periods, etc.) and case are ignored so
--- "Bush", "Bushs", and "Bush's" all match the same brand.
+-- "Bush", "Bushs", and "Bush's" all match the same brand. Rejected rows
+-- are never resurfaced.
 SELECT *
 FROM inventory.brand
-WHERE lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
-    = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'));
+WHERE name_normalized = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
+  AND status <> 'rejected';
 
 -- name: SearchBrands :many
 SELECT *
 FROM inventory.brand
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
-  AND lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
-      LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
+  AND name_normalized LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
 ORDER BY name
 LIMIT $3;
 
