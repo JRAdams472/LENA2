@@ -14,6 +14,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/identity/sqlc"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 // Service provides identity operations backed by Postgres.
@@ -147,7 +148,7 @@ func (s *Service) SetUserRole(ctx context.Context, userID int64, role string) er
 func (s *Service) GetByID(ctx context.Context, userID int64) (User, error) {
 	row, err := s.q.GetUserByID(ctx, userID)
 	if err != nil {
-		return User{}, fmt.Errorf("get user by id: %w", err)
+		return User{}, fmt.Errorf("get user by id: %w", domainerr.FromStorage(err))
 	}
 	return toUser(row), nil
 }

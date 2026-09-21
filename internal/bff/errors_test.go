@@ -12,13 +12,13 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 	gqlerrors "github.com/graph-gophers/graphql-go/errors"
-	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
@@ -40,7 +40,7 @@ func TestSanitizeQueryErrors(t *testing.T) {
 	t.Run("not found maps to NOT_FOUND", func(t *testing.T) {
 		qe := &gqlerrors.QueryError{
 			Message:       "get recipe: no rows in result set",
-			ResolverError: fmt.Errorf("get recipe: %w", pgx.ErrNoRows),
+			ResolverError: fmt.Errorf("get recipe: %w", domainerr.ErrNotFound),
 		}
 		sanitizeQueryErrors([]*gqlerrors.QueryError{qe}, "req-1")
 		assert.Equal(t, "not found", qe.Message)

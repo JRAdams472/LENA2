@@ -10,9 +10,9 @@ import (
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/graph-gophers/graphql-go"
-	"github.com/jackc/pgx/v5"
 )
 
 // Recipe resolves a single recipe by ID.
@@ -89,7 +89,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 	rc.itemsBy[scaled.Recipe.RecipeID] = scaled.Items
 	rc.stepsBy[scaled.Recipe.RecipeID] = scaled.Steps
 	fav, err := r.UserPrefsService.GetRecipeFavorite(ctx, u.UserID, scaled.Recipe.RecipeID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, domainerr.ErrNotFound) {
 		return nil, err
 	}
 	rc.favorites[scaled.Recipe.RecipeID] = fav.IsFavorite
@@ -591,7 +591,7 @@ func (r *recipeResolver) IsFavorite(ctx context.Context) (bool, error) {
 	}
 	fav, err := r.up.GetRecipeFavorite(ctx, r.user.UserID, r.recipe.RecipeID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, domainerr.ErrNotFound) {
 			return false, nil
 		}
 		return false, err
@@ -628,7 +628,7 @@ func (r *recipeResolver) MyRating(ctx context.Context) (*int32, error) {
 	}
 	rating, err := r.rec.GetUserRating(ctx, r.user.UserID, r.recipe.RecipeID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, domainerr.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, err

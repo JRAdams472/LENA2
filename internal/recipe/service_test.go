@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe/sqlc"
 	"github.com/JRAdams472/LENA2/internal/recipe/sqlc/mock"
 )
@@ -665,7 +666,7 @@ func TestGetUserRating(t *testing.T) {
 
 		_, err := svc.GetUserRating(context.Background(), 3, 7)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, pgx.ErrNoRows)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	})
 }
 

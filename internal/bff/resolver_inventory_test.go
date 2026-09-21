@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/graph-gophers/graphql-go"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -16,6 +14,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
@@ -896,7 +895,7 @@ func TestResolver_ItemByUpc(t *testing.T) {
 	t.Run("not found returns nil", func(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().GetItemByUpc(gomock.Any(), "999999999999", int64(7)).
-			Return(inventory.Item{}, fmt.Errorf("get item by upc: %w", pgx.ErrNoRows))
+			Return(inventory.Item{}, fmt.Errorf("get item by upc: %w", domainerr.ErrNotFound))
 		r := &Resolver{InventoryService: inv}
 		res, err := r.ItemByUpc(invUserCtx(), args{Code: "999999999999"})
 		require.NoError(t, err)
@@ -988,7 +987,7 @@ func TestResolver_SubmitItem(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().GetUnitByName(gomock.Any(), "each").Return(inventory.Unit{UnitID: 1}, nil)
 		inv.EXPECT().SubmitItem(gomock.Any(), gomock.Any(), int64(7), invTestEmail).
-			Return(inventory.Item{}, &pgconn.PgError{Code: "23505"})
+			Return(inventory.Item{}, domainerr.ErrConflict)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.SubmitItem(invUserCtx(), args{Input: createItemInput{
 			Name:       "Scan Bar",

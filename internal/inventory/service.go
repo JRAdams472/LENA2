@@ -15,6 +15,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory/sqlc"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 // Service provides catalog operations for the inventory domain.
@@ -69,7 +70,7 @@ func (s *Service) CreateBrand(ctx context.Context, name, by string) (Brand, erro
 		CreatedBy: by,
 	})
 	if err != nil {
-		return Brand{}, fmt.Errorf("create brand: %w", err)
+		return Brand{}, fmt.Errorf("create brand: %w", domainerr.FromStorage(err))
 	}
 	return toBrand(row), nil
 }
@@ -377,14 +378,14 @@ func (s *Service) SubmitItem(ctx context.Context, arg Item, userID int64, by str
 
 // GetItemByUpc returns the item whose upc12 or upc14 equals the normalized
 // code, limited to items visible to the given user (approved or their own
-// pending submissions). Returns pgx.ErrNoRows when nothing matches.
+// pending submissions). Returns domainerr.ErrNotFound when nothing matches.
 func (s *Service) GetItemByUpc(ctx context.Context, code string, userID int64) (Item, error) {
 	row, err := s.q.GetItemByUpc(ctx, sqlc.GetItemByUpcParams{
 		Upc12:             textOrNull(code),
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 	})
 	if err != nil {
-		return Item{}, fmt.Errorf("get item by upc: %w", err)
+		return Item{}, fmt.Errorf("get item by upc: %w", domainerr.FromStorage(err))
 	}
 	return toItem(row), nil
 }
