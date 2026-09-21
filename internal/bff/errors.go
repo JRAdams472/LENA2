@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	gqlerrors "github.com/graph-gophers/graphql-go/errors"
-	"github.com/jackc/pgx/v5"
 )
 
 // GraphQL extensions.code values emitted with resolver errors. They match
@@ -16,6 +16,7 @@ const (
 	codeForbidden       = "FORBIDDEN"
 	codeBadUserInput    = "BAD_USER_INPUT"
 	codeNotFound        = "NOT_FOUND"
+	codeConflict        = "CONFLICT"
 	codeInternal        = "INTERNAL"
 )
 
@@ -54,9 +55,15 @@ func sanitizeQueryErrors(errs []*gqlerrors.QueryError, requestID string) {
 		case errors.As(qe.ResolverError, &ce):
 			qe.Message = ce.msg
 			qe.Extensions = map[string]any{"code": ce.code}
-		case errors.Is(qe.ResolverError, pgx.ErrNoRows):
+		case errors.Is(qe.ResolverError, domainerr.ErrNotFound):
 			qe.Message = "not found"
 			qe.Extensions = map[string]any{"code": codeNotFound}
+		case errors.Is(qe.ResolverError, domainerr.ErrConflict):
+			qe.Message = "conflict"
+			qe.Extensions = map[string]any{"code": codeConflict}
+		case errors.Is(qe.ResolverError, domainerr.ErrValidation):
+			qe.Message = qe.ResolverError.Error()
+			qe.Extensions = map[string]any{"code": codeBadUserInput}
 		default:
 			slog.Default().Error("graphql resolver error",
 				"request_id", requestID,

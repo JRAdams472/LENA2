@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe/sqlc"
 )
 
@@ -85,7 +86,7 @@ func createRecipe(ctx context.Context, q sqlc.Querier, arg Recipe, by string) (R
 func (s *Service) GetRecipeByID(ctx context.Context, recipeID int64) (Recipe, error) {
 	row, err := s.q.GetRecipeByID(ctx, recipeID)
 	if err != nil {
-		return Recipe{}, fmt.Errorf("get recipe by id: %w", err)
+		return Recipe{}, fmt.Errorf("get recipe by id: %w", domainerr.FromStorage(err))
 	}
 	return toRecipe(row), nil
 }
@@ -427,11 +428,11 @@ func (s *Service) SetRating(ctx context.Context, userID, recipeID int64, rating 
 }
 
 // GetUserRating returns a user's rating for a recipe, or an error wrapping
-// pgx.ErrNoRows when the user has not rated it.
+// domainerr.ErrNotFound when the user has not rated it.
 func (s *Service) GetUserRating(ctx context.Context, userID, recipeID int64) (RecipeRating, error) {
 	row, err := s.q.GetRecipeRating(ctx, sqlc.GetRecipeRatingParams{UserID: userID, RecipeID: recipeID})
 	if err != nil {
-		return RecipeRating{}, fmt.Errorf("get recipe rating: %w", err)
+		return RecipeRating{}, fmt.Errorf("get recipe rating: %w", domainerr.FromStorage(err))
 	}
 	return RecipeRating{UserID: row.UserID, RecipeID: row.RecipeID, Rating: row.Rating}, nil
 }

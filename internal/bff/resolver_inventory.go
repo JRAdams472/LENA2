@@ -12,9 +12,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/graph-gophers/graphql-go"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Brand resolves a single brand by ID.
@@ -804,7 +803,7 @@ func (r *Resolver) ItemByUpc(ctx context.Context, args struct{ Code string }) (*
 		return nil, nil
 	}
 	it, err := r.InventoryService.GetItemByUpc(ctx, code, u.UserID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, domainerr.ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1000,21 +999,19 @@ func parseNetWeightInput(netWeight *float64, isMetric *bool) (*float64, bool, er
 }
 
 // itemWriteError maps a service-layer write failure to a client-safe error:
-// unique violations (duplicate name+brand or UPC) become BAD_USER_INPUT.
+// unique violations (duplicate name+brand or UPC) become CONFLICT.
 func itemWriteError(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return badInputf("an item with that name, brand or barcode already exists")
+	if errors.Is(err, domainerr.ErrConflict) {
+		return &clientError{msg: "an item with that name, brand or barcode already exists", code: codeConflict}
 	}
 	return err
 }
 
 // brandWriteError maps a service-layer brand write failure to a client-safe
-// error: unique name violations become BAD_USER_INPUT.
+// error: unique name violations become CONFLICT.
 func brandWriteError(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return badInputf("a brand with that name already exists")
+	if errors.Is(err, domainerr.ErrConflict) {
+		return &clientError{msg: "a brand with that name already exists", code: codeConflict}
 	}
 	return err
 }

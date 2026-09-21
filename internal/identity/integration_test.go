@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/identity"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
@@ -50,5 +50,5 @@ func TestIntegrationUserLifecycle(t *testing.T) {
 
 	_, err = svc.GetByID(ctx, 99999999)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }

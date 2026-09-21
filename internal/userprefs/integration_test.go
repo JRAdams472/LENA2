@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 )
 
@@ -255,10 +256,10 @@ func TestIntegrationRecipeFavoriteLifecycle(t *testing.T) {
 
 	_, err = svc.GetRecipeFavorite(ctx, userB, recipeID)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	require.NoError(t, svc.DeleteRecipeFavorite(ctx, userA, recipeID))
 	_, err = svc.GetRecipeFavorite(ctx, userA, recipeID)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }

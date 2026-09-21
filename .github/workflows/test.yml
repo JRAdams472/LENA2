@@ -14,8 +14,8 @@ env:
   REGISTRY: ghcr.io
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: e2e-client
   NEXT_PUBLIC_API_BASE_URL: /graphql
-  # Baseline total statement coverage measured on hand-written code only;
-  # generated sqlc and gomock packages are filtered out of the profile by
+  # Baseline total statement coverage measured on production code and
+  # generated sqlc code; gomock packages are filtered out of the profile by
   # tools/coveragefilter. Raise as coverage improves.
   GO_COVERAGE_MIN: "60"
 
@@ -46,7 +46,12 @@ jobs:
         run: test -z "$(gofmt -l cmd internal)"
 
       - name: Go test with coverage
-        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./cmd/... ./internal/...
+        # Use -coverpkg over the same package tree so tests that call
+        # generated sqlc code also attribute statements to the sqlc packages
+        # without pulling in the whole module (e.g. clients/web).
+        run: |
+          coverpkg=$(go list -f '{{.ImportPath}}' ./cmd/... ./internal/... | tr '\n' ',' | sed 's/,$//')
+          go test -race -count=1 -coverprofile=coverage.out -covermode=atomic -coverpkg="$coverpkg" ./cmd/... ./internal/...
 
       - name: Filter generated code from coverage
         run: go run ./tools/coveragefilter < coverage.out > coverage-filtered.out

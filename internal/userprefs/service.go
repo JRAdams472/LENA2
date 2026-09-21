@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/userprefs/sqlc"
 )
 
@@ -282,11 +283,12 @@ func (s *Service) SetRecipeFavorite(ctx context.Context, userID, recipeID int64,
 	return RecipeFavorite{UserID: row.UserID, RecipeID: row.RecipeID, IsFavorite: row.IsFavorite}, nil
 }
 
-// GetRecipeFavorite returns a user's favorite preference for a recipe.
+// GetRecipeFavorite returns a user's favorite preference for a recipe,
+// or domainerr.ErrNotFound if no preference exists yet.
 func (s *Service) GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (RecipeFavorite, error) {
 	row, err := s.q.GetRecipeFavorite(ctx, sqlc.GetRecipeFavoriteParams{UserID: userID, RecipeID: recipeID})
 	if err != nil {
-		return RecipeFavorite{}, fmt.Errorf("get recipe favorite: %w", err)
+		return RecipeFavorite{}, fmt.Errorf("get recipe favorite: %w", domainerr.FromStorage(err))
 	}
 	return RecipeFavorite{UserID: row.UserID, RecipeID: row.RecipeID, IsFavorite: row.IsFavorite}, nil
 }

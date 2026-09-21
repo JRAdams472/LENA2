@@ -17,6 +17,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory/sqlc"
 	"github.com/JRAdams472/LENA2/internal/inventory/sqlc/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 var errBoom = errors.New("boom")
@@ -413,7 +414,7 @@ func TestGetItemByUpc_NotFound(t *testing.T) {
 	q.EXPECT().GetItemByUpc(ctx, gomock.Any()).Return(sqlc.InventoryItem{}, pgx.ErrNoRows)
 
 	_, err := s.GetItemByUpc(ctx, "000000000000", 7)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
 func TestListPendingItems(t *testing.T) {
