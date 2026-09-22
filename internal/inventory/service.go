@@ -541,18 +541,10 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 	})
 }
 
-// DeleteItem removes an item from the catalog. Dependent user-item rows are
-// removed inside the same transaction so the catalog delete is atomic.
+// DeleteItem removes an item from the catalog. Dependent rows — pantry
+// entries, nutrients, flavors — are removed by ON DELETE CASCADE.
 func (s *Service) DeleteItem(ctx context.Context, itemID int64) error {
-	return s.InTx(ctx, func(tx *Service) error {
-		if err := tx.q.DeleteUserItemsByItem(ctx, itemID); err != nil {
-			return err
-		}
-		if err := tx.q.DeleteItem(ctx, itemID); err != nil {
-			return err
-		}
-		return nil
-	})
+	return s.q.DeleteItem(ctx, itemID)
 }
 
 // FlavorProfile is a catalog food flavor profile.

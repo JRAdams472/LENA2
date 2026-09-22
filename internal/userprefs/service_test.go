@@ -49,7 +49,7 @@ func TestUpsertUserItem(t *testing.T) {
 	t.Run("success passes params and maps row", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserItemParams) (sqlc.InventoryUserItem, error) {
+			func(_ context.Context, arg sqlc.UpsertUserItemParams) (sqlc.UserprefsUserItem, error) {
 				assert.Equal(t, int64(10), arg.UserID)
 				assert.Equal(t, int64(20), arg.ItemID)
 				assert.InDelta(t, 3.25, numericVal(t, arg.CurrentQty), 1e-9)
@@ -60,7 +60,7 @@ func TestUpsertUserItem(t *testing.T) {
 				assert.True(t, arg.IsFavorite)
 				assert.Equal(t, "tester", arg.CreatedBy)
 				assert.Equal(t, pgtype.Text{String: "tester", Valid: true}, arg.UpdatedBy)
-				return sqlc.InventoryUserItem{
+				return sqlc.UserprefsUserItem{
 					UserItemID: 7,
 					UserID:     arg.UserID,
 					ItemID:     arg.ItemID,
@@ -92,13 +92,13 @@ func TestUpsertUserItem(t *testing.T) {
 	t.Run("optional fields empty become invalid", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserItemParams) (sqlc.InventoryUserItem, error) {
+			func(_ context.Context, arg sqlc.UpsertUserItemParams) (sqlc.UserprefsUserItem, error) {
 				assert.False(t, arg.MinQty.Valid)
 				assert.False(t, arg.PurchaseAt.Valid)
 				assert.False(t, arg.ExpiresAt.Valid)
 				assert.False(t, arg.Notes.Valid)
 				assert.False(t, arg.UpdatedBy.Valid)
-				return sqlc.InventoryUserItem{UserItemID: 8, UserID: arg.UserID, ItemID: arg.ItemID}, nil
+				return sqlc.UserprefsUserItem{UserItemID: 8, UserID: arg.UserID, ItemID: arg.ItemID}, nil
 			})
 
 		got, err := svc.UpsertUserItem(ctx, UserItem{UserID: 10, ItemID: 20}, "")
@@ -111,7 +111,7 @@ func TestUpsertUserItem(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).Return(sqlc.InventoryUserItem{}, errDB)
+		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).Return(sqlc.UserprefsUserItem{}, errDB)
 
 		_, err := svc.UpsertUserItem(ctx, in, "tester")
 		require.Error(t, err)
@@ -126,7 +126,7 @@ func TestGetUserItemByID(t *testing.T) {
 	t.Run("success scopes to user", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: 7, UserID: 10}).
-			Return(sqlc.InventoryUserItem{
+			Return(sqlc.UserprefsUserItem{
 				UserItemID: 7, UserID: 10, ItemID: 20,
 				Notes:      pgtype.Text{String: "n", Valid: true},
 				IsFavorite: true,
@@ -144,7 +144,7 @@ func TestGetUserItemByID(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: 7, UserID: 10}).
-			Return(sqlc.InventoryUserItem{}, errDB)
+			Return(sqlc.UserprefsUserItem{}, errDB)
 
 		_, err := svc.GetUserItemByID(ctx, 7, 10)
 		require.Error(t, err)
@@ -159,7 +159,7 @@ func TestListUserItems(t *testing.T) {
 	t.Run("success maps rows", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListUserItems(ctx, sqlc.ListUserItemsParams{UserID: 10, Limit: 50, Offset: 5}).
-			Return([]sqlc.InventoryUserItem{
+			Return([]sqlc.UserprefsUserItem{
 				{UserItemID: 1, UserID: 10, ItemID: 20},
 				{UserItemID: 2, UserID: 10, ItemID: 21, IsFavorite: true},
 			}, nil)
@@ -227,7 +227,7 @@ func TestUpsertUserBottle(t *testing.T) {
 	t.Run("success passes params and maps row", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.WineUserBottle, error) {
+			func(_ context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.UserprefsUserBottle, error) {
 				assert.Equal(t, int64(10), arg.UserID)
 				assert.Equal(t, int64(30), arg.BottleID)
 				assert.Equal(t, pgtype.Int4{Int32: 3, Valid: true}, arg.BottleNumber)
@@ -240,7 +240,7 @@ func TestUpsertUserBottle(t *testing.T) {
 				assert.True(t, arg.IsFavorite)
 				assert.Equal(t, "tester", arg.CreatedBy)
 				assert.Equal(t, pgtype.Text{String: "tester", Valid: true}, arg.UpdatedBy)
-				return sqlc.WineUserBottle{
+				return sqlc.UserprefsUserBottle{
 					UserBottleID:  9,
 					UserID:        arg.UserID,
 					BottleID:      arg.BottleID,
@@ -275,14 +275,14 @@ func TestUpsertUserBottle(t *testing.T) {
 	t.Run("optional fields empty become invalid", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.WineUserBottle, error) {
+			func(_ context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.UserprefsUserBottle, error) {
 				assert.False(t, arg.BottleNumber.Valid)
 				assert.False(t, arg.PurchaseAt.Valid)
 				assert.False(t, arg.PurchasePrice.Valid)
 				assert.False(t, arg.StorageTemp.Valid)
 				assert.False(t, arg.Location.Valid)
 				assert.False(t, arg.Notes.Valid)
-				return sqlc.WineUserBottle{UserBottleID: 11, UserID: arg.UserID, BottleID: arg.BottleID}, nil
+				return sqlc.UserprefsUserBottle{UserBottleID: 11, UserID: arg.UserID, BottleID: arg.BottleID}, nil
 			})
 
 		got, err := svc.UpsertUserBottle(ctx, UserBottle{UserID: 10, BottleID: 30, Quantity: 1}, "tester")
@@ -295,7 +295,7 @@ func TestUpsertUserBottle(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).Return(sqlc.WineUserBottle{}, errDB)
+		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).Return(sqlc.UserprefsUserBottle{}, errDB)
 
 		_, err := svc.UpsertUserBottle(ctx, in, "tester")
 		require.Error(t, err)
@@ -310,7 +310,7 @@ func TestGetUserBottleByID(t *testing.T) {
 	t.Run("success scopes to user", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserBottleByID(ctx, sqlc.GetUserBottleByIDParams{UserBottleID: 9, UserID: 10}).
-			Return(sqlc.WineUserBottle{
+			Return(sqlc.UserprefsUserBottle{
 				UserBottleID: 9, UserID: 10, BottleID: 30, Quantity: 4,
 				Location: pgtype.Text{String: "rack", Valid: true},
 			}, nil)
@@ -327,7 +327,7 @@ func TestGetUserBottleByID(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserBottleByID(ctx, sqlc.GetUserBottleByIDParams{UserBottleID: 9, UserID: 10}).
-			Return(sqlc.WineUserBottle{}, errDB)
+			Return(sqlc.UserprefsUserBottle{}, errDB)
 
 		_, err := svc.GetUserBottleByID(ctx, 9, 10)
 		require.Error(t, err)
@@ -342,7 +342,7 @@ func TestListUserBottles(t *testing.T) {
 	t.Run("success maps rows", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListUserBottles(ctx, sqlc.ListUserBottlesParams{UserID: 10, Limit: 25, Offset: 0}).
-			Return([]sqlc.WineUserBottle{
+			Return([]sqlc.UserprefsUserBottle{
 				{UserBottleID: 1, UserID: 10, BottleID: 30, Quantity: 1},
 				{UserBottleID: 2, UserID: 10, BottleID: 31, Quantity: 6},
 			}, nil)
@@ -393,13 +393,13 @@ func TestSetRecipeFavorite(t *testing.T) {
 	t.Run("success passes params and maps row", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpsertRecipeFavorite(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertRecipeFavoriteParams) (sqlc.RecipeUserRecipePreference, error) {
+			func(_ context.Context, arg sqlc.UpsertRecipeFavoriteParams) (sqlc.UserprefsUserRecipePreference, error) {
 				assert.Equal(t, int64(10), arg.UserID)
 				assert.Equal(t, int64(40), arg.RecipeID)
 				assert.True(t, arg.IsFavorite)
 				assert.Equal(t, "tester", arg.CreatedBy)
 				assert.Equal(t, pgtype.Text{String: "tester", Valid: true}, arg.UpdatedBy)
-				return sqlc.RecipeUserRecipePreference{UserID: arg.UserID, RecipeID: arg.RecipeID, IsFavorite: arg.IsFavorite}, nil
+				return sqlc.UserprefsUserRecipePreference{UserID: arg.UserID, RecipeID: arg.RecipeID, IsFavorite: arg.IsFavorite}, nil
 			})
 
 		got, err := svc.SetRecipeFavorite(ctx, 10, 40, true, "tester")
@@ -409,7 +409,7 @@ func TestSetRecipeFavorite(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertRecipeFavorite(ctx, gomock.Any()).Return(sqlc.RecipeUserRecipePreference{}, errDB)
+		mq.EXPECT().UpsertRecipeFavorite(ctx, gomock.Any()).Return(sqlc.UserprefsUserRecipePreference{}, errDB)
 
 		_, err := svc.SetRecipeFavorite(ctx, 10, 40, true, "tester")
 		require.Error(t, err)
@@ -424,7 +424,7 @@ func TestGetRecipeFavorite(t *testing.T) {
 	t.Run("success maps row", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetRecipeFavorite(ctx, sqlc.GetRecipeFavoriteParams{UserID: 10, RecipeID: 40}).
-			Return(sqlc.RecipeUserRecipePreference{UserID: 10, RecipeID: 40, IsFavorite: true}, nil)
+			Return(sqlc.UserprefsUserRecipePreference{UserID: 10, RecipeID: 40, IsFavorite: true}, nil)
 
 		got, err := svc.GetRecipeFavorite(ctx, 10, 40)
 		require.NoError(t, err)
@@ -434,7 +434,7 @@ func TestGetRecipeFavorite(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetRecipeFavorite(ctx, sqlc.GetRecipeFavoriteParams{UserID: 10, RecipeID: 40}).
-			Return(sqlc.RecipeUserRecipePreference{}, errDB)
+			Return(sqlc.UserprefsUserRecipePreference{}, errDB)
 
 		_, err := svc.GetRecipeFavorite(ctx, 10, 40)
 		require.Error(t, err)

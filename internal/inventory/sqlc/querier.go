@@ -37,7 +37,6 @@ type Querier interface {
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
 	DeleteItem(ctx context.Context, itemID int64) error
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
-	DeleteUserItemsByItem(ctx context.Context, itemID int64) error
 	// Special characters (apostrophes, periods, etc.) and case are ignored so
 	// "Bush", "Bushs", and "Bush's" all match the same brand. Rejected rows
 	// are never resurfaced.
