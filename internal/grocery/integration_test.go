@@ -13,7 +13,6 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
-	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
 const itBy = "integration-test"
@@ -231,13 +230,16 @@ func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
 	assert.Len(t, items, 1, "wrong-user delete must not remove the item")
 }
 
-func TestIntegrationGroceryTogglePantry(t *testing.T) {
+// TestIntegrationGroceryToggle verifies the atomic checked-state flip.
+// Pantry synchronization is orchestrated by the BFF resolver inside a
+// shared transaction and is covered by TestIntegrationGroceryTogglePantrySync
+// in internal/bff.
+func TestIntegrationGroceryToggle(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
-	upSvc := userprefs.NewService(pool)
 	invSvc := inventory.NewService(pool)
 
 	userA := testenv.MustUser(ctx, t, pool, "grocery-pantry-a@example.com")
@@ -272,15 +274,7 @@ func TestIntegrationGroceryTogglePantry(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, checked.IsChecked)
 
-	pantry, err := upSvc.GetUserItemByUserAndItem(ctx, userA, item.ItemID)
-	require.NoError(t, err)
-	assert.InDelta(t, 3.0, pantry.CurrentQty, 0.0001)
-
 	unchecked, err := svc.ToggleGroceryListItemChecked(ctx, gli.GroceryListItemID, userA, itBy)
 	require.NoError(t, err)
 	assert.False(t, unchecked.IsChecked)
-
-	pantry, err = upSvc.GetUserItemByUserAndItem(ctx, userA, item.ItemID)
-	require.NoError(t, err)
-	assert.InDelta(t, 0.0, pantry.CurrentQty, 0.0001)
 }
