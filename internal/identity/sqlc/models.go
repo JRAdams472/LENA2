@@ -135,11 +135,13 @@ type InventoryFoodFlavor struct {
 }
 
 type InventoryFoodNutrient struct {
-	FoodID     int64          `json:"food_id"`
-	NutrientID int64          `json:"nutrient_id"`
-	Amount     pgtype.Numeric `json:"amount"`
-	CreatedBy  string         `json:"created_by"`
-	CreatedAt  time.Time      `json:"created_at"`
+	FoodID        int64          `json:"food_id"`
+	NutrientID    int64          `json:"nutrient_id"`
+	Amount        pgtype.Numeric `json:"amount"`
+	CreatedBy     string         `json:"created_by"`
+	CreatedAt     time.Time      `json:"created_at"`
+	BasisQuantity pgtype.Numeric `json:"basis_quantity"`
+	BasisUnitID   int64          `json:"basis_unit_id"`
 }
 
 type InventoryIngredient struct {

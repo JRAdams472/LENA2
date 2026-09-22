@@ -99,8 +99,10 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, slotsByPlan: slotsByPlan, slotItemsBySlot: slotItemsBySlot, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
-// Nutrition returns a nutrition summary for a meal plan.
-func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphql.ID }) ([]*nutritionResolver, error) {
+// Nutrition returns a nutrition summary for a meal plan. Lines whose
+// units cannot be converted into a nutrient's declared basis are skipped
+// and reported as warnings rather than summed into a meaningless number.
+func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphql.ID }) (*mealPlanNutritionResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -173,32 +175,43 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	for id := range itemIDSet {
 		itemIDs = append(itemIDs, id)
 	}
-	nutrientsByItem := make(map[int64][]inventory.FoodNutrient)
+	nutrientsByItem := make(map[int64][]mealplan.NutrientBasis)
+	itemMeta := make(map[int64]mealplan.NutritionItem)
 	if len(itemIDs) > 0 {
 		nutrients, err := r.InventoryService.ListFoodNutrientsByItems(ctx, itemIDs)
 		if err != nil {
 			return nil, err
 		}
 		for _, n := range nutrients {
-			nutrientsByItem[n.ItemID] = append(nutrientsByItem[n.ItemID], n)
+			nutrientsByItem[n.ItemID] = append(nutrientsByItem[n.ItemID], mealplan.NutrientBasis{
+				NutrientID:    n.NutrientID,
+				Name:          n.Name,
+				Unit:          n.Unit,
+				Amount:        n.Amount,
+				BasisQuantity: n.BasisQuantity,
+				BasisUnitID:   n.BasisUnitID,
+			})
+		}
+		invItems, err := r.InventoryService.GetItemsByIDs(ctx, itemIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range invItems {
+			itemMeta[it.ItemID] = mealplan.NutritionItem{UnitID: it.UnitID, NetWeight: it.NetWeight}
 		}
 	}
-
-	type total struct {
-		name   string
-		unit   string
-		amount float64
+	unitList, err := r.InventoryService.ListUnits(ctx)
+	if err != nil {
+		return nil, err
 	}
-	totals := make(map[int64]total)
+	unitMeta := make(map[int64]mealplan.NutritionUnit, len(unitList))
+	for _, un := range unitList {
+		unitMeta[un.UnitID] = mealplan.NutritionUnit{Name: un.Name, Kind: un.Kind, ToBaseFactor: un.ToBaseFactor}
+	}
 
-	addNutrients := func(itemID int64, quantity float64) {
-		for _, n := range nutrientsByItem[itemID] {
-			t := totals[n.NutrientID]
-			t.name = n.Name
-			t.unit = n.Unit
-			t.amount += n.Amount * quantity
-			totals[n.NutrientID] = t
-		}
+	var lines []mealplan.NutritionLine
+	addLine := func(itemID int64, quantity float64, unitID int64) {
+		lines = append(lines, mealplan.NutritionLine{ItemID: itemID, Quantity: quantity, UnitID: unitID})
 	}
 
 	for _, slot := range slots {
@@ -207,7 +220,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 			if si.ItemID == nil {
 				continue
 			}
-			addNutrients(*si.ItemID, si.Quantity)
+			addLine(*si.ItemID, si.Quantity, si.UnitID)
 			if si.IsFromRecipe {
 				overridden[*si.ItemID] = true
 			}
@@ -228,16 +241,16 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 			if overridden[ri.ItemID] {
 				continue
 			}
-			addNutrients(ri.ItemID, ri.Quantity*scale)
+			addLine(ri.ItemID, ri.Quantity*scale, ri.UnitID)
 		}
 	}
 
+	totals, warnings := mealplan.AggregateNutrition(lines, nutrientsByItem, itemMeta, unitMeta)
 	out := make([]*nutritionResolver, 0, len(totals))
 	for _, t := range totals {
-		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.name, Unit: t.unit, Amount: t.amount}})
+		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.Name, Unit: t.Unit, Amount: t.Amount}})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].nutrition.Name < out[j].nutrition.Name })
-	return out, nil
+	return &mealPlanNutritionResolver{entries: out, warnings: warnings}, nil
 }
 
 // CreateMealPlan creates a new meal plan for the current user.
@@ -662,6 +675,17 @@ func (r *nutritionResolver) Name() string { return r.nutrition.Name }
 func (r *nutritionResolver) Unit() string { return r.nutrition.Unit }
 
 func (r *nutritionResolver) Amount() float64 { return r.nutrition.Amount }
+
+// mealPlanNutritionResolver resolves the nutrition summary plus any
+// conversion warnings produced while aggregating.
+type mealPlanNutritionResolver struct {
+	entries  []*nutritionResolver
+	warnings []string
+}
+
+func (r *mealPlanNutritionResolver) Entries() []*nutritionResolver { return r.entries }
+
+func (r *mealPlanNutritionResolver) Warnings() []string { return r.warnings }
 
 type createMealPlanInput struct {
 	Name               string

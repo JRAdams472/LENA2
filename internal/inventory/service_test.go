@@ -925,10 +925,12 @@ func TestListFoodNutrientsByItem(t *testing.T) {
 	ctx := context.Background()
 	amount, err := numericFromFloat64(12.5)
 	require.NoError(t, err)
+	basis, err := numericFromFloat64(100)
+	require.NoError(t, err)
 
 	s, q := newTestService(t)
 	q.EXPECT().ListFoodNutrientsByItem(ctx, int64(11)).Return([]sqlc.ListFoodNutrientsByItemRow{
-		{NutrientID: 4, Name: "Sodium", Unit: pgtype.Text{String: "mg", Valid: true}, Amount: amount},
+		{NutrientID: 4, Name: "Sodium", Unit: pgtype.Text{String: "mg", Valid: true}, Amount: amount, BasisQuantity: basis, BasisUnitID: 2},
 	}, nil)
 
 	fns, err := s.ListFoodNutrientsByItem(ctx, 11)
@@ -961,11 +963,13 @@ func TestCreateFoodNutrient(t *testing.T) {
 		return arg.FoodID == 11 && arg.NutrientID == 4 && arg.CreatedBy == "alice" &&
 			err == nil && v == 12.5
 	})).Return(sqlc.CreateFoodNutrientRow{
-		FoodID:     11,
-		NutrientID: 4,
-		Name:       "Protein",
-		Unit:       pgtype.Text{String: "g", Valid: true},
-		Amount:     amount,
+		FoodID:        11,
+		NutrientID:    4,
+		Name:          "Protein",
+		Unit:          pgtype.Text{String: "g", Valid: true},
+		Amount:        amount,
+		BasisQuantity: mustNumeric(t, 100),
+		BasisUnitID:   2,
 	}, nil)
 
 	fn, err := s.CreateFoodNutrient(ctx, 11, 4, 12.5, "alice")
@@ -1086,8 +1090,8 @@ func TestListFoodNutrientsByItems(t *testing.T) {
 
 	s, q := newTestService(t)
 	q.EXPECT().ListFoodNutrientsByItems(ctx, []int64{11, 12}).Return([]sqlc.ListFoodNutrientsByItemsRow{
-		{FoodID: 11, NutrientID: 4, Name: "Sodium", Unit: pgtype.Text{String: "mg", Valid: true}, Amount: amount},
-		{FoodID: 12, NutrientID: 5, Name: "Sugar", Unit: pgtype.Text{String: "g", Valid: true}, Amount: amount},
+		{FoodID: 11, NutrientID: 4, Name: "Sodium", Unit: pgtype.Text{String: "mg", Valid: true}, Amount: amount, BasisQuantity: mustNumeric(t, 100), BasisUnitID: 2},
+		{FoodID: 12, NutrientID: 5, Name: "Sugar", Unit: pgtype.Text{String: "g", Valid: true}, Amount: amount, BasisQuantity: mustNumeric(t, 100), BasisUnitID: 2},
 	}, nil)
 
 	fns, err := s.ListFoodNutrientsByItems(ctx, []int64{11, 12})

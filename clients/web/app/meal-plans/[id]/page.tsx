@@ -518,6 +518,11 @@ function NutritionPanel({ nutrition }: { nutrition: MealPlanNutrition }) {
       <Typography variant="h5" gutterBottom>
         Nutrition
       </Typography>
+      {nutrition.warnings?.map((w) => (
+        <Typography key={w} variant="body2" color="warning.main">
+          {w}
+        </Typography>
+      ))}
       <Box
         sx={{
           display: "grid",

@@ -40,7 +40,12 @@ type Query {
   wineFlavorProfiles: [WineFlavorProfile!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
-  nutrition(mealPlanId: ID!): [NutritionSummary!]!
+  # Aggregated nutrition for a meal plan. Nutrient amounts are stored per
+  # a declared basis (default: per 100 g of the item); consumed quantities
+  # are converted into that basis before summing. Lines whose units cannot
+  # be converted (e.g. incompatible kinds or missing net weight) are
+  # skipped and reported in `warnings` instead of producing a wrong sum.
+  nutrition(mealPlanId: ID!): MealPlanNutrition!
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
   # Admin-only: paged list of all registered users.
@@ -737,6 +742,14 @@ type GrapeVariety {
   name: String!
   description: String
   isActive: Boolean!
+}
+
+type MealPlanNutrition {
+  entries: [NutritionSummary!]!
+  # Human-readable notes about lines skipped because their units could not
+  # be converted into the nutrient basis (incompatible kinds, missing
+  # conversion factors, or count units without an item net weight).
+  warnings: [String!]!
 }
 
 type NutritionSummary {

@@ -680,13 +680,16 @@ func (s *Service) DeleteNutrientType(ctx context.Context, nutrientID int64) erro
 	return s.q.DeleteNutrientType(ctx, nutrientID)
 }
 
-// FoodNutrient is a nutrient value for a catalog item.
+// FoodNutrient is a nutrient value for a catalog item. The amount is
+// expressed per BasisQuantity of BasisUnitID (default: per 100 grams).
 type FoodNutrient struct {
-	ItemID     int64
-	NutrientID int64
-	Name       string
-	Unit       string
-	Amount     float64
+	ItemID        int64
+	NutrientID    int64
+	Name          string
+	Unit          string
+	Amount        float64
+	BasisQuantity float64
+	BasisUnitID   int64
 }
 
 // ListFoodNutrientsByItem returns nutrient values for an item.
@@ -719,12 +722,18 @@ func (s *Service) ListFoodNutrientsByItems(ctx context.Context, itemIDs []int64)
 		if err != nil {
 			return nil, fmt.Errorf("list food nutrients by items: item %d nutrient %d: %w", rows[i].FoodID, rows[i].NutrientID, err)
 		}
+		basisQty, err := numericToFloat64(rows[i].BasisQuantity)
+		if err != nil {
+			return nil, fmt.Errorf("list food nutrients by items: item %d nutrient %d basis: %w", rows[i].FoodID, rows[i].NutrientID, err)
+		}
 		out[i] = FoodNutrient{
-			ItemID:     rows[i].FoodID,
-			NutrientID: rows[i].NutrientID,
-			Name:       rows[i].Name,
-			Unit:       rows[i].Unit.String,
-			Amount:     amount,
+			ItemID:        rows[i].FoodID,
+			NutrientID:    rows[i].NutrientID,
+			Name:          rows[i].Name,
+			Unit:          rows[i].Unit.String,
+			Amount:        amount,
+			BasisQuantity: basisQty,
+			BasisUnitID:   rows[i].BasisUnitID,
 		}
 	}
 	return out, nil
@@ -749,12 +758,18 @@ func (s *Service) CreateFoodNutrient(ctx context.Context, itemID, nutrientID int
 	if err != nil {
 		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
 	}
+	basisQty, err := numericToFloat64(row.BasisQuantity)
+	if err != nil {
+		return FoodNutrient{}, fmt.Errorf("create food nutrient: %w", err)
+	}
 	return FoodNutrient{
-		ItemID:     row.FoodID,
-		NutrientID: row.NutrientID,
-		Name:       row.Name,
-		Unit:       row.Unit.String,
-		Amount:     result,
+		ItemID:        row.FoodID,
+		NutrientID:    row.NutrientID,
+		Name:          row.Name,
+		Unit:          row.Unit.String,
+		Amount:        result,
+		BasisQuantity: basisQty,
+		BasisUnitID:   row.BasisUnitID,
 	}, nil
 }
 
@@ -770,6 +785,10 @@ func (s *Service) DeleteFoodNutrient(ctx context.Context, itemID, nutrientID int
 type NutrientEntry struct {
 	NutrientID int64
 	Amount     float64
+	// BasisQuantity/BasisUnitID declare the quantity of food the amount
+	// refers to; nil means the default basis of 100 grams.
+	BasisQuantity *float64
+	BasisUnitID   *int64
 }
 
 // SetItemNutrients replaces all nutrient values on an item atomically: the
@@ -787,11 +806,25 @@ func (s *Service) SetItemNutrients(ctx context.Context, itemID int64, entries []
 			if err != nil {
 				return fmt.Errorf("set food nutrients: %w", err)
 			}
+			var basisQty any
+			if e.BasisQuantity != nil {
+				bq, err := numericFromFloat64(*e.BasisQuantity)
+				if err != nil {
+					return fmt.Errorf("set food nutrients: %w", err)
+				}
+				basisQty = bq
+			}
+			var basisUnit any
+			if e.BasisUnitID != nil {
+				basisUnit = *e.BasisUnitID
+			}
 			if _, err := tx.q.CreateFoodNutrient(ctx, sqlc.CreateFoodNutrientParams{
-				FoodID:     itemID,
-				NutrientID: e.NutrientID,
-				Amount:     n,
-				CreatedBy:  by,
+				FoodID:        itemID,
+				NutrientID:    e.NutrientID,
+				Amount:        n,
+				CreatedBy:     by,
+				BasisQuantity: basisQty,
+				BasisUnitID:   basisUnit,
 			}); err != nil {
 				return fmt.Errorf("set food nutrients: %w", err)
 			}
@@ -1158,11 +1191,17 @@ func toFoodNutrient(row sqlc.ListFoodNutrientsByItemRow) (FoodNutrient, error) {
 	if err != nil {
 		return FoodNutrient{}, err
 	}
+	basisQty, err := numericToFloat64(row.BasisQuantity)
+	if err != nil {
+		return FoodNutrient{}, err
+	}
 	return FoodNutrient{
-		NutrientID: row.NutrientID,
-		Name:       row.Name,
-		Unit:       row.Unit.String,
-		Amount:     amount,
+		NutrientID:    row.NutrientID,
+		Name:          row.Name,
+		Unit:          row.Unit.String,
+		Amount:        amount,
+		BasisQuantity: basisQty,
+		BasisUnitID:   row.BasisUnitID,
 	}, nil
 }
 

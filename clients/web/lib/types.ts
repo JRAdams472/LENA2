@@ -290,6 +290,7 @@ export interface MealPlanNutrition {
   mealPlanId: number;
   dailyTotals: DailyNutrition[];
   meals: MealNutrition[];
+  warnings?: string[];
 }
 
 export interface GroceryList extends AuditableEntity {

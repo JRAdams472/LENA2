@@ -23,6 +23,7 @@ type Querier interface {
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (InventoryCategory, error)
 	CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfileParams) (InventoryFlavorProfile, error)
 	CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (CreateFoodFlavorRow, error)
+	// The basis defaults to per-100g when the caller does not declare one.
 	CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (CreateFoodNutrientRow, error)
 	CreateIngredient(ctx context.Context, arg CreateIngredientParams) (InventoryIngredient, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (InventoryItem, error)
