@@ -65,7 +65,7 @@ func (q *Queries) CountPendingItems(ctx context.Context) (int64, error) {
 const createBrand = `-- name: CreateBrand :one
 INSERT INTO inventory.brand (name, status, created_by, updated_by)
 VALUES ($1, 'approved', $2, $2)
-RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 `
 
 type CreateBrandParams struct {
@@ -88,6 +88,7 @@ func (q *Queries) CreateBrand(ctx context.Context, arg CreateBrandParams) (Inven
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NameNormalized,
 	)
 	return i, err
 }
@@ -95,7 +96,7 @@ func (q *Queries) CreateBrand(ctx context.Context, arg CreateBrandParams) (Inven
 const createBrandPending = `-- name: CreateBrandPending :one
 INSERT INTO inventory.brand (name, status, submitted_by_user_id, created_by, updated_by)
 VALUES ($1, 'pending', $2, $3, $3)
-RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 `
 
 type CreateBrandPendingParams struct {
@@ -120,6 +121,7 @@ func (q *Queries) CreateBrandPending(ctx context.Context, arg CreateBrandPending
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NameNormalized,
 	)
 	return i, err
 }
@@ -553,14 +555,15 @@ func (q *Queries) DeleteUserItemsByItem(ctx context.Context, itemID int64) error
 }
 
 const findBrandByNormalizedName = `-- name: FindBrandByNormalizedName :one
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
-WHERE lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
-    = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
+WHERE name_normalized = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
+  AND status <> 'rejected'
 `
 
 // Special characters (apostrophes, periods, etc.) and case are ignored so
-// "Bush", "Bushs", and "Bush's" all match the same brand.
+// "Bush", "Bushs", and "Bush's" all match the same brand. Rejected rows
+// are never resurfaced.
 func (q *Queries) FindBrandByNormalizedName(ctx context.Context, regexpReplace string) (InventoryBrand, error) {
 	row := q.db.QueryRow(ctx, findBrandByNormalizedName, regexpReplace)
 	var i InventoryBrand
@@ -575,12 +578,13 @@ func (q *Queries) FindBrandByNormalizedName(ctx context.Context, regexpReplace s
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NameNormalized,
 	)
 	return i, err
 }
 
 const getBrandByID = `-- name: GetBrandByID :one
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE brand_id = $1
 `
@@ -599,12 +603,13 @@ func (q *Queries) GetBrandByID(ctx context.Context, brandID int64) (InventoryBra
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NameNormalized,
 	)
 	return i, err
 }
 
 const getBrandsByIDs = `-- name: GetBrandsByIDs :many
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE brand_id = ANY($1::bigint[])
 `
@@ -629,6 +634,7 @@ func (q *Queries) GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]Inven
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NameNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -1013,7 +1019,7 @@ func (q *Queries) GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]Invento
 }
 
 const listBrands = `-- name: ListBrands :many
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 ORDER BY name
 `
@@ -1038,6 +1044,7 @@ func (q *Queries) ListBrands(ctx context.Context) ([]InventoryBrand, error) {
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NameNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -1050,7 +1057,7 @@ func (q *Queries) ListBrands(ctx context.Context) ([]InventoryBrand, error) {
 }
 
 const listBrandsVisible = `-- name: ListBrandsVisible :many
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY name
@@ -1077,6 +1084,7 @@ func (q *Queries) ListBrandsVisible(ctx context.Context, submittedByUserID pgtyp
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NameNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -1440,7 +1448,7 @@ func (q *Queries) ListNutrientTypes(ctx context.Context) ([]InventoryNutrientTyp
 }
 
 const listPendingBrands = `-- name: ListPendingBrands :many
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE status = 'pending'
 ORDER BY created_at
@@ -1472,6 +1480,7 @@ func (q *Queries) ListPendingBrands(ctx context.Context, arg ListPendingBrandsPa
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NameNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -1572,11 +1581,10 @@ func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
 }
 
 const searchBrands = `-- name: SearchBrands :many
-SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
-  AND lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
-      LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
+  AND name_normalized LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
 ORDER BY name
 LIMIT $3
 `
@@ -1607,6 +1615,7 @@ func (q *Queries) SearchBrands(ctx context.Context, arg SearchBrandsParams) ([]I
 			&i.SubmittedByUserID,
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
+			&i.NameNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -1680,7 +1689,7 @@ const updateBrand = `-- name: UpdateBrand :one
 UPDATE inventory.brand
 SET name = $2
 WHERE brand_id = $1
-RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 `
 
 type UpdateBrandParams struct {
@@ -1702,6 +1711,7 @@ func (q *Queries) UpdateBrand(ctx context.Context, arg UpdateBrandParams) (Inven
 		&i.SubmittedByUserID,
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
+		&i.NameNormalized,
 	)
 	return i, err
 }
@@ -1895,6 +1905,46 @@ func (q *Queries) UpdateNutrientType(ctx context.Context, arg UpdateNutrientType
 		&i.Name,
 		&i.Unit,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const upsertBrand = `-- name: UpsertBrand :one
+INSERT INTO inventory.brand (name, status, submitted_by_user_id, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $4)
+ON CONFLICT (name_normalized) WHERE status <> 'rejected' DO NOTHING
+RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
+`
+
+type UpsertBrandParams struct {
+	Name              string      `json:"name"`
+	Status            string      `json:"status"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	CreatedBy         string      `json:"created_by"`
+}
+
+// Race-free submit: if an approved or own-pending normalized name already
+// exists, return the existing row; otherwise create a new pending brand.
+func (q *Queries) UpsertBrand(ctx context.Context, arg UpsertBrandParams) (InventoryBrand, error) {
+	row := q.db.QueryRow(ctx, upsertBrand,
+		arg.Name,
+		arg.Status,
+		arg.SubmittedByUserID,
+		arg.CreatedBy,
+	)
+	var i InventoryBrand
+	err := row.Scan(
+		&i.BrandID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.Status,
+		&i.SubmittedByUserID,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
+		&i.NameNormalized,
 	)
 	return i, err
 }

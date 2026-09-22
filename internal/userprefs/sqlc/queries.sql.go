@@ -11,6 +11,55 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adjustUserItemQuantity = `-- name: AdjustUserItemQuantity :one
+INSERT INTO inventory.user_item (
+    user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, updated_by
+)
+VALUES ($1, $2, GREATEST(0::numeric, $4::numeric), 0::numeric, NULL, NULL, NULL, false, $3, $3)
+ON CONFLICT (user_id, item_id)
+    DO UPDATE SET
+        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + $4::numeric),
+        updated_by  = EXCLUDED.updated_by,
+        updated_at  = now()
+RETURNING user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
+`
+
+type AdjustUserItemQuantityParams struct {
+	UserID    int64          `json:"user_id"`
+	ItemID    int64          `json:"item_id"`
+	CreatedBy string         `json:"created_by"`
+	Delta     pgtype.Numeric `json:"delta"`
+}
+
+// Atomically adjust the user's pantry quantity by delta, clamping at 0.
+// Creates the row if it does not yet exist, preserving all other fields
+// on an existing row.
+func (q *Queries) AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (InventoryUserItem, error) {
+	row := q.db.QueryRow(ctx, adjustUserItemQuantity,
+		arg.UserID,
+		arg.ItemID,
+		arg.CreatedBy,
+		arg.Delta,
+	)
+	var i InventoryUserItem
+	err := row.Scan(
+		&i.UserItemID,
+		&i.UserID,
+		&i.ItemID,
+		&i.CurrentQty,
+		&i.MinQty,
+		&i.PurchaseAt,
+		&i.ExpiresAt,
+		&i.Notes,
+		&i.IsFavorite,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const countUserBottles = `-- name: CountUserBottles :one
 SELECT COUNT(*)
 FROM wine.user_bottle

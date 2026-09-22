@@ -229,3 +229,52 @@ func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, items, 1, "wrong-user delete must not remove the item")
 }
+
+// TestIntegrationGroceryToggle verifies the atomic checked-state flip.
+// Pantry synchronization is orchestrated by the BFF resolver inside a
+// shared transaction and is covered by TestIntegrationGroceryTogglePantrySync
+// in internal/bff.
+func TestIntegrationGroceryToggle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+	invSvc := inventory.NewService(pool)
+
+	userA := testenv.MustUser(ctx, t, pool, "grocery-pantry-a@example.com")
+	brand, err := invSvc.CreateBrand(ctx, "IT Pantry Brand", itBy)
+	require.NoError(t, err)
+	cat, err := invSvc.CreateCategory(ctx, "IT Pantry Category", "", itBy)
+	require.NoError(t, err)
+	netWeight := 1.0
+	item, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name:       "IT Pantry Item",
+		BrandID:    &brand.BrandID,
+		CategoryID: cat.CategoryID,
+		UnitID:     itUnitID(t, ctx, invSvc, "each"),
+		NetWeight:  &netWeight,
+		IsMetric:   false,
+	}, itBy)
+	require.NoError(t, err)
+
+	list, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
+	require.NoError(t, err)
+
+	gli, err := svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID:  list.GroceryListID,
+		ItemID:         &item.ItemID,
+		QuantityNeeded: 3.0,
+		UnitID:         &item.UnitID,
+		IsChecked:      false,
+	}, userA, itBy)
+	require.NoError(t, err)
+
+	checked, err := svc.ToggleGroceryListItemChecked(ctx, gli.GroceryListItemID, userA, itBy)
+	require.NoError(t, err)
+	assert.True(t, checked.IsChecked)
+
+	unchecked, err := svc.ToggleGroceryListItemChecked(ctx, gli.GroceryListItemID, userA, itBy)
+	require.NoError(t, err)
+	assert.False(t, unchecked.IsChecked)
+}

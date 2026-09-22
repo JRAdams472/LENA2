@@ -3,6 +3,7 @@ package userprefs
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -262,4 +263,43 @@ func TestIntegrationRecipeFavoriteLifecycle(t *testing.T) {
 	_, err = svc.GetRecipeFavorite(ctx, userA, recipeID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+func TestIntegrationAdjustUserItemQuantityConcurrent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testenv.MustUser(ctx, t, pool, "adjust-concurrent-a@example.com")
+	itemID := createTestItem(ctx, t, pool)
+
+	_, err := svc.UpsertUserItem(ctx, UserItem{
+		UserID:     userA,
+		ItemID:     itemID,
+		CurrentQty: 20.0,
+	}, itBy)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = svc.AdjustUserItemQuantity(ctx, userA, itemID, 1.0, itBy)
+		}()
+	}
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = svc.AdjustUserItemQuantity(ctx, userA, itemID, -1.0, itBy)
+		}()
+	}
+	wg.Wait()
+
+	got, err := svc.GetUserItemByUserAndItem(ctx, userA, itemID)
+	require.NoError(t, err)
+	assert.InDelta(t, 20.0, got.CurrentQty, 0.0001)
 }

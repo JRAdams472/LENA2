@@ -41,6 +41,21 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// AdjustUserItemQuantity mocks base method.
+func (m *MockQuerier) AdjustUserItemQuantity(ctx context.Context, arg sqlc.AdjustUserItemQuantityParams) (sqlc.InventoryUserItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, arg)
+	ret0, _ := ret[0].(sqlc.InventoryUserItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdjustUserItemQuantity indicates an expected call of AdjustUserItemQuantity.
+func (mr *MockQuerierMockRecorder) AdjustUserItemQuantity(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustUserItemQuantity", reflect.TypeOf((*MockQuerier)(nil).AdjustUserItemQuantity), ctx, arg)
+}
+
 // CountUserBottles mocks base method.
 func (m *MockQuerier) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
 	m.ctrl.T.Helper()

@@ -22,6 +22,7 @@ import (
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
+	tx   pgx.Tx
 }
 
 // NewService creates an inventory Service using the given connection pool.
@@ -33,13 +34,17 @@ func NewService(pool dbtx.Pool) *Service {
 // hold a transaction can bind a service to it and compose multiple service
 // operations into one atomic unit of work.
 func (s *Service) WithTx(tx pgx.Tx) *Service {
-	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "inventory")), pool: s.pool}
+	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "inventory")), pool: s.pool, tx: tx}
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is
 // bound to that transaction. The transaction commits when fn returns nil and
-// rolls back otherwise.
+// rolls back otherwise. If the service is already bound to a transaction, fn
+// runs in that transaction instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	if s.tx != nil || s.pool == nil {
+		return fn(s)
+	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
@@ -76,25 +81,36 @@ func (s *Service) CreateBrand(ctx context.Context, name, by string) (Brand, erro
 }
 
 // SubmitBrand returns an existing brand whose normalized name matches, or
-// creates a new pending brand on behalf of the submitting user.
+// creates a new pending brand on behalf of the submitting user. The write is
+// race-free: a single INSERT ... ON CONFLICT ensures only one non-rejected
+// brand exists per normalized name.
 func (s *Service) SubmitBrand(ctx context.Context, name string, userID int64, by string) (Brand, error) {
-	existing, err := s.q.FindBrandByNormalizedName(ctx, name)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Brand{}, fmt.Errorf("find brand by normalized name: %w", err)
-	}
-	if err == nil {
-		return toBrand(existing), nil
-	}
-
-	row, err := s.q.CreateBrandPending(ctx, sqlc.CreateBrandPendingParams{
+	row, err := s.q.UpsertBrand(ctx, sqlc.UpsertBrandParams{
 		Name:              name,
+		Status:            BrandStatusPending,
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 		CreatedBy:         by,
 	})
-	if err != nil {
-		return Brand{}, fmt.Errorf("submit brand: %w", err)
+	if err == nil {
+		return toBrand(row), nil
 	}
-	return toBrand(row), nil
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.FromStorage(err))
+	}
+
+	// A non-rejected normalized name already exists; resolve it and reject
+	// foreign-pending or rejected brands that the caller should not see.
+	existing, err := s.q.FindBrandByNormalizedName(ctx, name)
+	if err != nil {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.FromStorage(err))
+	}
+	if existing.Status == BrandStatusPending && (!existing.SubmittedByUserID.Valid || existing.SubmittedByUserID.Int64 != userID) {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.ErrConflict)
+	}
+	if existing.Status == BrandStatusRejected {
+		return Brand{}, fmt.Errorf("submit brand: %w", domainerr.ErrConflict)
+	}
+	return toBrand(existing), nil
 }
 
 // GetBrandByID returns a brand by its primary key.
@@ -501,16 +517,17 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 }
 
 // DeleteItem removes an item from the catalog. Dependent user-item rows are
-// removed first so the catalog delete cannot be blocked by a foreign-key
-// reference, even when the cascading relationship is not in place.
+// removed inside the same transaction so the catalog delete is atomic.
 func (s *Service) DeleteItem(ctx context.Context, itemID int64) error {
-	if err := s.q.DeleteUserItemsByItem(ctx, itemID); err != nil {
-		return fmt.Errorf("delete user items for item: %w", err)
-	}
-	if err := s.q.DeleteItem(ctx, itemID); err != nil {
-		return fmt.Errorf("delete item: %w", err)
-	}
-	return nil
+	return s.InTx(ctx, func(tx *Service) error {
+		if err := tx.q.DeleteUserItemsByItem(ctx, itemID); err != nil {
+			return err
+		}
+		if err := tx.q.DeleteItem(ctx, itemID); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // FlavorProfile is a catalog food flavor profile.

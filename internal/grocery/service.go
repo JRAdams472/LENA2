@@ -21,6 +21,7 @@ import (
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
+	tx   pgx.Tx
 }
 
 // NewService creates a grocery Service using the given connection pool.
@@ -32,13 +33,17 @@ func NewService(pool dbtx.Pool) *Service {
 // hold a transaction can bind a service to it and compose multiple service
 // operations into one atomic unit of work.
 func (s *Service) WithTx(tx pgx.Tx) *Service {
-	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "grocery")), pool: s.pool}
+	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "grocery")), pool: s.pool, tx: tx}
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is
 // bound to that transaction. The transaction commits when fn returns nil and
-// rolls back otherwise.
+// rolls back otherwise. If the service is already bound to a transaction, fn
+// runs in that transaction instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	if s.tx != nil || s.pool == nil {
+		return fn(s)
+	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
@@ -219,6 +224,24 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, 
 // DeleteGroceryListItem removes an item from a list owned by the user.
 func (s *Service) DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error {
 	return s.q.DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: groceryListItemID, UserID: userID})
+}
+
+// ToggleGroceryListItemChecked flips the checked state of an item and
+// returns the post-toggle row in one atomic statement.
+func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (GroceryListItem, error) {
+	row, err := s.q.ToggleGroceryListItemChecked(ctx, sqlc.ToggleGroceryListItemCheckedParams{
+		GroceryListItemID: groceryListItemID,
+		UserID:            userID,
+		UpdatedBy:         textOrNull(by),
+	})
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
+	gli, err := toGroceryListItem(row)
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
+	return gli, nil
 }
 
 // Generate creates a new grocery list and seeds it from a meal plan.

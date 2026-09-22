@@ -325,9 +325,7 @@ func TestResolver_IncrementUserItem_PositiveExisting(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	existing := userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 3}
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).
+	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), 2.0, upEmail).
 		Return(userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 5}, nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
@@ -345,8 +343,7 @@ func TestResolver_IncrementUserItem_PositiveNew(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).
+	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), 2.0, upEmail).
 		Return(userprefs.UserItem{UserItemID: 7, UserID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
@@ -364,8 +361,8 @@ func TestResolver_IncrementUserItem_NegativeDelete(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	existing := userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 2}
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), -3.0, upEmail).
+		Return(userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 0}, nil)
 	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
@@ -381,7 +378,9 @@ func TestResolver_IncrementUserItem_NegativeNoExisting(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), -2.0, upEmail).
+		Return(userprefs.UserItem{UserItemID: 8, UserID: upUserID, ItemID: 42, CurrentQty: 0}, nil)
+	up.EXPECT().DeleteUserItem(gomock.Any(), int64(8), upUserID).Return(nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
 		ItemID graphql.ID

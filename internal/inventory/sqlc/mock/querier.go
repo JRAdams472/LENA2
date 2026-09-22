@@ -973,3 +973,18 @@ func (mr *MockQuerierMockRecorder) UpdateNutrientType(ctx, arg any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNutrientType", reflect.TypeOf((*MockQuerier)(nil).UpdateNutrientType), ctx, arg)
 }
+
+// UpsertBrand mocks base method.
+func (m *MockQuerier) UpsertBrand(ctx context.Context, arg sqlc.UpsertBrandParams) (sqlc.InventoryBrand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertBrand", ctx, arg)
+	ret0, _ := ret[0].(sqlc.InventoryBrand)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertBrand indicates an expected call of UpsertBrand.
+func (mr *MockQuerierMockRecorder) UpsertBrand(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertBrand", reflect.TypeOf((*MockQuerier)(nil).UpsertBrand), ctx, arg)
+}

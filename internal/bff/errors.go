@@ -61,6 +61,9 @@ func sanitizeQueryErrors(errs []*gqlerrors.QueryError, requestID string) {
 		case errors.Is(qe.ResolverError, domainerr.ErrConflict):
 			qe.Message = "conflict"
 			qe.Extensions = map[string]any{"code": codeConflict}
+		case errors.Is(qe.ResolverError, domainerr.ErrLastAdmin):
+			qe.Message = "last active admin"
+			qe.Extensions = map[string]any{"code": codeConflict}
 		case errors.Is(qe.ResolverError, domainerr.ErrValidation):
 			qe.Message = qe.ResolverError.Error()
 			qe.Extensions = map[string]any{"code": codeBadUserInput}

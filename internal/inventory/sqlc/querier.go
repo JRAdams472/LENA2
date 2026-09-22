@@ -39,7 +39,8 @@ type Querier interface {
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
 	DeleteUserItemsByItem(ctx context.Context, itemID int64) error
 	// Special characters (apostrophes, periods, etc.) and case are ignored so
-	// "Bush", "Bushs", and "Bush's" all match the same brand.
+	// "Bush", "Bushs", and "Bush's" all match the same brand. Rejected rows
+	// are never resurfaced.
 	FindBrandByNormalizedName(ctx context.Context, regexpReplace string) (InventoryBrand, error)
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
 	GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error)
@@ -83,6 +84,9 @@ type Querier interface {
 	UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (InventoryIngredient, error)
 	UpdateItem(ctx context.Context, arg UpdateItemParams) error
 	UpdateNutrientType(ctx context.Context, arg UpdateNutrientTypeParams) (InventoryNutrientType, error)
+	// Race-free submit: if an approved or own-pending normalized name already
+	// exists, return the existing row; otherwise create a new pending brand.
+	UpsertBrand(ctx context.Context, arg UpsertBrandParams) (InventoryBrand, error)
 }
 
 var _ Querier = (*Queries)(nil)

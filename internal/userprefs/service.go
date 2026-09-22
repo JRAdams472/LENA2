@@ -24,6 +24,7 @@ import (
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
+	tx   pgx.Tx
 }
 
 // NewService creates a userprefs Service using the given connection pool.
@@ -35,13 +36,17 @@ func NewService(pool dbtx.Pool) *Service {
 // hold a transaction can bind a service to it and compose multiple service
 // operations into one atomic unit of work.
 func (s *Service) WithTx(tx pgx.Tx) *Service {
-	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "userprefs")), pool: s.pool}
+	return &Service{q: sqlc.New(dbtx.NewTimedExecer(tx, "userprefs")), pool: s.pool, tx: tx}
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is
 // bound to that transaction. The transaction commits when fn returns nil and
-// rolls back otherwise.
+// rolls back otherwise. If the service is already bound to a transaction, fn
+// runs in that transaction instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	if s.tx != nil || s.pool == nil {
+		return fn(s)
+	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
@@ -88,6 +93,25 @@ func (s *Service) UpsertUserItem(ctx context.Context, arg UserItem, by string) (
 		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
 	}
 	return ui, nil
+}
+
+// AdjustUserItemQuantity atomically adds delta to the user's pantry stock
+// for itemID, clamping at 0, and creates the row if it does not exist.
+func (s *Service) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (UserItem, error) {
+	d, err := numericFromFloat64(delta)
+	if err != nil {
+		return UserItem{}, fmt.Errorf("adjust user item quantity: %w", err)
+	}
+	row, err := s.q.AdjustUserItemQuantity(ctx, sqlc.AdjustUserItemQuantityParams{
+		UserID:    userID,
+		ItemID:    itemID,
+		CreatedBy: by,
+		Delta:     d,
+	})
+	if err != nil {
+		return UserItem{}, fmt.Errorf("adjust user item quantity: %w", domainerr.FromStorage(err))
+	}
+	return toUserItem(row)
 }
 
 // GetUserItemByID returns a pantry item owned by the user.

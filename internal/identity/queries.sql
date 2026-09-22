@@ -30,6 +30,18 @@ ON CONFLICT (provider, external_subject)
         updated_at = now()
 RETURNING *;
 
+-- name: ConditionalSetUserRole :execrows
+UPDATE identity.users AS u
+SET role       = $2,
+    updated_at = now()
+WHERE u.user_id = $1
+  AND ($2 = 'admin' OR (
+    SELECT count(*) FROM identity.users AS other
+    WHERE other.role = 'admin'
+      AND other.is_active
+      AND other.user_id <> u.user_id
+  ) >= 1);
+
 -- name: SetUserRole :exec
 UPDATE identity.users
 SET role       = $2,
@@ -60,6 +72,19 @@ SELECT count(*)
 FROM identity.users
 WHERE role = 'admin'
   AND is_active;
+
+-- name: ConditionalSetUserActive :execrows
+UPDATE identity.users AS u
+SET is_active  = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE u.user_id = $1
+  AND ($2 = true OR (
+    SELECT count(*) FROM identity.users AS other
+    WHERE other.role = 'admin'
+      AND other.is_active
+      AND other.user_id <> u.user_id
+  ) >= 1);
 
 -- name: SetUserActive :exec
 UPDATE identity.users

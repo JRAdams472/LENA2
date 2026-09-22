@@ -189,8 +189,8 @@ func (r *Resolver) DeleteUserItem(ctx context.Context, args struct{ ItemID graph
 }
 
 // IncrementUserItem adds or removes a delta from a user's pantry stock for a
-// single catalog item. The result is floored at a non-negative quantity, and
-// the row is deleted when the quantity drops to zero or below.
+// single catalog item. The adjustment is performed by a single atomic
+// upsert; the row is deleted when the resulting quantity is clamped to 0.
 func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
 	ItemID graphql.ID
 	Delta  float64
@@ -213,12 +213,18 @@ func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
 		var result *userprefs.UserItem
 		if err := dbtx.InTx(ctx, r.Pool, func(tx pgx.Tx) error {
 			upTx := up.WithTx(tx)
-			existing, err := upTx.GetUserItemByUserAndItem(ctx, u.UserID, itemID)
+			adjusted, err := upTx.AdjustUserItemQuantity(ctx, u.UserID, itemID, args.Delta, u.Email)
 			if err != nil {
 				return err
 			}
-			result, err = applyUserItemDelta(ctx, upTx, existing, u.UserID, itemID, args.Delta, u.Email)
-			return err
+			if adjusted.CurrentQty == 0 {
+				if err := upTx.DeleteUserItem(ctx, adjusted.UserItemID, u.UserID); err != nil {
+					return err
+				}
+				return nil
+			}
+			result = &adjusted
+			return nil
 		}); err != nil {
 			return nil, err
 		}
@@ -229,57 +235,17 @@ func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
 	}
 
 	// Fallback for tests without a real transactional pool.
-	existing, err := r.UserPrefsService.GetUserItemByUserAndItem(ctx, u.UserID, itemID)
+	adjusted, err := r.UserPrefsService.AdjustUserItemQuantity(ctx, u.UserID, itemID, args.Delta, u.Email)
 	if err != nil {
 		return nil, err
 	}
-	result, err := applyUserItemDelta(ctx, r.UserPrefsService, existing, u.UserID, itemID, args.Delta, u.Email)
-	if err != nil {
-		return nil, err
-	}
-	if result == nil {
-		return nil, nil
-	}
-	return &userItemResolver{inv: r.InventoryService, item: *result}, nil
-}
-
-func applyUserItemDelta(ctx context.Context, svc UserPrefsService, existing *userprefs.UserItem, userID, itemID int64, delta float64, by string) (*userprefs.UserItem, error) {
-	if existing == nil {
-		if delta < 0 {
-			return nil, nil
-		}
-		created, err := svc.UpsertUserItem(ctx, userprefs.UserItem{
-			UserID:     userID,
-			ItemID:     itemID,
-			CurrentQty: delta,
-		}, by)
-		if err != nil {
-			return nil, err
-		}
-		return &created, nil
-	}
-	newQty := existing.CurrentQty + delta
-	if newQty <= 0 {
-		if err := svc.DeleteUserItem(ctx, existing.UserItemID, userID); err != nil {
+	if adjusted.CurrentQty == 0 {
+		if err := r.UserPrefsService.DeleteUserItem(ctx, adjusted.UserItemID, u.UserID); err != nil {
 			return nil, err
 		}
 		return nil, nil
 	}
-	updated, err := svc.UpsertUserItem(ctx, userprefs.UserItem{
-		UserItemID: existing.UserItemID,
-		UserID:     userID,
-		ItemID:     itemID,
-		CurrentQty: newQty,
-		MinQty:     existing.MinQty,
-		PurchaseAt: existing.PurchaseAt,
-		ExpiresAt:  existing.ExpiresAt,
-		Notes:      existing.Notes,
-		IsFavorite: existing.IsFavorite,
-	}, by)
-	if err != nil {
-		return nil, err
-	}
-	return &updated, nil
+	return &userItemResolver{inv: r.InventoryService, item: adjusted}, nil
 }
 
 // AdjustUserBottle updates the quantity of a user's wine cellar holding.

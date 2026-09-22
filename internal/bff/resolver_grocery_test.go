@@ -354,14 +354,12 @@ func TestResolver_ToggleGroceryItemChecked_Happy(t *testing.T) {
 	r := &Resolver{GroceryService: g}
 
 	before := grocery.GroceryListItem{GroceryListItemID: 100, GroceryListID: 11, ManualItemName: "Eggs", IsChecked: false}
-	flipped := before
-	flipped.IsChecked = true
-	after := flipped
+	after := before
+	after.IsChecked = true
 
 	gomock.InOrder(
 		g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100), grocUserID).Return(before, nil),
-		g.EXPECT().UpdateGroceryListItem(gomock.Any(), int64(100), grocUserID, gomock.Eq(flipped), grocEmail).Return(nil),
-		g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100), grocUserID).Return(after, nil),
+		g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(after, nil),
 	)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
@@ -396,10 +394,10 @@ func TestResolver_ToggleGroceryItemChecked_UpdateError(t *testing.T) {
 	r := &Resolver{GroceryService: g}
 
 	before := grocery.GroceryListItem{GroceryListItemID: 100, IsChecked: true}
-	flipped := before
-	flipped.IsChecked = false
+	after := before
+	after.IsChecked = false
 	g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100), grocUserID).Return(before, nil)
-	g.EXPECT().UpdateGroceryListItem(gomock.Any(), int64(100), grocUserID, gomock.Eq(flipped), grocEmail).Return(errGrocBoom)
+	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(after, errGrocBoom)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	assert.Nil(t, res)

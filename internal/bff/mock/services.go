@@ -18,7 +18,10 @@ import (
 	identity "github.com/JRAdams472/LENA2/internal/identity"
 	inventory "github.com/JRAdams472/LENA2/internal/inventory"
 	mealplan "github.com/JRAdams472/LENA2/internal/mealplan"
+	ocrimport "github.com/JRAdams472/LENA2/internal/ocrimport"
+	currentuser "github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	recipe "github.com/JRAdams472/LENA2/internal/recipe"
+	recipeimport "github.com/JRAdams472/LENA2/internal/recipeimport"
 	userprefs "github.com/JRAdams472/LENA2/internal/userprefs"
 	wine "github.com/JRAdams472/LENA2/internal/wine"
 	gomock "go.uber.org/mock/gomock"
@@ -180,6 +183,21 @@ func (m *MockGroceryService) ListGroceryLists(ctx context.Context, userID int64,
 func (mr *MockGroceryServiceMockRecorder) ListGroceryLists(ctx, userID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryLists), ctx, userID, limit, offset)
+}
+
+// ToggleGroceryListItemChecked mocks base method.
+func (m *MockGroceryService) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ToggleGroceryListItemChecked", ctx, groceryListItemID, userID, by)
+	ret0, _ := ret[0].(grocery.GroceryListItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ToggleGroceryListItemChecked indicates an expected call of ToggleGroceryListItemChecked.
+func (mr *MockGroceryServiceMockRecorder) ToggleGroceryListItemChecked(ctx, groceryListItemID, userID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockGroceryService)(nil).ToggleGroceryListItemChecked), ctx, groceryListItemID, userID, by)
 }
 
 // UpdateGroceryListItem mocks base method.
@@ -1731,6 +1749,178 @@ func (mr *MockRecipeServiceMockRecorder) UpdateRecipeWithChildren(ctx, recipeID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRecipeWithChildren", reflect.TypeOf((*MockRecipeService)(nil).UpdateRecipeWithChildren), ctx, recipeID, arg, items, steps, by)
 }
 
+// MockRecipeImportService is a mock of RecipeImportService interface.
+type MockRecipeImportService struct {
+	ctrl     *gomock.Controller
+	recorder *MockRecipeImportServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockRecipeImportServiceMockRecorder is the mock recorder for MockRecipeImportService.
+type MockRecipeImportServiceMockRecorder struct {
+	mock *MockRecipeImportService
+}
+
+// NewMockRecipeImportService creates a new mock instance.
+func NewMockRecipeImportService(ctrl *gomock.Controller) *MockRecipeImportService {
+	mock := &MockRecipeImportService{ctrl: ctrl}
+	mock.recorder = &MockRecipeImportServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRecipeImportService) EXPECT() *MockRecipeImportServiceMockRecorder {
+	return m.recorder
+}
+
+// Approve mocks base method.
+func (m *MockRecipeImportService) Approve(ctx context.Context, id int64, approvedBy currentuser.User) (*recipe.Recipe, *recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Approve", ctx, id, approvedBy)
+	ret0, _ := ret[0].(*recipe.Recipe)
+	ret1, _ := ret[1].(*recipeimport.RecipeImport)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Approve indicates an expected call of Approve.
+func (mr *MockRecipeImportServiceMockRecorder) Approve(ctx, id, approvedBy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Approve", reflect.TypeOf((*MockRecipeImportService)(nil).Approve), ctx, id, approvedBy)
+}
+
+// Count mocks base method.
+func (m *MockRecipeImportService) Count(ctx context.Context, status string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Count", ctx, status)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Count indicates an expected call of Count.
+func (mr *MockRecipeImportServiceMockRecorder) Count(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockRecipeImportService)(nil).Count), ctx, status)
+}
+
+// Create mocks base method.
+func (m *MockRecipeImportService) Create(ctx context.Context, sourceFilename, sourcePath, sourceHash string, submittedByUserID *int64, createdBy string) (*recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Create", ctx, sourceFilename, sourcePath, sourceHash, submittedByUserID, createdBy)
+	ret0, _ := ret[0].(*recipeimport.RecipeImport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Create indicates an expected call of Create.
+func (mr *MockRecipeImportServiceMockRecorder) Create(ctx, sourceFilename, sourcePath, sourceHash, submittedByUserID, createdBy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockRecipeImportService)(nil).Create), ctx, sourceFilename, sourcePath, sourceHash, submittedByUserID, createdBy)
+}
+
+// Get mocks base method.
+func (m *MockRecipeImportService) Get(ctx context.Context, id int64) (*recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, id)
+	ret0, _ := ret[0].(*recipeimport.RecipeImport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockRecipeImportServiceMockRecorder) Get(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockRecipeImportService)(nil).Get), ctx, id)
+}
+
+// List mocks base method.
+func (m *MockRecipeImportService) List(ctx context.Context, status string, page, pageSize int32) ([]recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, status, page, pageSize)
+	ret0, _ := ret[0].([]recipeimport.RecipeImport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockRecipeImportServiceMockRecorder) List(ctx, status, page, pageSize any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockRecipeImportService)(nil).List), ctx, status, page, pageSize)
+}
+
+// ListPending mocks base method.
+func (m *MockRecipeImportService) ListPending(ctx context.Context, page, pageSize int32) ([]recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPending", ctx, page, pageSize)
+	ret0, _ := ret[0].([]recipeimport.RecipeImport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPending indicates an expected call of ListPending.
+func (mr *MockRecipeImportServiceMockRecorder) ListPending(ctx, page, pageSize any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPending", reflect.TypeOf((*MockRecipeImportService)(nil).ListPending), ctx, page, pageSize)
+}
+
+// Reject mocks base method.
+func (m *MockRecipeImportService) Reject(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Reject", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Reject indicates an expected call of Reject.
+func (mr *MockRecipeImportServiceMockRecorder) Reject(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reject", reflect.TypeOf((*MockRecipeImportService)(nil).Reject), ctx, id)
+}
+
+// Retry mocks base method.
+func (m *MockRecipeImportService) Retry(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Retry", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Retry indicates an expected call of Retry.
+func (mr *MockRecipeImportServiceMockRecorder) Retry(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Retry", reflect.TypeOf((*MockRecipeImportService)(nil).Retry), ctx, id)
+}
+
+// Shutdown mocks base method.
+func (m *MockRecipeImportService) Shutdown(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Shutdown", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Shutdown indicates an expected call of Shutdown.
+func (mr *MockRecipeImportServiceMockRecorder) Shutdown(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shutdown", reflect.TypeOf((*MockRecipeImportService)(nil).Shutdown), ctx)
+}
+
+// UpdateReview mocks base method.
+func (m *MockRecipeImportService) UpdateReview(ctx context.Context, id int64, review *ocrimport.ReviewRecipe, updatedBy string) (*recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateReview", ctx, id, review, updatedBy)
+	ret0, _ := ret[0].(*recipeimport.RecipeImport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateReview indicates an expected call of UpdateReview.
+func (mr *MockRecipeImportServiceMockRecorder) UpdateReview(ctx, id, review, updatedBy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateReview", reflect.TypeOf((*MockRecipeImportService)(nil).UpdateReview), ctx, id, review, updatedBy)
+}
+
 // MockUserPrefsService is a mock of UserPrefsService interface.
 type MockUserPrefsService struct {
 	ctrl     *gomock.Controller
@@ -1753,6 +1943,21 @@ func NewMockUserPrefsService(ctrl *gomock.Controller) *MockUserPrefsService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockUserPrefsService) EXPECT() *MockUserPrefsServiceMockRecorder {
 	return m.recorder
+}
+
+// AdjustUserItemQuantity mocks base method.
+func (m *MockUserPrefsService) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, userID, itemID, delta, by)
+	ret0, _ := ret[0].(userprefs.UserItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdjustUserItemQuantity indicates an expected call of AdjustUserItemQuantity.
+func (mr *MockUserPrefsServiceMockRecorder) AdjustUserItemQuantity(ctx, userID, itemID, delta, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustUserItemQuantity", reflect.TypeOf((*MockUserPrefsService)(nil).AdjustUserItemQuantity), ctx, userID, itemID, delta, by)
 }
 
 // CountUserBottles mocks base method.

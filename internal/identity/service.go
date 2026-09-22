@@ -21,6 +21,7 @@ import (
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
+	tx   pgx.Tx
 	// protected holds lowercased emails that can never be demoted from
 	// admin or deactivated (LENA_PROTECTED_EMAILS).
 	protected map[string]bool
@@ -68,13 +69,18 @@ func splitIssuerAndEmail(s string) (issuer, email string) {
 func (s *Service) WithTx(tx pgx.Tx) *Service {
 	c := *s
 	c.q = sqlc.New(dbtx.NewTimedExecer(tx, "identity"))
+	c.tx = tx
 	return &c
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is
 // bound to that transaction. The transaction commits when fn returns nil and
-// rolls back otherwise.
+// rolls back otherwise. If the service is already bound to a transaction, fn
+// runs in that transaction instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
+	if s.tx != nil || s.pool == nil {
+		return fn(s)
+	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
@@ -91,7 +97,7 @@ const (
 var (
 	ErrSelfModification = errors.New("cannot change your own role or active status")
 	ErrProtectedUser    = errors.New("user is a protected admin")
-	ErrLastAdmin        = errors.New("cannot remove the last active admin")
+	ErrLastAdmin        = domainerr.ErrLastAdmin
 )
 
 // User is the identity module's view of a user row.
@@ -176,23 +182,14 @@ func (s *Service) CountUsers(ctx context.Context) (int64, error) {
 }
 
 // checkAdminMutation enforces the invariants for privileged changes: an
-// admin may not modify their own record, protected admins are immutable,
-// and the last active admin cannot be removed.
-func (s *Service) checkAdminMutation(ctx context.Context, actorID int64, target User, removesAdmin bool) error {
+// admin may not modify their own record and protected admins are immutable.
+// The last-active-admin guard is performed by the conditional update itself.
+func (s *Service) checkAdminMutation(actorID int64, target User) error {
 	if target.UserID == actorID {
 		return ErrSelfModification
 	}
 	if s.IsProtected(target.Provider, target.Email) {
 		return ErrProtectedUser
-	}
-	if removesAdmin {
-		n, err := s.q.CountActiveAdmins(ctx)
-		if err != nil {
-			return fmt.Errorf("count active admins: %w", err)
-		}
-		if n <= 1 {
-			return ErrLastAdmin
-		}
 	}
 	return nil
 }
@@ -207,10 +204,17 @@ func (s *Service) AdminSetRole(ctx context.Context, actorID, targetID int64, rol
 	if err != nil {
 		return err
 	}
-	if err := s.checkAdminMutation(ctx, actorID, target, target.IsAdmin() && role != RoleAdmin); err != nil {
+	if err := s.checkAdminMutation(actorID, target); err != nil {
 		return err
 	}
-	return s.q.SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: targetID, Role: role})
+	n, err := s.q.ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: targetID, Role: role})
+	if err != nil {
+		return fmt.Errorf("set user role: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("set user role: %w", domainerr.ErrLastAdmin)
+	}
+	return nil
 }
 
 // AdminSetActive activates or deactivates (bans) target on behalf of
@@ -223,14 +227,21 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 	if err != nil {
 		return err
 	}
-	if err := s.checkAdminMutation(ctx, actorID, target, target.IsAdmin() && !active); err != nil {
+	if err := s.checkAdminMutation(actorID, target); err != nil {
 		return err
 	}
-	return s.q.SetUserActive(ctx, sqlc.SetUserActiveParams{
+	n, err := s.q.ConditionalSetUserActive(ctx, sqlc.ConditionalSetUserActiveParams{
 		UserID:    targetID,
 		IsActive:  active,
 		UpdatedBy: textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("set user active: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("set user active: %w", domainerr.ErrLastAdmin)
+	}
+	return nil
 }
 
 // UpdateProfile stores the user's editable profile fields. Names are

@@ -18,7 +18,7 @@ SELECT DISTINCT NULLIF(trim(brand), ''),
        'seed'
 FROM _upc_import
 WHERE NULLIF(trim(brand), '') IS NOT NULL
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO inventory.item (
     name,

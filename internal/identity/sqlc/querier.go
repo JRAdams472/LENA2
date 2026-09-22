@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	ConditionalSetUserActive(ctx context.Context, arg ConditionalSetUserActiveParams) (int64, error)
+	ConditionalSetUserRole(ctx context.Context, arg ConditionalSetUserRoleParams) (int64, error)
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)

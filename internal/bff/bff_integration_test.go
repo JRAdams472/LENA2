@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/graph-gophers/graphql-go"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +21,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -679,6 +682,90 @@ func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIs
 	}
 	decodeData(t, gr.Data, &bMealPlans)
 	assert.False(t, containsID(bMealPlans.MealPlans.Items, mealPlanRes.CreateMealPlan.ID))
+}
+
+// TestIntegrationGroceryTogglePantrySync exercises the atomic toggle +
+// pantry adjustment path in ToggleGroceryItemChecked (A2-01): checking a
+// catalog item must add its quantity to the user's pantry, and
+// unchecking must subtract it back — both inside one transaction.
+func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	defer cleanup()
+
+	invSvc := inventory.NewService(pool)
+	grocerySvc := grocery.NewService(pool)
+	upSvc := userprefs.NewService(pool)
+
+	userID := testenv.MustUser(ctx, t, pool, "toggle-sync@example.com")
+
+	brand, err := invSvc.CreateBrand(ctx, "IT Toggle Brand", "it")
+	require.NoError(t, err)
+	cat, err := invSvc.CreateCategory(ctx, "IT Toggle Category", "", "it")
+	require.NoError(t, err)
+	unit, err := invSvc.GetUnitByName(ctx, "each")
+	require.NoError(t, err)
+	netWeight := 1.0
+	item, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name:       "IT Toggle Item",
+		BrandID:    &brand.BrandID,
+		CategoryID: cat.CategoryID,
+		UnitID:     unit.UnitID,
+		NetWeight:  &netWeight,
+	}, "it")
+	require.NoError(t, err)
+
+	list, err := grocerySvc.CreateGroceryList(ctx, userID, nil, "it")
+	require.NoError(t, err)
+	gli, err := grocerySvc.AddGroceryListItem(ctx, grocery.GroceryListItem{
+		GroceryListID:  list.GroceryListID,
+		ItemID:         &item.ItemID,
+		QuantityNeeded: 3.0,
+		UnitID:         &item.UnitID,
+	}, userID, "it")
+	require.NoError(t, err)
+
+	resolver := NewResolver(
+		pool,
+		analytics.NewService(pool),
+		grocerySvc,
+		invSvc,
+		mealplan.NewService(pool),
+		recipe.NewService(pool),
+		upSvc,
+		wine.NewService(pool),
+		identity.NewService(pool),
+		nil,
+		nil,
+		0,
+		0,
+		"",
+	)
+
+	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "toggle-sync@example.com"})
+	gliID := graphql.ID(strconv.FormatInt(gli.GroceryListItemID, 10))
+
+	toggled, err := resolver.ToggleGroceryItemChecked(uctx, struct{ GroceryListItemID graphql.ID }{GroceryListItemID: gliID})
+	require.NoError(t, err)
+	assert.True(t, toggled.IsChecked())
+
+	pantry, err := upSvc.GetUserItemByUserAndItem(ctx, userID, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, pantry, "checking the item should create a pantry row")
+	assert.InDelta(t, 3.0, pantry.CurrentQty, 0.0001)
+
+	untoggled, err := resolver.ToggleGroceryItemChecked(uctx, struct{ GroceryListItemID graphql.ID }{GroceryListItemID: gliID})
+	require.NoError(t, err)
+	assert.False(t, untoggled.IsChecked())
+
+	pantry, err = upSvc.GetUserItemByUserAndItem(ctx, userID, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, pantry)
+	assert.InDelta(t, 0.0, pantry.CurrentQty, 0.0001)
 }
 
 func doGraphQL(t *testing.T, srv *httptest.Server, token, query string, vars map[string]any) (int, graphqlResponse) {

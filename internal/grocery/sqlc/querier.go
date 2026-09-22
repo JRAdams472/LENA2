@@ -19,6 +19,7 @@ type Querier interface {
 	ListGroceryListItems(ctx context.Context, arg ListGroceryListItemsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryListItemsByLists(ctx context.Context, arg ListGroceryListItemsByListsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error)
+	ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error)
 	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error
 }
 

@@ -9,6 +9,10 @@ import (
 )
 
 type Querier interface {
+	// Atomically adjust the user's pantry quantity by delta, clamping at 0.
+	// Creates the row if it does not yet exist, preserving all other fields
+	// on an existing row.
+	AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (InventoryUserItem, error)
 	CountUserBottles(ctx context.Context, userID int64) (int64, error)
 	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavoriteParams) error

@@ -24,6 +24,7 @@ type GroceryService interface {
 	Generate(ctx context.Context, userID int64, mealPlanID int64, by string) (grocery.GroceryList, error)
 	GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error)
 	UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error
+	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error)
 	DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error
 	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, userID int64, by string) (grocery.GroceryListItem, error)
 	ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]grocery.GroceryListItem, error)
@@ -175,6 +176,7 @@ type UserPrefsService interface {
 	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	SetRecipeFavorite(ctx context.Context, userID, recipeID int64, isFavorite bool, by string) (userprefs.RecipeFavorite, error)
 	UpsertUserItem(ctx context.Context, arg userprefs.UserItem, by string) (userprefs.UserItem, error)
+	AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error)
 	DeleteUserItem(ctx context.Context, userItemID, userID int64) error
 	UpsertUserBottle(ctx context.Context, arg userprefs.UserBottle, by string) (userprefs.UserBottle, error)
 	GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (userprefs.RecipeFavorite, error)
