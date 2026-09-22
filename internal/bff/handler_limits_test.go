@@ -90,7 +90,7 @@ func TestApplyLimitErrors_Timeout(t *testing.T) {
 	defer cancel()
 	<-ctx.Done() // deterministic expiry
 	resp := &graphql.Response{}
-	applyLimitErrors(resp, ctx, &costLimiter{})
+	applyLimitErrors(ctx, resp, &costLimiter{})
 	require.Len(t, resp.Errors, 1)
 	assert.Equal(t, codeTimeout, resp.Errors[0].Extensions["code"])
 }

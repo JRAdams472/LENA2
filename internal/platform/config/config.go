@@ -61,8 +61,11 @@ type Config struct {
 	GraphQLTimeout time.Duration `envconfig:"GRAPHQL_TIMEOUT" default:"10s"`
 	// GraphQLMaxCost bounds the number of field resolutions a single
 	// request may perform; depth/length limits alone do not bound
-	// cardinality of wide list queries.
-	GraphQLMaxCost int `envconfig:"GRAPHQL_MAX_COST" default:"2000"`
+	// cardinality of wide list queries. The floor is set by the
+	// unpaginated catalog lists (brands/ingredients): a seeded catalog
+	// page resolves ~65k fields, so 100k still rejects pathological
+	// nested queries without breaking legitimate pages.
+	GraphQLMaxCost int `envconfig:"GRAPHQL_MAX_COST" default:"100000"`
 	// DatabaseStatementTimeout is the PostgreSQL statement_timeout applied
 	// to every pooled connection so queries abandoned by a cancelled
 	// request still die server-side. It should exceed GraphQLTimeout so

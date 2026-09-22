@@ -1054,14 +1054,14 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOp
 		resp := parsed.Exec(ctx, req.Query, req.OperationName, req.Variables)
 		cancel()
 		sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
-		applyLimitErrors(resp, ctx, limiter)
+		applyLimitErrors(ctx, resp, limiter)
 		return c.JSON(http.StatusOK, resp)
 	}, nil
 }
 
 // applyLimitErrors appends the deadline/cost GraphQL error when the
 // request exceeded either bound.
-func applyLimitErrors(resp *graphql.Response, ctx context.Context, limiter *costLimiter) {
+func applyLimitErrors(ctx context.Context, resp *graphql.Response, limiter *costLimiter) {
 	switch {
 	case errors.Is(context.Cause(ctx), errQueryTimeout):
 		resp.Errors = append(resp.Errors, &gqlerrors.QueryError{
