@@ -19,6 +19,7 @@ import (
 	grocery "github.com/JRAdams472/LENA2/internal/grocery"
 	identity "github.com/JRAdams472/LENA2/internal/identity"
 	inventory "github.com/JRAdams472/LENA2/internal/inventory"
+	nutritionparse "github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
 	mealplan "github.com/JRAdams472/LENA2/internal/mealplan"
 	ocrimport "github.com/JRAdams472/LENA2/internal/ocrimport"
 	currentuser "github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -237,6 +238,20 @@ func NewMockInventoryService(ctrl *gomock.Controller) *MockInventoryService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockInventoryService) EXPECT() *MockInventoryServiceMockRecorder {
 	return m.recorder
+}
+
+// ApplyNutritionLabel mocks base method.
+func (m *MockInventoryService) ApplyNutritionLabel(ctx context.Context, itemID int64, parsed []nutritionparse.Nutrient, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyNutritionLabel", ctx, itemID, parsed, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyNutritionLabel indicates an expected call of ApplyNutritionLabel.
+func (mr *MockInventoryServiceMockRecorder) ApplyNutritionLabel(ctx, itemID, parsed, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyNutritionLabel", reflect.TypeOf((*MockInventoryService)(nil).ApplyNutritionLabel), ctx, itemID, parsed, by)
 }
 
 // CountIngredients mocks base method.
@@ -1835,21 +1850,6 @@ func (mr *MockRecipeImportServiceMockRecorder) CountPending(ctx any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPending", reflect.TypeOf((*MockRecipeImportService)(nil).CountPending), ctx)
 }
 
-// Create mocks base method.
-func (m *MockRecipeImportService) Create(ctx context.Context, sourceFilename, sourcePath, sourceHash string, submittedByUserID *int64, createdBy string) (*recipeimport.RecipeImport, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, sourceFilename, sourcePath, sourceHash, submittedByUserID, createdBy)
-	ret0, _ := ret[0].(*recipeimport.RecipeImport)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Create indicates an expected call of Create.
-func (mr *MockRecipeImportServiceMockRecorder) Create(ctx, sourceFilename, sourcePath, sourceHash, submittedByUserID, createdBy any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockRecipeImportService)(nil).Create), ctx, sourceFilename, sourcePath, sourceHash, submittedByUserID, createdBy)
-}
-
 // Get mocks base method.
 func (m *MockRecipeImportService) Get(ctx context.Context, id int64) (*recipeimport.RecipeImport, error) {
 	m.ctrl.T.Helper()
@@ -1935,6 +1935,21 @@ func (m *MockRecipeImportService) Shutdown(ctx context.Context) error {
 func (mr *MockRecipeImportServiceMockRecorder) Shutdown(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shutdown", reflect.TypeOf((*MockRecipeImportService)(nil).Shutdown), ctx)
+}
+
+// Submit mocks base method.
+func (m *MockRecipeImportService) Submit(ctx context.Context, mediaType string, data []byte, submittedByUserID *int64, by string) (*recipeimport.RecipeImport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Submit", ctx, mediaType, data, submittedByUserID, by)
+	ret0, _ := ret[0].(*recipeimport.RecipeImport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Submit indicates an expected call of Submit.
+func (mr *MockRecipeImportServiceMockRecorder) Submit(ctx, mediaType, data, submittedByUserID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Submit", reflect.TypeOf((*MockRecipeImportService)(nil).Submit), ctx, mediaType, data, submittedByUserID, by)
 }
 
 // UpdateReview mocks base method.

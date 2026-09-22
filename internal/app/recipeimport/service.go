@@ -22,13 +22,15 @@ import (
 	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
-// Config holds the recipe import service thresholds.
+// Config holds the recipe import service thresholds and the inbox
+// directory where uploaded scans are stored.
 type Config struct {
 	OCRConfidenceThreshold     int
 	ImportAutoAcceptConfidence float64
 	ImportReviewThreshold      float64
 	ImportWorkerConcurrency    int
 	ImportStageTimeout         time.Duration
+	InboxDir                   string
 }
 
 // ConfigFromPlatform converts the platform config to the local config.
@@ -39,6 +41,7 @@ func ConfigFromPlatform(cfg *config.Config) Config {
 		ImportReviewThreshold:      cfg.ImportReviewThreshold,
 		ImportWorkerConcurrency:    cfg.ImportWorkerConcurrency,
 		ImportStageTimeout:         cfg.ImportStageTimeout,
+		InboxDir:                   cfg.ImportInbox,
 	}
 	if c.ImportWorkerConcurrency <= 0 {
 		c.ImportWorkerConcurrency = 1

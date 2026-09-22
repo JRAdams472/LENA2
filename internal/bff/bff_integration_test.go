@@ -68,7 +68,6 @@ func TestBFF_Integration(t *testing.T) {
 		nil,
 		0,
 		0,
-		"",
 	)
 
 	e := echo.New()
@@ -743,7 +742,6 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 		nil,
 		0,
 		0,
-		"",
 	)
 
 	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "toggle-sync@example.com"})
