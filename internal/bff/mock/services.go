@@ -68,6 +68,21 @@ func (mr *MockGroceryServiceMockRecorder) AddGroceryListItem(ctx, arg, userID, b
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).AddGroceryListItem), ctx, arg, userID, by)
 }
 
+// AddGroceryListItems mocks base method.
+func (m *MockGroceryService) AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, userID int64, by string) ([]grocery.GroceryListItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddGroceryListItems", ctx, items, userID, by)
+	ret0, _ := ret[0].([]grocery.GroceryListItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddGroceryListItems indicates an expected call of AddGroceryListItems.
+func (mr *MockGroceryServiceMockRecorder) AddGroceryListItems(ctx, items, userID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItems", reflect.TypeOf((*MockGroceryService)(nil).AddGroceryListItems), ctx, items, userID, by)
+}
+
 // CountGroceryLists mocks base method.
 func (m *MockGroceryService) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -83,6 +98,21 @@ func (mr *MockGroceryServiceMockRecorder) CountGroceryLists(ctx, userID any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockGroceryService)(nil).CountGroceryLists), ctx, userID)
 }
 
+// CreateGroceryList mocks base method.
+func (m *MockGroceryService) CreateGroceryList(ctx context.Context, userID int64, mealPlanID *int64, by string) (grocery.GroceryList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateGroceryList", ctx, userID, mealPlanID, by)
+	ret0, _ := ret[0].(grocery.GroceryList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateGroceryList indicates an expected call of CreateGroceryList.
+func (mr *MockGroceryServiceMockRecorder) CreateGroceryList(ctx, userID, mealPlanID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockGroceryService)(nil).CreateGroceryList), ctx, userID, mealPlanID, by)
+}
+
 // DeleteGroceryListItem mocks base method.
 func (m *MockGroceryService) DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error {
 	m.ctrl.T.Helper()
@@ -95,21 +125,6 @@ func (m *MockGroceryService) DeleteGroceryListItem(ctx context.Context, groceryL
 func (mr *MockGroceryServiceMockRecorder) DeleteGroceryListItem(ctx, groceryListItemID, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).DeleteGroceryListItem), ctx, groceryListItemID, userID)
-}
-
-// Generate mocks base method.
-func (m *MockGroceryService) Generate(ctx context.Context, userID, mealPlanID int64, by string) (grocery.GroceryList, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Generate", ctx, userID, mealPlanID, by)
-	ret0, _ := ret[0].(grocery.GroceryList)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Generate indicates an expected call of Generate.
-func (mr *MockGroceryServiceMockRecorder) Generate(ctx, userID, mealPlanID, by any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Generate", reflect.TypeOf((*MockGroceryService)(nil).Generate), ctx, userID, mealPlanID, by)
 }
 
 // GetGroceryListByID mocks base method.

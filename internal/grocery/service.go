@@ -1,6 +1,6 @@
-// Package grocery owns per-user grocery lists and their items. It may
-// read a meal plan (same domain) and explicitly calls userprefs to see
-// per-user stock, but it never joins to inventory.item or user_item in SQL.
+// Package grocery owns per-user grocery lists and their items. Meal-plan
+// expansion and pantry-stock subtraction are composed by the BFF, which
+// is the only layer allowed to read across domains.
 package grocery
 
 import (
@@ -268,13 +268,51 @@ func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListI
 	return gli, nil
 }
 
-// Generate creates a new grocery list and seeds it from a meal plan.
-// Actual item totals and pantry subtraction are calculated in Go so the
-// SQL stays free of business logic.
-func (s *Service) Generate(ctx context.Context, userID int64, mealPlanID int64, by string) (GroceryList, error) {
-	// Phase 4 provides the list container only; full aggregation against
-	// recipe items and user stock is left for the BFF/resolver layer.
-	return s.CreateGroceryList(ctx, userID, &mealPlanID, by)
+// AddGroceryListItems inserts a batch of items onto a single list owned
+// by the user. All rows share one GroceryListID; callers composing the
+// batch with other writes wrap the call in a unit of work, which the
+// ctx-carried transaction joins automatically.
+func (s *Service) AddGroceryListItems(ctx context.Context, items []GroceryListItem, userID int64, by string) ([]GroceryListItem, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	listID := items[0].GroceryListID
+	for _, it := range items[1:] {
+		if it.GroceryListID != listID {
+			return nil, fmt.Errorf("add grocery list items: mixed list ids %d and %d", listID, it.GroceryListID)
+		}
+	}
+	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: listID, UserID: userID}); err != nil {
+		return nil, fmt.Errorf("add grocery list items: %w", err)
+	}
+	out := make([]GroceryListItem, 0, len(items))
+	for _, it := range items {
+		qty, err := numericFromFloat64(it.QuantityNeeded)
+		if err != nil {
+			return nil, fmt.Errorf("add grocery list items: %w", err)
+		}
+		row, err := s.q.AddGroceryListItem(ctx, sqlc.AddGroceryListItemParams{
+			GroceryListID:  it.GroceryListID,
+			ItemID:         optInt8(it.ItemID),
+			IngredientID:   optInt8(it.IngredientID),
+			ManualItemName: textOrNull(it.ManualItemName),
+			QuantityNeeded: qty,
+			UnitID:         optInt8(it.UnitID),
+			Source:         it.Source,
+			IsChecked:      it.IsChecked,
+			CreatedBy:      by,
+			UpdatedBy:      textOrNull(by),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("add grocery list items: %w", err)
+		}
+		gli, err := toGroceryListItem(row)
+		if err != nil {
+			return nil, fmt.Errorf("add grocery list items: %w", err)
+		}
+		out = append(out, gli)
+	}
+	return out, nil
 }
 
 func toGroceryList(row sqlc.GroceryGroceryList) GroceryList {

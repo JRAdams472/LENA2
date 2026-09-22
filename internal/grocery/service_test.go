@@ -313,35 +313,60 @@ func TestDeleteGroceryListItem(t *testing.T) {
 	})
 }
 
-func TestGenerate(t *testing.T) {
+func TestAddGroceryListItems(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("creates list linked to meal plan", func(t *testing.T) {
+	t.Run("inserts the batch after one ownership check", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().CreateGroceryList(ctx, gomock.Any()).
-			DoAndReturn(func(_ context.Context, arg sqlc.CreateGroceryListParams) (sqlc.GroceryGroceryList, error) {
-				assert.Equal(t, int64(42), arg.UserID)
-				assert.Equal(t, pgtype.Int8{Int64: 7, Valid: true}, arg.MealPlanID)
-				assert.Equal(t, "tester", arg.CreatedBy)
-				return sqlc.GroceryGroceryList{
-					GroceryListID: 3,
-					UserID:        arg.UserID,
-					MealPlanID:    arg.MealPlanID,
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).
+			Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
+		itemID := int64(10)
+		unitID := int64(5)
+		mq.EXPECT().AddGroceryListItem(ctx, gomock.Any()).
+			DoAndReturn(func(_ context.Context, arg sqlc.AddGroceryListItemParams) (sqlc.GroceryGroceryListItem, error) {
+				assert.Equal(t, int64(3), arg.GroceryListID)
+				assert.Equal(t, pgtype.Int8{Int64: 10, Valid: true}, arg.ItemID)
+				assert.Equal(t, "mealplan", arg.Source)
+				return sqlc.GroceryGroceryListItem{
+					GroceryListItemID: 9,
+					GroceryListID:     arg.GroceryListID,
+					ItemID:            arg.ItemID,
+					QuantityNeeded:    arg.QuantityNeeded,
+					UnitID:            arg.UnitID,
+					Source:            arg.Source,
 				}, nil
 			})
 
-		got, err := s.Generate(ctx, 42, 7, "tester")
+		got, err := s.AddGroceryListItems(ctx, []GroceryListItem{
+			{GroceryListID: 3, ItemID: &itemID, QuantityNeeded: 2, UnitID: &unitID, Source: "mealplan"},
+		}, 42, "tester")
 		require.NoError(t, err)
-		assert.Equal(t, int64(3), got.GroceryListID)
-		require.NotNil(t, got.MealPlanID)
-		assert.Equal(t, int64(7), *got.MealPlanID)
+		require.Len(t, got, 1)
+		assert.Equal(t, int64(9), got[0].GroceryListItemID)
 	})
 
-	t.Run("error is wrapped", func(t *testing.T) {
+	t.Run("empty batch is a no-op", func(t *testing.T) {
+		s, _ := newService(t)
+		got, err := s.AddGroceryListItems(ctx, nil, 42, "tester")
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("mixed list ids are rejected before any write", func(t *testing.T) {
+		s, _ := newService(t)
+		_, err := s.AddGroceryListItems(ctx, []GroceryListItem{
+			{GroceryListID: 3, QuantityNeeded: 1, Source: "mealplan"},
+			{GroceryListID: 4, QuantityNeeded: 1, Source: "mealplan"},
+		}, 42, "tester")
+		assert.ErrorContains(t, err, "mixed list ids")
+	})
+
+	t.Run("foreign list is not found", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().CreateGroceryList(ctx, gomock.Any()).Return(sqlc.GroceryGroceryList{}, errDB)
-		_, err := s.Generate(ctx, 42, 7, "tester")
-		assert.ErrorContains(t, err, "create grocery list")
+		mq.EXPECT().GetGroceryListByID(ctx, gomock.Any()).Return(sqlc.GroceryGroceryList{}, errDB)
+		_, err := s.AddGroceryListItems(ctx, []GroceryListItem{
+			{GroceryListID: 3, QuantityNeeded: 1, Source: "mealplan"},
+		}, 42, "tester")
 		assert.ErrorIs(t, err, errDB)
 	})
 }

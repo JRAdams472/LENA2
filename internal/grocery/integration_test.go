@@ -146,12 +146,22 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, manualItem.GroceryListItemID, items[0].GroceryListItemID)
 
-	gen, err := svc.Generate(ctx, userA, plan.MealPlanID, itBy)
+	gen, err := svc.CreateGroceryList(ctx, userA, &plan.MealPlanID, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, gen.GroceryListID)
 	require.NotNil(t, gen.MealPlanID)
 	assert.Equal(t, plan.MealPlanID, *gen.MealPlanID)
 	assert.Equal(t, userA, gen.UserID)
+
+	batch, err := svc.AddGroceryListItems(ctx, []GroceryListItem{
+		{GroceryListID: gen.GroceryListID, ItemID: &itemID, QuantityNeeded: 2, UnitID: &canID, Source: "mealplan"},
+		{GroceryListID: gen.GroceryListID, ManualItemName: "birthday candles", QuantityNeeded: 1, Source: "mealplan"},
+	}, userA, itBy)
+	require.NoError(t, err)
+	require.Len(t, batch, 2)
+	genItems, err := svc.ListGroceryListItems(ctx, gen.GroceryListID, userA)
+	require.NoError(t, err)
+	require.Len(t, genItems, 2)
 
 	listsA, err = svc.ListGroceryLists(ctx, userA, 100, 0)
 	require.NoError(t, err)

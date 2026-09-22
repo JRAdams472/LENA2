@@ -22,8 +22,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -764,6 +764,104 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pantry)
 	assert.InDelta(t, 0.0, pantry.CurrentQty, 0.0001)
+}
+
+// TestIntegrationGenerateGroceryList exercises the composed generation
+// path (A1-04): two recipes sharing an ingredient produce one aggregated
+// grocery line with the summed quantity minus pantry stock, all inside
+// one unit of work.
+func TestIntegrationGenerateGroceryList(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	defer cleanup()
+
+	invSvc := inventory.NewService(pool)
+	grocerySvc := grocery.NewService(pool)
+	mpSvc := mealplan.NewService(pool)
+	recipeSvc := recipe.NewService(pool)
+	upSvc := userprefs.NewService(pool)
+
+	userID := testutil.MustUser(ctx, t, pool, "grocery-gen@example.com")
+
+	brand, err := invSvc.CreateBrand(ctx, "IT Gen Brand", "it")
+	require.NoError(t, err)
+	cat, err := invSvc.CreateCategory(ctx, "IT Gen Category", "", "it")
+	require.NoError(t, err)
+	kg, err := invSvc.GetUnitByName(ctx, "kilogram")
+	require.NoError(t, err)
+	flour, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name: "IT Gen Flour", BrandID: &brand.BrandID, CategoryID: cat.CategoryID, UnitID: kg.UnitID,
+	}, "it")
+	require.NoError(t, err)
+
+	servings := int32(4)
+	mkRecipe := func(name string, flourKg float64) recipe.Recipe {
+		rec, err := recipeSvc.CreateRecipeWithChildren(ctx,
+			recipe.Recipe{Name: name, IsActive: true, Servings: &servings},
+			[]recipe.RecipeItem{{ItemID: flour.ItemID, Quantity: flourKg, UnitID: kg.UnitID}},
+			nil, "it")
+		require.NoError(t, err)
+		return rec
+	}
+	bread := mkRecipe("IT Gen Bread", 2)
+	cake := mkRecipe("IT Gen Cake", 1)
+
+	plan, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
+		UserID: userID, Name: "IT Gen Plan", WeekStartDate: time.Now(), IsActive: true,
+	}, "it")
+	require.NoError(t, err)
+	for i, rec := range []recipe.Recipe{bread, cake} {
+		_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
+			MealPlanID: plan.MealPlanID, DayOfWeek: int16(i + 1), MealType: "dinner", RecipeID: &rec.RecipeID,
+		}, userID, "it")
+		require.NoError(t, err)
+	}
+
+	// Pantry already holds 1 kg of flour.
+	_, err = upSvc.UpsertUserItem(ctx, userprefs.UserItem{
+		UserID: userID, ItemID: flour.ItemID, CurrentQty: 1,
+	}, "it")
+	require.NoError(t, err)
+
+	resolver := NewResolver(
+		pool,
+		analytics.NewService(pool),
+		grocerySvc,
+		invSvc,
+		mpSvc,
+		recipeSvc,
+		upSvc,
+		wine.NewService(pool),
+		identity.NewService(pool),
+		nil,
+		nil,
+		0,
+		0,
+	)
+	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "grocery-gen@example.com"})
+	planID := graphql.ID(strconv.FormatInt(plan.MealPlanID, 10))
+
+	res, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
+	require.NoError(t, err)
+	items, err := res.Items(ctx)
+	require.NoError(t, err)
+	require.Len(t, items, 1, "two recipes sharing flour must aggregate to one line")
+	assert.InDelta(t, 2.0, items[0].QuantityNeeded(), 0.0001, "3 kg needed minus 1 kg on hand")
+
+	// A fully stocked pantry omits the line entirely.
+	_, err = upSvc.UpsertUserItem(ctx, userprefs.UserItem{
+		UserID: userID, ItemID: flour.ItemID, CurrentQty: 10,
+	}, "it")
+	require.NoError(t, err)
+	res2, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
+	require.NoError(t, err)
+	items2, err := res2.Items(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, items2, "fully stocked pantry produces no grocery lines")
 }
 
 func doGraphQL(t *testing.T, srv *httptest.Server, token, query string, vars map[string]any) (int, graphqlResponse) {
