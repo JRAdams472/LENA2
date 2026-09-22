@@ -127,8 +127,7 @@ func (r *Resolver) PendingBrands(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	brands, err := r.InventoryService.ListPendingBrands(ctx, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
@@ -418,8 +417,7 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	items, err := r.InventoryService.ListItems(ctx, u.UserID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
@@ -530,8 +528,7 @@ func (r *Resolver) Ingredients(ctx context.Context, args struct {
 	if _, err := userFromContext(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	ingredients, err := r.InventoryService.ListIngredients(ctx, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
@@ -821,8 +818,7 @@ func (r *Resolver) PendingItems(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	items, err := r.InventoryService.ListPendingItems(ctx, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err

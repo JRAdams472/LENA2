@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -11,9 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
+	gqlerrors "github.com/graph-gophers/graphql-go/errors"
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
@@ -59,14 +62,24 @@ type Resolver struct {
 	bgCancel context.CancelFunc
 	bgSem    chan struct{}
 	bgWG     sync.WaitGroup
+
+	// ocrInFlight tracks in-flight nutrition-OCR jobs per user so one
+	// member cannot hold more than one at a time; uploads throttles
+	// upload mutations per user.
+	ocrMu       sync.Mutex
+	ocrInFlight map[int64]int
+	uploads     *userRateLimiter
 }
 
 // asyncWorkerCap bounds the number of in-flight background tasks.
 const asyncWorkerCap = 16
 
+// maxUserOCRJobs bounds in-flight nutrition-OCR jobs per user.
+const maxUserOCRJobs = 1
+
 // NewResolver returns a new BFF resolver with the domain services.
 func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, recipeImport RecipeImportService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int) *Resolver {
-	return &Resolver{UOW: dbtx.NewUnitOfWork(pool), AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes}
+	return &Resolver{UOW: dbtx.NewUnitOfWork(pool), AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, uploads: newUserRateLimiter(12)}
 }
 
 // unitOfWork returns the configured UnitOfWork. Resolvers built as literals
@@ -87,15 +100,17 @@ func (r *Resolver) ensureBG() {
 }
 
 // runAsync executes fn in a detached, bounded, shutdown-aware goroutine.
-// When the worker is saturated the task is dropped and logged —
-// analytics work is best-effort and must never block the request path.
-func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx context.Context) error) {
+// It reports whether the task was accepted: when the worker pool is
+// saturated the task is dropped and logged, and callers that promised the
+// user queued work (e.g. nutrition OCR) must surface a BUSY error instead
+// of returning true. Best-effort analytics callers may ignore the result.
+func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx context.Context) error) bool {
 	r.ensureBG()
 	select {
 	case r.bgSem <- struct{}{}:
 	default:
 		slog.Default().Warn("async worker saturated; dropping task", "task", name)
-		return
+		return false
 	}
 	r.bgWG.Add(1)
 	go func() {
@@ -112,34 +127,65 @@ func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx cont
 			slog.Default().Error("async task failed", "task", name, "error", err)
 		}
 	}()
+	return true
 }
 
-// Shutdown cancels pending background work and waits for in-flight tasks
-// to finish or ctx to expire. Call it during graceful shutdown so
-// analytics writes and recipe import workers are not silently dropped on
-// process exit.
+// acquireOCRJob reserves one of the per-user OCR slots. It returns nil if
+// the user already holds the maximum number of in-flight jobs; otherwise
+// it returns a release function the caller must invoke when the job ends.
+func (r *Resolver) acquireOCRJob(userID int64) func() {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.ocrInFlight == nil {
+		r.ocrInFlight = map[int64]int{}
+	}
+	if r.ocrInFlight[userID] >= maxUserOCRJobs {
+		return nil
+	}
+	r.ocrInFlight[userID]++
+	return func() {
+		r.ocrMu.Lock()
+		defer r.ocrMu.Unlock()
+		if r.ocrInFlight[userID]--; r.ocrInFlight[userID] <= 0 {
+			delete(r.ocrInFlight, userID)
+		}
+	}
+}
+
+// uploadLimiter returns the per-user upload rate limiter, lazily built so
+// Resolver literals in tests still work.
+func (r *Resolver) uploadLimiter() *userRateLimiter {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.uploads == nil {
+		r.uploads = newUserRateLimiter(12)
+	}
+	return r.uploads
+}
+
+// Shutdown drains in-flight background work before returning: it waits
+// for the analytics/recommendation workers and the recipe-import pool to
+// finish, and only cancels the shared background context when the caller's
+// deadline expires — in-flight tasks are never aborted just because
+// shutdown was requested. Call it after HTTP drain and before pool close.
 func (r *Resolver) Shutdown(ctx context.Context) error {
 	r.ensureBG()
-	r.bgCancel()
 	done := make(chan struct{})
 	go func() {
 		r.bgWG.Wait()
-		close(done)
-	}()
-
-	// Drain the recipe import worker pool in parallel.
-	if r.RecipeImportService != nil {
-		go func() {
+		if r.RecipeImportService != nil {
 			if err := r.RecipeImportService.Shutdown(ctx); err != nil {
 				slog.Default().Error("recipe import service shutdown", "error", err)
 			}
-		}()
-	}
+		}
+		close(done)
+	}()
 
 	select {
 	case <-done:
 		return nil
 	case <-ctx.Done():
+		r.bgCancel()
 		return ctx.Err()
 	}
 }
@@ -831,15 +877,49 @@ func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []in
 	return bc, nil
 }
 
+// errQueryTimeout and errQueryCostExceeded are context causes set by the
+// handler's deadline and the tracer's cost counter; the handler maps them
+// onto GraphQL error codes after Exec returns.
+var (
+	errQueryTimeout      = errors.New("graphql request timed out")
+	errQueryCostExceeded = errors.New("graphql query exceeds cost budget")
+)
+
+// costLimiter counts field resolutions for one request via TraceField and
+// cancels the execution context once the budget is exceeded.
+type costLimiter struct {
+	max      int
+	count    atomic.Int64
+	exceeded atomic.Bool
+	fire     context.CancelFunc
+}
+
+func (l *costLimiter) add() {
+	if l.max <= 0 || l.fire == nil {
+		return
+	}
+	if l.count.Add(1) > int64(l.max) {
+		l.exceeded.Store(true)
+		l.fire()
+	}
+}
+
+type costLimiterContextKey struct{}
+
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
-// Extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength) are
-// applied on top of the built-in tracer. A schema parse failure is
+// timeout bounds each execution (empty means use the default), maxCost caps
+// the number of field resolutions per request (<= 0 disables the budget),
+// and extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength)
+// are applied on top of the built-in tracer. A schema parse failure is
 // returned as an error rather than panicking.
-func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
+func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
 	opts := append([]graphql.SchemaOpt{graphql.Tracer(newGraphQLTracer())}, schemaOpts...)
 	parsed, err := graphql.ParseSchema(schema, r, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("parse graphql schema: %w", err)
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Second
 	}
 	return func(c echo.Context) error {
 		var req struct {
@@ -848,10 +928,40 @@ func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) (echo.Handl
 			OperationName string                 `json:"operationName"`
 		}
 		if err := c.Bind(&req); err != nil {
-			return err
+			// Return bind failures in GraphQL error shape so clients get a
+			// consistent contract instead of an Echo HTML error page.
+			return c.JSON(http.StatusOK, map[string]any{
+				"errors": []map[string]any{{
+					"message":    "invalid request body",
+					"extensions": map[string]any{"code": codeBadUserInput},
+				}},
+			})
 		}
-		resp := parsed.Exec(c.Request().Context(), req.Query, req.OperationName, req.Variables)
+		ctx, cancel := context.WithTimeoutCause(c.Request().Context(), timeout, errQueryTimeout)
+		limiter := &costLimiter{max: maxCost, fire: cancel}
+		ctx = context.WithValue(ctx, costLimiterContextKey{}, limiter)
+
+		resp := parsed.Exec(ctx, req.Query, req.OperationName, req.Variables)
+		cancel()
 		sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
+		switch {
+		case errors.Is(context.Cause(ctx), errQueryTimeout):
+			resp.Errors = append(resp.Errors, &gqlerrors.QueryError{
+				Message:    "request timed out",
+				Extensions: map[string]any{"code": codeTimeout},
+			})
+		case limiter.exceeded.Load():
+			resp.Errors = append(resp.Errors, &gqlerrors.QueryError{
+				Message:    "query exceeds cost budget",
+				Extensions: map[string]any{"code": codeCostExceeded},
+			})
+		}
 		return c.JSON(http.StatusOK, resp)
 	}, nil
+}
+
+// pageArgs clamps pagination input to sane bounds; every list resolver
+// funnels through it so no unbounded LIMIT/OFFSET reaches the database.
+func pageArgs(page, pageSize int32) (int32, int32) {
+	return clamp(page, 1, 1_000_000), clamp(pageSize, 1, 100)
 }

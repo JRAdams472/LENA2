@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -54,13 +55,36 @@ type Authenticator struct {
 	adminEmailsByIssuer map[string][]string
 	httpc               *http.Client
 
-	mu   sync.Mutex
-	jwks map[string]*cachedKeySet
+	// jwks is guarded by an RW mutex: cache hits never block on a network
+	// fetch, and per-issuer singleflight (inflight) means a slow provider
+	// only delays tokens from that issuer — never the whole auth path.
+	mu       sync.RWMutex
+	jwks     map[string]*cachedKeySet
+	inflight map[string]*jwksFetch
+
+	// users caches the resolved identity row per issuer|subject so a burst
+	// of requests from one token does not UpsertUser on every call.
+	userMu sync.Mutex
+	users  map[string]resolvedUser
 }
 
 type cachedKeySet struct {
 	set       jwk.Set
 	fetchedAt time.Time
+	expiresAt time.Time
+}
+
+// jwksFetch coalesces concurrent refreshes for one issuer; waiters close
+// over done and read set/err once it closes.
+type jwksFetch struct {
+	done chan struct{}
+	set  jwk.Set
+	err  error
+}
+
+// resolvedUser is a cached identity resolution result.
+type resolvedUser struct {
+	user      currentuser.User
 	expiresAt time.Time
 }
 
@@ -70,6 +94,20 @@ const (
 	// issuer: bursts of tokens signed by unknown keys must not amplify into
 	// JWKS fetch storms against the provider.
 	jwksMinRefreshInterval = 30 * time.Second
+	// jwksFetchTimeout bounds the detached discovery+JWKS fetch. It is
+	// independent of the request context so one slow issuer cannot stall
+	// — or be cancelled by — unrelated requests.
+	jwksFetchTimeout = 10 * time.Second
+	// maxOIDCDocBytes bounds the OIDC discovery document and JWKS response
+	// bodies so a hostile or misbehaving endpoint cannot exhaust memory.
+	maxOIDCDocBytes = 1 << 20
+	// userCacheTTL bounds how long a resolved user row is reused. A ban or
+	// role change can lag by at most this much; the TTL is further capped
+	// by the token's own expiry.
+	userCacheTTL = 2 * time.Minute
+	// userCacheMax bounds the resolved-user map; when full, expired
+	// entries are swept before inserting.
+	userCacheMax = 4096
 )
 
 // Sentinel auth errors let the middleware distinguish "your token is bad",
@@ -96,8 +134,18 @@ func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) (*Authenticator
 		identity:            identitySvc,
 		audiencesByIssuer:   audiences,
 		adminEmailsByIssuer: adminEmails,
-		httpc:               &http.Client{Timeout: 10 * time.Second},
-		jwks:                make(map[string]*cachedKeySet),
+		httpc: &http.Client{
+			Timeout: 10 * time.Second,
+			// OIDC discovery and JWKS endpoints must be fetched directly:
+			// following a redirect could silently re-target key material
+			// to an attacker-controlled host.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		jwks:     make(map[string]*cachedKeySet),
+		inflight: make(map[string]*jwksFetch),
+		users:    make(map[string]resolvedUser),
 	}, nil
 }
 
@@ -287,6 +335,10 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	var emailVerified bool
 	_ = token.Get("email_verified", &emailVerified)
 
+	if cu, ok := a.cachedUser(issuer, subject); ok {
+		return cu, nil
+	}
+
 	u, err := a.identity.UpsertUser(ctx, issuer, subject, email, name)
 	if err != nil {
 		return currentuser.User{}, fmt.Errorf("%w: upsert user: %w", errIdentityStore, err)
@@ -317,54 +369,177 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		)
 	}
 
-	return currentuser.User{
+	cu := currentuser.User{
 		UserID:          u.UserID,
 		Provider:        u.Provider,
 		ExternalSubject: u.ExternalSubject,
 		Email:           u.Email,
 		DisplayName:     u.DisplayName,
 		IsAdmin:         u.IsAdmin(),
-	}, nil
+	}
+	// Cap the cache entry by the token's own expiry so a cached resolution
+	// never outlives the credential it was minted for.
+	ttl := userCacheTTL
+	if exp, ok := token.Expiration(); ok {
+		if rem := time.Until(exp); rem < ttl {
+			ttl = rem
+		}
+	}
+	a.cacheUser(issuer, subject, cu, ttl)
+	return cu, nil
 }
 
-// keySetForIssuer returns a cached JWKS for the issuer, discovering and
-// fetching it if the cache is empty, stale, or forceRefresh is set (used
-// after a signature-verification failure to handle key rotation).
-func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string, forceRefresh bool) (jwk.Set, error) {
-	// The lock is held across the network fetch so concurrent callers share
-	// a single discovery/JWKS request instead of stampeding the issuer.
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// cachedUser returns the previously resolved identity for issuer|subject
+// when it is still fresh. A role change or ban can lag by at most
+// userCacheTTL — the tradeoff accepted to keep a request burst from
+// hammering UpsertUser.
+func (a *Authenticator) cachedUser(issuer, subject string) (currentuser.User, bool) {
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	e, ok := a.users[issuer+"\x00"+subject]
+	if !ok || time.Now().After(e.expiresAt) {
+		return currentuser.User{}, false
+	}
+	return e.user, true
+}
 
-	if entry, ok := a.jwks[issuer]; ok {
-		if !forceRefresh && time.Now().Before(entry.expiresAt) {
+// cacheUser stores the resolved user, sweeping expired entries when the
+// map grows past userCacheMax.
+func (a *Authenticator) cacheUser(issuer, subject string, u currentuser.User, ttl time.Duration) {
+	if ttl <= 0 {
+		return
+	}
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	if len(a.users) >= userCacheMax {
+		now := time.Now()
+		for k, e := range a.users {
+			if now.After(e.expiresAt) {
+				delete(a.users, k)
+			}
+		}
+	}
+	a.users[issuer+"\x00"+subject] = resolvedUser{user: u, expiresAt: time.Now().Add(ttl)}
+}
+
+// keySetForIssuer returns a cached JWKS for the issuer, refreshing it when
+// the cache is empty, stale, or forceRefresh is set (used after a
+// signature-verification failure to handle key rotation).
+//
+// Network fetches are never made under the lock: concurrent refreshes for
+// one issuer coalesce onto a single in-flight fetch, callers holding a
+// usable (even stale) cached set return it immediately while the refresh
+// proceeds, and the fetch runs on a detached context so one request's
+// cancellation cannot kill the shared refresh for the issuer.
+func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string, forceRefresh bool) (jwk.Set, error) {
+	now := time.Now()
+
+	a.mu.RLock()
+	entry, cached := a.jwks[issuer]
+	a.mu.RUnlock()
+
+	if cached {
+		if !forceRefresh && now.Before(entry.expiresAt) {
 			return entry.set, nil
 		}
-		if forceRefresh && time.Since(entry.fetchedAt) < jwksMinRefreshInterval {
+		if forceRefresh && now.Sub(entry.fetchedAt) < jwksMinRefreshInterval {
 			return entry.set, nil
 		}
 	}
 
+	a.mu.Lock()
+	if f, running := a.inflight[issuer]; running {
+		a.mu.Unlock()
+		// Stale-while-revalidate: a non-forced caller with any cached set
+		// uses it rather than queuing behind the in-flight fetch. A forced
+		// refresh (key rotation) must wait for the fresh set — the stale
+		// one provably lacks the token's kid.
+		if cached && !forceRefresh {
+			return entry.set, nil
+		}
+		select {
+		case <-f.done:
+			return f.set, f.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	f := &jwksFetch{done: make(chan struct{})}
+	a.inflight[issuer] = f
+	a.mu.Unlock()
+
+	complete := func(set jwk.Set, err error) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if err == nil {
+			a.jwks[issuer] = &cachedKeySet{set: set, fetchedAt: time.Now(), expiresAt: time.Now().Add(jwksCacheTTL)}
+		}
+		f.set, f.err = set, err
+		close(f.done)
+		delete(a.inflight, issuer)
+	}
+
+	// Detached from the request: one caller's cancellation must not kill
+	// the shared refresh for everyone else authenticating to this issuer.
+	if cached && !forceRefresh {
+		// A stale-but-usable set is served immediately while the refresh
+		// proceeds in the background.
+		go func() {
+			fetchCtx, cancel := context.WithTimeout(context.Background(), jwksFetchTimeout)
+			defer cancel()
+			set, err := a.fetchKeySet(fetchCtx, issuer)
+			complete(set, err)
+		}()
+		return entry.set, nil
+	}
+	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jwksFetchTimeout)
+	set, err := a.fetchKeySet(fetchCtx, issuer)
+	cancel()
+	complete(set, err)
+	if err != nil && cached {
+		// A failed forced refresh still falls back to the cached set; the
+		// signature check against it is what actually decides validity.
+		return entry.set, nil
+	}
+	return set, err
+}
+
+// fetchKeySet performs the OIDC discovery + JWKS fetch for an issuer on
+// the given context.
+func (a *Authenticator) fetchKeySet(ctx context.Context, issuer string) (jwk.Set, error) {
 	jwksURI, err := a.discoverJWKSURI(ctx, issuer)
 	if err != nil {
 		return nil, err
 	}
 
-	set, err := jwk.Fetch(ctx, jwksURI)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURI, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.httpc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch jwks: %w", err)
 	}
-
-	a.jwks[issuer] = &cachedKeySet{set: set, fetchedAt: time.Now(), expiresAt: time.Now().Add(jwksCacheTTL)}
-
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch jwks: status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxOIDCDocBytes))
+	if err != nil {
+		return nil, fmt.Errorf("fetch jwks: read body: %w", err)
+	}
+	set, err := jwk.Parse(body)
+	if err != nil {
+		return nil, fmt.Errorf("fetch jwks: parse body: %w", err)
+	}
 	return set, nil
 }
 
 // cachedSetHasKey reports whether the issuer's cached JWKS already
 // contains the given key id.
 func (a *Authenticator) cachedSetHasKey(issuer, kid string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	entry, ok := a.jwks[issuer]
 	if !ok {
 		return false
@@ -409,7 +584,7 @@ func (a *Authenticator) discoverJWKSURI(ctx context.Context, issuer string) (str
 	var doc struct {
 		JWKSURI string `json:"jwks_uri"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxOIDCDocBytes)).Decode(&doc); err != nil {
 		return "", fmt.Errorf("decode discovery document: %w", err)
 	}
 	if doc.JWKSURI == "" {

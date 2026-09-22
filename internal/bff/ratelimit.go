@@ -2,6 +2,7 @@ package bff
 
 import (
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -53,4 +54,50 @@ func GraphQLRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
 		}
 		return "ip:" + c.RealIP(), nil
 	})
+}
+
+// userRateLimiter throttles a per-user burst inside resolvers (upload
+// mutations) where middleware cannot distinguish the operation. Entries
+// idle longer than idleTTL are evicted on access so the map cannot grow
+// unboundedly with distinct user ids.
+type userRateLimiter struct {
+	mu       sync.Mutex
+	perMin   int
+	limiters map[int64]*rate.Limiter
+	lastSeen map[int64]time.Time
+}
+
+// userLimiterIdleTTL is how long a user's bucket survives without traffic.
+const userLimiterIdleTTL = 10 * time.Minute
+
+func newUserRateLimiter(perMinute int) *userRateLimiter {
+	return &userRateLimiter{
+		perMin:   perMinute,
+		limiters: map[int64]*rate.Limiter{},
+		lastSeen: map[int64]time.Time{},
+	}
+}
+
+// allow reports whether userID may perform one action now.
+func (l *userRateLimiter) allow(userID int64) bool {
+	if l == nil || l.perMin <= 0 {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	lim, ok := l.limiters[userID]
+	if !ok {
+		lim = rate.NewLimiter(rate.Limit(float64(l.perMin)/60.0), l.perMin)
+		l.limiters[userID] = lim
+	}
+	l.lastSeen[userID] = now
+	// Opportunistic eviction keeps memory bounded on long uptimes.
+	for id, ts := range l.lastSeen {
+		if now.Sub(ts) > userLimiterIdleTTL {
+			delete(l.lastSeen, id)
+			delete(l.limiters, id)
+		}
+	}
+	return lim.Allow()
 }

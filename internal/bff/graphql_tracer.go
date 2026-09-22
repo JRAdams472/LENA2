@@ -62,6 +62,9 @@ func (t *graphQLTracer) TraceQuery(ctx context.Context, _, operationName string,
 }
 
 func (t *graphQLTracer) TraceField(ctx context.Context, _, typeName, fieldName string, trivial bool, _ map[string]any) (context.Context, tracer.FieldFinishFunc) {
+	if l, ok := ctx.Value(costLimiterContextKey{}).(*costLimiter); ok {
+		l.add()
+	}
 	if trivial {
 		return ctx, func(*gqlerrors.QueryError) {}
 	}

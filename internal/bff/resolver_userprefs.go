@@ -19,8 +19,7 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	bottles, err := r.UserPrefsService.ListUserBottles(ctx, u.UserID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
@@ -45,8 +44,7 @@ func (r *Resolver) UserItems(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	items, err := r.UserPrefsService.ListUserItems(ctx, u.UserID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err

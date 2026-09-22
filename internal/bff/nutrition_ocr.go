@@ -78,8 +78,20 @@ func (r *Resolver) SubmitItemNutritionPhoto(ctx context.Context, args struct {
 		return false, badInputf("photo must be an image, not a pdf")
 	}
 
-	r.runAsync("nutrition-ocr", 30*time.Second, func(ctx context.Context) error {
+	if !r.uploadLimiter().allow(u.UserID) {
+		return false, &clientError{msg: "too many uploads; try again later", code: codeBusy}
+	}
+	release := r.acquireOCRJob(u.UserID)
+	if release == nil {
+		return false, &clientError{msg: "a nutrition photo is already being processed for this user", code: codeBusy}
+	}
+	accepted := r.runAsync("nutrition-ocr", 30*time.Second, func(ctx context.Context) error {
+		defer release()
 		return processNutritionPhoto(ctx, r.InventoryService, r.OCRClient, itemID, decoded, u.Email)
 	})
+	if !accepted {
+		release()
+		return false, &clientError{msg: "server busy; try again shortly", code: codeBusy}
+	}
 	return true, nil
 }

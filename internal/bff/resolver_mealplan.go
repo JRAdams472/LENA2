@@ -40,8 +40,7 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	plans, err := r.MealPlanService.ListMealPlans(ctx, u.UserID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err

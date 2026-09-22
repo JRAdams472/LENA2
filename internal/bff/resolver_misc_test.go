@@ -191,11 +191,13 @@ func TestResolver_AsyncWorkerBoundsAndDrains(t *testing.T) {
 	r := &Resolver{}
 
 	var running, maxSeen atomic.Int32
+	release := make(chan struct{})
 
-	// Saturate the worker: every submitted task blocks until its context
-	// is cancelled by Shutdown.
+	// Saturate the worker: every submitted task blocks until released or
+	// its own per-task timeout fires — Shutdown must wait for them, not
+	// cancel their context out from under them.
 	for i := 0; i < asyncWorkerCap; i++ {
-		r.runAsync("blocked", time.Minute, func(ctx context.Context) error {
+		require.True(t, r.runAsync("blocked", time.Minute, func(ctx context.Context) error {
 			cur := running.Add(1)
 			for {
 				if m := maxSeen.Load(); cur > m && !maxSeen.CompareAndSwap(m, cur) {
@@ -204,28 +206,64 @@ func TestResolver_AsyncWorkerBoundsAndDrains(t *testing.T) {
 				break
 			}
 			defer running.Add(-1)
-			<-ctx.Done()
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
 			return nil
-		})
+		}))
 	}
 	// Give the goroutines a moment to start.
 	time.Sleep(50 * time.Millisecond)
 
-	// The (cap+1)th task must be dropped, not queued.
+	// The (cap+1)th task must be rejected, not queued.
 	var dropped atomic.Int32
 	for i := 0; i < asyncWorkerCap; i++ {
-		r.runAsync("dropped", time.Second, func(context.Context) error {
+		assert.False(t, r.runAsync("dropped", time.Second, func(context.Context) error {
 			dropped.Add(1)
 			return nil
-		})
+		}))
 	}
 	assert.Zero(t, dropped.Load())
 	assert.LessOrEqual(t, maxSeen.Load(), int32(asyncWorkerCap))
 
-	// Shutdown cancels in-flight tasks and returns once they exit.
-	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Shutdown waits for in-flight work instead of cancelling it.
+	shDone := make(chan error, 1)
+	go func() {
+		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		shDone <- r.Shutdown(shCtx)
+	}()
+	select {
+	case <-shDone:
+		t.Fatal("Shutdown returned while tasks were still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case err := <-shDone:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown did not drain after tasks finished")
+	}
+}
+
+func TestResolver_ShutdownCancelsOnDeadline(t *testing.T) {
+	r := &Resolver{}
+	started := make(chan struct{})
+	require.True(t, r.runAsync("blocked", time.Minute, func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}))
+	<-started
+
+	// When the caller's deadline expires before tasks finish, Shutdown
+	// cancels the background context and reports the deadline.
+	shCtx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	require.NoError(t, r.Shutdown(shCtx))
+	err := r.Shutdown(shCtx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestResolver_ShutdownOnUnusedResolver(t *testing.T) {

@@ -45,6 +45,9 @@ func (r *Resolver) SubmitRecipeScan(ctx context.Context, args struct {
 	if err != nil {
 		return nil, badInputf("recipe scan rejected: %v", err)
 	}
+	if !r.uploadLimiter().allow(u.UserID) {
+		return nil, &clientError{msg: "too many uploads; try again later", code: codeBusy}
+	}
 
 	ri, err := r.RecipeImportService.Submit(ctx, sniffed, decoded, &u.UserID, u.Email)
 	if err != nil {

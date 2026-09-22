@@ -70,7 +70,7 @@ func run() int {
 	pool, err := func() (*pgxpool.Pool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return postgres.NewPool(ctx, cfg.DatabaseURL)
+		return postgres.NewPool(ctx, cfg.DatabaseURL, cfg.DatabaseStatementTimeout)
 	}()
 	if err != nil {
 		log.Error("failed to connect to database", "error", err)
@@ -261,6 +261,8 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 
 	resolver := bff.NewResolver(pool, analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc, recipeImportSvc, ocrClient, cfg.NutritionPhotoMaxBytes, cfg.RecipeScanMaxBytes)
 	handler, err := bff.NewGraphQLHandler(resolver,
+		cfg.GraphQLTimeout,
+		cfg.GraphQLMaxCost,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))
 	if err != nil {

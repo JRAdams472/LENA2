@@ -39,8 +39,7 @@ func (r *Resolver) RecipeImports(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	status := ""
 	if args.Status != nil {
 		status = *args.Status
@@ -67,8 +66,7 @@ func (r *Resolver) PendingRecipeImports(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	items, err := r.RecipeImportService.ListPending(ctx, page, pageSize)
 	if err != nil {
 		return nil, err

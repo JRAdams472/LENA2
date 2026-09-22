@@ -25,7 +25,7 @@ func TestNewPoolInvalidURL(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			pool, err := NewPool(ctx, tc.url)
+			pool, err := NewPool(ctx, tc.url, 0)
 			require.Error(t, err)
 			assert.Nil(t, pool)
 			assert.Contains(t, err.Error(), tc.wantMsg)
@@ -38,7 +38,7 @@ func TestNewPoolUnreachableHost(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	pool, err := NewPool(ctx, "postgres://user:pass@127.0.0.1:1/db?connect_timeout=1")
+	pool, err := NewPool(ctx, "postgres://user:pass@127.0.0.1:1/db?connect_timeout=1", 0)
 	require.Error(t, err)
 	assert.Nil(t, pool)
 }

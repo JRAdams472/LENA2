@@ -32,8 +32,7 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if _, err := userFromContext(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	bottles, err := r.WineService.ListBottles(ctx, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
