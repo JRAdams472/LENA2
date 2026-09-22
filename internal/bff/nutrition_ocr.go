@@ -110,6 +110,11 @@ func (r *Resolver) SubmitItemNutritionPhoto(ctx context.Context, args struct {
 	if len(decoded) > maxBytes {
 		return false, badInputf("photo exceeds maximum size of %d bytes", maxBytes)
 	}
+	if sniffed, err := sniffUpload(decoded, ""); err != nil {
+		return false, badInputf("photo rejected: %v", err)
+	} else if sniffed == "application/pdf" {
+		return false, badInputf("photo must be an image, not a pdf")
+	}
 
 	r.runAsync("nutrition-ocr", 30*time.Second, func(ctx context.Context) error {
 		return processNutritionPhoto(ctx, r.InventoryService, r.OCRClient, itemID, decoded, u.Email)

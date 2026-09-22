@@ -15,7 +15,7 @@ from typing import Any
 import pytesseract
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
-from pdf2image import convert_from_path
+from pdf2image import convert_from_path, pdfinfo_from_path
 from PIL import Image, ImageOps
 from pytesseract import Output
 
@@ -25,6 +25,13 @@ app = FastAPI(title="LENA2 OCR", version="0.1.0")
 # Default is --psm 4 (assume single column of variable text). The caller can
 # override per-request, but the importer is expected to pick sensible defaults.
 DEFAULT_PSM = 4
+
+# Untrusted-upload bounds. The Go BFF enforces the same limits, but the
+# sidecar defends itself too since it parses raw bytes with poppler/Pillow.
+MAX_UPLOAD_BYTES = int(os.environ.get("OCR_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+MAX_PDF_PAGES = int(os.environ.get("OCR_MAX_PDF_PAGES", "20"))
+# Reject decompression bombs larger than ~40 MP (Pillow warns at half this).
+Image.MAX_IMAGE_PIXELS = int(os.environ.get("OCR_MAX_IMAGE_PIXELS", str(40_000_000)))
 
 
 @app.get("/health")
@@ -119,9 +126,16 @@ def _is_pdf(file: UploadFile) -> bool:
 
 @app.post("/ocr")
 async def ocr(image: UploadFile = File(...), psm: int = DEFAULT_PSM) -> dict:
-    contents = await image.read()
+    # Streamed size limit: read at most MAX_UPLOAD_BYTES + 1 so a huge body
+    # is rejected without being fully buffered.
+    contents = await image.read(MAX_UPLOAD_BYTES + 1)
     if not contents:
         return JSONResponse({"error": "empty file"}, status_code=400)
+    if len(contents) > MAX_UPLOAD_BYTES:
+        return JSONResponse(
+            {"error": f"file exceeds {MAX_UPLOAD_BYTES} byte limit"},
+            status_code=413,
+        )
 
     page_results: list[dict[str, Any]] = []
 
@@ -132,6 +146,13 @@ async def ocr(image: UploadFile = File(...), psm: int = DEFAULT_PSM) -> dict:
             tmp.write(contents)
             tmp_path = tmp.name
         try:
+            info = pdfinfo_from_path(tmp_path)
+            page_count = int(info.get("Pages", 0))
+            if page_count > MAX_PDF_PAGES:
+                return JSONResponse(
+                    {"error": f"pdf has {page_count} pages; maximum is {MAX_PDF_PAGES}"},
+                    status_code=413,
+                )
             pages = convert_from_path(tmp_path, dpi=300, fmt="png")
             for i, page_img in enumerate(pages, start=1):
                 result = _ocr_image(page_img, psm)
@@ -140,8 +161,11 @@ async def ocr(image: UploadFile = File(...), psm: int = DEFAULT_PSM) -> dict:
         finally:
             os.unlink(tmp_path)
     else:
-        page_img = Image.open(io.BytesIO(contents))
-        result = _ocr_image(page_img, psm)
+        try:
+            page_img = Image.open(io.BytesIO(contents))
+            result = _ocr_image(page_img, psm)
+        except Image.DecompressionBombError:
+            return JSONResponse({"error": "image exceeds pixel limit"}, status_code=413)
         result["page"] = 1
         page_results.append(result)
 

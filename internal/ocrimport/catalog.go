@@ -1,3 +1,5 @@
+// Package ocrimport supports the recipe OCR import pipeline: draft types,
+// catalog matching, and the admin review model.
 package ocrimport
 
 import (

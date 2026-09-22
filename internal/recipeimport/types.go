@@ -21,7 +21,7 @@ type RecipeImport struct {
 	ReviewJSON        []byte
 	ProfanityFlag     bool
 	ProfanityReason   string
-	Status            string
+	Status            Status
 	RecipeID          *int64
 	ErrorMessage      string
 	CreatedBy         string

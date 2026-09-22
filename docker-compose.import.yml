@@ -45,6 +45,15 @@ services:
     profiles: ["import"]
     ports:
       - "127.0.0.1:${LENA_OCR_HOST_PORT:-8000}:8000"
+    # The sidecar parses untrusted uploads: read-only root fs, scratch tmpfs
+    # for pdf2image/tesseract temp files, and process/memory limits.
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 128
+    mem_limit: 1g
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
