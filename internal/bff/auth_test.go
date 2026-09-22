@@ -489,7 +489,7 @@ func TestKeySetSlowIssuerDoesNotBlockOthers(t *testing.T) {
 
 	// Issuer A hangs on both discovery and JWKS.
 	block := make(chan struct{})
-	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		<-block
 	}))
 	defer slow.Close()

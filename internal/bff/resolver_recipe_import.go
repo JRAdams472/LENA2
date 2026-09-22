@@ -162,7 +162,7 @@ func (r *Resolver) RetryRecipeImport(ctx context.Context, args struct{ ID graphq
 
 type recipeImportResolver struct {
 	ri  *recipeimport.RecipeImport
-	inv InventoryService
+	inv ItemReader
 	rec RecipeService
 	up  UserPrefsService
 }
@@ -220,7 +220,13 @@ func (r *recipeImportResolver) Recipe(ctx context.Context) (*recipeResolver, err
 		return nil, err
 	}
 	u, _ := currentuser.FromContext(ctx)
-	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: u, recipe: recipe}, nil
+	// Preload the child graph so nested fields (items, favorites, ratings)
+	// resolve from the batch maps instead of a query per row.
+	rc, err := loadRecipeChildren(ctx, r.rec, r.up, r.inv, u.UserID, []int64{recipe.RecipeID}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: u, recipe: recipe, rc: rc}, nil
 }
 
 type recipeImportDraftResolver struct{ draft ocrimport.RecipeDraft }
@@ -359,7 +365,7 @@ type recipeImportPageResolver struct {
 	page     int32
 	pageSize int32
 	total    int64
-	inv      InventoryService
+	inv      ItemReader
 	rec      RecipeService
 	up       UserPrefsService
 }

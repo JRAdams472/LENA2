@@ -39,6 +39,7 @@ func TestResolver_GroceryList_Happy(t *testing.T) {
 	genAt := time.Date(2025, 2, 3, 10, 30, 0, 0, time.UTC)
 	list := grocery.GroceryList{GroceryListID: 11, UserID: grocUserID, GeneratedAt: genAt}
 	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).Return(list, nil)
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11}, grocUserID).Return(nil, nil)
 
 	res, err := r.GroceryList(grocCtx(), struct{ ID graphql.ID }{ID: "11"})
 	require.NoError(t, err)
@@ -155,19 +156,24 @@ func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
 	inv := mock.NewMockInventoryService(ctrl)
 	r := &Resolver{GroceryService: g, InventoryService: inv}
 
-	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).
-		Return(grocery.GroceryList{GroceryListID: 11, UserID: grocUserID}, nil)
-
-	listRes, err := r.GroceryList(grocCtx(), struct{ ID graphql.ID }{ID: "11"})
-	require.NoError(t, err)
-
 	itemID := int64(42)
 	unitID := int64(3)
-	g.EXPECT().ListGroceryListItems(gomock.Any(), int64(11), grocUserID).Return([]grocery.GroceryListItem{
+	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).
+		Return(grocery.GroceryList{GroceryListID: 11, UserID: grocUserID}, nil)
+	// Single-list reads preload children through the shared batch loader.
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11}, grocUserID).Return([]grocery.GroceryListItem{
 		{GroceryListItemID: 100, GroceryListID: 11, ItemID: &itemID, QuantityNeeded: 2.5, UnitID: &unitID, Source: "recipe"},
 		{GroceryListItemID: 101, GroceryListID: 11, ManualItemName: "Bananas", QuantityNeeded: 3, Source: "manual", IsChecked: true},
 	}, nil)
-	inv.EXPECT().GetUnitByID(gomock.Any(), int64(3)).Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{42}).
+		Return([]inventory.Item{{ItemID: 42, Name: "Flour", CategoryID: 1, UnitID: 3}}, nil)
+	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
+	inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return([]inventory.Category{{CategoryID: 1, Name: "Pantry"}}, nil)
+	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{42}).Return(nil, nil)
+	inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{42}).Return(nil, nil)
+
+	listRes, err := r.GroceryList(grocCtx(), struct{ ID graphql.ID }{ID: "11"})
+	require.NoError(t, err)
 
 	items, err := listRes.Items(grocCtx())
 	require.NoError(t, err)
@@ -186,8 +192,7 @@ func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
 	assert.Equal(t, "Bananas", *items[1].ManualItemName())
 	assert.True(t, items[1].IsChecked())
 
-	// Nested item lookup goes through InventoryService for catalog items.
-	inv.EXPECT().GetItemByID(gomock.Any(), itemID).Return(inventory.Item{ItemID: itemID, Name: "Flour"}, nil)
+	// Nested item lookup resolves from the preloaded map — no extra query.
 	cat, err := items[0].Item(grocCtx())
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("42"), cat.ID())
@@ -252,6 +257,9 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 			assert.Equal(t, "mealplan", items[0].Source)
 			return items, nil
 		})
+
+	// The returned resolver preloads the new list's children.
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{21}, grocUserID).Return(nil, nil)
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
 	require.NoError(t, err)

@@ -248,32 +248,7 @@ func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }
 		return nil, fmt.Errorf("frequent items: %w", err)
 	}
 
-	seen := make(map[int64]bool)
-	ordered := make([]int64, 0, limit)
-	counts := make(map[int64]countPair)
-	for _, c := range personal {
-		if seen[c.EntityID] {
-			continue
-		}
-		seen[c.EntityID] = true
-		ordered = append(ordered, c.EntityID)
-		p := counts[c.EntityID]
-		p.personal = c.SelectCount
-		counts[c.EntityID] = p
-	}
-	for _, c := range global {
-		if seen[c.EntityID] {
-			continue
-		}
-		seen[c.EntityID] = true
-		ordered = append(ordered, c.EntityID)
-		p := counts[c.EntityID]
-		p.global = c.SelectCount
-		counts[c.EntityID] = p
-	}
-	if len(ordered) > int(limit) {
-		ordered = ordered[:limit]
-	}
+	ordered, counts := mergeSelectionCounts(personal, global, limit)
 	if len(ordered) == 0 {
 		return nil, nil
 	}
@@ -285,17 +260,7 @@ func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }
 	if err != nil {
 		return nil, err
 	}
-	brandIDSet := make(map[int64]bool)
-	for _, it := range items {
-		if it.BrandID != nil {
-			brandIDSet[*it.BrandID] = true
-		}
-	}
-	brandIDs := make([]int64, 0, len(brandIDSet))
-	for id := range brandIDSet {
-		brandIDs = append(brandIDs, id)
-	}
-	slices.Sort(brandIDs)
+	brandIDs := distinctIDs(items, func(it inventory.Item) *int64 { return it.BrandID })
 	if err := loadItemSelectionCounts(ctx, r.AnalyticsService, u.UserID, ordered, ch); err != nil {
 		return nil, err
 	}
@@ -313,6 +278,39 @@ func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }
 		}
 	}
 	return out, nil
+}
+
+// mergeSelectionCounts merges personal and global selection counts,
+// deduplicating by entity in ranked order (personal first) and capping at
+// limit. Returns the ordered entity IDs and their count pairs.
+func mergeSelectionCounts(personal, global []analytics.SelectionCount, limit int32) ([]int64, map[int64]countPair) {
+	seen := make(map[int64]bool)
+	ordered := make([]int64, 0, limit)
+	counts := make(map[int64]countPair)
+	add := func(c analytics.SelectionCount, personal bool) {
+		if seen[c.EntityID] {
+			return
+		}
+		seen[c.EntityID] = true
+		ordered = append(ordered, c.EntityID)
+		p := counts[c.EntityID]
+		if personal {
+			p.personal = c.SelectCount
+		} else {
+			p.global = c.SelectCount
+		}
+		counts[c.EntityID] = p
+	}
+	for _, c := range personal {
+		add(c, true)
+	}
+	for _, c := range global {
+		add(c, false)
+	}
+	if len(ordered) > int(limit) {
+		ordered = ordered[:limit]
+	}
+	return ordered, counts
 }
 
 // Category resolves a single category by ID.
@@ -643,7 +641,7 @@ func (r *Resolver) DeleteIngredient(ctx context.Context, args struct{ ID graphql
 
 // ingredientResolver resolves Ingredient fields.
 type ingredientResolver struct {
-	inv InventoryService
+	inv ItemReader
 	in  inventory.Ingredient
 }
 
@@ -672,7 +670,7 @@ func (r *ingredientResolver) Category(ctx context.Context) (*categoryResolver, e
 }
 
 type ingredientPageResolver struct {
-	inv         InventoryService
+	inv         ItemReader
 	ingredients []inventory.Ingredient
 	page        int32
 	pageSize    int32
@@ -927,9 +925,26 @@ func (r *Resolver) SetItemNutrients(ctx context.Context, args struct {
 	if !canModifyItem(it, u) {
 		return nil, errForbidden()
 	}
-	entries := make([]inventory.NutrientEntry, len(args.Entries))
+	entries, err := parseNutrientEntries(args.Entries)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.InventoryService.SetItemNutrients(ctx, itemID, entries, u.Email); err != nil {
+		return nil, itemWriteError(err)
+	}
+	updated, err := r.InventoryService.GetItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+}
+
+// parseNutrientEntries validates and converts GraphQL nutrient inputs,
+// rejecting duplicate nutrient IDs and negative amounts.
+func parseNutrientEntries(in []itemNutrientEntryInput) ([]inventory.NutrientEntry, error) {
+	entries := make([]inventory.NutrientEntry, len(in))
 	seen := make(map[int64]bool)
-	for i, e := range args.Entries {
+	for i, e := range in {
 		nutrientID, err := parseID(string(e.NutrientID))
 		if err != nil {
 			return nil, err
@@ -943,14 +958,7 @@ func (r *Resolver) SetItemNutrients(ctx context.Context, args struct {
 		}
 		entries[i] = inventory.NutrientEntry{NutrientID: nutrientID, Amount: e.Amount}
 	}
-	if err := r.InventoryService.SetItemNutrients(ctx, itemID, entries, u.Email); err != nil {
-		return nil, itemWriteError(err)
-	}
-	updated, err := r.InventoryService.GetItemByID(ctx, itemID)
-	if err != nil {
-		return nil, err
-	}
-	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+	return entries, nil
 }
 
 // itemVisibleTo reports whether a catalog item may be shown to the user:
@@ -1137,63 +1145,11 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 	if !canModifyItem(existing, u) {
 		return nil, errForbidden()
 	}
-	brandID := existing.BrandID
-	if args.Input.BrandID != nil {
-		b, err := optionalID(args.Input.BrandID)
-		if err != nil {
-			return nil, err
-		}
-		brandID = b
+	patch, err := r.mergeItemPatch(ctx, existing, args.Input)
+	if err != nil {
+		return nil, err
 	}
-	categoryID := existing.CategoryID
-	if args.Input.CategoryID != nil {
-		c, err := parseID(string(*args.Input.CategoryID))
-		if err != nil {
-			return nil, err
-		}
-		categoryID = c
-	}
-	name := existing.Name
-	if args.Input.Name != nil {
-		name = *args.Input.Name
-	}
-	unitID := existing.UnitID
-	if args.Input.Unit != nil {
-		id, err := resolveUnitID(ctx, r.InventoryService, *args.Input.Unit)
-		if err != nil {
-			return nil, err
-		}
-		unitID = id
-	}
-	upc12 := existing.Upc12
-	if args.Input.Upc12 != nil {
-		upc12 = *args.Input.Upc12
-	}
-	upc14 := existing.Upc14
-	if args.Input.Upc14 != nil {
-		upc14 = *args.Input.Upc14
-	}
-	netWeight := existing.NetWeight
-	isMetric := existing.IsMetric
-	if args.Input.NetWeight != nil {
-		if *args.Input.NetWeight <= 0 {
-			return nil, badInputf("netWeight must be greater than zero")
-		}
-		netWeight = args.Input.NetWeight
-	}
-	if args.Input.IsMetric != nil {
-		isMetric = *args.Input.IsMetric
-	}
-	if err := r.InventoryService.UpdateItem(ctx, id, inventory.Item{
-		Name:       name,
-		BrandID:    brandID,
-		Upc12:      upc12,
-		Upc14:      upc14,
-		CategoryID: categoryID,
-		UnitID:     unitID,
-		NetWeight:  netWeight,
-		IsMetric:   isMetric,
-	}, u.Email); err != nil {
+	if err := r.InventoryService.UpdateItem(ctx, id, patch, u.Email); err != nil {
 		return nil, err
 	}
 	updated, err := r.InventoryService.GetItemByID(ctx, id)
@@ -1201,6 +1157,37 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+}
+
+// mergeItemPatch applies a PATCH-style input over the existing item: nil
+// input fields keep their current values.
+func (r *Resolver) mergeItemPatch(ctx context.Context, existing inventory.Item, in updateItemInput) (inventory.Item, error) {
+	patch := existing
+	patch.ItemID = 0 // identity is passed separately to UpdateItem
+	var err error
+	if patch.BrandID, err = coalesceOptionalID(existing.BrandID, in.BrandID); err != nil {
+		return patch, err
+	}
+	if patch.CategoryID, err = coalesceID(existing.CategoryID, in.CategoryID); err != nil {
+		return patch, err
+	}
+	if in.Unit != nil {
+		patch.UnitID, err = resolveUnitID(ctx, r.InventoryService, *in.Unit)
+		if err != nil {
+			return patch, err
+		}
+	}
+	if in.NetWeight != nil {
+		if *in.NetWeight <= 0 {
+			return patch, badInputf("netWeight must be greater than zero")
+		}
+		patch.NetWeight = in.NetWeight
+	}
+	patch.Name = coalesce(existing.Name, in.Name)
+	patch.Upc12 = coalesce(existing.Upc12, in.Upc12)
+	patch.Upc14 = coalesce(existing.Upc14, in.Upc14)
+	patch.IsMetric = coalesce(existing.IsMetric, in.IsMetric)
+	return patch, nil
 }
 
 // DeleteItem removes a catalog item.
@@ -1221,7 +1208,7 @@ func (r *Resolver) DeleteItem(ctx context.Context, args struct{ ID graphql.ID })
 // itemResolver resolves Item fields. When ch is non-nil its batch-loaded
 // maps are used instead of per-item service calls.
 type itemResolver struct {
-	inv           InventoryService
+	inv           ItemReader
 	it            inventory.Item
 	ch            *itemChildren
 	globalCount   int64
@@ -1451,7 +1438,7 @@ func (r *foodFlavorResolver) Flavor(context.Context) (*flavorProfileResolver, er
 func (r *foodFlavorResolver) Intensity() int32 { return int32(r.flavor.Intensity) }
 
 type itemPageResolver struct {
-	inv      InventoryService
+	inv      ItemReader
 	items    []inventory.Item
 	ch       *itemChildren
 	page     int32

@@ -175,14 +175,16 @@ func TestMisc_UnitName_PreloadedMiss(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	inv := mock.NewMockInventoryService(ctrl)
 
-	// A preloaded map that lacks the requested id must surface an error,
-	// not silently render an empty unit name.
+	// A preloaded map that lacks the requested id warns and lazy-loads
+	// rather than rendering an empty unit name or erroring.
 	units := map[int64]inventory.Unit{3: {UnitID: 3, Name: "cup"}}
-	_, err := unitName(context.Background(), inv, units, 99)
-	assert.ErrorContains(t, err, "unit 99 missing from preloaded set")
+	inv.EXPECT().GetUnitByID(gomock.Any(), int64(99)).Return(inventory.Unit{UnitID: 99, Name: "pinch"}, nil)
+	name, err := unitName(context.Background(), inv, units, 99)
+	require.NoError(t, err)
+	assert.Equal(t, "pinch", name)
 
-	// Hit and lazy paths unchanged.
-	name, err := unitName(context.Background(), inv, units, 3)
+	// Hit path unchanged.
+	name, err = unitName(context.Background(), inv, units, 3)
 	require.NoError(t, err)
 	assert.Equal(t, "cup", name)
 }

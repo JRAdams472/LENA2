@@ -259,7 +259,23 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), authenticator.Middleware())
 	}
 
-	resolver := bff.NewResolver(pool, analyticsSvc, grocerySvc, inventorySvc, mealPlanSvc, recipeSvc, userPrefsSvc, wineSvc, identitySvc, recipeImportSvc, ocrClient, cfg.NutritionPhotoMaxBytes, cfg.RecipeScanMaxBytes)
+	resolver := bff.NewResolver(pool,
+		bff.Services{
+			Analytics:    analyticsSvc,
+			Grocery:      grocerySvc,
+			Inventory:    inventorySvc,
+			MealPlan:     mealPlanSvc,
+			Recipe:       recipeSvc,
+			UserPrefs:    userPrefsSvc,
+			Wine:         wineSvc,
+			Identity:     identitySvc,
+			RecipeImport: recipeImportSvc,
+			OCR:          ocrClient,
+		},
+		bff.Options{
+			NutritionPhotoMaxBytes: cfg.NutritionPhotoMaxBytes,
+			RecipeScanMaxBytes:     cfg.RecipeScanMaxBytes,
+		})
 	handler, err := bff.NewGraphQLHandler(resolver,
 		cfg.GraphQLTimeout,
 		cfg.GraphQLMaxCost,

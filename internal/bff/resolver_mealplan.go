@@ -2,7 +2,7 @@ package bff
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
@@ -50,52 +50,58 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 		return nil, err
 	}
 	planIDs := distinctIDs(plans, func(p mealplan.MealPlan) *int64 { return &p.MealPlanID })
-	slotsByPlan := make(map[int64][]mealplan.MealSlot)
-	slotItemsBySlot := make(map[int64][]mealplan.MealSlotItem)
-	var rc *recipeChildren
-	if len(planIDs) > 0 {
-		slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs, u.UserID)
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range slots {
-			slotsByPlan[s.MealPlanID] = append(slotsByPlan[s.MealPlanID], s)
-		}
-		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs, u.UserID)
-		if err != nil {
-			return nil, err
-		}
-		for _, si := range slotItems {
-			slotItemsBySlot[si.SlotID] = append(slotItemsBySlot[si.SlotID], si)
-		}
-		rc, err = loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
-			distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
-			distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }))
-		if err != nil {
-			return nil, err
-		}
-		// Slot items carry their own unit_id; merge them into the shared
-		// unit map so Unit resolution never issues a query per row.
-		slotUnitSet := make(map[int64]bool)
-		for _, si := range slotItems {
-			if si.UnitID != 0 {
-				slotUnitSet[si.UnitID] = true
-			}
-		}
-		slotUnitIDs := make([]int64, 0, len(slotUnitSet))
-		for id := range slotUnitSet {
-			slotUnitIDs = append(slotUnitIDs, id)
-		}
-		sort.Slice(slotUnitIDs, func(i, j int) bool { return slotUnitIDs[i] < slotUnitIDs[j] })
-		slotUnits, err := loadUnits(ctx, r.InventoryService, slotUnitIDs)
-		if err != nil {
-			return nil, err
-		}
-		for id, un := range slotUnits {
-			rc.units[id] = un
-		}
+	slotsByPlan, slotItemsBySlot, rc, err := r.loadMealPlanChildren(ctx, u.UserID, planIDs)
+	if err != nil {
+		return nil, err
 	}
 	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, slotsByPlan: slotsByPlan, slotItemsBySlot: slotItemsBySlot, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// loadMealPlanChildren batch-loads the slots, slot items, and shared
+// recipe children for a page of meal plans so nested resolvers never
+// issue a query per row.
+func (r *Resolver) loadMealPlanChildren(ctx context.Context, userID int64, planIDs []int64) (map[int64][]mealplan.MealSlot, map[int64][]mealplan.MealSlotItem, *recipeChildren, error) {
+	slotsByPlan := make(map[int64][]mealplan.MealSlot)
+	slotItemsBySlot := make(map[int64][]mealplan.MealSlotItem)
+	if len(planIDs) == 0 {
+		return slotsByPlan, slotItemsBySlot, nil, nil
+	}
+	slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs, userID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, s := range slots {
+		slotsByPlan[s.MealPlanID] = append(slotsByPlan[s.MealPlanID], s)
+	}
+	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs, userID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, si := range slotItems {
+		slotItemsBySlot[si.SlotID] = append(slotItemsBySlot[si.SlotID], si)
+	}
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, userID,
+		distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
+		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// Slot items carry their own unit_id; merge them into the shared
+	// unit map so Unit resolution never issues a query per row.
+	slotUnitIDs := distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 {
+		if si.UnitID == 0 {
+			return nil
+		}
+		return &si.UnitID
+	})
+	slotUnits, err := loadUnits(ctx, r.InventoryService, slotUnitIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for id, un := range slotUnits {
+		rc.units[id] = un
+	}
+	return slotsByPlan, slotItemsBySlot, rc, nil
 }
 
 // Nutrition returns a nutrition summary for a meal plan. Lines whose
@@ -125,61 +131,66 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	if err != nil {
 		return nil, err
 	}
-	itemsBySlot := make(map[int64][]mealplan.MealSlotItem)
-	for _, si := range slotItems {
-		itemsBySlot[si.SlotID] = append(itemsBySlot[si.SlotID], si)
+	recipes, recipeItems, err := r.planRecipes(ctx, slots)
+	if err != nil {
+		return nil, err
 	}
 
-	recipeIDSet := make(map[int64]bool)
-	for _, slot := range slots {
-		if slot.RecipeID != nil {
-			recipeIDSet[*slot.RecipeID] = true
-		}
-	}
-	recipeIDs := make([]int64, 0, len(recipeIDSet))
-	for id := range recipeIDSet {
-		recipeIDs = append(recipeIDs, id)
-	}
-	var recipes []recipe.Recipe
-	var recipeItems []recipe.RecipeItem
-	if len(recipeIDs) > 0 {
-		recipes, err = r.RecipeService.GetRecipesByIDs(ctx, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-		recipeItems, err = r.RecipeService.ListRecipeItemsByRecipes(ctx, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-	}
-	recipesByID := make(map[int64]recipe.Recipe, len(recipes))
-	for _, rec := range recipes {
-		recipesByID[rec.RecipeID] = rec
-	}
-	itemsByRecipe := make(map[int64][]recipe.RecipeItem)
-	for _, ri := range recipeItems {
-		itemsByRecipe[ri.RecipeID] = append(itemsByRecipe[ri.RecipeID], ri)
+	lines := expandPlanLines(slots, slotItems, recipes, recipeItems)
+	nutrientsByItem, itemMeta, unitMeta, err := r.nutritionInputs(ctx, lines)
+	if err != nil {
+		return nil, err
 	}
 
+	nutritionLines := make([]mealplan.NutritionLine, len(lines))
+	for i, l := range lines {
+		nutritionLines[i] = mealplan.NutritionLine{ItemID: l.itemID, Quantity: l.qty, UnitID: l.unitID}
+	}
+	totals, warnings := mealplan.AggregateNutrition(nutritionLines, nutrientsByItem, itemMeta, unitMeta)
+	out := make([]*nutritionResolver, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.Name, Unit: t.Unit, Amount: t.Amount}})
+	}
+	return &mealPlanNutritionResolver{entries: out, warnings: warnings}, nil
+}
+
+// planRecipes batch-loads the recipes and recipe items referenced by a
+// plan's slots.
+func (r *Resolver) planRecipes(ctx context.Context, slots []mealplan.MealSlot) ([]recipe.Recipe, []recipe.RecipeItem, error) {
+	recipeIDs := distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID })
+	if len(recipeIDs) == 0 {
+		return nil, nil, nil
+	}
+	recipes, err := r.RecipeService.GetRecipesByIDs(ctx, recipeIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	recipeItems, err := r.RecipeService.ListRecipeItemsByRecipes(ctx, recipeIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return recipes, recipeItems, nil
+}
+
+// nutritionInputs batch-loads the nutrient rows, item metadata, and unit
+// factors the aggregation needs for the given expansion lines.
+func (r *Resolver) nutritionInputs(ctx context.Context, lines []planLine) (map[int64][]mealplan.NutrientBasis, map[int64]mealplan.NutritionItem, map[int64]mealplan.NutritionUnit, error) {
 	itemIDSet := make(map[int64]bool)
-	for _, si := range slotItems {
-		if si.ItemID != nil {
-			itemIDSet[*si.ItemID] = true
-		}
-	}
-	for _, ri := range recipeItems {
-		itemIDSet[ri.ItemID] = true
+	for _, l := range lines {
+		itemIDSet[l.itemID] = true
 	}
 	itemIDs := make([]int64, 0, len(itemIDSet))
 	for id := range itemIDSet {
 		itemIDs = append(itemIDs, id)
 	}
+	slices.Sort(itemIDs)
+
 	nutrientsByItem := make(map[int64][]mealplan.NutrientBasis)
 	itemMeta := make(map[int64]mealplan.NutritionItem)
 	if len(itemIDs) > 0 {
 		nutrients, err := r.InventoryService.ListFoodNutrientsByItems(ctx, itemIDs)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		for _, n := range nutrients {
 			nutrientsByItem[n.ItemID] = append(nutrientsByItem[n.ItemID], mealplan.NutrientBasis{
@@ -193,7 +204,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 		}
 		invItems, err := r.InventoryService.GetItemsByIDs(ctx, itemIDs)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		for _, it := range invItems {
 			itemMeta[it.ItemID] = mealplan.NutritionItem{UnitID: it.UnitID, NetWeight: it.NetWeight}
@@ -201,55 +212,13 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	}
 	unitList, err := r.InventoryService.ListUnits(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	unitMeta := make(map[int64]mealplan.NutritionUnit, len(unitList))
 	for _, un := range unitList {
 		unitMeta[un.UnitID] = mealplan.NutritionUnit{Name: un.Name, Kind: un.Kind, ToBaseFactor: un.ToBaseFactor}
 	}
-
-	var lines []mealplan.NutritionLine
-	addLine := func(itemID int64, quantity float64, unitID int64) {
-		lines = append(lines, mealplan.NutritionLine{ItemID: itemID, Quantity: quantity, UnitID: unitID})
-	}
-
-	for _, slot := range slots {
-		overridden := make(map[int64]bool)
-		for _, si := range itemsBySlot[slot.SlotID] {
-			if si.ItemID == nil {
-				continue
-			}
-			addLine(*si.ItemID, si.Quantity, si.UnitID)
-			if si.IsFromRecipe {
-				overridden[*si.ItemID] = true
-			}
-		}
-
-		if slot.RecipeID == nil {
-			continue
-		}
-		rec, ok := recipesByID[*slot.RecipeID]
-		if !ok || rec.Servings == nil || *rec.Servings <= 0 {
-			continue
-		}
-		scale := 1.0
-		if slot.Servings != nil {
-			scale = float64(*slot.Servings) / float64(*rec.Servings)
-		}
-		for _, ri := range itemsByRecipe[rec.RecipeID] {
-			if overridden[ri.ItemID] {
-				continue
-			}
-			addLine(ri.ItemID, ri.Quantity*scale, ri.UnitID)
-		}
-	}
-
-	totals, warnings := mealplan.AggregateNutrition(lines, nutrientsByItem, itemMeta, unitMeta)
-	out := make([]*nutritionResolver, 0, len(totals))
-	for _, t := range totals {
-		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.Name, Unit: t.Unit, Amount: t.Amount}})
-	}
-	return &mealPlanNutritionResolver{entries: out, warnings: warnings}, nil
+	return nutrientsByItem, itemMeta, unitMeta, nil
 }
 
 // CreateMealPlan creates a new meal plan for the current user.
@@ -475,7 +444,7 @@ func (r *Resolver) RemoveMealSlotItem(ctx context.Context, args struct{ SlotItem
 // per-plan service calls.
 type mealPlanResolver struct {
 	mp        MealPlanService
-	inv       InventoryService
+	inv       ItemReader
 	rec       RecipeService
 	up        UserPrefsService
 	user      currentuser.User
@@ -518,7 +487,7 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 // per-slot service calls.
 type mealSlotResolver struct {
 	mp    MealPlanService
-	inv   InventoryService
+	inv   ItemReader
 	rec   RecipeService
 	up    UserPrefsService
 	user  currentuser.User
@@ -579,7 +548,7 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 
 // mealSlotItemResolver resolves MealSlotItem fields.
 type mealSlotItemResolver struct {
-	inv   InventoryService
+	inv   ItemReader
 	item  mealplan.MealSlotItem
 	items map[int64]inventory.Item
 	ch    *itemChildren
@@ -635,7 +604,7 @@ func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) 
 
 type mealPlanPageResolver struct {
 	mp              MealPlanService
-	inv             InventoryService
+	inv             ItemReader
 	rec             RecipeService
 	up              UserPrefsService
 	user            currentuser.User

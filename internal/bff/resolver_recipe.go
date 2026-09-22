@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"time"
@@ -30,22 +31,16 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	if err != nil {
 		return nil, err
 	}
-	rc := &recipeChildren{
-		recipeCounts: make(map[int64]countPair),
-		myRatings:    make(map[int64]int16),
-		summaries:    make(map[int64]recipe.RatingSummary),
+	// Single-recipe reads preload the same child graph as list pages so
+	// nested field resolvers never fall back to a query per row.
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, []int64{id}, nil)
+	if err != nil {
+		return nil, err
 	}
 	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, rc); err != nil {
 		return nil, err
 	}
-	if err := loadRecipeRatings(ctx, r.RecipeService, u.UserID, []int64{id}, rc); err != nil {
-		return nil, err
-	}
-	var globalCount, personalCount int64
-	if p, ok := rc.recipeCounts[id]; ok {
-		globalCount, personalCount = p.global, p.personal
-	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, globalCount: globalCount, personalCount: personalCount}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc}, nil
 }
 
 // ScaledRecipe resolves a recipe with its ingredient quantities scaled to the
@@ -76,6 +71,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		stepsBy:      make(map[int64][]recipe.RecipeStep),
 		favorites:    make(map[int64]bool),
 		items:        make(map[int64]inventory.Item),
+		ingredients:  make(map[int64]inventory.Ingredient),
 		units:        make(map[int64]inventory.Unit),
 		recipeCounts: make(map[int64]countPair),
 		myRatings:    make(map[int64]int16),
@@ -95,39 +91,10 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 	}
 	rc.favorites[scaled.Recipe.RecipeID] = fav.IsFavorite
 
-	if len(scaled.Items) > 0 {
-		itemIDSet := make(map[int64]bool)
-		unitIDSet := make(map[int64]bool)
-		for _, ri := range scaled.Items {
-			itemIDSet[ri.ItemID] = true
-			if ri.UnitID != 0 {
-				unitIDSet[ri.UnitID] = true
-			}
-		}
-		itemIDs := make([]int64, 0, len(itemIDSet))
-		for itemID := range itemIDSet {
-			itemIDs = append(itemIDs, itemID)
-		}
-		slices.Sort(itemIDs)
-		items, err := r.InventoryService.GetItemsByIDs(ctx, itemIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range items {
-			rc.items[it.ItemID] = it
-		}
-		unitIDs := make([]int64, 0, len(unitIDSet))
-		for unitID := range unitIDSet {
-			unitIDs = append(unitIDs, unitID)
-		}
-		slices.Sort(unitIDs)
-		units, err := r.InventoryService.GetUnitsByIDs(ctx, unitIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, unit := range units {
-			rc.units[unit.UnitID] = unit
-		}
+	// Reuse the shared inventory-child loader so scaledRecipe.items.item
+	// and friends never degrade to per-row queries.
+	if err := loadRecipeInventoryChildren(ctx, r.InventoryService, rc, nil); err != nil {
+		return nil, err
 	}
 
 	return &recipeResolver{
@@ -173,7 +140,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 // types so the service can persist them inside one transaction. Unit names
 // are resolved to unit IDs via the shared unit catalog; unknown units are
 // rejected.
-func parseRecipeChildren(ctx context.Context, inv InventoryService, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
+func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
 	outItems := make([]recipe.RecipeItem, 0, len(items))
 	for _, ri := range items {
 		itemID, err := parseID(string(ri.ItemID))
@@ -263,41 +230,15 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	name := existing.Name
-	if args.Input.Name != "" {
-		name = args.Input.Name
-	}
-	description := existing.Description
-	if args.Input.Description != nil {
-		description = *args.Input.Description
-	}
-	servings := existing.Servings
-	if args.Input.Servings != nil {
-		if *args.Input.Servings <= 0 {
-			return nil, badInputf("servings must be positive")
-		}
-		servings = args.Input.Servings
-	}
-	prep := existing.PrepTimeMinutes
-	if args.Input.PrepTimeMinutes != nil {
-		prep = args.Input.PrepTimeMinutes
-	}
-	cook := existing.CookTimeMinutes
-	if args.Input.CookTimeMinutes != nil {
-		cook = args.Input.CookTimeMinutes
+	patch, err := mergeRecipePatch(existing, args.Input)
+	if err != nil {
+		return nil, err
 	}
 	items, steps, err := parseRecipeChildren(ctx, r.InventoryService, args.Input.Items, args.Input.Steps)
 	if err != nil {
 		return nil, err
 	}
-	if err := r.RecipeService.UpdateRecipeWithChildren(ctx, id, recipe.Recipe{
-		Name:            name,
-		Description:     description,
-		Servings:        servings,
-		PrepTimeMinutes: prep,
-		CookTimeMinutes: cook,
-		IsActive:        existing.IsActive,
-	}, items, steps, u.Email); err != nil {
+	if err := r.RecipeService.UpdateRecipeWithChildren(ctx, id, patch, items, steps, u.Email); err != nil {
 		return nil, err
 	}
 	updated, err := r.RecipeService.GetRecipeByID(ctx, id)
@@ -305,6 +246,26 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: updated}, nil
+}
+
+// mergeRecipePatch applies a PATCH-style input over the existing recipe:
+// empty/unset input fields keep their current values.
+func mergeRecipePatch(existing recipe.Recipe, in createRecipeInput) (recipe.Recipe, error) {
+	patch := existing
+	patch.RecipeID = 0 // identity is passed separately to UpdateRecipeWithChildren
+	if in.Name != "" {
+		patch.Name = in.Name
+	}
+	patch.Description = coalesce(existing.Description, in.Description)
+	patch.PrepTimeMinutes = coalescePtr(existing.PrepTimeMinutes, in.PrepTimeMinutes)
+	patch.CookTimeMinutes = coalescePtr(existing.CookTimeMinutes, in.CookTimeMinutes)
+	if in.Servings != nil {
+		if *in.Servings <= 0 {
+			return patch, badInputf("servings must be positive")
+		}
+		patch.Servings = in.Servings
+	}
+	return patch, nil
 }
 
 // DeleteRecipe removes a recipe.
@@ -403,70 +364,11 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	if err != nil {
 		return nil, err
 	}
-	// Recency scoring: recipe ratings + meal-plan last-used dates are read
-	// from their own domains and combined here (A1-01 — SQL never crosses
-	// schemas). Recipes never planned score 1; the score decays linearly to
-	// 0 over 180 days since the last plan week.
-	rated, err := r.RecipeService.ListRatedAtLeast(ctx, u.UserID, ratingRecencyMinRating)
+	recency, err := r.ratingRecencyScores(ctx, u.UserID, limit)
 	if err != nil {
 		return nil, err
 	}
-	ratedIDs := distinctIDs(rated, func(rr recipe.RecipeRating) *int64 { return &rr.RecipeID })
-	lastPlanned, err := r.MealPlanService.LastPlannedDates(ctx, u.UserID, ratedIDs)
-	if err != nil {
-		return nil, err
-	}
-	const recencyWindowDays = 180.0
-	today := time.Now()
-	recency := make(map[int64]float64, len(rated))
-	for _, rr := range rated {
-		days := recencyWindowDays
-		if last, ok := lastPlanned[rr.RecipeID]; ok {
-			days = today.Sub(last).Hours() / 24
-		}
-		recency[rr.RecipeID] = clampFloat(days/recencyWindowDays, 0, 1)
-	}
-	// Keep the best `limit` recency candidates — the SQL no longer limits.
-	recencyIDs := make([]int64, 0, len(recency))
-	for id := range recency {
-		recencyIDs = append(recencyIDs, id)
-	}
-	slices.SortFunc(recencyIDs, func(a, b int64) int {
-		if recency[a] != recency[b] {
-			return cmp.Compare(recency[b], recency[a])
-		}
-		return cmp.Compare(a, b)
-	})
-	if len(recencyIDs) > int(limit) {
-		recencyIDs = recencyIDs[:int(limit)]
-	}
-
-	type scoredRec struct {
-		reason string
-		score  float64
-	}
-	best := make(map[int64]scoredRec, len(overlap)+len(recencyIDs))
-	for _, o := range overlap {
-		best[o.RecipeID] = scoredRec{reason: analytics.ReasonIngredientOverlap, score: o.Score}
-	}
-	for _, recipeID := range recencyIDs {
-		if cur, ok := best[recipeID]; !ok || recency[recipeID] > cur.score {
-			best[recipeID] = scoredRec{reason: analytics.ReasonRatingRecency, score: recency[recipeID]}
-		}
-	}
-	recipeIDs := make([]int64, 0, len(best))
-	for id := range best {
-		recipeIDs = append(recipeIDs, id)
-	}
-	slices.SortFunc(recipeIDs, func(a, b int64) int {
-		if best[a].score != best[b].score {
-			return cmp.Compare(best[b].score, best[a].score)
-		}
-		return cmp.Compare(a, b)
-	})
-	if limit >= 0 && len(recipeIDs) > int(limit) {
-		recipeIDs = recipeIDs[:int(limit)]
-	}
+	recipeIDs, best := mergeRecommendations(overlap, recency, limit)
 
 	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
 	if err != nil {
@@ -495,9 +397,89 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	return out, nil
 }
 
-// recipeRecommendationResolver resolves a scored recipe suggestion.
+// ratingRecencyScores computes rating-recency candidates: recipe ratings
+// and meal-plan last-used dates are read from their own domains and
+// combined here (A1-01 — SQL never crosses schemas). Recipes never
+// planned score 1; the score decays linearly to 0 over 180 days since the
+// last plan week. Returns the best `limit` scores keyed by recipe.
+func (r *Resolver) ratingRecencyScores(ctx context.Context, userID int64, limit int32) (map[int64]float64, error) {
+	rated, err := r.RecipeService.ListRatedAtLeast(ctx, userID, ratingRecencyMinRating)
+	if err != nil {
+		return nil, err
+	}
+	ratedIDs := distinctIDs(rated, func(rr recipe.RecipeRating) *int64 { return &rr.RecipeID })
+	lastPlanned, err := r.MealPlanService.LastPlannedDates(ctx, userID, ratedIDs)
+	if err != nil {
+		return nil, err
+	}
+	const recencyWindowDays = 180.0
+	today := time.Now()
+	recency := make(map[int64]float64, len(rated))
+	for _, rr := range rated {
+		days := recencyWindowDays
+		if last, ok := lastPlanned[rr.RecipeID]; ok {
+			days = today.Sub(last).Hours() / 24
+		}
+		recency[rr.RecipeID] = clampFloat(days/recencyWindowDays, 0, 1)
+	}
+	// Keep the best `limit` recency candidates — the SQL no longer limits.
+	recencyIDs := make([]int64, 0, len(recency))
+	for id := range recency {
+		recencyIDs = append(recencyIDs, id)
+	}
+	slices.SortFunc(recencyIDs, func(a, b int64) int {
+		if recency[a] != recency[b] {
+			return cmp.Compare(recency[b], recency[a])
+		}
+		return cmp.Compare(a, b)
+	})
+	if len(recencyIDs) > int(limit) {
+		recencyIDs = recencyIDs[:int(limit)]
+	}
+	kept := make(map[int64]float64, len(recencyIDs))
+	for _, id := range recencyIDs {
+		kept[id] = recency[id]
+	}
+	return kept, nil
+}
+
+// scoredRec pairs a recommendation reason with its score.
+type scoredRec struct {
+	reason string
+	score  float64
+}
+
+// mergeRecommendations deduplicates overlap and rating-recency candidates
+// keeping the best score per recipe, and returns recipe IDs sorted by
+// score (ties by id) capped at limit.
+func mergeRecommendations(overlap []analytics.Recommendation, recency map[int64]float64, limit int32) ([]int64, map[int64]scoredRec) {
+	best := make(map[int64]scoredRec, len(overlap)+len(recency))
+	for _, o := range overlap {
+		best[o.RecipeID] = scoredRec{reason: analytics.ReasonIngredientOverlap, score: o.Score}
+	}
+	for recipeID, score := range recency {
+		if cur, ok := best[recipeID]; !ok || score > cur.score {
+			best[recipeID] = scoredRec{reason: analytics.ReasonRatingRecency, score: score}
+		}
+	}
+	recipeIDs := make([]int64, 0, len(best))
+	for id := range best {
+		recipeIDs = append(recipeIDs, id)
+	}
+	slices.SortFunc(recipeIDs, func(a, b int64) int {
+		if best[a].score != best[b].score {
+			return cmp.Compare(best[b].score, best[a].score)
+		}
+		return cmp.Compare(a, b)
+	})
+	if limit >= 0 && len(recipeIDs) > int(limit) {
+		recipeIDs = recipeIDs[:int(limit)]
+	}
+	return recipeIDs, best
+}
+
 type recipeRecommendationResolver struct {
-	inv    InventoryService
+	inv    ItemReader
 	rec    RecipeService
 	up     UserPrefsService
 	user   currentuser.User
@@ -518,7 +500,7 @@ func (r *recipeRecommendationResolver) Score() float64 { return r.score }
 // recipeResolver resolves Recipe fields. When rc is non-nil its
 // batch-loaded maps are used instead of per-recipe service calls.
 type recipeResolver struct {
-	inv           InventoryService
+	inv           ItemReader
 	rec           RecipeService
 	up            UserPrefsService
 	user          currentuser.User
@@ -543,12 +525,15 @@ func (r *recipeResolver) CookTimeMinutes() *int32 { return r.recipe.CookTimeMinu
 func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, error) {
 	var items []recipe.RecipeItem
 	var itemsByID map[int64]inventory.Item
+	var ingredients map[int64]inventory.Ingredient
 	var ch *itemChildren
 	if r.rc != nil {
 		items = r.rc.itemsBy[r.recipe.RecipeID]
 		itemsByID = r.rc.items
+		ingredients = r.rc.ingredients
 		ch = r.rc.itemChildren
 	} else {
+		slog.Default().Warn("recipe.items missed preload; lazy-loading", "recipe_id", r.recipe.RecipeID)
 		var err error
 		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
 		if err != nil {
@@ -561,7 +546,7 @@ func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, erro
 	}
 	out := make([]*recipeItemResolver, len(items))
 	for i := range items {
-		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch, units: units}
+		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ingredients: ingredients, ch: ch, units: units}
 	}
 	return out, nil
 }
@@ -571,14 +556,17 @@ func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, erro
 func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSectionResolver, error) {
 	var items []recipe.RecipeItem
 	var itemsByID map[int64]inventory.Item
+	var ingredients map[int64]inventory.Ingredient
 	var ch *itemChildren
 	var units map[int64]inventory.Unit
 	if r.rc != nil {
 		items = r.rc.itemsBy[r.recipe.RecipeID]
 		itemsByID = r.rc.items
+		ingredients = r.rc.ingredients
 		ch = r.rc.itemChildren
 		units = r.rc.units
 	} else {
+		slog.Default().Warn("recipe.itemSections missed preload; lazy-loading", "recipe_id", r.recipe.RecipeID)
 		var err error
 		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
 		if err != nil {
@@ -595,7 +583,7 @@ func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSection
 			byName[ri.SectionName] = sec
 			sections = append(sections, sec)
 		}
-		sec.items = append(sec.items, &recipeItemResolver{inv: r.inv, item: ri, items: itemsByID, ch: ch, units: units})
+		sec.items = append(sec.items, &recipeItemResolver{inv: r.inv, item: ri, items: itemsByID, ingredients: ingredients, ch: ch, units: units})
 	}
 	return sections, nil
 }
@@ -704,11 +692,12 @@ func (r *recipeResolver) ratingSummary(ctx context.Context) (recipe.RatingSummar
 }
 
 type recipeItemResolver struct {
-	inv   InventoryService
-	item  recipe.RecipeItem
-	items map[int64]inventory.Item
-	ch    *itemChildren
-	units map[int64]inventory.Unit
+	inv         ItemReader
+	item        recipe.RecipeItem
+	items       map[int64]inventory.Item
+	ingredients map[int64]inventory.Ingredient
+	ch          *itemChildren
+	units       map[int64]inventory.Unit
 }
 
 func (r *recipeItemResolver) ID() graphql.ID {
@@ -723,6 +712,7 @@ func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 		}
 		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
 	}
+	slog.Default().Warn("recipeItem.item missed preload; lazy-loading", "item_id", r.item.ItemID)
 	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
 	if err != nil {
 		return nil, err
@@ -736,6 +726,14 @@ func (r *recipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolve
 	if r.item.IngredientID == nil {
 		return nil, nil
 	}
+	if r.ingredients != nil {
+		in, ok := r.ingredients[*r.item.IngredientID]
+		if !ok {
+			return nil, nil
+		}
+		return &ingredientResolver{inv: r.inv, in: in}, nil
+	}
+	slog.Default().Warn("recipeItem.ingredient missed preload; lazy-loading", "ingredient_id", *r.item.IngredientID)
 	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
 	if err != nil {
 		return nil, err
@@ -774,7 +772,7 @@ func (r *recipeStepResolver) StepNumber() int32 { return r.step.StepNumber }
 func (r *recipeStepResolver) Instruction() string { return r.step.Instruction }
 
 type recipePageResolver struct {
-	inv      InventoryService
+	inv      ItemReader
 	rec      RecipeService
 	up       UserPrefsService
 	user     currentuser.User

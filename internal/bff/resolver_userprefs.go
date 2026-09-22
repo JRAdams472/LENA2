@@ -293,34 +293,23 @@ func (r *Resolver) SetBottleFavorite(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	quantity := int32(0)
-	var bottleNum *int32
-	var purchaseAt *time.Time
-	var purchasePrice *float64
-	var storageTemp *float64
-	location := ""
-	notes := ""
-	if existing != nil {
-		quantity = existing.Quantity
-		bottleNum = existing.BottleNumber
-		purchaseAt = existing.PurchaseAt
-		purchasePrice = existing.PurchasePrice
-		storageTemp = existing.StorageTemp
-		location = existing.Location
-		notes = existing.Notes
+	// Toggling the favorite flag must preserve the user's other bottle
+	// fields, which the upsert overwrites wholesale.
+	ub := userprefs.UserBottle{
+		UserID:     u.UserID,
+		BottleID:   bottleID,
+		IsFavorite: args.IsFavorite,
 	}
-	updated, err := r.UserPrefsService.UpsertUserBottle(ctx, userprefs.UserBottle{
-		UserID:        u.UserID,
-		BottleID:      bottleID,
-		BottleNumber:  bottleNum,
-		Quantity:      quantity,
-		PurchaseAt:    purchaseAt,
-		PurchasePrice: purchasePrice,
-		StorageTemp:   storageTemp,
-		Location:      location,
-		Notes:         notes,
-		IsFavorite:    args.IsFavorite,
-	}, u.Email)
+	if existing != nil {
+		ub.BottleNumber = existing.BottleNumber
+		ub.Quantity = existing.Quantity
+		ub.PurchaseAt = existing.PurchaseAt
+		ub.PurchasePrice = existing.PurchasePrice
+		ub.StorageTemp = existing.StorageTemp
+		ub.Location = existing.Location
+		ub.Notes = existing.Notes
+	}
+	updated, err := r.UserPrefsService.UpsertUserBottle(ctx, ub, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +327,7 @@ func findUserBottle(ctx context.Context, svc UserPrefsService, userID, bottleID 
 // userItemResolver resolves UserItem fields. When items is non-nil the
 // batch-loaded catalog rows are used instead of a per-item service call.
 type userItemResolver struct {
-	inv   InventoryService
+	inv   ItemReader
 	item  userprefs.UserItem
 	items map[int64]inventory.Item
 	ch    *itemChildren
@@ -376,7 +365,7 @@ func (r *userItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 }
 
 type userItemPageResolver struct {
-	inv       InventoryService
+	inv       ItemReader
 	items     []userprefs.UserItem
 	itemsByID map[int64]inventory.Item
 	ch        *itemChildren
@@ -400,7 +389,7 @@ func (r *userItemPageResolver) PageInfo() *pageInfoResolver {
 // userBottleResolver resolves UserBottle fields. When bc is non-nil the
 // batch-loaded bottle rows are used instead of a per-bottle service call.
 type userBottleResolver struct {
-	wine   WineService
+	wine   BottleReader
 	bottle userprefs.UserBottle
 	bc     *bottleChildren
 }
@@ -441,7 +430,7 @@ func (r *userBottleResolver) Bottle(ctx context.Context) (*bottleResolver, error
 }
 
 type userBottlePageResolver struct {
-	wine     WineService
+	wine     BottleReader
 	bottles  []userprefs.UserBottle
 	bc       *bottleChildren
 	page     int32

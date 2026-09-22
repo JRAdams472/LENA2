@@ -54,21 +54,16 @@ func TestBFF_Integration(t *testing.T) {
 		AdminEmails: []string{"auth@example.com", "user-a@example.com"},
 	}, identitySvc)
 
-	resolver := NewResolver(
-		pool,
-		analytics.NewService(pool),
-		grocery.NewService(pool),
-		inventory.NewService(pool),
-		mealplan.NewService(pool),
-		recipe.NewService(pool),
-		userprefs.NewService(pool),
-		wine.NewService(pool),
-		identitySvc,
-		nil,
-		nil,
-		0,
-		0,
-	)
+	resolver := NewResolver(pool, Services{
+		Analytics: analytics.NewService(pool),
+		Grocery:   grocery.NewService(pool),
+		Inventory: inventory.NewService(pool),
+		MealPlan:  mealplan.NewService(pool),
+		Recipe:    recipe.NewService(pool),
+		UserPrefs: userprefs.NewService(pool),
+		Wine:      wine.NewService(pool),
+		Identity:  identitySvc,
+	}, Options{})
 
 	e := echo.New()
 	e.HideBanner = true
@@ -728,21 +723,16 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 	}, userID, "it")
 	require.NoError(t, err)
 
-	resolver := NewResolver(
-		pool,
-		analytics.NewService(pool),
-		grocerySvc,
-		invSvc,
-		mealplan.NewService(pool),
-		recipe.NewService(pool),
-		upSvc,
-		wine.NewService(pool),
-		identity.NewService(pool),
-		nil,
-		nil,
-		0,
-		0,
-	)
+	resolver := NewResolver(pool, Services{
+		Analytics: analytics.NewService(pool),
+		Grocery:   grocerySvc,
+		Inventory: invSvc,
+		MealPlan:  mealplan.NewService(pool),
+		Recipe:    recipe.NewService(pool),
+		UserPrefs: upSvc,
+		Wine:      wine.NewService(pool),
+		Identity:  identity.NewService(pool),
+	}, Options{})
 
 	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "toggle-sync@example.com"})
 	gliID := graphql.ID(strconv.FormatInt(gli.GroceryListItemID, 10))
@@ -827,21 +817,16 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	}, "it")
 	require.NoError(t, err)
 
-	resolver := NewResolver(
-		pool,
-		analytics.NewService(pool),
-		grocerySvc,
-		invSvc,
-		mpSvc,
-		recipeSvc,
-		upSvc,
-		wine.NewService(pool),
-		identity.NewService(pool),
-		nil,
-		nil,
-		0,
-		0,
-	)
+	resolver := NewResolver(pool, Services{
+		Analytics: analytics.NewService(pool),
+		Grocery:   grocerySvc,
+		Inventory: invSvc,
+		MealPlan:  mpSvc,
+		Recipe:    recipeSvc,
+		UserPrefs: upSvc,
+		Wine:      wine.NewService(pool),
+		Identity:  identity.NewService(pool),
+	}, Options{})
 	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "grocery-gen@example.com"})
 	planID := graphql.ID(strconv.FormatInt(plan.MealPlanID, 10))
 

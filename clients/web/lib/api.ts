@@ -1189,7 +1189,7 @@ export const api = {
 
   setUserRole: async (userId: number, role: "member" | "admin"): Promise<User> => {
     const data = await request<{ setUserRole: GqlUser }>(
-      `mutation ($userId: ID!, $role: String!) { setUserRole(userId: $userId, role: $role) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`,
+      `mutation ($userId: ID!, $role: Role!) { setUserRole(userId: $userId, role: $role) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`,
       { userId: String(userId), role }
     );
     return toUser(data.setUserRole);
@@ -1264,14 +1264,14 @@ export const api = {
 
   recordSelection: async (entityType: string, entityId: number): Promise<void> => {
     await request<{ recordSelection: boolean }>(
-      `mutation ($entityType: String!, $entityId: ID!) { recordSelection(entityType: $entityType, entityId: $entityId) }`,
+      `mutation ($entityType: EntityType!, $entityId: ID!) { recordSelection(entityType: $entityType, entityId: $entityId) }`,
       { entityType, entityId: String(entityId) }
     );
   },
 
   recordSearch: async (entityType: string, term: string): Promise<void> => {
     await request<{ recordSearch: boolean }>(
-      `mutation ($entityType: String!, $term: String!) { recordSearch(entityType: $entityType, term: $term) }`,
+      `mutation ($entityType: EntityType!, $term: String!) { recordSearch(entityType: $entityType, term: $term) }`,
       { entityType, term }
     );
   },

@@ -479,13 +479,14 @@ func (a *Authenticator) keySetForIssuer(ctx context.Context, issuer string, forc
 		delete(a.inflight, issuer)
 	}
 
-	// Detached from the request: one caller's cancellation must not kill
-	// the shared refresh for everyone else authenticating to this issuer.
+	// Detached from the request's cancellation: one caller cancelling must
+	// not kill the shared refresh for everyone else authenticating to this
+	// issuer. WithoutCancel still carries request-scoped values.
 	if cached && !forceRefresh {
 		// A stale-but-usable set is served immediately while the refresh
 		// proceeds in the background.
 		go func() {
-			fetchCtx, cancel := context.WithTimeout(context.Background(), jwksFetchTimeout)
+			fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jwksFetchTimeout)
 			defer cancel()
 			set, err := a.fetchKeySet(fetchCtx, issuer)
 			complete(set, err)

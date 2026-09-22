@@ -49,18 +49,25 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 			RecipeID: 9, Name: "Soup", Description: "Tasty",
 			Servings: recInt32Ptr(4), PrepTimeMinutes: recInt32Ptr(10), CookTimeMinutes: recInt32Ptr(20), IsActive: true,
 		}, nil)
-		rec.EXPECT().ListRecipeItems(gomock.Any(), int64(9)).Return([]recipe.RecipeItem{
+		// Single-recipe reads go through the shared batch loader now.
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{9}).Return([]recipe.Recipe{
+			{RecipeID: 9, Name: "Soup"},
+		}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{9}).Return([]recipe.RecipeItem{
 			{RecipeItemID: 40, RecipeID: 9, ItemID: 3, Quantity: 2, UnitID: 3, Notes: "diced"},
 		}, nil)
-		rec.EXPECT().ListRecipeSteps(gomock.Any(), int64(9)).Return([]recipe.RecipeStep{
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{9}).Return([]recipe.RecipeStep{
 			{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"},
 		}, nil)
-		inv.EXPECT().GetItemByID(gomock.Any(), int64(3)).Return(inventory.Item{ItemID: 3, Name: "Broth"}, nil)
-		inv.EXPECT().GetUnitByID(gomock.Any(), int64(3)).Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
-		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).
-			Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{9}).
+			Return([]userprefs.RecipeFavorite{{UserID: 11, RecipeID: 9, IsFavorite: true}}, nil)
 		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
+		inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Item{{ItemID: 3, Name: "Broth", CategoryID: 1, UnitID: 3}}, nil)
+		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return([]inventory.Category{{CategoryID: 1, Name: "Pantry"}}, nil)
+		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
+		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
+		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
 
 		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
@@ -107,6 +114,9 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
 			Return(recipe.Recipe{RecipeID: 9, Name: "Bare"}, nil)
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{9}).Return([]recipe.Recipe{{RecipeID: 9}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 		r := &Resolver{RecipeService: rec}
@@ -155,7 +165,10 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 		}, nil)
 		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
 		inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Item{{ItemID: 3, Name: "Broth", CategoryID: 1, UnitID: 3}}, nil)
-		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil)
+		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return([]inventory.Category{{CategoryID: 1, Name: "Pantry"}}, nil)
+		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
+		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
+		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
 		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 

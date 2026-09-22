@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +13,58 @@ import (
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/graph-gophers/graphql-go"
 )
+
+// groceryChildren holds batch-loaded rows for one or more grocery lists so
+// nested field resolvers never issue a query per row.
+type groceryChildren struct {
+	itemsByList map[int64][]grocery.GroceryListItem
+	items       map[int64]inventory.Item
+	units       map[int64]inventory.Unit
+	ingredients map[int64]inventory.Ingredient
+	ch          *itemChildren
+}
+
+// loadGroceryChildren batch-loads list items and every catalog row they
+// reference — items, units, ingredients, and per-item children.
+func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, userID int64, listIDs []int64) (*groceryChildren, error) {
+	gc := &groceryChildren{
+		itemsByList: make(map[int64][]grocery.GroceryListItem),
+		items:       make(map[int64]inventory.Item),
+		units:       make(map[int64]inventory.Unit),
+		ingredients: make(map[int64]inventory.Ingredient),
+	}
+	if len(listIDs) == 0 {
+		return gc, nil
+	}
+	listItems, err := g.ListGroceryListItemsByLists(ctx, listIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range listItems {
+		gc.itemsByList[it.GroceryListID] = append(gc.itemsByList[it.GroceryListID], it)
+	}
+	gc.items, err = loadItems(ctx, inv, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.ItemID }))
+	if err != nil {
+		return nil, err
+	}
+	gc.units, err = loadUnits(ctx, inv, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.UnitID }))
+	if err != nil {
+		return nil, err
+	}
+	gc.ingredients, err = loadIngredients(ctx, inv, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.IngredientID }))
+	if err != nil {
+		return nil, err
+	}
+	itemList := make([]inventory.Item, 0, len(gc.items))
+	for _, it := range gc.items {
+		itemList = append(itemList, it)
+	}
+	gc.ch, err = loadItemChildren(ctx, inv, itemList)
+	if err != nil {
+		return nil, err
+	}
+	return gc, nil
+}
 
 // GroceryList resolves a single grocery list by ID.
 func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }) (*groceryListResolver, error) {
@@ -27,7 +80,13 @@ func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, list: list}, nil
+	// Single-list reads preload the same children as the list page so
+	// nested resolvers never fall back to per-row queries.
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.UserID, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, list: list, items: gc.itemsByList[id], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
 }
 
 // GroceryLists resolves the current user's grocery lists.
@@ -48,37 +107,11 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	listIDs := distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID })
-	itemsByList := make(map[int64][]grocery.GroceryListItem)
-	var items map[int64]inventory.Item
-	var units map[int64]inventory.Unit
-	var ch *itemChildren
-	if len(listIDs) > 0 {
-		listItems, err := r.GroceryService.ListGroceryListItemsByLists(ctx, listIDs, u.UserID)
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range listItems {
-			itemsByList[it.GroceryListID] = append(itemsByList[it.GroceryListID], it)
-		}
-		items, err = loadItems(ctx, r.InventoryService, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.ItemID }))
-		if err != nil {
-			return nil, err
-		}
-		units, err = loadUnits(ctx, r.InventoryService, distinctIDs(listItems, func(it grocery.GroceryListItem) *int64 { return it.UnitID }))
-		if err != nil {
-			return nil, err
-		}
-		itemList := make([]inventory.Item, 0, len(items))
-		for _, it := range items {
-			itemList = append(itemList, it)
-		}
-		ch, err = loadItemChildren(ctx, r.InventoryService, itemList)
-		if err != nil {
-			return nil, err
-		}
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.UserID, distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID }))
+	if err != nil {
+		return nil, err
 	}
-	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, lists: lists, itemsByList: itemsByList, items: items, units: units, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, lists: lists, itemsByList: gc.itemsByList, items: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // GenerateGroceryList generates a grocery list from a meal plan. The BFF
@@ -119,18 +152,9 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 			return err
 		}
 
-		recipeIDs := distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID })
-		var recipes []recipe.Recipe
-		var recipeItems []recipe.RecipeItem
-		if len(recipeIDs) > 0 {
-			recipes, err = r.RecipeService.GetRecipesByIDs(ctx, recipeIDs)
-			if err != nil {
-				return err
-			}
-			recipeItems, err = r.RecipeService.ListRecipeItemsByRecipes(ctx, recipeIDs)
-			if err != nil {
-				return err
-			}
+		recipes, recipeItems, err := r.planRecipes(ctx, slots)
+		if err != nil {
+			return err
 		}
 		needs := aggregateGroceryNeeds(slots, slotItems, recipes, recipeItems)
 		if len(needs) == 0 {
@@ -168,21 +192,29 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 	}); err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, list: list}, nil
+	// Preload the freshly generated list's children so nested resolvers
+	// never fall back to per-row queries.
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.UserID, []int64{list.GroceryListID})
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, list: list, items: gc.itemsByList[list.GroceryListID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
 }
 
-// groceryNeed is a unit-resolved quantity of a catalog item to buy.
-type groceryNeed struct {
+// planLine is one expanded plan contribution: a quantity of a catalog
+// item in a specific unit.
+type planLine struct {
 	itemID int64
 	unitID int64
 	qty    float64
 }
 
-// aggregateGroceryNeeds expands a plan's slots into per-(item, unit)
-// quantities. Explicit slot items always count; a slot item flagged
-// is_from_recipe replaces the recipe's own line for that item, and recipe
-// contributions scale by the slot's servings ratio.
-func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []groceryNeed {
+// expandPlanLines expands a plan's slots into item quantity lines.
+// Explicit slot items always count; a slot item flagged is_from_recipe
+// replaces the recipe's own line for that item, and recipe contributions
+// scale by the slot's servings ratio. Shared by grocery generation and
+// nutrition aggregation.
+func expandPlanLines(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []planLine {
 	itemsBySlot := make(map[int64][]mealplan.MealSlotItem)
 	for _, si := range slotItems {
 		itemsBySlot[si.SlotID] = append(itemsBySlot[si.SlotID], si)
@@ -196,19 +228,14 @@ func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealS
 		itemsByRecipe[ri.RecipeID] = append(itemsByRecipe[ri.RecipeID], ri)
 	}
 
-	type key struct{ itemID, unitID int64 }
-	totals := make(map[key]float64)
-	add := func(itemID, unitID int64, qty float64) {
-		totals[key{itemID, unitID}] += qty
-	}
-
+	var lines []planLine
 	for _, slot := range slots {
 		overridden := make(map[int64]bool)
 		for _, si := range itemsBySlot[slot.SlotID] {
 			if si.ItemID == nil {
 				continue
 			}
-			add(*si.ItemID, si.UnitID, si.Quantity)
+			lines = append(lines, planLine{itemID: *si.ItemID, unitID: si.UnitID, qty: si.Quantity})
 			if si.IsFromRecipe {
 				overridden[*si.ItemID] = true
 			}
@@ -228,8 +255,26 @@ func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealS
 			if overridden[ri.ItemID] {
 				continue
 			}
-			add(ri.ItemID, ri.UnitID, ri.Quantity*scale)
+			lines = append(lines, planLine{itemID: ri.ItemID, unitID: ri.UnitID, qty: ri.Quantity * scale})
 		}
+	}
+	return lines
+}
+
+// groceryNeed is a unit-resolved quantity of a catalog item to buy.
+type groceryNeed struct {
+	itemID int64
+	unitID int64
+	qty    float64
+}
+
+// aggregateGroceryNeeds groups expanded plan lines into per-(item, unit)
+// totals in deterministic order.
+func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []groceryNeed {
+	type key struct{ itemID, unitID int64 }
+	totals := make(map[key]float64)
+	for _, l := range expandPlanLines(slots, slotItems, recipes, recipeItems) {
+		totals[key{l.itemID, l.unitID}] += l.qty
 	}
 
 	keys := make([]key, 0, len(totals))
@@ -361,65 +406,72 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 	if err != nil {
 		return nil, err
 	}
-	groceryListID, err := parseID(string(args.Input.GroceryListID))
+	item, err := r.parseGroceryItemInput(ctx, args.Input)
 	if err != nil {
 		return nil, err
 	}
-	var itemID *int64
-	if args.Input.ItemID != nil {
-		parsed, err := parseID(string(*args.Input.ItemID))
-		if err != nil {
-			return nil, err
-		}
-		itemID = &parsed
-	}
-	ingredientID, err := optionalID(args.Input.IngredientID)
-	if err != nil {
-		return nil, err
-	}
-	manualName := derefString(args.Input.ManualItemName)
-	if itemID == nil && ingredientID == nil && strings.TrimSpace(manualName) == "" {
-		return nil, badInputf("grocery item requires an itemId, ingredientId or manualItemName")
-	}
-	if args.Input.Quantity <= 0 {
-		return nil, badInputf("quantity must be positive")
-	}
-	// The unit is optional for grocery items; an empty string means unset.
-	var unitID *int64
-	if u := strings.TrimSpace(args.Input.Unit); u != "" {
-		id, err := resolveUnitID(ctx, r.InventoryService, u)
-		if err != nil {
-			return nil, err
-		}
-		unitID = &id
-	}
-	it, err := r.GroceryService.AddGroceryListItem(ctx, grocery.GroceryListItem{
-		GroceryListID:  groceryListID,
-		ItemID:         itemID,
-		IngredientID:   ingredientID,
-		ManualItemName: manualName,
-		QuantityNeeded: args.Input.Quantity,
-		UnitID:         unitID,
-		Source:         "manual",
-	}, u.UserID, u.Email)
+	it, err := r.GroceryService.AddGroceryListItem(ctx, item, u.UserID, u.Email)
 	if err != nil {
 		return nil, err
 	}
 	return &groceryListItemResolver{inv: r.InventoryService, item: it}, nil
 }
 
+// parseGroceryItemInput validates a grocery-item input and converts it to
+// the service type, resolving the optional unit name to a unit ID.
+func (r *Resolver) parseGroceryItemInput(ctx context.Context, in addGroceryItemInput) (grocery.GroceryListItem, error) {
+	groceryListID, err := parseID(string(in.GroceryListID))
+	if err != nil {
+		return grocery.GroceryListItem{}, err
+	}
+	itemID, err := optionalID(in.ItemID)
+	if err != nil {
+		return grocery.GroceryListItem{}, err
+	}
+	ingredientID, err := optionalID(in.IngredientID)
+	if err != nil {
+		return grocery.GroceryListItem{}, err
+	}
+	manualName := derefString(in.ManualItemName)
+	if itemID == nil && ingredientID == nil && strings.TrimSpace(manualName) == "" {
+		return grocery.GroceryListItem{}, badInputf("grocery item requires an itemId, ingredientId or manualItemName")
+	}
+	if in.Quantity <= 0 {
+		return grocery.GroceryListItem{}, badInputf("quantity must be positive")
+	}
+	// The unit is optional for grocery items; an empty string means unset.
+	var unitID *int64
+	if u := strings.TrimSpace(in.Unit); u != "" {
+		id, err := resolveUnitID(ctx, r.InventoryService, u)
+		if err != nil {
+			return grocery.GroceryListItem{}, err
+		}
+		unitID = &id
+	}
+	return grocery.GroceryListItem{
+		GroceryListID:  groceryListID,
+		ItemID:         itemID,
+		IngredientID:   ingredientID,
+		ManualItemName: manualName,
+		QuantityNeeded: in.Quantity,
+		UnitID:         unitID,
+		Source:         "manual",
+	}, nil
+}
+
 // groceryListResolver resolves GroceryList fields. When items is non-nil
 // the batch-loaded rows and catalog lookups are used instead of per-list
 // service calls.
 type groceryListResolver struct {
-	g        GroceryService
-	inv      InventoryService
-	userID   int64
-	list     grocery.GroceryList
-	items    []grocery.GroceryListItem
-	catItems map[int64]inventory.Item
-	units    map[int64]inventory.Unit
-	ch       *itemChildren
+	g           GroceryService
+	inv         ItemReader
+	userID      int64
+	list        grocery.GroceryList
+	items       []grocery.GroceryListItem
+	catItems    map[int64]inventory.Item
+	units       map[int64]inventory.Unit
+	ingredients map[int64]inventory.Ingredient
+	ch          *itemChildren
 }
 
 func (r *groceryListResolver) ID() graphql.ID {
@@ -435,6 +487,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 	if r.ch != nil {
 		items = r.items
 	} else {
+		slog.Default().Warn("groceryList.items missed preload; lazy-loading", "grocery_list_id", r.list.GroceryListID)
 		var err error
 		items, err = r.g.ListGroceryListItems(ctx, r.list.GroceryListID, r.userID)
 		if err != nil {
@@ -443,18 +496,19 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 	}
 	out := make([]*groceryListItemResolver, len(items))
 	for i := range items {
-		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i], items: r.catItems, units: r.units, ch: r.ch}
+		out[i] = &groceryListItemResolver{inv: r.inv, item: items[i], items: r.catItems, units: r.units, ingredients: r.ingredients, ch: r.ch}
 	}
 	return out, nil
 }
 
 // groceryListItemResolver resolves GroceryListItem fields.
 type groceryListItemResolver struct {
-	inv   InventoryService
-	item  grocery.GroceryListItem
-	items map[int64]inventory.Item
-	units map[int64]inventory.Unit
-	ch    *itemChildren
+	inv         ItemReader
+	item        grocery.GroceryListItem
+	items       map[int64]inventory.Item
+	units       map[int64]inventory.Unit
+	ingredients map[int64]inventory.Ingredient
+	ch          *itemChildren
 }
 
 func (r *groceryListItemResolver) ID() graphql.ID {
@@ -480,6 +534,14 @@ func (r *groceryListItemResolver) Ingredient(ctx context.Context) (*ingredientRe
 	if r.item.IngredientID == nil {
 		return nil, nil
 	}
+	if r.ingredients != nil {
+		in, ok := r.ingredients[*r.item.IngredientID]
+		if !ok {
+			return nil, nil
+		}
+		return &ingredientResolver{inv: r.inv, in: in}, nil
+	}
+	slog.Default().Warn("groceryListItem.ingredient missed preload; lazy-loading", "ingredient_id", *r.item.IngredientID)
 	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
 	if err != nil {
 		return nil, err
@@ -498,6 +560,7 @@ func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, erro
 		}
 		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
 	}
+	slog.Default().Warn("groceryListItem.item missed preload; lazy-loading", "item_id", *r.item.ItemID)
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
@@ -507,12 +570,13 @@ func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, erro
 
 type groceryListPageResolver struct {
 	g           GroceryService
-	inv         InventoryService
+	inv         ItemReader
 	userID      int64
 	lists       []grocery.GroceryList
 	itemsByList map[int64][]grocery.GroceryListItem
 	items       map[int64]inventory.Item
 	units       map[int64]inventory.Unit
+	ingredients map[int64]inventory.Ingredient
 	ch          *itemChildren
 	page        int32
 	pageSize    int32
@@ -522,7 +586,7 @@ type groceryListPageResolver struct {
 func (r *groceryListPageResolver) Items() []*groceryListResolver {
 	out := make([]*groceryListResolver, len(r.lists))
 	for i := range r.lists {
-		out[i] = &groceryListResolver{g: r.g, inv: r.inv, userID: r.userID, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, units: r.units, ch: r.ch}
+		out[i] = &groceryListResolver{g: r.g, inv: r.inv, userID: r.userID, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch}
 	}
 	return out
 }

@@ -322,92 +322,11 @@ func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	typeID := existing.TypeID
-	if args.Input.TypeID != nil {
-		tid, err := parseID(string(*args.Input.TypeID))
-		if err != nil {
-			return nil, err
-		}
-		typeID = tid
+	patch, err := mergeBottlePatch(existing, args.Input)
+	if err != nil {
+		return nil, err
 	}
-	countryID := existing.CountryID
-	if args.Input.CountryID != nil {
-		cid, err := parseID(string(*args.Input.CountryID))
-		if err != nil {
-			return nil, err
-		}
-		countryID = cid
-	}
-	regionID := existing.RegionID
-	if args.Input.RegionID != nil {
-		rid, err := parseID(string(*args.Input.RegionID))
-		if err != nil {
-			return nil, err
-		}
-		regionID = rid
-	}
-	vintage := existing.VintageYear
-	if args.Input.VintageYear != nil {
-		vintage = *args.Input.VintageYear
-	}
-	vineyard := existing.Vineyard
-	if args.Input.Vineyard != nil {
-		vineyard = *args.Input.Vineyard
-	}
-	abv := existing.Abv
-	if args.Input.Abv != nil {
-		abv = args.Input.Abv
-	}
-	acidity := existing.Acidity
-	if args.Input.Acidity != nil {
-		acidity, err = checkedInt16Ptr(args.Input.Acidity, "acidity", 1, 5)
-		if err != nil {
-			return nil, err
-		}
-	}
-	tanninLevel := existing.TanninLevel
-	if args.Input.TanninLevel != nil {
-		tanninLevel, err = checkedInt16Ptr(args.Input.TanninLevel, "tanninLevel", 1, 5)
-		if err != nil {
-			return nil, err
-		}
-	}
-	body := existing.Body
-	if args.Input.Body != nil {
-		body, err = checkedInt16Ptr(args.Input.Body, "body", 1, 5)
-		if err != nil {
-			return nil, err
-		}
-	}
-	sweetness := existing.Sweetness
-	if args.Input.Sweetness != nil {
-		sweetness, err = checkedInt16Ptr(args.Input.Sweetness, "sweetness", 1, 5)
-		if err != nil {
-			return nil, err
-		}
-	}
-	oakIntegration := existing.OakIntegration
-	if args.Input.OakIntegration != nil {
-		oakIntegration = args.Input.OakIntegration
-	}
-	bottleSize := existing.BottleSize
-	if args.Input.BottleSize != nil {
-		bottleSize = *args.Input.BottleSize
-	}
-	if err := r.WineService.UpdateBottle(ctx, id, wine.Bottle{
-		TypeID:         typeID,
-		CountryID:      countryID,
-		RegionID:       regionID,
-		VintageYear:    vintage,
-		Vineyard:       vineyard,
-		Abv:            abv,
-		Acidity:        acidity,
-		TanninLevel:    tanninLevel,
-		Body:           body,
-		Sweetness:      sweetness,
-		OakIntegration: oakIntegration,
-		BottleSize:     bottleSize,
-	}, u.Email); err != nil {
+	if err := r.WineService.UpdateBottle(ctx, id, patch, u.Email); err != nil {
 		return nil, err
 	}
 	updated, err := r.WineService.GetBottleByID(ctx, id)
@@ -415,6 +334,41 @@ func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &bottleResolver{wine: r.WineService, b: updated}, nil
+}
+
+// mergeBottlePatch applies a PATCH-style input over the existing bottle:
+// nil input fields keep their current values.
+func mergeBottlePatch(existing wine.Bottle, in updateBottleInput) (wine.Bottle, error) {
+	patch := existing
+	patch.BottleID = 0 // identity is passed separately to UpdateBottle
+	var err error
+	if patch.TypeID, err = coalesceID(existing.TypeID, in.TypeID); err != nil {
+		return patch, err
+	}
+	if patch.CountryID, err = coalesceID(existing.CountryID, in.CountryID); err != nil {
+		return patch, err
+	}
+	if patch.RegionID, err = coalesceID(existing.RegionID, in.RegionID); err != nil {
+		return patch, err
+	}
+	patch.VintageYear = coalesce(existing.VintageYear, in.VintageYear)
+	patch.Vineyard = coalesce(existing.Vineyard, in.Vineyard)
+	patch.Abv = coalescePtr(existing.Abv, in.Abv)
+	patch.OakIntegration = coalescePtr(existing.OakIntegration, in.OakIntegration)
+	patch.BottleSize = coalesce(existing.BottleSize, in.BottleSize)
+	if patch.Acidity, err = coalesceCheckedInt16(existing.Acidity, in.Acidity, "acidity", 1, 5); err != nil {
+		return patch, err
+	}
+	if patch.TanninLevel, err = coalesceCheckedInt16(existing.TanninLevel, in.TanninLevel, "tanninLevel", 1, 5); err != nil {
+		return patch, err
+	}
+	if patch.Body, err = coalesceCheckedInt16(existing.Body, in.Body, "body", 1, 5); err != nil {
+		return patch, err
+	}
+	if patch.Sweetness, err = coalesceCheckedInt16(existing.Sweetness, in.Sweetness, "sweetness", 1, 5); err != nil {
+		return patch, err
+	}
+	return patch, nil
 }
 
 // AddBottleGrapeVariety links a grape variety to a bottle.
@@ -514,7 +468,7 @@ func (r *Resolver) RemoveBottleFlavorProfile(ctx context.Context, args struct {
 // bottleResolver resolves Bottle fields. When bc is non-nil its
 // batch-loaded maps are used instead of per-bottle service calls.
 type bottleResolver struct {
-	wine WineService
+	wine BottleReader
 	b    wine.Bottle
 	bc   *bottleChildren
 }
@@ -568,7 +522,7 @@ func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVari
 }
 
 type bottlePageResolver struct {
-	wine     WineService
+	wine     BottleReader
 	bottles  []wine.Bottle
 	bc       *bottleChildren
 	page     int32
@@ -611,7 +565,7 @@ func (r *countryResolver) Description() *string { return nilIfEmpty(r.c.Descript
 // regionResolver resolves a wine region. When country is non-nil it is
 // used instead of a per-region lookup.
 type regionResolver struct {
-	wine    WineService
+	wine    BottleReader
 	r       wine.Region
 	country *wine.Country
 }
@@ -659,7 +613,7 @@ func (r *grapeVarietyResolver) IsActive() bool { return r.g.IsActive }
 
 // bottleGrapeVarietyResolver resolves a grape variety on a bottle.
 type bottleGrapeVarietyResolver struct {
-	wine    WineService
+	wine    BottleReader
 	variety wine.BottleGrapeVariety
 }
 
@@ -708,7 +662,7 @@ func (r *wineFlavorProfileResolver) IsActive() bool { return r.fp.IsActive }
 
 // bottleFlavorProfileResolver resolves a flavor profile on a bottle.
 type bottleFlavorProfileResolver struct {
-	wine   WineService
+	wine   BottleReader
 	flavor wine.BottleFlavorProfile
 }
 
