@@ -1,4 +1,4 @@
-package testenv
+package testutil
 
 import (
 	"crypto/rand"

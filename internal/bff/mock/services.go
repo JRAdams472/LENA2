@@ -21,7 +21,7 @@ import (
 	ocrimport "github.com/JRAdams472/LENA2/internal/ocrimport"
 	currentuser "github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	recipe "github.com/JRAdams472/LENA2/internal/recipe"
-	recipeimport "github.com/JRAdams472/LENA2/internal/recipeimport"
+	recipeimport "github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	userprefs "github.com/JRAdams472/LENA2/internal/userprefs"
 	wine "github.com/JRAdams472/LENA2/internal/wine"
 	gomock "go.uber.org/mock/gomock"

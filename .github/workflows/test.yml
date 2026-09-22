@@ -96,7 +96,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Recipe import unit tests
-        run: go test ./internal/recipeimport/... ./internal/ocrimport/... ./internal/platform/ollamaclient/... ./internal/platform/profanity/...
+        run: go test ./internal/app/recipeimport/... ./internal/ocrimport/... ./internal/platform/ollamaclient/... ./internal/platform/profanity/...
 
   web:
     runs-on: ubuntu-latest

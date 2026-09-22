@@ -12,7 +12,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const itBy = "integration-test"
@@ -27,7 +27,7 @@ func itUnitID(t *testing.T, ctx context.Context, invSvc *inventory.Service, name
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	return NewService(pool), pool
@@ -40,8 +40,8 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "grocery-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "grocery-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "grocery-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "grocery-b@example.com")
 
 	invSvc := inventory.NewService(pool)
 	brand, err := invSvc.CreateBrand(ctx, "IT Grocery Brand", itBy)
@@ -187,8 +187,8 @@ func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "grocery-xu-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "grocery-xu-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "grocery-xu-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "grocery-xu-b@example.com")
 
 	list, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
 	require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestIntegrationGroceryToggle(t *testing.T) {
 	svc, pool := newIntegrationService(t, ctx)
 	invSvc := inventory.NewService(pool)
 
-	userA := testenv.MustUser(ctx, t, pool, "grocery-pantry-a@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "grocery-pantry-a@example.com")
 	brand, err := invSvc.CreateBrand(ctx, "IT Pantry Brand", itBy)
 	require.NoError(t, err)
 	cat, err := invSvc.CreateCategory(ctx, "IT Pantry Category", "", itBy)

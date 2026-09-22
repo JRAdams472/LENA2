@@ -15,7 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
@@ -27,7 +27,7 @@ const (
 )
 
 func grocCtx() context.Context {
-	return testenv.WithUser(context.Background(), grocUserID, grocEmail)
+	return testutil.WithUser(context.Background(), grocUserID, grocEmail)
 }
 
 func TestResolver_GroceryList_Happy(t *testing.T) {

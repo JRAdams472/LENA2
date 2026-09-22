@@ -38,7 +38,7 @@ linters:
       # Test helpers take *testing.T first, ctx second — established idiom.
       - linters: [revive]
         text: "context-as-argument"
-        path: (_test\.go|platform/testenv)
+        path: (_test\.go|testutil)
     paths:
       - migrations
       - clients/web/node_modules

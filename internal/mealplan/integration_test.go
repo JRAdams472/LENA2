@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
@@ -27,7 +27,7 @@ func itUnitID(t *testing.T, ctx context.Context, invSvc *inventory.Service, name
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	return NewService(pool), pool
@@ -40,8 +40,8 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "meal-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "meal-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "meal-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "meal-b@example.com")
 
 	invSvc := inventory.NewService(pool)
 	brand, err := invSvc.CreateBrand(ctx, "IT Meal Brand", itBy)
@@ -224,8 +224,8 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "meal-xu-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "meal-xu-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "meal-xu-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "meal-xu-b@example.com")
 
 	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
 	plan, err := svc.CreateMealPlan(ctx, MealPlan{

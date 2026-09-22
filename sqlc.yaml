@@ -130,11 +130,11 @@ sql:
               type: "Time"
   - engine: "postgresql"
     schema: "migrations/"
-    queries: "internal/recipeimport/queries.sql"
+    queries: "internal/app/recipeimport/queries.sql"
     gen:
       go:
         package: "sqlc"
-        out: "internal/recipeimport/sqlc"
+        out: "internal/app/recipeimport/sqlc"
         sql_package: "pgx/v5"
         emit_json_tags: true
         emit_interface: true

@@ -10,7 +10,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const itBy = "integration-test"
@@ -28,7 +28,7 @@ func TestIntegrationRecipeCRUD(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	svc := NewService(pool)
@@ -117,7 +117,7 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	svc := NewService(pool)
@@ -219,7 +219,7 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	svc := NewService(pool)
@@ -287,13 +287,13 @@ func TestIntegrationRecipeRatings(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
-	userA := testenv.MustUser(ctx, t, pool, "rating-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "rating-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "rating-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "rating-b@example.com")
 
 	rec, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Rated Recipe", IsActive: true}, itBy)
 	require.NoError(t, err)
@@ -352,14 +352,14 @@ func TestIntegrationRatingRecency(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	svc := NewService(pool)
 	mpSvc := mealplan.NewService(pool)
 
-	userA := testenv.MustUser(ctx, t, pool, "recency-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "recency-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "recency-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "recency-b@example.com")
 
 	recent, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Recency Recent", IsActive: true}, itBy)
 	require.NoError(t, err)
@@ -415,7 +415,7 @@ func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	svc := NewService(pool)

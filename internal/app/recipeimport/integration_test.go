@@ -19,7 +19,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
@@ -27,7 +27,7 @@ const itBy = "recipeimport-it"
 
 func newIntegrationStore(t *testing.T, ctx context.Context) (Store, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	return NewStore(pool), pool
@@ -41,7 +41,7 @@ func TestIntegrationStoreTransitions(t *testing.T) {
 	store, pool := newIntegrationStore(t, ctx)
 
 	// recipe_id and approved_by_user_id are real FKs — create real rows.
-	adminID := testenv.MustUser(ctx, t, pool, "transitions-admin@example.com")
+	adminID := testutil.MustUser(ctx, t, pool, "transitions-admin@example.com")
 	recipeSvc := recipe.NewService(pool)
 	existing, err := recipeSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{Name: "IT Transition Recipe", IsActive: true}, nil, nil, itBy)
 	require.NoError(t, err)
@@ -219,7 +219,7 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	defer cleanup()
 
@@ -284,7 +284,7 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 	assert.Equal(t, StatusReady, updated.Status)
 
 	// approved_by_user_id is a real FK — create the admin user.
-	adminID := testenv.MustUser(ctx, t, pool, "import-admin@example.com")
+	adminID := testutil.MustUser(ctx, t, pool, "import-admin@example.com")
 	admin := currentuser.User{UserID: adminID, Email: "import-admin@example.com", IsAdmin: true}
 	rcp, done, err := svc.Approve(ctx, ri.ID, admin)
 	require.NoError(t, err)

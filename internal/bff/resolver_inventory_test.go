@@ -15,7 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 var errInvBoom = errors.New("boom")
@@ -23,11 +23,11 @@ var errInvBoom = errors.New("boom")
 const invTestEmail = "inv@example.com"
 
 func invCtx() context.Context {
-	return testenv.WithAdmin(context.Background(), 7, invTestEmail)
+	return testutil.WithAdmin(context.Background(), 7, invTestEmail)
 }
 
 func invUserCtx() context.Context {
-	return testenv.WithUser(context.Background(), 7, invTestEmail)
+	return testutil.WithUser(context.Background(), 7, invTestEmail)
 }
 
 func invStrPtr(s string) *string { return &s }
@@ -1069,7 +1069,7 @@ func TestResolver_SetItemNutrients(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().GetItemByID(gomock.Any(), int64(11)).Return(pendingMine, nil)
 		r := &Resolver{InventoryService: inv}
-		_, err := r.SetItemNutrients(testenv.WithUser(context.Background(), 99, "other@example.com"), args{
+		_, err := r.SetItemNutrients(testutil.WithUser(context.Background(), 99, "other@example.com"), args{
 			ItemID:  "11",
 			Entries: []itemNutrientEntryInput{{NutrientID: "2", Amount: 1}},
 		})

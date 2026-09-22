@@ -13,7 +13,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -26,7 +26,7 @@ const (
 )
 
 func upCtx() context.Context {
-	return testenv.WithUser(context.Background(), upUserID, upEmail)
+	return testutil.WithUser(context.Background(), upUserID, upEmail)
 }
 
 func TestResolver_UserItems_Happy(t *testing.T) {

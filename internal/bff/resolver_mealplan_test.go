@@ -14,7 +14,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
@@ -28,7 +28,7 @@ const (
 var mealPlanDate = time.Date(2025, 6, 2, 0, 0, 0, 0, time.UTC)
 
 func mealPlanCtx() context.Context {
-	return testenv.WithUser(context.Background(), mealPlanUserID, mealPlanEmail)
+	return testutil.WithUser(context.Background(), mealPlanUserID, mealPlanEmail)
 }
 
 func mealPlanPtrInt64(v int64) *int64 { return &v }

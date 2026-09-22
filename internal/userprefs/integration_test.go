@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const itBy = "integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	return NewService(pool), pool
@@ -79,8 +79,8 @@ func TestIntegrationUserItemLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "prefs-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "prefs-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "prefs-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "prefs-b@example.com")
 	itemID := createTestItem(ctx, t, pool)
 
 	minQty1 := 1.0
@@ -149,8 +149,8 @@ func TestIntegrationUserBottleLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "bottle-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "bottle-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "bottle-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "bottle-b@example.com")
 	bottleID := createTestBottle(ctx, t, pool)
 
 	ub1, err := svc.UpsertUserBottle(ctx, UserBottle{
@@ -211,8 +211,8 @@ func TestIntegrationRecipeFavoriteLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "fav-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "fav-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "fav-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "fav-b@example.com")
 	recipeID := createTestRecipe(ctx, t, pool)
 
 	fav, err := svc.SetRecipeFavorite(ctx, userA, recipeID, true, itBy)
@@ -272,7 +272,7 @@ func TestIntegrationAdjustUserItemQuantityConcurrent(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
 
-	userA := testenv.MustUser(ctx, t, pool, "adjust-concurrent-a@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "adjust-concurrent-a@example.com")
 	itemID := createTestItem(ctx, t, pool)
 
 	_, err := svc.UpsertUserItem(ctx, UserItem{

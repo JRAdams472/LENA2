@@ -1,5 +1,6 @@
-// Package recipeimport runs the server-side recipe OCR pipeline and stores
-// the resulting artifacts in the database.
+// Package recipeimport is an application service: it orchestrates the
+// server-side recipe OCR pipeline across the recipe and inventory domains
+// and stores the resulting artifacts in its own recipe_import schema.
 package recipeimport
 
 import (

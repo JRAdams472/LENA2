@@ -14,7 +14,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
@@ -24,11 +24,11 @@ var errRecBoom = errors.New("boom")
 const recTestEmail = "rec@example.com"
 
 func recCtx() context.Context {
-	return testenv.WithAdmin(context.Background(), 11, recTestEmail)
+	return testutil.WithAdmin(context.Background(), 11, recTestEmail)
 }
 
 func recUserCtx() context.Context {
-	return testenv.WithUser(context.Background(), 11, recTestEmail)
+	return testutil.WithUser(context.Background(), 11, recTestEmail)
 }
 
 func recStrPtr(s string) *string { return &s }

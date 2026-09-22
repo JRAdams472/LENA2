@@ -19,7 +19,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 func TestSanitizeQueryErrors(t *testing.T) {
@@ -75,7 +75,7 @@ func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql",
 		strings.NewReader(`{"query":"{ brands { id name } }"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	c := e.NewContext(req.WithContext(testenv.WithUser(req.Context(), 1, "u@example.com")), rec)
+	c := e.NewContext(req.WithContext(testutil.WithUser(req.Context(), 1, "u@example.com")), rec)
 	require.NoError(t, h(c))
 
 	var resp graphql.Response

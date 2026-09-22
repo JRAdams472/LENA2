@@ -10,7 +10,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
-	"github.com/JRAdams472/LENA2/internal/recipeimport/sqlc"
+	"github.com/JRAdams472/LENA2/internal/app/recipeimport/sqlc"
 )
 
 // Store is the persistence interface for recipe import jobs.

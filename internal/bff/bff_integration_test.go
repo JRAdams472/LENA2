@@ -22,7 +22,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
@@ -41,11 +41,11 @@ func TestBFF_Integration(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	defer cleanup()
 
-	issuer := testenv.NewTestIssuer(t)
+	issuer := testutil.NewTestIssuer(t)
 
 	identitySvc := identity.NewService(pool)
 	authenticator := mustNewAuthenticator(t, AuthConfig{
@@ -87,7 +87,7 @@ func TestBFF_Integration(t *testing.T) {
 	})
 }
 
-func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer, authenticator *Authenticator) {
+func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer, authenticator *Authenticator) {
 	t.Run("no token returns 401", func(t *testing.T) {
 		status, _ := doGraphQL(t, srv, "", `{ me { email } }`, nil)
 		assert.Equal(t, http.StatusUnauthorized, status)
@@ -99,7 +99,7 @@ func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer
 	})
 
 	t.Run("untrusted issuer token returns 401", func(t *testing.T) {
-		otherIssuer := testenv.NewTestIssuer(t)
+		otherIssuer := testutil.NewTestIssuer(t)
 		tok := otherIssuer.Token(t, "other", "other@example.com", "Other")
 		status, _ := doGraphQL(t, srv, tok, `{ me { email } }`, nil)
 		assert.Equal(t, http.StatusUnauthorized, status)
@@ -147,7 +147,7 @@ func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer
 	})
 }
 
-func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testenv.TestIssuer) {
+func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
 	tokA := issuer.Token(t, "user-a", "user-a@example.com", "User A")
 	tokB := issuer.Token(t, "user-b", "user-b@example.com", "User B")
 
@@ -693,7 +693,7 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	defer cleanup()
 
@@ -701,7 +701,7 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 	grocerySvc := grocery.NewService(pool)
 	upSvc := userprefs.NewService(pool)
 
-	userID := testenv.MustUser(ctx, t, pool, "toggle-sync@example.com")
+	userID := testutil.MustUser(ctx, t, pool, "toggle-sync@example.com")
 
 	brand, err := invSvc.CreateBrand(ctx, "IT Toggle Brand", "it")
 	require.NoError(t, err)
