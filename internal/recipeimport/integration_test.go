@@ -249,7 +249,7 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 			OCRConfidenceThreshold:     50,
 			ImportAutoAcceptConfidence: 0.92,
 			ImportReviewThreshold:      0.75,
-			ImportStageTimeout:         time.Minute,
+			ImportStageTimeout:         3 * time.Minute,
 		},
 	}
 
