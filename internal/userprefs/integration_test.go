@@ -233,7 +233,7 @@ func TestIntegrationRecipeFavoriteLifecycle(t *testing.T) {
 
 	var cnt int64
 	err = pool.QueryRow(ctx, `
-		SELECT count(*) FROM recipe.user_recipe_preference WHERE user_id = $1 AND recipe_id = $2
+		SELECT count(*) FROM userprefs.user_recipe_preference WHERE user_id = $1 AND recipe_id = $2
 	`, userA, recipeID).Scan(&cnt)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), cnt)
