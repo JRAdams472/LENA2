@@ -18,7 +18,7 @@ INSERT INTO inventory.user_item (
 VALUES ($1, $2, GREATEST(0::numeric, $4::numeric), 0::numeric, NULL, NULL, NULL, false, $3, $3)
 ON CONFLICT (user_id, item_id)
     DO UPDATE SET
-        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + EXCLUDED.current_qty),
+        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + $4::numeric),
         updated_by  = EXCLUDED.updated_by,
         updated_at  = now()
 RETURNING user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at

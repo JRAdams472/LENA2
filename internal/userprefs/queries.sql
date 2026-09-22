@@ -25,7 +25,7 @@ INSERT INTO inventory.user_item (
 VALUES ($1, $2, GREATEST(0::numeric, sqlc.arg(delta)::numeric), 0::numeric, NULL, NULL, NULL, false, $3, $3)
 ON CONFLICT (user_id, item_id)
     DO UPDATE SET
-        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + EXCLUDED.current_qty),
+        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + sqlc.arg(delta)::numeric),
         updated_by  = EXCLUDED.updated_by,
         updated_at  = now()
 RETURNING *;
