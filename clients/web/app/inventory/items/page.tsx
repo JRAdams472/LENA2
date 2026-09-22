@@ -48,7 +48,7 @@ export default function ItemsPage() {
   }, [search]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setPageNumber(1);
   }, [debouncedSearch, brand, inStock, isFavorite]);
 

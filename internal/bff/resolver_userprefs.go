@@ -6,10 +6,8 @@ import (
 	"time"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
-	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/graph-gophers/graphql-go"
-	"github.com/jackc/pgx/v5"
 )
 
 // UserBottles resolves the current user's wine cellar.
@@ -207,45 +205,26 @@ func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
 		return nil, badInputf("delta cannot be zero")
 	}
 
-	// Shared-pool transaction path.
-	up, ok := r.UserPrefsService.(*userprefs.Service)
-	if r.Pool != nil && ok {
-		var result *userprefs.UserItem
-		if err := dbtx.InTx(ctx, r.Pool, func(tx pgx.Tx) error {
-			upTx := up.WithTx(tx)
-			adjusted, err := upTx.AdjustUserItemQuantity(ctx, u.UserID, itemID, args.Delta, u.Email)
-			if err != nil {
-				return err
-			}
-			if adjusted.CurrentQty == 0 {
-				if err := upTx.DeleteUserItem(ctx, adjusted.UserItemID, u.UserID); err != nil {
-					return err
-				}
-				return nil
-			}
-			result = &adjusted
-			return nil
-		}); err != nil {
-			return nil, err
+	// The adjustment and the conditional delete run inside one unit of
+	// work; the ctx-carried transaction joins the domain service calls.
+	var result *userprefs.UserItem
+	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		adjusted, err := r.UserPrefsService.AdjustUserItemQuantity(ctx, u.UserID, itemID, args.Delta, u.Email)
+		if err != nil {
+			return err
 		}
-		if result == nil {
-			return nil, nil
+		if adjusted.CurrentQty == 0 {
+			return r.UserPrefsService.DeleteUserItem(ctx, adjusted.UserItemID, u.UserID)
 		}
-		return &userItemResolver{inv: r.InventoryService, item: *result}, nil
-	}
-
-	// Fallback for tests without a real transactional pool.
-	adjusted, err := r.UserPrefsService.AdjustUserItemQuantity(ctx, u.UserID, itemID, args.Delta, u.Email)
-	if err != nil {
+		result = &adjusted
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	if adjusted.CurrentQty == 0 {
-		if err := r.UserPrefsService.DeleteUserItem(ctx, adjusted.UserItemID, u.UserID); err != nil {
-			return nil, err
-		}
+	if result == nil {
 		return nil, nil
 	}
-	return &userItemResolver{inv: r.InventoryService, item: adjusted}, nil
+	return &userItemResolver{inv: r.InventoryService, item: *result}, nil
 }
 
 // AdjustUserBottle updates the quantity of a user's wine cellar holding.

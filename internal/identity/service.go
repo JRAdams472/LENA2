@@ -22,14 +22,27 @@ type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
 	tx   pgx.Tx
+	// newQ builds the querier bound to a transaction. Tests inject a
+	// factory returning their mock so InTx still exercises the real
+	// Begin/Commit flow while statements land on the mock.
+	newQ func(pgx.Tx) sqlc.Querier
 	// protected holds lowercased emails that can never be demoted from
 	// admin or deactivated (LENA_PROTECTED_EMAILS).
 	protected map[string]bool
 }
 
 // NewService creates an identity Service using the given connection pool.
+// The querier resolves a ctx-carried transaction first (see
+// dbtx.ContextExecer) so calls made inside a UnitOfWork join that
+// transaction automatically.
 func NewService(pool dbtx.Pool) *Service {
-	return &Service{q: sqlc.New(dbtx.NewTimedExecer(pool, "identity")), pool: pool}
+	return &Service{
+		q:    sqlc.New(dbtx.NewTimedExecer(dbtx.ContextExecer(pool), "identity")),
+		pool: pool,
+		newQ: func(tx pgx.Tx) sqlc.Querier {
+			return sqlc.New(dbtx.NewTimedExecer(tx, "identity"))
+		},
+	}
 }
 
 // WithProtectedEmails returns a copy of the service treating the given
@@ -67,19 +80,28 @@ func splitIssuerAndEmail(s string) (issuer, email string) {
 // hold a transaction can bind a service to it and compose multiple service
 // operations into one atomic unit of work.
 func (s *Service) WithTx(tx pgx.Tx) *Service {
+	newQ := s.newQ
+	if newQ == nil {
+		newQ = func(t pgx.Tx) sqlc.Querier { return sqlc.New(dbtx.NewTimedExecer(t, "identity")) }
+	}
 	c := *s
-	c.q = sqlc.New(dbtx.NewTimedExecer(tx, "identity"))
+	c.q = newQ(tx)
 	c.tx = tx
+	c.newQ = newQ
 	return &c
 }
 
 // InTx runs fn inside a single transaction; the *Service passed to fn is
 // bound to that transaction. The transaction commits when fn returns nil and
-// rolls back otherwise. If the service is already bound to a transaction, fn
-// runs in that transaction instead of starting a new one.
+// rolls back otherwise. If the service is already bound to a transaction, or
+// ctx already carries a UnitOfWork transaction, fn runs in that transaction
+// instead of starting a new one.
 func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
-	if s.tx != nil || s.pool == nil {
+	if s.tx != nil || dbtx.HasTx(ctx) {
 		return fn(s)
+	}
+	if s.pool == nil {
+		return fmt.Errorf("identity: InTx requires a connection pool")
 	}
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }

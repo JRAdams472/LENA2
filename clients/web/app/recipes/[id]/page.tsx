@@ -311,12 +311,15 @@ export default function RecipeDetailPage() {
                 ? "No items for this brand"
                 : "No items found"
             }
-            renderOption={(props, item) => (
-              <li {...props} key={item.itemID}>
-                {item.name}
-                {item.brand ? ` — ${item.brand}` : ""}
-              </li>
-            )}
+            renderOption={(props, item) => {
+              const { key, ...liProps } = props;
+              return (
+                <li key={item.itemID} {...liProps}>
+                  {item.name}
+                  {item.brand ? ` — ${item.brand}` : ""}
+                </li>
+              );
+            }}
             renderInput={(params) => (
               <TextField {...params} label="Item" size="small" />
             )}

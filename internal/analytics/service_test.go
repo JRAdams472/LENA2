@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/analytics/sqlc"
 	"github.com/JRAdams472/LENA2/internal/analytics/sqlc/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx/dbtxtest"
 )
 
 var errBoom = errors.New("boom")
@@ -28,7 +30,11 @@ func newTestService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	q := mock.NewMockQuerier(ctrl)
-	return &Service{q: q}, q
+	return &Service{
+		q:    q,
+		pool: &dbtxtest.Pool{Tx: &dbtxtest.Tx{}},
+		newQ: func(pgx.Tx) sqlc.Querier { return q },
+	}, q
 }
 
 func TestRecordEvent_Validation(t *testing.T) {
