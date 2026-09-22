@@ -1,33 +1,45 @@
-# Future migration: `eslint-plugin-react` → `@eslint-react/eslint-plugin`
+# `eslint-plugin-react` → `@eslint-react/eslint-plugin` migration
 
-## Current state
+**Status: completed** (Phase 4b, `audit-remediation-phase4b`).
 
-- `clients/web` pins `eslint` to `^9.39.5`.
-- `.github/dependabot.yml` ignores `eslint` major-version updates for `clients/web`.
-- `eslint-plugin-react` 7.37.5 is not compatible with ESLint 10; it uses `context.getFilename()`, which ESLint 10 removed.
+## What changed
 
-## Trigger for this migration
+`eslint-config-next` was removed because it hard-depends on
+`eslint-plugin-react`, which does not support ESLint 10
+(`context.getFilename()` was removed; the plugin declares `eslint: ^9.7` max).
+The flat config in `clients/web/eslint.config.mjs` now composes the pieces
+directly:
 
-Migrate when one of the following is true:
+| Before (`eslint-config-next`) | After |
+|---|---|
+| `eslint-plugin-react` | `@eslint-react/eslint-plugin` (`recommended-typescript`, plus `disable-conflict-eslint-plugin-react-hooks`) |
+| `eslint-plugin-react` | `eslint-plugin-react-hooks` (`flat/recommended-latest`) — official hooks rules |
+| `typescript-eslint` recommended | same, direct dep |
+| `@next/eslint-plugin-next` (bundled) | same, direct dep (`recommended` + `core-web-vitals`) |
+| `eslint-plugin-jsx-a11y` | `eslint-plugin-jsx-a11y-x`, registered under the `jsx-a11y` namespace so rule IDs are unchanged |
+| `eslint-plugin-import` | `eslint-plugin-import-x`, registered under the `import` namespace so rule IDs are unchanged |
+| babel parser | `@typescript-eslint/parser` (via `typescript-eslint`); the repo has no babel-only syntax |
+| `eslint` `^9` pin + Dependabot ignore | `eslint` `^10`; ignore removed |
 
-1. `eslint-plugin-react` releases a version that officially supports ESLint 10 and `eslint-config-next` upgrades to it.
-2. We decide to stop using `eslint-config-next` and can fully replace it with a custom flat config.
+The `-x` forks are used **only** for the same rules eslint-config-next
+enabled (`import/no-anonymous-default-export`, the six `jsx-a11y` warns) —
+no broader ruleset was adopted.
 
-## Migration outline
+## Code fixes made during the migration
 
-1. **Remove the `eslint` pin** in `clients/web/package.json` (or let Dependabot bump it after removing the ignore).
-2. **Remove the Dependabot ignore** in `.github/dependabot.yml`.
-3. **Replace or remove `eslint-config-next`** in `clients/web/eslint.config.mjs`.
-   - `eslint-config-next` depends on `eslint-plugin-react`, so you cannot simply swap the plugin underneath it.
-4. **Build a new flat config** using:
-   - `@eslint-react/eslint-plugin` (peer deps allow `eslint: '*'`)
-   - `typescript-eslint`
-   - `eslint-plugin-react-hooks`
-   - `eslint-plugin-jsx-a11y` and `eslint-plugin-import` (if the project wants equivalent coverage)
-5. **Map existing rule overrides** from `react/*` to `@eslint-react/*` rule names; they are not 1:1.
-6. **Run `npm run lint` and `npm run build`** until clean, then update CI.
+- `key` moved before spread props in the MUI `renderOption` callbacks
+  (`@eslint-react/jsx-no-key-after-spread` — real deopt warning).
+- Stale `eslint-disable` comments repointed from
+  `react-hooks/set-state-in-effect` to `@eslint-react/set-state-in-effect`.
+
+## Known new warnings (accepted, not fixed)
+
+`@eslint-react` reports a handful of warnings the old plugin never had —
+`no-context-provider`, `no-use-context`, `naming-convention-ref-name`,
+`no-array-index-key`, `set-state-in-effect`. They are warnings only; fix
+them opportunistically when touching those files.
 
 ## References
 
-- `eslint-plugin-react` peer dependencies at 7.37.5: `eslint: "^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9.7"`
+- `eslint-plugin-react` peer dependencies at 7.37.5: `eslint: "^3 || ... || ^9.7"`
 - `eslint-config-next` 16.3.5 declares `eslint-plugin-react: "^7.37.0"`

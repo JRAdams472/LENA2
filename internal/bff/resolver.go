@@ -36,7 +36,7 @@ type OCRClient interface {
 // Resolver is the root GraphQL resolver. It is the only package that is
 // allowed to orchestrate across domain modules.
 type Resolver struct {
-	Pool                   dbtx.Pool
+	UOW                    dbtx.UnitOfWork
 	AnalyticsService       AnalyticsService
 	GroceryService         GroceryService
 	InventoryService       InventoryService
@@ -67,7 +67,17 @@ const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
 func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, recipeImport RecipeImportService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int, importInbox string) *Resolver {
-	return &Resolver{Pool: pool, AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, ImportInbox: importInbox}
+	return &Resolver{UOW: dbtx.NewUnitOfWork(pool), AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, ImportInbox: importInbox}
+}
+
+// unitOfWork returns the configured UnitOfWork. Resolvers built as literals
+// in tests leave UOW nil and get an inline implementation, so every mutation
+// still follows a single InTx code path.
+func (r *Resolver) unitOfWork() dbtx.UnitOfWork {
+	if r.UOW != nil {
+		return r.UOW
+	}
+	return dbtx.Inline()
 }
 
 func (r *Resolver) ensureBG() {

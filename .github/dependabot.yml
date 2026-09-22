@@ -8,10 +8,6 @@ updates:
     directory: "/clients/web"
     schedule:
       interval: weekly
-    ignore:
-      # eslint-plugin-react does not yet support ESLint 10
-      - dependency-name: "eslint"
-        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

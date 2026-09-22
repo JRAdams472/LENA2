@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx/dbtxtest"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe/sqlc"
 	"github.com/JRAdams472/LENA2/internal/recipe/sqlc/mock"
@@ -33,7 +34,11 @@ func newService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	mq := mock.NewMockQuerier(ctrl)
-	return &Service{q: mq}, mq
+	return &Service{
+		q:    mq,
+		pool: &dbtxtest.Pool{Tx: &dbtxtest.Tx{}},
+		newQ: func(pgx.Tx) sqlc.Querier { return mq },
+	}, mq
 }
 
 func recipeRow() sqlc.RecipeRecipe {

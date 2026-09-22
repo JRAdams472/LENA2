@@ -16,6 +16,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
 var errGrocBoom = errors.New("grocery boom")
@@ -353,20 +354,47 @@ func TestResolver_ToggleGroceryItemChecked_Happy(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	before := grocery.GroceryListItem{GroceryListItemID: 100, GroceryListID: 11, ManualItemName: "Eggs", IsChecked: false}
-	after := before
-	after.IsChecked = true
-
-	gomock.InOrder(
-		g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100), grocUserID).Return(before, nil),
-		g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(after, nil),
-	)
+	after := grocery.GroceryListItem{GroceryListItemID: 100, GroceryListID: 11, ManualItemName: "Eggs", IsChecked: true}
+	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(after, nil)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Equal(t, graphql.ID("100"), res.ID())
 	assert.True(t, res.IsChecked())
+}
+
+func TestResolver_ToggleGroceryItemChecked_PantrySync(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{GroceryService: g, UserPrefsService: up}
+
+	itemID := int64(42)
+	checked := grocery.GroceryListItem{GroceryListItemID: 100, ItemID: &itemID, QuantityNeeded: 3, IsChecked: true}
+	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(checked, nil)
+	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), grocUserID, itemID, 3.0, grocEmail).Return(userprefs.UserItem{}, nil)
+
+	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.True(t, res.IsChecked())
+}
+
+func TestResolver_ToggleGroceryItemChecked_PantrySyncError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{GroceryService: g, UserPrefsService: up}
+
+	itemID := int64(42)
+	checked := grocery.GroceryListItem{GroceryListItemID: 100, ItemID: &itemID, QuantityNeeded: 3, IsChecked: true}
+	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(checked, nil)
+	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), grocUserID, itemID, 3.0, grocEmail).Return(userprefs.UserItem{}, errGrocBoom)
+
+	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
+	assert.Nil(t, res)
+	assert.ErrorIs(t, err, errGrocBoom)
 }
 
 func TestResolver_ToggleGroceryItemChecked_Unauthorized(t *testing.T) {
@@ -376,28 +404,12 @@ func TestResolver_ToggleGroceryItemChecked_Unauthorized(t *testing.T) {
 	assert.EqualError(t, err, "unauthorized")
 }
 
-func TestResolver_ToggleGroceryItemChecked_ServiceError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	g := mock.NewMockGroceryService(ctrl)
-	r := &Resolver{GroceryService: g}
-
-	g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100), grocUserID).Return(grocery.GroceryListItem{}, errGrocBoom)
-
-	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
-	assert.Nil(t, res)
-	assert.ErrorIs(t, err, errGrocBoom)
-}
-
 func TestResolver_ToggleGroceryItemChecked_UpdateError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	before := grocery.GroceryListItem{GroceryListItemID: 100, IsChecked: true}
-	after := before
-	after.IsChecked = false
-	g.EXPECT().GetGroceryListItemByID(gomock.Any(), int64(100), grocUserID).Return(before, nil)
-	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(after, errGrocBoom)
+	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(grocery.GroceryListItem{}, errGrocBoom)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	assert.Nil(t, res)

@@ -17,6 +17,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory/sqlc"
 	"github.com/JRAdams472/LENA2/internal/inventory/sqlc/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx/dbtxtest"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
@@ -26,7 +27,11 @@ func newTestService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	q := mock.NewMockQuerier(ctrl)
-	return &Service{q: q}, q
+	return &Service{
+		q:    q,
+		pool: &dbtxtest.Pool{Tx: &dbtxtest.Tx{}},
+		newQ: func(pgx.Tx) sqlc.Querier { return q },
+	}, q
 }
 
 func TestCreateBrand(t *testing.T) {
