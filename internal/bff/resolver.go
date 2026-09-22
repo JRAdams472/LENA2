@@ -274,6 +274,16 @@ func clamp(v, lo, hi int32) int32 {
 	return v
 }
 
+func clampFloat(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 func timeToGraphQL(t *time.Time) *graphql.Time {
 	if t == nil {
 		return nil

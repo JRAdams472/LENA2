@@ -328,6 +328,23 @@ func (s *Service) DeleteMealSlotItem(ctx context.Context, slotItemID, userID int
 	return s.q.DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: slotItemID, UserID: userID})
 }
 
+// LastPlannedDates returns, for one user, the most recent plan week in
+// which each recipe appeared. Recipes absent from the map were never
+// planned. The BFF combines this with recipe ratings for recency scoring.
+func (s *Service) LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error) {
+	rows, err := s.q.ListLastPlannedDates(ctx, sqlc.ListLastPlannedDatesParams{UserID: userID, RecipeIds: recipeIDs})
+	if err != nil {
+		return nil, fmt.Errorf("list last planned dates: %w", err)
+	}
+	out := make(map[int64]time.Time, len(rows))
+	for _, r := range rows {
+		if r.RecipeID.Valid {
+			out[r.RecipeID.Int64] = r.LastPlanned.Time
+		}
+	}
+	return out, nil
+}
+
 func toMealPlan(row sqlc.MealplanMealPlan) MealPlan {
 	return MealPlan{
 		MealPlanID:         row.MealPlanID,

@@ -12,8 +12,10 @@ package mock
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	analytics "github.com/JRAdams472/LENA2/internal/analytics"
+	recipeimport "github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	grocery "github.com/JRAdams472/LENA2/internal/grocery"
 	identity "github.com/JRAdams472/LENA2/internal/identity"
 	inventory "github.com/JRAdams472/LENA2/internal/inventory"
@@ -21,7 +23,6 @@ import (
 	ocrimport "github.com/JRAdams472/LENA2/internal/ocrimport"
 	currentuser "github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	recipe "github.com/JRAdams472/LENA2/internal/recipe"
-	recipeimport "github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	userprefs "github.com/JRAdams472/LENA2/internal/userprefs"
 	wine "github.com/JRAdams472/LENA2/internal/wine"
 	gomock "go.uber.org/mock/gomock"
@@ -1282,6 +1283,21 @@ func (mr *MockMealPlanServiceMockRecorder) GetMealPlanByID(ctx, mealPlanID, user
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealPlanByID", reflect.TypeOf((*MockMealPlanService)(nil).GetMealPlanByID), ctx, mealPlanID, userID)
 }
 
+// LastPlannedDates mocks base method.
+func (m *MockMealPlanService) LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LastPlannedDates", ctx, userID, recipeIDs)
+	ret0, _ := ret[0].(map[int64]time.Time)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LastPlannedDates indicates an expected call of LastPlannedDates.
+func (mr *MockMealPlanServiceMockRecorder) LastPlannedDates(ctx, userID, recipeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastPlannedDates", reflect.TypeOf((*MockMealPlanService)(nil).LastPlannedDates), ctx, userID, recipeIDs)
+}
+
 // ListMealPlans mocks base method.
 func (m *MockMealPlanService) ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error) {
 	m.ctrl.T.Helper()
@@ -1557,19 +1573,19 @@ func (mr *MockRecipeServiceMockRecorder) GetUserRating(ctx, userID, recipeID any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserRating", reflect.TypeOf((*MockRecipeService)(nil).GetUserRating), ctx, userID, recipeID)
 }
 
-// ListRatingRecencySuggestions mocks base method.
-func (m *MockRecipeService) ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]recipe.RatingRecencySuggestion, error) {
+// ListRatedAtLeast mocks base method.
+func (m *MockRecipeService) ListRatedAtLeast(ctx context.Context, userID int64, minRating int16) ([]recipe.RecipeRating, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListRatingRecencySuggestions", ctx, userID, minRating, limit)
-	ret0, _ := ret[0].([]recipe.RatingRecencySuggestion)
+	ret := m.ctrl.Call(m, "ListRatedAtLeast", ctx, userID, minRating)
+	ret0, _ := ret[0].([]recipe.RecipeRating)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListRatingRecencySuggestions indicates an expected call of ListRatingRecencySuggestions.
-func (mr *MockRecipeServiceMockRecorder) ListRatingRecencySuggestions(ctx, userID, minRating, limit any) *gomock.Call {
+// ListRatedAtLeast indicates an expected call of ListRatedAtLeast.
+func (mr *MockRecipeServiceMockRecorder) ListRatedAtLeast(ctx, userID, minRating any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingRecencySuggestions", reflect.TypeOf((*MockRecipeService)(nil).ListRatingRecencySuggestions), ctx, userID, minRating, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatedAtLeast", reflect.TypeOf((*MockRecipeService)(nil).ListRatedAtLeast), ctx, userID, minRating)
 }
 
 // ListRatingSummaries mocks base method.

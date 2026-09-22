@@ -18,6 +18,9 @@ type Querier interface {
 	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error
 	GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams) (MealplanMealPlan, error)
 	GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams) (MealplanMealSlot, error)
+	// For one user: the most recent plan week in which each recipe appeared.
+	// The BFF combines this with recipe ratings for recency scoring.
+	ListLastPlannedDates(ctx context.Context, arg ListLastPlannedDatesParams) ([]ListLastPlannedDatesRow, error)
 	ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([]MealplanMealPlan, error)
 	ListMealSlotItems(ctx context.Context, arg ListMealSlotItemsParams) ([]MealplanMealSlotItem, error)
 	ListMealSlotItemsByPlan(ctx context.Context, arg ListMealSlotItemsByPlanParams) ([]MealplanMealSlotItem, error)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
@@ -403,22 +404,55 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	if err != nil {
 		return nil, err
 	}
-	recency, err := r.RecipeService.ListRatingRecencySuggestions(ctx, u.UserID, ratingRecencyMinRating, limit)
+	// Recency scoring: recipe ratings + meal-plan last-used dates are read
+	// from their own domains and combined here (A1-01 — SQL never crosses
+	// schemas). Recipes never planned score 1; the score decays linearly to
+	// 0 over 180 days since the last plan week.
+	rated, err := r.RecipeService.ListRatedAtLeast(ctx, u.UserID, ratingRecencyMinRating)
 	if err != nil {
 		return nil, err
+	}
+	ratedIDs := distinctIDs(rated, func(rr recipe.RecipeRating) *int64 { return &rr.RecipeID })
+	lastPlanned, err := r.MealPlanService.LastPlannedDates(ctx, u.UserID, ratedIDs)
+	if err != nil {
+		return nil, err
+	}
+	const recencyWindowDays = 180.0
+	today := time.Now()
+	recency := make(map[int64]float64, len(rated))
+	for _, rr := range rated {
+		days := recencyWindowDays
+		if last, ok := lastPlanned[rr.RecipeID]; ok {
+			days = today.Sub(last).Hours() / 24
+		}
+		recency[rr.RecipeID] = clampFloat(days/recencyWindowDays, 0, 1)
+	}
+	// Keep the best `limit` recency candidates — the SQL no longer limits.
+	recencyIDs := make([]int64, 0, len(recency))
+	for id := range recency {
+		recencyIDs = append(recencyIDs, id)
+	}
+	slices.SortFunc(recencyIDs, func(a, b int64) int {
+		if recency[a] != recency[b] {
+			return cmp.Compare(recency[b], recency[a])
+		}
+		return cmp.Compare(a, b)
+	})
+	if len(recencyIDs) > int(limit) {
+		recencyIDs = recencyIDs[:int(limit)]
 	}
 
 	type scoredRec struct {
 		reason string
 		score  float64
 	}
-	best := make(map[int64]scoredRec, len(overlap)+len(recency))
+	best := make(map[int64]scoredRec, len(overlap)+len(recencyIDs))
 	for _, o := range overlap {
 		best[o.RecipeID] = scoredRec{reason: analytics.ReasonIngredientOverlap, score: o.Score}
 	}
-	for _, s := range recency {
-		if cur, ok := best[s.RecipeID]; !ok || s.Score > cur.score {
-			best[s.RecipeID] = scoredRec{reason: analytics.ReasonRatingRecency, score: s.Score}
+	for _, recipeID := range recencyIDs {
+		if cur, ok := best[recipeID]; !ok || recency[recipeID] > cur.score {
+			best[recipeID] = scoredRec{reason: analytics.ReasonRatingRecency, score: recency[recipeID]}
 		}
 	}
 	recipeIDs := make([]int64, 0, len(best))

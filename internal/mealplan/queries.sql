@@ -110,3 +110,12 @@ DELETE FROM mealplan.meal_slot_item msi
 USING mealplan.meal_slot ms, mealplan.meal_plan mp
 WHERE msi.slot_id = ms.slot_id AND ms.meal_plan_id = mp.meal_plan_id
   AND msi.slot_item_id = $1 AND mp.user_id = $2;
+
+-- name: ListLastPlannedDates :many
+-- For one user: the most recent plan week in which each recipe appeared.
+-- The BFF combines this with recipe ratings for recency scoring.
+SELECT ms.recipe_id, MAX(mp.week_start_date)::date AS last_planned
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
+WHERE mp.user_id = $1 AND ms.recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
+GROUP BY ms.recipe_id;

@@ -388,26 +388,34 @@ func TestIntegrationRatingRecency(t *testing.T) {
 	}, userA, itBy)
 	require.NoError(t, err)
 
-	got, err := svc.ListRatingRecencySuggestions(ctx, userA, 4, 10)
+	// recipe owns the ratings read; mealplan owns last-planned dates. The
+	// BFF combines them for the final recency score.
+	rated, err := svc.ListRatedAtLeast(ctx, userA, 4)
 	require.NoError(t, err)
-	require.Len(t, got, 2)
-	// Never-planned sorts first with score 1.
-	assert.Equal(t, stale.RecipeID, got[0].RecipeID)
-	assert.InDelta(t, 1.0, got[0].Score, 1e-9)
-	// Planned this week: near-zero recency score.
-	assert.Equal(t, recent.RecipeID, got[1].RecipeID)
-	assert.Less(t, got[1].Score, 0.05)
-
-	// Ratings below the threshold are excluded (low is rated 2).
-	for _, s := range got {
-		assert.NotEqual(t, low.RecipeID, s.RecipeID)
+	require.Len(t, rated, 2)
+	ratedIDs := map[int64]bool{}
+	for _, rr := range rated {
+		ratedIDs[rr.RecipeID] = true
 	}
+	assert.True(t, ratedIDs[recent.RecipeID])
+	assert.True(t, ratedIDs[stale.RecipeID])
+	assert.False(t, ratedIDs[low.RecipeID], "ratings below the threshold are excluded")
 
-	// Suggestions are scoped per user: userB only sees `stale`.
-	gotB, err := svc.ListRatingRecencySuggestions(ctx, userB, 4, 10)
+	last, err := mpSvc.LastPlannedDates(ctx, userA, []int64{recent.RecipeID, stale.RecipeID, low.RecipeID})
 	require.NoError(t, err)
-	require.Len(t, gotB, 1)
-	assert.Equal(t, stale.RecipeID, gotB[0].RecipeID)
+	require.Contains(t, last, recent.RecipeID)
+	assert.WithinDuration(t, time.Now(), last[recent.RecipeID], 7*24*time.Hour)
+	assert.NotContains(t, last, stale.RecipeID, "never-planned recipes have no entry")
+
+	// Ratings and last-planned dates are scoped per user: userB's plan
+	// history is empty even though they rated `stale`.
+	ratedB, err := svc.ListRatedAtLeast(ctx, userB, 4)
+	require.NoError(t, err)
+	require.Len(t, ratedB, 1)
+	assert.Equal(t, stale.RecipeID, ratedB[0].RecipeID)
+	lastB, err := mpSvc.LastPlannedDates(ctx, userB, []int64{stale.RecipeID})
+	require.NoError(t, err)
+	assert.Empty(t, lastB)
 }
 
 func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
@@ -14,8 +15,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
@@ -372,16 +373,21 @@ func recBoolPtr(b bool) *bool { return &b }
 func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 	t.Run("merges, dedupes, and sorts by score", func(t *testing.T) {
 		rec, _, up := newRecMocks(t)
+		mp := mock.NewMockMealPlanService(gomock.NewController(t))
 		an := mock.NewMockAnalyticsService(gomock.NewController(t))
 		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), analytics.ReasonIngredientOverlap, int32(10)).
 			Return([]analytics.Recommendation{
 				{RecipeID: 7, Reason: analytics.ReasonIngredientOverlap, Score: 0.9},
 			}, nil)
-		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), int64(11), int16(ratingRecencyMinRating), int32(10)).
-			Return([]recipe.RatingRecencySuggestion{
-				{RecipeID: 8, Score: 1},
-				{RecipeID: 7, Score: 0.5},
+		rec.EXPECT().ListRatedAtLeast(gomock.Any(), int64(11), int16(ratingRecencyMinRating)).
+			Return([]recipe.RecipeRating{
+				{UserID: 11, RecipeID: 8, Rating: 5},
+				{UserID: 11, RecipeID: 7, Rating: 4},
 			}, nil)
+		// 8 was never planned (score 1); 7 was last planned ~90 days ago
+		// (score ~0.5, below its overlap 0.9).
+		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).
+			Return(map[int64]time.Time{7: time.Now().AddDate(0, 0, -90)}, nil)
 		// Score order: 8 (1.0) before 7 (0.9); 7 keeps its overlap reason.
 		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{8, 7}).Return([]recipe.Recipe{
 			{RecipeID: 7, Name: "A"},
@@ -395,7 +401,7 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		an.EXPECT().GetUserSelectionCounts(gomock.Any(), int64(11), analytics.EntityRecipe, []int64{8, 7}).Return(nil, nil)
 		an.EXPECT().GetGlobalSelectionCounts(gomock.Any(), analytics.EntityRecipe, []int64{8, 7}).Return(nil, nil)
 
-		r := &Resolver{RecipeService: rec, UserPrefsService: up, AnalyticsService: an}
+		r := &Resolver{RecipeService: rec, MealPlanService: mp, UserPrefsService: up, AnalyticsService: an}
 		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, res, 2)
@@ -409,13 +415,17 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 
 	t.Run("recency wins when its score is higher", func(t *testing.T) {
 		rec, _, up := newRecMocks(t)
+		mp := mock.NewMockMealPlanService(gomock.NewController(t))
 		an := mock.NewMockAnalyticsService(gomock.NewController(t))
 		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).
 			Return([]analytics.Recommendation{
 				{RecipeID: 7, Reason: analytics.ReasonIngredientOverlap, Score: 0.4},
 			}, nil)
-		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), int64(11), int16(ratingRecencyMinRating), int32(10)).
-			Return([]recipe.RatingRecencySuggestion{{RecipeID: 7, Score: 0.8}}, nil)
+		rec.EXPECT().ListRatedAtLeast(gomock.Any(), int64(11), int16(ratingRecencyMinRating)).
+			Return([]recipe.RecipeRating{{UserID: 11, RecipeID: 7, Rating: 5}}, nil)
+		// Last planned ~90 days ago: recency score ~0.5 beats overlap 0.4.
+		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).
+			Return(map[int64]time.Time{7: time.Now().AddDate(0, 0, -90)}, nil)
 		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{7}).Return([]recipe.Recipe{{RecipeID: 7, Name: "A"}}, nil)
 		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
 		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
@@ -425,21 +435,23 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		an.EXPECT().GetUserSelectionCounts(gomock.Any(), int64(11), analytics.EntityRecipe, []int64{7}).Return(nil, nil)
 		an.EXPECT().GetGlobalSelectionCounts(gomock.Any(), analytics.EntityRecipe, []int64{7}).Return(nil, nil)
 
-		r := &Resolver{RecipeService: rec, UserPrefsService: up, AnalyticsService: an}
+		r := &Resolver{RecipeService: rec, MealPlanService: mp, UserPrefsService: up, AnalyticsService: an}
 		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, res, 1)
 		assert.Equal(t, analytics.ReasonRatingRecency, res[0].Reason())
-		assert.InDelta(t, 0.8, res[0].Score(), 1e-9)
+		assert.InDelta(t, 0.5, res[0].Score(), 0.01)
 	})
 
 	t.Run("empty when nothing suggests", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
+		mp := mock.NewMockMealPlanService(gomock.NewController(t))
 		an := mock.NewMockAnalyticsService(gomock.NewController(t))
 		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).Return(nil, nil)
-		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), int64(11), int16(ratingRecencyMinRating), int32(10)).Return(nil, nil)
+		rec.EXPECT().ListRatedAtLeast(gomock.Any(), int64(11), int16(ratingRecencyMinRating)).Return(nil, nil)
+		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).Return(map[int64]time.Time{}, nil)
 
-		r := &Resolver{RecipeService: rec, AnalyticsService: an}
+		r := &Resolver{RecipeService: rec, MealPlanService: mp, AnalyticsService: an}
 		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
 		require.NoError(t, err)
 		assert.Empty(t, res)
@@ -465,7 +477,7 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
 		an := mock.NewMockAnalyticsService(gomock.NewController(t))
 		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).Return(nil, nil)
-		rec.EXPECT().ListRatingRecencySuggestions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errRecBoom)
+		rec.EXPECT().ListRatedAtLeast(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errRecBoom)
 
 		r := &Resolver{RecipeService: rec, AnalyticsService: an}
 		_, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})

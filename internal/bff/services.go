@@ -2,8 +2,10 @@ package bff
 
 import (
 	"context"
+	"time"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
@@ -11,7 +13,6 @@ import (
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
-	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -110,6 +111,7 @@ type MealPlanService interface {
 	ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]mealplan.MealSlotItem, error)
 	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlotItem, error)
 	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlotItem, error)
+	LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error)
 	CreateMealPlan(ctx context.Context, arg mealplan.MealPlan, by string) (mealplan.MealPlan, error)
 	UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error
 	DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error
@@ -145,7 +147,7 @@ type RecipeService interface {
 	GetUserRating(ctx context.Context, userID, recipeID int64) (recipe.RecipeRating, error)
 	ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]recipe.RecipeRating, error)
 	ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error)
-	ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]recipe.RatingRecencySuggestion, error)
+	ListRatedAtLeast(ctx context.Context, userID int64, minRating int16) ([]recipe.RecipeRating, error)
 }
 
 var _ RecipeService = (*recipe.Service)(nil)
