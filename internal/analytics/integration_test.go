@@ -11,8 +11,8 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const itBy = "analytics-integration-test"

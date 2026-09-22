@@ -19,8 +19,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
-	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const itBy = "recipeimport-it"

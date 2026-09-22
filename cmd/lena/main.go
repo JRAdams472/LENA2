@@ -25,6 +25,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -38,7 +39,6 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/platform/telemetry"
 	"github.com/JRAdams472/LENA2/internal/recipe"
-	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
