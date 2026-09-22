@@ -157,6 +157,7 @@ type RecipeImportService interface {
 	List(ctx context.Context, status string, page, pageSize int32) ([]recipeimport.RecipeImport, error)
 	Count(ctx context.Context, status string) (int64, error)
 	ListPending(ctx context.Context, page, pageSize int32) ([]recipeimport.RecipeImport, error)
+	CountPending(ctx context.Context) (int64, error)
 	UpdateReview(ctx context.Context, id int64, review *ocrimport.ReviewRecipe, updatedBy string) (*recipeimport.RecipeImport, error)
 	Approve(ctx context.Context, id int64, approvedBy currentuser.User) (*recipe.Recipe, *recipeimport.RecipeImport, error)
 	Reject(ctx context.Context, id int64) error

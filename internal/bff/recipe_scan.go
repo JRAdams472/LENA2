@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,9 +53,13 @@ func (r *Resolver) SubmitRecipeScan(ctx context.Context, args struct {
 		return nil, badInputf("recipe scan exceeds maximum size of %d bytes", maxBytes)
 	}
 
-	ext := extensionForMediaType(mediaType)
+	sniffed, err := sniffUpload(decoded, mediaType)
+	if err != nil {
+		return nil, badInputf("recipe scan rejected: %v", err)
+	}
+	ext := extensionForMediaType(sniffed)
 	if ext == "" {
-		return nil, badInputf("unsupported media type %q", mediaType)
+		return nil, badInputf("unsupported media type %q", sniffed)
 	}
 
 	// Sanitize the target directory so files are written only inside the inbox.
@@ -77,6 +82,10 @@ func (r *Resolver) SubmitRecipeScan(ctx context.Context, args struct {
 	submittedBy := &u.UserID
 	ri, err := r.RecipeImportService.Create(ctx, filename, path, sourceHash, submittedBy, u.Email)
 	if err != nil {
+		// Do not leave an orphaned inbox file when the job row is not created.
+		if rmErr := os.Remove(path); rmErr != nil {
+			slog.Default().Warn("remove orphaned recipe scan failed", "path", path, "error", rmErr)
+		}
 		return nil, fmt.Errorf("create recipe import: %w", err)
 	}
 	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService}, nil

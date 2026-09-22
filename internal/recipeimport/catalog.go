@@ -44,7 +44,9 @@ func newCatalogSnapshot(ctx context.Context, inv InventoryReader) (*ocrimport.Ca
 		return nil, fmt.Errorf("list units: %w", err)
 	}
 
-	const pageSize int32 = 100
+	// The catalog is tens of thousands of rows; large pages keep the
+	// snapshot build inside the mapping stage timeout.
+	const pageSize int32 = 1000
 
 	totalItems, err := inv.CountItems(ctx, 0)
 	if err != nil {

@@ -11,6 +11,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimRecipeImport = `-- name: ClaimRecipeImport :one
+UPDATE recipe.recipe_import
+SET status     = 'processing',
+    updated_at = now()
+WHERE recipe_import_id = $1
+  AND status = ANY($2::varchar[])
+RETURNING recipe_import_id, submitted_by_user_id, source_filename, source_path, source_hash, ocr_text, ocr_json, draft_json, review_json, profanity_flag, profanity_reason, status, recipe_id, error_message, created_by, updated_by, created_at, updated_at, approved_by_user_id, approved_at
+`
+
+type ClaimRecipeImportParams struct {
+	RecipeImportID int64    `json:"recipe_import_id"`
+	Column2        []string `json:"column_2"`
+}
+
+func (q *Queries) ClaimRecipeImport(ctx context.Context, arg ClaimRecipeImportParams) (RecipeRecipeImport, error) {
+	row := q.db.QueryRow(ctx, claimRecipeImport, arg.RecipeImportID, arg.Column2)
+	var i RecipeRecipeImport
+	err := row.Scan(
+		&i.RecipeImportID,
+		&i.SubmittedByUserID,
+		&i.SourceFilename,
+		&i.SourcePath,
+		&i.SourceHash,
+		&i.OcrText,
+		&i.OcrJson,
+		&i.DraftJson,
+		&i.ReviewJson,
+		&i.ProfanityFlag,
+		&i.ProfanityReason,
+		&i.Status,
+		&i.RecipeID,
+		&i.ErrorMessage,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
+	)
+	return i, err
+}
+
 const countRecipeImports = `-- name: CountRecipeImports :one
 SELECT COUNT(*)
 FROM recipe.recipe_import
@@ -19,6 +61,19 @@ WHERE ($1::varchar = '' OR status = $1)
 
 func (q *Queries) CountRecipeImports(ctx context.Context, dollar_1 string) (int64, error) {
 	row := q.db.QueryRow(ctx, countRecipeImports, dollar_1)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countRecipeImportsByStatuses = `-- name: CountRecipeImportsByStatuses :one
+SELECT COUNT(*)
+FROM recipe.recipe_import
+WHERE status = ANY($1::varchar[])
+`
+
+func (q *Queries) CountRecipeImportsByStatuses(ctx context.Context, dollar_1 []string) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecipeImportsByStatuses, dollar_1)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -118,6 +173,33 @@ func (q *Queries) GetRecipeImport(ctx context.Context, recipeImportID int64) (Re
 	return i, err
 }
 
+const listClaimableRecipeImportIDs = `-- name: ListClaimableRecipeImportIDs :many
+SELECT recipe_import_id
+FROM recipe.recipe_import
+WHERE status = ANY($1::varchar[])
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListClaimableRecipeImportIDs(ctx context.Context, dollar_1 []string) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listClaimableRecipeImportIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var recipe_import_id int64
+		if err := rows.Scan(&recipe_import_id); err != nil {
+			return nil, err
+		}
+		items = append(items, recipe_import_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecipeImports = `-- name: ListRecipeImports :many
 SELECT recipe_import_id, submitted_by_user_id, source_filename, source_path, source_hash, ocr_text, ocr_json, draft_json, review_json, profanity_flag, profanity_reason, status, recipe_id, error_message, created_by, updated_by, created_at, updated_at, approved_by_user_id, approved_at
 FROM recipe.recipe_import
@@ -173,25 +255,85 @@ func (q *Queries) ListRecipeImports(ctx context.Context, arg ListRecipeImportsPa
 	return items, nil
 }
 
-const markRecipeImportFailed = `-- name: MarkRecipeImportFailed :exec
+const listRecipeImportsByStatuses = `-- name: ListRecipeImportsByStatuses :many
+SELECT recipe_import_id, submitted_by_user_id, source_filename, source_path, source_hash, ocr_text, ocr_json, draft_json, review_json, profanity_flag, profanity_reason, status, recipe_id, error_message, created_by, updated_by, created_at, updated_at, approved_by_user_id, approved_at
+FROM recipe.recipe_import
+WHERE status = ANY($1::varchar[])
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListRecipeImportsByStatusesParams struct {
+	Column1 []string `json:"column_1"`
+	Limit   int32    `json:"limit"`
+	Offset  int32    `json:"offset"`
+}
+
+func (q *Queries) ListRecipeImportsByStatuses(ctx context.Context, arg ListRecipeImportsByStatusesParams) ([]RecipeRecipeImport, error) {
+	rows, err := q.db.Query(ctx, listRecipeImportsByStatuses, arg.Column1, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeImport{}
+	for rows.Next() {
+		var i RecipeRecipeImport
+		if err := rows.Scan(
+			&i.RecipeImportID,
+			&i.SubmittedByUserID,
+			&i.SourceFilename,
+			&i.SourcePath,
+			&i.SourceHash,
+			&i.OcrText,
+			&i.OcrJson,
+			&i.DraftJson,
+			&i.ReviewJson,
+			&i.ProfanityFlag,
+			&i.ProfanityReason,
+			&i.Status,
+			&i.RecipeID,
+			&i.ErrorMessage,
+			&i.CreatedBy,
+			&i.UpdatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markRecipeImportFailed = `-- name: MarkRecipeImportFailed :execrows
 UPDATE recipe.recipe_import
 SET status        = 'failed',
     error_message = $2,
     updated_at    = now()
 WHERE recipe_import_id = $1
+  AND status = ANY($3::varchar[])
 `
 
 type MarkRecipeImportFailedParams struct {
 	RecipeImportID int64       `json:"recipe_import_id"`
 	ErrorMessage   pgtype.Text `json:"error_message"`
+	Column3        []string    `json:"column_3"`
 }
 
-func (q *Queries) MarkRecipeImportFailed(ctx context.Context, arg MarkRecipeImportFailedParams) error {
-	_, err := q.db.Exec(ctx, markRecipeImportFailed, arg.RecipeImportID, arg.ErrorMessage)
-	return err
+func (q *Queries) MarkRecipeImportFailed(ctx context.Context, arg MarkRecipeImportFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRecipeImportFailed, arg.RecipeImportID, arg.ErrorMessage, arg.Column3)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const markRecipeImportProfanity = `-- name: MarkRecipeImportProfanity :exec
+const markRecipeImportProfanity = `-- name: MarkRecipeImportProfanity :execrows
 UPDATE recipe.recipe_import
 SET profanity_flag = TRUE,
     profanity_reason = $2,
@@ -199,19 +341,36 @@ SET profanity_flag = TRUE,
     error_message    = NULL,
     updated_at       = now()
 WHERE recipe_import_id = $1
+  AND status = ANY($3::varchar[])
 `
 
 type MarkRecipeImportProfanityParams struct {
 	RecipeImportID  int64       `json:"recipe_import_id"`
 	ProfanityReason pgtype.Text `json:"profanity_reason"`
+	Column3         []string    `json:"column_3"`
 }
 
-func (q *Queries) MarkRecipeImportProfanity(ctx context.Context, arg MarkRecipeImportProfanityParams) error {
-	_, err := q.db.Exec(ctx, markRecipeImportProfanity, arg.RecipeImportID, arg.ProfanityReason)
+func (q *Queries) MarkRecipeImportProfanity(ctx context.Context, arg MarkRecipeImportProfanityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRecipeImportProfanity, arg.RecipeImportID, arg.ProfanityReason, arg.Column3)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const resetProcessingRecipeImports = `-- name: ResetProcessingRecipeImports :exec
+UPDATE recipe.recipe_import
+SET status     = 'pending',
+    updated_at = now()
+WHERE status = 'processing'
+`
+
+func (q *Queries) ResetProcessingRecipeImports(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, resetProcessingRecipeImports)
 	return err
 }
 
-const setRecipeImportPending = `-- name: SetRecipeImportPending :exec
+const setRecipeImportPending = `-- name: SetRecipeImportPending :execrows
 UPDATE recipe.recipe_import
 SET status         = 'pending',
     error_message  = NULL,
@@ -219,14 +378,23 @@ SET status         = 'pending',
     profanity_reason = NULL,
     updated_at     = now()
 WHERE recipe_import_id = $1
+  AND status = ANY($2::varchar[])
 `
 
-func (q *Queries) SetRecipeImportPending(ctx context.Context, recipeImportID int64) error {
-	_, err := q.db.Exec(ctx, setRecipeImportPending, recipeImportID)
-	return err
+type SetRecipeImportPendingParams struct {
+	RecipeImportID int64    `json:"recipe_import_id"`
+	Column2        []string `json:"column_2"`
 }
 
-const setRecipeImportPersisted = `-- name: SetRecipeImportPersisted :exec
+func (q *Queries) SetRecipeImportPending(ctx context.Context, arg SetRecipeImportPendingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setRecipeImportPending, arg.RecipeImportID, arg.Column2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setRecipeImportPersisted = `-- name: SetRecipeImportPersisted :execrows
 UPDATE recipe.recipe_import
 SET status              = 'persisted',
     recipe_id             = $2,
@@ -234,38 +402,58 @@ SET status              = 'persisted',
     approved_at           = now(),
     updated_at            = now()
 WHERE recipe_import_id = $1
+  AND status = ANY($4::varchar[])
 `
 
 type SetRecipeImportPersistedParams struct {
 	RecipeImportID   int64       `json:"recipe_import_id"`
 	RecipeID         pgtype.Int8 `json:"recipe_id"`
 	ApprovedByUserID pgtype.Int8 `json:"approved_by_user_id"`
+	Column4          []string    `json:"column_4"`
 }
 
-func (q *Queries) SetRecipeImportPersisted(ctx context.Context, arg SetRecipeImportPersistedParams) error {
-	_, err := q.db.Exec(ctx, setRecipeImportPersisted, arg.RecipeImportID, arg.RecipeID, arg.ApprovedByUserID)
-	return err
+func (q *Queries) SetRecipeImportPersisted(ctx context.Context, arg SetRecipeImportPersistedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setRecipeImportPersisted,
+		arg.RecipeImportID,
+		arg.RecipeID,
+		arg.ApprovedByUserID,
+		arg.Column4,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const setRecipeImportRejected = `-- name: SetRecipeImportRejected :exec
+const setRecipeImportRejected = `-- name: SetRecipeImportRejected :execrows
 UPDATE recipe.recipe_import
 SET status       = 'rejected',
     updated_at   = now(),
     error_message = NULL
 WHERE recipe_import_id = $1
+  AND status = ANY($2::varchar[])
 `
 
-func (q *Queries) SetRecipeImportRejected(ctx context.Context, recipeImportID int64) error {
-	_, err := q.db.Exec(ctx, setRecipeImportRejected, recipeImportID)
-	return err
+type SetRecipeImportRejectedParams struct {
+	RecipeImportID int64    `json:"recipe_import_id"`
+	Column2        []string `json:"column_2"`
 }
 
-const updateRecipeImportDraft = `-- name: UpdateRecipeImportDraft :exec
+func (q *Queries) SetRecipeImportRejected(ctx context.Context, arg SetRecipeImportRejectedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setRecipeImportRejected, arg.RecipeImportID, arg.Column2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateRecipeImportDraft = `-- name: UpdateRecipeImportDraft :execrows
 UPDATE recipe.recipe_import
 SET draft_json   = $2,
     status       = 'drafted',
     updated_at   = now()
 WHERE recipe_import_id = $1
+  AND status = 'ocred'
 `
 
 type UpdateRecipeImportDraftParams struct {
@@ -273,18 +461,22 @@ type UpdateRecipeImportDraftParams struct {
 	DraftJson      []byte `json:"draft_json"`
 }
 
-func (q *Queries) UpdateRecipeImportDraft(ctx context.Context, arg UpdateRecipeImportDraftParams) error {
-	_, err := q.db.Exec(ctx, updateRecipeImportDraft, arg.RecipeImportID, arg.DraftJson)
-	return err
+func (q *Queries) UpdateRecipeImportDraft(ctx context.Context, arg UpdateRecipeImportDraftParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRecipeImportDraft, arg.RecipeImportID, arg.DraftJson)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateRecipeImportOCR = `-- name: UpdateRecipeImportOCR :exec
+const updateRecipeImportOCR = `-- name: UpdateRecipeImportOCR :execrows
 UPDATE recipe.recipe_import
 SET ocr_text    = $2,
     ocr_json    = $3,
     status      = 'ocred',
     updated_at  = now()
 WHERE recipe_import_id = $1
+  AND status = 'processing'
 `
 
 type UpdateRecipeImportOCRParams struct {
@@ -293,18 +485,22 @@ type UpdateRecipeImportOCRParams struct {
 	OcrJson        []byte      `json:"ocr_json"`
 }
 
-func (q *Queries) UpdateRecipeImportOCR(ctx context.Context, arg UpdateRecipeImportOCRParams) error {
-	_, err := q.db.Exec(ctx, updateRecipeImportOCR, arg.RecipeImportID, arg.OcrText, arg.OcrJson)
-	return err
+func (q *Queries) UpdateRecipeImportOCR(ctx context.Context, arg UpdateRecipeImportOCRParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRecipeImportOCR, arg.RecipeImportID, arg.OcrText, arg.OcrJson)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateRecipeImportReview = `-- name: UpdateRecipeImportReview :exec
+const updateRecipeImportReview = `-- name: UpdateRecipeImportReview :execrows
 UPDATE recipe.recipe_import
 SET review_json = $2,
     status      = $3,
     updated_at  = now(),
     updated_by  = COALESCE($4, updated_by)
 WHERE recipe_import_id = $1
+  AND status = ANY($5::varchar[])
 `
 
 type UpdateRecipeImportReviewParams struct {
@@ -312,14 +508,19 @@ type UpdateRecipeImportReviewParams struct {
 	ReviewJson     []byte      `json:"review_json"`
 	Status         string      `json:"status"`
 	UpdatedBy      pgtype.Text `json:"updated_by"`
+	Column5        []string    `json:"column_5"`
 }
 
-func (q *Queries) UpdateRecipeImportReview(ctx context.Context, arg UpdateRecipeImportReviewParams) error {
-	_, err := q.db.Exec(ctx, updateRecipeImportReview,
+func (q *Queries) UpdateRecipeImportReview(ctx context.Context, arg UpdateRecipeImportReviewParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRecipeImportReview,
 		arg.RecipeImportID,
 		arg.ReviewJson,
 		arg.Status,
 		arg.UpdatedBy,
+		arg.Column5,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

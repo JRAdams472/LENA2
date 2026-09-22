@@ -37,10 +37,28 @@ type DraftStep struct {
 	Instruction string `json:"instruction"`
 }
 
+// Bounds applied to the LLM's JSON before it can reach review rows. They are
+// deliberately generous so real recipes pass while injected or degenerate
+// output fails validation.
+const (
+	maxDraftNameLen        = 200
+	maxDraftDescriptionLen = 2000
+	maxDraftSourceHintLen  = 200
+	maxDraftItems          = 100
+	maxDraftSteps          = 100
+	maxDraftIngredientLen  = 200
+	maxDraftTextLen        = 500
+	maxDraftInstructionLen = 2000
+	maxDraftQuantity       = 100_000.0
+	maxDraftServings       = 1_000
+	maxDraftMinutes        = 10_080 // one week
+	maxDraftStepNumber     = 500
+)
+
 // ValidateDraft checks that a RecipeDraft is well-formed enough to continue
-// to catalog mapping. Unparseable or empty fields become a detailed error.
-// If profanity was detected the LLM is trusted and validation is skipped
-// so the job can be quarantined.
+// to catalog mapping. Unparseable, oversized, or empty fields become a
+// detailed error. If profanity was detected the LLM is trusted and
+// validation is skipped so the job can be quarantined.
 func ValidateDraft(d *RecipeDraft) error {
 	if d == nil {
 		return errors.New("draft is nil")
@@ -51,20 +69,62 @@ func ValidateDraft(d *RecipeDraft) error {
 	if d.Name == "" {
 		return errors.New("draft is missing a recipe name")
 	}
+	if len(d.Name) > maxDraftNameLen {
+		return fmt.Errorf("recipe name exceeds %d characters", maxDraftNameLen)
+	}
+	if d.Description != nil && len(*d.Description) > maxDraftDescriptionLen {
+		return fmt.Errorf("description exceeds %d characters", maxDraftDescriptionLen)
+	}
+	if d.SourceHint != nil && len(*d.SourceHint) > maxDraftSourceHintLen {
+		return fmt.Errorf("source hint exceeds %d characters", maxDraftSourceHintLen)
+	}
+	if d.Servings != nil && (*d.Servings < 1 || *d.Servings > maxDraftServings) {
+		return fmt.Errorf("servings must be between 1 and %d", maxDraftServings)
+	}
+	if d.PrepTimeMinutes != nil && (*d.PrepTimeMinutes < 0 || *d.PrepTimeMinutes > maxDraftMinutes) {
+		return fmt.Errorf("prep time must be between 0 and %d minutes", maxDraftMinutes)
+	}
+	if d.CookTimeMinutes != nil && (*d.CookTimeMinutes < 0 || *d.CookTimeMinutes > maxDraftMinutes) {
+		return fmt.Errorf("cook time must be between 0 and %d minutes", maxDraftMinutes)
+	}
 	if len(d.Items) == 0 {
 		return errors.New("draft has no ingredients")
+	}
+	if len(d.Items) > maxDraftItems {
+		return fmt.Errorf("draft has %d items; maximum is %d", len(d.Items), maxDraftItems)
 	}
 	for i, it := range d.Items {
 		if it.Ingredient == "" {
 			return fmt.Errorf("item %d is missing an ingredient name", i)
 		}
+		if len(it.Ingredient) > maxDraftIngredientLen {
+			return fmt.Errorf("item %d ingredient exceeds %d characters", i, maxDraftIngredientLen)
+		}
+		if it.Quantity != nil && (*it.Quantity <= 0 || *it.Quantity > maxDraftQuantity) {
+			return fmt.Errorf("item %d quantity must be between 0 and %g", i, maxDraftQuantity)
+		}
+		if it.Unit != nil && len(*it.Unit) > maxDraftTextLen {
+			return fmt.Errorf("item %d unit exceeds %d characters", i, maxDraftTextLen)
+		}
+		if it.Section != nil && len(*it.Section) > maxDraftTextLen {
+			return fmt.Errorf("item %d section exceeds %d characters", i, maxDraftTextLen)
+		}
+		if it.Notes != nil && len(*it.Notes) > maxDraftTextLen {
+			return fmt.Errorf("item %d notes exceeds %d characters", i, maxDraftTextLen)
+		}
+	}
+	if len(d.Steps) > maxDraftSteps {
+		return fmt.Errorf("draft has %d steps; maximum is %d", len(d.Steps), maxDraftSteps)
 	}
 	for i, s := range d.Steps {
-		if s.StepNumber <= 0 {
+		if s.StepNumber <= 0 || s.StepNumber > maxDraftStepNumber {
 			return fmt.Errorf("step %d has an invalid step number", i)
 		}
 		if s.Instruction == "" {
 			return fmt.Errorf("step %d has an empty instruction", i)
+		}
+		if len(s.Instruction) > maxDraftInstructionLen {
+			return fmt.Errorf("step %d instruction exceeds %d characters", i, maxDraftInstructionLen)
 		}
 	}
 	return nil

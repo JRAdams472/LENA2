@@ -16,6 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 
+# Run as an unprivileged user: the service parses untrusted uploads with
+# poppler/Pillow, so it must not run as root.
+RUN useradd --create-home --uid 10001 ocr && \
+    mkdir -p /tmp && chmod 1777 /tmp
+USER ocr
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -100,6 +100,9 @@ type Config struct {
 	// ImportWorkerConcurrency controls how many recipe imports are processed
 	// in parallel. Defaults to 1 to avoid GPU contention.
 	ImportWorkerConcurrency int `envconfig:"IMPORT_WORKER_CONCURRENCY" default:"1"`
+	// ImportStageTimeout caps each pipeline stage (OCR, draft, mapping) so a
+	// stuck worker cannot hold a job forever.
+	ImportStageTimeout time.Duration `envconfig:"IMPORT_STAGE_TIMEOUT" default:"2m"`
 	// OCRConfidenceThreshold is the minimum per-word confidence (0-100) the
 	// importer will accept before flagging a page for re-scan.
 	OCRConfidenceThreshold int `envconfig:"OCR_CONFIDENCE_THRESHOLD" default:"50"`

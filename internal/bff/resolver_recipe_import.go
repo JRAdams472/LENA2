@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"math"
 	"strconv"
 
@@ -38,11 +39,13 @@ func (r *Resolver) RecipeImports(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
 	status := ""
 	if args.Status != nil {
 		status = *args.Status
 	}
-	items, err := r.RecipeImportService.List(ctx, status, args.Page, args.PageSize)
+	items, err := r.RecipeImportService.List(ctx, status, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +54,7 @@ func (r *Resolver) RecipeImports(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipeImportPageResolver{
-		items: items, page: args.Page, pageSize: args.PageSize, total: total,
+		items: items, page: page, pageSize: pageSize, total: total,
 		inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService,
 	}, nil
 }
@@ -64,12 +67,18 @@ func (r *Resolver) PendingRecipeImports(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	items, err := r.RecipeImportService.ListPending(ctx, args.Page, args.PageSize)
+	page := clamp(args.Page, 1, 1_000_000)
+	pageSize := clamp(args.PageSize, 1, 100)
+	items, err := r.RecipeImportService.ListPending(ctx, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.RecipeImportService.CountPending(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return &recipeImportPageResolver{
-		items: items, page: args.Page, pageSize: args.PageSize, total: int64(len(items)),
+		items: items, page: page, pageSize: pageSize, total: total,
 		inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService,
 	}, nil
 }
@@ -161,7 +170,7 @@ type recipeImportResolver struct {
 }
 
 func (r *recipeImportResolver) ID() graphql.ID          { return graphql.ID(strconv.FormatInt(r.ri.ID, 10)) }
-func (r *recipeImportResolver) Status() string          { return r.ri.Status }
+func (r *recipeImportResolver) Status() string          { return string(r.ri.Status) }
 func (r *recipeImportResolver) SourceFilename() string  { return r.ri.SourceFilename }
 func (r *recipeImportResolver) ProfanityFlag() bool     { return r.ri.ProfanityFlag }
 func (r *recipeImportResolver) CreatedAt() graphql.Time { return graphql.Time{Time: r.ri.CreatedAt} }
@@ -184,6 +193,8 @@ func (r *recipeImportResolver) Draft() *recipeImportDraftResolver {
 	}
 	var draft ocrimport.RecipeDraft
 	if err := json.Unmarshal(r.ri.DraftJSON, &draft); err != nil {
+		slog.Default().Warn("recipe import draft json undecodable",
+			"recipe_import_id", r.ri.ID, "error", err)
 		return nil
 	}
 	return &recipeImportDraftResolver{draft: draft}
@@ -195,6 +206,8 @@ func (r *recipeImportResolver) Review() *recipeImportReviewResolver {
 	}
 	var review ocrimport.ReviewRecipe
 	if err := json.Unmarshal(r.ri.ReviewJSON, &review); err != nil {
+		slog.Default().Warn("recipe import review json undecodable",
+			"recipe_import_id", r.ri.ID, "error", err)
 		return nil
 	}
 	return &recipeImportReviewResolver{review: review}

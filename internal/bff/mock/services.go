@@ -1804,6 +1804,21 @@ func (mr *MockRecipeImportServiceMockRecorder) Count(ctx, status any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockRecipeImportService)(nil).Count), ctx, status)
 }
 
+// CountPending mocks base method.
+func (m *MockRecipeImportService) CountPending(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPending", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPending indicates an expected call of CountPending.
+func (mr *MockRecipeImportServiceMockRecorder) CountPending(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPending", reflect.TypeOf((*MockRecipeImportService)(nil).CountPending), ctx)
+}
+
 // Create mocks base method.
 func (m *MockRecipeImportService) Create(ctx context.Context, sourceFilename, sourcePath, sourceHash string, submittedByUserID *int64, createdBy string) (*recipeimport.RecipeImport, error) {
 	m.ctrl.T.Helper()

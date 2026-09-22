@@ -9,18 +9,23 @@ import (
 )
 
 type Querier interface {
+	ClaimRecipeImport(ctx context.Context, arg ClaimRecipeImportParams) (RecipeRecipeImport, error)
 	CountRecipeImports(ctx context.Context, dollar_1 string) (int64, error)
+	CountRecipeImportsByStatuses(ctx context.Context, dollar_1 []string) (int64, error)
 	CreateRecipeImport(ctx context.Context, arg CreateRecipeImportParams) (RecipeRecipeImport, error)
 	GetRecipeImport(ctx context.Context, recipeImportID int64) (RecipeRecipeImport, error)
+	ListClaimableRecipeImportIDs(ctx context.Context, dollar_1 []string) ([]int64, error)
 	ListRecipeImports(ctx context.Context, arg ListRecipeImportsParams) ([]RecipeRecipeImport, error)
-	MarkRecipeImportFailed(ctx context.Context, arg MarkRecipeImportFailedParams) error
-	MarkRecipeImportProfanity(ctx context.Context, arg MarkRecipeImportProfanityParams) error
-	SetRecipeImportPending(ctx context.Context, recipeImportID int64) error
-	SetRecipeImportPersisted(ctx context.Context, arg SetRecipeImportPersistedParams) error
-	SetRecipeImportRejected(ctx context.Context, recipeImportID int64) error
-	UpdateRecipeImportDraft(ctx context.Context, arg UpdateRecipeImportDraftParams) error
-	UpdateRecipeImportOCR(ctx context.Context, arg UpdateRecipeImportOCRParams) error
-	UpdateRecipeImportReview(ctx context.Context, arg UpdateRecipeImportReviewParams) error
+	ListRecipeImportsByStatuses(ctx context.Context, arg ListRecipeImportsByStatusesParams) ([]RecipeRecipeImport, error)
+	MarkRecipeImportFailed(ctx context.Context, arg MarkRecipeImportFailedParams) (int64, error)
+	MarkRecipeImportProfanity(ctx context.Context, arg MarkRecipeImportProfanityParams) (int64, error)
+	ResetProcessingRecipeImports(ctx context.Context) error
+	SetRecipeImportPending(ctx context.Context, arg SetRecipeImportPendingParams) (int64, error)
+	SetRecipeImportPersisted(ctx context.Context, arg SetRecipeImportPersistedParams) (int64, error)
+	SetRecipeImportRejected(ctx context.Context, arg SetRecipeImportRejectedParams) (int64, error)
+	UpdateRecipeImportDraft(ctx context.Context, arg UpdateRecipeImportDraftParams) (int64, error)
+	UpdateRecipeImportOCR(ctx context.Context, arg UpdateRecipeImportOCRParams) (int64, error)
+	UpdateRecipeImportReview(ctx context.Context, arg UpdateRecipeImportReviewParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

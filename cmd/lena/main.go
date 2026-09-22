@@ -151,7 +151,9 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	wineSvc := wine.NewService(pool)
 	ocrClient := ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout)
 
-	var ollamaClient *ollamaclient.Client
+	// Kept as the interface so a missing URL yields an untyped nil —
+	// recipeimport checks `ollama == nil` to disable the draft stage.
+	var ollamaClient recipeimport.LLMClient
 	if cfg.OllamaURL != "" {
 		ollamaClient = ollamaclient.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaTemperature, cfg.OllamaNumCtx)
 	}
@@ -165,6 +167,10 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		profanityDetector,
 		recipeimport.ConfigFromPlatform(&cfg),
 	)
+	// Re-enqueue jobs orphaned by a previous shutdown before serving traffic.
+	if err := recipeImportSvc.Start(context.Background()); err != nil {
+		log.Warn("recipe import recovery failed", "error", err)
+	}
 
 	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
