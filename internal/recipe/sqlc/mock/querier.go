@@ -201,21 +201,6 @@ func (mr *MockQuerierMockRecorder) GetRecipesByIDs(ctx, recipeIds any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipesByIDs", reflect.TypeOf((*MockQuerier)(nil).GetRecipesByIDs), ctx, recipeIds)
 }
 
-// ListRatingRecencySuggestions mocks base method.
-func (m *MockQuerier) ListRatingRecencySuggestions(ctx context.Context, arg sqlc.ListRatingRecencySuggestionsParams) ([]sqlc.ListRatingRecencySuggestionsRow, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListRatingRecencySuggestions", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.ListRatingRecencySuggestionsRow)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListRatingRecencySuggestions indicates an expected call of ListRatingRecencySuggestions.
-func (mr *MockQuerierMockRecorder) ListRatingRecencySuggestions(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingRecencySuggestions", reflect.TypeOf((*MockQuerier)(nil).ListRatingRecencySuggestions), ctx, arg)
-}
-
 // ListRecipeItems mocks base method.
 func (m *MockQuerier) ListRecipeItems(ctx context.Context, recipeID int64) ([]sqlc.RecipeRecipeItem, error) {
 	m.ctrl.T.Helper()
@@ -274,6 +259,21 @@ func (m *MockQuerier) ListRecipeRatings(ctx context.Context, arg sqlc.ListRecipe
 func (mr *MockQuerierMockRecorder) ListRecipeRatings(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeRatings", reflect.TypeOf((*MockQuerier)(nil).ListRecipeRatings), ctx, arg)
+}
+
+// ListRecipeRatingsAtLeast mocks base method.
+func (m *MockQuerier) ListRecipeRatingsAtLeast(ctx context.Context, arg sqlc.ListRecipeRatingsAtLeastParams) ([]sqlc.ListRecipeRatingsAtLeastRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeRatingsAtLeast", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.ListRecipeRatingsAtLeastRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeRatingsAtLeast indicates an expected call of ListRecipeRatingsAtLeast.
+func (mr *MockQuerierMockRecorder) ListRecipeRatingsAtLeast(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeRatingsAtLeast", reflect.TypeOf((*MockQuerier)(nil).ListRecipeRatingsAtLeast), ctx, arg)
 }
 
 // ListRecipeSteps mocks base method.

@@ -170,10 +170,6 @@ SET name        = $2,
     is_metric   = $10
 WHERE item_id = $1;
 
--- name: DeleteUserItemsByItem :exec
-DELETE FROM inventory.user_item
-WHERE item_id = $1;
-
 -- name: DeleteItem :exec
 DELETE FROM inventory.item
 WHERE item_id = $1;
@@ -199,26 +195,32 @@ FROM inventory.nutrient_type
 ORDER BY name;
 
 -- name: ListFoodNutrientsByItem :many
-SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount
+SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount, fn.basis_quantity, fn.basis_unit_id
 FROM inventory.food_nutrient fn
 JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
 WHERE fn.food_id = $1
 ORDER BY nt.name;
 
 -- name: ListFoodNutrientsByItems :many
-SELECT fn.food_id, nt.nutrient_id, nt.name, nt.unit, fn.amount
+SELECT fn.food_id, nt.nutrient_id, nt.name, nt.unit, fn.amount, fn.basis_quantity, fn.basis_unit_id
 FROM inventory.food_nutrient fn
 JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
 WHERE fn.food_id = ANY(sqlc.arg(item_ids)::bigint[])
 ORDER BY nt.name;
 
 -- name: CreateFoodNutrient :one
+-- The basis defaults to per-100g when the caller does not declare one.
 WITH ins AS (
-    INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
-    VALUES ($1, $2, $3, $4)
-    RETURNING food_id, nutrient_id, amount
+    INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, basis_quantity, basis_unit_id, created_by)
+    VALUES (
+        $1, $2, $3,
+        COALESCE(sqlc.narg(basis_quantity), 100),
+        COALESCE(sqlc.narg(basis_unit_id), (SELECT unit_id FROM inventory.unit WHERE name = 'gram' LIMIT 1)),
+        $4
+    )
+    RETURNING food_id, nutrient_id, amount, basis_quantity, basis_unit_id
 )
-SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount
+SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount, ins.basis_quantity, ins.basis_unit_id
 FROM ins
 JOIN inventory.nutrient_type nt ON ins.nutrient_id = nt.nutrient_id;
 

@@ -11,13 +11,13 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const analyticsTestEmail = "analytics@example.com"
 
 func analyticsCtx() context.Context {
-	return testenv.WithUser(context.Background(), 7, analyticsTestEmail)
+	return testutil.WithUser(context.Background(), 7, analyticsTestEmail)
 }
 
 func newAnalyticsMock(t *testing.T) *mock.MockAnalyticsService {

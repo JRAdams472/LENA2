@@ -49,7 +49,6 @@ type Resolver struct {
 	OCRClient              OCRClient
 	NutritionPhotoMaxBytes int
 	RecipeScanMaxBytes     int
-	ImportInbox            string
 
 	// bg carries detached analytics/recommendation work: at most
 	// asyncWorkerCap in-flight goroutines, all scoped to a cancelable
@@ -66,8 +65,8 @@ type Resolver struct {
 const asyncWorkerCap = 16
 
 // NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, recipeImport RecipeImportService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int, importInbox string) *Resolver {
-	return &Resolver{UOW: dbtx.NewUnitOfWork(pool), AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes, ImportInbox: importInbox}
+func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, recipeImport RecipeImportService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int) *Resolver {
+	return &Resolver{UOW: dbtx.NewUnitOfWork(pool), AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes}
 }
 
 // unitOfWork returns the configured UnitOfWork. Resolvers built as literals
@@ -265,6 +264,16 @@ func int64ToInt32(n int64) int32 {
 }
 
 func clamp(v, lo, hi int32) int32 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func clampFloat(v, lo, hi float64) float64 {
 	if v < lo {
 		return lo
 	}

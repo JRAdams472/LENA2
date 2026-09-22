@@ -15,7 +15,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
@@ -27,7 +28,7 @@ const (
 )
 
 func grocCtx() context.Context {
-	return testenv.WithUser(context.Background(), grocUserID, grocEmail)
+	return testutil.WithUser(context.Background(), grocUserID, grocEmail)
 }
 
 func TestResolver_GroceryList_Happy(t *testing.T) {
@@ -214,14 +215,43 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
 	mp := mock.NewMockMealPlanService(ctrl)
-	r := &Resolver{GroceryService: g, MealPlanService: mp}
+	rec := mock.NewMockRecipeService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{GroceryService: g, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, InventoryService: inv}
 
 	mealPlanID := int64(55)
+	recipeID := int64(7)
+	servings := int32(4)
 	// The plan must belong to the caller before a list is linked to it.
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
 		Return(mealplan.MealPlan{MealPlanID: mealPlanID, UserID: grocUserID}, nil)
-	g.EXPECT().Generate(gomock.Any(), grocUserID, mealPlanID, grocEmail).
+	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, &mealPlanID, grocEmail).
 		Return(grocery.GroceryList{GroceryListID: 21, UserID: grocUserID, MealPlanID: &mealPlanID}, nil)
+	mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), mealPlanID, grocUserID).
+		Return([]mealplan.MealSlot{{SlotID: 1, MealPlanID: mealPlanID, RecipeID: &recipeID}}, nil)
+	mp.EXPECT().ListMealSlotItemsByPlan(gomock.Any(), mealPlanID, grocUserID).Return(nil, nil)
+	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{recipeID}).
+		Return([]recipe.Recipe{{RecipeID: recipeID, Servings: &servings}}, nil)
+	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{recipeID}).
+		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: 10, UnitID: 5, Quantity: 2}}, nil)
+	up.EXPECT().ListUserItems(gomock.Any(), grocUserID, int32(1000), int32(0)).Return(nil, nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10}).
+		Return([]inventory.Item{{ItemID: 10, UnitID: 5}}, nil)
+	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{5}).
+		Return([]inventory.Unit{{UnitID: 5, Name: "gram", Kind: "weight"}}, nil)
+	g.EXPECT().AddGroceryListItems(gomock.Any(), gomock.Any(), grocUserID, grocEmail).
+		DoAndReturn(func(_ context.Context, items []grocery.GroceryListItem, _ int64, _ string) ([]grocery.GroceryListItem, error) {
+			require.Len(t, items, 1)
+			assert.Equal(t, int64(21), items[0].GroceryListID)
+			require.NotNil(t, items[0].ItemID)
+			assert.Equal(t, int64(10), *items[0].ItemID)
+			require.NotNil(t, items[0].UnitID)
+			assert.Equal(t, int64(5), *items[0].UnitID)
+			assert.InDelta(t, 2.0, items[0].QuantityNeeded, 0.0001)
+			assert.Equal(t, "mealplan", items[0].Source)
+			return items, nil
+		})
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
 	require.NoError(t, err)
@@ -243,7 +273,7 @@ func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
 		Return(mealplan.MealPlan{MealPlanID: 55, UserID: grocUserID}, nil)
-	g.EXPECT().Generate(gomock.Any(), grocUserID, int64(55), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
+	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, gomock.Any(), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
 	assert.Nil(t, res)
@@ -256,7 +286,7 @@ func TestResolver_GenerateGroceryList_ForeignPlanRejected(t *testing.T) {
 	mp := mock.NewMockMealPlanService(ctrl)
 	r := &Resolver{GroceryService: g, MealPlanService: mp}
 
-	// Another user's plan must never reach Generate.
+	// Another user's plan must never reach the list write.
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
 		Return(mealplan.MealPlan{}, errGrocBoom)
 

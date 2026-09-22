@@ -20,14 +20,13 @@ type Querier interface {
 	GetRecipeByID(ctx context.Context, recipeID int64) (RecipeRecipe, error)
 	GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error)
 	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
-	// For one user: recipes rated at or above a threshold, scored by how long
-	// it has been since each last appeared in a meal plan. Recipes never planned
-	// score 1; the score clamps to [0,1] over 180 days.
-	ListRatingRecencySuggestions(ctx context.Context, arg ListRatingRecencySuggestionsParams) ([]ListRatingRecencySuggestionsRow, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
 	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
 	ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error)
 	ListRecipeRatings(ctx context.Context, arg ListRecipeRatingsParams) ([]RecipeRecipeRating, error)
+	// One user's recipe ratings at or above a threshold. Recency scoring joins
+	// this to mealplan data in the BFF; SQL never crosses schemas.
+	ListRecipeRatingsAtLeast(ctx context.Context, arg ListRecipeRatingsAtLeastParams) ([]ListRecipeRatingsAtLeastRow, error)
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]RecipeRecipeStep, error)
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeStep, error)
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)

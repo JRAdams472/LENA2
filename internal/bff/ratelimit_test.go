@@ -9,13 +9,13 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 func withUser(userID int64) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			c.SetRequest(c.Request().WithContext(testenv.WithUser(c.Request().Context(), userID, "t@example.com")))
+			c.SetRequest(c.Request().WithContext(testutil.WithUser(c.Request().Context(), userID, "t@example.com")))
 			return next(c)
 		}
 	}
@@ -41,7 +41,7 @@ func TestGraphQLRateLimiter_UsersAreIndependent(t *testing.T) {
 	var userID int64 = 7
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			c.SetRequest(c.Request().WithContext(testenv.WithUser(c.Request().Context(), userID, "t@example.com")))
+			c.SetRequest(c.Request().WithContext(testutil.WithUser(c.Request().Context(), userID, "t@example.com")))
 			return next(c)
 		}
 	})

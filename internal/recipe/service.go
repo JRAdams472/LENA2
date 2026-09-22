@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -498,36 +497,17 @@ func (s *Service) ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([
 	return out, nil
 }
 
-// RatingRecencySuggestion is a recipe the user rated highly that has not
-// appeared in their meal plans recently (or at all since rating).
-type RatingRecencySuggestion struct {
-	RecipeID int64
-	Rating   int16
-	LastUsed *time.Time
-	Score    float64
-}
-
-// ListRatingRecencySuggestions returns the user's recipes rated at or above
-// minRating, scored by how long it has been since each last appeared in a
-// meal plan (never-planned first), capped at limit.
-func (s *Service) ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]RatingRecencySuggestion, error) {
-	rows, err := s.q.ListRatingRecencySuggestions(ctx, sqlc.ListRatingRecencySuggestionsParams{UserID: userID, Rating: minRating, Limit: limit})
+// ListRatedAtLeast returns the user's recipe ratings at or above
+// minRating. Recency scoring lives in the BFF, which joins this data to
+// mealplan.LastPlannedDates; recipe SQL never crosses schemas.
+func (s *Service) ListRatedAtLeast(ctx context.Context, userID int64, minRating int16) ([]RecipeRating, error) {
+	rows, err := s.q.ListRecipeRatingsAtLeast(ctx, sqlc.ListRecipeRatingsAtLeastParams{UserID: userID, Rating: minRating})
 	if err != nil {
-		return nil, fmt.Errorf("list rating recency suggestions: %w", err)
+		return nil, fmt.Errorf("list rated at least: %w", err)
 	}
-	out := make([]RatingRecencySuggestion, len(rows))
+	out := make([]RecipeRating, len(rows))
 	for i, r := range rows {
-		var lastUsed *time.Time
-		if r.LastUsed.Valid {
-			t := r.LastUsed.Time
-			lastUsed = &t
-		}
-		out[i] = RatingRecencySuggestion{
-			RecipeID: r.RecipeID,
-			Rating:   r.Rating,
-			LastUsed: lastUsed,
-			Score:    r.Score,
-		}
+		out[i] = RecipeRating{UserID: userID, RecipeID: r.RecipeID, Rating: r.Rating}
 	}
 	return out, nil
 }

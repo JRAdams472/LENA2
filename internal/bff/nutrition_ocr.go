@@ -10,18 +10,12 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 
-	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
 )
 
-// nutrientLabelMaxLen matches the implicit catalog limit for nutrient type
-// names; anything longer is not a real nutrient and is ignored.
-const nutrientLabelMaxLen = 100
-
-// processNutritionPhoto decodes the image, extracts text via OCR, parses the
-// text into nutrients, and writes the resulting nutrient rows to the item.
-// Unknown nutrient labels are not auto-created; only existing catalog types
-// are applied so non-admin members cannot add global reference data.
+// processNutritionPhoto decodes the image, extracts text via OCR, parses
+// the text into nutrients, and hands them to the inventory domain, which
+// owns nutrient-type matching and the nutrient write path.
 func processNutritionPhoto(ctx context.Context, inv InventoryService, ocr OCRClient, itemID int64, image []byte, by string) error {
 	text, err := ocr.ExtractText(ctx, image)
 	if err != nil {
@@ -34,41 +28,9 @@ func processNutritionPhoto(ctx context.Context, inv InventoryService, ocr OCRCli
 		return nil
 	}
 
-	entries := make([]inventory.NutrientEntry, 0, len(parsed))
-	matchedTypes := 0
-	skipped := 0
-	unknown := 0
-	for _, n := range parsed {
-		label := strings.TrimSpace(n.Label)
-		if label == "" || len(label) > nutrientLabelMaxLen {
-			skipped++
-			continue
-		}
-		nt, err := inv.GetNutrientTypeByName(ctx, label)
-		if err != nil {
-			// Unknown labels are not created here; admins use createNutrientType.
-			unknown++
-			continue
-		}
-		matchedTypes++
-		entries = append(entries, inventory.NutrientEntry{
-			NutrientID: nt.NutrientID,
-			Amount:     n.Amount,
-		})
+	if err := inv.ApplyNutritionLabel(ctx, itemID, parsed, by); err != nil {
+		return fmt.Errorf("apply nutrition label: %w", err)
 	}
-
-	if err := inv.SetItemNutrients(ctx, itemID, entries, by); err != nil {
-		return fmt.Errorf("set item nutrients: %w", err)
-	}
-
-	slog.Default().Info("nutrition ocr completed",
-		"item_id", itemID,
-		"parsed", len(parsed),
-		"matched", matchedTypes,
-		"unknown", unknown,
-		"skipped", skipped,
-		"by", by,
-	)
 	return nil
 }
 

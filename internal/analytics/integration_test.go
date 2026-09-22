@@ -11,15 +11,15 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 const itBy = "analytics-integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	return NewService(pool), pool
@@ -31,7 +31,7 @@ func TestIntegrationRecordEventAndCounts(t *testing.T) {
 	}
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
-	userID := testenv.MustUser(ctx, t, pool, "analytics-a@example.com")
+	userID := testutil.MustUser(ctx, t, pool, "analytics-a@example.com")
 
 	err := svc.RecordEvent(ctx, Event{
 		UserID:     userID,
@@ -87,8 +87,8 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	}
 	ctx := context.Background()
 	svc, pool := newIntegrationService(t, ctx)
-	userA := testenv.MustUser(ctx, t, pool, "overlap-a@example.com")
-	userB := testenv.MustUser(ctx, t, pool, "overlap-b@example.com")
+	userA := testutil.MustUser(ctx, t, pool, "overlap-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "overlap-b@example.com")
 
 	invSvc := inventory.NewService(pool)
 	recSvc := recipe.NewService(pool)

@@ -12,13 +12,13 @@ import (
 )
 
 const adjustUserItemQuantity = `-- name: AdjustUserItemQuantity :one
-INSERT INTO inventory.user_item (
+INSERT INTO userprefs.user_item (
     user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, updated_by
 )
 VALUES ($1, $2, GREATEST(0::numeric, $4::numeric), 0::numeric, NULL, NULL, NULL, false, $3, $3)
 ON CONFLICT (user_id, item_id)
     DO UPDATE SET
-        current_qty = GREATEST(0::numeric, inventory.user_item.current_qty + $4::numeric),
+        current_qty = GREATEST(0::numeric, userprefs.user_item.current_qty + $4::numeric),
         updated_by  = EXCLUDED.updated_by,
         updated_at  = now()
 RETURNING user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
@@ -34,14 +34,14 @@ type AdjustUserItemQuantityParams struct {
 // Atomically adjust the user's pantry quantity by delta, clamping at 0.
 // Creates the row if it does not yet exist, preserving all other fields
 // on an existing row.
-func (q *Queries) AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (InventoryUserItem, error) {
+func (q *Queries) AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (UserprefsUserItem, error) {
 	row := q.db.QueryRow(ctx, adjustUserItemQuantity,
 		arg.UserID,
 		arg.ItemID,
 		arg.CreatedBy,
 		arg.Delta,
 	)
-	var i InventoryUserItem
+	var i UserprefsUserItem
 	err := row.Scan(
 		&i.UserItemID,
 		&i.UserID,
@@ -62,7 +62,7 @@ func (q *Queries) AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItem
 
 const countUserBottles = `-- name: CountUserBottles :one
 SELECT COUNT(*)
-FROM wine.user_bottle
+FROM userprefs.user_bottle
 WHERE user_id = $1
 `
 
@@ -75,7 +75,7 @@ func (q *Queries) CountUserBottles(ctx context.Context, userID int64) (int64, er
 
 const countUserItems = `-- name: CountUserItems :one
 SELECT COUNT(*)
-FROM inventory.user_item
+FROM userprefs.user_item
 WHERE user_id = $1
 `
 
@@ -87,7 +87,7 @@ func (q *Queries) CountUserItems(ctx context.Context, userID int64) (int64, erro
 }
 
 const deleteRecipeFavorite = `-- name: DeleteRecipeFavorite :exec
-DELETE FROM recipe.user_recipe_preference
+DELETE FROM userprefs.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = $2
 `
 
@@ -102,7 +102,7 @@ func (q *Queries) DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavo
 }
 
 const deleteUserBottle = `-- name: DeleteUserBottle :exec
-DELETE FROM wine.user_bottle
+DELETE FROM userprefs.user_bottle
 WHERE user_bottle_id = $1 AND user_id = $2
 `
 
@@ -117,7 +117,7 @@ func (q *Queries) DeleteUserBottle(ctx context.Context, arg DeleteUserBottlePara
 }
 
 const deleteUserItem = `-- name: DeleteUserItem :exec
-DELETE FROM inventory.user_item
+DELETE FROM userprefs.user_item
 WHERE user_item_id = $1 AND user_id = $2
 `
 
@@ -133,7 +133,7 @@ func (q *Queries) DeleteUserItem(ctx context.Context, arg DeleteUserItemParams) 
 
 const getRecipeFavorite = `-- name: GetRecipeFavorite :one
 SELECT user_id, recipe_id, is_favorite, created_by, created_at, updated_by, updated_at
-FROM recipe.user_recipe_preference
+FROM userprefs.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = $2
 `
 
@@ -142,9 +142,9 @@ type GetRecipeFavoriteParams struct {
 	RecipeID int64 `json:"recipe_id"`
 }
 
-func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (RecipeUserRecipePreference, error) {
+func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (UserprefsUserRecipePreference, error) {
 	row := q.db.QueryRow(ctx, getRecipeFavorite, arg.UserID, arg.RecipeID)
-	var i RecipeUserRecipePreference
+	var i UserprefsUserRecipePreference
 	err := row.Scan(
 		&i.UserID,
 		&i.RecipeID,
@@ -159,7 +159,7 @@ func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoritePa
 
 const getUserBottleByID = `-- name: GetUserBottleByID :one
 SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM wine.user_bottle
+FROM userprefs.user_bottle
 WHERE user_bottle_id = $1 AND user_id = $2
 `
 
@@ -168,9 +168,9 @@ type GetUserBottleByIDParams struct {
 	UserID       int64 `json:"user_id"`
 }
 
-func (q *Queries) GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (WineUserBottle, error) {
+func (q *Queries) GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (UserprefsUserBottle, error) {
 	row := q.db.QueryRow(ctx, getUserBottleByID, arg.UserBottleID, arg.UserID)
-	var i WineUserBottle
+	var i UserprefsUserBottle
 	err := row.Scan(
 		&i.UserBottleID,
 		&i.UserID,
@@ -193,7 +193,7 @@ func (q *Queries) GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDPa
 
 const getUserBottleByUserAndBottle = `-- name: GetUserBottleByUserAndBottle :one
 SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM wine.user_bottle
+FROM userprefs.user_bottle
 WHERE user_id = $1 AND bottle_id = $2
 `
 
@@ -202,9 +202,9 @@ type GetUserBottleByUserAndBottleParams struct {
 	BottleID int64 `json:"bottle_id"`
 }
 
-func (q *Queries) GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (WineUserBottle, error) {
+func (q *Queries) GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (UserprefsUserBottle, error) {
 	row := q.db.QueryRow(ctx, getUserBottleByUserAndBottle, arg.UserID, arg.BottleID)
-	var i WineUserBottle
+	var i UserprefsUserBottle
 	err := row.Scan(
 		&i.UserBottleID,
 		&i.UserID,
@@ -227,7 +227,7 @@ func (q *Queries) GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserB
 
 const getUserItemByID = `-- name: GetUserItemByID :one
 SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM inventory.user_item
+FROM userprefs.user_item
 WHERE user_item_id = $1 AND user_id = $2
 `
 
@@ -236,9 +236,9 @@ type GetUserItemByIDParams struct {
 	UserID     int64 `json:"user_id"`
 }
 
-func (q *Queries) GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (InventoryUserItem, error) {
+func (q *Queries) GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (UserprefsUserItem, error) {
 	row := q.db.QueryRow(ctx, getUserItemByID, arg.UserItemID, arg.UserID)
-	var i InventoryUserItem
+	var i UserprefsUserItem
 	err := row.Scan(
 		&i.UserItemID,
 		&i.UserID,
@@ -259,7 +259,7 @@ func (q *Queries) GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams
 
 const getUserItemByUserAndItem = `-- name: GetUserItemByUserAndItem :one
 SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM inventory.user_item
+FROM userprefs.user_item
 WHERE user_id = $1 AND item_id = $2
 `
 
@@ -268,9 +268,9 @@ type GetUserItemByUserAndItemParams struct {
 	ItemID int64 `json:"item_id"`
 }
 
-func (q *Queries) GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (InventoryUserItem, error) {
+func (q *Queries) GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (UserprefsUserItem, error) {
 	row := q.db.QueryRow(ctx, getUserItemByUserAndItem, arg.UserID, arg.ItemID)
-	var i InventoryUserItem
+	var i UserprefsUserItem
 	err := row.Scan(
 		&i.UserItemID,
 		&i.UserID,
@@ -291,7 +291,7 @@ func (q *Queries) GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemB
 
 const listRecipeFavorites = `-- name: ListRecipeFavorites :many
 SELECT user_id, recipe_id, is_favorite, created_by, created_at, updated_by, updated_at
-FROM recipe.user_recipe_preference
+FROM userprefs.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = ANY($2::bigint[])
 `
 
@@ -300,15 +300,15 @@ type ListRecipeFavoritesParams struct {
 	RecipeIds []int64 `json:"recipe_ids"`
 }
 
-func (q *Queries) ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]RecipeUserRecipePreference, error) {
+func (q *Queries) ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error) {
 	rows, err := q.db.Query(ctx, listRecipeFavorites, arg.UserID, arg.RecipeIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RecipeUserRecipePreference{}
+	items := []UserprefsUserRecipePreference{}
 	for rows.Next() {
-		var i RecipeUserRecipePreference
+		var i UserprefsUserRecipePreference
 		if err := rows.Scan(
 			&i.UserID,
 			&i.RecipeID,
@@ -330,7 +330,7 @@ func (q *Queries) ListRecipeFavorites(ctx context.Context, arg ListRecipeFavorit
 
 const listUserBottles = `-- name: ListUserBottles :many
 SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM wine.user_bottle
+FROM userprefs.user_bottle
 WHERE user_id = $1
 ORDER BY updated_at DESC NULLS LAST
 LIMIT $2 OFFSET $3
@@ -342,15 +342,15 @@ type ListUserBottlesParams struct {
 	Offset int32 `json:"offset"`
 }
 
-func (q *Queries) ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]WineUserBottle, error) {
+func (q *Queries) ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]UserprefsUserBottle, error) {
 	rows, err := q.db.Query(ctx, listUserBottles, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WineUserBottle{}
+	items := []UserprefsUserBottle{}
 	for rows.Next() {
-		var i WineUserBottle
+		var i UserprefsUserBottle
 		if err := rows.Scan(
 			&i.UserBottleID,
 			&i.UserID,
@@ -380,7 +380,7 @@ func (q *Queries) ListUserBottles(ctx context.Context, arg ListUserBottlesParams
 
 const listUserItems = `-- name: ListUserItems :many
 SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM inventory.user_item
+FROM userprefs.user_item
 WHERE user_id = $1
 ORDER BY updated_at DESC NULLS LAST
 LIMIT $2 OFFSET $3
@@ -392,15 +392,15 @@ type ListUserItemsParams struct {
 	Offset int32 `json:"offset"`
 }
 
-func (q *Queries) ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]InventoryUserItem, error) {
+func (q *Queries) ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]UserprefsUserItem, error) {
 	rows, err := q.db.Query(ctx, listUserItems, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []InventoryUserItem{}
+	items := []UserprefsUserItem{}
 	for rows.Next() {
-		var i InventoryUserItem
+		var i UserprefsUserItem
 		if err := rows.Scan(
 			&i.UserItemID,
 			&i.UserID,
@@ -427,7 +427,7 @@ func (q *Queries) ListUserItems(ctx context.Context, arg ListUserItemsParams) ([
 }
 
 const upsertRecipeFavorite = `-- name: UpsertRecipeFavorite :one
-INSERT INTO recipe.user_recipe_preference (user_id, recipe_id, is_favorite, created_by, updated_by)
+INSERT INTO userprefs.user_recipe_preference (user_id, recipe_id, is_favorite, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (user_id, recipe_id)
     DO UPDATE SET
@@ -445,7 +445,7 @@ type UpsertRecipeFavoriteParams struct {
 	UpdatedBy  pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (RecipeUserRecipePreference, error) {
+func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (UserprefsUserRecipePreference, error) {
 	row := q.db.QueryRow(ctx, upsertRecipeFavorite,
 		arg.UserID,
 		arg.RecipeID,
@@ -453,7 +453,7 @@ func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavo
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
-	var i RecipeUserRecipePreference
+	var i UserprefsUserRecipePreference
 	err := row.Scan(
 		&i.UserID,
 		&i.RecipeID,
@@ -467,7 +467,7 @@ func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavo
 }
 
 const upsertUserBottle = `-- name: UpsertUserBottle :one
-INSERT INTO wine.user_bottle (
+INSERT INTO userprefs.user_bottle (
     user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price,
     storage_temp, location, notes, is_favorite, created_by, updated_by
 )
@@ -502,7 +502,7 @@ type UpsertUserBottleParams struct {
 	UpdatedBy     pgtype.Text        `json:"updated_by"`
 }
 
-func (q *Queries) UpsertUserBottle(ctx context.Context, arg UpsertUserBottleParams) (WineUserBottle, error) {
+func (q *Queries) UpsertUserBottle(ctx context.Context, arg UpsertUserBottleParams) (UserprefsUserBottle, error) {
 	row := q.db.QueryRow(ctx, upsertUserBottle,
 		arg.UserID,
 		arg.BottleID,
@@ -517,7 +517,7 @@ func (q *Queries) UpsertUserBottle(ctx context.Context, arg UpsertUserBottlePara
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
-	var i WineUserBottle
+	var i UserprefsUserBottle
 	err := row.Scan(
 		&i.UserBottleID,
 		&i.UserID,
@@ -539,7 +539,7 @@ func (q *Queries) UpsertUserBottle(ctx context.Context, arg UpsertUserBottlePara
 }
 
 const upsertUserItem = `-- name: UpsertUserItem :one
-INSERT INTO inventory.user_item (
+INSERT INTO userprefs.user_item (
     user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, updated_by
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -569,7 +569,7 @@ type UpsertUserItemParams struct {
 	UpdatedBy  pgtype.Text        `json:"updated_by"`
 }
 
-func (q *Queries) UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) (InventoryUserItem, error) {
+func (q *Queries) UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) (UserprefsUserItem, error) {
 	row := q.db.QueryRow(ctx, upsertUserItem,
 		arg.UserID,
 		arg.ItemID,
@@ -582,7 +582,7 @@ func (q *Queries) UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) 
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
-	var i InventoryUserItem
+	var i UserprefsUserItem
 	err := row.Scan(
 		&i.UserItemID,
 		&i.UserID,

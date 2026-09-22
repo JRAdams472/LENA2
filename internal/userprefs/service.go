@@ -361,7 +361,7 @@ func (s *Service) DeleteRecipeFavorite(ctx context.Context, userID, recipeID int
 	return s.q.DeleteRecipeFavorite(ctx, sqlc.DeleteRecipeFavoriteParams{UserID: userID, RecipeID: recipeID})
 }
 
-func toUserItem(row sqlc.InventoryUserItem) (UserItem, error) {
+func toUserItem(row sqlc.UserprefsUserItem) (UserItem, error) {
 	ui := UserItem{
 		UserItemID: row.UserItemID,
 		UserID:     row.UserID,
@@ -395,7 +395,7 @@ func toUserItem(row sqlc.InventoryUserItem) (UserItem, error) {
 	return ui, nil
 }
 
-func toUserBottle(row sqlc.WineUserBottle) (UserBottle, error) {
+func toUserBottle(row sqlc.UserprefsUserBottle) (UserBottle, error) {
 	ub := UserBottle{
 		UserBottleID: row.UserBottleID,
 		UserID:       row.UserID,

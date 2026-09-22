@@ -15,7 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 func TestMisc_Me_Unauthorized(t *testing.T) {
@@ -27,7 +27,7 @@ func TestMisc_Me_Unauthorized(t *testing.T) {
 
 func TestMisc_Me_Happy(t *testing.T) {
 	r := &Resolver{}
-	ctx := testenv.WithUser(context.Background(), 42, "me@example.com")
+	ctx := testutil.WithUser(context.Background(), 42, "me@example.com")
 
 	res, err := r.Me(ctx)
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestMisc_UserFromContext(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, currentuser.User{}, u)
 
-	ctx := testenv.WithUser(context.Background(), 42, "me@example.com")
+	ctx := testutil.WithUser(context.Background(), 42, "me@example.com")
 	u, err = userFromContext(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), u.UserID)

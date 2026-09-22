@@ -2368,16 +2368,19 @@ export const api = {
   },
 
   getMealPlanNutrition: async (id: number): Promise<MealPlanNutrition> => {
-    const data = await request<{ nutrition: GqlNutritionSummary[] }>(
-      `query ($mealPlanId: ID!) { nutrition(mealPlanId: $mealPlanId) { name unit amount } }`,
+    const data = await request<{
+      nutrition: { entries: GqlNutritionSummary[]; warnings: string[] };
+    }>(
+      `query ($mealPlanId: ID!) { nutrition(mealPlanId: $mealPlanId) { entries { name unit amount } warnings } }`,
       { mealPlanId: String(id) }
     );
     return {
       mealPlanId: id,
+      warnings: data.nutrition.warnings,
       dailyTotals: [
         {
           dayOfWeek: 0,
-          nutrients: data.nutrition.map((n) => ({
+          nutrients: data.nutrition.entries.map((n) => ({
             nutrientId: 0,
             nutrientName: n.name,
             unitOfMeasure: n.unit,

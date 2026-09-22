@@ -126,31 +126,9 @@ FROM recipe.recipe_rating
 WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
 GROUP BY recipe_id;
 
--- name: ListRatingRecencySuggestions :many
--- For one user: recipes rated at or above a threshold, scored by how long
--- it has been since each last appeared in a meal plan. Recipes never planned
--- score 1; the score clamps to [0,1] over 180 days.
-WITH last_used AS (
-    SELECT rr.recipe_id,
-           rr.rating,
-           MAX(mp.week_start_date) AS last_used
-    FROM recipe.recipe_rating rr
-    LEFT JOIN mealplan.meal_slot ms
-           ON ms.recipe_id = rr.recipe_id
-    LEFT JOIN mealplan.meal_plan mp
-           ON mp.meal_plan_id = ms.meal_plan_id AND mp.user_id = rr.user_id
-    WHERE rr.user_id = $1 AND rr.rating >= $2
-    GROUP BY rr.recipe_id, rr.rating
-)
-SELECT recipe_id,
-       rating,
-       last_used::date AS last_used,
-       GREATEST(LEAST(
-           CASE
-               WHEN last_used IS NULL THEN 180.0
-               ELSE (CURRENT_DATE - last_used)::float8
-           END / 180.0,
-       1.0), 0.0)::float8 AS score
-FROM last_used
-ORDER BY score DESC, recipe_id ASC
-LIMIT $3;
+-- name: ListRecipeRatingsAtLeast :many
+-- One user's recipe ratings at or above a threshold. Recency scoring joins
+-- this to mealplan data in the BFF; SQL never crosses schemas.
+SELECT recipe_id, rating
+FROM recipe.recipe_rating
+WHERE user_id = $1 AND rating >= $2;

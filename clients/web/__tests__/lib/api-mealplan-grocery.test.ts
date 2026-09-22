@@ -48,7 +48,10 @@ describe("meal plan and grocery api client", () => {
   it("getMealPlanNutrition fetches nutrition", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({
-        nutrition: [{ name: "Calories", unit: "kcal", amount: 120 }],
+        nutrition: {
+          entries: [{ name: "Calories", unit: "kcal", amount: 120 }],
+          warnings: ["skipped 1 line"],
+        },
       })
     );
 

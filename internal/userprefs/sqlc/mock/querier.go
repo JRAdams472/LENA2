@@ -42,10 +42,10 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 }
 
 // AdjustUserItemQuantity mocks base method.
-func (m *MockQuerier) AdjustUserItemQuantity(ctx context.Context, arg sqlc.AdjustUserItemQuantityParams) (sqlc.InventoryUserItem, error) {
+func (m *MockQuerier) AdjustUserItemQuantity(ctx context.Context, arg sqlc.AdjustUserItemQuantityParams) (sqlc.UserprefsUserItem, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryUserItem)
+	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -129,10 +129,10 @@ func (mr *MockQuerierMockRecorder) DeleteUserItem(ctx, arg any) *gomock.Call {
 }
 
 // GetRecipeFavorite mocks base method.
-func (m *MockQuerier) GetRecipeFavorite(ctx context.Context, arg sqlc.GetRecipeFavoriteParams) (sqlc.RecipeUserRecipePreference, error) {
+func (m *MockQuerier) GetRecipeFavorite(ctx context.Context, arg sqlc.GetRecipeFavoriteParams) (sqlc.UserprefsUserRecipePreference, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRecipeFavorite", ctx, arg)
-	ret0, _ := ret[0].(sqlc.RecipeUserRecipePreference)
+	ret0, _ := ret[0].(sqlc.UserprefsUserRecipePreference)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -144,10 +144,10 @@ func (mr *MockQuerierMockRecorder) GetRecipeFavorite(ctx, arg any) *gomock.Call 
 }
 
 // GetUserBottleByID mocks base method.
-func (m *MockQuerier) GetUserBottleByID(ctx context.Context, arg sqlc.GetUserBottleByIDParams) (sqlc.WineUserBottle, error) {
+func (m *MockQuerier) GetUserBottleByID(ctx context.Context, arg sqlc.GetUserBottleByIDParams) (sqlc.UserprefsUserBottle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUserBottleByID", ctx, arg)
-	ret0, _ := ret[0].(sqlc.WineUserBottle)
+	ret0, _ := ret[0].(sqlc.UserprefsUserBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -159,10 +159,10 @@ func (mr *MockQuerierMockRecorder) GetUserBottleByID(ctx, arg any) *gomock.Call 
 }
 
 // GetUserBottleByUserAndBottle mocks base method.
-func (m *MockQuerier) GetUserBottleByUserAndBottle(ctx context.Context, arg sqlc.GetUserBottleByUserAndBottleParams) (sqlc.WineUserBottle, error) {
+func (m *MockQuerier) GetUserBottleByUserAndBottle(ctx context.Context, arg sqlc.GetUserBottleByUserAndBottleParams) (sqlc.UserprefsUserBottle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUserBottleByUserAndBottle", ctx, arg)
-	ret0, _ := ret[0].(sqlc.WineUserBottle)
+	ret0, _ := ret[0].(sqlc.UserprefsUserBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -174,10 +174,10 @@ func (mr *MockQuerierMockRecorder) GetUserBottleByUserAndBottle(ctx, arg any) *g
 }
 
 // GetUserItemByID mocks base method.
-func (m *MockQuerier) GetUserItemByID(ctx context.Context, arg sqlc.GetUserItemByIDParams) (sqlc.InventoryUserItem, error) {
+func (m *MockQuerier) GetUserItemByID(ctx context.Context, arg sqlc.GetUserItemByIDParams) (sqlc.UserprefsUserItem, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUserItemByID", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryUserItem)
+	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -189,10 +189,10 @@ func (mr *MockQuerierMockRecorder) GetUserItemByID(ctx, arg any) *gomock.Call {
 }
 
 // GetUserItemByUserAndItem mocks base method.
-func (m *MockQuerier) GetUserItemByUserAndItem(ctx context.Context, arg sqlc.GetUserItemByUserAndItemParams) (sqlc.InventoryUserItem, error) {
+func (m *MockQuerier) GetUserItemByUserAndItem(ctx context.Context, arg sqlc.GetUserItemByUserAndItemParams) (sqlc.UserprefsUserItem, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUserItemByUserAndItem", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryUserItem)
+	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -204,10 +204,10 @@ func (mr *MockQuerierMockRecorder) GetUserItemByUserAndItem(ctx, arg any) *gomoc
 }
 
 // ListRecipeFavorites mocks base method.
-func (m *MockQuerier) ListRecipeFavorites(ctx context.Context, arg sqlc.ListRecipeFavoritesParams) ([]sqlc.RecipeUserRecipePreference, error) {
+func (m *MockQuerier) ListRecipeFavorites(ctx context.Context, arg sqlc.ListRecipeFavoritesParams) ([]sqlc.UserprefsUserRecipePreference, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListRecipeFavorites", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.RecipeUserRecipePreference)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserRecipePreference)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -219,10 +219,10 @@ func (mr *MockQuerierMockRecorder) ListRecipeFavorites(ctx, arg any) *gomock.Cal
 }
 
 // ListUserBottles mocks base method.
-func (m *MockQuerier) ListUserBottles(ctx context.Context, arg sqlc.ListUserBottlesParams) ([]sqlc.WineUserBottle, error) {
+func (m *MockQuerier) ListUserBottles(ctx context.Context, arg sqlc.ListUserBottlesParams) ([]sqlc.UserprefsUserBottle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListUserBottles", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.WineUserBottle)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -234,10 +234,10 @@ func (mr *MockQuerierMockRecorder) ListUserBottles(ctx, arg any) *gomock.Call {
 }
 
 // ListUserItems mocks base method.
-func (m *MockQuerier) ListUserItems(ctx context.Context, arg sqlc.ListUserItemsParams) ([]sqlc.InventoryUserItem, error) {
+func (m *MockQuerier) ListUserItems(ctx context.Context, arg sqlc.ListUserItemsParams) ([]sqlc.UserprefsUserItem, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListUserItems", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.InventoryUserItem)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -249,10 +249,10 @@ func (mr *MockQuerierMockRecorder) ListUserItems(ctx, arg any) *gomock.Call {
 }
 
 // UpsertRecipeFavorite mocks base method.
-func (m *MockQuerier) UpsertRecipeFavorite(ctx context.Context, arg sqlc.UpsertRecipeFavoriteParams) (sqlc.RecipeUserRecipePreference, error) {
+func (m *MockQuerier) UpsertRecipeFavorite(ctx context.Context, arg sqlc.UpsertRecipeFavoriteParams) (sqlc.UserprefsUserRecipePreference, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertRecipeFavorite", ctx, arg)
-	ret0, _ := ret[0].(sqlc.RecipeUserRecipePreference)
+	ret0, _ := ret[0].(sqlc.UserprefsUserRecipePreference)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -264,10 +264,10 @@ func (mr *MockQuerierMockRecorder) UpsertRecipeFavorite(ctx, arg any) *gomock.Ca
 }
 
 // UpsertUserBottle mocks base method.
-func (m *MockQuerier) UpsertUserBottle(ctx context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.WineUserBottle, error) {
+func (m *MockQuerier) UpsertUserBottle(ctx context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.UserprefsUserBottle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertUserBottle", ctx, arg)
-	ret0, _ := ret[0].(sqlc.WineUserBottle)
+	ret0, _ := ret[0].(sqlc.UserprefsUserBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -279,10 +279,10 @@ func (mr *MockQuerierMockRecorder) UpsertUserBottle(ctx, arg any) *gomock.Call {
 }
 
 // UpsertUserItem mocks base method.
-func (m *MockQuerier) UpsertUserItem(ctx context.Context, arg sqlc.UpsertUserItemParams) (sqlc.InventoryUserItem, error) {
+func (m *MockQuerier) UpsertUserItem(ctx context.Context, arg sqlc.UpsertUserItemParams) (sqlc.UserprefsUserItem, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertUserItem", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryUserItem)
+	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

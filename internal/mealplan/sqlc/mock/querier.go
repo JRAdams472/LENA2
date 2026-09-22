@@ -173,6 +173,21 @@ func (mr *MockQuerierMockRecorder) GetMealSlotByID(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealSlotByID", reflect.TypeOf((*MockQuerier)(nil).GetMealSlotByID), ctx, arg)
 }
 
+// ListLastPlannedDates mocks base method.
+func (m *MockQuerier) ListLastPlannedDates(ctx context.Context, arg sqlc.ListLastPlannedDatesParams) ([]sqlc.ListLastPlannedDatesRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLastPlannedDates", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.ListLastPlannedDatesRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLastPlannedDates indicates an expected call of ListLastPlannedDates.
+func (mr *MockQuerierMockRecorder) ListLastPlannedDates(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLastPlannedDates", reflect.TypeOf((*MockQuerier)(nil).ListLastPlannedDates), ctx, arg)
+}
+
 // ListMealPlans mocks base method.
 func (m *MockQuerier) ListMealPlans(ctx context.Context, arg sqlc.ListMealPlansParams) ([]sqlc.MealplanMealPlan, error) {
 	m.ctrl.T.Helper()

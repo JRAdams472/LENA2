@@ -14,8 +14,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 var errMealPlanBoom = errors.New("mealplan boom")
@@ -28,7 +28,7 @@ const (
 var mealPlanDate = time.Date(2025, 6, 2, 0, 0, 0, 0, time.UTC)
 
 func mealPlanCtx() context.Context {
-	return testenv.WithUser(context.Background(), mealPlanUserID, mealPlanEmail)
+	return testutil.WithUser(context.Background(), mealPlanUserID, mealPlanEmail)
 }
 
 func mealPlanPtrInt64(v int64) *int64 { return &v }
@@ -166,22 +166,33 @@ func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
 	}, nil)
 
 	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), gomock.Any()).Return([]inventory.FoodNutrient{
-		{ItemID: 50, NutrientID: 1, Name: "Protein", Unit: "g", Amount: 5},
-		{ItemID: 50, NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 10},
-		{ItemID: 60, NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 3},
+		{ItemID: 50, NutrientID: 1, Name: "Protein", Unit: "g", Amount: 5, BasisQuantity: 1, BasisUnitID: 3},
+		{ItemID: 50, NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 10, BasisQuantity: 1, BasisUnitID: 3},
+		{ItemID: 60, NutrientID: 2, Name: "Carbs", Unit: "g", Amount: 3, BasisQuantity: 1, BasisUnitID: 3},
+	}, nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), gomock.Any()).Return([]inventory.Item{
+		{ItemID: 50, UnitID: 3},
+		{ItemID: 60, UnitID: 3},
+	}, nil)
+	one := 1.0
+	inv.EXPECT().ListUnits(gomock.Any()).Return([]inventory.Unit{
+		{UnitID: 3, Name: "gram", Kind: "weight", ToBaseFactor: &one},
+		{UnitID: 12, Name: "grams-2", Kind: "weight", ToBaseFactor: &one},
 	}, nil)
 
 	res, err := r.Nutrition(mealPlanCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "10"})
 	require.NoError(t, err)
-	require.Len(t, res, 2)
+	entries := res.Entries()
+	require.Len(t, entries, 2)
+	assert.Empty(t, res.Warnings())
 
-	assert.Equal(t, "Carbs", res[0].Name())
-	assert.Equal(t, "g", res[0].Unit())
-	assert.InDelta(t, 11.5, res[0].Amount(), 0.0001)
+	assert.Equal(t, "Carbs", entries[0].Name())
+	assert.Equal(t, "g", entries[0].Unit())
+	assert.InDelta(t, 11.5, entries[0].Amount(), 0.0001)
 
-	assert.Equal(t, "Protein", res[1].Name())
-	assert.Equal(t, "g", res[1].Unit())
-	assert.InDelta(t, 5.0, res[1].Amount(), 0.0001)
+	assert.Equal(t, "Protein", entries[1].Name())
+	assert.Equal(t, "g", entries[1].Unit())
+	assert.InDelta(t, 5.0, entries[1].Amount(), 0.0001)
 }
 
 func TestResolver_MealPlan_CreateMealPlan_Happy(t *testing.T) {

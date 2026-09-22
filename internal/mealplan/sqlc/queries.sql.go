@@ -264,6 +264,46 @@ func (q *Queries) GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams
 	return i, err
 }
 
+const listLastPlannedDates = `-- name: ListLastPlannedDates :many
+SELECT ms.recipe_id, MAX(mp.week_start_date)::date AS last_planned
+FROM mealplan.meal_slot ms
+JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
+WHERE mp.user_id = $1 AND ms.recipe_id = ANY($2::bigint[])
+GROUP BY ms.recipe_id
+`
+
+type ListLastPlannedDatesParams struct {
+	UserID    int64   `json:"user_id"`
+	RecipeIds []int64 `json:"recipe_ids"`
+}
+
+type ListLastPlannedDatesRow struct {
+	RecipeID    pgtype.Int8 `json:"recipe_id"`
+	LastPlanned pgtype.Date `json:"last_planned"`
+}
+
+// For one user: the most recent plan week in which each recipe appeared.
+// The BFF combines this with recipe ratings for recency scoring.
+func (q *Queries) ListLastPlannedDates(ctx context.Context, arg ListLastPlannedDatesParams) ([]ListLastPlannedDatesRow, error) {
+	rows, err := q.db.Query(ctx, listLastPlannedDates, arg.UserID, arg.RecipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLastPlannedDatesRow{}
+	for rows.Next() {
+		var i ListLastPlannedDatesRow
+		if err := rows.Scan(&i.RecipeID, &i.LastPlanned); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMealPlans = `-- name: ListMealPlans :many
 SELECT meal_plan_id, user_id, name, week_start_date, week_start_day_of_week, is_active, created_by, created_at, updated_by, updated_at
 FROM mealplan.meal_plan

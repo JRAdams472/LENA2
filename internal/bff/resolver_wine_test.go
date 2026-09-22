@@ -11,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
@@ -23,11 +23,11 @@ const (
 )
 
 func wineCtx() context.Context {
-	return testenv.WithAdmin(context.Background(), wineUserID, wineEmail)
+	return testutil.WithAdmin(context.Background(), wineUserID, wineEmail)
 }
 
 func wineUserCtx() context.Context {
-	return testenv.WithUser(context.Background(), wineUserID, wineEmail)
+	return testutil.WithUser(context.Background(), wineUserID, wineEmail)
 }
 
 func newWineTestResolver(m *mock.MockWineService) *Resolver {

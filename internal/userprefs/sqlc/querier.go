@@ -12,23 +12,23 @@ type Querier interface {
 	// Atomically adjust the user's pantry quantity by delta, clamping at 0.
 	// Creates the row if it does not yet exist, preserving all other fields
 	// on an existing row.
-	AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (InventoryUserItem, error)
+	AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (UserprefsUserItem, error)
 	CountUserBottles(ctx context.Context, userID int64) (int64, error)
 	CountUserItems(ctx context.Context, userID int64) (int64, error)
 	DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavoriteParams) error
 	DeleteUserBottle(ctx context.Context, arg DeleteUserBottleParams) error
 	DeleteUserItem(ctx context.Context, arg DeleteUserItemParams) error
-	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (RecipeUserRecipePreference, error)
-	GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (WineUserBottle, error)
-	GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (WineUserBottle, error)
-	GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (InventoryUserItem, error)
-	GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (InventoryUserItem, error)
-	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]RecipeUserRecipePreference, error)
-	ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]WineUserBottle, error)
-	ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]InventoryUserItem, error)
-	UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (RecipeUserRecipePreference, error)
-	UpsertUserBottle(ctx context.Context, arg UpsertUserBottleParams) (WineUserBottle, error)
-	UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) (InventoryUserItem, error)
+	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
+	GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (UserprefsUserBottle, error)
+	GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (UserprefsUserBottle, error)
+	GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (UserprefsUserItem, error)
+	GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (UserprefsUserItem, error)
+	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error)
+	ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]UserprefsUserBottle, error)
+	ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]UserprefsUserItem, error)
+	UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
+	UpsertUserBottle(ctx context.Context, arg UpsertUserBottleParams) (UserprefsUserBottle, error)
+	UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) (UserprefsUserItem, error)
 }
 
 var _ Querier = (*Queries)(nil)

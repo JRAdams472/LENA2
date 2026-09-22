@@ -15,7 +15,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 func TestIntegration(t *testing.T) {
@@ -24,18 +24,18 @@ func TestIntegration(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, cleanup, err := testenv.NewTestDB(t, ctx)
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	defer cleanup()
 
-	issuer := testenv.NewTestIssuer(t)
+	issuer := testutil.NewTestIssuer(t)
 
 	cfg := config.Config{
 		DatabaseURL:           pool.Config().ConnString(),
 		Port:                  "0",
 		CORSAllowedOrigins:    "*",
 		AuthIssuers:           issuer.URL,
-		AuthAudiences:         testenv.TestAudience,
+		AuthAudiences:         testutil.TestAudience,
 		LogLevel:              "error",
 		HTTPReadHeaderTimeout: 2 * time.Second,
 		HTTPReadTimeout:       3 * time.Second,

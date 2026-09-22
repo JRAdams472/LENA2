@@ -11,7 +11,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 // fakeIdentityService is an in-memory IdentityService for resolver tests.
@@ -113,7 +113,7 @@ func TestResolver_Users_AdminOnly(t *testing.T) {
 	assert.EqualError(t, err, "unauthorized")
 
 	// Non-admin member.
-	_, err = r.Users(testenv.WithUser(context.Background(), 2, "m@example.com"), struct {
+	_, err = r.Users(testutil.WithUser(context.Background(), 2, "m@example.com"), struct {
 		Page     int32
 		PageSize int32
 	}{Page: 1, PageSize: 25})
@@ -146,7 +146,7 @@ func TestResolver_SetUserRole_Guards(t *testing.T) {
 	}
 
 	// Non-admin is forbidden.
-	_, err := r.SetUserRole(testenv.WithUser(context.Background(), 3, "x@x.com"), args("2", "admin"))
+	_, err := r.SetUserRole(testutil.WithUser(context.Background(), 3, "x@x.com"), args("2", "admin"))
 	assert.EqualError(t, err, "forbidden: admin role required")
 
 	// Invalid role is a client error.
@@ -204,7 +204,7 @@ func TestResolver_UpdateMyProfile(t *testing.T) {
 		identity.User{UserID: 1, Email: "me@example.com", Role: identity.RoleMember, IsActive: true},
 	)
 	r := &Resolver{IdentityService: svc}
-	ctx := testenv.WithUser(context.Background(), 1, "me@example.com")
+	ctx := testutil.WithUser(context.Background(), 1, "me@example.com")
 	str := func(s string) *string { return &s }
 	input := func(first, last, backup *string) struct{ Input updateProfileInput } {
 		return struct{ Input updateProfileInput }{Input: updateProfileInput{FirstName: first, LastName: last, BackupEmail: backup}}

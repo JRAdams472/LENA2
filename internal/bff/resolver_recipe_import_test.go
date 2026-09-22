@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
-	"github.com/JRAdams472/LENA2/internal/platform/testenv"
 	"github.com/JRAdams472/LENA2/internal/recipe"
-	"github.com/JRAdams472/LENA2/internal/recipeimport"
+	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
 func recipeImportAdminCtx() context.Context {
@@ -26,7 +26,7 @@ func TestResolver_RecipeImportMutations_AdminOnly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	svc := mock.NewMockRecipeImportService(ctrl)
 	r := &Resolver{RecipeImportService: svc}
-	member := testenv.WithUser(context.Background(), 2, "m@example.com")
+	member := testutil.WithUser(context.Background(), 2, "m@example.com")
 
 	// Every admin mutation must reject unauthenticated callers.
 	for name, call := range map[string]func() error{

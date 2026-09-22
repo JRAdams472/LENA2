@@ -2,16 +2,18 @@ package bff
 
 import (
 	"context"
+	"time"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
-	"github.com/JRAdams472/LENA2/internal/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -21,7 +23,8 @@ type GroceryService interface {
 	GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (grocery.GroceryList, error)
 	ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]grocery.GroceryList, error)
 	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
-	Generate(ctx context.Context, userID int64, mealPlanID int64, by string) (grocery.GroceryList, error)
+	CreateGroceryList(ctx context.Context, userID int64, mealPlanID *int64, by string) (grocery.GroceryList, error)
+	AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, userID int64, by string) ([]grocery.GroceryListItem, error)
 	GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error)
 	UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error
 	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error)
@@ -50,6 +53,7 @@ type InventoryService interface {
 	CountPendingItems(ctx context.Context) (int64, error)
 	SetItemStatus(ctx context.Context, itemID int64, status string, approverUserID int64, by string) error
 	SetItemNutrients(ctx context.Context, itemID int64, entries []inventory.NutrientEntry, by string) error
+	ApplyNutritionLabel(ctx context.Context, itemID int64, parsed []nutritionparse.Nutrient, by string) error
 	CreateBrand(ctx context.Context, name, by string) (inventory.Brand, error)
 	SubmitBrand(ctx context.Context, name string, userID int64, by string) (inventory.Brand, error)
 	SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]inventory.Brand, error)
@@ -110,6 +114,7 @@ type MealPlanService interface {
 	ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]mealplan.MealSlotItem, error)
 	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlotItem, error)
 	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlotItem, error)
+	LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error)
 	CreateMealPlan(ctx context.Context, arg mealplan.MealPlan, by string) (mealplan.MealPlan, error)
 	UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error
 	DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error
@@ -145,14 +150,14 @@ type RecipeService interface {
 	GetUserRating(ctx context.Context, userID, recipeID int64) (recipe.RecipeRating, error)
 	ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]recipe.RecipeRating, error)
 	ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error)
-	ListRatingRecencySuggestions(ctx context.Context, userID int64, minRating int16, limit int32) ([]recipe.RatingRecencySuggestion, error)
+	ListRatedAtLeast(ctx context.Context, userID int64, minRating int16) ([]recipe.RecipeRating, error)
 }
 
 var _ RecipeService = (*recipe.Service)(nil)
 
 // RecipeImportService is the subset of *recipeimport.Service used by the resolver.
 type RecipeImportService interface {
-	Create(ctx context.Context, sourceFilename, sourcePath, sourceHash string, submittedByUserID *int64, createdBy string) (*recipeimport.RecipeImport, error)
+	Submit(ctx context.Context, mediaType string, data []byte, submittedByUserID *int64, by string) (*recipeimport.RecipeImport, error)
 	Get(ctx context.Context, id int64) (*recipeimport.RecipeImport, error)
 	List(ctx context.Context, status string, page, pageSize int32) ([]recipeimport.RecipeImport, error)
 	Count(ctx context.Context, status string) (int64, error)

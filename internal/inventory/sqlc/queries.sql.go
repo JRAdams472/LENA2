@@ -239,36 +239,48 @@ func (q *Queries) CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorPara
 
 const createFoodNutrient = `-- name: CreateFoodNutrient :one
 WITH ins AS (
-    INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, created_by)
-    VALUES ($1, $2, $3, $4)
-    RETURNING food_id, nutrient_id, amount
+    INSERT INTO inventory.food_nutrient (food_id, nutrient_id, amount, basis_quantity, basis_unit_id, created_by)
+    VALUES (
+        $1, $2, $3,
+        COALESCE($5, 100),
+        COALESCE($6, (SELECT unit_id FROM inventory.unit WHERE name = 'gram' LIMIT 1)),
+        $4
+    )
+    RETURNING food_id, nutrient_id, amount, basis_quantity, basis_unit_id
 )
-SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount
+SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount, ins.basis_quantity, ins.basis_unit_id
 FROM ins
 JOIN inventory.nutrient_type nt ON ins.nutrient_id = nt.nutrient_id
 `
 
 type CreateFoodNutrientParams struct {
-	FoodID     int64          `json:"food_id"`
-	NutrientID int64          `json:"nutrient_id"`
-	Amount     pgtype.Numeric `json:"amount"`
-	CreatedBy  string         `json:"created_by"`
+	FoodID        int64          `json:"food_id"`
+	NutrientID    int64          `json:"nutrient_id"`
+	Amount        pgtype.Numeric `json:"amount"`
+	CreatedBy     string         `json:"created_by"`
+	BasisQuantity interface{}    `json:"basis_quantity"`
+	BasisUnitID   interface{}    `json:"basis_unit_id"`
 }
 
 type CreateFoodNutrientRow struct {
-	FoodID     int64          `json:"food_id"`
-	NutrientID int64          `json:"nutrient_id"`
-	Name       string         `json:"name"`
-	Unit       pgtype.Text    `json:"unit"`
-	Amount     pgtype.Numeric `json:"amount"`
+	FoodID        int64          `json:"food_id"`
+	NutrientID    int64          `json:"nutrient_id"`
+	Name          string         `json:"name"`
+	Unit          pgtype.Text    `json:"unit"`
+	Amount        pgtype.Numeric `json:"amount"`
+	BasisQuantity pgtype.Numeric `json:"basis_quantity"`
+	BasisUnitID   int64          `json:"basis_unit_id"`
 }
 
+// The basis defaults to per-100g when the caller does not declare one.
 func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (CreateFoodNutrientRow, error) {
 	row := q.db.QueryRow(ctx, createFoodNutrient,
 		arg.FoodID,
 		arg.NutrientID,
 		arg.Amount,
 		arg.CreatedBy,
+		arg.BasisQuantity,
+		arg.BasisUnitID,
 	)
 	var i CreateFoodNutrientRow
 	err := row.Scan(
@@ -277,6 +289,8 @@ func (q *Queries) CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrient
 		&i.Name,
 		&i.Unit,
 		&i.Amount,
+		&i.BasisQuantity,
+		&i.BasisUnitID,
 	)
 	return i, err
 }
@@ -541,16 +555,6 @@ WHERE nutrient_id = $1
 
 func (q *Queries) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
 	_, err := q.db.Exec(ctx, deleteNutrientType, nutrientID)
-	return err
-}
-
-const deleteUserItemsByItem = `-- name: DeleteUserItemsByItem :exec
-DELETE FROM inventory.user_item
-WHERE item_id = $1
-`
-
-func (q *Queries) DeleteUserItemsByItem(ctx context.Context, itemID int64) error {
-	_, err := q.db.Exec(ctx, deleteUserItemsByItem, itemID)
 	return err
 }
 
@@ -1240,7 +1244,7 @@ func (q *Queries) ListFoodFlavorsByItems(ctx context.Context, itemIds []int64) (
 }
 
 const listFoodNutrientsByItem = `-- name: ListFoodNutrientsByItem :many
-SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount
+SELECT nt.nutrient_id, nt.name, nt.unit, fn.amount, fn.basis_quantity, fn.basis_unit_id
 FROM inventory.food_nutrient fn
 JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
 WHERE fn.food_id = $1
@@ -1248,10 +1252,12 @@ ORDER BY nt.name
 `
 
 type ListFoodNutrientsByItemRow struct {
-	NutrientID int64          `json:"nutrient_id"`
-	Name       string         `json:"name"`
-	Unit       pgtype.Text    `json:"unit"`
-	Amount     pgtype.Numeric `json:"amount"`
+	NutrientID    int64          `json:"nutrient_id"`
+	Name          string         `json:"name"`
+	Unit          pgtype.Text    `json:"unit"`
+	Amount        pgtype.Numeric `json:"amount"`
+	BasisQuantity pgtype.Numeric `json:"basis_quantity"`
+	BasisUnitID   int64          `json:"basis_unit_id"`
 }
 
 func (q *Queries) ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error) {
@@ -1268,6 +1274,8 @@ func (q *Queries) ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]
 			&i.Name,
 			&i.Unit,
 			&i.Amount,
+			&i.BasisQuantity,
+			&i.BasisUnitID,
 		); err != nil {
 			return nil, err
 		}
@@ -1280,7 +1288,7 @@ func (q *Queries) ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]
 }
 
 const listFoodNutrientsByItems = `-- name: ListFoodNutrientsByItems :many
-SELECT fn.food_id, nt.nutrient_id, nt.name, nt.unit, fn.amount
+SELECT fn.food_id, nt.nutrient_id, nt.name, nt.unit, fn.amount, fn.basis_quantity, fn.basis_unit_id
 FROM inventory.food_nutrient fn
 JOIN inventory.nutrient_type nt ON fn.nutrient_id = nt.nutrient_id
 WHERE fn.food_id = ANY($1::bigint[])
@@ -1288,11 +1296,13 @@ ORDER BY nt.name
 `
 
 type ListFoodNutrientsByItemsRow struct {
-	FoodID     int64          `json:"food_id"`
-	NutrientID int64          `json:"nutrient_id"`
-	Name       string         `json:"name"`
-	Unit       pgtype.Text    `json:"unit"`
-	Amount     pgtype.Numeric `json:"amount"`
+	FoodID        int64          `json:"food_id"`
+	NutrientID    int64          `json:"nutrient_id"`
+	Name          string         `json:"name"`
+	Unit          pgtype.Text    `json:"unit"`
+	Amount        pgtype.Numeric `json:"amount"`
+	BasisQuantity pgtype.Numeric `json:"basis_quantity"`
+	BasisUnitID   int64          `json:"basis_unit_id"`
 }
 
 func (q *Queries) ListFoodNutrientsByItems(ctx context.Context, itemIds []int64) ([]ListFoodNutrientsByItemsRow, error) {
@@ -1310,6 +1320,8 @@ func (q *Queries) ListFoodNutrientsByItems(ctx context.Context, itemIds []int64)
 			&i.Name,
 			&i.Unit,
 			&i.Amount,
+			&i.BasisQuantity,
+			&i.BasisUnitID,
 		); err != nil {
 			return nil, err
 		}

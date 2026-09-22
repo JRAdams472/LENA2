@@ -1,5 +1,5 @@
-// Package testenv provides shared helpers for Go unit and integration tests.
-package testenv
+// Package testutil provides shared helpers for Go unit and integration tests.
+package testutil
 
 import (
 	"context"
@@ -159,8 +159,8 @@ func repoRoot() (string, error) {
 	if !ok {
 		return "", fmt.Errorf("failed to get caller file")
 	}
-	// internal/platform/testenv/testenv.go -> repo root
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..")), nil
+	// internal/testutil/testutil.go -> repo root
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..")), nil
 }
 
 var (

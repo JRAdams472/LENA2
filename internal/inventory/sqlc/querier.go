@@ -23,6 +23,7 @@ type Querier interface {
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (InventoryCategory, error)
 	CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfileParams) (InventoryFlavorProfile, error)
 	CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (CreateFoodFlavorRow, error)
+	// The basis defaults to per-100g when the caller does not declare one.
 	CreateFoodNutrient(ctx context.Context, arg CreateFoodNutrientParams) (CreateFoodNutrientRow, error)
 	CreateIngredient(ctx context.Context, arg CreateIngredientParams) (InventoryIngredient, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (InventoryItem, error)
@@ -37,7 +38,6 @@ type Querier interface {
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
 	DeleteItem(ctx context.Context, itemID int64) error
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
-	DeleteUserItemsByItem(ctx context.Context, itemID int64) error
 	// Special characters (apostrophes, periods, etc.) and case are ignored so
 	// "Bush", "Bushs", and "Bush's" all match the same brand. Rejected rows
 	// are never resurfaced.
