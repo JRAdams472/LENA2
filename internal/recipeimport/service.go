@@ -401,6 +401,9 @@ func (s *Service) Retry(ctx context.Context, id int64) error {
 // bounded; if it is full the row stays claimable in the database and is
 // re-enqueued on the next service start.
 func (s *Service) EnqueueProcess(id int64) {
+	if s.jobs == nil {
+		return // literal-built test service with no worker pool
+	}
 	select {
 	case s.jobs <- id:
 	case <-s.shutdown:

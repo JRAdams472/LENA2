@@ -38,7 +38,13 @@ func TestIntegrationStoreTransitions(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, _ := newIntegrationStore(t, ctx)
+	store, pool := newIntegrationStore(t, ctx)
+
+	// recipe_id and approved_by_user_id are real FKs — create real rows.
+	adminID := testenv.MustUser(ctx, t, pool, "transitions-admin@example.com")
+	recipeSvc := recipe.NewService(pool)
+	existing, err := recipeSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{Name: "IT Transition Recipe", IsActive: true}, nil, nil, itBy)
+	require.NoError(t, err)
 
 	ri, err := store.Create(ctx, RecipeImport{
 		SourceFilename: "scan.pdf", SourcePath: "/inbox/scan.pdf",
@@ -47,7 +53,7 @@ func TestIntegrationStoreTransitions(t *testing.T) {
 	require.NoError(t, err)
 
 	// pending -> persisted directly is illegal.
-	assert.ErrorIs(t, store.SetPersisted(ctx, ri.ID, 1, 1), domainerr.ErrConflict)
+	assert.ErrorIs(t, store.SetPersisted(ctx, ri.ID, existing.RecipeID, adminID), domainerr.ErrConflict)
 
 	// Claim moves pending -> processing exactly once.
 	claimed, err := store.Claim(ctx, ri.ID)
@@ -65,12 +71,12 @@ func TestIntegrationStoreTransitions(t *testing.T) {
 	assert.ErrorIs(t, store.MarkFailed(ctx, ri.ID, "boom"), domainerr.ErrConflict,
 		"ready -> failed is not a worker transition")
 
-	require.NoError(t, store.SetPersisted(ctx, ri.ID, 42, 7))
+	require.NoError(t, store.SetPersisted(ctx, ri.ID, existing.RecipeID, adminID))
 	got, err := store.Get(ctx, ri.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StatusPersisted, got.Status)
 	require.NotNil(t, got.RecipeID)
-	assert.Equal(t, int64(42), *got.RecipeID)
+	assert.Equal(t, existing.RecipeID, *got.RecipeID)
 
 	// Persisted is terminal.
 	assert.ErrorIs(t, store.SetRejected(ctx, ri.ID), domainerr.ErrConflict)
@@ -277,7 +283,9 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusReady, updated.Status)
 
-	admin := currentuser.User{UserID: 1, Email: "admin@example.com", IsAdmin: true}
+	// approved_by_user_id is a real FK — create the admin user.
+	adminID := testenv.MustUser(ctx, t, pool, "import-admin@example.com")
+	admin := currentuser.User{UserID: adminID, Email: "import-admin@example.com", IsAdmin: true}
 	rcp, done, err := svc.Approve(ctx, ri.ID, admin)
 	require.NoError(t, err)
 	assert.Equal(t, "IT Pancakes", rcp.Name)
