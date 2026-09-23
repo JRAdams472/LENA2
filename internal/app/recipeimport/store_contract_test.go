@@ -167,6 +167,9 @@ func runStoreContract(t *testing.T, fixture storeFixture) {
 		c := mustCreateImport(t, ctx, store)
 		walkImportTo(t, ctx, store, c.ID, StatusRejected, recipeID, userID)
 
+		// The SQL store shares the database with other contract cases, so
+		// assert on membership and on count/list agreement rather than an
+		// absolute row count.
 		rows, err := store.ListByStatuses(ctx, []Status{StatusPending, StatusProcessing}, 10, 0)
 		require.NoError(t, err)
 		gotIDs := map[int64]bool{}
@@ -177,9 +180,11 @@ func runStoreContract(t *testing.T, fixture storeFixture) {
 		assert.True(t, gotIDs[b.ID])
 		assert.False(t, gotIDs[c.ID], "rejected row must be filtered out")
 
+		all, err := store.ListByStatuses(ctx, []Status{StatusPending, StatusProcessing}, 10000, 0)
+		require.NoError(t, err)
 		n, err := store.CountByStatuses(ctx, []Status{StatusPending, StatusProcessing})
 		require.NoError(t, err)
-		assert.Equal(t, int64(len(rows)), n, "count must match the filtered list")
+		assert.Equal(t, int64(len(all)), n, "count must match the filtered list")
 
 		page, err := store.ListByStatuses(ctx, []Status{StatusPending, StatusProcessing}, 1, 1)
 		require.NoError(t, err)
