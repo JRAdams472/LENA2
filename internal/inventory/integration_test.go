@@ -539,7 +539,7 @@ func TestIntegrationBrandModeration(t *testing.T) {
 		}
 	})
 
-	t.Run("reject clears approver and blocks resubmission", func(t *testing.T) {
+	t.Run("reject clears approver and frees the name for resubmission", func(t *testing.T) {
 		b, err := svc.SubmitBrand(ctx, "Mod Reject Me", userA, itBy)
 		require.NoError(t, err)
 		require.NoError(t, svc.SetBrandStatus(ctx, b.BrandID, BrandStatusApproved, adminID, itBy))
@@ -551,10 +551,12 @@ func TestIntegrationBrandModeration(t *testing.T) {
 		assert.Nil(t, got.ApprovedByUserID, "rejecting clears the approver")
 		assert.Nil(t, got.ApprovedAt)
 
-		// Rejected normalized names cannot be resubmitted — the row is
-		// visible to the submit check and conflicts.
-		_, err = svc.SubmitBrand(ctx, "mod reject me", userA, itBy)
-		assert.ErrorIs(t, err, domainerr.ErrConflict)
+		// The partial unique index only covers non-rejected rows, so a
+		// rejected name may be resubmitted — as a new pending row.
+		resub, err := svc.SubmitBrand(ctx, "mod reject me", userA, itBy)
+		require.NoError(t, err)
+		assert.NotEqual(t, b.BrandID, resub.BrandID)
+		assert.Equal(t, BrandStatusPending, resub.Status)
 	})
 
 	t.Run("resubmitting own approved name returns the brand", func(t *testing.T) {
