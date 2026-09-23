@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/wine/sqlc"
 )
 
@@ -98,7 +99,7 @@ func (s *Service) CreateCountry(ctx context.Context, name, isoCode, description,
 func (s *Service) GetCountryByID(ctx context.Context, countryID int64) (Country, error) {
 	row, err := s.q.GetCountryByID(ctx, countryID)
 	if err != nil {
-		return Country{}, fmt.Errorf("get country by id: %w", err)
+		return Country{}, fmt.Errorf("get country by id: %w", domainerr.FromStorage(err))
 	}
 	return toCountry(row), nil
 }
@@ -127,7 +128,7 @@ func (s *Service) UpdateCountry(ctx context.Context, countryID int64, name, isoC
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Country{}, fmt.Errorf("update country: %w", err)
+		return Country{}, fmt.Errorf("update country: %w", domainerr.FromStorage(err))
 	}
 	return toCountry(row), nil
 }
@@ -166,7 +167,7 @@ func (s *Service) CreateRegion(ctx context.Context, arg Region, by string) (Regi
 func (s *Service) GetRegionByID(ctx context.Context, regionID int64) (Region, error) {
 	row, err := s.q.GetRegionByID(ctx, regionID)
 	if err != nil {
-		return Region{}, fmt.Errorf("get region by id: %w", err)
+		return Region{}, fmt.Errorf("get region by id: %w", domainerr.FromStorage(err))
 	}
 	return toRegion(row), nil
 }
@@ -195,7 +196,7 @@ func (s *Service) UpdateRegion(ctx context.Context, regionID, countryID int64, n
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Region{}, fmt.Errorf("update region: %w", err)
+		return Region{}, fmt.Errorf("update region: %w", domainerr.FromStorage(err))
 	}
 	return toRegion(row), nil
 }
@@ -232,7 +233,7 @@ func (s *Service) CreateType(ctx context.Context, name, description, by string) 
 func (s *Service) GetTypeByID(ctx context.Context, typeID int64) (Type, error) {
 	row, err := s.q.GetTypeByID(ctx, typeID)
 	if err != nil {
-		return Type{}, fmt.Errorf("get type by id: %w", err)
+		return Type{}, fmt.Errorf("get type by id: %w", domainerr.FromStorage(err))
 	}
 	return toType(row), nil
 }
@@ -260,7 +261,7 @@ func (s *Service) UpdateType(ctx context.Context, typeID int64, name, descriptio
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Type{}, fmt.Errorf("update type: %w", err)
+		return Type{}, fmt.Errorf("update type: %w", domainerr.FromStorage(err))
 	}
 	return toType(row), nil
 }
@@ -297,7 +298,7 @@ func (s *Service) CreateVintage(ctx context.Context, year int32, description, by
 func (s *Service) GetVintageByID(ctx context.Context, vintageID int64) (Vintage, error) {
 	row, err := s.q.GetVintageByID(ctx, vintageID)
 	if err != nil {
-		return Vintage{}, fmt.Errorf("get vintage by id: %w", err)
+		return Vintage{}, fmt.Errorf("get vintage by id: %w", domainerr.FromStorage(err))
 	}
 	return toVintage(row), nil
 }
@@ -325,7 +326,7 @@ func (s *Service) UpdateVintage(ctx context.Context, vintageID int64, year int32
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Vintage{}, fmt.Errorf("update vintage: %w", err)
+		return Vintage{}, fmt.Errorf("update vintage: %w", domainerr.FromStorage(err))
 	}
 	return toVintage(row), nil
 }
@@ -362,7 +363,7 @@ func (s *Service) CreateGrapeVariety(ctx context.Context, name, description, by 
 func (s *Service) GetGrapeVarietyByID(ctx context.Context, grapeVarietyID int64) (GrapeVariety, error) {
 	row, err := s.q.GetGrapeVarietyByID(ctx, grapeVarietyID)
 	if err != nil {
-		return GrapeVariety{}, fmt.Errorf("get grape variety by id: %w", err)
+		return GrapeVariety{}, fmt.Errorf("get grape variety by id: %w", domainerr.FromStorage(err))
 	}
 	return toGrapeVariety(row), nil
 }
@@ -390,7 +391,7 @@ func (s *Service) UpdateGrapeVariety(ctx context.Context, grapeVarietyID int64, 
 		UpdatedBy:      textOrNull(by),
 	})
 	if err != nil {
-		return GrapeVariety{}, fmt.Errorf("update grape variety: %w", err)
+		return GrapeVariety{}, fmt.Errorf("update grape variety: %w", domainerr.FromStorage(err))
 	}
 	return toGrapeVariety(row), nil
 }
@@ -504,7 +505,7 @@ func (s *Service) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfi
 func (s *Service) GetWineFlavorProfileByID(ctx context.Context, flavorProfileID int64) (WineFlavorProfile, error) {
 	row, err := s.q.GetWineFlavorProfileByID(ctx, flavorProfileID)
 	if err != nil {
-		return WineFlavorProfile{}, fmt.Errorf("get wine flavor profile by id: %w", err)
+		return WineFlavorProfile{}, fmt.Errorf("get wine flavor profile by id: %w", domainerr.FromStorage(err))
 	}
 	return toWineFlavorProfile(row), nil
 }
@@ -532,7 +533,7 @@ func (s *Service) UpdateWineFlavorProfile(ctx context.Context, flavorProfileID i
 		UpdatedBy:       textOrNull(by),
 	})
 	if err != nil {
-		return WineFlavorProfile{}, fmt.Errorf("update wine flavor profile: %w", err)
+		return WineFlavorProfile{}, fmt.Errorf("update wine flavor profile: %w", domainerr.FromStorage(err))
 	}
 	return toWineFlavorProfile(row), nil
 }
@@ -670,7 +671,7 @@ func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bott
 func (s *Service) GetBottleByID(ctx context.Context, bottleID int64) (Bottle, error) {
 	row, err := s.q.GetBottleByID(ctx, bottleID)
 	if err != nil {
-		return Bottle{}, fmt.Errorf("get bottle by id: %w", err)
+		return Bottle{}, fmt.Errorf("get bottle by id: %w", domainerr.FromStorage(err))
 	}
 	b, err := toBottle(row)
 	if err != nil {

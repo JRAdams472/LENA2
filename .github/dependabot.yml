@@ -20,3 +20,15 @@ updates:
     directory: "/clients/web"
     schedule:
       interval: weekly
+  - package-ecosystem: docker
+    directory: "/cmd/testissuer"
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: "/tools/ocr"
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: weekly

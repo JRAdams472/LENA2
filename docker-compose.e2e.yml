@@ -1,14 +1,14 @@
 # Overrides for Playwright e2e runs:
-#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile seed up -d --build
 #
 # Adds a local OIDC issuer the API trusts in addition to Google, so tests can
-# mint their own ID tokens without real Google sign-in.
+# mint their own ID tokens without real Google sign-in. The `seed` profile is
+# required: the e2e suite exercises the seeded catalog.
 services:
   testissuer:
     build:
       context: .
       dockerfile: cmd/testissuer/Dockerfile
-    container_name: lena2-testissuer
     environment:
       PORT: 8085
       # The API container resolves the issuer by this name.
@@ -41,8 +41,6 @@ services:
     depends_on:
       db-seed:
         condition: service_completed_successfully
-      seq-gelf:
-        condition: service_started
       testissuer:
         condition: service_healthy
 
@@ -54,6 +52,9 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: e2e-client
 
-  db-seed:
+  # e2e still needs the seeded catalog; the db-grant service sets the
+  # lena_app password with this value.
+  db-grant:
     environment:
       LENA_DB_PASSWORD: e2e-change-me
+

@@ -14,6 +14,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/mealplan/sqlc"
 	"github.com/JRAdams472/LENA2/internal/mealplan/sqlc/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 var errDB = errors.New("db error")
@@ -238,7 +239,7 @@ func TestAddMealSlot(t *testing.T) {
 			Return(sqlc.MealplanMealPlan{}, pgx.ErrNoRows)
 		_, err := s.AddMealSlot(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add meal slot")
-		assert.ErrorIs(t, err, pgx.ErrNoRows)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	})
 }
 
@@ -393,7 +394,7 @@ func TestAddMealSlotItem(t *testing.T) {
 			Return(sqlc.MealplanMealSlot{}, pgx.ErrNoRows)
 		_, err := s.AddMealSlotItem(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add meal slot item")
-		assert.ErrorIs(t, err, pgx.ErrNoRows)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	})
 }
 

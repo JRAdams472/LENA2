@@ -3,8 +3,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.import.yml --profile import up -d
 services:
   ollama:
-    image: ollama/ollama:latest
-    container_name: lena2-ollama
+    image: ollama/ollama:0.34.3@sha256:7ab595e4ead391f6818c7215297781282babe0701f6d9a9f8862ac591360a58b
     profiles: ["import"]
     volumes:
       - ollama_data:/root/.ollama
@@ -27,8 +26,7 @@ services:
               capabilities: [gpu]
 
   ollama-pull:
-    image: ollama/ollama:latest
-    container_name: lena2-ollama-pull
+    image: ollama/ollama:0.34.3@sha256:7ab595e4ead391f6818c7215297781282babe0701f6d9a9f8862ac591360a58b
     profiles: ["import"]
     entrypoint: ["/bin/sh", "-c"]
     command: ollama pull ${LENA_OLLAMA_MODEL:-qwen2.5:7b-instruct}
@@ -41,7 +39,6 @@ services:
   ocr:
     build:
       context: ./tools/ocr
-    container_name: lena2-ocr
     profiles: ["import"]
     ports:
       - "127.0.0.1:${LENA_OCR_HOST_PORT:-8000}:8000"

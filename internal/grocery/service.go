@@ -15,6 +15,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/grocery/sqlc"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 // Service provides grocery list operations.
@@ -97,7 +98,7 @@ func (s *Service) CreateGroceryList(ctx context.Context, userID int64, mealPlanI
 func (s *Service) GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (GroceryList, error) {
 	row, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: groceryListID, UserID: userID})
 	if err != nil {
-		return GroceryList{}, fmt.Errorf("get grocery list: %w", err)
+		return GroceryList{}, fmt.Errorf("get grocery list: %w", domainerr.FromStorage(err))
 	}
 	return toGroceryList(row), nil
 }
@@ -149,7 +150,7 @@ type GroceryListItem struct {
 // GetGroceryListByID.
 func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, userID int64, by string) (GroceryListItem, error) {
 	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: arg.GroceryListID, UserID: userID}); err != nil {
-		return GroceryListItem{}, fmt.Errorf("add grocery list item: %w", err)
+		return GroceryListItem{}, fmt.Errorf("add grocery list item: %w", domainerr.FromStorage(err))
 	}
 	qty, err := numericFromFloat64(arg.QuantityNeeded)
 	if err != nil {
@@ -216,7 +217,7 @@ func (s *Service) ListGroceryListItemsByLists(ctx context.Context, groceryListID
 func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (GroceryListItem, error) {
 	row, err := s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, UserID: userID})
 	if err != nil {
-		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", err)
+		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", domainerr.FromStorage(err))
 	}
 	gli, err := toGroceryListItem(row)
 	if err != nil {
@@ -259,7 +260,7 @@ func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListI
 		UpdatedBy:         textOrNull(by),
 	})
 	if err != nil {
-		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", domainerr.FromStorage(err))
 	}
 	gli, err := toGroceryListItem(row)
 	if err != nil {
@@ -283,7 +284,7 @@ func (s *Service) AddGroceryListItems(ctx context.Context, items []GroceryListIt
 		}
 	}
 	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: listID, UserID: userID}); err != nil {
-		return nil, fmt.Errorf("add grocery list items: %w", err)
+		return nil, fmt.Errorf("add grocery list items: %w", domainerr.FromStorage(err))
 	}
 	out := make([]GroceryListItem, 0, len(items))
 	for _, it := range items {

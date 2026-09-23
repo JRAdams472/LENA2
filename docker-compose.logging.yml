@@ -1,0 +1,58 @@
+# Optional overlay: centralized structured logging via Seq + GELF.
+# Enable with:
+#   SEQ_FIRSTRUN_ADMINPASSWORDHASH=$(printf 'admin-password' | docker run --rm datalust/seq:2024.1 config --token --first-run-admin-password-stdin) \
+#     docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d
+#
+# Both Seq and the GELF input bind to loopback only — the UI is not exposed
+# to the network, and the Docker daemon's GELF driver reaches the input via
+# host localhost. Seq first-run auth requires SEQ_FIRSTRUN_ADMINPASSWORDHASH
+# (a salted PBKDF hash of the admin password); without it the UI would be
+# unauthenticated, so this overlay fails fast if it is unset.
+services:
+  api:
+    logging:
+      driver: gelf
+      options:
+        # The GELF driver runs in the Docker daemon and resolves this via
+        # the host network namespace; seq-gelf publishes 12201/udp on the
+        # host loopback, so localhost reaches it.
+        gelf-address: "udp://localhost:12201"
+        tag: "{{.Name}}"
+    depends_on:
+      seq-gelf:
+        condition: service_started
+
+  web:
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "{{.Name}}"
+    depends_on:
+      seq-gelf:
+        condition: service_started
+
+  seq:
+    image: datalust/seq:2024.1@sha256:899c169d24f8f007034825eb6b4d5fcf119b9c13b2eb39c6fb588b2798d4923a
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_ADMINPASSWORDHASH: ${SEQ_FIRSTRUN_ADMINPASSWORDHASH:?SEQ_FIRSTRUN_ADMINPASSWORDHASH must be set (see header comment)}
+    ports:
+      # Seq UI/API on host loopback only: http://localhost:5341
+      - "127.0.0.1:5341:80"
+    volumes:
+      - seq_data:/data
+
+  seq-gelf:
+    image: datalust/seq-input-gelf:4.0.02323@sha256:38d92d99e98f01206223c84337ca7bc1961128440803b8d71da929d49743b368
+    environment:
+      SEQ_ADDRESS: http://seq:5341
+    ports:
+      # GELF ingestion on host loopback only (the daemon-side driver emits
+      # to localhost; nothing external can reach this port).
+      - "127.0.0.1:12201:12201/udp"
+    depends_on:
+      - seq
+
+volumes:
+  seq_data:

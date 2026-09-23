@@ -1,9 +1,10 @@
-# Build stage
-FROM node:26.9.0-alpine AS builder
+# syntax=docker/dockerfile:1
+# Build stage — Node 22 LTS matches CI (node-version: 22 in test.yml).
+FROM node:22.23.2-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
 ARG NEXT_PUBLIC_API_BASE_URL="http://localhost"
@@ -17,7 +18,7 @@ RUN if [ -z "$NEXT_PUBLIC_GOOGLE_CLIENT_ID" ] || [ "$NEXT_PUBLIC_GOOGLE_CLIENT_I
 RUN npm run build
 
 # Runtime stage
-FROM node:26.9.0-alpine AS runner
+FROM node:22.23.2-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

@@ -1,7 +1,15 @@
+# Default logging: local json-file with rotation. For centralized Seq/GELF
+# logging, add the optional overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
-    image: postgres:16.4-alpine
-    container_name: lena2-db
+    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lena}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -15,8 +23,7 @@ services:
       retries: 5
 
   db-migrate:
-    image: migrate/migrate:v4.18.2
-    container_name: lena2-db-migrate
+    image: migrate/migrate:v4.18.2@sha256:acded13a336f2b6f35fd9ce14a32834cf1e6b2a7887fe5dfc977b3e563eba39e
     command:
       - "-path"
       - "/migrations"
@@ -29,13 +36,35 @@ services:
       db:
         condition: service_healthy
 
-  db-seed:
-    image: postgres:16.4-alpine
-    container_name: lena2-db-seed
+  # Applies the lena_app role password after migrations create the role.
+  # One-shot and instant; the API waits on this, not on the seed.
+  db-grant:
+    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
     environment:
       PGUSER: ${POSTGRES_USER:-lena}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       LENA_DB_PASSWORD: ${LENA_DB_PASSWORD:?LENA_DB_PASSWORD must be set}
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-lena}
+    command:
+      - /bin/sh
+      - -c
+      - "psql -v ON_ERROR_STOP=1 -c \"ALTER ROLE lena_app WITH PASSWORD '$LENA_DB_PASSWORD'\""
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+
+  # Reference-data seed. Optional and versioned: each /seed/*.sql runs once
+  # and is recorded in public.schema_seed, so repeated `--profile seed up`
+  # is a no-op and the API never waits on it.
+  #   docker compose --profile seed up db-seed
+  db-seed:
+    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+    profiles: ["seed"]
+    environment:
+      PGUSER: ${POSTGRES_USER:-lena}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       PGHOST: db
       PGPORT: 5432
       PGDATABASE: ${POSTGRES_DB:-lena}
@@ -44,7 +73,20 @@ services:
     command:
       - /bin/sh
       - -c
-      - "psql -v ON_ERROR_STOP=1 -c \"ALTER ROLE lena_app WITH PASSWORD '$LENA_DB_PASSWORD'\" && for f in /seed/*.sql; do [ -e \"$$f\" ] || continue; psql -v ON_ERROR_STOP=1 -f \"$$f\"; done"
+      - |
+        set -e
+        psql -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS public.schema_seed (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
+        for f in /seed/*.sql; do
+          [ -e "$$f" ] || continue
+          name=$$(basename "$$f")
+          applied=$$(psql -tAc "SELECT 1 FROM public.schema_seed WHERE filename='$$name'")
+          if [ "$$applied" = "1" ]; then
+            echo "seed $$name already applied; skipping"
+            continue
+          fi
+          psql -v ON_ERROR_STOP=1 -f "$$f"
+          psql -v ON_ERROR_STOP=1 -c "INSERT INTO public.schema_seed (filename) VALUES ('$$name')"
+        done
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -53,7 +95,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: lena2-api
     environment:
       LENA_PORT: 8080
       LENA_LOG_LEVEL: ${LENA_LOG_LEVEL:-info}
@@ -72,22 +113,17 @@ services:
     volumes:
       - import_data:/data/import
     depends_on:
-      db-seed:
+      db-migrate:
         condition: service_completed_successfully
-      seq-gelf:
-        condition: service_started
+      db-grant:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      # /ready verifies the database link, not just process liveness.
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    logging:
-      driver: gelf
-      options:
-        # The GELF driver runs in the Docker daemon and resolves via the host.
-        # seq-gelf publishes 12201/udp on the host, so localhost works.
-        gelf-address: "udp://localhost:12201"
-        tag: "{{.Name}}"
+    logging: *default-logging
 
   web:
     build:
@@ -96,21 +132,14 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:?NEXT_PUBLIC_GOOGLE_CLIENT_ID must be set}
-    container_name: lena2-web
     environment:
       PORT: 3000
     depends_on:
       - api
-      - seq-gelf
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://localhost:12201"
-        tag: "{{.Name}}"
+    logging: *default-logging
 
   caddy:
-    image: caddy:2.8.4-alpine
-    container_name: lena2-caddy
+    image: caddy:2.8.4-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
     ports:
       - "80:80"
     environment:
@@ -121,28 +150,6 @@ services:
       - api
       - web
 
-  seq:
-    image: datalust/seq:2024.1
-    container_name: lena2-seq
-    environment:
-      ACCEPT_EULA: "Y"
-    ports:
-      # Seq UI/API: http://localhost:5341
-      - "5341:80"
-    volumes:
-      - seq_data:/data
-
-  seq-gelf:
-    image: datalust/seq-input-gelf:4.0.02323
-    container_name: lena2-seq-gelf
-    environment:
-      SEQ_ADDRESS: http://seq:5341
-    ports:
-      - "12201:12201/udp"
-    depends_on:
-      - seq
-
 volumes:
   pg_data:
-  seq_data:
   import_data:
