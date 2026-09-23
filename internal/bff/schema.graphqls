@@ -57,7 +57,7 @@ enum ReviewItemStatus {
 type Query {
   me: User!
   brand(id: ID!): Brand
-  brands: [Brand!]!
+  brands(page: Int = 1, pageSize: Int = 25): BrandPage!
   searchBrands(term: String!, limit: Int = 20): [Brand!]!
   pendingBrands(page: Int = 1, pageSize: Int = 25): BrandPage! @admin
   frequentBrands(limit: Int = 10): [Brand!]!

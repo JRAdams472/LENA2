@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	CountBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error)
 	CountIngredients(ctx context.Context) (int64, error)
 	CountItems(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error)
 	CountPendingBrands(ctx context.Context) (int64, error)
@@ -61,7 +62,7 @@ type Querier interface {
 	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	// Brands are visible when approved, or when the caller submitted them.
-	ListBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) ([]InventoryBrand, error)
+	ListBrandsVisible(ctx context.Context, arg ListBrandsVisibleParams) ([]InventoryBrand, error)
 	ListCategories(ctx context.Context) ([]InventoryCategory, error)
 	ListFlavorProfiles(ctx context.Context) ([]InventoryFlavorProfile, error)
 	ListFoodFlavorsByItem(ctx context.Context, foodID int64) ([]ListFoodFlavorsByItemRow, error)

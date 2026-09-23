@@ -56,7 +56,14 @@ describe("brands page", () => {
       if (body.query.includes("deleteBrand")) {
         return Promise.resolve(gql({ deleteBrand: true }));
       }
-      return Promise.resolve(gql({ brands: [{ id: "1", name: "Nike" }] }));
+      return Promise.resolve(
+        gql({
+          brands: {
+            items: [{ id: "1", name: "Nike" }],
+            pageInfo: { totalCount: 1 },
+          },
+        })
+      );
     });
   });
 

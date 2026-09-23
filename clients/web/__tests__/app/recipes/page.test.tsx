@@ -141,8 +141,10 @@ describe("recipe detail page", () => {
   beforeEach(() => {
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
-      if (body.query.includes("brands")) {
-        return Promise.resolve(gql({ brands: [{ id: "1", name: "DairyCo" }] }));
+      if (body.query.includes("searchBrands")) {
+        return Promise.resolve(
+          gql({ searchBrands: [{ id: "1", name: "DairyCo" }] })
+        );
       }
       if (body.query.includes("updateRecipe")) {
         return Promise.resolve(gql({ updateRecipe: recipe }));

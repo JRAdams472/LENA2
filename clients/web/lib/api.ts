@@ -1236,14 +1236,13 @@ export const api = {
   },
 
   getBrands: async (search?: string): Promise<Brand[]> => {
-    const data = await request<{ brands: GqlBrand[] }>(
-      `query { brands { ${BRAND_FIELDS} } }`
+    const s = (search ?? "").trim();
+    if (s === "") return [];
+    const data = await request<{ searchBrands: GqlBrand[] }>(
+      `query ($term: String!, $limit: Int) { searchBrands(term: $term, limit: $limit) { ${BRAND_FIELDS} } }`,
+      { term: s, limit: 50 }
     );
-    const s = (search ?? "").trim().toLowerCase();
-    return data.brands
-      .filter((b) => !s || b.name.toLowerCase().includes(s))
-      .sort(sortByFrequency)
-      .map(toBrand);
+    return (data.searchBrands ?? []).sort(sortByFrequency).map(toBrand);
   },
 
   getFrequentBrands: async (limit = 10): Promise<Brand[]> => {
@@ -1438,10 +1437,20 @@ export const api = {
   },
 
   getBrandList: async (): Promise<Brand[]> => {
-    const data = await request<{ brands: GqlBrand[] }>(
-      `query { brands { ${BRAND_FIELDS} } }`
-    );
-    return data.brands.map(toBrand);
+    const out: Brand[] = [];
+    const pageSize = 100;
+    for (let page = 1; ; page++) {
+      const data = await request<{
+        brands: { items: GqlBrand[]; pageInfo: { totalCount: number } };
+      }>(
+        `query ($page: Int!, $pageSize: Int!) { brands(page: $page, pageSize: $pageSize) { items { ${BRAND_FIELDS} } pageInfo { totalCount } } }`,
+        { page, pageSize }
+      );
+      const items = data.brands.items.map(toBrand);
+      out.push(...items);
+      if (items.length < pageSize) break;
+    }
+    return out;
   },
 
   createBrand: async (brand: Omit<Brand, keyof AuditableEntity>): Promise<Brand> => {

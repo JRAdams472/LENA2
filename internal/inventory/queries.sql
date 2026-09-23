@@ -51,7 +51,13 @@ ORDER BY name;
 SELECT *
 FROM inventory.brand
 WHERE status = 'approved' OR submitted_by_user_id = $1
-ORDER BY name;
+ORDER BY name
+LIMIT $2 OFFSET $3;
+
+-- name: CountBrandsVisible :one
+SELECT COUNT(*)
+FROM inventory.brand
+WHERE status = 'approved' OR submitted_by_user_id = $1;
 
 -- name: ListPendingBrands :many
 SELECT *

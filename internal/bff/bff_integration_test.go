@@ -203,16 +203,18 @@ func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestI
 	require.NotEmpty(t, brandRes.CreateBrand.ID)
 	assert.Equal(t, "Integration Brand", brandRes.CreateBrand.Name)
 
-	status, gr = doGraphQL(t, srv, tokA, `{ brands { id name } }`, nil)
+	status, gr = doGraphQL(t, srv, tokA, `{ brands(pageSize: 100) { items { id name } pageInfo { totalCount } } }`, nil)
 	require.Equal(t, http.StatusOK, status)
 	var brandsRes struct {
-		Brands []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+		Brands struct {
+			Items []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"items"`
 		} `json:"brands"`
 	}
 	decodeData(t, gr.Data, &brandsRes)
-	require.True(t, containsBrand(brandsRes.Brands, brandRes.CreateBrand.ID))
+	require.True(t, containsBrand(brandsRes.Brands.Items, brandRes.CreateBrand.ID))
 
 	// createCategory + category query
 	status, gr = doGraphQL(t, srv, tokA, `mutation { createCategory(input: { name: "Integration Category", description: "Milk products" }) { id name description } }`, nil)

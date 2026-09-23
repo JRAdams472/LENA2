@@ -71,32 +71,39 @@ func TestResolver_Inventory_Brand(t *testing.T) {
 }
 
 func TestResolver_Inventory_Brands(t *testing.T) {
+	type pageArgs = struct {
+		Page     int32
+		PageSize int32
+	}
+
 	t.Run("happy path", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(7)).Return([]inventory.Brand{
+		inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(7), int32(25), int32(0)).Return([]inventory.Brand{
 			{BrandID: 1, Name: "Acme", Status: inventory.BrandStatusApproved},
 			{BrandID: 2, Name: "Beta", Status: inventory.BrandStatusApproved},
 		}, nil)
+		inv.EXPECT().CountBrandsVisible(gomock.Any(), int64(7)).Return(int64(2), nil)
 		r := &Resolver{InventoryService: inv}
-		res, err := r.Brands(invCtx())
+		res, err := r.Brands(invCtx(), pageArgs{Page: 1, PageSize: 25})
 		require.NoError(t, err)
-		require.Len(t, res, 2)
-		assert.Equal(t, graphql.ID("1"), res[0].ID())
-		assert.Equal(t, "Acme", res[0].Name())
-		assert.Equal(t, graphql.ID("2"), res[1].ID())
+		require.Len(t, res.Items(), 2)
+		assert.Equal(t, graphql.ID("1"), res.Items()[0].ID())
+		assert.Equal(t, "Acme", res.Items()[0].Name())
+		assert.Equal(t, graphql.ID("2"), res.Items()[1].ID())
+		assert.Equal(t, int32(2), res.PageInfo().TotalCount())
 	})
 
 	t.Run("unauthorized", func(t *testing.T) {
 		r := &Resolver{InventoryService: newInvMock(t)}
-		_, err := r.Brands(context.Background())
+		_, err := r.Brands(context.Background(), pageArgs{})
 		require.ErrorContains(t, err, "unauthorized")
 	})
 
 	t.Run("service error", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(7)).Return(nil, errInvBoom)
+		inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(7), int32(25), int32(0)).Return(nil, errInvBoom)
 		r := &Resolver{InventoryService: inv}
-		_, err := r.Brands(invCtx())
+		_, err := r.Brands(invCtx(), pageArgs{Page: 1, PageSize: 25})
 		require.ErrorIs(t, err, errInvBoom)
 	})
 }
