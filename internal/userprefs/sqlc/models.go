@@ -73,6 +73,25 @@ type GroceryGroceryListItem struct {
 	UnitID            pgtype.Int8        `json:"unit_id"`
 }
 
+type HouseholdHousehold struct {
+	HouseholdID int64              `json:"household_id"`
+	CreatedBy   string             `json:"created_by"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type HouseholdInvite struct {
+	InviteID    int64              `json:"invite_id"`
+	FromUserID  int64              `json:"from_user_id"`
+	ToUserID    int64              `json:"to_user_id"`
+	HouseholdID int64              `json:"household_id"`
+	Status      string             `json:"status"`
+	CreatedBy   string             `json:"created_by"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type IdentityUser struct {
 	UserID          int64              `json:"user_id"`
 	Provider        string             `json:"provider"`
@@ -89,6 +108,8 @@ type IdentityUser struct {
 	FirstName       pgtype.Text        `json:"first_name"`
 	LastName        pgtype.Text        `json:"last_name"`
 	BackupEmail     pgtype.Text        `json:"backup_email"`
+	HouseholdID     pgtype.Int8        `json:"household_id"`
+	IsSearchable    bool               `json:"is_searchable"`
 }
 
 type InventoryBrand struct {

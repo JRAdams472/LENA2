@@ -15,6 +15,13 @@ type User struct {
 	// IsAdmin is set when the user's persisted identity.users role is
 	// 'admin'. Admin-only mutations check this flag, not just authn.
 	IsAdmin bool
+	// HouseholdID scopes shared operational data (pantry, cellar, meal
+	// plans, grocery lists). Zero means the user has no household yet; the
+	// authenticator ensures one on the first cache miss after sign-in.
+	HouseholdID int64
+	// IsSearchable controls whether the user appears in household-invite
+	// search results.
+	IsSearchable bool
 }
 
 type contextKey struct{}

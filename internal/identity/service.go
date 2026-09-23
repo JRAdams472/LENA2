@@ -135,7 +135,11 @@ type User struct {
 	IsActive        bool
 	Role            string
 	LastLoginAt     *time.Time
-	CreatedAt       time.Time
+	// HouseholdID is nil for users created before the household feature
+	// backfills or before the authenticator ensures a default household.
+	HouseholdID  *int64
+	IsSearchable bool
+	CreatedAt    time.Time
 }
 
 // IsAdmin reports whether the user holds the admin role.
@@ -201,6 +205,103 @@ func (s *Service) CountUsers(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count users: %w", err)
 	}
 	return n, nil
+}
+
+// SetUserHousehold moves a user to householdID, guarded by the expected
+// current value (nil for "no household yet"). A stale expectation — a
+// concurrent accept or leave won the race — yields zero rows and surfaces
+// as domainerr.ErrConflict; a missing user surfaces as ErrConflict too,
+// since callers pre-fetch via GetByID when they need to distinguish.
+func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error {
+	exp := pgtype.Int8{}
+	if expected != nil {
+		exp = pgtype.Int8{Int64: *expected, Valid: true}
+	}
+	n, err := s.q.SetUserHousehold(ctx, sqlc.SetUserHouseholdParams{
+		UserID:              userID,
+		HouseholdID:         pgtype.Int8{Int64: householdID, Valid: true},
+		ExpectedHouseholdID: exp,
+	})
+	if err != nil {
+		return fmt.Errorf("set user household: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set user household: %w", domainerr.ErrConflict)
+	}
+	return nil
+}
+
+// SetUserSearchable toggles whether the user appears in household-invite
+// search results.
+func (s *Service) SetUserSearchable(ctx context.Context, userID int64, searchable bool, by string) error {
+	n, err := s.q.SetUserSearchable(ctx, sqlc.SetUserSearchableParams{
+		UserID:       userID,
+		IsSearchable: searchable,
+		UpdatedBy:    textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set user searchable: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set user searchable: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// ListUsersByHousehold returns the members of a household.
+func (s *Service) ListUsersByHousehold(ctx context.Context, householdID int64) ([]User, error) {
+	rows, err := s.q.ListUsersByHousehold(ctx, pgtype.Int8{Int64: householdID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("list users by household: %w", domainerr.FromStorage(err))
+	}
+	return toUsers(rows), nil
+}
+
+// ListUsersByIDs batch-fetches users by primary key for invite/member
+// hydration; ordering is not defined.
+func (s *Service) ListUsersByIDs(ctx context.Context, ids []int64) ([]User, error) {
+	if len(ids) == 0 {
+		return []User{}, nil
+	}
+	rows, err := s.q.ListUsersByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list users by ids: %w", domainerr.FromStorage(err))
+	}
+	return toUsers(rows), nil
+}
+
+// SearchUsers finds household-invite candidates matching a name or email
+// term: active, opted-in users excluding the caller and the caller's
+// household members (pass excludeHouseholdID 0 when the caller has none).
+func (s *Service) SearchUsers(ctx context.Context, term string, excludeUserID, excludeHouseholdID int64, limit int32) ([]User, error) {
+	exclHH := pgtype.Int8{}
+	if excludeHouseholdID > 0 {
+		exclHH = pgtype.Int8{Int64: excludeHouseholdID, Valid: true}
+	}
+	rows, err := s.q.SearchUsers(ctx, sqlc.SearchUsersParams{
+		ExcludeUserID:      excludeUserID,
+		ExcludeHouseholdID: exclHH,
+		Pattern:            pgtype.Text{String: "%" + escapeLike(term) + "%", Valid: true},
+		RowLimit:           limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", domainerr.FromStorage(err))
+	}
+	return toUsers(rows), nil
+}
+
+// escapeLike escapes LIKE wildcards in a user-supplied search term.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+func toUsers(rows []sqlc.IdentityUser) []User {
+	users := make([]User, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, toUser(row))
+	}
+	return users
 }
 
 // checkAdminMutation enforces the invariants for privileged changes: an
@@ -291,7 +392,12 @@ func toUser(row sqlc.IdentityUser) User {
 		BackupEmail:     row.BackupEmail.String,
 		IsActive:        row.IsActive,
 		Role:            row.Role,
+		IsSearchable:    row.IsSearchable,
 		CreatedAt:       row.CreatedAt,
+	}
+	if row.HouseholdID.Valid {
+		id := row.HouseholdID.Int64
+		u.HouseholdID = &id
 	}
 	if row.LastLoginAt.Valid {
 		t := row.LastLoginAt.Time

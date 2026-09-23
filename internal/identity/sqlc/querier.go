@@ -6,6 +6,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -16,8 +18,18 @@ type Querier interface {
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	GetUserByProviderSubject(ctx context.Context, arg GetUserByProviderSubjectParams) (IdentityUser, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
+	ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]IdentityUser, error)
+	ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]IdentityUser, error)
+	// Household-invite candidate search: opt-in, active users only, caller and
+	// the caller's household members excluded. pattern is a pre-escaped LIKE
+	// pattern built by the service.
+	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]IdentityUser, error)
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
+	// Conditional update: the expected-household guard turns a concurrent
+	// accept/leave race into a zero-row conflict instead of a lost update.
+	SetUserHousehold(ctx context.Context, arg SetUserHouseholdParams) (int64, error)
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
+	SetUserSearchable(ctx context.Context, arg SetUserSearchableParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error)
