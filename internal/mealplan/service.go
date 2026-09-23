@@ -15,6 +15,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/mealplan/sqlc"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 // Service provides meal planning operations.
@@ -103,7 +104,7 @@ func (s *Service) CreateMealPlan(ctx context.Context, arg MealPlan, by string) (
 func (s *Service) GetMealPlanByID(ctx context.Context, mealPlanID, userID int64) (MealPlan, error) {
 	row, err := s.q.GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: mealPlanID, UserID: userID})
 	if err != nil {
-		return MealPlan{}, fmt.Errorf("get meal plan: %w", err)
+		return MealPlan{}, fmt.Errorf("get meal plan: %w", domainerr.FromStorage(err))
 	}
 	return toMealPlan(row), nil
 }
@@ -163,7 +164,7 @@ type MealSlot struct {
 // check fails with the same not-found error as GetMealPlanByID.
 func (s *Service) AddMealSlot(ctx context.Context, arg MealSlot, userID int64, by string) (MealSlot, error) {
 	if _, err := s.q.GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: arg.MealPlanID, UserID: userID}); err != nil {
-		return MealSlot{}, fmt.Errorf("add meal slot: %w", err)
+		return MealSlot{}, fmt.Errorf("add meal slot: %w", domainerr.FromStorage(err))
 	}
 	row, err := s.q.AddMealSlot(ctx, sqlc.AddMealSlotParams{
 		MealPlanID:      arg.MealPlanID,
@@ -185,7 +186,7 @@ func (s *Service) AddMealSlot(ctx context.Context, arg MealSlot, userID int64, b
 func (s *Service) GetMealSlotByID(ctx context.Context, slotID, userID int64) (MealSlot, error) {
 	row, err := s.q.GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: slotID, UserID: userID})
 	if err != nil {
-		return MealSlot{}, fmt.Errorf("get meal slot: %w", err)
+		return MealSlot{}, fmt.Errorf("get meal slot: %w", domainerr.FromStorage(err))
 	}
 	return toMealSlot(row), nil
 }
@@ -254,7 +255,7 @@ type MealSlotItem struct {
 // GetMealSlotByID.
 func (s *Service) AddMealSlotItem(ctx context.Context, arg MealSlotItem, userID int64, by string) (MealSlotItem, error) {
 	if _, err := s.q.GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: arg.SlotID, UserID: userID}); err != nil {
-		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", err)
+		return MealSlotItem{}, fmt.Errorf("add meal slot item: %w", domainerr.FromStorage(err))
 	}
 	qty, err := numericFromFloat64(arg.Quantity)
 	if err != nil {

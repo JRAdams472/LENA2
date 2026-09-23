@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -82,7 +82,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 
 	_, err = svc.GetGroceryListByID(ctx, list.GroceryListID, userB)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	listsA, err := svc.ListGroceryLists(ctx, userA, 100, 0)
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 
 	_, err = svc.GetGroceryListByID(ctx, gen.GroceryListID, userB)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	require.NoError(t, svc.DeleteGroceryList(ctx, gen.GroceryListID, userB))
 	_, err = svc.GetGroceryListByID(ctx, gen.GroceryListID, userA)
@@ -178,7 +178,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.NoError(t, svc.DeleteGroceryList(ctx, gen.GroceryListID, userA))
 	_, err = svc.GetGroceryListByID(ctx, gen.GroceryListID, userA)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	require.NoError(t, svc.DeleteGroceryList(ctx, list.GroceryListID, userA))
 	_, err = svc.GetGroceryListByID(ctx, list.GroceryListID, userA)
@@ -214,10 +214,10 @@ func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
 		GroceryListID: list.GroceryListID, ManualItemName: "eggs",
 		QuantityNeeded: 1, Source: "manual",
 	}, userB, itBy)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	_, err = svc.GetGroceryListItemByID(ctx, gli.GroceryListItemID, userB)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	items, err := svc.ListGroceryListItems(ctx, list.GroceryListID, userB)
 	require.NoError(t, err)

@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
@@ -86,7 +86,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 
 	_, err = svc.GetMealPlanByID(ctx, plan.MealPlanID, userB)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	plansA, err := svc.ListMealPlans(ctx, userA, 100, 0)
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	require.NoError(t, svc.DeleteMealSlot(ctx, slot.SlotID, userA))
 	_, err = svc.GetMealSlotByID(ctx, slot.SlotID, userA)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	items, err = svc.ListMealSlotItems(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Empty(t, items)
@@ -208,7 +208,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	require.NoError(t, svc.DeleteMealPlan(ctx, plan.MealPlanID, userA))
 	_, err = svc.GetMealPlanByID(ctx, plan.MealPlanID, userA)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	slots, err = svc.ListMealSlotsForPlan(ctx, plan.MealPlanID, userA)
 	require.NoError(t, err)
@@ -259,10 +259,10 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 
 	// Reads and writes as userB must see or affect nothing.
 	_, err = svc.AddMealSlot(ctx, MealSlot{MealPlanID: plan.MealPlanID, DayOfWeek: 2, MealType: "lunch"}, userB, itBy)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	_, err = svc.GetMealSlotByID(ctx, slot.SlotID, userB)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	slots, err := svc.ListMealSlotsForPlan(ctx, plan.MealPlanID, userB)
 	require.NoError(t, err)
@@ -275,7 +275,7 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	_, err = svc.AddMealSlotItem(ctx, MealSlotItem{
 		SlotID: slot.SlotID, ItemID: &itemID, Quantity: 1, UnitID: itUnitID(t, ctx, invSvc, "g"),
 	}, userB, itBy)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	items, err := svc.ListMealSlotItems(ctx, slot.SlotID, userB)
 	require.NoError(t, err)

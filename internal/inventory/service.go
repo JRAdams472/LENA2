@@ -142,7 +142,7 @@ func (s *Service) SubmitBrand(ctx context.Context, name string, userID int64, by
 func (s *Service) GetBrandByID(ctx context.Context, brandID int64) (Brand, error) {
 	row, err := s.q.GetBrandByID(ctx, brandID)
 	if err != nil {
-		return Brand{}, fmt.Errorf("get brand by id: %w", err)
+		return Brand{}, fmt.Errorf("get brand by id: %w", domainerr.FromStorage(err))
 	}
 	return toBrand(row), nil
 }
@@ -475,7 +475,7 @@ func (s *Service) SetItemStatus(ctx context.Context, itemID int64, status string
 func (s *Service) GetItemByID(ctx context.Context, itemID int64) (Item, error) {
 	row, err := s.q.GetItemByID(ctx, itemID)
 	if err != nil {
-		return Item{}, fmt.Errorf("get item by id: %w", err)
+		return Item{}, fmt.Errorf("get item by id: %w", domainerr.FromStorage(err))
 	}
 	return toItem(row), nil
 }
@@ -933,7 +933,7 @@ func (s *Service) CreateIngredient(ctx context.Context, arg Ingredient, by strin
 func (s *Service) GetIngredientByID(ctx context.Context, ingredientID int64) (Ingredient, error) {
 	row, err := s.q.GetIngredientByID(ctx, ingredientID)
 	if err != nil {
-		return Ingredient{}, fmt.Errorf("get ingredient by id: %w", err)
+		return Ingredient{}, fmt.Errorf("get ingredient by id: %w", domainerr.FromStorage(err))
 	}
 	return toIngredient(row), nil
 }
