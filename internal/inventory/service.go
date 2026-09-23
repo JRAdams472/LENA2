@@ -249,7 +249,7 @@ func (s *Service) GetBrandsByIDs(ctx context.Context, brandIDs []int64) ([]Brand
 func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name string) (Brand, error) {
 	row, err := s.q.UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: brandID, Name: name})
 	if err != nil {
-		return Brand{}, fmt.Errorf("update brand: %w", err)
+		return Brand{}, fmt.Errorf("update brand: %w", domainerr.FromStorage(err))
 	}
 	return toBrand(row), nil
 }
@@ -286,7 +286,7 @@ func (s *Service) CreateCategory(ctx context.Context, name, description, by stri
 func (s *Service) GetCategoryByID(ctx context.Context, categoryID int64) (Category, error) {
 	row, err := s.q.GetCategoryByID(ctx, categoryID)
 	if err != nil {
-		return Category{}, fmt.Errorf("get category by id: %w", err)
+		return Category{}, fmt.Errorf("get category by id: %w", domainerr.FromStorage(err))
 	}
 	return toCategory(row), nil
 }
@@ -327,7 +327,7 @@ func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, name, de
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Category{}, fmt.Errorf("update category: %w", err)
+		return Category{}, fmt.Errorf("update category: %w", domainerr.FromStorage(err))
 	}
 	return toCategory(row), nil
 }
@@ -573,7 +573,7 @@ func (s *Service) CreateFlavorProfile(ctx context.Context, name, by string) (Fla
 func (s *Service) GetFlavorProfileByID(ctx context.Context, flavorID int64) (FlavorProfile, error) {
 	row, err := s.q.GetFlavorProfileByID(ctx, flavorID)
 	if err != nil {
-		return FlavorProfile{}, fmt.Errorf("get flavor profile by id: %w", err)
+		return FlavorProfile{}, fmt.Errorf("get flavor profile by id: %w", domainerr.FromStorage(err))
 	}
 	return toFlavorProfile(row), nil
 }
@@ -600,7 +600,7 @@ func (s *Service) UpdateFlavorProfile(ctx context.Context, flavorID int64, name 
 		UpdatedBy: textOrNull(by),
 	})
 	if err != nil {
-		return FlavorProfile{}, fmt.Errorf("update flavor profile: %w", err)
+		return FlavorProfile{}, fmt.Errorf("update flavor profile: %w", domainerr.FromStorage(err))
 	}
 	return toFlavorProfile(row), nil
 }
@@ -634,7 +634,7 @@ func (s *Service) CreateNutrientType(ctx context.Context, name, unit string) (Nu
 func (s *Service) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (NutrientType, error) {
 	row, err := s.q.GetNutrientTypeByID(ctx, nutrientID)
 	if err != nil {
-		return NutrientType{}, fmt.Errorf("get nutrient type by id: %w", err)
+		return NutrientType{}, fmt.Errorf("get nutrient type by id: %w", domainerr.FromStorage(err))
 	}
 	return toNutrientType(row), nil
 }
@@ -644,7 +644,7 @@ func (s *Service) GetNutrientTypeByID(ctx context.Context, nutrientID int64) (Nu
 func (s *Service) GetNutrientTypeByName(ctx context.Context, name string) (NutrientType, error) {
 	row, err := s.q.GetNutrientTypeByName(ctx, name)
 	if err != nil {
-		return NutrientType{}, fmt.Errorf("get nutrient type by name: %w", err)
+		return NutrientType{}, fmt.Errorf("get nutrient type by name: %w", domainerr.FromStorage(err))
 	}
 	return toNutrientType(row), nil
 }
@@ -670,7 +670,7 @@ func (s *Service) UpdateNutrientType(ctx context.Context, nutrientID int64, name
 		Unit:       textOrNull(unit),
 	})
 	if err != nil {
-		return NutrientType{}, fmt.Errorf("update nutrient type: %w", err)
+		return NutrientType{}, fmt.Errorf("update nutrient type: %w", domainerr.FromStorage(err))
 	}
 	return toNutrientType(row), nil
 }
@@ -984,7 +984,7 @@ func (s *Service) UpdateIngredient(ctx context.Context, ingredientID int64, arg 
 		UpdatedBy:     textOrNull(by),
 	})
 	if err != nil {
-		return Ingredient{}, fmt.Errorf("update ingredient: %w", err)
+		return Ingredient{}, fmt.Errorf("update ingredient: %w", domainerr.FromStorage(err))
 	}
 	return toIngredient(row), nil
 }
@@ -1046,7 +1046,7 @@ func (s *Service) CreateUnit(ctx context.Context, arg Unit, by string) (Unit, er
 func (s *Service) GetUnitByID(ctx context.Context, unitID int64) (Unit, error) {
 	row, err := s.q.GetUnitByID(ctx, unitID)
 	if err != nil {
-		return Unit{}, fmt.Errorf("get unit by id: %w", err)
+		return Unit{}, fmt.Errorf("get unit by id: %w", domainerr.FromStorage(err))
 	}
 	return toUnit(row), nil
 }
@@ -1056,7 +1056,7 @@ func (s *Service) GetUnitByID(ctx context.Context, unitID int64) (Unit, error) {
 func (s *Service) GetUnitByName(ctx context.Context, name string) (Unit, error) {
 	row, err := s.q.GetUnitByName(ctx, name)
 	if err != nil {
-		return Unit{}, fmt.Errorf("get unit by name: %w", err)
+		return Unit{}, fmt.Errorf("get unit by name: %w", domainerr.FromStorage(err))
 	}
 	return toUnit(row), nil
 }

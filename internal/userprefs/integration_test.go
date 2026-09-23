@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -125,7 +124,7 @@ func TestIntegrationUserItemLifecycle(t *testing.T) {
 
 	_, err = svc.GetUserItemByID(ctx, ui1.UserItemID, userB)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	itemsB, err := svc.ListUserItems(ctx, userB, 100, 0)
 	require.NoError(t, err)
@@ -187,7 +186,7 @@ func TestIntegrationUserBottleLifecycle(t *testing.T) {
 
 	_, err = svc.GetUserBottleByID(ctx, ub1.UserBottleID, userB)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
 	bottlesB, err := svc.ListUserBottles(ctx, userB, 100, 0)
 	require.NoError(t, err)

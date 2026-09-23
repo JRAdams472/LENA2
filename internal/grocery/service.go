@@ -217,7 +217,7 @@ func (s *Service) ListGroceryListItemsByLists(ctx context.Context, groceryListID
 func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (GroceryListItem, error) {
 	row, err := s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, UserID: userID})
 	if err != nil {
-		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", err)
+		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", domainerr.FromStorage(err))
 	}
 	gli, err := toGroceryListItem(row)
 	if err != nil {
@@ -260,7 +260,7 @@ func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListI
 		UpdatedBy:         textOrNull(by),
 	})
 	if err != nil {
-		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", domainerr.FromStorage(err))
 	}
 	gli, err := toGroceryListItem(row)
 	if err != nil {

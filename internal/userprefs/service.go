@@ -143,7 +143,7 @@ func (s *Service) AdjustUserItemQuantity(ctx context.Context, userID, itemID int
 func (s *Service) GetUserItemByID(ctx context.Context, userItemID, userID int64) (UserItem, error) {
 	row, err := s.q.GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: userItemID, UserID: userID})
 	if err != nil {
-		return UserItem{}, fmt.Errorf("get user item: %w", err)
+		return UserItem{}, fmt.Errorf("get user item: %w", domainerr.FromStorage(err))
 	}
 	ui, err := toUserItem(row)
 	if err != nil {
@@ -253,7 +253,7 @@ func (s *Service) UpsertUserBottle(ctx context.Context, arg UserBottle, by strin
 func (s *Service) GetUserBottleByID(ctx context.Context, userBottleID, userID int64) (UserBottle, error) {
 	row, err := s.q.GetUserBottleByID(ctx, sqlc.GetUserBottleByIDParams{UserBottleID: userBottleID, UserID: userID})
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("get user bottle: %w", err)
+		return UserBottle{}, fmt.Errorf("get user bottle: %w", domainerr.FromStorage(err))
 	}
 	ub, err := toUserBottle(row)
 	if err != nil {
