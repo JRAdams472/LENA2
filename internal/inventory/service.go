@@ -160,10 +160,14 @@ func (s *Service) ListBrands(ctx context.Context) ([]Brand, error) {
 	return out, nil
 }
 
-// ListBrandsVisible returns brands visible to the given user: approved brands
-// plus any pending brands they submitted.
-func (s *Service) ListBrandsVisible(ctx context.Context, userID int64) ([]Brand, error) {
-	rows, err := s.q.ListBrandsVisible(ctx, pgtype.Int8{Int64: userID, Valid: true})
+// ListBrandsVisible returns a page of brands visible to the given user:
+// approved brands plus any pending brands they submitted.
+func (s *Service) ListBrandsVisible(ctx context.Context, userID int64, limit, offset int32) ([]Brand, error) {
+	rows, err := s.q.ListBrandsVisible(ctx, sqlc.ListBrandsVisibleParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Limit:             limit,
+		Offset:            offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list brands visible: %w", err)
 	}
@@ -172,6 +176,15 @@ func (s *Service) ListBrandsVisible(ctx context.Context, userID int64) ([]Brand,
 		out[i] = toBrand(rows[i])
 	}
 	return out, nil
+}
+
+// CountBrandsVisible returns the total number of brands visible to the user.
+func (s *Service) CountBrandsVisible(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountBrandsVisible(ctx, pgtype.Int8{Int64: userID, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("count brands visible: %w", err)
+	}
+	return n, nil
 }
 
 // SearchBrands returns brands visible to the given user whose normalized name

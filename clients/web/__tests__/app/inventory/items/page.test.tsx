@@ -99,7 +99,7 @@ describe("items page", () => {
       }
       return Promise.resolve(
         gql({
-          brands: [{ id: "2", name: "DairyCo" }],
+          searchBrands: [{ id: "2", name: "DairyCo" }],
           items: {
             items: [item],
             pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },

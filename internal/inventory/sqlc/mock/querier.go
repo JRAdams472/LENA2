@@ -42,6 +42,21 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// CountBrandsVisible mocks base method.
+func (m *MockQuerier) CountBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountBrandsVisible", ctx, submittedByUserID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountBrandsVisible indicates an expected call of CountBrandsVisible.
+func (mr *MockQuerierMockRecorder) CountBrandsVisible(ctx, submittedByUserID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBrandsVisible", reflect.TypeOf((*MockQuerier)(nil).CountBrandsVisible), ctx, submittedByUserID)
+}
+
 // CountIngredients mocks base method.
 func (m *MockQuerier) CountIngredients(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -634,18 +649,18 @@ func (mr *MockQuerierMockRecorder) ListBrands(ctx any) *gomock.Call {
 }
 
 // ListBrandsVisible mocks base method.
-func (m *MockQuerier) ListBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) ([]sqlc.InventoryBrand, error) {
+func (m *MockQuerier) ListBrandsVisible(ctx context.Context, arg sqlc.ListBrandsVisibleParams) ([]sqlc.InventoryBrand, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBrandsVisible", ctx, submittedByUserID)
+	ret := m.ctrl.Call(m, "ListBrandsVisible", ctx, arg)
 	ret0, _ := ret[0].([]sqlc.InventoryBrand)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListBrandsVisible indicates an expected call of ListBrandsVisible.
-func (mr *MockQuerierMockRecorder) ListBrandsVisible(ctx, submittedByUserID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListBrandsVisible(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrandsVisible", reflect.TypeOf((*MockQuerier)(nil).ListBrandsVisible), ctx, submittedByUserID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrandsVisible", reflect.TypeOf((*MockQuerier)(nil).ListBrandsVisible), ctx, arg)
 }
 
 // ListCategories mocks base method.

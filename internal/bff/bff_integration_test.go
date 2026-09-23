@@ -203,16 +203,27 @@ func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestI
 	require.NotEmpty(t, brandRes.CreateBrand.ID)
 	assert.Equal(t, "Integration Brand", brandRes.CreateBrand.Name)
 
-	status, gr = doGraphQL(t, srv, tokA, `{ brands { id name } }`, nil)
-	require.Equal(t, http.StatusOK, status)
-	var brandsRes struct {
-		Brands []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"brands"`
+	// brands is paginated (pageSize caps at 100) and the seed catalog is
+	// large, so walk pages until the created brand appears.
+	foundBrand := false
+	for page := 1; !foundBrand; page++ {
+		status, gr = doGraphQL(t, srv, tokA, `query Brands($p: Int!) { brands(page: $p, pageSize: 100) { items { id name } } }`, map[string]any{"p": page})
+		require.Equal(t, http.StatusOK, status)
+		var brandsRes struct {
+			Brands struct {
+				Items []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"items"`
+			} `json:"brands"`
+		}
+		decodeData(t, gr.Data, &brandsRes)
+		foundBrand = containsBrand(brandsRes.Brands.Items, brandRes.CreateBrand.ID)
+		if len(brandsRes.Brands.Items) < 100 {
+			break
+		}
 	}
-	decodeData(t, gr.Data, &brandsRes)
-	require.True(t, containsBrand(brandsRes.Brands, brandRes.CreateBrand.ID))
+	require.True(t, foundBrand, "created brand should appear in paged brands query")
 
 	// createCategory + category query
 	status, gr = doGraphQL(t, srv, tokA, `mutation { createCategory(input: { name: "Integration Category", description: "Milk products" }) { id name description } }`, nil)

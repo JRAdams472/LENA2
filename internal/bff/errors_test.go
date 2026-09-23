@@ -64,7 +64,7 @@ func TestSanitizeQueryErrors(t *testing.T) {
 func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	inv := mock.NewMockInventoryService(ctrl)
-	inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(1)).
+	inv.EXPECT().ListBrandsVisible(gomock.Any(), int64(1), int32(25), int32(0)).
 		Return(nil, errors.New(`list brands visible: ERROR: relation "inventory.brand" does not exist (SQLSTATE 42P01)`))
 
 	r := &Resolver{InventoryService: inv}
@@ -74,7 +74,7 @@ func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 	e := echo.New()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql",
-		strings.NewReader(`{"query":"{ brands { id name } }"}`))
+		strings.NewReader(`{"query":"{ brands { items { id name } } }"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	c := e.NewContext(req.WithContext(testutil.WithUser(req.Context(), 1, "u@example.com")), rec)
 	require.NoError(t, h(c))

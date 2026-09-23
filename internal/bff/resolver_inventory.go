@@ -43,12 +43,20 @@ func brandResolverWithCounts(b inventory.Brand, p countPair) *brandResolver {
 
 // Brands resolves catalog brands visible to the caller: approved brands plus
 // any pending brands the caller submitted.
-func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
+func (r *Resolver) Brands(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*brandPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	brands, err := r.InventoryService.ListBrandsVisible(ctx, u.UserID)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
+	brands, err := r.InventoryService.ListBrandsVisible(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.InventoryService.CountBrandsVisible(ctx, u.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,11 +68,7 @@ func (r *Resolver) Brands(ctx context.Context) ([]*brandResolver, error) {
 	if err := loadBrandSelectionCounts(ctx, r.AnalyticsService, u.UserID, brandIDs, ch); err != nil {
 		return nil, err
 	}
-	out := make([]*brandResolver, len(brands))
-	for i, b := range brands {
-		out[i] = brandResolverWithCounts(b, ch.brandCounts[b.BrandID])
-	}
-	return out, nil
+	return &brandPageResolver{brands: brands, counts: ch.brandCounts, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // SearchBrands returns brands visible to the caller whose normalized name
@@ -1460,6 +1464,7 @@ func (r *itemPageResolver) PageInfo() *pageInfoResolver {
 
 type brandPageResolver struct {
 	brands   []inventory.Brand
+	counts   map[int64]countPair
 	page     int32
 	pageSize int32
 	total    int32
@@ -1468,7 +1473,11 @@ type brandPageResolver struct {
 func (r *brandPageResolver) Items() []*brandResolver {
 	out := make([]*brandResolver, len(r.brands))
 	for i := range r.brands {
-		out[i] = &brandResolver{b: r.brands[i]}
+		if r.counts != nil {
+			out[i] = brandResolverWithCounts(r.brands[i], r.counts[r.brands[i].BrandID])
+		} else {
+			out[i] = &brandResolver{b: r.brands[i]}
+		}
 	}
 	return out
 }

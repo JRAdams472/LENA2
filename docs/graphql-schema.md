@@ -189,7 +189,7 @@ type GroceryListItem {
 |---|---|---|---|
 | `me` | — | `User!` | Current authenticated user |
 | `brand(id)` | `ID!` | `Brand` | Single catalog brand |
-| `brands` | — | `[Brand!]!` | All brands |
+| `brands` | `Int, Int` | `BrandPage!` | Paginated brands visible to the caller |
 | `category(id)` | `ID!` | `Category` | Single category |
 | `categories` | — | `[Category!]!` | All categories |
 | `item(id)` | `ID!` | `Item` | Single catalog item |

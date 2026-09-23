@@ -11,6 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countBrandsVisible = `-- name: CountBrandsVisible :one
+SELECT COUNT(*)
+FROM inventory.brand
+WHERE status = 'approved' OR submitted_by_user_id = $1
+`
+
+func (q *Queries) CountBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error) {
+	row := q.db.QueryRow(ctx, countBrandsVisible, submittedByUserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countIngredients = `-- name: CountIngredients :one
 SELECT COUNT(*)
 FROM inventory.ingredient
@@ -1065,11 +1078,18 @@ SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, s
 FROM inventory.brand
 WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY name
+LIMIT $2 OFFSET $3
 `
 
+type ListBrandsVisibleParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Limit             int32       `json:"limit"`
+	Offset            int32       `json:"offset"`
+}
+
 // Brands are visible when approved, or when the caller submitted them.
-func (q *Queries) ListBrandsVisible(ctx context.Context, submittedByUserID pgtype.Int8) ([]InventoryBrand, error) {
-	rows, err := q.db.Query(ctx, listBrandsVisible, submittedByUserID)
+func (q *Queries) ListBrandsVisible(ctx context.Context, arg ListBrandsVisibleParams) ([]InventoryBrand, error) {
+	rows, err := q.db.Query(ctx, listBrandsVisible, arg.SubmittedByUserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

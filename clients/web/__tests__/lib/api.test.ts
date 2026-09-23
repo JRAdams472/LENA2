@@ -253,27 +253,32 @@ describe("api client: brands", () => {
     setAuthTokenGetter(() => null);
   });
 
-  it("getBrandList maps rows", async () => {
+  it("getBrandList maps rows across pages", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL({ brands: [{ id: "7", name: "Acme" }] })
+      mockGraphQL({
+        brands: {
+          items: [{ id: "7", name: "Acme" }],
+          pageInfo: { totalCount: 1 },
+        },
+      })
     );
 
     const brands = await api.getBrandList();
     expect(brands).toEqual([{ brandID: 7, brandName: "Acme", selectionCount: 0, personalSelectionCount: 0 }]);
   });
 
-  it("getBrands filters by search term", async () => {
+  it("getBrands delegates to searchBrands", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({
-        brands: [
-          { id: "1", name: "Acme" },
-          { id: "2", name: "Beta" },
-        ],
+        searchBrands: [{ id: "1", name: "Acme" }],
       })
     );
 
     const brands = await api.getBrands("acm");
     expect(brands).toEqual([{ brandID: 1, brandName: "Acme", selectionCount: 0, personalSelectionCount: 0 }]);
+    const body = lastRequestBody();
+    expect(body.query).toContain("searchBrands");
+    expect(body.variables.term).toBe("acm");
   });
 
   it("createBrand posts the input and maps the result", async () => {
