@@ -25,16 +25,18 @@ import (
 
 // fakeIdentityStore records UpsertUser/SetUserRole calls for assertions.
 type fakeIdentityStore struct {
-	user       identity.User
-	inactive   bool
-	upsertErr  error
-	roleCalls  int32
-	lastRole   string
-	lastUserID int64
-	roleErr    error
+	user        identity.User
+	inactive    bool
+	upsertErr   error
+	upsertCalls int32
+	roleCalls   int32
+	lastRole    string
+	lastUserID  int64
+	roleErr     error
 }
 
 func (f *fakeIdentityStore) UpsertUser(_ context.Context, provider, subject, email, _ string) (identity.User, error) {
+	atomic.AddInt32(&f.upsertCalls, 1)
 	if f.upsertErr != nil {
 		return identity.User{}, f.upsertErr
 	}
@@ -404,5 +406,124 @@ func TestContainsAny(t *testing.T) {
 	}
 	if containsAny(allowed, []string{"client-c", "client-d"}) {
 		t.Fatal("expected no match")
+	}
+}
+
+func TestAuthenticateCachesResolvedUser(t *testing.T) {
+	priv, set := newJWKSKey(t, "key-a")
+	iss := newJWKSIssuer(t, set)
+	store := &fakeIdentityStore{user: identity.User{UserID: 7, Role: identity.RoleMember}}
+	a := mustNewAuthenticator(t, AuthConfig{
+		Issuers:   []string{iss.server.URL},
+		Audiences: []string{"lena-client"},
+	}, store)
+
+	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-1", "u@example.com", nil)
+	for i := 0; i < 10; i++ {
+		if _, err := a.authenticate(context.Background(), raw); err != nil {
+			t.Fatalf("authenticate %d: %v", i, err)
+		}
+	}
+	if got := atomic.LoadInt32(&store.upsertCalls); got != 1 {
+		t.Fatalf("UpsertUser called %d times, want 1", got)
+	}
+}
+
+func TestKeySetStaleWhileRevalidate(t *testing.T) {
+	_, set := newJWKSKey(t, "key-a")
+
+	// Issuer that serves discovery but hangs on JWKS fetches.
+	var slow *httptest.Server
+	block := make(chan struct{})
+	slow = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/jwks" {
+			<-block
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"jwks_uri": slow.URL + "/jwks"})
+	}))
+	defer slow.Close()
+	defer close(block) // unblock handlers before Close waits on them
+
+	store := &fakeIdentityStore{user: identity.User{UserID: 7, Role: identity.RoleMember}}
+	a := mustNewAuthenticator(t, AuthConfig{
+		Issuers:   []string{slow.URL},
+		Audiences: []string{"lena-client"},
+	}, store)
+
+	// Pre-seed an expired cached entry.
+	a.mu.Lock()
+	a.jwks[slow.URL] = &cachedKeySet{set: set, fetchedAt: time.Now().Add(-2 * jwksCacheTTL), expiresAt: time.Now().Add(-time.Second)}
+	a.mu.Unlock()
+
+	// The stale set must be served immediately rather than queuing behind
+	// the in-flight refresh.
+	done := make(chan error, 1)
+	go func() {
+		got, err := a.keySetForIssuer(context.Background(), slow.URL, false)
+		if err != nil {
+			done <- err
+			return
+		}
+		if got == nil {
+			done <- errors.New("nil key set")
+			return
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("keySetForIssuer: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stale key set was not served while refresh was in flight")
+	}
+}
+
+func TestKeySetSlowIssuerDoesNotBlockOthers(t *testing.T) {
+	privA, _ := newJWKSKey(t, "key-a")
+	privB, setB := newJWKSKey(t, "key-b")
+	issB := newJWKSIssuer(t, setB)
+
+	// Issuer A hangs on both discovery and JWKS.
+	block := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-block
+	}))
+	defer slow.Close()
+	defer close(block) // unblock handlers before Close waits on them
+
+	store := &fakeIdentityStore{user: identity.User{UserID: 7, Role: identity.RoleMember}}
+	a := mustNewAuthenticator(t, AuthConfig{
+		Issuers:   []string{slow.URL, issB.server.URL},
+		Audiences: []string{"lena-client", "lena-client"},
+	}, store)
+
+	// Kick off an auth against the slow issuer; it will block inside the
+	// detached fetch until the test ends.
+	slowDone := make(chan error, 1)
+	go func() {
+		raw := signToken(t, privA, "key-a", slow.URL, "lena-client", "sub-slow", "s@example.com", nil)
+		_, err := a.authenticate(context.Background(), raw)
+		slowDone <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	// A token from the healthy issuer must authenticate promptly.
+	raw := signToken(t, privB, "key-b", issB.server.URL, "lena-client", "sub-fast", "f@example.com", nil)
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.authenticate(context.Background(), raw)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("authenticate against fast issuer: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("fast issuer auth stalled behind slow issuer")
 	}
 }

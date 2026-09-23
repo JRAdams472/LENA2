@@ -1,12 +1,65 @@
 scalar Time
 scalar Date
 
+# Marks a field as requiring an authenticated admin. Enforced by the
+# resolvers (requireAdmin); declared here so the contract is explicit.
+directive @admin on FIELD_DEFINITION
+
+# Persisted authorization roles on identity.users.
+enum Role {
+  member
+  admin
+}
+
+# Catalog object classes tracked by analytics.
+enum EntityType {
+  item
+  brand
+  recipe
+}
+
+# Where a recipe import sits in the staged pipeline
+# (internal/app/recipeimport.Status).
+enum RecipeImportStatus {
+  pending
+  processing
+  ocred
+  drafted
+  reviewing
+  ready
+  profanity
+  failed
+  rejected
+  persisted
+}
+
+# Why a recipe was recommended (analytics.recipe_recommendation.reason).
+enum RecommendationReason {
+  ingredient_overlap
+  rating_recency
+  collaborative_filtering
+}
+
+# Moderation state shared by catalog items and brands.
+enum ModerationStatus {
+  pending
+  approved
+  rejected
+}
+
+# Mapping state of one draft item in a recipe-import review.
+enum ReviewItemStatus {
+  accepted
+  suggested
+  unmatched
+}
+
 type Query {
   me: User!
   brand(id: ID!): Brand
   brands: [Brand!]!
   searchBrands(term: String!, limit: Int = 20): [Brand!]!
-  pendingBrands(page: Int = 1, pageSize: Int = 25): BrandPage!
+  pendingBrands(page: Int = 1, pageSize: Int = 25): BrandPage! @admin
   frequentBrands(limit: Int = 10): [Brand!]!
   category(id: ID!): Category
   categories: [Category!]!
@@ -19,7 +72,7 @@ type Query {
   # null when nothing visible to the caller matches.
   itemByUpc(code: String!): Item
   # Admin-only: catalog items submitted by users awaiting approval.
-  pendingItems(page: Int = 1, pageSize: Int = 25): ItemPage!
+  pendingItems(page: Int = 1, pageSize: Int = 25): ItemPage! @admin
   frequentItems(limit: Int = 10): [Item!]!
   ingredient(id: ID!): Ingredient
   ingredients(page: Int = 1, pageSize: Int = 25): IngredientPage!
@@ -49,62 +102,62 @@ type Query {
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
   # Admin-only: paged list of all registered users.
-  users(page: Int = 1, pageSize: Int = 25): UserPage!
+  users(page: Int = 1, pageSize: Int = 25): UserPage! @admin
   # Admin-only: a single recipe import job.
-  recipeImport(id: ID!): RecipeImport
+  recipeImport(id: ID!): RecipeImport @admin
   # Admin-only: paged list of recipe imports.
-  recipeImports(page: Int = 1, pageSize: Int = 25, status: String): RecipeImportPage!
+  recipeImports(page: Int = 1, pageSize: Int = 25, status: RecipeImportStatus): RecipeImportPage! @admin
   # Admin-only: pending recipe imports for review.
-  pendingRecipeImports(page: Int = 1, pageSize: Int = 25): RecipeImportPage!
+  pendingRecipeImports(page: Int = 1, pageSize: Int = 25): RecipeImportPage! @admin
 }
 
 type Mutation {
-  createBrand(input: CreateBrandInput!): Brand!
+  createBrand(input: CreateBrandInput!): Brand! @admin
   submitBrand(input: CreateBrandInput!): Brand!
-  updateBrand(id: ID!, input: UpdateBrandInput!): Brand!
-  deleteBrand(id: ID!): Boolean!
-  approveBrand(id: ID!): Brand!
-  rejectBrand(id: ID!): Brand!
-  createCategory(input: CreateCategoryInput!): Category!
-  updateCategory(id: ID!, input: UpdateCategoryInput!): Category!
-  deleteCategory(id: ID!): Boolean!
-  createFlavorProfile(input: CreateFlavorProfileInput!): FlavorProfile!
-  updateFlavorProfile(id: ID!, input: UpdateFlavorProfileInput!): FlavorProfile!
-  deleteFlavorProfile(id: ID!): Boolean!
-  createNutrientType(input: CreateNutrientTypeInput!): NutrientType!
-  updateNutrientType(id: ID!, input: UpdateNutrientTypeInput!): NutrientType!
-  deleteNutrientType(id: ID!): Boolean!
-  createVintage(input: CreateVintageInput!): Vintage!
-  updateVintage(id: ID!, input: UpdateVintageInput!): Vintage!
-  deleteVintage(id: ID!): Boolean!
-  createGrapeVariety(input: CreateGrapeVarietyInput!): GrapeVariety!
-  updateGrapeVariety(id: ID!, input: UpdateGrapeVarietyInput!): GrapeVariety!
-  deleteGrapeVariety(id: ID!): Boolean!
-  createWineFlavorProfile(input: CreateWineFlavorProfileInput!): WineFlavorProfile!
-  updateWineFlavorProfile(id: ID!, input: UpdateWineFlavorProfileInput!): WineFlavorProfile!
-  deleteWineFlavorProfile(id: ID!): Boolean!
+  updateBrand(id: ID!, input: UpdateBrandInput!): Brand! @admin
+  deleteBrand(id: ID!): Boolean! @admin
+  approveBrand(id: ID!): Brand! @admin
+  rejectBrand(id: ID!): Brand! @admin
+  createCategory(input: CreateCategoryInput!): Category! @admin
+  updateCategory(id: ID!, input: UpdateCategoryInput!): Category! @admin
+  deleteCategory(id: ID!): Boolean! @admin
+  createFlavorProfile(input: CreateFlavorProfileInput!): FlavorProfile! @admin
+  updateFlavorProfile(id: ID!, input: UpdateFlavorProfileInput!): FlavorProfile! @admin
+  deleteFlavorProfile(id: ID!): Boolean! @admin
+  createNutrientType(input: CreateNutrientTypeInput!): NutrientType! @admin
+  updateNutrientType(id: ID!, input: UpdateNutrientTypeInput!): NutrientType! @admin
+  deleteNutrientType(id: ID!): Boolean! @admin
+  createVintage(input: CreateVintageInput!): Vintage! @admin
+  updateVintage(id: ID!, input: UpdateVintageInput!): Vintage! @admin
+  deleteVintage(id: ID!): Boolean! @admin
+  createGrapeVariety(input: CreateGrapeVarietyInput!): GrapeVariety! @admin
+  updateGrapeVariety(id: ID!, input: UpdateGrapeVarietyInput!): GrapeVariety! @admin
+  deleteGrapeVariety(id: ID!): Boolean! @admin
+  createWineFlavorProfile(input: CreateWineFlavorProfileInput!): WineFlavorProfile! @admin
+  updateWineFlavorProfile(id: ID!, input: UpdateWineFlavorProfileInput!): WineFlavorProfile! @admin
+  deleteWineFlavorProfile(id: ID!): Boolean! @admin
 
-  createCountry(input: CreateCountryInput!): Country!
-  updateCountry(id: ID!, input: UpdateCountryInput!): Country!
-  deleteCountry(id: ID!): Boolean!
-  createRegion(input: CreateRegionInput!): Region!
-  updateRegion(id: ID!, input: UpdateRegionInput!): Region!
-  deleteRegion(id: ID!): Boolean!
-  createType(input: CreateTypeInput!): WineType!
-  updateType(id: ID!, input: UpdateTypeInput!): WineType!
-  deleteType(id: ID!): Boolean!
+  createCountry(input: CreateCountryInput!): Country! @admin
+  updateCountry(id: ID!, input: UpdateCountryInput!): Country! @admin
+  deleteCountry(id: ID!): Boolean! @admin
+  createRegion(input: CreateRegionInput!): Region! @admin
+  updateRegion(id: ID!, input: UpdateRegionInput!): Region! @admin
+  deleteRegion(id: ID!): Boolean! @admin
+  createType(input: CreateTypeInput!): WineType! @admin
+  updateType(id: ID!, input: UpdateTypeInput!): WineType! @admin
+  deleteType(id: ID!): Boolean! @admin
 
-  createItem(input: CreateItemInput!): Item!
+  createItem(input: CreateItemInput!): Item! @admin
   updateItem(id: ID!, input: UpdateItemInput!): Item!
-  deleteItem(id: ID!): Boolean!
+  deleteItem(id: ID!): Boolean! @admin
   # Any authenticated user: submit a new catalog item in 'pending' status.
   # It is visible to (and editable by) the submitter until an admin approves
   # or rejects it.
   submitItem(input: CreateItemInput!): Item!
   # Admin-only moderation of user-submitted items. Rejected items are
   # hidden from everyone.
-  approveItem(id: ID!): Item!
-  rejectItem(id: ID!): Item!
+  approveItem(id: ID!): Item! @admin
+  rejectItem(id: ID!): Item! @admin
   # Replace all nutrient values on an item atomically. Allowed for admins
   # and for the submitter while the item is still pending. This is the
   # single write path for nutrition data — the manual entry form and a
@@ -116,19 +169,19 @@ type Mutation {
 
   # Accepts a base64-encoded recipe scan from an admin, writes it to the
   # configured import inbox, and enqueues server-side OCR processing.
-  submitRecipeScan(fileBase64: String!): RecipeImport!
+  submitRecipeScan(fileBase64: String!): RecipeImport! @admin
   # Admin-only: update recipe metadata and ingredient mappings for review.
-  updateRecipeImport(id: ID!, input: RecipeImportReviewInput!): RecipeImport!
+  updateRecipeImport(id: ID!, input: RecipeImportReviewInput!): RecipeImport! @admin
   # Admin-only: persist an approved review as a catalog recipe.
-  approveRecipeImport(id: ID!): Recipe!
+  approveRecipeImport(id: ID!): Recipe! @admin
   # Admin-only: reject a recipe import.
-  rejectRecipeImport(id: ID!): RecipeImport!
+  rejectRecipeImport(id: ID!): RecipeImport! @admin
   # Admin-only: retry a failed/profanity/rejected import.
-  retryRecipeImport(id: ID!): RecipeImport!
+  retryRecipeImport(id: ID!): RecipeImport! @admin
 
-  createIngredient(input: CreateIngredientInput!): Ingredient!
-  updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient!
-  deleteIngredient(id: ID!): Boolean!
+  createIngredient(input: CreateIngredientInput!): Ingredient! @admin
+  updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient! @admin
+  deleteIngredient(id: ID!): Boolean! @admin
 
   adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
@@ -140,9 +193,9 @@ type Mutation {
   addFoodFlavor(input: AddFoodFlavorInput!): FoodFlavor!
   removeFoodFlavor(itemId: ID!, flavorId: ID!): Boolean!
 
-  createRecipe(input: CreateRecipeInput!): Recipe!
-  updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!
-  deleteRecipe(id: ID!): Boolean!
+  createRecipe(input: CreateRecipeInput!): Recipe! @admin
+  updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe! @admin
+  deleteRecipe(id: ID!): Boolean! @admin
   setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
   rateRecipe(recipeId: ID!, rating: Int!): Recipe!
 
@@ -155,19 +208,19 @@ type Mutation {
   removeMealSlotItem(slotItemId: ID!): Boolean!
 
   generateGroceryList(mealPlanId: ID!): GroceryList!
-  recordSelection(entityType: String!, entityId: ID!): Boolean!
-  recordSearch(entityType: String!, term: String!): Boolean!
+  recordSelection(entityType: EntityType!, entityId: ID!): Boolean!
+  recordSearch(entityType: EntityType!, term: String!): Boolean!
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
   addGroceryItem(input: AddGroceryItemInput!): GroceryListItem!
   deleteGroceryItem(groceryListItemId: ID!): Boolean!
 
-  createBottle(input: CreateBottleInput!): Bottle!
-  updateBottle(id: ID!, input: UpdateBottleInput!): Bottle!
-  deleteBottle(id: ID!): Boolean!
-  addBottleGrapeVariety(input: AddBottleGrapeVarietyInput!): BottleGrapeVariety!
-  removeBottleGrapeVariety(bottleId: ID!, grapeVarietyId: ID!): Boolean!
-  addBottleFlavorProfile(input: AddBottleFlavorProfileInput!): BottleFlavorProfile!
-  removeBottleFlavorProfile(bottleId: ID!, flavorProfileId: ID!): Boolean!
+  createBottle(input: CreateBottleInput!): Bottle! @admin
+  updateBottle(id: ID!, input: UpdateBottleInput!): Bottle! @admin
+  deleteBottle(id: ID!): Boolean! @admin
+  addBottleGrapeVariety(input: AddBottleGrapeVarietyInput!): BottleGrapeVariety! @admin
+  removeBottleGrapeVariety(bottleId: ID!, grapeVarietyId: ID!): Boolean! @admin
+  addBottleFlavorProfile(input: AddBottleFlavorProfileInput!): BottleFlavorProfile! @admin
+  removeBottleFlavorProfile(bottleId: ID!, flavorProfileId: ID!): Boolean! @admin
   adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
   setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
 
@@ -175,8 +228,8 @@ type Mutation {
   updateMyProfile(input: UpdateProfileInput!): User!
   # Admin-only user management. Rejects self-modification, protected
   # admins, and removing the last active admin.
-  setUserRole(userId: ID!, role: String!): User!
-  setUserActive(userId: ID!, isActive: Boolean!): User!
+  setUserRole(userId: ID!, role: Role!): User! @admin
+  setUserActive(userId: ID!, isActive: Boolean!): User! @admin
 }
 
 input UpdateProfileInput {
@@ -198,7 +251,7 @@ type User {
   firstName: String
   lastName: String
   backupEmail: String
-  role: String!
+  role: Role!
   isActive: Boolean!
   # True when the user's email is in LENA_PROTECTED_EMAILS: such admins
   # can never be demoted or banned via the API.
@@ -223,7 +276,7 @@ type Brand {
   name: String!
   selectionCount: Int!
   personalSelectionCount: Int!
-  status: String!
+  status: ModerationStatus!
   submittedByMe: Boolean!
 }
 
@@ -266,9 +319,9 @@ type Item {
   flavors: [FoodFlavor!]!
   selectionCount: Int!
   personalSelectionCount: Int!
-  # One of "pending", "approved", "rejected". Catalog rows are approved;
-  # user submissions start pending until an admin moderates them.
-  status: String!
+  # Catalog rows are approved; user submissions start pending until an
+  # admin moderates them.
+  status: ModerationStatus!
   # True when the current user submitted this (pending) item.
   submittedByMe: Boolean!
   netWeight: Float
@@ -348,7 +401,7 @@ type Recipe {
 
 type RecipeRecommendation {
   recipe: Recipe!
-  reason: String!
+  reason: RecommendationReason!
   score: Float!
 }
 
@@ -802,7 +855,7 @@ input AddBottleFlavorProfileInput {
 
 type RecipeImport {
   id: ID!
-  status: String!
+  status: RecipeImportStatus!
   sourceFilename: String!
   ocrText: String
   draft: RecipeImportDraft
@@ -862,7 +915,7 @@ type RecipeImportReviewItem {
   unitId: ID
   confidence: Float!
   suggestions: [RecipeImportSuggestion!]!
-  status: String!
+  status: ReviewItemStatus!
   notes: String
   approved: Boolean!
 }

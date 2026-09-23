@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -11,14 +12,17 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
+	gqlerrors "github.com/graph-gophers/graphql-go/errors"
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
+	"github.com/JRAdams472/LENA2/internal/platform/async"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -50,23 +54,74 @@ type Resolver struct {
 	NutritionPhotoMaxBytes int
 	RecipeScanMaxBytes     int
 
-	// bg carries detached analytics/recommendation work: at most
-	// asyncWorkerCap in-flight goroutines, all scoped to a cancelable
-	// context that Shutdown drains. Lazily initialized so tests can keep
+	// bg carries detached analytics/recommendation work on a bounded
+	// runner that Shutdown drains. Lazily initialized so tests can keep
 	// constructing Resolver literals.
 	bgOnce   sync.Once
-	bgCtx    context.Context
-	bgCancel context.CancelFunc
-	bgSem    chan struct{}
-	bgWG     sync.WaitGroup
+	bgRunner *async.Runner
+
+	// ocrInFlight tracks in-flight nutrition-OCR jobs per user so one
+	// member cannot hold more than one at a time; uploads throttles
+	// upload mutations per user.
+	ocrMu       sync.Mutex
+	ocrInFlight map[int64]int
+	uploads     *userRateLimiter
 }
 
 // asyncWorkerCap bounds the number of in-flight background tasks.
 const asyncWorkerCap = 16
 
-// NewResolver returns a new BFF resolver with the domain services.
-func NewResolver(pool dbtx.Pool, an AnalyticsService, gr GroceryService, inv InventoryService, mp MealPlanService, rec RecipeService, up UserPrefsService, wineSvc WineService, idn IdentityService, recipeImport RecipeImportService, ocr OCRClient, nutritionPhotoMaxBytes, recipeScanMaxBytes int) *Resolver {
-	return &Resolver{UOW: dbtx.NewUnitOfWork(pool), AnalyticsService: an, GroceryService: gr, InventoryService: inv, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, WineService: wineSvc, IdentityService: idn, RecipeImportService: recipeImport, OCRClient: ocr, NutritionPhotoMaxBytes: nutritionPhotoMaxBytes, RecipeScanMaxBytes: recipeScanMaxBytes}
+// maxUserOCRJobs bounds in-flight nutrition-OCR jobs per user.
+const maxUserOCRJobs = 1
+
+// Services is the set of domain interfaces the BFF orchestrates across.
+// Field types are role interfaces so consumers state the minimum surface
+// they need; the concrete domain services satisfy them all.
+type Services struct {
+	Analytics    AnalyticsService
+	Grocery      GroceryService
+	Inventory    InventoryService
+	MealPlan     MealPlanService
+	Recipe       RecipeService
+	UserPrefs    UserPrefsService
+	Wine         WineService
+	Identity     IdentityService
+	RecipeImport RecipeImportService
+	OCR          OCRClient
+}
+
+// Options carries resolver limits and tunables out of the constructor so
+// adding a knob does not grow the parameter list again.
+type Options struct {
+	NutritionPhotoMaxBytes int
+	RecipeScanMaxBytes     int
+	// UploadRatePerMinute bounds upload mutations per user; <=0 uses the
+	// built-in default.
+	UploadRatePerMinute int
+}
+
+// NewResolver returns a new BFF resolver wired to the domain services.
+func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
+	uploadRate := opts.UploadRatePerMinute
+	if uploadRate <= 0 {
+		uploadRate = 12
+	}
+	return &Resolver{
+		UOW:                    dbtx.NewUnitOfWork(pool),
+		AnalyticsService:       svc.Analytics,
+		GroceryService:         svc.Grocery,
+		InventoryService:       svc.Inventory,
+		MealPlanService:        svc.MealPlan,
+		RecipeService:          svc.Recipe,
+		UserPrefsService:       svc.UserPrefs,
+		WineService:            svc.Wine,
+		IdentityService:        svc.Identity,
+		RecipeImportService:    svc.RecipeImport,
+		OCRClient:              svc.OCR,
+		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
+		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
+		uploads:                newUserRateLimiter(uploadRate),
+	}
 }
 
 // unitOfWork returns the configured UnitOfWork. Resolvers built as literals
@@ -81,60 +136,71 @@ func (r *Resolver) unitOfWork() dbtx.UnitOfWork {
 
 func (r *Resolver) ensureBG() {
 	r.bgOnce.Do(func() {
-		r.bgCtx, r.bgCancel = context.WithCancel(context.Background())
-		r.bgSem = make(chan struct{}, asyncWorkerCap)
+		r.bgRunner = async.New(asyncWorkerCap)
 	})
 }
 
-// runAsync executes fn in a detached, bounded, shutdown-aware goroutine.
-// When the worker is saturated the task is dropped and logged —
-// analytics work is best-effort and must never block the request path.
-func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx context.Context) error) {
+// runAsync submits fn to the bounded background runner. It reports whether
+// the task was accepted: when the pool is saturated the task is dropped and
+// logged, and callers that promised the user queued work (e.g. nutrition
+// OCR) must surface a BUSY error instead of returning true. Best-effort
+// analytics callers may ignore the result.
+func (r *Resolver) runAsync(name string, timeout time.Duration, fn func(ctx context.Context) error) bool {
 	r.ensureBG()
-	select {
-	case r.bgSem <- struct{}{}:
-	default:
-		slog.Default().Warn("async worker saturated; dropping task", "task", name)
-		return
-	}
-	r.bgWG.Add(1)
-	go func() {
-		defer r.bgWG.Done()
-		defer func() { <-r.bgSem }()
-		defer func() {
-			if rec := recover(); rec != nil {
-				slog.Default().Error("async task panic recovered", "task", name, "recover", rec)
-			}
-		}()
-		ctx, cancel := context.WithTimeout(r.bgCtx, timeout)
-		defer cancel()
-		if err := fn(ctx); err != nil {
-			slog.Default().Error("async task failed", "task", name, "error", err)
-		}
-	}()
+	return r.bgRunner.Submit(name, timeout, fn)
 }
 
-// Shutdown cancels pending background work and waits for in-flight tasks
-// to finish or ctx to expire. Call it during graceful shutdown so
-// analytics writes and recipe import workers are not silently dropped on
-// process exit.
+// acquireOCRJob reserves one of the per-user OCR slots. It returns nil if
+// the user already holds the maximum number of in-flight jobs; otherwise
+// it returns a release function the caller must invoke when the job ends.
+func (r *Resolver) acquireOCRJob(userID int64) func() {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.ocrInFlight == nil {
+		r.ocrInFlight = map[int64]int{}
+	}
+	if r.ocrInFlight[userID] >= maxUserOCRJobs {
+		return nil
+	}
+	r.ocrInFlight[userID]++
+	return func() {
+		r.ocrMu.Lock()
+		defer r.ocrMu.Unlock()
+		if r.ocrInFlight[userID]--; r.ocrInFlight[userID] <= 0 {
+			delete(r.ocrInFlight, userID)
+		}
+	}
+}
+
+// uploadLimiter returns the per-user upload rate limiter, lazily built so
+// Resolver literals in tests still work.
+func (r *Resolver) uploadLimiter() *userRateLimiter {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.uploads == nil {
+		r.uploads = newUserRateLimiter(12)
+	}
+	return r.uploads
+}
+
+// Shutdown drains in-flight background work before returning: it waits
+// for the analytics/recommendation workers and the recipe-import pool to
+// finish, and only cancels the shared background context when the caller's
+// deadline expires — in-flight tasks are never aborted just because
+// shutdown was requested. Call it after HTTP drain and before pool close.
 func (r *Resolver) Shutdown(ctx context.Context) error {
 	r.ensureBG()
-	r.bgCancel()
 	done := make(chan struct{})
 	go func() {
-		r.bgWG.Wait()
+		err := r.bgRunner.Shutdown(ctx)
+		if err == nil && r.RecipeImportService != nil {
+			err = r.RecipeImportService.Shutdown(ctx)
+		}
+		if err != nil {
+			slog.Default().Error("background shutdown incomplete", "error", err)
+		}
 		close(done)
 	}()
-
-	// Drain the recipe import worker pool in parallel.
-	if r.RecipeImportService != nil {
-		go func() {
-			if err := r.RecipeImportService.Shutdown(ctx); err != nil {
-				slog.Default().Error("recipe import service shutdown", "error", err)
-			}
-		}()
-	}
 
 	select {
 	case <-done:
@@ -205,6 +271,48 @@ func optionalID(id *graphql.ID) (*int64, error) {
 		return nil, err
 	}
 	return &v, nil
+}
+
+// coalesce returns next when set, otherwise cur — for PATCH-style inputs
+// where a nil field means "leave unchanged".
+func coalesce[T any](cur T, next *T) T {
+	if next != nil {
+		return *next
+	}
+	return cur
+}
+
+// coalescePtr is coalesce for nullable (pointer) fields.
+func coalescePtr[T any](cur *T, next *T) *T {
+	if next != nil {
+		return next
+	}
+	return cur
+}
+
+// coalesceID is coalesce for GraphQL ID input fields: nil input keeps the
+// existing id, non-nil is parsed.
+func coalesceID(cur int64, next *graphql.ID) (int64, error) {
+	if next == nil {
+		return cur, nil
+	}
+	return parseID(string(*next))
+}
+
+// coalesceOptionalID is coalesceID for nullable int64 fields.
+func coalesceOptionalID(cur *int64, next *graphql.ID) (*int64, error) {
+	if next == nil {
+		return cur, nil
+	}
+	return optionalID(next)
+}
+
+// coalesceCheckedInt16 is coalesce for range-checked *int16 fields.
+func coalesceCheckedInt16(cur *int16, next *int32, field string, lo, hi int16) (*int16, error) {
+	if next == nil {
+		return cur, nil
+	}
+	return checkedInt16Ptr(next, field, lo, hi)
 }
 
 func nilIfEmpty(s string) *string {
@@ -409,7 +517,7 @@ type itemChildren struct {
 }
 
 // loadUnits fetches a set of units in one query, keyed by ID.
-func loadUnits(ctx context.Context, inv InventoryService, unitIDs []int64) (map[int64]inventory.Unit, error) {
+func loadUnits(ctx context.Context, inv ItemReader, unitIDs []int64) (map[int64]inventory.Unit, error) {
 	units := make(map[int64]inventory.Unit)
 	if len(unitIDs) == 0 {
 		return units, nil
@@ -426,7 +534,7 @@ func loadUnits(ctx context.Context, inv InventoryService, unitIDs []int64) (map[
 
 // resolveUnitID maps a unit name or abbreviation (e.g. "cup", "c") to its
 // canonical unit_id. Unknown units are rejected rather than stored.
-func resolveUnitID(ctx context.Context, inv InventoryService, name string) (int64, error) {
+func resolveUnitID(ctx context.Context, inv ItemReader, name string) (int64, error) {
 	u, err := inv.GetUnitByName(ctx, strings.TrimSpace(name))
 	if err != nil {
 		return 0, badInputf("unknown unit %q", name)
@@ -435,13 +543,13 @@ func resolveUnitID(ctx context.Context, inv InventoryService, name string) (int6
 }
 
 // unitName renders a unit's display name from a preloaded map, falling back
-// to a lazy service call when units is nil.
-func unitName(ctx context.Context, inv InventoryService, units map[int64]inventory.Unit, unitID int64) (string, error) {
+// to a lazy service call when units is nil or misses the id.
+func unitName(ctx context.Context, inv ItemReader, units map[int64]inventory.Unit, unitID int64) (string, error) {
 	if units != nil {
 		if u, ok := units[unitID]; ok {
 			return u.Name, nil
 		}
-		return "", fmt.Errorf("unit %d missing from preloaded set", unitID)
+		slog.Default().Warn("unit missing from preloaded set; lazy-loading", "unit_id", unitID)
 	}
 	u, err := inv.GetUnitByID(ctx, unitID)
 	if err != nil {
@@ -450,9 +558,26 @@ func unitName(ctx context.Context, inv InventoryService, units map[int64]invento
 	return u.Name, nil
 }
 
+// loadIngredients fetches a set of brand-agnostic ingredients in one query,
+// keyed by ID.
+func loadIngredients(ctx context.Context, inv ItemReader, ingredientIDs []int64) (map[int64]inventory.Ingredient, error) {
+	ingredients := make(map[int64]inventory.Ingredient)
+	if len(ingredientIDs) == 0 {
+		return ingredients, nil
+	}
+	rows, err := inv.GetIngredientsByIDs(ctx, ingredientIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, in := range rows {
+		ingredients[in.IngredientID] = in
+	}
+	return ingredients, nil
+}
+
 // unitNamePtr is unitName for nullable unit references (e.g. grocery list
 // items where the unit may be unset).
-func unitNamePtr(ctx context.Context, inv InventoryService, units map[int64]inventory.Unit, unitID *int64) (*string, error) {
+func unitNamePtr(ctx context.Context, inv ItemReader, units map[int64]inventory.Unit, unitID *int64) (*string, error) {
 	if unitID == nil {
 		return nil, nil
 	}
@@ -464,7 +589,7 @@ func unitNamePtr(ctx context.Context, inv InventoryService, units map[int64]inve
 }
 
 // loadItems fetches a set of catalog items in one query, keyed by ID.
-func loadItems(ctx context.Context, inv InventoryService, itemIDs []int64) (map[int64]inventory.Item, error) {
+func loadItems(ctx context.Context, inv ItemReader, itemIDs []int64) (map[int64]inventory.Item, error) {
 	items := make(map[int64]inventory.Item)
 	if len(itemIDs) == 0 {
 		return items, nil
@@ -481,7 +606,7 @@ func loadItems(ctx context.Context, inv InventoryService, itemIDs []int64) (map[
 
 // loadItemChildren batch-loads the brand, category, nutrient and flavor
 // rows referenced by items.
-func loadItemChildren(ctx context.Context, inv InventoryService, items []inventory.Item) (*itemChildren, error) {
+func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Item) (*itemChildren, error) {
 	ch := &itemChildren{
 		brands:      make(map[int64]inventory.Brand),
 		categories:  make(map[int64]inventory.Category),
@@ -576,6 +701,7 @@ type recipeChildren struct {
 	stepsBy      map[int64][]recipe.RecipeStep
 	favorites    map[int64]bool
 	items        map[int64]inventory.Item
+	ingredients  map[int64]inventory.Ingredient
 	itemChildren *itemChildren
 	units        map[int64]inventory.Unit
 	recipeCounts map[int64]countPair
@@ -588,7 +714,7 @@ type recipeChildren struct {
 // recipes reference. The returned itemID set is merged into extraItemIDs so
 // callers can also resolve items referenced from elsewhere (e.g. meal slot
 // overrides) with the same maps.
-func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv InventoryService, userID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
+func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv ItemReader, userID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
 	rc := &recipeChildren{
 		recipes:      make(map[int64]recipe.Recipe),
 		itemsBy:      make(map[int64][]recipe.RecipeItem),
@@ -621,17 +747,29 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		for _, s := range steps {
 			rc.stepsBy[s.RecipeID] = append(rc.stepsBy[s.RecipeID], s)
 		}
-		favs, err := up.ListRecipeFavorites(ctx, userID, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range favs {
-			rc.favorites[f.RecipeID] = f.IsFavorite
+		if up != nil {
+			favs, err := up.ListRecipeFavorites(ctx, userID, recipeIDs)
+			if err != nil {
+				return nil, err
+			}
+			for _, f := range favs {
+				rc.favorites[f.RecipeID] = f.IsFavorite
+			}
 		}
 		if err := loadRecipeRatings(ctx, rec, userID, recipeIDs, rc); err != nil {
 			return nil, err
 		}
 	}
+	if err := loadRecipeInventoryChildren(ctx, inv, rc, extraItemIDs); err != nil {
+		return nil, err
+	}
+	return rc, nil
+}
+
+// loadRecipeInventoryChildren batch-loads the inventory-side children
+// referenced by rc.itemsBy (plus any extra item IDs): catalog items,
+// their children, recipe-item units, and brand-agnostic ingredients.
+func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipeChildren, extraItemIDs []int64) error {
 	itemIDSet := make(map[int64]bool)
 	for _, id := range extraItemIDs {
 		itemIDSet[id] = true
@@ -646,9 +784,12 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		itemIDs = append(itemIDs, id)
 	}
 	slices.Sort(itemIDs)
+	if inv == nil {
+		return nil
+	}
 	items, err := loadItems(ctx, inv, itemIDs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	rc.items = items
 	list := make([]inventory.Item, 0, len(items))
@@ -657,7 +798,7 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 	}
 	ch, err := loadItemChildren(ctx, inv, list)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	rc.itemChildren = ch
 	// Recipe items carry their own unit_id; preload them alongside the
@@ -677,9 +818,28 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 	slices.Sort(unitIDs)
 	rc.units, err = loadUnits(ctx, inv, unitIDs)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return rc, nil
+	// Recipe items may reference brand-agnostic ingredients; batch-load
+	// them so nested ingredient resolvers never issue a query per row.
+	ingredientIDSet := make(map[int64]bool)
+	for _, items := range rc.itemsBy {
+		for _, ri := range items {
+			if ri.IngredientID != nil {
+				ingredientIDSet[*ri.IngredientID] = true
+			}
+		}
+	}
+	ingredientIDs := make([]int64, 0, len(ingredientIDSet))
+	for id := range ingredientIDSet {
+		ingredientIDs = append(ingredientIDs, id)
+	}
+	slices.Sort(ingredientIDs)
+	rc.ingredients, err = loadIngredients(ctx, inv, ingredientIDs)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // loadItemSelectionCounts populates the per-user and global selection count
@@ -796,7 +956,7 @@ type bottleChildren struct {
 
 // loadBottleChildren batch-loads the bottles (when includeBottles is set),
 // grape varieties and flavor profiles for a set of bottle IDs.
-func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []int64, includeBottles bool) (*bottleChildren, error) {
+func loadBottleChildren(ctx context.Context, wineSvc BottleReader, bottleIDs []int64, includeBottles bool) (*bottleChildren, error) {
 	bc := &bottleChildren{
 		bottles:  make(map[int64]wine.Bottle),
 		grapesBy: make(map[int64][]wine.BottleGrapeVariety),
@@ -831,15 +991,45 @@ func loadBottleChildren(ctx context.Context, wineSvc WineService, bottleIDs []in
 	return bc, nil
 }
 
+// errQueryTimeout marks requests cancelled by the handler's deadline; the
+// handler maps it onto the TIMEOUT GraphQL error code after Exec returns.
+var errQueryTimeout = errors.New("graphql request timed out")
+
+// costLimiter counts field resolutions for one request via TraceField and
+// cancels the execution context once the budget is exceeded.
+type costLimiter struct {
+	max      int
+	count    atomic.Int64
+	exceeded atomic.Bool
+	fire     context.CancelFunc
+}
+
+func (l *costLimiter) add() {
+	if l.max <= 0 || l.fire == nil {
+		return
+	}
+	if l.count.Add(1) > int64(l.max) {
+		l.exceeded.Store(true)
+		l.fire()
+	}
+}
+
+type costLimiterContextKey struct{}
+
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
-// Extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength) are
-// applied on top of the built-in tracer. A schema parse failure is
+// timeout bounds each execution (empty means use the default), maxCost caps
+// the number of field resolutions per request (<= 0 disables the budget),
+// and extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength)
+// are applied on top of the built-in tracer. A schema parse failure is
 // returned as an error rather than panicking.
-func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
+func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
 	opts := append([]graphql.SchemaOpt{graphql.Tracer(newGraphQLTracer())}, schemaOpts...)
 	parsed, err := graphql.ParseSchema(schema, r, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("parse graphql schema: %w", err)
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Second
 	}
 	return func(c echo.Context) error {
 		var req struct {
@@ -848,10 +1038,46 @@ func NewGraphQLHandler(r *Resolver, schemaOpts ...graphql.SchemaOpt) (echo.Handl
 			OperationName string                 `json:"operationName"`
 		}
 		if err := c.Bind(&req); err != nil {
-			return err
+			// Return bind failures in GraphQL error shape so clients get a
+			// consistent contract instead of an Echo HTML error page.
+			return c.JSON(http.StatusOK, map[string]any{
+				"errors": []map[string]any{{
+					"message":    "invalid request body",
+					"extensions": map[string]any{"code": codeBadUserInput},
+				}},
+			})
 		}
-		resp := parsed.Exec(c.Request().Context(), req.Query, req.OperationName, req.Variables)
+		ctx, cancel := context.WithTimeoutCause(c.Request().Context(), timeout, errQueryTimeout)
+		limiter := &costLimiter{max: maxCost, fire: cancel}
+		ctx = context.WithValue(ctx, costLimiterContextKey{}, limiter)
+
+		resp := parsed.Exec(ctx, req.Query, req.OperationName, req.Variables)
+		cancel()
 		sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
+		applyLimitErrors(ctx, resp, limiter)
 		return c.JSON(http.StatusOK, resp)
 	}, nil
+}
+
+// applyLimitErrors appends the deadline/cost GraphQL error when the
+// request exceeded either bound.
+func applyLimitErrors(ctx context.Context, resp *graphql.Response, limiter *costLimiter) {
+	switch {
+	case errors.Is(context.Cause(ctx), errQueryTimeout):
+		resp.Errors = append(resp.Errors, &gqlerrors.QueryError{
+			Message:    "request timed out",
+			Extensions: map[string]any{"code": codeTimeout},
+		})
+	case limiter.exceeded.Load():
+		resp.Errors = append(resp.Errors, &gqlerrors.QueryError{
+			Message:    "query exceeds cost budget",
+			Extensions: map[string]any{"code": codeCostExceeded},
+		})
+	}
+}
+
+// pageArgs clamps pagination input to sane bounds; every list resolver
+// funnels through it so no unbounded LIMIT/OFFSET reaches the database.
+func pageArgs(page, pageSize int32) (int32, int32) {
+	return clamp(page, 1, 1_000_000), clamp(pageSize, 1, 100)
 }

@@ -18,6 +18,9 @@ const (
 	codeNotFound        = "NOT_FOUND"
 	codeConflict        = "CONFLICT"
 	codeInternal        = "INTERNAL"
+	codeTimeout         = "TIMEOUT"
+	codeCostExceeded    = "QUERY_COST_EXCEEDED"
+	codeBusy            = "BUSY"
 )
 
 // clientError is a resolver error whose message is safe to return to the

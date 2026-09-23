@@ -56,6 +56,21 @@ type Config struct {
 	// applies to the query string inside the body, this applies to the
 	// whole payload before it is read.
 	GraphQLBodyLimit string `envconfig:"GRAPHQL_BODY_LIMIT" default:"4M"`
+	// GraphQLTimeout bounds each GraphQL execution; resolvers outliving a
+	// disconnected client are cancelled and reported as TIMEOUT.
+	GraphQLTimeout time.Duration `envconfig:"GRAPHQL_TIMEOUT" default:"10s"`
+	// GraphQLMaxCost bounds the number of field resolutions a single
+	// request may perform; depth/length limits alone do not bound
+	// cardinality of wide list queries. The floor is set by the
+	// unpaginated catalog lists (brands/ingredients): a seeded catalog
+	// page resolves ~65k fields, so 100k still rejects pathological
+	// nested queries without breaking legitimate pages.
+	GraphQLMaxCost int `envconfig:"GRAPHQL_MAX_COST" default:"100000"`
+	// DatabaseStatementTimeout is the PostgreSQL statement_timeout applied
+	// to every pooled connection so queries abandoned by a cancelled
+	// request still die server-side. It should exceed GraphQLTimeout so
+	// the deadline hits the resolver context first.
+	DatabaseStatementTimeout time.Duration `envconfig:"DATABASE_STATEMENT_TIMEOUT" default:"15s"`
 	// HTTP server timeouts. Without them the server is exposed to
 	// slowloris-style connection exhaustion.
 	HTTPReadHeaderTimeout time.Duration `envconfig:"HTTP_READ_HEADER_TIMEOUT" default:"5s"`

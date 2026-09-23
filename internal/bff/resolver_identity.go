@@ -20,8 +20,7 @@ func (r *Resolver) Users(ctx context.Context, args struct {
 	if _, err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	page := clamp(args.Page, 1, 1_000_000)
-	pageSize := clamp(args.PageSize, 1, 100)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
 	users, err := r.IdentityService.ListUsers(ctx, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
