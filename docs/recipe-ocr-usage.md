@@ -93,11 +93,16 @@ Saving the review re-runs catalog validation and moves the import to `ready` whe
 
 ## Logs
 
-When running with Docker Compose, application logs are shipped to Seq:
+Container logs default to local `json-file` with rotation (`docker compose logs api`).
+For centralized structured logs, enable the optional Seq overlay:
 
-- Browse the Seq UI at `http://localhost:5341`.
-- Filter by `tag = lena2-api` or `tag = lena2-web`.
-- For short-lived container output, you can also use `docker compose logs api`.
+```bash
+export SEQ_FIRSTRUN_ADMINPASSWORDHASH=<salted-hash>
+docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d
+```
+
+- Browse the Seq UI at `http://localhost:5341` (loopback only, authenticated).
+- Filter by the compose service tag, e.g. `tag = lena2-api-1` or `tag = lena2-web-1`.
 
 ---
 

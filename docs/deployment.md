@@ -118,6 +118,21 @@ docker compose up --build
 
 The GraphQL endpoint is available at `http://localhost/graphql`.
 
+Reference seed data (catalog items, brands, nutrient types) is opt-in and
+runs once — it is tracked in the `public.schema_seed` table:
+
+```bash
+docker compose --profile seed up db-seed
+```
+
+Centralized Seq/GELF logging is also opt-in via an overlay that binds to
+loopback only:
+
+```bash
+export SEQ_FIRSTRUN_ADMINPASSWORDHASH=<salted-hash>
+docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d
+```
+
 ## 6. Local Development (no Docker)
 
 ```bash

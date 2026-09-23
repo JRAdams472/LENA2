@@ -1,16 +1,22 @@
-# Build stage
-FROM golang:1.27-alpine AS builder
+# syntax=docker/dockerfile:1
+# Build stage — Go toolchain matches go.mod (go 1.26.6).
+FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS builder
 
 WORKDIR /build
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
-COPY . .
-RUN CGO_ENABLED=0 go build -o /build/lena ./cmd/lena
+# Narrow copy: only the trees the binary needs (cmd, internal). The rest of
+# the repository stays out of the build context — see .dockerignore.
+COPY cmd/ cmd/
+COPY internal/ internal/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -o /build/lena ./cmd/lena
 
 # Runtime stage
-FROM alpine:3.24
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 RUN apk add --no-cache ca-certificates curl
 

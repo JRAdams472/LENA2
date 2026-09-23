@@ -238,7 +238,7 @@ func walkImportTo(t *testing.T, ctx context.Context, store Store, id int64, to S
 }
 
 func TestStoreContract_Memory(t *testing.T) {
-	runStoreContract(t, func(t *testing.T) (Store, int64, int64) {
+	runStoreContract(t, func(*testing.T) (Store, int64, int64) {
 		return newMemoryStore(), 1, 1
 	})
 }
@@ -258,7 +258,7 @@ func TestIntegrationStoreContract_SQL(t *testing.T) {
 	require.NoError(t, err)
 	userID := testutil.MustUser(ctx, t, pool, "store-contract@example.com")
 
-	runStoreContract(t, func(t *testing.T) (Store, int64, int64) {
+	runStoreContract(t, func(*testing.T) (Store, int64, int64) {
 		return NewStore(pool), rcp.RecipeID, userID
 	})
 }

@@ -199,7 +199,7 @@ npm run test:e2e         # Playwright end-to-end tests
 The Playwright suite runs against the Docker Compose stack using a local OIDC test issuer. Bring the stack up with:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile seed up -d --build
 ```
 
 ### Mobile tests
