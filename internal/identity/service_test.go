@@ -12,6 +12,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/identity/sqlc"
 	"github.com/JRAdams472/LENA2/internal/identity/sqlc/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 var errDB = errors.New("db error")
@@ -315,4 +316,69 @@ func TestIsProtected(t *testing.T) {
 	assert.True(t, svc.IsProtected("https://issuer.example.com", "second@b.com"))
 	assert.False(t, svc.IsProtected("https://other.example.com", "boss@example.com"))
 	assert.False(t, svc.IsProtected("https://issuer.example.com", "other@b.com"))
+}
+
+func TestHouseholdQueries(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("set household success", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetUserHousehold(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.SetUserHouseholdParams) (int64, error) {
+				assert.Equal(t, int64(2), arg.UserID)
+				assert.Equal(t, pgtype.Int8{Int64: 10, Valid: true}, arg.HouseholdID)
+				assert.Equal(t, pgtype.Int8{Int64: 2, Valid: true}, arg.ExpectedHouseholdID)
+				return 1, nil
+			})
+		exp := int64(2)
+		require.NoError(t, svc.SetUserHousehold(ctx, 2, 10, &exp))
+	})
+
+	t.Run("set household stale expectation is a conflict", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetUserHousehold(ctx, gomock.Any()).Return(int64(0), nil)
+		err := svc.SetUserHousehold(ctx, 2, 10, nil)
+		assert.ErrorIs(t, err, domainerr.ErrConflict)
+	})
+
+	t.Run("set searchable missing user is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetUserSearchable(ctx, gomock.Any()).Return(int64(0), nil)
+		err := svc.SetUserSearchable(ctx, 99, false, "a@b.com")
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
+	})
+
+	t.Run("search users escapes wildcards and maps rows", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SearchUsers(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.SearchUsersParams) ([]sqlc.IdentityUser, error) {
+				assert.Equal(t, int64(1), arg.ExcludeUserID)
+				assert.Equal(t, pgtype.Int8{Int64: 5, Valid: true}, arg.ExcludeHouseholdID)
+				assert.Equal(t, pgtype.Text{String: `%a\%b\_c%`, Valid: true}, arg.Pattern)
+				assert.Equal(t, int32(20), arg.RowLimit)
+				return []sqlc.IdentityUser{{UserID: 3, Email: "c@d.com"}}, nil
+			})
+		users, err := svc.SearchUsers(ctx, `a%b_c`, 1, 5, 20)
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, "c@d.com", users[0].Email)
+	})
+
+	t.Run("search users no household exclusion", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SearchUsers(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.SearchUsersParams) ([]sqlc.IdentityUser, error) {
+				assert.False(t, arg.ExcludeHouseholdID.Valid)
+				return nil, nil
+			})
+		_, err := svc.SearchUsers(ctx, "x", 1, 0, 20)
+		require.NoError(t, err)
+	})
+
+	t.Run("list by ids empty short-circuits", func(t *testing.T) {
+		svc, _ := newService(t)
+		users, err := svc.ListUsersByIDs(ctx, nil)
+		require.NoError(t, err)
+		assert.Empty(t, users)
+	})
 }

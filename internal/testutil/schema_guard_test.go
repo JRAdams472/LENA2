@@ -24,6 +24,7 @@ var allowedSchemas = map[string][]string{
 	"analytics":        {"analytics", "recipe", "mealplan"},
 	"app/recipeimport": {"recipe"},
 	"grocery":          {"grocery"},
+	"household":        {"household"},
 	"identity":         {"identity"},
 	"inventory":        {"inventory"},
 	"mealplan":         {"mealplan"},
@@ -56,6 +57,11 @@ func TestQueriesStayInOwnSchema(t *testing.T) {
 			allowedSet[s] = true
 		}
 		for _, m := range schemaRef.FindAllStringSubmatch(string(raw), -1) {
+			// sqlc.arg()/sqlc.narg() named parameters are codegen syntax, not
+			// schema references (e.g. "IS NOT DISTINCT FROM sqlc.narg(x)").
+			if m[1] == "sqlc" {
+				continue
+			}
 			if !allowedSet[m[1]] {
 				t.Errorf("%s references foreign schema %q (allowed: %s)", queriesPath, m[1], strings.Join(allowed, ", "))
 			}

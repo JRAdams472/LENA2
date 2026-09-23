@@ -101,3 +101,50 @@ SET first_name   = $2,
     updated_by   = $5,
     updated_at   = now()
 WHERE user_id = $1;
+
+-- name: SetUserHousehold :execrows
+-- Conditional update: the expected-household guard turns a concurrent
+-- accept/leave race into a zero-row conflict instead of a lost update.
+UPDATE identity.users
+SET household_id = sqlc.arg(household_id),
+    updated_at   = now()
+WHERE user_id = sqlc.arg(user_id)
+  AND household_id IS NOT DISTINCT FROM sqlc.narg(expected_household_id);
+
+-- name: SetUserSearchable :execrows
+UPDATE identity.users
+SET is_searchable = $2,
+    updated_by    = $3,
+    updated_at    = now()
+WHERE user_id = $1;
+
+-- name: ListUsersByHousehold :many
+SELECT *
+FROM identity.users
+WHERE household_id = $1
+ORDER BY created_at;
+
+-- name: ListUsersByIDs :many
+SELECT *
+FROM identity.users
+WHERE user_id = ANY($1::bigint[]);
+
+-- name: SearchUsers :many
+-- Household-invite candidate search: opt-in, active users only, caller and
+-- the caller's household members excluded. pattern is a pre-escaped LIKE
+-- pattern built by the service.
+SELECT *
+FROM identity.users
+WHERE is_active
+  AND is_searchable
+  AND user_id <> sqlc.arg(exclude_user_id)
+  AND (sqlc.narg(exclude_household_id)::bigint IS NULL
+       OR household_id IS DISTINCT FROM sqlc.narg(exclude_household_id)::bigint)
+  AND (
+         display_name ILIKE sqlc.arg(pattern)
+      OR first_name   ILIKE sqlc.arg(pattern)
+      OR last_name    ILIKE sqlc.arg(pattern)
+      OR email        ILIKE sqlc.arg(pattern)
+  )
+ORDER BY display_name NULLS LAST, email
+LIMIT sqlc.arg(row_limit);

@@ -92,7 +92,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
 FROM identity.users
 WHERE user_id = $1
 `
@@ -116,12 +116,14 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (IdentityUser, 
 		&i.FirstName,
 		&i.LastName,
 		&i.BackupEmail,
+		&i.HouseholdID,
+		&i.IsSearchable,
 	)
 	return i, err
 }
 
 const getUserByProviderSubject = `-- name: GetUserByProviderSubject :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
 FROM identity.users
 WHERE provider = $1
   AND external_subject = $2
@@ -151,12 +153,14 @@ func (q *Queries) GetUserByProviderSubject(ctx context.Context, arg GetUserByPro
 		&i.FirstName,
 		&i.LastName,
 		&i.BackupEmail,
+		&i.HouseholdID,
+		&i.IsSearchable,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
 FROM identity.users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -192,6 +196,168 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 			&i.FirstName,
 			&i.LastName,
 			&i.BackupEmail,
+			&i.HouseholdID,
+			&i.IsSearchable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersByHousehold = `-- name: ListUsersByHousehold :many
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+FROM identity.users
+WHERE household_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]IdentityUser, error) {
+	rows, err := q.db.Query(ctx, listUsersByHousehold, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityUser{}
+	for rows.Next() {
+		var i IdentityUser
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Provider,
+			&i.ExternalSubject,
+			&i.Email,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.LastLoginAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.Role,
+			&i.FirstName,
+			&i.LastName,
+			&i.BackupEmail,
+			&i.HouseholdID,
+			&i.IsSearchable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersByIDs = `-- name: ListUsersByIDs :many
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+FROM identity.users
+WHERE user_id = ANY($1::bigint[])
+`
+
+func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]IdentityUser, error) {
+	rows, err := q.db.Query(ctx, listUsersByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityUser{}
+	for rows.Next() {
+		var i IdentityUser
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Provider,
+			&i.ExternalSubject,
+			&i.Email,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.LastLoginAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.Role,
+			&i.FirstName,
+			&i.LastName,
+			&i.BackupEmail,
+			&i.HouseholdID,
+			&i.IsSearchable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchUsers = `-- name: SearchUsers :many
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+FROM identity.users
+WHERE is_active
+  AND is_searchable
+  AND user_id <> $1
+  AND ($2::bigint IS NULL
+       OR household_id IS DISTINCT FROM $2::bigint)
+  AND (
+         display_name ILIKE $3
+      OR first_name   ILIKE $3
+      OR last_name    ILIKE $3
+      OR email        ILIKE $3
+  )
+ORDER BY display_name NULLS LAST, email
+LIMIT $4
+`
+
+type SearchUsersParams struct {
+	ExcludeUserID      int64       `json:"exclude_user_id"`
+	ExcludeHouseholdID pgtype.Int8 `json:"exclude_household_id"`
+	Pattern            pgtype.Text `json:"pattern"`
+	RowLimit           int32       `json:"row_limit"`
+}
+
+// Household-invite candidate search: opt-in, active users only, caller and
+// the caller's household members excluded. pattern is a pre-escaped LIKE
+// pattern built by the service.
+func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]IdentityUser, error) {
+	rows, err := q.db.Query(ctx, searchUsers,
+		arg.ExcludeUserID,
+		arg.ExcludeHouseholdID,
+		arg.Pattern,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityUser{}
+	for rows.Next() {
+		var i IdentityUser
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Provider,
+			&i.ExternalSubject,
+			&i.Email,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.LastLoginAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.Role,
+			&i.FirstName,
+			&i.LastName,
+			&i.BackupEmail,
+			&i.HouseholdID,
+			&i.IsSearchable,
 		); err != nil {
 			return nil, err
 		}
@@ -222,6 +388,30 @@ func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) er
 	return err
 }
 
+const setUserHousehold = `-- name: SetUserHousehold :execrows
+UPDATE identity.users
+SET household_id = $1,
+    updated_at   = now()
+WHERE user_id = $2
+  AND household_id IS NOT DISTINCT FROM $3
+`
+
+type SetUserHouseholdParams struct {
+	HouseholdID         pgtype.Int8 `json:"household_id"`
+	UserID              int64       `json:"user_id"`
+	ExpectedHouseholdID pgtype.Int8 `json:"expected_household_id"`
+}
+
+// Conditional update: the expected-household guard turns a concurrent
+// accept/leave race into a zero-row conflict instead of a lost update.
+func (q *Queries) SetUserHousehold(ctx context.Context, arg SetUserHouseholdParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserHousehold, arg.HouseholdID, arg.UserID, arg.ExpectedHouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setUserRole = `-- name: SetUserRole :exec
 UPDATE identity.users
 SET role       = $2,
@@ -237,6 +427,28 @@ type SetUserRoleParams struct {
 func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) error {
 	_, err := q.db.Exec(ctx, setUserRole, arg.UserID, arg.Role)
 	return err
+}
+
+const setUserSearchable = `-- name: SetUserSearchable :execrows
+UPDATE identity.users
+SET is_searchable = $2,
+    updated_by    = $3,
+    updated_at    = now()
+WHERE user_id = $1
+`
+
+type SetUserSearchableParams struct {
+	UserID       int64       `json:"user_id"`
+	IsSearchable bool        `json:"is_searchable"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) SetUserSearchable(ctx context.Context, arg SetUserSearchableParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserSearchable, arg.UserID, arg.IsSearchable, arg.UpdatedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateUser = `-- name: UpdateUser :exec
@@ -316,7 +528,7 @@ ON CONFLICT (provider, external_subject)
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
-RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email
+RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
 `
 
 type UpsertUserParams struct {
@@ -354,6 +566,8 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (Identit
 		&i.FirstName,
 		&i.LastName,
 		&i.BackupEmail,
+		&i.HouseholdID,
+		&i.IsSearchable,
 	)
 	return i, err
 }
