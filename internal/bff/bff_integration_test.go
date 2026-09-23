@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -31,7 +30,8 @@ import (
 type graphqlResponse struct {
 	Data   json.RawMessage `json:"data"`
 	Errors []struct {
-		Message string `json:"message"`
+		Message    string         `json:"message"`
+		Extensions map[string]any `json:"extensions"`
 	} `json:"errors"`
 }
 
@@ -76,9 +76,54 @@ func TestBFF_Integration(t *testing.T) {
 	t.Run("auth", func(t *testing.T) {
 		runAuthTests(t, srv, issuer, authenticator)
 	})
+	t.Run("authorization", func(t *testing.T) {
+		runAuthorizationTests(t, srv, issuer)
+	})
 	t.Run("end to end", func(t *testing.T) {
 		runEndToEndTests(t, srv, issuer)
 	})
+}
+
+// runAuthorizationTests verifies that a plain member (a valid token, no
+// admin role) is rejected with FORBIDDEN — not UNAUTHENTICATED — on
+// admin-only mutations across every domain.
+func runAuthorizationTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	member := issuer.Token(t, "member-user", "member@example.com", "Member User")
+
+	// Provision the member's identity row so rejection comes from the role
+	// check, not user creation.
+	status, _ := doGraphQL(t, srv, member, `{ me { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	adminOps := []struct {
+		domain string
+		query  string
+	}{
+		{"inventory/approveItem", `mutation { approveItem(id: "1") { id } }`},
+		{"inventory/rejectBrand", `mutation { rejectBrand(id: "1") { id } }`},
+		{"inventory/createNutrientType", `mutation { createNutrientType(input: { name: "x", unit: "g" }) { id } }`},
+		{"inventory/createCategory", `mutation { createCategory(input: { name: "x" }) { id } }`},
+		{"wine/createBottle", `mutation { createBottle(input: { typeId: "1", countryId: "1", regionId: "1", vintageYear: 2020, bottleSize: "750ml" }) { id } }`},
+		{"recipe/createRecipe", `mutation { createRecipe(input: { name: "x", items: [], steps: [] }) { id } }`},
+		{"recipe-import/approveRecipeImport", `mutation { approveRecipeImport(id: "1") { id } }`},
+		{"recipe-import/submitRecipeScan", `mutation { submitRecipeScan(fileBase64: "aGk=") { id } }`},
+		{"identity/setUserRole", `mutation { setUserRole(userId: "1", role: admin) { id } }`},
+		{"identity/setUserActive", `mutation { setUserActive(userId: "1", isActive: false) { id } }`},
+		{"identity/users", `query { users { items { id } pageInfo { totalCount } } }`},
+		{"recipe-import/pendingRecipeImports", `query { pendingRecipeImports { items { id } pageInfo { totalCount } } }`},
+	}
+	for _, op := range adminOps {
+		t.Run("member "+op.domain+" is forbidden", func(t *testing.T) {
+			status, gr := doGraphQLExpectErrors(t, srv, member, op.query, nil)
+			require.Equal(t, http.StatusOK, status)
+			require.NotEmpty(t, gr.Errors, "expected a graphql error")
+			code, _ := gr.Errors[0].Extensions["code"].(string)
+			assert.Equal(t, codeForbidden, code,
+				"admin-only operation must reject members with FORBIDDEN, not %s", code)
+			assert.NotEqual(t, codeUnauthenticated, code,
+				"a valid member token must not be reported as unauthenticated")
+		})
+	}
 }
 
 func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer, authenticator *Authenticator) {
@@ -849,7 +894,23 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	assert.Empty(t, items2, "fully stocked pantry produces no grocery lines")
 }
 
+// doGraphQL posts a query and requires a clean response: decodable body
+// and zero GraphQL errors. Negative tests that expect errors must use
+// doGraphQLExpectErrors so a regression can never hide behind a swallowed
+// error.
 func doGraphQL(t *testing.T, srv *httptest.Server, token, query string, vars map[string]any) (int, graphqlResponse) {
+	t.Helper()
+	status, gr := doGraphQLExpectErrors(t, srv, token, query, vars)
+	for _, e := range gr.Errors {
+		t.Logf("graphql error: %s", e.Message)
+	}
+	require.Empty(t, gr.Errors, "unexpected graphql errors")
+	return status, gr
+}
+
+// doGraphQLExpectErrors is doGraphQL without the error assertion, for
+// tests that exercise rejection paths (401s, FORBIDDEN, validation).
+func doGraphQLExpectErrors(t *testing.T, srv *httptest.Server, token, query string, vars map[string]any) (int, graphqlResponse) {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
 		"query":     query,
@@ -869,12 +930,7 @@ func doGraphQL(t *testing.T, srv *httptest.Server, token, query string, vars map
 	defer func() { _ = resp.Body.Close() }()
 
 	var gr graphqlResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
-	}
-	for _, e := range gr.Errors {
-		t.Logf("graphql error: %s", e.Message)
-	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&gr), "graphql response must decode")
 	return resp.StatusCode, gr
 }
 

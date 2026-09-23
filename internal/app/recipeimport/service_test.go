@@ -2,7 +2,6 @@ package recipeimport
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -12,13 +11,13 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
-	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
-	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
 // memoryStore implements Store with the same transition guards as the SQL
-// store so unit tests exercise the real state machine.
+// store so unit tests exercise the real state machine. Its fidelity to the
+// SQL implementation is pinned by the shared contract suite in
+// store_contract_test.go, which runs identical assertions against both.
 type memoryStore struct {
 	nextID int64
 	rows   map[int64]*RecipeImport
@@ -229,6 +228,7 @@ func (m *memoryStore) SetPending(_ context.Context, id int64) error {
 
 func (m *memoryStore) WithTx(_ pgx.Tx) Store { return m }
 
+// fakeInventory is a read-only InventoryReader double for pure unit tests.
 type fakeInventory struct {
 	units       []inventory.Unit
 	items       []inventory.Item
@@ -271,180 +271,6 @@ func (f *fakeInventory) GetUnitByName(_ context.Context, name string) (inventory
 		}
 	}
 	return inventory.Unit{}, errors.New("not found")
-}
-
-type fakeRecipeWriter struct{ created recipe.Recipe }
-
-func (f *fakeRecipeWriter) CreateRecipeWithChildren(_ context.Context, arg recipe.Recipe, _ []recipe.RecipeItem, _ []recipe.RecipeStep, _ string) (recipe.Recipe, error) {
-	f.created = arg
-	f.created.RecipeID = 99
-	return f.created, nil
-}
-
-func TestService_CreateAndGet(t *testing.T) {
-	svc := &Service{store: newMemoryStore()}
-	ctx := context.Background()
-
-	created, err := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-	require.NoError(t, err)
-	assert.Equal(t, StatusPending, created.Status)
-	assert.Equal(t, "scan.pdf", created.SourceFilename)
-
-	got, err := svc.Get(ctx, created.ID)
-	require.NoError(t, err)
-	assert.Equal(t, created.ID, got.ID)
-}
-
-func TestService_Reject(t *testing.T) {
-	svc := &Service{store: newMemoryStore()}
-	ctx := context.Background()
-	ri, _ := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-
-	require.NoError(t, svc.Reject(ctx, ri.ID))
-	got, _ := svc.Get(ctx, ri.ID)
-	assert.Equal(t, StatusRejected, got.Status)
-
-	// Terminal: a second reject is a conflict.
-	assert.ErrorIs(t, svc.Reject(ctx, ri.ID), domainerr.ErrConflict)
-}
-
-func TestService_Retry(t *testing.T) {
-	svc := &Service{store: newMemoryStore()}
-	ctx := context.Background()
-	ri, _ := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-
-	// Retry while pending is a conflict — only failed/profanity may retry.
-	assert.ErrorIs(t, svc.Retry(ctx, ri.ID), domainerr.ErrConflict)
-
-	// Move to processing via claim, then fail it, then retry works.
-	_, err := svc.store.Claim(ctx, ri.ID)
-	require.NoError(t, err)
-	require.NoError(t, svc.store.MarkFailed(ctx, ri.ID, "boom"))
-	require.NoError(t, svc.Retry(ctx, ri.ID))
-
-	got, _ := svc.Get(ctx, ri.ID)
-	assert.Equal(t, StatusPending, got.Status)
-}
-
-func TestService_UpdateReview(t *testing.T) {
-	inv := &fakeInventory{
-		units: []inventory.Unit{{UnitID: 1, Name: "cup", Abbreviation: "c"}},
-		items: []inventory.Item{{ItemID: 10, Name: "Flour"}},
-	}
-	svc := &Service{store: newMemoryStore(), inv: inv}
-	ctx := context.Background()
-	ri, _ := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-
-	// Worker path: claim and draft first so the review transition is legal.
-	_, err := svc.store.Claim(ctx, ri.ID)
-	require.NoError(t, err)
-	require.NoError(t, svc.store.UpdateOCR(ctx, ri.ID, "text", nil))
-	require.NoError(t, svc.store.UpdateDraft(ctx, ri.ID, []byte("{}")))
-
-	review := &ocrimport.ReviewRecipe{
-		Name: "Pancakes",
-		Items: []ocrimport.MatchResult{
-			{
-				DraftItem: ocrimport.DraftItem{Ingredient: "flour"},
-				ItemID:    "10",
-				Unit:      "cup",
-				UnitID:    "1",
-				Status:    "accepted",
-			},
-		},
-	}
-	updated, err := svc.UpdateReview(ctx, ri.ID, review, "admin")
-	require.NoError(t, err)
-	assert.Equal(t, StatusReady, updated.Status)
-
-	// The stored review is approved once fully resolved.
-	var stored ocrimport.ReviewRecipe
-	require.NoError(t, json.Unmarshal(updated.ReviewJSON, &stored))
-	assert.True(t, stored.Approved)
-}
-
-func TestService_UpdateReview_SuggestedIsNotReady(t *testing.T) {
-	inv := &fakeInventory{
-		units: []inventory.Unit{{UnitID: 1, Name: "cup", Abbreviation: "c"}},
-		items: []inventory.Item{{ItemID: 10, Name: "Flour"}},
-	}
-	svc := &Service{store: newMemoryStore(), inv: inv}
-	ctx := context.Background()
-	ri, _ := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-	_, err := svc.store.Claim(ctx, ri.ID)
-	require.NoError(t, err)
-	require.NoError(t, svc.store.UpdateOCR(ctx, ri.ID, "text", nil))
-	require.NoError(t, svc.store.UpdateDraft(ctx, ri.ID, []byte("{}")))
-
-	review := &ocrimport.ReviewRecipe{
-		Name: "Pancakes",
-		Items: []ocrimport.MatchResult{
-			{
-				DraftItem: ocrimport.DraftItem{Ingredient: "flour"},
-				ItemID:    "10",
-				Unit:      "cup",
-				UnitID:    "1",
-				Status:    "suggested", // fuzzy suggestion: not resolved
-			},
-		},
-	}
-	updated, err := svc.UpdateReview(ctx, ri.ID, review, "admin")
-	require.NoError(t, err)
-	assert.Equal(t, StatusReviewing, updated.Status)
-
-	var stored ocrimport.ReviewRecipe
-	require.NoError(t, json.Unmarshal(updated.ReviewJSON, &stored))
-	assert.False(t, stored.Approved)
-}
-
-func TestService_Approve(t *testing.T) {
-	inv := &fakeInventory{
-		units: []inventory.Unit{{UnitID: 1, Name: "cup", Abbreviation: "c"}},
-		items: []inventory.Item{{ItemID: 10, Name: "Flour"}},
-	}
-	recWriter := &fakeRecipeWriter{}
-	svc := &Service{store: newMemoryStore(), inv: inv, rec: recWriter}
-	ctx := context.Background()
-	ri, _ := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-
-	reviewJSON := `{"name":"Pancakes","approved":true,"items":[{"draftItem":{"ingredient":"flour"},"itemId":"10","unit":"cup","unitId":"1","status":"accepted","approved":true}],"steps":[]}`
-	_, err := svc.store.Claim(ctx, ri.ID)
-	require.NoError(t, err)
-	require.NoError(t, svc.store.UpdateOCR(ctx, ri.ID, "text", nil))
-	require.NoError(t, svc.store.UpdateDraft(ctx, ri.ID, []byte("{}")))
-	require.NoError(t, svc.store.UpdateReview(ctx, ri.ID, []byte(reviewJSON), StatusReady, "admin"))
-
-	admin := currentuser.User{UserID: 1, Email: "admin@example.com", IsAdmin: true}
-	recipe, updated, err := svc.Approve(ctx, ri.ID, admin)
-	require.NoError(t, err)
-	assert.Equal(t, "Pancakes", recipe.Name)
-	assert.Equal(t, StatusPersisted, updated.Status)
-
-	// A second approve is a conflict, not a duplicate recipe.
-	_, _, err = svc.Approve(ctx, ri.ID, admin)
-	assert.ErrorIs(t, err, domainerr.ErrConflict)
-}
-
-func TestService_Approve_RequiresApproved(t *testing.T) {
-	inv := &fakeInventory{
-		units: []inventory.Unit{{UnitID: 1, Name: "cup", Abbreviation: "c"}},
-		items: []inventory.Item{{ItemID: 10, Name: "Flour"}},
-	}
-	svc := &Service{store: newMemoryStore(), inv: inv, rec: &fakeRecipeWriter{}}
-	ctx := context.Background()
-	ri, _ := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, "admin@example.com")
-
-	// Fully resolved but the review itself is not approved.
-	reviewJSON := `{"name":"Pancakes","items":[{"draftItem":{"ingredient":"flour"},"itemId":"10","unit":"cup","unitId":"1","status":"accepted"}],"steps":[]}`
-	_, err := svc.store.Claim(ctx, ri.ID)
-	require.NoError(t, err)
-	require.NoError(t, svc.store.UpdateOCR(ctx, ri.ID, "text", nil))
-	require.NoError(t, svc.store.UpdateDraft(ctx, ri.ID, []byte("{}")))
-	require.NoError(t, svc.store.UpdateReview(ctx, ri.ID, []byte(reviewJSON), StatusReady, "admin"))
-
-	admin := currentuser.User{UserID: 1, Email: "admin@example.com", IsAdmin: true}
-	_, _, err = svc.Approve(ctx, ri.ID, admin)
-	assert.ErrorIs(t, err, domainerr.ErrValidation)
 }
 
 func TestService_buildRecipe(t *testing.T) {

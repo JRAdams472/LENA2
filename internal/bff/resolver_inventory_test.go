@@ -986,7 +986,9 @@ func TestResolver_SubmitItem(t *testing.T) {
 	t.Run("duplicate upc is a friendly error", func(t *testing.T) {
 		inv := newInvMock(t)
 		inv.EXPECT().GetUnitByName(gomock.Any(), "each").Return(inventory.Unit{UnitID: 1}, nil)
-		inv.EXPECT().SubmitItem(gomock.Any(), gomock.Any(), int64(7), invTestEmail).
+		inv.EXPECT().SubmitItem(gomock.Any(), gomock.Cond(func(i inventory.Item) bool {
+			return i.Name == "Scan Bar" && i.UnitID == 1 && i.CategoryID == 3
+		}), int64(7), invTestEmail).
 			Return(inventory.Item{}, domainerr.ErrConflict)
 		r := &Resolver{InventoryService: inv}
 		_, err := r.SubmitItem(invUserCtx(), args{Input: createItemInput{
@@ -1215,3 +1217,107 @@ func TestResolver_UpdateItem_CreatorCanEditPending(t *testing.T) {
 }
 
 func ptrInt64(v int64) *int64 { return &v }
+
+func TestResolver_Inventory_SubmitBrand(t *testing.T) {
+	t.Run("member submits a pending brand", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SubmitBrand(gomock.Any(), "Acme", int64(7), invTestEmail).
+			Return(inventory.Brand{BrandID: 9, Name: "Acme", Status: inventory.BrandStatusPending}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.SubmitBrand(invUserCtx(), struct{ Input createBrandInput }{Input: createBrandInput{Name: " Acme "}})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("9"), res.ID())
+	})
+
+	t.Run("unauthenticated is rejected", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.SubmitBrand(context.Background(), struct{ Input createBrandInput }{Input: createBrandInput{Name: "X"}})
+		require.Error(t, err)
+	})
+
+	t.Run("service conflict maps to client conflict", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SubmitBrand(gomock.Any(), "Acme", int64(7), invTestEmail).
+			Return(inventory.Brand{}, domainerr.ErrConflict)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SubmitBrand(invUserCtx(), struct{ Input createBrandInput }{Input: createBrandInput{Name: "Acme"}})
+		require.Error(t, err)
+		var ce *clientError
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, codeConflict, ce.code)
+		assert.Contains(t, ce.msg, "already exists")
+	})
+
+	t.Run("other service errors pass through unmapped", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SubmitBrand(gomock.Any(), "Acme", int64(7), invTestEmail).
+			Return(inventory.Brand{}, errInvBoom)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.SubmitBrand(invUserCtx(), struct{ Input createBrandInput }{Input: createBrandInput{Name: "Acme"}})
+		require.ErrorIs(t, err, errInvBoom)
+	})
+}
+
+func TestResolver_Inventory_PendingBrands(t *testing.T) {
+	t.Run("admin gets paged queue", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().ListPendingBrands(gomock.Any(), int32(25), int32(25)).
+			Return([]inventory.Brand{{BrandID: 4, Name: "Pending Co", Status: inventory.BrandStatusPending}}, nil)
+		inv.EXPECT().CountPendingBrands(gomock.Any()).Return(int64(26), nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.PendingBrands(invCtx(), struct{ Page, PageSize int32 }{Page: 2, PageSize: 25})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 1)
+		assert.Equal(t, int32(26), res.PageInfo().TotalCount())
+	})
+
+	t.Run("non-admin is forbidden", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.PendingBrands(invUserCtx(), struct{ Page, PageSize int32 }{Page: 1, PageSize: 25})
+		require.Error(t, err)
+	})
+}
+
+func TestResolver_Inventory_ApproveRejectBrand(t *testing.T) {
+	t.Run("approve sets approved status", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SetBrandStatus(gomock.Any(), int64(4), inventory.BrandStatusApproved, int64(7), invTestEmail).
+			Return(nil)
+		inv.EXPECT().GetBrandByID(gomock.Any(), int64(4)).
+			Return(inventory.Brand{BrandID: 4, Name: "Co", Status: inventory.BrandStatusApproved}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.ApproveBrand(invCtx(), struct{ ID graphql.ID }{ID: "4"})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("4"), res.ID())
+	})
+
+	t.Run("reject sets rejected status", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SetBrandStatus(gomock.Any(), int64(4), inventory.BrandStatusRejected, int64(7), invTestEmail).
+			Return(nil)
+		inv.EXPECT().GetBrandByID(gomock.Any(), int64(4)).
+			Return(inventory.Brand{BrandID: 4, Name: "Co", Status: inventory.BrandStatusRejected}, nil)
+		r := &Resolver{InventoryService: inv}
+		res, err := r.RejectBrand(invCtx(), struct{ ID graphql.ID }{ID: "4"})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("4"), res.ID())
+	})
+
+	t.Run("non-admin approve is forbidden", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.ApproveBrand(invUserCtx(), struct{ ID graphql.ID }{ID: "4"})
+		require.Error(t, err)
+	})
+
+	t.Run("non-admin reject is forbidden", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.RejectBrand(invUserCtx(), struct{ ID graphql.ID }{ID: "4"})
+		require.Error(t, err)
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.ApproveBrand(invCtx(), struct{ ID graphql.ID }{ID: "abc"})
+		require.Error(t, err)
+	})
+}

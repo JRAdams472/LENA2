@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -436,4 +437,132 @@ func TestIntegrationSubmitBrandConcurrent(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, count, "only one brand row should exist for the normalized name")
+}
+
+func TestIntegrationBrandModeration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationServiceWithPool(t, ctx)
+
+	userA := testutil.MustUser(ctx, t, pool, "brand-mod-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "brand-mod-b@example.com")
+	adminID := testutil.MustUser(ctx, t, pool, "brand-mod-admin@example.com")
+
+	t.Run("submit creates pending brand for the submitter", func(t *testing.T) {
+		b, err := svc.SubmitBrand(ctx, "Mod Alpha", userA, itBy)
+		require.NoError(t, err)
+		assert.Equal(t, BrandStatusPending, b.Status)
+		require.NotNil(t, b.SubmittedByUserID)
+		assert.Equal(t, userA, *b.SubmittedByUserID)
+	})
+
+	t.Run("duplicate name with different casing returns same brand", func(t *testing.T) {
+		first, err := svc.SubmitBrand(ctx, "Mod Dup", userA, itBy)
+		require.NoError(t, err)
+		again, err := svc.SubmitBrand(ctx, "  MOD DUP ", userA, itBy)
+		require.NoError(t, err)
+		assert.Equal(t, first.BrandID, again.BrandID, "normalized-name match must reuse the row")
+	})
+
+	t.Run("foreign pending brand conflicts for another user", func(t *testing.T) {
+		_, err := svc.SubmitBrand(ctx, "Mod Owned", userA, itBy)
+		require.NoError(t, err)
+		_, err = svc.SubmitBrand(ctx, "mod owned", userB, itBy)
+		assert.ErrorIs(t, err, domainerr.ErrConflict,
+			"a pending brand owned by another user must not be visible")
+	})
+
+	t.Run("pending queue lists only pending oldest first", func(t *testing.T) {
+		older, err := svc.SubmitBrand(ctx, "Mod Queue One", userA, itBy)
+		require.NoError(t, err)
+		newer, err := svc.SubmitBrand(ctx, "Mod Queue Two", userB, itBy)
+		require.NoError(t, err)
+		_, err = svc.CreateBrand(ctx, "Mod Queue Approved", itBy)
+		require.NoError(t, err)
+
+		pending, err := svc.ListPendingBrands(ctx, 100, 0)
+		require.NoError(t, err)
+		var ids []int64
+		for _, b := range pending {
+			if b.BrandID == older.BrandID || b.BrandID == newer.BrandID {
+				ids = append(ids, b.BrandID)
+			}
+			assert.NotEqual(t, "Mod Queue Approved", b.Name, "approved brand must not be pending")
+		}
+		require.Len(t, ids, 2)
+		assert.Equal(t, older.BrandID, ids[0], "oldest pending first")
+		assert.Equal(t, newer.BrandID, ids[1])
+
+		n, err := svc.CountPendingBrands(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, n, int64(2))
+	})
+
+	t.Run("search shows own pending and approved, hides foreign pending", func(t *testing.T) {
+		_, err := svc.SubmitBrand(ctx, "Searchable Mine", userA, itBy)
+		require.NoError(t, err)
+		_, err = svc.SubmitBrand(ctx, "Searchable Theirs", userB, itBy)
+		require.NoError(t, err)
+		_, err = svc.CreateBrand(ctx, "Searchable Public", itBy)
+		require.NoError(t, err)
+
+		mine, err := svc.SearchBrands(ctx, "searchable", userA, 50)
+		require.NoError(t, err)
+		names := map[string]string{}
+		for _, b := range mine {
+			names[b.Name] = b.Status
+		}
+		assert.Equal(t, BrandStatusPending, names["Searchable Mine"])
+		assert.Equal(t, BrandStatusApproved, names["Searchable Public"])
+		assert.NotContains(t, names, "Searchable Theirs",
+			"another user's pending brand must not appear in search")
+	})
+
+	t.Run("approve records approver and exits the queue", func(t *testing.T) {
+		b, err := svc.SubmitBrand(ctx, "Mod Approve Me", userA, itBy)
+		require.NoError(t, err)
+		require.NoError(t, svc.SetBrandStatus(ctx, b.BrandID, BrandStatusApproved, adminID, itBy))
+
+		got, err := svc.GetBrandByID(ctx, b.BrandID)
+		require.NoError(t, err)
+		assert.Equal(t, BrandStatusApproved, got.Status)
+		require.NotNil(t, got.ApprovedByUserID)
+		assert.Equal(t, adminID, *got.ApprovedByUserID)
+		assert.NotNil(t, got.ApprovedAt)
+
+		pending, err := svc.ListPendingBrands(ctx, 100, 0)
+		require.NoError(t, err)
+		for _, p := range pending {
+			assert.NotEqual(t, b.BrandID, p.BrandID)
+		}
+	})
+
+	t.Run("reject clears approver and blocks resubmission", func(t *testing.T) {
+		b, err := svc.SubmitBrand(ctx, "Mod Reject Me", userA, itBy)
+		require.NoError(t, err)
+		require.NoError(t, svc.SetBrandStatus(ctx, b.BrandID, BrandStatusApproved, adminID, itBy))
+		require.NoError(t, svc.SetBrandStatus(ctx, b.BrandID, BrandStatusRejected, adminID, itBy))
+
+		got, err := svc.GetBrandByID(ctx, b.BrandID)
+		require.NoError(t, err)
+		assert.Equal(t, BrandStatusRejected, got.Status)
+		assert.Nil(t, got.ApprovedByUserID, "rejecting clears the approver")
+		assert.Nil(t, got.ApprovedAt)
+
+		// Rejected normalized names cannot be resubmitted — the row is
+		// visible to the submit check and conflicts.
+		_, err = svc.SubmitBrand(ctx, "mod reject me", userA, itBy)
+		assert.ErrorIs(t, err, domainerr.ErrConflict)
+	})
+
+	t.Run("resubmitting own approved name returns the brand", func(t *testing.T) {
+		b, err := svc.SubmitBrand(ctx, "Mod Twice", userA, itBy)
+		require.NoError(t, err)
+		require.NoError(t, svc.SetBrandStatus(ctx, b.BrandID, BrandStatusApproved, adminID, itBy))
+		again, err := svc.SubmitBrand(ctx, "MOD TWICE", userB, itBy)
+		require.NoError(t, err)
+		assert.Equal(t, b.BrandID, again.BrandID)
+	})
 }
