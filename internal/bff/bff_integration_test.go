@@ -693,11 +693,15 @@ func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestI
 	decodeData(t, gr.Data, &userItemsRes)
 	require.True(t, containsUserItemID(userItemsRes.UserItems.Items, userItemRes.AdjustUserItem.ID))
 
-	// cross-user isolation: user B cannot read user A's meal plan
-	status, gr = doGraphQL(t, srv, tokB, `query MealPlan($id: ID!) { mealPlan(id: $id) { id name } }`, map[string]any{
+	// cross-user isolation: user B cannot read user A's meal plan —
+	// not-found is indistinguishable from foreign-owned, so the wire
+	// answer is a NOT_FOUND error with null data.
+	status, gr = doGraphQLExpectErrors(t, srv, tokB, `query MealPlan($id: ID!) { mealPlan(id: $id) { id name } }`, map[string]any{
 		"id": mealPlanRes.CreateMealPlan.ID,
 	})
 	require.Equal(t, http.StatusOK, status)
+	require.Len(t, gr.Errors, 1)
+	assert.Equal(t, codeNotFound, gr.Errors[0].Extensions["code"])
 	var crossUser struct {
 		MealPlan *struct {
 			ID   string `json:"id"`
