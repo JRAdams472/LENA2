@@ -27,6 +27,10 @@ import {
   MealPlanNutrition,
   GroceryList,
   GroceryListItem,
+  Household,
+  HouseholdInvite,
+  HouseholdUser,
+  InviteStatus,
   RecipeImport,
   RecipeImportDraft,
   RecipeImportDraftItem,
@@ -507,11 +511,34 @@ interface GqlUser {
   isActive: boolean;
   isProtected: boolean;
   lastLoginAt: string | null;
+  isSearchable?: boolean;
+  household?: GqlHousehold | null;
 }
 
 interface GqlUserPage {
   items: GqlUser[];
   pageInfo: GqlPageInfo;
+}
+
+interface GqlHouseholdUser {
+  id: string;
+  displayName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+interface GqlHousehold {
+  id: string;
+  members: GqlHouseholdUser[];
+  createdAt: string;
+}
+
+interface GqlHouseholdInvite {
+  id: string;
+  fromUser: GqlHouseholdUser;
+  toUser: GqlHouseholdUser;
+  status: string;
+  createdAt: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -536,6 +563,29 @@ const toUser = (u: GqlUser): User => ({
   lastLoginAt: u.lastLoginAt ?? null,
   externalSubject: null,
   provider: null,
+  isSearchable: u.isSearchable !== false,
+  household: u.household ? toHousehold(u.household) : null,
+});
+
+const toHouseholdUser = (u: GqlHouseholdUser): HouseholdUser => ({
+  userID: num(u.id),
+  displayName: u.displayName ?? null,
+  firstName: u.firstName ?? null,
+  lastName: u.lastName ?? null,
+});
+
+const toHousehold = (h: GqlHousehold): Household => ({
+  householdID: num(h.id),
+  members: (h.members ?? []).map(toHouseholdUser),
+  createdAt: h.createdAt,
+});
+
+const toHouseholdInvite = (i: GqlHouseholdInvite): HouseholdInvite => ({
+  inviteID: num(i.id),
+  fromUser: toHouseholdUser(i.fromUser),
+  toUser: toHouseholdUser(i.toUser),
+  status: (i.status as InviteStatus) ?? "PENDING",
+  createdAt: i.createdAt,
 });
 
 const audit = (): AuditableEntity => ({
@@ -1151,7 +1201,7 @@ export const api = {
   // Auth
   getMe: async (): Promise<User> => {
     const data = await request<{ me: GqlUser }>(
-      `query { me { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`
+      `query { me { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt isSearchable household { id members { id displayName firstName lastName } createdAt } } }`
     );
     return toUser(data.me);
   },
@@ -1161,12 +1211,78 @@ export const api = {
     firstName?: string;
     lastName?: string;
     backupEmail?: string;
+    isSearchable?: boolean;
   }): Promise<User> => {
     const data = await request<{ updateMyProfile: GqlUser }>(
-      `mutation ($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } }`,
+      `mutation ($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt isSearchable } }`,
       { input }
     );
     return toUser(data.updateMyProfile);
+  },
+
+  // Household
+  getMyHousehold: async (): Promise<Household | null> => {
+    const data = await request<{ myHousehold: GqlHousehold | null }>(
+      `query { myHousehold { id members { id displayName firstName lastName } createdAt } }`
+    );
+    return data.myHousehold ? toHousehold(data.myHousehold) : null;
+  },
+
+  getHouseholdInvites: async (): Promise<HouseholdInvite[]> => {
+    const data = await request<{ householdInvites: GqlHouseholdInvite[] }>(
+      `query { householdInvites { id status createdAt fromUser { id displayName firstName lastName } toUser { id displayName firstName lastName } } }`
+    );
+    return (data.householdInvites ?? []).map(toHouseholdInvite);
+  },
+
+  searchHouseholdUsers: async (
+    term: string,
+    limit = 20
+  ): Promise<HouseholdUser[]> => {
+    const data = await request<{ searchHouseholdUsers: GqlHouseholdUser[] }>(
+      `query ($term: String!, $limit: Int) { searchHouseholdUsers(term: $term, limit: $limit) { id displayName firstName lastName } }`,
+      { term, limit }
+    );
+    return (data.searchHouseholdUsers ?? []).map(toHouseholdUser);
+  },
+
+  inviteHouseholdMember: async (userID: number): Promise<HouseholdInvite> => {
+    const data = await request<{ inviteHouseholdMember: GqlHouseholdInvite }>(
+      `mutation ($userId: ID!) { inviteHouseholdMember(userId: $userId) { id status createdAt fromUser { id displayName firstName lastName } toUser { id displayName firstName lastName } } }`,
+      { userId: String(userID) }
+    );
+    return toHouseholdInvite(data.inviteHouseholdMember);
+  },
+
+  acceptHouseholdInvite: async (inviteID: number): Promise<Household> => {
+    const data = await request<{ acceptHouseholdInvite: GqlHousehold }>(
+      `mutation ($inviteId: ID!) { acceptHouseholdInvite(inviteId: $inviteId) { id members { id displayName firstName lastName } createdAt } }`,
+      { inviteId: String(inviteID) }
+    );
+    return toHousehold(data.acceptHouseholdInvite);
+  },
+
+  declineHouseholdInvite: async (inviteID: number): Promise<HouseholdInvite> => {
+    const data = await request<{ declineHouseholdInvite: GqlHouseholdInvite }>(
+      `mutation ($inviteId: ID!) { declineHouseholdInvite(inviteId: $inviteId) { id status createdAt fromUser { id displayName firstName lastName } toUser { id displayName firstName lastName } } }`,
+      { inviteId: String(inviteID) }
+    );
+    return toHouseholdInvite(data.declineHouseholdInvite);
+  },
+
+  cancelHouseholdInvite: async (inviteID: number): Promise<HouseholdInvite> => {
+    const data = await request<{ cancelHouseholdInvite: GqlHouseholdInvite }>(
+      `mutation ($inviteId: ID!) { cancelHouseholdInvite(inviteId: $inviteId) { id status createdAt fromUser { id displayName firstName lastName } toUser { id displayName firstName lastName } } }`,
+      { inviteId: String(inviteID) }
+    );
+    return toHouseholdInvite(data.cancelHouseholdInvite);
+  },
+
+  leaveHousehold: async (): Promise<boolean> => {
+    const data = await request<{ leaveHousehold: boolean }>(
+      `mutation { leaveHousehold }`
+    );
+    return data.leaveHousehold;
   },
 
   // Admin user management

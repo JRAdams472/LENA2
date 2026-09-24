@@ -6,7 +6,9 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Paper from "@mui/material/Paper";
+import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api, ApiError } from "@/lib/api";
@@ -19,12 +21,13 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
   const [firstName, setFirstName] = useState(me.firstName ?? "");
   const [lastName, setLastName] = useState(me.lastName ?? "");
   const [backupEmail, setBackupEmail] = useState(me.backupEmail ?? "");
+  const [isSearchable, setIsSearchable] = useState(me.isSearchable);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.updateMyProfile({ firstName, lastName, backupEmail }),
+      api.updateMyProfile({ firstName, lastName, backupEmail, isSearchable }),
     onSuccess: () => {
       setSaved(true);
       setError(null);
@@ -68,6 +71,15 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
         onChange={(e) => setBackupEmail(e.target.value)}
         helperText="Used only if we need to reach you and your sign-in email fails."
         fullWidth
+      />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={isSearchable}
+            onChange={(e) => setIsSearchable(e.target.checked)}
+          />
+        }
+        label="Let other users find me by name or email to invite me to a household"
       />
       <Button type="submit" variant="contained" disabled={mutation.isPending}>
         {mutation.isPending ? "Saving…" : "Save"}

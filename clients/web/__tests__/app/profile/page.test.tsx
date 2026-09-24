@@ -33,6 +33,8 @@ const me = {
   lastLoginAt: null,
   externalSubject: null,
   provider: null,
+  isSearchable: true,
+  household: null,
 };
 
 function renderPage() {
@@ -75,6 +77,7 @@ describe("profile page", () => {
         firstName: "Ada",
         lastName: "Lovelace",
         backupEmail: "alt@x.com",
+        isSearchable: true,
       })
     );
     expect(await screen.findByText("Profile saved.")).toBeInTheDocument();

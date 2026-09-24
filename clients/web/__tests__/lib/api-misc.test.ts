@@ -128,6 +128,8 @@ describe("api client: auth and helpers", () => {
       lastLoginAt: null,
       externalSubject: null,
       provider: null,
+      isSearchable: true,
+      household: null,
     });
   });
 
