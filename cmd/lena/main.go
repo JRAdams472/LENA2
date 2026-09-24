@@ -28,6 +28,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/grocery"
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -144,6 +145,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		WithProtectedEmails(splitAndTrim(cfg.ProtectedEmails))
 	analyticsSvc := analytics.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
+	householdSvc := household.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
 	mealPlanSvc := mealplan.NewService(pool)
 	recipeSvc := recipe.NewService(pool)
@@ -176,7 +178,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
 		Audiences:   splitAndTrim(cfg.AuthAudiences),
 		AdminEmails: splitAndTrim(cfg.AdminEmails),
-	}, identitySvc)
+	}, identitySvc, householdSvc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("auth config: %w", err)
 	}

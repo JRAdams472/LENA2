@@ -54,93 +54,93 @@ func (m *MockGroceryReader) EXPECT() *MockGroceryReaderMockRecorder {
 }
 
 // CountGroceryLists mocks base method.
-func (m *MockGroceryReader) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
+func (m *MockGroceryReader) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, userID)
+	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountGroceryLists indicates an expected call of CountGroceryLists.
-func (mr *MockGroceryReaderMockRecorder) CountGroceryLists(ctx, userID any) *gomock.Call {
+func (mr *MockGroceryReaderMockRecorder) CountGroceryLists(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockGroceryReader)(nil).CountGroceryLists), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockGroceryReader)(nil).CountGroceryLists), ctx, householdID)
 }
 
 // GetGroceryListByID mocks base method.
-func (m *MockGroceryReader) GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (grocery.GroceryList, error) {
+func (m *MockGroceryReader) GetGroceryListByID(ctx context.Context, groceryListID, householdID int64) (grocery.GroceryList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGroceryListByID", ctx, groceryListID, userID)
+	ret := m.ctrl.Call(m, "GetGroceryListByID", ctx, groceryListID, householdID)
 	ret0, _ := ret[0].(grocery.GroceryList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGroceryListByID indicates an expected call of GetGroceryListByID.
-func (mr *MockGroceryReaderMockRecorder) GetGroceryListByID(ctx, groceryListID, userID any) *gomock.Call {
+func (mr *MockGroceryReaderMockRecorder) GetGroceryListByID(ctx, groceryListID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListByID", reflect.TypeOf((*MockGroceryReader)(nil).GetGroceryListByID), ctx, groceryListID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListByID", reflect.TypeOf((*MockGroceryReader)(nil).GetGroceryListByID), ctx, groceryListID, householdID)
 }
 
 // GetGroceryListItemByID mocks base method.
-func (m *MockGroceryReader) GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error) {
+func (m *MockGroceryReader) GetGroceryListItemByID(ctx context.Context, groceryListItemID, householdID int64) (grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGroceryListItemByID", ctx, groceryListItemID, userID)
+	ret := m.ctrl.Call(m, "GetGroceryListItemByID", ctx, groceryListItemID, householdID)
 	ret0, _ := ret[0].(grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGroceryListItemByID indicates an expected call of GetGroceryListItemByID.
-func (mr *MockGroceryReaderMockRecorder) GetGroceryListItemByID(ctx, groceryListItemID, userID any) *gomock.Call {
+func (mr *MockGroceryReaderMockRecorder) GetGroceryListItemByID(ctx, groceryListItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockGroceryReader)(nil).GetGroceryListItemByID), ctx, groceryListItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockGroceryReader)(nil).GetGroceryListItemByID), ctx, groceryListItemID, householdID)
 }
 
 // ListGroceryListItems mocks base method.
-func (m *MockGroceryReader) ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]grocery.GroceryListItem, error) {
+func (m *MockGroceryReader) ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListGroceryListItems", ctx, groceryListID, userID)
+	ret := m.ctrl.Call(m, "ListGroceryListItems", ctx, groceryListID, householdID)
 	ret0, _ := ret[0].([]grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListGroceryListItems indicates an expected call of ListGroceryListItems.
-func (mr *MockGroceryReaderMockRecorder) ListGroceryListItems(ctx, groceryListID, userID any) *gomock.Call {
+func (mr *MockGroceryReaderMockRecorder) ListGroceryListItems(ctx, groceryListID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItems", reflect.TypeOf((*MockGroceryReader)(nil).ListGroceryListItems), ctx, groceryListID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItems", reflect.TypeOf((*MockGroceryReader)(nil).ListGroceryListItems), ctx, groceryListID, householdID)
 }
 
 // ListGroceryListItemsByLists mocks base method.
-func (m *MockGroceryReader) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, userID int64) ([]grocery.GroceryListItem, error) {
+func (m *MockGroceryReader) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, householdID int64) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListGroceryListItemsByLists", ctx, groceryListIDs, userID)
+	ret := m.ctrl.Call(m, "ListGroceryListItemsByLists", ctx, groceryListIDs, householdID)
 	ret0, _ := ret[0].([]grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListGroceryListItemsByLists indicates an expected call of ListGroceryListItemsByLists.
-func (mr *MockGroceryReaderMockRecorder) ListGroceryListItemsByLists(ctx, groceryListIDs, userID any) *gomock.Call {
+func (mr *MockGroceryReaderMockRecorder) ListGroceryListItemsByLists(ctx, groceryListIDs, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItemsByLists", reflect.TypeOf((*MockGroceryReader)(nil).ListGroceryListItemsByLists), ctx, groceryListIDs, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItemsByLists", reflect.TypeOf((*MockGroceryReader)(nil).ListGroceryListItemsByLists), ctx, groceryListIDs, householdID)
 }
 
 // ListGroceryLists mocks base method.
-func (m *MockGroceryReader) ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]grocery.GroceryList, error) {
+func (m *MockGroceryReader) ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]grocery.GroceryList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListGroceryLists", ctx, userID, limit, offset)
+	ret := m.ctrl.Call(m, "ListGroceryLists", ctx, householdID, limit, offset)
 	ret0, _ := ret[0].([]grocery.GroceryList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListGroceryLists indicates an expected call of ListGroceryLists.
-func (mr *MockGroceryReaderMockRecorder) ListGroceryLists(ctx, userID, limit, offset any) *gomock.Call {
+func (mr *MockGroceryReaderMockRecorder) ListGroceryLists(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockGroceryReader)(nil).ListGroceryLists), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockGroceryReader)(nil).ListGroceryLists), ctx, householdID, limit, offset)
 }
 
 // MockGroceryWriter is a mock of GroceryWriter interface.
@@ -168,91 +168,91 @@ func (m *MockGroceryWriter) EXPECT() *MockGroceryWriterMockRecorder {
 }
 
 // AddGroceryListItem mocks base method.
-func (m *MockGroceryWriter) AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, userID int64, by string) (grocery.GroceryListItem, error) {
+func (m *MockGroceryWriter) AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, householdID int64, by string) (grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGroceryListItem", ctx, arg, userID, by)
+	ret := m.ctrl.Call(m, "AddGroceryListItem", ctx, arg, householdID, by)
 	ret0, _ := ret[0].(grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddGroceryListItem indicates an expected call of AddGroceryListItem.
-func (mr *MockGroceryWriterMockRecorder) AddGroceryListItem(ctx, arg, userID, by any) *gomock.Call {
+func (mr *MockGroceryWriterMockRecorder) AddGroceryListItem(ctx, arg, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).AddGroceryListItem), ctx, arg, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).AddGroceryListItem), ctx, arg, householdID, by)
 }
 
 // AddGroceryListItems mocks base method.
-func (m *MockGroceryWriter) AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, userID int64, by string) ([]grocery.GroceryListItem, error) {
+func (m *MockGroceryWriter) AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, householdID int64, by string) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGroceryListItems", ctx, items, userID, by)
+	ret := m.ctrl.Call(m, "AddGroceryListItems", ctx, items, householdID, by)
 	ret0, _ := ret[0].([]grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddGroceryListItems indicates an expected call of AddGroceryListItems.
-func (mr *MockGroceryWriterMockRecorder) AddGroceryListItems(ctx, items, userID, by any) *gomock.Call {
+func (mr *MockGroceryWriterMockRecorder) AddGroceryListItems(ctx, items, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItems", reflect.TypeOf((*MockGroceryWriter)(nil).AddGroceryListItems), ctx, items, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItems", reflect.TypeOf((*MockGroceryWriter)(nil).AddGroceryListItems), ctx, items, householdID, by)
 }
 
 // CreateGroceryList mocks base method.
-func (m *MockGroceryWriter) CreateGroceryList(ctx context.Context, userID int64, mealPlanID *int64, by string) (grocery.GroceryList, error) {
+func (m *MockGroceryWriter) CreateGroceryList(ctx context.Context, householdID int64, mealPlanID *int64, by string) (grocery.GroceryList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGroceryList", ctx, userID, mealPlanID, by)
+	ret := m.ctrl.Call(m, "CreateGroceryList", ctx, householdID, mealPlanID, by)
 	ret0, _ := ret[0].(grocery.GroceryList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateGroceryList indicates an expected call of CreateGroceryList.
-func (mr *MockGroceryWriterMockRecorder) CreateGroceryList(ctx, userID, mealPlanID, by any) *gomock.Call {
+func (mr *MockGroceryWriterMockRecorder) CreateGroceryList(ctx, householdID, mealPlanID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockGroceryWriter)(nil).CreateGroceryList), ctx, userID, mealPlanID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockGroceryWriter)(nil).CreateGroceryList), ctx, householdID, mealPlanID, by)
 }
 
 // DeleteGroceryListItem mocks base method.
-func (m *MockGroceryWriter) DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error {
+func (m *MockGroceryWriter) DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteGroceryListItem", ctx, groceryListItemID, userID)
+	ret := m.ctrl.Call(m, "DeleteGroceryListItem", ctx, groceryListItemID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteGroceryListItem indicates an expected call of DeleteGroceryListItem.
-func (mr *MockGroceryWriterMockRecorder) DeleteGroceryListItem(ctx, groceryListItemID, userID any) *gomock.Call {
+func (mr *MockGroceryWriterMockRecorder) DeleteGroceryListItem(ctx, groceryListItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).DeleteGroceryListItem), ctx, groceryListItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).DeleteGroceryListItem), ctx, groceryListItemID, householdID)
 }
 
 // ToggleGroceryListItemChecked mocks base method.
-func (m *MockGroceryWriter) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error) {
+func (m *MockGroceryWriter) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ToggleGroceryListItemChecked", ctx, groceryListItemID, userID, by)
+	ret := m.ctrl.Call(m, "ToggleGroceryListItemChecked", ctx, groceryListItemID, householdID, by)
 	ret0, _ := ret[0].(grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ToggleGroceryListItemChecked indicates an expected call of ToggleGroceryListItemChecked.
-func (mr *MockGroceryWriterMockRecorder) ToggleGroceryListItemChecked(ctx, groceryListItemID, userID, by any) *gomock.Call {
+func (mr *MockGroceryWriterMockRecorder) ToggleGroceryListItemChecked(ctx, groceryListItemID, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockGroceryWriter)(nil).ToggleGroceryListItemChecked), ctx, groceryListItemID, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockGroceryWriter)(nil).ToggleGroceryListItemChecked), ctx, groceryListItemID, householdID, by)
 }
 
 // UpdateGroceryListItem mocks base method.
-func (m *MockGroceryWriter) UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error {
+func (m *MockGroceryWriter) UpdateGroceryListItem(ctx context.Context, groceryListItemID, householdID int64, arg grocery.GroceryListItem, by string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateGroceryListItem", ctx, groceryListItemID, userID, arg, by)
+	ret := m.ctrl.Call(m, "UpdateGroceryListItem", ctx, groceryListItemID, householdID, arg, by)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateGroceryListItem indicates an expected call of UpdateGroceryListItem.
-func (mr *MockGroceryWriterMockRecorder) UpdateGroceryListItem(ctx, groceryListItemID, userID, arg, by any) *gomock.Call {
+func (mr *MockGroceryWriterMockRecorder) UpdateGroceryListItem(ctx, groceryListItemID, householdID, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).UpdateGroceryListItem), ctx, groceryListItemID, userID, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).UpdateGroceryListItem), ctx, groceryListItemID, householdID, arg, by)
 }
 
 // MockGroceryService is a mock of GroceryService interface.
@@ -280,181 +280,181 @@ func (m *MockGroceryService) EXPECT() *MockGroceryServiceMockRecorder {
 }
 
 // AddGroceryListItem mocks base method.
-func (m *MockGroceryService) AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, userID int64, by string) (grocery.GroceryListItem, error) {
+func (m *MockGroceryService) AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, householdID int64, by string) (grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGroceryListItem", ctx, arg, userID, by)
+	ret := m.ctrl.Call(m, "AddGroceryListItem", ctx, arg, householdID, by)
 	ret0, _ := ret[0].(grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddGroceryListItem indicates an expected call of AddGroceryListItem.
-func (mr *MockGroceryServiceMockRecorder) AddGroceryListItem(ctx, arg, userID, by any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) AddGroceryListItem(ctx, arg, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).AddGroceryListItem), ctx, arg, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).AddGroceryListItem), ctx, arg, householdID, by)
 }
 
 // AddGroceryListItems mocks base method.
-func (m *MockGroceryService) AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, userID int64, by string) ([]grocery.GroceryListItem, error) {
+func (m *MockGroceryService) AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, householdID int64, by string) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGroceryListItems", ctx, items, userID, by)
+	ret := m.ctrl.Call(m, "AddGroceryListItems", ctx, items, householdID, by)
 	ret0, _ := ret[0].([]grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddGroceryListItems indicates an expected call of AddGroceryListItems.
-func (mr *MockGroceryServiceMockRecorder) AddGroceryListItems(ctx, items, userID, by any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) AddGroceryListItems(ctx, items, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItems", reflect.TypeOf((*MockGroceryService)(nil).AddGroceryListItems), ctx, items, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItems", reflect.TypeOf((*MockGroceryService)(nil).AddGroceryListItems), ctx, items, householdID, by)
 }
 
 // CountGroceryLists mocks base method.
-func (m *MockGroceryService) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
+func (m *MockGroceryService) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, userID)
+	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountGroceryLists indicates an expected call of CountGroceryLists.
-func (mr *MockGroceryServiceMockRecorder) CountGroceryLists(ctx, userID any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) CountGroceryLists(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockGroceryService)(nil).CountGroceryLists), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockGroceryService)(nil).CountGroceryLists), ctx, householdID)
 }
 
 // CreateGroceryList mocks base method.
-func (m *MockGroceryService) CreateGroceryList(ctx context.Context, userID int64, mealPlanID *int64, by string) (grocery.GroceryList, error) {
+func (m *MockGroceryService) CreateGroceryList(ctx context.Context, householdID int64, mealPlanID *int64, by string) (grocery.GroceryList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGroceryList", ctx, userID, mealPlanID, by)
+	ret := m.ctrl.Call(m, "CreateGroceryList", ctx, householdID, mealPlanID, by)
 	ret0, _ := ret[0].(grocery.GroceryList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateGroceryList indicates an expected call of CreateGroceryList.
-func (mr *MockGroceryServiceMockRecorder) CreateGroceryList(ctx, userID, mealPlanID, by any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) CreateGroceryList(ctx, householdID, mealPlanID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockGroceryService)(nil).CreateGroceryList), ctx, userID, mealPlanID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockGroceryService)(nil).CreateGroceryList), ctx, householdID, mealPlanID, by)
 }
 
 // DeleteGroceryListItem mocks base method.
-func (m *MockGroceryService) DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error {
+func (m *MockGroceryService) DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteGroceryListItem", ctx, groceryListItemID, userID)
+	ret := m.ctrl.Call(m, "DeleteGroceryListItem", ctx, groceryListItemID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteGroceryListItem indicates an expected call of DeleteGroceryListItem.
-func (mr *MockGroceryServiceMockRecorder) DeleteGroceryListItem(ctx, groceryListItemID, userID any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) DeleteGroceryListItem(ctx, groceryListItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).DeleteGroceryListItem), ctx, groceryListItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).DeleteGroceryListItem), ctx, groceryListItemID, householdID)
 }
 
 // GetGroceryListByID mocks base method.
-func (m *MockGroceryService) GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (grocery.GroceryList, error) {
+func (m *MockGroceryService) GetGroceryListByID(ctx context.Context, groceryListID, householdID int64) (grocery.GroceryList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGroceryListByID", ctx, groceryListID, userID)
+	ret := m.ctrl.Call(m, "GetGroceryListByID", ctx, groceryListID, householdID)
 	ret0, _ := ret[0].(grocery.GroceryList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGroceryListByID indicates an expected call of GetGroceryListByID.
-func (mr *MockGroceryServiceMockRecorder) GetGroceryListByID(ctx, groceryListID, userID any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) GetGroceryListByID(ctx, groceryListID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListByID", reflect.TypeOf((*MockGroceryService)(nil).GetGroceryListByID), ctx, groceryListID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListByID", reflect.TypeOf((*MockGroceryService)(nil).GetGroceryListByID), ctx, groceryListID, householdID)
 }
 
 // GetGroceryListItemByID mocks base method.
-func (m *MockGroceryService) GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error) {
+func (m *MockGroceryService) GetGroceryListItemByID(ctx context.Context, groceryListItemID, householdID int64) (grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGroceryListItemByID", ctx, groceryListItemID, userID)
+	ret := m.ctrl.Call(m, "GetGroceryListItemByID", ctx, groceryListItemID, householdID)
 	ret0, _ := ret[0].(grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGroceryListItemByID indicates an expected call of GetGroceryListItemByID.
-func (mr *MockGroceryServiceMockRecorder) GetGroceryListItemByID(ctx, groceryListItemID, userID any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) GetGroceryListItemByID(ctx, groceryListItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockGroceryService)(nil).GetGroceryListItemByID), ctx, groceryListItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockGroceryService)(nil).GetGroceryListItemByID), ctx, groceryListItemID, householdID)
 }
 
 // ListGroceryListItems mocks base method.
-func (m *MockGroceryService) ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]grocery.GroceryListItem, error) {
+func (m *MockGroceryService) ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListGroceryListItems", ctx, groceryListID, userID)
+	ret := m.ctrl.Call(m, "ListGroceryListItems", ctx, groceryListID, householdID)
 	ret0, _ := ret[0].([]grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListGroceryListItems indicates an expected call of ListGroceryListItems.
-func (mr *MockGroceryServiceMockRecorder) ListGroceryListItems(ctx, groceryListID, userID any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) ListGroceryListItems(ctx, groceryListID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItems", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryListItems), ctx, groceryListID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItems", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryListItems), ctx, groceryListID, householdID)
 }
 
 // ListGroceryListItemsByLists mocks base method.
-func (m *MockGroceryService) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, userID int64) ([]grocery.GroceryListItem, error) {
+func (m *MockGroceryService) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, householdID int64) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListGroceryListItemsByLists", ctx, groceryListIDs, userID)
+	ret := m.ctrl.Call(m, "ListGroceryListItemsByLists", ctx, groceryListIDs, householdID)
 	ret0, _ := ret[0].([]grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListGroceryListItemsByLists indicates an expected call of ListGroceryListItemsByLists.
-func (mr *MockGroceryServiceMockRecorder) ListGroceryListItemsByLists(ctx, groceryListIDs, userID any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) ListGroceryListItemsByLists(ctx, groceryListIDs, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItemsByLists", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryListItemsByLists), ctx, groceryListIDs, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryListItemsByLists", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryListItemsByLists), ctx, groceryListIDs, householdID)
 }
 
 // ListGroceryLists mocks base method.
-func (m *MockGroceryService) ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]grocery.GroceryList, error) {
+func (m *MockGroceryService) ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]grocery.GroceryList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListGroceryLists", ctx, userID, limit, offset)
+	ret := m.ctrl.Call(m, "ListGroceryLists", ctx, householdID, limit, offset)
 	ret0, _ := ret[0].([]grocery.GroceryList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListGroceryLists indicates an expected call of ListGroceryLists.
-func (mr *MockGroceryServiceMockRecorder) ListGroceryLists(ctx, userID, limit, offset any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) ListGroceryLists(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryLists), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockGroceryService)(nil).ListGroceryLists), ctx, householdID, limit, offset)
 }
 
 // ToggleGroceryListItemChecked mocks base method.
-func (m *MockGroceryService) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error) {
+func (m *MockGroceryService) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ToggleGroceryListItemChecked", ctx, groceryListItemID, userID, by)
+	ret := m.ctrl.Call(m, "ToggleGroceryListItemChecked", ctx, groceryListItemID, householdID, by)
 	ret0, _ := ret[0].(grocery.GroceryListItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ToggleGroceryListItemChecked indicates an expected call of ToggleGroceryListItemChecked.
-func (mr *MockGroceryServiceMockRecorder) ToggleGroceryListItemChecked(ctx, groceryListItemID, userID, by any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) ToggleGroceryListItemChecked(ctx, groceryListItemID, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockGroceryService)(nil).ToggleGroceryListItemChecked), ctx, groceryListItemID, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockGroceryService)(nil).ToggleGroceryListItemChecked), ctx, groceryListItemID, householdID, by)
 }
 
 // UpdateGroceryListItem mocks base method.
-func (m *MockGroceryService) UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error {
+func (m *MockGroceryService) UpdateGroceryListItem(ctx context.Context, groceryListItemID, householdID int64, arg grocery.GroceryListItem, by string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateGroceryListItem", ctx, groceryListItemID, userID, arg, by)
+	ret := m.ctrl.Call(m, "UpdateGroceryListItem", ctx, groceryListItemID, householdID, arg, by)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateGroceryListItem indicates an expected call of UpdateGroceryListItem.
-func (mr *MockGroceryServiceMockRecorder) UpdateGroceryListItem(ctx, groceryListItemID, userID, arg, by any) *gomock.Call {
+func (mr *MockGroceryServiceMockRecorder) UpdateGroceryListItem(ctx, groceryListItemID, householdID, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).UpdateGroceryListItem), ctx, groceryListItemID, userID, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).UpdateGroceryListItem), ctx, groceryListItemID, householdID, arg, by)
 }
 
 // MockItemReader is a mock of ItemReader interface.
@@ -2442,138 +2442,138 @@ func (m *MockMealPlanReader) EXPECT() *MockMealPlanReaderMockRecorder {
 }
 
 // CountMealPlans mocks base method.
-func (m *MockMealPlanReader) CountMealPlans(ctx context.Context, userID int64) (int64, error) {
+func (m *MockMealPlanReader) CountMealPlans(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountMealPlans", ctx, userID)
+	ret := m.ctrl.Call(m, "CountMealPlans", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountMealPlans indicates an expected call of CountMealPlans.
-func (mr *MockMealPlanReaderMockRecorder) CountMealPlans(ctx, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) CountMealPlans(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockMealPlanReader)(nil).CountMealPlans), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockMealPlanReader)(nil).CountMealPlans), ctx, householdID)
 }
 
 // GetMealPlanByID mocks base method.
-func (m *MockMealPlanReader) GetMealPlanByID(ctx context.Context, mealPlanID, userID int64) (mealplan.MealPlan, error) {
+func (m *MockMealPlanReader) GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMealPlanByID", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "GetMealPlanByID", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].(mealplan.MealPlan)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetMealPlanByID indicates an expected call of GetMealPlanByID.
-func (mr *MockMealPlanReaderMockRecorder) GetMealPlanByID(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) GetMealPlanByID(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealPlanByID", reflect.TypeOf((*MockMealPlanReader)(nil).GetMealPlanByID), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealPlanByID", reflect.TypeOf((*MockMealPlanReader)(nil).GetMealPlanByID), ctx, mealPlanID, householdID)
 }
 
 // LastPlannedDates mocks base method.
-func (m *MockMealPlanReader) LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error) {
+func (m *MockMealPlanReader) LastPlannedDates(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]time.Time, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastPlannedDates", ctx, userID, recipeIDs)
+	ret := m.ctrl.Call(m, "LastPlannedDates", ctx, householdID, recipeIDs)
 	ret0, _ := ret[0].(map[int64]time.Time)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // LastPlannedDates indicates an expected call of LastPlannedDates.
-func (mr *MockMealPlanReaderMockRecorder) LastPlannedDates(ctx, userID, recipeIDs any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) LastPlannedDates(ctx, householdID, recipeIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastPlannedDates", reflect.TypeOf((*MockMealPlanReader)(nil).LastPlannedDates), ctx, userID, recipeIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastPlannedDates", reflect.TypeOf((*MockMealPlanReader)(nil).LastPlannedDates), ctx, householdID, recipeIDs)
 }
 
 // ListMealPlans mocks base method.
-func (m *MockMealPlanReader) ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error) {
+func (m *MockMealPlanReader) ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealPlans", ctx, userID, limit, offset)
+	ret := m.ctrl.Call(m, "ListMealPlans", ctx, householdID, limit, offset)
 	ret0, _ := ret[0].([]mealplan.MealPlan)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealPlans indicates an expected call of ListMealPlans.
-func (mr *MockMealPlanReaderMockRecorder) ListMealPlans(ctx, userID, limit, offset any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) ListMealPlans(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealPlans", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealPlans), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealPlans", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealPlans), ctx, householdID, limit, offset)
 }
 
 // ListMealSlotItems mocks base method.
-func (m *MockMealPlanReader) ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]mealplan.MealSlotItem, error) {
+func (m *MockMealPlanReader) ListMealSlotItems(ctx context.Context, slotID, householdID int64) ([]mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItems", ctx, slotID, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotItems", ctx, slotID, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItems indicates an expected call of ListMealSlotItems.
-func (mr *MockMealPlanReaderMockRecorder) ListMealSlotItems(ctx, slotID, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) ListMealSlotItems(ctx, slotID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotItems), ctx, slotID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotItems), ctx, slotID, householdID)
 }
 
 // ListMealSlotItemsByPlan mocks base method.
-func (m *MockMealPlanReader) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlotItem, error) {
+func (m *MockMealPlanReader) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItemsByPlan indicates an expected call of ListMealSlotItemsByPlan.
-func (mr *MockMealPlanReaderMockRecorder) ListMealSlotItemsByPlan(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) ListMealSlotItemsByPlan(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotItemsByPlan), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotItemsByPlan), ctx, mealPlanID, householdID)
 }
 
 // ListMealSlotItemsByPlans mocks base method.
-func (m *MockMealPlanReader) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlotItem, error) {
+func (m *MockMealPlanReader) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlans", ctx, mealPlanIDs, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlans", ctx, mealPlanIDs, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItemsByPlans indicates an expected call of ListMealSlotItemsByPlans.
-func (mr *MockMealPlanReaderMockRecorder) ListMealSlotItemsByPlans(ctx, mealPlanIDs, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) ListMealSlotItemsByPlans(ctx, mealPlanIDs, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlans", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotItemsByPlans), ctx, mealPlanIDs, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlans", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotItemsByPlans), ctx, mealPlanIDs, householdID)
 }
 
 // ListMealSlotsByPlans mocks base method.
-func (m *MockMealPlanReader) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlot, error) {
+func (m *MockMealPlanReader) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotsByPlans", ctx, mealPlanIDs, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotsByPlans", ctx, mealPlanIDs, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotsByPlans indicates an expected call of ListMealSlotsByPlans.
-func (mr *MockMealPlanReaderMockRecorder) ListMealSlotsByPlans(ctx, mealPlanIDs, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) ListMealSlotsByPlans(ctx, mealPlanIDs, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsByPlans", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotsByPlans), ctx, mealPlanIDs, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsByPlans", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotsByPlans), ctx, mealPlanIDs, householdID)
 }
 
 // ListMealSlotsForPlan mocks base method.
-func (m *MockMealPlanReader) ListMealSlotsForPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlot, error) {
+func (m *MockMealPlanReader) ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotsForPlan", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotsForPlan", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotsForPlan indicates an expected call of ListMealSlotsForPlan.
-func (mr *MockMealPlanReaderMockRecorder) ListMealSlotsForPlan(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanReaderMockRecorder) ListMealSlotsForPlan(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotsForPlan), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockMealPlanReader)(nil).ListMealSlotsForPlan), ctx, mealPlanID, householdID)
 }
 
 // MockMealPlanWriter is a mock of MealPlanWriter interface.
@@ -2601,33 +2601,33 @@ func (m *MockMealPlanWriter) EXPECT() *MockMealPlanWriterMockRecorder {
 }
 
 // AddMealSlot mocks base method.
-func (m *MockMealPlanWriter) AddMealSlot(ctx context.Context, arg mealplan.MealSlot, userID int64, by string) (mealplan.MealSlot, error) {
+func (m *MockMealPlanWriter) AddMealSlot(ctx context.Context, arg mealplan.MealSlot, householdID int64, by string) (mealplan.MealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddMealSlot", ctx, arg, userID, by)
+	ret := m.ctrl.Call(m, "AddMealSlot", ctx, arg, householdID, by)
 	ret0, _ := ret[0].(mealplan.MealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddMealSlot indicates an expected call of AddMealSlot.
-func (mr *MockMealPlanWriterMockRecorder) AddMealSlot(ctx, arg, userID, by any) *gomock.Call {
+func (mr *MockMealPlanWriterMockRecorder) AddMealSlot(ctx, arg, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlot", reflect.TypeOf((*MockMealPlanWriter)(nil).AddMealSlot), ctx, arg, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlot", reflect.TypeOf((*MockMealPlanWriter)(nil).AddMealSlot), ctx, arg, householdID, by)
 }
 
 // AddMealSlotItem mocks base method.
-func (m *MockMealPlanWriter) AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, userID int64, by string) (mealplan.MealSlotItem, error) {
+func (m *MockMealPlanWriter) AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, householdID int64, by string) (mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddMealSlotItem", ctx, arg, userID, by)
+	ret := m.ctrl.Call(m, "AddMealSlotItem", ctx, arg, householdID, by)
 	ret0, _ := ret[0].(mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddMealSlotItem indicates an expected call of AddMealSlotItem.
-func (mr *MockMealPlanWriterMockRecorder) AddMealSlotItem(ctx, arg, userID, by any) *gomock.Call {
+func (mr *MockMealPlanWriterMockRecorder) AddMealSlotItem(ctx, arg, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlotItem", reflect.TypeOf((*MockMealPlanWriter)(nil).AddMealSlotItem), ctx, arg, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlotItem", reflect.TypeOf((*MockMealPlanWriter)(nil).AddMealSlotItem), ctx, arg, householdID, by)
 }
 
 // CreateMealPlan mocks base method.
@@ -2646,59 +2646,59 @@ func (mr *MockMealPlanWriterMockRecorder) CreateMealPlan(ctx, arg, by any) *gomo
 }
 
 // DeleteMealPlan mocks base method.
-func (m *MockMealPlanWriter) DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error {
+func (m *MockMealPlanWriter) DeleteMealPlan(ctx context.Context, mealPlanID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealPlan", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "DeleteMealPlan", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealPlan indicates an expected call of DeleteMealPlan.
-func (mr *MockMealPlanWriterMockRecorder) DeleteMealPlan(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanWriterMockRecorder) DeleteMealPlan(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealPlan", reflect.TypeOf((*MockMealPlanWriter)(nil).DeleteMealPlan), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealPlan", reflect.TypeOf((*MockMealPlanWriter)(nil).DeleteMealPlan), ctx, mealPlanID, householdID)
 }
 
 // DeleteMealSlot mocks base method.
-func (m *MockMealPlanWriter) DeleteMealSlot(ctx context.Context, slotID, userID int64) error {
+func (m *MockMealPlanWriter) DeleteMealSlot(ctx context.Context, slotID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealSlot", ctx, slotID, userID)
+	ret := m.ctrl.Call(m, "DeleteMealSlot", ctx, slotID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealSlot indicates an expected call of DeleteMealSlot.
-func (mr *MockMealPlanWriterMockRecorder) DeleteMealSlot(ctx, slotID, userID any) *gomock.Call {
+func (mr *MockMealPlanWriterMockRecorder) DeleteMealSlot(ctx, slotID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlot", reflect.TypeOf((*MockMealPlanWriter)(nil).DeleteMealSlot), ctx, slotID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlot", reflect.TypeOf((*MockMealPlanWriter)(nil).DeleteMealSlot), ctx, slotID, householdID)
 }
 
 // DeleteMealSlotItem mocks base method.
-func (m *MockMealPlanWriter) DeleteMealSlotItem(ctx context.Context, slotItemID, userID int64) error {
+func (m *MockMealPlanWriter) DeleteMealSlotItem(ctx context.Context, slotItemID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealSlotItem", ctx, slotItemID, userID)
+	ret := m.ctrl.Call(m, "DeleteMealSlotItem", ctx, slotItemID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealSlotItem indicates an expected call of DeleteMealSlotItem.
-func (mr *MockMealPlanWriterMockRecorder) DeleteMealSlotItem(ctx, slotItemID, userID any) *gomock.Call {
+func (mr *MockMealPlanWriterMockRecorder) DeleteMealSlotItem(ctx, slotItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockMealPlanWriter)(nil).DeleteMealSlotItem), ctx, slotItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockMealPlanWriter)(nil).DeleteMealSlotItem), ctx, slotItemID, householdID)
 }
 
 // UpdateMealPlan mocks base method.
-func (m *MockMealPlanWriter) UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error {
+func (m *MockMealPlanWriter) UpdateMealPlan(ctx context.Context, mealPlanID, householdID int64, arg mealplan.MealPlan, by string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateMealPlan", ctx, mealPlanID, userID, arg, by)
+	ret := m.ctrl.Call(m, "UpdateMealPlan", ctx, mealPlanID, householdID, arg, by)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateMealPlan indicates an expected call of UpdateMealPlan.
-func (mr *MockMealPlanWriterMockRecorder) UpdateMealPlan(ctx, mealPlanID, userID, arg, by any) *gomock.Call {
+func (mr *MockMealPlanWriterMockRecorder) UpdateMealPlan(ctx, mealPlanID, householdID, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMealPlan", reflect.TypeOf((*MockMealPlanWriter)(nil).UpdateMealPlan), ctx, mealPlanID, userID, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMealPlan", reflect.TypeOf((*MockMealPlanWriter)(nil).UpdateMealPlan), ctx, mealPlanID, householdID, arg, by)
 }
 
 // MockMealPlanService is a mock of MealPlanService interface.
@@ -2726,48 +2726,48 @@ func (m *MockMealPlanService) EXPECT() *MockMealPlanServiceMockRecorder {
 }
 
 // AddMealSlot mocks base method.
-func (m *MockMealPlanService) AddMealSlot(ctx context.Context, arg mealplan.MealSlot, userID int64, by string) (mealplan.MealSlot, error) {
+func (m *MockMealPlanService) AddMealSlot(ctx context.Context, arg mealplan.MealSlot, householdID int64, by string) (mealplan.MealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddMealSlot", ctx, arg, userID, by)
+	ret := m.ctrl.Call(m, "AddMealSlot", ctx, arg, householdID, by)
 	ret0, _ := ret[0].(mealplan.MealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddMealSlot indicates an expected call of AddMealSlot.
-func (mr *MockMealPlanServiceMockRecorder) AddMealSlot(ctx, arg, userID, by any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) AddMealSlot(ctx, arg, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlot", reflect.TypeOf((*MockMealPlanService)(nil).AddMealSlot), ctx, arg, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlot", reflect.TypeOf((*MockMealPlanService)(nil).AddMealSlot), ctx, arg, householdID, by)
 }
 
 // AddMealSlotItem mocks base method.
-func (m *MockMealPlanService) AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, userID int64, by string) (mealplan.MealSlotItem, error) {
+func (m *MockMealPlanService) AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, householdID int64, by string) (mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddMealSlotItem", ctx, arg, userID, by)
+	ret := m.ctrl.Call(m, "AddMealSlotItem", ctx, arg, householdID, by)
 	ret0, _ := ret[0].(mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddMealSlotItem indicates an expected call of AddMealSlotItem.
-func (mr *MockMealPlanServiceMockRecorder) AddMealSlotItem(ctx, arg, userID, by any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) AddMealSlotItem(ctx, arg, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlotItem", reflect.TypeOf((*MockMealPlanService)(nil).AddMealSlotItem), ctx, arg, userID, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMealSlotItem", reflect.TypeOf((*MockMealPlanService)(nil).AddMealSlotItem), ctx, arg, householdID, by)
 }
 
 // CountMealPlans mocks base method.
-func (m *MockMealPlanService) CountMealPlans(ctx context.Context, userID int64) (int64, error) {
+func (m *MockMealPlanService) CountMealPlans(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountMealPlans", ctx, userID)
+	ret := m.ctrl.Call(m, "CountMealPlans", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountMealPlans indicates an expected call of CountMealPlans.
-func (mr *MockMealPlanServiceMockRecorder) CountMealPlans(ctx, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) CountMealPlans(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockMealPlanService)(nil).CountMealPlans), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockMealPlanService)(nil).CountMealPlans), ctx, householdID)
 }
 
 // CreateMealPlan mocks base method.
@@ -2786,179 +2786,179 @@ func (mr *MockMealPlanServiceMockRecorder) CreateMealPlan(ctx, arg, by any) *gom
 }
 
 // DeleteMealPlan mocks base method.
-func (m *MockMealPlanService) DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error {
+func (m *MockMealPlanService) DeleteMealPlan(ctx context.Context, mealPlanID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealPlan", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "DeleteMealPlan", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealPlan indicates an expected call of DeleteMealPlan.
-func (mr *MockMealPlanServiceMockRecorder) DeleteMealPlan(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) DeleteMealPlan(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealPlan", reflect.TypeOf((*MockMealPlanService)(nil).DeleteMealPlan), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealPlan", reflect.TypeOf((*MockMealPlanService)(nil).DeleteMealPlan), ctx, mealPlanID, householdID)
 }
 
 // DeleteMealSlot mocks base method.
-func (m *MockMealPlanService) DeleteMealSlot(ctx context.Context, slotID, userID int64) error {
+func (m *MockMealPlanService) DeleteMealSlot(ctx context.Context, slotID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealSlot", ctx, slotID, userID)
+	ret := m.ctrl.Call(m, "DeleteMealSlot", ctx, slotID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealSlot indicates an expected call of DeleteMealSlot.
-func (mr *MockMealPlanServiceMockRecorder) DeleteMealSlot(ctx, slotID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) DeleteMealSlot(ctx, slotID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlot", reflect.TypeOf((*MockMealPlanService)(nil).DeleteMealSlot), ctx, slotID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlot", reflect.TypeOf((*MockMealPlanService)(nil).DeleteMealSlot), ctx, slotID, householdID)
 }
 
 // DeleteMealSlotItem mocks base method.
-func (m *MockMealPlanService) DeleteMealSlotItem(ctx context.Context, slotItemID, userID int64) error {
+func (m *MockMealPlanService) DeleteMealSlotItem(ctx context.Context, slotItemID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMealSlotItem", ctx, slotItemID, userID)
+	ret := m.ctrl.Call(m, "DeleteMealSlotItem", ctx, slotItemID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteMealSlotItem indicates an expected call of DeleteMealSlotItem.
-func (mr *MockMealPlanServiceMockRecorder) DeleteMealSlotItem(ctx, slotItemID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) DeleteMealSlotItem(ctx, slotItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockMealPlanService)(nil).DeleteMealSlotItem), ctx, slotItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockMealPlanService)(nil).DeleteMealSlotItem), ctx, slotItemID, householdID)
 }
 
 // GetMealPlanByID mocks base method.
-func (m *MockMealPlanService) GetMealPlanByID(ctx context.Context, mealPlanID, userID int64) (mealplan.MealPlan, error) {
+func (m *MockMealPlanService) GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMealPlanByID", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "GetMealPlanByID", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].(mealplan.MealPlan)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetMealPlanByID indicates an expected call of GetMealPlanByID.
-func (mr *MockMealPlanServiceMockRecorder) GetMealPlanByID(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) GetMealPlanByID(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealPlanByID", reflect.TypeOf((*MockMealPlanService)(nil).GetMealPlanByID), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMealPlanByID", reflect.TypeOf((*MockMealPlanService)(nil).GetMealPlanByID), ctx, mealPlanID, householdID)
 }
 
 // LastPlannedDates mocks base method.
-func (m *MockMealPlanService) LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error) {
+func (m *MockMealPlanService) LastPlannedDates(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]time.Time, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastPlannedDates", ctx, userID, recipeIDs)
+	ret := m.ctrl.Call(m, "LastPlannedDates", ctx, householdID, recipeIDs)
 	ret0, _ := ret[0].(map[int64]time.Time)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // LastPlannedDates indicates an expected call of LastPlannedDates.
-func (mr *MockMealPlanServiceMockRecorder) LastPlannedDates(ctx, userID, recipeIDs any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) LastPlannedDates(ctx, householdID, recipeIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastPlannedDates", reflect.TypeOf((*MockMealPlanService)(nil).LastPlannedDates), ctx, userID, recipeIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastPlannedDates", reflect.TypeOf((*MockMealPlanService)(nil).LastPlannedDates), ctx, householdID, recipeIDs)
 }
 
 // ListMealPlans mocks base method.
-func (m *MockMealPlanService) ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error) {
+func (m *MockMealPlanService) ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealPlans", ctx, userID, limit, offset)
+	ret := m.ctrl.Call(m, "ListMealPlans", ctx, householdID, limit, offset)
 	ret0, _ := ret[0].([]mealplan.MealPlan)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealPlans indicates an expected call of ListMealPlans.
-func (mr *MockMealPlanServiceMockRecorder) ListMealPlans(ctx, userID, limit, offset any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) ListMealPlans(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealPlans", reflect.TypeOf((*MockMealPlanService)(nil).ListMealPlans), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealPlans", reflect.TypeOf((*MockMealPlanService)(nil).ListMealPlans), ctx, householdID, limit, offset)
 }
 
 // ListMealSlotItems mocks base method.
-func (m *MockMealPlanService) ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]mealplan.MealSlotItem, error) {
+func (m *MockMealPlanService) ListMealSlotItems(ctx context.Context, slotID, householdID int64) ([]mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItems", ctx, slotID, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotItems", ctx, slotID, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItems indicates an expected call of ListMealSlotItems.
-func (mr *MockMealPlanServiceMockRecorder) ListMealSlotItems(ctx, slotID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) ListMealSlotItems(ctx, slotID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotItems), ctx, slotID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItems", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotItems), ctx, slotID, householdID)
 }
 
 // ListMealSlotItemsByPlan mocks base method.
-func (m *MockMealPlanService) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlotItem, error) {
+func (m *MockMealPlanService) ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlan", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItemsByPlan indicates an expected call of ListMealSlotItemsByPlan.
-func (mr *MockMealPlanServiceMockRecorder) ListMealSlotItemsByPlan(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) ListMealSlotItemsByPlan(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotItemsByPlan), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlan", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotItemsByPlan), ctx, mealPlanID, householdID)
 }
 
 // ListMealSlotItemsByPlans mocks base method.
-func (m *MockMealPlanService) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlotItem, error) {
+func (m *MockMealPlanService) ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlotItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlans", ctx, mealPlanIDs, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotItemsByPlans", ctx, mealPlanIDs, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlotItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotItemsByPlans indicates an expected call of ListMealSlotItemsByPlans.
-func (mr *MockMealPlanServiceMockRecorder) ListMealSlotItemsByPlans(ctx, mealPlanIDs, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) ListMealSlotItemsByPlans(ctx, mealPlanIDs, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlans", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotItemsByPlans), ctx, mealPlanIDs, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotItemsByPlans", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotItemsByPlans), ctx, mealPlanIDs, householdID)
 }
 
 // ListMealSlotsByPlans mocks base method.
-func (m *MockMealPlanService) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlot, error) {
+func (m *MockMealPlanService) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotsByPlans", ctx, mealPlanIDs, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotsByPlans", ctx, mealPlanIDs, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotsByPlans indicates an expected call of ListMealSlotsByPlans.
-func (mr *MockMealPlanServiceMockRecorder) ListMealSlotsByPlans(ctx, mealPlanIDs, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) ListMealSlotsByPlans(ctx, mealPlanIDs, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsByPlans", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotsByPlans), ctx, mealPlanIDs, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsByPlans", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotsByPlans), ctx, mealPlanIDs, householdID)
 }
 
 // ListMealSlotsForPlan mocks base method.
-func (m *MockMealPlanService) ListMealSlotsForPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlot, error) {
+func (m *MockMealPlanService) ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMealSlotsForPlan", ctx, mealPlanID, userID)
+	ret := m.ctrl.Call(m, "ListMealSlotsForPlan", ctx, mealPlanID, householdID)
 	ret0, _ := ret[0].([]mealplan.MealSlot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListMealSlotsForPlan indicates an expected call of ListMealSlotsForPlan.
-func (mr *MockMealPlanServiceMockRecorder) ListMealSlotsForPlan(ctx, mealPlanID, userID any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) ListMealSlotsForPlan(ctx, mealPlanID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotsForPlan), ctx, mealPlanID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockMealPlanService)(nil).ListMealSlotsForPlan), ctx, mealPlanID, householdID)
 }
 
 // UpdateMealPlan mocks base method.
-func (m *MockMealPlanService) UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error {
+func (m *MockMealPlanService) UpdateMealPlan(ctx context.Context, mealPlanID, householdID int64, arg mealplan.MealPlan, by string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateMealPlan", ctx, mealPlanID, userID, arg, by)
+	ret := m.ctrl.Call(m, "UpdateMealPlan", ctx, mealPlanID, householdID, arg, by)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateMealPlan indicates an expected call of UpdateMealPlan.
-func (mr *MockMealPlanServiceMockRecorder) UpdateMealPlan(ctx, mealPlanID, userID, arg, by any) *gomock.Call {
+func (mr *MockMealPlanServiceMockRecorder) UpdateMealPlan(ctx, mealPlanID, householdID, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMealPlan", reflect.TypeOf((*MockMealPlanService)(nil).UpdateMealPlan), ctx, mealPlanID, userID, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMealPlan", reflect.TypeOf((*MockMealPlanService)(nil).UpdateMealPlan), ctx, mealPlanID, householdID, arg, by)
 }
 
 // MockRecipeReader is a mock of RecipeReader interface.
@@ -4143,93 +4143,93 @@ func (m *MockPantryStore) EXPECT() *MockPantryStoreMockRecorder {
 	return m.recorder
 }
 
-// AdjustUserItemQuantity mocks base method.
-func (m *MockPantryStore) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error) {
+// AdjustHouseholdItemQuantity mocks base method.
+func (m *MockPantryStore) AdjustHouseholdItemQuantity(ctx context.Context, householdID, itemID int64, delta float64, by string) (userprefs.HouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, userID, itemID, delta, by)
-	ret0, _ := ret[0].(userprefs.UserItem)
+	ret := m.ctrl.Call(m, "AdjustHouseholdItemQuantity", ctx, householdID, itemID, delta, by)
+	ret0, _ := ret[0].(userprefs.HouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// AdjustUserItemQuantity indicates an expected call of AdjustUserItemQuantity.
-func (mr *MockPantryStoreMockRecorder) AdjustUserItemQuantity(ctx, userID, itemID, delta, by any) *gomock.Call {
+// AdjustHouseholdItemQuantity indicates an expected call of AdjustHouseholdItemQuantity.
+func (mr *MockPantryStoreMockRecorder) AdjustHouseholdItemQuantity(ctx, householdID, itemID, delta, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustUserItemQuantity", reflect.TypeOf((*MockPantryStore)(nil).AdjustUserItemQuantity), ctx, userID, itemID, delta, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustHouseholdItemQuantity", reflect.TypeOf((*MockPantryStore)(nil).AdjustHouseholdItemQuantity), ctx, householdID, itemID, delta, by)
 }
 
-// CountUserItems mocks base method.
-func (m *MockPantryStore) CountUserItems(ctx context.Context, userID int64) (int64, error) {
+// CountHouseholdItems mocks base method.
+func (m *MockPantryStore) CountHouseholdItems(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountUserItems", ctx, userID)
+	ret := m.ctrl.Call(m, "CountHouseholdItems", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountUserItems indicates an expected call of CountUserItems.
-func (mr *MockPantryStoreMockRecorder) CountUserItems(ctx, userID any) *gomock.Call {
+// CountHouseholdItems indicates an expected call of CountHouseholdItems.
+func (mr *MockPantryStoreMockRecorder) CountHouseholdItems(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUserItems", reflect.TypeOf((*MockPantryStore)(nil).CountUserItems), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdItems", reflect.TypeOf((*MockPantryStore)(nil).CountHouseholdItems), ctx, householdID)
 }
 
-// DeleteUserItem mocks base method.
-func (m *MockPantryStore) DeleteUserItem(ctx context.Context, userItemID, userID int64) error {
+// DeleteHouseholdItem mocks base method.
+func (m *MockPantryStore) DeleteHouseholdItem(ctx context.Context, householdItemID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUserItem", ctx, userItemID, userID)
+	ret := m.ctrl.Call(m, "DeleteHouseholdItem", ctx, householdItemID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteUserItem indicates an expected call of DeleteUserItem.
-func (mr *MockPantryStoreMockRecorder) DeleteUserItem(ctx, userItemID, userID any) *gomock.Call {
+// DeleteHouseholdItem indicates an expected call of DeleteHouseholdItem.
+func (mr *MockPantryStoreMockRecorder) DeleteHouseholdItem(ctx, householdItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserItem", reflect.TypeOf((*MockPantryStore)(nil).DeleteUserItem), ctx, userItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdItem", reflect.TypeOf((*MockPantryStore)(nil).DeleteHouseholdItem), ctx, householdItemID, householdID)
 }
 
-// GetUserItemByUserAndItem mocks base method.
-func (m *MockPantryStore) GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*userprefs.UserItem, error) {
+// GetHouseholdItemByItem mocks base method.
+func (m *MockPantryStore) GetHouseholdItemByItem(ctx context.Context, householdID, itemID int64) (*userprefs.HouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserItemByUserAndItem", ctx, userID, itemID)
-	ret0, _ := ret[0].(*userprefs.UserItem)
+	ret := m.ctrl.Call(m, "GetHouseholdItemByItem", ctx, householdID, itemID)
+	ret0, _ := ret[0].(*userprefs.HouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetUserItemByUserAndItem indicates an expected call of GetUserItemByUserAndItem.
-func (mr *MockPantryStoreMockRecorder) GetUserItemByUserAndItem(ctx, userID, itemID any) *gomock.Call {
+// GetHouseholdItemByItem indicates an expected call of GetHouseholdItemByItem.
+func (mr *MockPantryStoreMockRecorder) GetHouseholdItemByItem(ctx, householdID, itemID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByUserAndItem", reflect.TypeOf((*MockPantryStore)(nil).GetUserItemByUserAndItem), ctx, userID, itemID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdItemByItem", reflect.TypeOf((*MockPantryStore)(nil).GetHouseholdItemByItem), ctx, householdID, itemID)
 }
 
-// ListUserItems mocks base method.
-func (m *MockPantryStore) ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserItem, error) {
+// ListHouseholdItems mocks base method.
+func (m *MockPantryStore) ListHouseholdItems(ctx context.Context, householdID int64, limit, offset int32) ([]userprefs.HouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUserItems", ctx, userID, limit, offset)
-	ret0, _ := ret[0].([]userprefs.UserItem)
+	ret := m.ctrl.Call(m, "ListHouseholdItems", ctx, householdID, limit, offset)
+	ret0, _ := ret[0].([]userprefs.HouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListUserItems indicates an expected call of ListUserItems.
-func (mr *MockPantryStoreMockRecorder) ListUserItems(ctx, userID, limit, offset any) *gomock.Call {
+// ListHouseholdItems indicates an expected call of ListHouseholdItems.
+func (mr *MockPantryStoreMockRecorder) ListHouseholdItems(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserItems", reflect.TypeOf((*MockPantryStore)(nil).ListUserItems), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdItems", reflect.TypeOf((*MockPantryStore)(nil).ListHouseholdItems), ctx, householdID, limit, offset)
 }
 
-// UpsertUserItem mocks base method.
-func (m *MockPantryStore) UpsertUserItem(ctx context.Context, arg userprefs.UserItem, by string) (userprefs.UserItem, error) {
+// UpsertHouseholdItem mocks base method.
+func (m *MockPantryStore) UpsertHouseholdItem(ctx context.Context, arg userprefs.HouseholdItem, by string) (userprefs.HouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUserItem", ctx, arg, by)
-	ret0, _ := ret[0].(userprefs.UserItem)
+	ret := m.ctrl.Call(m, "UpsertHouseholdItem", ctx, arg, by)
+	ret0, _ := ret[0].(userprefs.HouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// UpsertUserItem indicates an expected call of UpsertUserItem.
-func (mr *MockPantryStoreMockRecorder) UpsertUserItem(ctx, arg, by any) *gomock.Call {
+// UpsertHouseholdItem indicates an expected call of UpsertHouseholdItem.
+func (mr *MockPantryStoreMockRecorder) UpsertHouseholdItem(ctx, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserItem", reflect.TypeOf((*MockPantryStore)(nil).UpsertUserItem), ctx, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertHouseholdItem", reflect.TypeOf((*MockPantryStore)(nil).UpsertHouseholdItem), ctx, arg, by)
 }
 
 // MockCellarStore is a mock of CellarStore interface.
@@ -4256,64 +4256,64 @@ func (m *MockCellarStore) EXPECT() *MockCellarStoreMockRecorder {
 	return m.recorder
 }
 
-// CountUserBottles mocks base method.
-func (m *MockCellarStore) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
+// CountHouseholdBottles mocks base method.
+func (m *MockCellarStore) CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountUserBottles", ctx, userID)
+	ret := m.ctrl.Call(m, "CountHouseholdBottles", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountUserBottles indicates an expected call of CountUserBottles.
-func (mr *MockCellarStoreMockRecorder) CountUserBottles(ctx, userID any) *gomock.Call {
+// CountHouseholdBottles indicates an expected call of CountHouseholdBottles.
+func (mr *MockCellarStoreMockRecorder) CountHouseholdBottles(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUserBottles", reflect.TypeOf((*MockCellarStore)(nil).CountUserBottles), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdBottles", reflect.TypeOf((*MockCellarStore)(nil).CountHouseholdBottles), ctx, householdID)
 }
 
-// GetUserBottleByUserAndBottle mocks base method.
-func (m *MockCellarStore) GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*userprefs.UserBottle, error) {
+// GetHouseholdBottleByBottle mocks base method.
+func (m *MockCellarStore) GetHouseholdBottleByBottle(ctx context.Context, householdID, bottleID int64) (*userprefs.HouseholdBottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserBottleByUserAndBottle", ctx, userID, bottleID)
-	ret0, _ := ret[0].(*userprefs.UserBottle)
+	ret := m.ctrl.Call(m, "GetHouseholdBottleByBottle", ctx, householdID, bottleID)
+	ret0, _ := ret[0].(*userprefs.HouseholdBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetUserBottleByUserAndBottle indicates an expected call of GetUserBottleByUserAndBottle.
-func (mr *MockCellarStoreMockRecorder) GetUserBottleByUserAndBottle(ctx, userID, bottleID any) *gomock.Call {
+// GetHouseholdBottleByBottle indicates an expected call of GetHouseholdBottleByBottle.
+func (mr *MockCellarStoreMockRecorder) GetHouseholdBottleByBottle(ctx, householdID, bottleID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByUserAndBottle", reflect.TypeOf((*MockCellarStore)(nil).GetUserBottleByUserAndBottle), ctx, userID, bottleID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdBottleByBottle", reflect.TypeOf((*MockCellarStore)(nil).GetHouseholdBottleByBottle), ctx, householdID, bottleID)
 }
 
-// ListUserBottles mocks base method.
-func (m *MockCellarStore) ListUserBottles(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserBottle, error) {
+// ListHouseholdBottles mocks base method.
+func (m *MockCellarStore) ListHouseholdBottles(ctx context.Context, householdID int64, limit, offset int32) ([]userprefs.HouseholdBottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUserBottles", ctx, userID, limit, offset)
-	ret0, _ := ret[0].([]userprefs.UserBottle)
+	ret := m.ctrl.Call(m, "ListHouseholdBottles", ctx, householdID, limit, offset)
+	ret0, _ := ret[0].([]userprefs.HouseholdBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListUserBottles indicates an expected call of ListUserBottles.
-func (mr *MockCellarStoreMockRecorder) ListUserBottles(ctx, userID, limit, offset any) *gomock.Call {
+// ListHouseholdBottles indicates an expected call of ListHouseholdBottles.
+func (mr *MockCellarStoreMockRecorder) ListHouseholdBottles(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserBottles", reflect.TypeOf((*MockCellarStore)(nil).ListUserBottles), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdBottles", reflect.TypeOf((*MockCellarStore)(nil).ListHouseholdBottles), ctx, householdID, limit, offset)
 }
 
-// UpsertUserBottle mocks base method.
-func (m *MockCellarStore) UpsertUserBottle(ctx context.Context, arg userprefs.UserBottle, by string) (userprefs.UserBottle, error) {
+// UpsertHouseholdBottle mocks base method.
+func (m *MockCellarStore) UpsertHouseholdBottle(ctx context.Context, arg userprefs.HouseholdBottle, by string) (userprefs.HouseholdBottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUserBottle", ctx, arg, by)
-	ret0, _ := ret[0].(userprefs.UserBottle)
+	ret := m.ctrl.Call(m, "UpsertHouseholdBottle", ctx, arg, by)
+	ret0, _ := ret[0].(userprefs.HouseholdBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// UpsertUserBottle indicates an expected call of UpsertUserBottle.
-func (mr *MockCellarStoreMockRecorder) UpsertUserBottle(ctx, arg, by any) *gomock.Call {
+// UpsertHouseholdBottle indicates an expected call of UpsertHouseholdBottle.
+func (mr *MockCellarStoreMockRecorder) UpsertHouseholdBottle(ctx, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserBottle", reflect.TypeOf((*MockCellarStore)(nil).UpsertUserBottle), ctx, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertHouseholdBottle", reflect.TypeOf((*MockCellarStore)(nil).UpsertHouseholdBottle), ctx, arg, by)
 }
 
 // MockFavoriteStore is a mock of FavoriteStore interface.
@@ -4340,6 +4340,36 @@ func (m *MockFavoriteStore) EXPECT() *MockFavoriteStoreMockRecorder {
 	return m.recorder
 }
 
+// GetBottleFavorite mocks base method.
+func (m *MockFavoriteStore) GetBottleFavorite(ctx context.Context, userID, bottleID int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBottleFavorite", ctx, userID, bottleID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBottleFavorite indicates an expected call of GetBottleFavorite.
+func (mr *MockFavoriteStoreMockRecorder) GetBottleFavorite(ctx, userID, bottleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBottleFavorite", reflect.TypeOf((*MockFavoriteStore)(nil).GetBottleFavorite), ctx, userID, bottleID)
+}
+
+// GetItemFavorite mocks base method.
+func (m *MockFavoriteStore) GetItemFavorite(ctx context.Context, userID, itemID int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemFavorite", ctx, userID, itemID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemFavorite indicates an expected call of GetItemFavorite.
+func (mr *MockFavoriteStoreMockRecorder) GetItemFavorite(ctx, userID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemFavorite", reflect.TypeOf((*MockFavoriteStore)(nil).GetItemFavorite), ctx, userID, itemID)
+}
+
 // GetRecipeFavorite mocks base method.
 func (m *MockFavoriteStore) GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (userprefs.RecipeFavorite, error) {
 	m.ctrl.T.Helper()
@@ -4355,6 +4385,36 @@ func (mr *MockFavoriteStoreMockRecorder) GetRecipeFavorite(ctx, userID, recipeID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeFavorite", reflect.TypeOf((*MockFavoriteStore)(nil).GetRecipeFavorite), ctx, userID, recipeID)
 }
 
+// ListBottleFavorites mocks base method.
+func (m *MockFavoriteStore) ListBottleFavorites(ctx context.Context, userID int64, bottleIDs []int64) (map[int64]bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBottleFavorites", ctx, userID, bottleIDs)
+	ret0, _ := ret[0].(map[int64]bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBottleFavorites indicates an expected call of ListBottleFavorites.
+func (mr *MockFavoriteStoreMockRecorder) ListBottleFavorites(ctx, userID, bottleIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleFavorites", reflect.TypeOf((*MockFavoriteStore)(nil).ListBottleFavorites), ctx, userID, bottleIDs)
+}
+
+// ListItemFavorites mocks base method.
+func (m *MockFavoriteStore) ListItemFavorites(ctx context.Context, userID int64, itemIDs []int64) (map[int64]bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListItemFavorites", ctx, userID, itemIDs)
+	ret0, _ := ret[0].(map[int64]bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListItemFavorites indicates an expected call of ListItemFavorites.
+func (mr *MockFavoriteStoreMockRecorder) ListItemFavorites(ctx, userID, itemIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItemFavorites", reflect.TypeOf((*MockFavoriteStore)(nil).ListItemFavorites), ctx, userID, itemIDs)
+}
+
 // ListRecipeFavorites mocks base method.
 func (m *MockFavoriteStore) ListRecipeFavorites(ctx context.Context, userID int64, recipeIDs []int64) ([]userprefs.RecipeFavorite, error) {
 	m.ctrl.T.Helper()
@@ -4368,6 +4428,36 @@ func (m *MockFavoriteStore) ListRecipeFavorites(ctx context.Context, userID int6
 func (mr *MockFavoriteStoreMockRecorder) ListRecipeFavorites(ctx, userID, recipeIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeFavorites", reflect.TypeOf((*MockFavoriteStore)(nil).ListRecipeFavorites), ctx, userID, recipeIDs)
+}
+
+// SetBottleFavorite mocks base method.
+func (m *MockFavoriteStore) SetBottleFavorite(ctx context.Context, userID, bottleID int64, isFavorite bool, by string) (userprefs.BottleFavorite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetBottleFavorite", ctx, userID, bottleID, isFavorite, by)
+	ret0, _ := ret[0].(userprefs.BottleFavorite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetBottleFavorite indicates an expected call of SetBottleFavorite.
+func (mr *MockFavoriteStoreMockRecorder) SetBottleFavorite(ctx, userID, bottleID, isFavorite, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBottleFavorite", reflect.TypeOf((*MockFavoriteStore)(nil).SetBottleFavorite), ctx, userID, bottleID, isFavorite, by)
+}
+
+// SetItemFavorite mocks base method.
+func (m *MockFavoriteStore) SetItemFavorite(ctx context.Context, userID, itemID int64, isFavorite bool, by string) (userprefs.ItemFavorite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetItemFavorite", ctx, userID, itemID, isFavorite, by)
+	ret0, _ := ret[0].(userprefs.ItemFavorite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetItemFavorite indicates an expected call of SetItemFavorite.
+func (mr *MockFavoriteStoreMockRecorder) SetItemFavorite(ctx, userID, itemID, isFavorite, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemFavorite", reflect.TypeOf((*MockFavoriteStore)(nil).SetItemFavorite), ctx, userID, itemID, isFavorite, by)
 }
 
 // SetRecipeFavorite mocks base method.
@@ -4409,63 +4499,123 @@ func (m *MockUserPrefsService) EXPECT() *MockUserPrefsServiceMockRecorder {
 	return m.recorder
 }
 
-// AdjustUserItemQuantity mocks base method.
-func (m *MockUserPrefsService) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error) {
+// AdjustHouseholdItemQuantity mocks base method.
+func (m *MockUserPrefsService) AdjustHouseholdItemQuantity(ctx context.Context, householdID, itemID int64, delta float64, by string) (userprefs.HouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, userID, itemID, delta, by)
-	ret0, _ := ret[0].(userprefs.UserItem)
+	ret := m.ctrl.Call(m, "AdjustHouseholdItemQuantity", ctx, householdID, itemID, delta, by)
+	ret0, _ := ret[0].(userprefs.HouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// AdjustUserItemQuantity indicates an expected call of AdjustUserItemQuantity.
-func (mr *MockUserPrefsServiceMockRecorder) AdjustUserItemQuantity(ctx, userID, itemID, delta, by any) *gomock.Call {
+// AdjustHouseholdItemQuantity indicates an expected call of AdjustHouseholdItemQuantity.
+func (mr *MockUserPrefsServiceMockRecorder) AdjustHouseholdItemQuantity(ctx, householdID, itemID, delta, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustUserItemQuantity", reflect.TypeOf((*MockUserPrefsService)(nil).AdjustUserItemQuantity), ctx, userID, itemID, delta, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustHouseholdItemQuantity", reflect.TypeOf((*MockUserPrefsService)(nil).AdjustHouseholdItemQuantity), ctx, householdID, itemID, delta, by)
 }
 
-// CountUserBottles mocks base method.
-func (m *MockUserPrefsService) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
+// CountHouseholdBottles mocks base method.
+func (m *MockUserPrefsService) CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountUserBottles", ctx, userID)
+	ret := m.ctrl.Call(m, "CountHouseholdBottles", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountUserBottles indicates an expected call of CountUserBottles.
-func (mr *MockUserPrefsServiceMockRecorder) CountUserBottles(ctx, userID any) *gomock.Call {
+// CountHouseholdBottles indicates an expected call of CountHouseholdBottles.
+func (mr *MockUserPrefsServiceMockRecorder) CountHouseholdBottles(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUserBottles", reflect.TypeOf((*MockUserPrefsService)(nil).CountUserBottles), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdBottles", reflect.TypeOf((*MockUserPrefsService)(nil).CountHouseholdBottles), ctx, householdID)
 }
 
-// CountUserItems mocks base method.
-func (m *MockUserPrefsService) CountUserItems(ctx context.Context, userID int64) (int64, error) {
+// CountHouseholdItems mocks base method.
+func (m *MockUserPrefsService) CountHouseholdItems(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountUserItems", ctx, userID)
+	ret := m.ctrl.Call(m, "CountHouseholdItems", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountUserItems indicates an expected call of CountUserItems.
-func (mr *MockUserPrefsServiceMockRecorder) CountUserItems(ctx, userID any) *gomock.Call {
+// CountHouseholdItems indicates an expected call of CountHouseholdItems.
+func (mr *MockUserPrefsServiceMockRecorder) CountHouseholdItems(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUserItems", reflect.TypeOf((*MockUserPrefsService)(nil).CountUserItems), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdItems", reflect.TypeOf((*MockUserPrefsService)(nil).CountHouseholdItems), ctx, householdID)
 }
 
-// DeleteUserItem mocks base method.
-func (m *MockUserPrefsService) DeleteUserItem(ctx context.Context, userItemID, userID int64) error {
+// DeleteHouseholdItem mocks base method.
+func (m *MockUserPrefsService) DeleteHouseholdItem(ctx context.Context, householdItemID, householdID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUserItem", ctx, userItemID, userID)
+	ret := m.ctrl.Call(m, "DeleteHouseholdItem", ctx, householdItemID, householdID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteUserItem indicates an expected call of DeleteUserItem.
-func (mr *MockUserPrefsServiceMockRecorder) DeleteUserItem(ctx, userItemID, userID any) *gomock.Call {
+// DeleteHouseholdItem indicates an expected call of DeleteHouseholdItem.
+func (mr *MockUserPrefsServiceMockRecorder) DeleteHouseholdItem(ctx, householdItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserItem", reflect.TypeOf((*MockUserPrefsService)(nil).DeleteUserItem), ctx, userItemID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdItem", reflect.TypeOf((*MockUserPrefsService)(nil).DeleteHouseholdItem), ctx, householdItemID, householdID)
+}
+
+// GetBottleFavorite mocks base method.
+func (m *MockUserPrefsService) GetBottleFavorite(ctx context.Context, userID, bottleID int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBottleFavorite", ctx, userID, bottleID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBottleFavorite indicates an expected call of GetBottleFavorite.
+func (mr *MockUserPrefsServiceMockRecorder) GetBottleFavorite(ctx, userID, bottleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBottleFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).GetBottleFavorite), ctx, userID, bottleID)
+}
+
+// GetHouseholdBottleByBottle mocks base method.
+func (m *MockUserPrefsService) GetHouseholdBottleByBottle(ctx context.Context, householdID, bottleID int64) (*userprefs.HouseholdBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdBottleByBottle", ctx, householdID, bottleID)
+	ret0, _ := ret[0].(*userprefs.HouseholdBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdBottleByBottle indicates an expected call of GetHouseholdBottleByBottle.
+func (mr *MockUserPrefsServiceMockRecorder) GetHouseholdBottleByBottle(ctx, householdID, bottleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdBottleByBottle", reflect.TypeOf((*MockUserPrefsService)(nil).GetHouseholdBottleByBottle), ctx, householdID, bottleID)
+}
+
+// GetHouseholdItemByItem mocks base method.
+func (m *MockUserPrefsService) GetHouseholdItemByItem(ctx context.Context, householdID, itemID int64) (*userprefs.HouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdItemByItem", ctx, householdID, itemID)
+	ret0, _ := ret[0].(*userprefs.HouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdItemByItem indicates an expected call of GetHouseholdItemByItem.
+func (mr *MockUserPrefsServiceMockRecorder) GetHouseholdItemByItem(ctx, householdID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdItemByItem", reflect.TypeOf((*MockUserPrefsService)(nil).GetHouseholdItemByItem), ctx, householdID, itemID)
+}
+
+// GetItemFavorite mocks base method.
+func (m *MockUserPrefsService) GetItemFavorite(ctx context.Context, userID, itemID int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemFavorite", ctx, userID, itemID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemFavorite indicates an expected call of GetItemFavorite.
+func (mr *MockUserPrefsServiceMockRecorder) GetItemFavorite(ctx, userID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).GetItemFavorite), ctx, userID, itemID)
 }
 
 // GetRecipeFavorite mocks base method.
@@ -4483,34 +4633,64 @@ func (mr *MockUserPrefsServiceMockRecorder) GetRecipeFavorite(ctx, userID, recip
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).GetRecipeFavorite), ctx, userID, recipeID)
 }
 
-// GetUserBottleByUserAndBottle mocks base method.
-func (m *MockUserPrefsService) GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*userprefs.UserBottle, error) {
+// ListBottleFavorites mocks base method.
+func (m *MockUserPrefsService) ListBottleFavorites(ctx context.Context, userID int64, bottleIDs []int64) (map[int64]bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserBottleByUserAndBottle", ctx, userID, bottleID)
-	ret0, _ := ret[0].(*userprefs.UserBottle)
+	ret := m.ctrl.Call(m, "ListBottleFavorites", ctx, userID, bottleIDs)
+	ret0, _ := ret[0].(map[int64]bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetUserBottleByUserAndBottle indicates an expected call of GetUserBottleByUserAndBottle.
-func (mr *MockUserPrefsServiceMockRecorder) GetUserBottleByUserAndBottle(ctx, userID, bottleID any) *gomock.Call {
+// ListBottleFavorites indicates an expected call of ListBottleFavorites.
+func (mr *MockUserPrefsServiceMockRecorder) ListBottleFavorites(ctx, userID, bottleIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByUserAndBottle", reflect.TypeOf((*MockUserPrefsService)(nil).GetUserBottleByUserAndBottle), ctx, userID, bottleID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleFavorites", reflect.TypeOf((*MockUserPrefsService)(nil).ListBottleFavorites), ctx, userID, bottleIDs)
 }
 
-// GetUserItemByUserAndItem mocks base method.
-func (m *MockUserPrefsService) GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*userprefs.UserItem, error) {
+// ListHouseholdBottles mocks base method.
+func (m *MockUserPrefsService) ListHouseholdBottles(ctx context.Context, householdID int64, limit, offset int32) ([]userprefs.HouseholdBottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserItemByUserAndItem", ctx, userID, itemID)
-	ret0, _ := ret[0].(*userprefs.UserItem)
+	ret := m.ctrl.Call(m, "ListHouseholdBottles", ctx, householdID, limit, offset)
+	ret0, _ := ret[0].([]userprefs.HouseholdBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetUserItemByUserAndItem indicates an expected call of GetUserItemByUserAndItem.
-func (mr *MockUserPrefsServiceMockRecorder) GetUserItemByUserAndItem(ctx, userID, itemID any) *gomock.Call {
+// ListHouseholdBottles indicates an expected call of ListHouseholdBottles.
+func (mr *MockUserPrefsServiceMockRecorder) ListHouseholdBottles(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByUserAndItem", reflect.TypeOf((*MockUserPrefsService)(nil).GetUserItemByUserAndItem), ctx, userID, itemID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdBottles", reflect.TypeOf((*MockUserPrefsService)(nil).ListHouseholdBottles), ctx, householdID, limit, offset)
+}
+
+// ListHouseholdItems mocks base method.
+func (m *MockUserPrefsService) ListHouseholdItems(ctx context.Context, householdID int64, limit, offset int32) ([]userprefs.HouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListHouseholdItems", ctx, householdID, limit, offset)
+	ret0, _ := ret[0].([]userprefs.HouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListHouseholdItems indicates an expected call of ListHouseholdItems.
+func (mr *MockUserPrefsServiceMockRecorder) ListHouseholdItems(ctx, householdID, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdItems", reflect.TypeOf((*MockUserPrefsService)(nil).ListHouseholdItems), ctx, householdID, limit, offset)
+}
+
+// ListItemFavorites mocks base method.
+func (m *MockUserPrefsService) ListItemFavorites(ctx context.Context, userID int64, itemIDs []int64) (map[int64]bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListItemFavorites", ctx, userID, itemIDs)
+	ret0, _ := ret[0].(map[int64]bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListItemFavorites indicates an expected call of ListItemFavorites.
+func (mr *MockUserPrefsServiceMockRecorder) ListItemFavorites(ctx, userID, itemIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItemFavorites", reflect.TypeOf((*MockUserPrefsService)(nil).ListItemFavorites), ctx, userID, itemIDs)
 }
 
 // ListRecipeFavorites mocks base method.
@@ -4528,34 +4708,34 @@ func (mr *MockUserPrefsServiceMockRecorder) ListRecipeFavorites(ctx, userID, rec
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeFavorites", reflect.TypeOf((*MockUserPrefsService)(nil).ListRecipeFavorites), ctx, userID, recipeIDs)
 }
 
-// ListUserBottles mocks base method.
-func (m *MockUserPrefsService) ListUserBottles(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserBottle, error) {
+// SetBottleFavorite mocks base method.
+func (m *MockUserPrefsService) SetBottleFavorite(ctx context.Context, userID, bottleID int64, isFavorite bool, by string) (userprefs.BottleFavorite, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUserBottles", ctx, userID, limit, offset)
-	ret0, _ := ret[0].([]userprefs.UserBottle)
+	ret := m.ctrl.Call(m, "SetBottleFavorite", ctx, userID, bottleID, isFavorite, by)
+	ret0, _ := ret[0].(userprefs.BottleFavorite)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListUserBottles indicates an expected call of ListUserBottles.
-func (mr *MockUserPrefsServiceMockRecorder) ListUserBottles(ctx, userID, limit, offset any) *gomock.Call {
+// SetBottleFavorite indicates an expected call of SetBottleFavorite.
+func (mr *MockUserPrefsServiceMockRecorder) SetBottleFavorite(ctx, userID, bottleID, isFavorite, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserBottles", reflect.TypeOf((*MockUserPrefsService)(nil).ListUserBottles), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBottleFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).SetBottleFavorite), ctx, userID, bottleID, isFavorite, by)
 }
 
-// ListUserItems mocks base method.
-func (m *MockUserPrefsService) ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserItem, error) {
+// SetItemFavorite mocks base method.
+func (m *MockUserPrefsService) SetItemFavorite(ctx context.Context, userID, itemID int64, isFavorite bool, by string) (userprefs.ItemFavorite, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUserItems", ctx, userID, limit, offset)
-	ret0, _ := ret[0].([]userprefs.UserItem)
+	ret := m.ctrl.Call(m, "SetItemFavorite", ctx, userID, itemID, isFavorite, by)
+	ret0, _ := ret[0].(userprefs.ItemFavorite)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListUserItems indicates an expected call of ListUserItems.
-func (mr *MockUserPrefsServiceMockRecorder) ListUserItems(ctx, userID, limit, offset any) *gomock.Call {
+// SetItemFavorite indicates an expected call of SetItemFavorite.
+func (mr *MockUserPrefsServiceMockRecorder) SetItemFavorite(ctx, userID, itemID, isFavorite, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserItems", reflect.TypeOf((*MockUserPrefsService)(nil).ListUserItems), ctx, userID, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).SetItemFavorite), ctx, userID, itemID, isFavorite, by)
 }
 
 // SetRecipeFavorite mocks base method.
@@ -4573,34 +4753,34 @@ func (mr *MockUserPrefsServiceMockRecorder) SetRecipeFavorite(ctx, userID, recip
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRecipeFavorite", reflect.TypeOf((*MockUserPrefsService)(nil).SetRecipeFavorite), ctx, userID, recipeID, isFavorite, by)
 }
 
-// UpsertUserBottle mocks base method.
-func (m *MockUserPrefsService) UpsertUserBottle(ctx context.Context, arg userprefs.UserBottle, by string) (userprefs.UserBottle, error) {
+// UpsertHouseholdBottle mocks base method.
+func (m *MockUserPrefsService) UpsertHouseholdBottle(ctx context.Context, arg userprefs.HouseholdBottle, by string) (userprefs.HouseholdBottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUserBottle", ctx, arg, by)
-	ret0, _ := ret[0].(userprefs.UserBottle)
+	ret := m.ctrl.Call(m, "UpsertHouseholdBottle", ctx, arg, by)
+	ret0, _ := ret[0].(userprefs.HouseholdBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// UpsertUserBottle indicates an expected call of UpsertUserBottle.
-func (mr *MockUserPrefsServiceMockRecorder) UpsertUserBottle(ctx, arg, by any) *gomock.Call {
+// UpsertHouseholdBottle indicates an expected call of UpsertHouseholdBottle.
+func (mr *MockUserPrefsServiceMockRecorder) UpsertHouseholdBottle(ctx, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserBottle", reflect.TypeOf((*MockUserPrefsService)(nil).UpsertUserBottle), ctx, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertHouseholdBottle", reflect.TypeOf((*MockUserPrefsService)(nil).UpsertHouseholdBottle), ctx, arg, by)
 }
 
-// UpsertUserItem mocks base method.
-func (m *MockUserPrefsService) UpsertUserItem(ctx context.Context, arg userprefs.UserItem, by string) (userprefs.UserItem, error) {
+// UpsertHouseholdItem mocks base method.
+func (m *MockUserPrefsService) UpsertHouseholdItem(ctx context.Context, arg userprefs.HouseholdItem, by string) (userprefs.HouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUserItem", ctx, arg, by)
-	ret0, _ := ret[0].(userprefs.UserItem)
+	ret := m.ctrl.Call(m, "UpsertHouseholdItem", ctx, arg, by)
+	ret0, _ := ret[0].(userprefs.HouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// UpsertUserItem indicates an expected call of UpsertUserItem.
-func (mr *MockUserPrefsServiceMockRecorder) UpsertUserItem(ctx, arg, by any) *gomock.Call {
+// UpsertHouseholdItem indicates an expected call of UpsertHouseholdItem.
+func (mr *MockUserPrefsServiceMockRecorder) UpsertHouseholdItem(ctx, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserItem", reflect.TypeOf((*MockUserPrefsService)(nil).UpsertUserItem), ctx, arg, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertHouseholdItem", reflect.TypeOf((*MockUserPrefsService)(nil).UpsertHouseholdItem), ctx, arg, by)
 }
 
 // MockUserReader is a mock of UserReader interface.

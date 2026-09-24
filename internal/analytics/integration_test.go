@@ -117,7 +117,7 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	}, nil, itBy)
 	require.NoError(t, err)
 	planA, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
-		UserID: userA, Name: "IT Overlap Plan A", WeekStartDate: time.Now(), IsActive: true,
+		HouseholdID: userA, Name: "IT Overlap Plan A", WeekStartDate: time.Now(), IsActive: true,
 	}, itBy)
 	require.NoError(t, err)
 	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
@@ -134,7 +134,7 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	}, nil, itBy)
 	require.NoError(t, err)
 	planB, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
-		UserID: userB, Name: "IT Overlap Plan B", WeekStartDate: time.Now(), IsActive: true,
+		HouseholdID: userB, Name: "IT Overlap Plan B", WeekStartDate: time.Now(), IsActive: true,
 	}, itBy)
 	require.NoError(t, err)
 	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{

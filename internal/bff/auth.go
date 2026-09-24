@@ -20,8 +20,10 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 // AuthConfig configures which OIDC issuers and audiences are trusted.
@@ -46,11 +48,20 @@ type AuthConfig struct {
 type identityStore interface {
 	UpsertUser(ctx context.Context, provider, subject, email, displayName string) (identity.User, error)
 	SetUserRole(ctx context.Context, userID int64, role string) error
+	GetByID(ctx context.Context, userID int64) (identity.User, error)
+	SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error
+}
+
+// householdStore is the subset of household.Service the authenticator needs
+// to ensure every resolved user has a default household.
+type householdStore interface {
+	CreateHousehold(ctx context.Context, by string) (household.Household, error)
 }
 
 // Authenticator validates OIDC ID tokens and resolves the current user.
 type Authenticator struct {
 	identity            identityStore
+	households          householdStore
 	audiencesByIssuer   map[string][]string
 	adminEmailsByIssuer map[string][]string
 	httpc               *http.Client
@@ -120,8 +131,11 @@ var (
 	errAccountBanned = errors.New("account is disabled")
 )
 
-// NewAuthenticator creates an Authenticator backed by the given identity service.
-func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) (*Authenticator, error) {
+// NewAuthenticator creates an Authenticator backed by the given identity
+// and household services. The household service is used to ensure every
+// resolved user has a household — created lazily on the cache-miss path so
+// steady-state requests never write.
+func NewAuthenticator(cfg AuthConfig, identitySvc identityStore, householdSvc householdStore) (*Authenticator, error) {
 	audiences, err := zipIssuersAndAudiences(cfg.Issuers, cfg.Audiences)
 	if err != nil {
 		return nil, fmt.Errorf("auth config: %w", err)
@@ -132,6 +146,7 @@ func NewAuthenticator(cfg AuthConfig, identitySvc identityStore) (*Authenticator
 	}
 	return &Authenticator{
 		identity:            identitySvc,
+		households:          householdSvc,
 		audiencesByIssuer:   audiences,
 		adminEmailsByIssuer: adminEmails,
 		httpc: &http.Client{
@@ -344,6 +359,16 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		return currentuser.User{}, fmt.Errorf("%w: upsert user: %w", errIdentityStore, err)
 	}
 
+	// Every user must carry a household before any household-scoped data
+	// is served. Users created before migration 0028 (or upserted between
+	// the schema change and this deploy) get a default household here, on
+	// the cache-miss path only.
+	if u.HouseholdID == nil {
+		if err := a.ensureDefaultHousehold(ctx, &u); err != nil {
+			return currentuser.User{}, fmt.Errorf("%w: ensure household: %w", errIdentityStore, err)
+		}
+	}
+
 	// Banned users are rejected on every request: the JWT stays
 	// cryptographically valid until expiry, but the API refuses to serve
 	// the account while is_active is false.
@@ -376,6 +401,10 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		Email:           u.Email,
 		DisplayName:     u.DisplayName,
 		IsAdmin:         u.IsAdmin(),
+		IsSearchable:    u.IsSearchable,
+	}
+	if u.HouseholdID != nil {
+		cu.HouseholdID = *u.HouseholdID
 	}
 	// Cap the cache entry by the token's own expiry so a cached resolution
 	// never outlives the credential it was minted for.
@@ -387,6 +416,44 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	}
 	a.cacheUser(issuer, subject, cu, ttl)
 	return cu, nil
+}
+
+// ensureDefaultHousehold creates a household for a user who has none and
+// assigns it with an expected-value guard. If a concurrent resolution or
+// invite accept assigned a household first (ErrConflict), the already-
+// assigned household is adopted after a re-read; the household row created
+// here is then left empty, which is harmless.
+func (a *Authenticator) ensureDefaultHousehold(ctx context.Context, u *identity.User) error {
+	hh, err := a.households.CreateHousehold(ctx, u.Email)
+	if err != nil {
+		return err
+	}
+	if err := a.identity.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, nil); err != nil {
+		if !errors.Is(err, domainerr.ErrConflict) {
+			return err
+		}
+		fresh, err := a.identity.GetByID(ctx, u.UserID)
+		if err != nil {
+			return err
+		}
+		if fresh.HouseholdID == nil {
+			return errors.New("household assignment conflicted but user still has none")
+		}
+		*u = fresh
+		return nil
+	}
+	u.HouseholdID = &hh.HouseholdID
+	return nil
+}
+
+// InvalidateUser drops the cached identity resolution for
+// provider|subject so the next request re-reads household membership and
+// searchability. Household mutations (invite accept, leave, profile
+// searchability changes) call this to avoid serving stale scope.
+func (a *Authenticator) InvalidateUser(provider, subject string) {
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	delete(a.users, provider+"\x00"+subject)
 }
 
 // cachedUser returns the previously resolved identity for issuer|subject

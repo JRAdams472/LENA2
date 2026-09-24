@@ -1,7 +1,6 @@
-// Package userprefs owns per-user state: pantry stock, wine cellar
-// holdings, and recipe favorites. It touches tables in the inventory,
-// wine and recipe schemas but only the per-user tables belonging to its
-// own module.
+// Package userprefs owns shared household holdings (pantry stock, wine
+// cellar) and per-user preferences (recipe favorites plus item and bottle
+// favorites). All tables live in the userprefs schema.
 package userprefs
 
 import (
@@ -20,7 +19,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/userprefs/sqlc"
 )
 
-// Service provides per-user preference and holding operations.
+// Service provides household holding and per-user preference operations.
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
@@ -75,158 +74,162 @@ func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
-// UserItem is one pantry row for a user.
-type UserItem struct {
-	UserItemID int64
-	UserID     int64
-	ItemID     int64
-	CurrentQty float64
-	MinQty     *float64
-	PurchaseAt *time.Time
-	ExpiresAt  *time.Time
-	Notes      string
-	IsFavorite bool
+// HouseholdItem is one pantry row shared by a household. Item favorites are
+// per-user and live separately; they are not part of this type.
+type HouseholdItem struct {
+	HouseholdItemID int64
+	HouseholdID     int64
+	ItemID          int64
+	CurrentQty      float64
+	MinQty          *float64
+	PurchaseAt      *time.Time
+	ExpiresAt       *time.Time
+	Notes           string
 }
 
-// UpsertUserItem creates or updates a user's pantry item.
-func (s *Service) UpsertUserItem(ctx context.Context, arg UserItem, by string) (UserItem, error) {
+// UpsertHouseholdItem creates or updates the household's pantry row for a
+// catalog item.
+func (s *Service) UpsertHouseholdItem(ctx context.Context, arg HouseholdItem, by string) (HouseholdItem, error) {
 	currentQty, err := numericFromFloat64(arg.CurrentQty)
 	if err != nil {
-		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+		return HouseholdItem{}, fmt.Errorf("upsert household item: %w", err)
 	}
 	minQty, err := optNumeric(arg.MinQty)
 	if err != nil {
-		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+		return HouseholdItem{}, fmt.Errorf("upsert household item: %w", err)
 	}
-	row, err := s.q.UpsertUserItem(ctx, sqlc.UpsertUserItemParams{
-		UserID:     arg.UserID,
-		ItemID:     arg.ItemID,
-		CurrentQty: currentQty,
-		MinQty:     minQty,
-		PurchaseAt: optTimestamptz(arg.PurchaseAt),
-		ExpiresAt:  optTimestamptz(arg.ExpiresAt),
-		Notes:      textOrNull(arg.Notes),
-		IsFavorite: arg.IsFavorite,
-		CreatedBy:  by,
-		UpdatedBy:  textOrNull(by),
+	row, err := s.q.UpsertHouseholdItem(ctx, sqlc.UpsertHouseholdItemParams{
+		HouseholdID: arg.HouseholdID,
+		ItemID:      arg.ItemID,
+		CurrentQty:  currentQty,
+		MinQty:      minQty,
+		PurchaseAt:  optTimestamptz(arg.PurchaseAt),
+		ExpiresAt:   optTimestamptz(arg.ExpiresAt),
+		Notes:       textOrNull(arg.Notes),
+		CreatedBy:   by,
+		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+		return HouseholdItem{}, fmt.Errorf("upsert household item: %w", err)
 	}
-	ui, err := toUserItem(row)
+	hi, err := toHouseholdItem(row)
 	if err != nil {
-		return UserItem{}, fmt.Errorf("upsert user item: %w", err)
+		return HouseholdItem{}, fmt.Errorf("upsert household item: %w", err)
 	}
-	return ui, nil
+	return hi, nil
 }
 
-// AdjustUserItemQuantity atomically adds delta to the user's pantry stock
-// for itemID, clamping at 0, and creates the row if it does not exist.
-func (s *Service) AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (UserItem, error) {
+// AdjustHouseholdItemQuantity atomically adds delta to the household's
+// pantry stock for itemID, clamping at 0, and creates the row if it does
+// not exist.
+func (s *Service) AdjustHouseholdItemQuantity(ctx context.Context, householdID, itemID int64, delta float64, by string) (HouseholdItem, error) {
 	d, err := numericFromFloat64(delta)
 	if err != nil {
-		return UserItem{}, fmt.Errorf("adjust user item quantity: %w", err)
+		return HouseholdItem{}, fmt.Errorf("adjust household item quantity: %w", err)
 	}
-	row, err := s.q.AdjustUserItemQuantity(ctx, sqlc.AdjustUserItemQuantityParams{
-		UserID:    userID,
-		ItemID:    itemID,
-		CreatedBy: by,
-		Delta:     d,
+	row, err := s.q.AdjustHouseholdItemQuantity(ctx, sqlc.AdjustHouseholdItemQuantityParams{
+		HouseholdID: householdID,
+		ItemID:      itemID,
+		CreatedBy:   by,
+		Delta:       d,
 	})
 	if err != nil {
-		return UserItem{}, fmt.Errorf("adjust user item quantity: %w", domainerr.FromStorage(err))
+		return HouseholdItem{}, fmt.Errorf("adjust household item quantity: %w", domainerr.FromStorage(err))
 	}
-	return toUserItem(row)
+	return toHouseholdItem(row)
 }
 
-// GetUserItemByID returns a pantry item owned by the user.
-func (s *Service) GetUserItemByID(ctx context.Context, userItemID, userID int64) (UserItem, error) {
-	row, err := s.q.GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: userItemID, UserID: userID})
+// GetHouseholdItemByID returns a pantry row owned by the household.
+func (s *Service) GetHouseholdItemByID(ctx context.Context, householdItemID, householdID int64) (HouseholdItem, error) {
+	row, err := s.q.GetHouseholdItemByID(ctx, sqlc.GetHouseholdItemByIDParams{HouseholdItemID: householdItemID, HouseholdID: householdID})
 	if err != nil {
-		return UserItem{}, fmt.Errorf("get user item: %w", domainerr.FromStorage(err))
+		return HouseholdItem{}, fmt.Errorf("get household item: %w", domainerr.FromStorage(err))
 	}
-	ui, err := toUserItem(row)
+	hi, err := toHouseholdItem(row)
 	if err != nil {
-		return UserItem{}, fmt.Errorf("get user item: %w", err)
+		return HouseholdItem{}, fmt.Errorf("get household item: %w", err)
 	}
-	return ui, nil
+	return hi, nil
 }
 
-// GetUserItemByUserAndItem returns the user's pantry row for a catalog item,
-// or nil when no such row exists.
-func (s *Service) GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*UserItem, error) {
-	row, err := s.q.GetUserItemByUserAndItem(ctx, sqlc.GetUserItemByUserAndItemParams{UserID: userID, ItemID: itemID})
+// GetHouseholdItemByItem returns the household's pantry row for a catalog
+// item, or nil when no such row exists.
+func (s *Service) GetHouseholdItemByItem(ctx context.Context, householdID, itemID int64) (*HouseholdItem, error) {
+	row, err := s.q.GetHouseholdItemByItem(ctx, sqlc.GetHouseholdItemByItemParams{HouseholdID: householdID, ItemID: itemID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get user item: %w", err)
+		return nil, fmt.Errorf("get household item: %w", err)
 	}
-	ui, err := toUserItem(row)
+	hi, err := toHouseholdItem(row)
 	if err != nil {
-		return nil, fmt.Errorf("get user item: %w", err)
+		return nil, fmt.Errorf("get household item: %w", err)
 	}
-	return &ui, nil
+	return &hi, nil
 }
 
-// ListUserItems returns a user's pantry items.
-func (s *Service) ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]UserItem, error) {
-	rows, err := s.q.ListUserItems(ctx, sqlc.ListUserItemsParams{UserID: userID, Limit: limit, Offset: offset})
+// ListHouseholdItems returns a household's pantry items.
+func (s *Service) ListHouseholdItems(ctx context.Context, householdID int64, limit, offset int32) ([]HouseholdItem, error) {
+	rows, err := s.q.ListHouseholdItems(ctx, sqlc.ListHouseholdItemsParams{HouseholdID: householdID, Limit: limit, Offset: offset})
 	if err != nil {
-		return nil, fmt.Errorf("list user items: %w", err)
+		return nil, fmt.Errorf("list household items: %w", err)
 	}
-	out := make([]UserItem, len(rows))
+	out := make([]HouseholdItem, len(rows))
 	for i := range rows {
-		ui, err := toUserItem(rows[i])
+		hi, err := toHouseholdItem(rows[i])
 		if err != nil {
-			return nil, fmt.Errorf("list user items: %w", err)
+			return nil, fmt.Errorf("list household items: %w", err)
 		}
-		out[i] = ui
+		out[i] = hi
 	}
 	return out, nil
 }
 
-// CountUserItems returns the total number of pantry items owned by the user.
-func (s *Service) CountUserItems(ctx context.Context, userID int64) (int64, error) {
-	n, err := s.q.CountUserItems(ctx, userID)
+// CountHouseholdItems returns the number of pantry rows the household holds.
+func (s *Service) CountHouseholdItems(ctx context.Context, householdID int64) (int64, error) {
+	n, err := s.q.CountHouseholdItems(ctx, householdID)
 	if err != nil {
-		return 0, fmt.Errorf("count user items: %w", err)
+		return 0, fmt.Errorf("count household items: %w", err)
 	}
 	return n, nil
 }
 
-// DeleteUserItem removes a pantry item owned by the user.
-func (s *Service) DeleteUserItem(ctx context.Context, userItemID, userID int64) error {
-	return s.q.DeleteUserItem(ctx, sqlc.DeleteUserItemParams{UserItemID: userItemID, UserID: userID})
+// DeleteHouseholdItem removes a pantry row owned by the household. Like the
+// grocery delete paths, a missing or foreign-owned row is a no-op: deletes
+// are idempotent so a stale client cannot distinguish them anyway.
+func (s *Service) DeleteHouseholdItem(ctx context.Context, householdItemID, householdID int64) error {
+	_, err := s.q.DeleteHouseholdItem(ctx, sqlc.DeleteHouseholdItemParams{HouseholdItemID: householdItemID, HouseholdID: householdID})
+	return err
 }
 
-// UserBottle is one cellar holding for a user.
-type UserBottle struct {
-	UserBottleID  int64
-	UserID        int64
-	BottleID      int64
-	BottleNumber  *int32
-	Quantity      int32
-	PurchaseAt    *time.Time
-	PurchasePrice *float64
-	StorageTemp   *float64
-	Location      string
-	Notes         string
-	IsFavorite    bool
+// HouseholdBottle is one cellar holding shared by a household. Bottle
+// favorites are per-user and live separately.
+type HouseholdBottle struct {
+	HouseholdBottleID int64
+	HouseholdID       int64
+	BottleID          int64
+	BottleNumber      *int32
+	Quantity          int32
+	PurchaseAt        *time.Time
+	PurchasePrice     *float64
+	StorageTemp       *float64
+	Location          string
+	Notes             string
 }
 
-// UpsertUserBottle creates or updates a user's wine holding.
-func (s *Service) UpsertUserBottle(ctx context.Context, arg UserBottle, by string) (UserBottle, error) {
+// UpsertHouseholdBottle creates or updates the household's cellar holding.
+func (s *Service) UpsertHouseholdBottle(ctx context.Context, arg HouseholdBottle, by string) (HouseholdBottle, error) {
 	price, err := optNumeric(arg.PurchasePrice)
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+		return HouseholdBottle{}, fmt.Errorf("upsert household bottle: %w", err)
 	}
 	temp, err := optNumeric(arg.StorageTemp)
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+		return HouseholdBottle{}, fmt.Errorf("upsert household bottle: %w", err)
 	}
-	row, err := s.q.UpsertUserBottle(ctx, sqlc.UpsertUserBottleParams{
-		UserID:        arg.UserID,
+	row, err := s.q.UpsertHouseholdBottle(ctx, sqlc.UpsertHouseholdBottleParams{
+		HouseholdID:   arg.HouseholdID,
 		BottleID:      arg.BottleID,
 		BottleNumber:  optInt4(arg.BottleNumber),
 		Quantity:      arg.Quantity,
@@ -235,79 +238,222 @@ func (s *Service) UpsertUserBottle(ctx context.Context, arg UserBottle, by strin
 		StorageTemp:   temp,
 		Location:      textOrNull(arg.Location),
 		Notes:         textOrNull(arg.Notes),
-		IsFavorite:    arg.IsFavorite,
 		CreatedBy:     by,
 		UpdatedBy:     textOrNull(by),
 	})
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+		return HouseholdBottle{}, fmt.Errorf("upsert household bottle: %w", err)
 	}
-	ub, err := toUserBottle(row)
+	hb, err := toHouseholdBottle(row)
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("upsert user bottle: %w", err)
+		return HouseholdBottle{}, fmt.Errorf("upsert household bottle: %w", err)
 	}
-	return ub, nil
+	return hb, nil
 }
 
-// GetUserBottleByID returns a cellar holding owned by the user.
-func (s *Service) GetUserBottleByID(ctx context.Context, userBottleID, userID int64) (UserBottle, error) {
-	row, err := s.q.GetUserBottleByID(ctx, sqlc.GetUserBottleByIDParams{UserBottleID: userBottleID, UserID: userID})
+// GetHouseholdBottleByID returns a cellar holding owned by the household.
+func (s *Service) GetHouseholdBottleByID(ctx context.Context, householdBottleID, householdID int64) (HouseholdBottle, error) {
+	row, err := s.q.GetHouseholdBottleByID(ctx, sqlc.GetHouseholdBottleByIDParams{HouseholdBottleID: householdBottleID, HouseholdID: householdID})
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("get user bottle: %w", domainerr.FromStorage(err))
+		return HouseholdBottle{}, fmt.Errorf("get household bottle: %w", domainerr.FromStorage(err))
 	}
-	ub, err := toUserBottle(row)
+	hb, err := toHouseholdBottle(row)
 	if err != nil {
-		return UserBottle{}, fmt.Errorf("get user bottle: %w", err)
+		return HouseholdBottle{}, fmt.Errorf("get household bottle: %w", err)
 	}
-	return ub, nil
+	return hb, nil
 }
 
-// GetUserBottleByUserAndBottle returns the user's cellar holding for a bottle,
-// or nil when no such row exists.
-func (s *Service) GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*UserBottle, error) {
-	row, err := s.q.GetUserBottleByUserAndBottle(ctx, sqlc.GetUserBottleByUserAndBottleParams{UserID: userID, BottleID: bottleID})
+// GetHouseholdBottleByBottle returns the household's cellar holding for a
+// bottle, or nil when no such row exists.
+func (s *Service) GetHouseholdBottleByBottle(ctx context.Context, householdID, bottleID int64) (*HouseholdBottle, error) {
+	row, err := s.q.GetHouseholdBottleByBottle(ctx, sqlc.GetHouseholdBottleByBottleParams{HouseholdID: householdID, BottleID: bottleID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get user bottle: %w", err)
+		return nil, fmt.Errorf("get household bottle: %w", err)
 	}
-	ub, err := toUserBottle(row)
+	hb, err := toHouseholdBottle(row)
 	if err != nil {
-		return nil, fmt.Errorf("get user bottle: %w", err)
+		return nil, fmt.Errorf("get household bottle: %w", err)
 	}
-	return &ub, nil
+	return &hb, nil
 }
 
-// ListUserBottles returns a user's cellar holdings.
-func (s *Service) ListUserBottles(ctx context.Context, userID int64, limit, offset int32) ([]UserBottle, error) {
-	rows, err := s.q.ListUserBottles(ctx, sqlc.ListUserBottlesParams{UserID: userID, Limit: limit, Offset: offset})
+// ListHouseholdBottles returns a household's cellar holdings.
+func (s *Service) ListHouseholdBottles(ctx context.Context, householdID int64, limit, offset int32) ([]HouseholdBottle, error) {
+	rows, err := s.q.ListHouseholdBottles(ctx, sqlc.ListHouseholdBottlesParams{HouseholdID: householdID, Limit: limit, Offset: offset})
 	if err != nil {
-		return nil, fmt.Errorf("list user bottles: %w", err)
+		return nil, fmt.Errorf("list household bottles: %w", err)
 	}
-	out := make([]UserBottle, len(rows))
+	out := make([]HouseholdBottle, len(rows))
 	for i := range rows {
-		ub, err := toUserBottle(rows[i])
+		hb, err := toHouseholdBottle(rows[i])
 		if err != nil {
-			return nil, fmt.Errorf("list user bottles: %w", err)
+			return nil, fmt.Errorf("list household bottles: %w", err)
 		}
-		out[i] = ub
+		out[i] = hb
 	}
 	return out, nil
 }
 
-// CountUserBottles returns the total number of cellar holdings owned by the user.
-func (s *Service) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
-	n, err := s.q.CountUserBottles(ctx, userID)
+// CountHouseholdBottles returns the number of cellar rows the household holds.
+func (s *Service) CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error) {
+	n, err := s.q.CountHouseholdBottles(ctx, householdID)
 	if err != nil {
-		return 0, fmt.Errorf("count user bottles: %w", err)
+		return 0, fmt.Errorf("count household bottles: %w", err)
 	}
 	return n, nil
 }
 
-// DeleteUserBottle removes a cellar holding owned by the user.
-func (s *Service) DeleteUserBottle(ctx context.Context, userBottleID, userID int64) error {
-	return s.q.DeleteUserBottle(ctx, sqlc.DeleteUserBottleParams{UserBottleID: userBottleID, UserID: userID})
+// DeleteHouseholdBottle removes a cellar holding owned by the household.
+// Missing or foreign-owned rows are a no-op (idempotent delete).
+func (s *Service) DeleteHouseholdBottle(ctx context.Context, householdBottleID, householdID int64) error {
+	_, err := s.q.DeleteHouseholdBottle(ctx, sqlc.DeleteHouseholdBottleParams{HouseholdBottleID: householdBottleID, HouseholdID: householdID})
+	return err
+}
+
+// MergeHouseholdStock folds the source household's pantry and cellar rows
+// into the target household, as part of an invite-accept merge. Rows whose
+// item/bottle already exists at the target sum quantities and keep the most
+// recent non-null dates; non-colliding rows are repointed. Callers must run
+// this inside the invite-accept unit of work so the reassignment commits
+// atomically with the household switch. Meal plans and grocery lists are
+// reassigned by their own domains.
+func (s *Service) MergeHouseholdStock(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error {
+	if fromHouseholdID == toHouseholdID {
+		return nil
+	}
+	mergeItems := sqlc.MergeHouseholdItemConflictsParams{FromHouseholdID: fromHouseholdID, ToHouseholdID: toHouseholdID, UpdatedBy: by}
+	if err := s.q.MergeHouseholdItemConflicts(ctx, mergeItems); err != nil {
+		return fmt.Errorf("merge household stock: %w", domainerr.FromStorage(err))
+	}
+	moveItems := sqlc.ReassignHouseholdItemsParams{FromHouseholdID: fromHouseholdID, ToHouseholdID: toHouseholdID, UpdatedBy: by}
+	if err := s.q.ReassignHouseholdItems(ctx, moveItems); err != nil {
+		return fmt.Errorf("merge household stock: %w", domainerr.FromStorage(err))
+	}
+	delItems := sqlc.DeleteMergedHouseholdItemsParams{FromHouseholdID: fromHouseholdID, ToHouseholdID: toHouseholdID}
+	if err := s.q.DeleteMergedHouseholdItems(ctx, delItems); err != nil {
+		return fmt.Errorf("merge household stock: %w", domainerr.FromStorage(err))
+	}
+	mergeBottles := sqlc.MergeHouseholdBottleConflictsParams{FromHouseholdID: fromHouseholdID, ToHouseholdID: toHouseholdID, UpdatedBy: by}
+	if err := s.q.MergeHouseholdBottleConflicts(ctx, mergeBottles); err != nil {
+		return fmt.Errorf("merge household stock: %w", domainerr.FromStorage(err))
+	}
+	moveBottles := sqlc.ReassignHouseholdBottlesParams{FromHouseholdID: fromHouseholdID, ToHouseholdID: toHouseholdID, UpdatedBy: by}
+	if err := s.q.ReassignHouseholdBottles(ctx, moveBottles); err != nil {
+		return fmt.Errorf("merge household stock: %w", domainerr.FromStorage(err))
+	}
+	delBottles := sqlc.DeleteMergedHouseholdBottlesParams{FromHouseholdID: fromHouseholdID, ToHouseholdID: toHouseholdID}
+	if err := s.q.DeleteMergedHouseholdBottles(ctx, delBottles); err != nil {
+		return fmt.Errorf("merge household stock: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// ItemFavorite is a user's personal favorite flag for a catalog item. It is
+// independent of whether the household stocks the item.
+type ItemFavorite struct {
+	UserID     int64
+	ItemID     int64
+	IsFavorite bool
+}
+
+// SetItemFavorite creates or updates a user's item favorite.
+func (s *Service) SetItemFavorite(ctx context.Context, userID, itemID int64, isFavorite bool, by string) (ItemFavorite, error) {
+	row, err := s.q.SetUserItemFavorite(ctx, sqlc.SetUserItemFavoriteParams{
+		UserID:     userID,
+		ItemID:     itemID,
+		IsFavorite: isFavorite,
+		CreatedBy:  by,
+	})
+	if err != nil {
+		return ItemFavorite{}, fmt.Errorf("set item favorite: %w", domainerr.FromStorage(err))
+	}
+	return ItemFavorite{UserID: row.UserID, ItemID: row.ItemID, IsFavorite: row.IsFavorite}, nil
+}
+
+// GetItemFavorite reports whether the user favorited the item; a missing
+// preference row means not favorited.
+func (s *Service) GetItemFavorite(ctx context.Context, userID, itemID int64) (bool, error) {
+	favs, err := s.ListItemFavorites(ctx, userID, []int64{itemID})
+	if err != nil {
+		return false, err
+	}
+	return favs[itemID], nil
+}
+
+// ListItemFavorites returns the user's favorite flags for a set of items in
+// one query, keyed by item ID. Items without a preference row map to false.
+func (s *Service) ListItemFavorites(ctx context.Context, userID int64, itemIDs []int64) (map[int64]bool, error) {
+	rows, err := s.q.ListUserItemFavorites(ctx, sqlc.ListUserItemFavoritesParams{UserID: userID, ItemIds: itemIDs})
+	if err != nil {
+		return nil, fmt.Errorf("list item favorites: %w", err)
+	}
+	out := make(map[int64]bool, len(rows))
+	for _, r := range rows {
+		out[r.ItemID] = r.IsFavorite
+	}
+	return out, nil
+}
+
+// DeleteItemFavorite removes a user's item favorite; a missing row is a
+// no-op.
+func (s *Service) DeleteItemFavorite(ctx context.Context, userID, itemID int64) error {
+	return s.q.DeleteUserItemFavorite(ctx, sqlc.DeleteUserItemFavoriteParams{UserID: userID, ItemID: itemID})
+}
+
+// BottleFavorite is a user's personal favorite flag for a bottle.
+type BottleFavorite struct {
+	UserID     int64
+	BottleID   int64
+	IsFavorite bool
+}
+
+// SetBottleFavorite creates or updates a user's bottle favorite.
+func (s *Service) SetBottleFavorite(ctx context.Context, userID, bottleID int64, isFavorite bool, by string) (BottleFavorite, error) {
+	row, err := s.q.SetUserBottleFavorite(ctx, sqlc.SetUserBottleFavoriteParams{
+		UserID:     userID,
+		BottleID:   bottleID,
+		IsFavorite: isFavorite,
+		CreatedBy:  by,
+	})
+	if err != nil {
+		return BottleFavorite{}, fmt.Errorf("set bottle favorite: %w", domainerr.FromStorage(err))
+	}
+	return BottleFavorite{UserID: row.UserID, BottleID: row.BottleID, IsFavorite: row.IsFavorite}, nil
+}
+
+// GetBottleFavorite reports whether the user favorited the bottle; a missing
+// preference row means not favorited.
+func (s *Service) GetBottleFavorite(ctx context.Context, userID, bottleID int64) (bool, error) {
+	favs, err := s.ListBottleFavorites(ctx, userID, []int64{bottleID})
+	if err != nil {
+		return false, err
+	}
+	return favs[bottleID], nil
+}
+
+// ListBottleFavorites returns the user's favorite flags for a set of bottles
+// in one query, keyed by bottle ID. Bottles without a preference row map to
+// false.
+func (s *Service) ListBottleFavorites(ctx context.Context, userID int64, bottleIDs []int64) (map[int64]bool, error) {
+	rows, err := s.q.ListUserBottleFavorites(ctx, sqlc.ListUserBottleFavoritesParams{UserID: userID, BottleIds: bottleIDs})
+	if err != nil {
+		return nil, fmt.Errorf("list bottle favorites: %w", err)
+	}
+	out := make(map[int64]bool, len(rows))
+	for _, r := range rows {
+		out[r.BottleID] = r.IsFavorite
+	}
+	return out, nil
+}
+
+// DeleteBottleFavorite removes a user's bottle favorite; a missing row is a
+// no-op.
+func (s *Service) DeleteBottleFavorite(ctx context.Context, userID, bottleID int64) error {
+	return s.q.DeleteUserBottleFavorite(ctx, sqlc.DeleteUserBottleFavoriteParams{UserID: userID, BottleID: bottleID})
 }
 
 // RecipeFavorite is a user's favorite flag for a recipe.
@@ -361,75 +507,73 @@ func (s *Service) DeleteRecipeFavorite(ctx context.Context, userID, recipeID int
 	return s.q.DeleteRecipeFavorite(ctx, sqlc.DeleteRecipeFavoriteParams{UserID: userID, RecipeID: recipeID})
 }
 
-func toUserItem(row sqlc.UserprefsUserItem) (UserItem, error) {
-	ui := UserItem{
-		UserItemID: row.UserItemID,
-		UserID:     row.UserID,
-		ItemID:     row.ItemID,
-		Notes:      row.Notes.String,
-		IsFavorite: row.IsFavorite,
+func toHouseholdItem(row sqlc.UserprefsHouseholdItem) (HouseholdItem, error) {
+	hi := HouseholdItem{
+		HouseholdItemID: row.HouseholdItemID,
+		HouseholdID:     row.HouseholdID,
+		ItemID:          row.ItemID,
+		Notes:           row.Notes.String,
 	}
 	if row.CurrentQty.Valid {
 		f8, err := row.CurrentQty.Float64Value()
 		if err != nil {
-			return UserItem{}, fmt.Errorf("user item %d current_qty: %w", row.UserItemID, err)
+			return HouseholdItem{}, fmt.Errorf("household item %d current_qty: %w", row.HouseholdItemID, err)
 		}
-		ui.CurrentQty = f8.Float64
+		hi.CurrentQty = f8.Float64
 	}
 	if row.MinQty.Valid {
 		f8, err := row.MinQty.Float64Value()
 		if err != nil {
-			return UserItem{}, fmt.Errorf("user item %d min_qty: %w", row.UserItemID, err)
+			return HouseholdItem{}, fmt.Errorf("household item %d min_qty: %w", row.HouseholdItemID, err)
 		}
 		v := f8.Float64
-		ui.MinQty = &v
+		hi.MinQty = &v
 	}
 	if row.PurchaseAt.Valid {
 		v := row.PurchaseAt.Time
-		ui.PurchaseAt = &v
+		hi.PurchaseAt = &v
 	}
 	if row.ExpiresAt.Valid {
 		v := row.ExpiresAt.Time
-		ui.ExpiresAt = &v
+		hi.ExpiresAt = &v
 	}
-	return ui, nil
+	return hi, nil
 }
 
-func toUserBottle(row sqlc.UserprefsUserBottle) (UserBottle, error) {
-	ub := UserBottle{
-		UserBottleID: row.UserBottleID,
-		UserID:       row.UserID,
-		BottleID:     row.BottleID,
-		Quantity:     row.Quantity,
-		Location:     row.Location.String,
-		Notes:        row.Notes.String,
-		IsFavorite:   row.IsFavorite,
+func toHouseholdBottle(row sqlc.UserprefsHouseholdBottle) (HouseholdBottle, error) {
+	hb := HouseholdBottle{
+		HouseholdBottleID: row.HouseholdBottleID,
+		HouseholdID:       row.HouseholdID,
+		BottleID:          row.BottleID,
+		Quantity:          row.Quantity,
+		Location:          row.Location.String,
+		Notes:             row.Notes.String,
 	}
 	if row.BottleNumber.Valid {
 		v := row.BottleNumber.Int32
-		ub.BottleNumber = &v
+		hb.BottleNumber = &v
 	}
 	if row.PurchaseAt.Valid {
 		v := row.PurchaseAt.Time
-		ub.PurchaseAt = &v
+		hb.PurchaseAt = &v
 	}
 	if row.PurchasePrice.Valid {
 		f8, err := row.PurchasePrice.Float64Value()
 		if err != nil {
-			return UserBottle{}, fmt.Errorf("user bottle %d purchase_price: %w", row.UserBottleID, err)
+			return HouseholdBottle{}, fmt.Errorf("household bottle %d purchase_price: %w", row.HouseholdBottleID, err)
 		}
 		v := f8.Float64
-		ub.PurchasePrice = &v
+		hb.PurchasePrice = &v
 	}
 	if row.StorageTemp.Valid {
 		f8, err := row.StorageTemp.Float64Value()
 		if err != nil {
-			return UserBottle{}, fmt.Errorf("user bottle %d storage_temp: %w", row.UserBottleID, err)
+			return HouseholdBottle{}, fmt.Errorf("household bottle %d storage_temp: %w", row.HouseholdBottleID, err)
 		}
 		v := f8.Float64
-		ub.StorageTemp = &v
+		hb.StorageTemp = &v
 	}
-	return ub, nil
+	return hb, nil
 }
 
 func textOrNull(s string) pgtype.Text {

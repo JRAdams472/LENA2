@@ -72,18 +72,18 @@ func (mr *MockQuerierMockRecorder) AddMealSlotItem(ctx, arg any) *gomock.Call {
 }
 
 // CountMealPlans mocks base method.
-func (m *MockQuerier) CountMealPlans(ctx context.Context, userID int64) (int64, error) {
+func (m *MockQuerier) CountMealPlans(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountMealPlans", ctx, userID)
+	ret := m.ctrl.Call(m, "CountMealPlans", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountMealPlans indicates an expected call of CountMealPlans.
-func (mr *MockQuerierMockRecorder) CountMealPlans(ctx, userID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) CountMealPlans(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockQuerier)(nil).CountMealPlans), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMealPlans", reflect.TypeOf((*MockQuerier)(nil).CountMealPlans), ctx, householdID)
 }
 
 // CreateMealPlan mocks base method.
@@ -276,6 +276,20 @@ func (m *MockQuerier) ListMealSlotsForPlan(ctx context.Context, arg sqlc.ListMea
 func (mr *MockQuerierMockRecorder) ListMealSlotsForPlan(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMealSlotsForPlan", reflect.TypeOf((*MockQuerier)(nil).ListMealSlotsForPlan), ctx, arg)
+}
+
+// ReassignMealPlansToHousehold mocks base method.
+func (m *MockQuerier) ReassignMealPlansToHousehold(ctx context.Context, arg sqlc.ReassignMealPlansToHouseholdParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReassignMealPlansToHousehold", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReassignMealPlansToHousehold indicates an expected call of ReassignMealPlansToHousehold.
+func (mr *MockQuerierMockRecorder) ReassignMealPlansToHousehold(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignMealPlansToHousehold", reflect.TypeOf((*MockQuerier)(nil).ReassignMealPlansToHousehold), ctx, arg)
 }
 
 // UpdateMealPlan mocks base method.

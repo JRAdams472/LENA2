@@ -16,12 +16,12 @@ import (
 // positives from table aliases.
 //
 // Allowed exceptions (documented in docs/adr/):
-//   - internal/analytics is a read-model that denormalises from recipe.* and
-//     mealplan.* (ADR-001).
+//   - internal/analytics is a read-model that denormalises from recipe.*,
+//     mealplan.*, and identity.users (household fan-out) (ADR-001).
 //   - internal/app/recipeimport owns the recipe_import tables that live in
 //     the recipe schema (ADR-002).
 var allowedSchemas = map[string][]string{
-	"analytics":        {"analytics", "recipe", "mealplan"},
+	"analytics":        {"analytics", "recipe", "mealplan", "identity"},
 	"app/recipeimport": {"recipe"},
 	"grocery":          {"grocery"},
 	"household":        {"household"},

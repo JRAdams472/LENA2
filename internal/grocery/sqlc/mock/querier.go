@@ -57,18 +57,18 @@ func (mr *MockQuerierMockRecorder) AddGroceryListItem(ctx, arg any) *gomock.Call
 }
 
 // CountGroceryLists mocks base method.
-func (m *MockQuerier) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
+func (m *MockQuerier) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, userID)
+	ret := m.ctrl.Call(m, "CountGroceryLists", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountGroceryLists indicates an expected call of CountGroceryLists.
-func (mr *MockQuerierMockRecorder) CountGroceryLists(ctx, userID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) CountGroceryLists(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockQuerier)(nil).CountGroceryLists), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockQuerier)(nil).CountGroceryLists), ctx, householdID)
 }
 
 // CreateGroceryList mocks base method.
@@ -187,6 +187,20 @@ func (m *MockQuerier) ListGroceryLists(ctx context.Context, arg sqlc.ListGrocery
 func (mr *MockQuerierMockRecorder) ListGroceryLists(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockQuerier)(nil).ListGroceryLists), ctx, arg)
+}
+
+// ReassignGroceryListsToHousehold mocks base method.
+func (m *MockQuerier) ReassignGroceryListsToHousehold(ctx context.Context, arg sqlc.ReassignGroceryListsToHouseholdParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReassignGroceryListsToHousehold", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReassignGroceryListsToHousehold indicates an expected call of ReassignGroceryListsToHousehold.
+func (mr *MockQuerierMockRecorder) ReassignGroceryListsToHousehold(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignGroceryListsToHousehold", reflect.TypeOf((*MockQuerier)(nil).ReassignGroceryListsToHousehold), ctx, arg)
 }
 
 // ToggleGroceryListItemChecked mocks base method.

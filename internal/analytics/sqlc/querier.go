@@ -14,6 +14,8 @@ type Querier interface {
 	// For a newly created recipe ($1), compute each user's best Jaccard
 	// similarity between the new recipe's item set and the item sets of the
 	// recipes in that user's meal-plan history (|intersection| / |union|).
+	// Meal plans are household-scoped, so plan history fans out to every
+	// active member of the household via identity.users (ADR-001 read-model).
 	IngredientOverlapScores(ctx context.Context, arg IngredientOverlapScoresParams) ([]IngredientOverlapScoresRow, error)
 	InsertInteractionEvent(ctx context.Context, arg InsertInteractionEventParams) error
 	ListRecipeRecommendations(ctx context.Context, arg ListRecipeRecommendationsParams) ([]AnalyticsRecipeRecommendation, error)

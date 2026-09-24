@@ -18,6 +18,13 @@ This plan predates the audit remediation program (phases 1–8). The following c
 - **Test infrastructure (A1-12/A4-05):** `platform/testenv` no longer exists — integration tests use `internal/testutil.NewTestDB`. `doGraphQL` is strict; use `doGraphQLExpectErrors` for negative cases.
 - **Resolver size (A2-12):** production resolvers stay under ~60 lines; invite-accept orchestration is extracted to a helper.
 
+## Implementation status
+
+- **p1 (merged, PR #138):** additive migration `0028` (household schema, invites, `users.household_id`/`is_searchable`, deterministic `household_id = user_id` backfill), `internal/household` service, `internal/identity` household/search methods, `currentuser.User.HouseholdID`/`IsSearchable` fields.
+- **p2 (this branch):** switchover migration `0029`, `userprefs.household_item`/`household_bottle`, `user_item_favorite`/`user_bottle_favorite` split, `MergeHouseholdStock`/`ReassignHousehold`, `mealplan`/`grocery` `household_id`, analytics household fan-out, all BFF resolver call sites on `HouseholdID`/`UserID` as appropriate. **Pulled forward from p3:** the authenticator's default-household ensure (`ensureDefaultHousehold` on the cache-miss path) and `InvalidateUser` — required so `u.HouseholdID` is always populated before household-scoped queries run.
+- **p3 (next):** GraphQL schema (`HouseholdUser`, `InviteStatus` enum, household/invite resolvers), invite accept/leave orchestration with cache invalidation, `me.isSearchable`/`me.household`.
+- **p4:** web UI.
+
 ## 1. Objective
 
 Allow authenticated LENA2 users to form a household with one other user. The household shares the operational data (pantry, wine, meal plans, grocery lists) but preserves per-user preferences (recipe favorites, item/bottle likes). Users can search for other users by name or email, send a household invitation, and have the recipient approve or decline it from the dashboard. Either member may leave the household and return to a single-person household.

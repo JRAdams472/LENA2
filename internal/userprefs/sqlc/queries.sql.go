@@ -11,79 +11,155 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const adjustUserItemQuantity = `-- name: AdjustUserItemQuantity :one
-INSERT INTO userprefs.user_item (
-    user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, updated_by
+const adjustHouseholdItemQuantity = `-- name: AdjustHouseholdItemQuantity :one
+INSERT INTO userprefs.household_item (
+    household_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, updated_by
 )
-VALUES ($1, $2, GREATEST(0::numeric, $4::numeric), 0::numeric, NULL, NULL, NULL, false, $3, $3)
-ON CONFLICT (user_id, item_id)
+VALUES ($1, $2, GREATEST(0::numeric, $4::numeric), 0::numeric, NULL, NULL, NULL, $3, $3)
+ON CONFLICT (household_id, item_id)
     DO UPDATE SET
-        current_qty = GREATEST(0::numeric, userprefs.user_item.current_qty + $4::numeric),
+        current_qty = GREATEST(0::numeric, userprefs.household_item.current_qty + $4::numeric),
         updated_by  = EXCLUDED.updated_by,
         updated_at  = now()
-RETURNING user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
+RETURNING household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
 `
 
-type AdjustUserItemQuantityParams struct {
-	UserID    int64          `json:"user_id"`
-	ItemID    int64          `json:"item_id"`
-	CreatedBy string         `json:"created_by"`
-	Delta     pgtype.Numeric `json:"delta"`
+type AdjustHouseholdItemQuantityParams struct {
+	HouseholdID int64          `json:"household_id"`
+	ItemID      int64          `json:"item_id"`
+	CreatedBy   string         `json:"created_by"`
+	Delta       pgtype.Numeric `json:"delta"`
 }
 
-// Atomically adjust the user's pantry quantity by delta, clamping at 0.
+// Atomically adjust the household's pantry quantity by delta, clamping at 0.
 // Creates the row if it does not yet exist, preserving all other fields
 // on an existing row.
-func (q *Queries) AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (UserprefsUserItem, error) {
-	row := q.db.QueryRow(ctx, adjustUserItemQuantity,
-		arg.UserID,
+func (q *Queries) AdjustHouseholdItemQuantity(ctx context.Context, arg AdjustHouseholdItemQuantityParams) (UserprefsHouseholdItem, error) {
+	row := q.db.QueryRow(ctx, adjustHouseholdItemQuantity,
+		arg.HouseholdID,
 		arg.ItemID,
 		arg.CreatedBy,
 		arg.Delta,
 	)
-	var i UserprefsUserItem
+	var i UserprefsHouseholdItem
 	err := row.Scan(
-		&i.UserItemID,
-		&i.UserID,
+		&i.HouseholdItemID,
 		&i.ItemID,
 		&i.CurrentQty,
 		&i.MinQty,
 		&i.PurchaseAt,
 		&i.ExpiresAt,
 		&i.Notes,
-		&i.IsFavorite,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.HouseholdID,
 	)
 	return i, err
 }
 
-const countUserBottles = `-- name: CountUserBottles :one
+const countHouseholdBottles = `-- name: CountHouseholdBottles :one
 SELECT COUNT(*)
-FROM userprefs.user_bottle
-WHERE user_id = $1
+FROM userprefs.household_bottle
+WHERE household_id = $1
 `
 
-func (q *Queries) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countUserBottles, userID)
+func (q *Queries) CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countHouseholdBottles, householdID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
-const countUserItems = `-- name: CountUserItems :one
+const countHouseholdItems = `-- name: CountHouseholdItems :one
 SELECT COUNT(*)
-FROM userprefs.user_item
-WHERE user_id = $1
+FROM userprefs.household_item
+WHERE household_id = $1
 `
 
-func (q *Queries) CountUserItems(ctx context.Context, userID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countUserItems, userID)
+func (q *Queries) CountHouseholdItems(ctx context.Context, householdID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countHouseholdItems, householdID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteHouseholdBottle = `-- name: DeleteHouseholdBottle :execrows
+DELETE FROM userprefs.household_bottle
+WHERE household_bottle_id = $1 AND household_id = $2
+`
+
+type DeleteHouseholdBottleParams struct {
+	HouseholdBottleID int64 `json:"household_bottle_id"`
+	HouseholdID       int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteHouseholdBottle(ctx context.Context, arg DeleteHouseholdBottleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteHouseholdBottle, arg.HouseholdBottleID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteHouseholdItem = `-- name: DeleteHouseholdItem :execrows
+DELETE FROM userprefs.household_item
+WHERE household_item_id = $1 AND household_id = $2
+`
+
+type DeleteHouseholdItemParams struct {
+	HouseholdItemID int64 `json:"household_item_id"`
+	HouseholdID     int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteHouseholdItem(ctx context.Context, arg DeleteHouseholdItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteHouseholdItem, arg.HouseholdItemID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteMergedHouseholdBottles = `-- name: DeleteMergedHouseholdBottles :exec
+DELETE FROM userprefs.household_bottle src
+WHERE src.household_id = $1
+  AND EXISTS (
+      SELECT 1 FROM userprefs.household_bottle dst
+      WHERE dst.household_id = $2
+        AND dst.bottle_id    = src.bottle_id
+  )
+`
+
+type DeleteMergedHouseholdBottlesParams struct {
+	FromHouseholdID int64 `json:"from_household_id"`
+	ToHouseholdID   int64 `json:"to_household_id"`
+}
+
+func (q *Queries) DeleteMergedHouseholdBottles(ctx context.Context, arg DeleteMergedHouseholdBottlesParams) error {
+	_, err := q.db.Exec(ctx, deleteMergedHouseholdBottles, arg.FromHouseholdID, arg.ToHouseholdID)
+	return err
+}
+
+const deleteMergedHouseholdItems = `-- name: DeleteMergedHouseholdItems :exec
+DELETE FROM userprefs.household_item src
+WHERE src.household_id = $1
+  AND EXISTS (
+      SELECT 1 FROM userprefs.household_item dst
+      WHERE dst.household_id = $2
+        AND dst.item_id      = src.item_id
+  )
+`
+
+type DeleteMergedHouseholdItemsParams struct {
+	FromHouseholdID int64 `json:"from_household_id"`
+	ToHouseholdID   int64 `json:"to_household_id"`
+}
+
+// Drop source rows that were folded into a target row.
+func (q *Queries) DeleteMergedHouseholdItems(ctx context.Context, arg DeleteMergedHouseholdItemsParams) error {
+	_, err := q.db.Exec(ctx, deleteMergedHouseholdItems, arg.FromHouseholdID, arg.ToHouseholdID)
+	return err
 }
 
 const deleteRecipeFavorite = `-- name: DeleteRecipeFavorite :exec
@@ -101,34 +177,162 @@ func (q *Queries) DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavo
 	return err
 }
 
-const deleteUserBottle = `-- name: DeleteUserBottle :exec
-DELETE FROM userprefs.user_bottle
-WHERE user_bottle_id = $1 AND user_id = $2
+const deleteUserBottleFavorite = `-- name: DeleteUserBottleFavorite :exec
+DELETE FROM userprefs.user_bottle_favorite
+WHERE user_id = $1 AND bottle_id = $2
 `
 
-type DeleteUserBottleParams struct {
-	UserBottleID int64 `json:"user_bottle_id"`
-	UserID       int64 `json:"user_id"`
+type DeleteUserBottleFavoriteParams struct {
+	UserID   int64 `json:"user_id"`
+	BottleID int64 `json:"bottle_id"`
 }
 
-func (q *Queries) DeleteUserBottle(ctx context.Context, arg DeleteUserBottleParams) error {
-	_, err := q.db.Exec(ctx, deleteUserBottle, arg.UserBottleID, arg.UserID)
+func (q *Queries) DeleteUserBottleFavorite(ctx context.Context, arg DeleteUserBottleFavoriteParams) error {
+	_, err := q.db.Exec(ctx, deleteUserBottleFavorite, arg.UserID, arg.BottleID)
 	return err
 }
 
-const deleteUserItem = `-- name: DeleteUserItem :exec
-DELETE FROM userprefs.user_item
-WHERE user_item_id = $1 AND user_id = $2
+const deleteUserItemFavorite = `-- name: DeleteUserItemFavorite :exec
+DELETE FROM userprefs.user_item_favorite
+WHERE user_id = $1 AND item_id = $2
 `
 
-type DeleteUserItemParams struct {
-	UserItemID int64 `json:"user_item_id"`
-	UserID     int64 `json:"user_id"`
+type DeleteUserItemFavoriteParams struct {
+	UserID int64 `json:"user_id"`
+	ItemID int64 `json:"item_id"`
 }
 
-func (q *Queries) DeleteUserItem(ctx context.Context, arg DeleteUserItemParams) error {
-	_, err := q.db.Exec(ctx, deleteUserItem, arg.UserItemID, arg.UserID)
+func (q *Queries) DeleteUserItemFavorite(ctx context.Context, arg DeleteUserItemFavoriteParams) error {
+	_, err := q.db.Exec(ctx, deleteUserItemFavorite, arg.UserID, arg.ItemID)
 	return err
+}
+
+const getHouseholdBottleByBottle = `-- name: GetHouseholdBottleByBottle :one
+SELECT household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_bottle
+WHERE household_id = $1 AND bottle_id = $2
+`
+
+type GetHouseholdBottleByBottleParams struct {
+	HouseholdID int64 `json:"household_id"`
+	BottleID    int64 `json:"bottle_id"`
+}
+
+func (q *Queries) GetHouseholdBottleByBottle(ctx context.Context, arg GetHouseholdBottleByBottleParams) (UserprefsHouseholdBottle, error) {
+	row := q.db.QueryRow(ctx, getHouseholdBottleByBottle, arg.HouseholdID, arg.BottleID)
+	var i UserprefsHouseholdBottle
+	err := row.Scan(
+		&i.HouseholdBottleID,
+		&i.BottleID,
+		&i.BottleNumber,
+		&i.Quantity,
+		&i.PurchaseAt,
+		&i.PurchasePrice,
+		&i.StorageTemp,
+		&i.Location,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
+}
+
+const getHouseholdBottleByID = `-- name: GetHouseholdBottleByID :one
+SELECT household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_bottle
+WHERE household_bottle_id = $1 AND household_id = $2
+`
+
+type GetHouseholdBottleByIDParams struct {
+	HouseholdBottleID int64 `json:"household_bottle_id"`
+	HouseholdID       int64 `json:"household_id"`
+}
+
+func (q *Queries) GetHouseholdBottleByID(ctx context.Context, arg GetHouseholdBottleByIDParams) (UserprefsHouseholdBottle, error) {
+	row := q.db.QueryRow(ctx, getHouseholdBottleByID, arg.HouseholdBottleID, arg.HouseholdID)
+	var i UserprefsHouseholdBottle
+	err := row.Scan(
+		&i.HouseholdBottleID,
+		&i.BottleID,
+		&i.BottleNumber,
+		&i.Quantity,
+		&i.PurchaseAt,
+		&i.PurchasePrice,
+		&i.StorageTemp,
+		&i.Location,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
+}
+
+const getHouseholdItemByID = `-- name: GetHouseholdItemByID :one
+SELECT household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_item
+WHERE household_item_id = $1 AND household_id = $2
+`
+
+type GetHouseholdItemByIDParams struct {
+	HouseholdItemID int64 `json:"household_item_id"`
+	HouseholdID     int64 `json:"household_id"`
+}
+
+func (q *Queries) GetHouseholdItemByID(ctx context.Context, arg GetHouseholdItemByIDParams) (UserprefsHouseholdItem, error) {
+	row := q.db.QueryRow(ctx, getHouseholdItemByID, arg.HouseholdItemID, arg.HouseholdID)
+	var i UserprefsHouseholdItem
+	err := row.Scan(
+		&i.HouseholdItemID,
+		&i.ItemID,
+		&i.CurrentQty,
+		&i.MinQty,
+		&i.PurchaseAt,
+		&i.ExpiresAt,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
+}
+
+const getHouseholdItemByItem = `-- name: GetHouseholdItemByItem :one
+SELECT household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_item
+WHERE household_id = $1 AND item_id = $2
+`
+
+type GetHouseholdItemByItemParams struct {
+	HouseholdID int64 `json:"household_id"`
+	ItemID      int64 `json:"item_id"`
+}
+
+func (q *Queries) GetHouseholdItemByItem(ctx context.Context, arg GetHouseholdItemByItemParams) (UserprefsHouseholdItem, error) {
+	row := q.db.QueryRow(ctx, getHouseholdItemByItem, arg.HouseholdID, arg.ItemID)
+	var i UserprefsHouseholdItem
+	err := row.Scan(
+		&i.HouseholdItemID,
+		&i.ItemID,
+		&i.CurrentQty,
+		&i.MinQty,
+		&i.PurchaseAt,
+		&i.ExpiresAt,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
 }
 
 const getRecipeFavorite = `-- name: GetRecipeFavorite :one
@@ -157,136 +361,100 @@ func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoritePa
 	return i, err
 }
 
-const getUserBottleByID = `-- name: GetUserBottleByID :one
-SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM userprefs.user_bottle
-WHERE user_bottle_id = $1 AND user_id = $2
+const listHouseholdBottles = `-- name: ListHouseholdBottles :many
+SELECT household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_bottle
+WHERE household_id = $1
+ORDER BY updated_at DESC NULLS LAST
+LIMIT $2 OFFSET $3
 `
 
-type GetUserBottleByIDParams struct {
-	UserBottleID int64 `json:"user_bottle_id"`
-	UserID       int64 `json:"user_id"`
+type ListHouseholdBottlesParams struct {
+	HouseholdID int64 `json:"household_id"`
+	Limit       int32 `json:"limit"`
+	Offset      int32 `json:"offset"`
 }
 
-func (q *Queries) GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (UserprefsUserBottle, error) {
-	row := q.db.QueryRow(ctx, getUserBottleByID, arg.UserBottleID, arg.UserID)
-	var i UserprefsUserBottle
-	err := row.Scan(
-		&i.UserBottleID,
-		&i.UserID,
-		&i.BottleID,
-		&i.BottleNumber,
-		&i.Quantity,
-		&i.PurchaseAt,
-		&i.PurchasePrice,
-		&i.StorageTemp,
-		&i.Location,
-		&i.Notes,
-		&i.IsFavorite,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error) {
+	rows, err := q.db.Query(ctx, listHouseholdBottles, arg.HouseholdID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsHouseholdBottle{}
+	for rows.Next() {
+		var i UserprefsHouseholdBottle
+		if err := rows.Scan(
+			&i.HouseholdBottleID,
+			&i.BottleID,
+			&i.BottleNumber,
+			&i.Quantity,
+			&i.PurchaseAt,
+			&i.PurchasePrice,
+			&i.StorageTemp,
+			&i.Location,
+			&i.Notes,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.HouseholdID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const getUserBottleByUserAndBottle = `-- name: GetUserBottleByUserAndBottle :one
-SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM userprefs.user_bottle
-WHERE user_id = $1 AND bottle_id = $2
+const listHouseholdItems = `-- name: ListHouseholdItems :many
+SELECT household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_item
+WHERE household_id = $1
+ORDER BY updated_at DESC NULLS LAST
+LIMIT $2 OFFSET $3
 `
 
-type GetUserBottleByUserAndBottleParams struct {
-	UserID   int64 `json:"user_id"`
-	BottleID int64 `json:"bottle_id"`
+type ListHouseholdItemsParams struct {
+	HouseholdID int64 `json:"household_id"`
+	Limit       int32 `json:"limit"`
+	Offset      int32 `json:"offset"`
 }
 
-func (q *Queries) GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (UserprefsUserBottle, error) {
-	row := q.db.QueryRow(ctx, getUserBottleByUserAndBottle, arg.UserID, arg.BottleID)
-	var i UserprefsUserBottle
-	err := row.Scan(
-		&i.UserBottleID,
-		&i.UserID,
-		&i.BottleID,
-		&i.BottleNumber,
-		&i.Quantity,
-		&i.PurchaseAt,
-		&i.PurchasePrice,
-		&i.StorageTemp,
-		&i.Location,
-		&i.Notes,
-		&i.IsFavorite,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getUserItemByID = `-- name: GetUserItemByID :one
-SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM userprefs.user_item
-WHERE user_item_id = $1 AND user_id = $2
-`
-
-type GetUserItemByIDParams struct {
-	UserItemID int64 `json:"user_item_id"`
-	UserID     int64 `json:"user_id"`
-}
-
-func (q *Queries) GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (UserprefsUserItem, error) {
-	row := q.db.QueryRow(ctx, getUserItemByID, arg.UserItemID, arg.UserID)
-	var i UserprefsUserItem
-	err := row.Scan(
-		&i.UserItemID,
-		&i.UserID,
-		&i.ItemID,
-		&i.CurrentQty,
-		&i.MinQty,
-		&i.PurchaseAt,
-		&i.ExpiresAt,
-		&i.Notes,
-		&i.IsFavorite,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getUserItemByUserAndItem = `-- name: GetUserItemByUserAndItem :one
-SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM userprefs.user_item
-WHERE user_id = $1 AND item_id = $2
-`
-
-type GetUserItemByUserAndItemParams struct {
-	UserID int64 `json:"user_id"`
-	ItemID int64 `json:"item_id"`
-}
-
-func (q *Queries) GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (UserprefsUserItem, error) {
-	row := q.db.QueryRow(ctx, getUserItemByUserAndItem, arg.UserID, arg.ItemID)
-	var i UserprefsUserItem
-	err := row.Scan(
-		&i.UserItemID,
-		&i.UserID,
-		&i.ItemID,
-		&i.CurrentQty,
-		&i.MinQty,
-		&i.PurchaseAt,
-		&i.ExpiresAt,
-		&i.Notes,
-		&i.IsFavorite,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error) {
+	rows, err := q.db.Query(ctx, listHouseholdItems, arg.HouseholdID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsHouseholdItem{}
+	for rows.Next() {
+		var i UserprefsHouseholdItem
+		if err := rows.Scan(
+			&i.HouseholdItemID,
+			&i.ItemID,
+			&i.CurrentQty,
+			&i.MinQty,
+			&i.PurchaseAt,
+			&i.ExpiresAt,
+			&i.Notes,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.HouseholdID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRecipeFavorites = `-- name: ListRecipeFavorites :many
@@ -328,40 +496,29 @@ func (q *Queries) ListRecipeFavorites(ctx context.Context, arg ListRecipeFavorit
 	return items, nil
 }
 
-const listUserBottles = `-- name: ListUserBottles :many
-SELECT user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM userprefs.user_bottle
-WHERE user_id = $1
-ORDER BY updated_at DESC NULLS LAST
-LIMIT $2 OFFSET $3
+const listUserBottleFavorites = `-- name: ListUserBottleFavorites :many
+SELECT user_id, bottle_id, is_favorite, created_by, created_at, updated_by, updated_at
+FROM userprefs.user_bottle_favorite
+WHERE user_id = $1 AND bottle_id = ANY($2::bigint[])
 `
 
-type ListUserBottlesParams struct {
-	UserID int64 `json:"user_id"`
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+type ListUserBottleFavoritesParams struct {
+	UserID    int64   `json:"user_id"`
+	BottleIds []int64 `json:"bottle_ids"`
 }
 
-func (q *Queries) ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]UserprefsUserBottle, error) {
-	rows, err := q.db.Query(ctx, listUserBottles, arg.UserID, arg.Limit, arg.Offset)
+func (q *Queries) ListUserBottleFavorites(ctx context.Context, arg ListUserBottleFavoritesParams) ([]UserprefsUserBottleFavorite, error) {
+	rows, err := q.db.Query(ctx, listUserBottleFavorites, arg.UserID, arg.BottleIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []UserprefsUserBottle{}
+	items := []UserprefsUserBottleFavorite{}
 	for rows.Next() {
-		var i UserprefsUserBottle
+		var i UserprefsUserBottleFavorite
 		if err := rows.Scan(
-			&i.UserBottleID,
 			&i.UserID,
 			&i.BottleID,
-			&i.BottleNumber,
-			&i.Quantity,
-			&i.PurchaseAt,
-			&i.PurchasePrice,
-			&i.StorageTemp,
-			&i.Location,
-			&i.Notes,
 			&i.IsFavorite,
 			&i.CreatedBy,
 			&i.CreatedAt,
@@ -378,38 +535,29 @@ func (q *Queries) ListUserBottles(ctx context.Context, arg ListUserBottlesParams
 	return items, nil
 }
 
-const listUserItems = `-- name: ListUserItems :many
-SELECT user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-FROM userprefs.user_item
-WHERE user_id = $1
-ORDER BY updated_at DESC NULLS LAST
-LIMIT $2 OFFSET $3
+const listUserItemFavorites = `-- name: ListUserItemFavorites :many
+SELECT user_id, item_id, is_favorite, created_by, created_at, updated_by, updated_at
+FROM userprefs.user_item_favorite
+WHERE user_id = $1 AND item_id = ANY($2::bigint[])
 `
 
-type ListUserItemsParams struct {
-	UserID int64 `json:"user_id"`
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+type ListUserItemFavoritesParams struct {
+	UserID  int64   `json:"user_id"`
+	ItemIds []int64 `json:"item_ids"`
 }
 
-func (q *Queries) ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]UserprefsUserItem, error) {
-	rows, err := q.db.Query(ctx, listUserItems, arg.UserID, arg.Limit, arg.Offset)
+func (q *Queries) ListUserItemFavorites(ctx context.Context, arg ListUserItemFavoritesParams) ([]UserprefsUserItemFavorite, error) {
+	rows, err := q.db.Query(ctx, listUserItemFavorites, arg.UserID, arg.ItemIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []UserprefsUserItem{}
+	items := []UserprefsUserItemFavorite{}
 	for rows.Next() {
-		var i UserprefsUserItem
+		var i UserprefsUserItemFavorite
 		if err := rows.Scan(
-			&i.UserItemID,
 			&i.UserID,
 			&i.ItemID,
-			&i.CurrentQty,
-			&i.MinQty,
-			&i.PurchaseAt,
-			&i.ExpiresAt,
-			&i.Notes,
 			&i.IsFavorite,
 			&i.CreatedBy,
 			&i.CreatedAt,
@@ -424,9 +572,323 @@ func (q *Queries) ListUserItems(ctx context.Context, arg ListUserItemsParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const mergeHouseholdBottleConflicts = `-- name: MergeHouseholdBottleConflicts :exec
+UPDATE userprefs.household_bottle dst
+SET quantity       = dst.quantity + src.quantity,
+    bottle_number  = COALESCE(src.bottle_number, dst.bottle_number),
+    purchase_at    = GREATEST(dst.purchase_at, src.purchase_at),
+    purchase_price = COALESCE(src.purchase_price, dst.purchase_price),
+    storage_temp   = COALESCE(src.storage_temp, dst.storage_temp),
+    location       = COALESCE(src.location, dst.location),
+    notes          = COALESCE(src.notes, dst.notes),
+    updated_by     = $1::varchar,
+    updated_at     = now()
+FROM userprefs.household_bottle src
+WHERE src.household_id = $2
+  AND dst.household_id = $3
+  AND dst.bottle_id    = src.bottle_id
+`
+
+type MergeHouseholdBottleConflictsParams struct {
+	UpdatedBy       string `json:"updated_by"`
+	FromHouseholdID int64  `json:"from_household_id"`
+	ToHouseholdID   int64  `json:"to_household_id"`
+}
+
+func (q *Queries) MergeHouseholdBottleConflicts(ctx context.Context, arg MergeHouseholdBottleConflictsParams) error {
+	_, err := q.db.Exec(ctx, mergeHouseholdBottleConflicts, arg.UpdatedBy, arg.FromHouseholdID, arg.ToHouseholdID)
+	return err
+}
+
+const mergeHouseholdItemConflicts = `-- name: MergeHouseholdItemConflicts :exec
+
+UPDATE userprefs.household_item dst
+SET current_qty = dst.current_qty + src.current_qty,
+    min_qty     = GREATEST(dst.min_qty, src.min_qty),
+    purchase_at = GREATEST(dst.purchase_at, src.purchase_at),
+    expires_at  = GREATEST(dst.expires_at, src.expires_at),
+    notes       = COALESCE(src.notes, dst.notes),
+    updated_by  = $1::varchar,
+    updated_at  = now()
+FROM userprefs.household_item src
+WHERE src.household_id = $2
+  AND dst.household_id = $3
+  AND dst.item_id      = src.item_id
+`
+
+type MergeHouseholdItemConflictsParams struct {
+	UpdatedBy       string `json:"updated_by"`
+	FromHouseholdID int64  `json:"from_household_id"`
+	ToHouseholdID   int64  `json:"to_household_id"`
+}
+
+// ---------- household merge (invite accept) ----------
+// For items present in both households, fold the source row into the
+// target: quantities sum, min_qty takes the max, timestamps keep the most
+// recent non-null, notes prefer the incoming non-null value.
+func (q *Queries) MergeHouseholdItemConflicts(ctx context.Context, arg MergeHouseholdItemConflictsParams) error {
+	_, err := q.db.Exec(ctx, mergeHouseholdItemConflicts, arg.UpdatedBy, arg.FromHouseholdID, arg.ToHouseholdID)
+	return err
+}
+
+const reassignHouseholdBottles = `-- name: ReassignHouseholdBottles :exec
+UPDATE userprefs.household_bottle hb
+SET household_id = $1,
+    updated_by   = $2::varchar,
+    updated_at   = now()
+WHERE hb.household_id = $3
+  AND NOT EXISTS (
+      SELECT 1 FROM userprefs.household_bottle dst
+      WHERE dst.household_id = $1
+        AND dst.bottle_id    = hb.bottle_id
+  )
+`
+
+type ReassignHouseholdBottlesParams struct {
+	ToHouseholdID   int64  `json:"to_household_id"`
+	UpdatedBy       string `json:"updated_by"`
+	FromHouseholdID int64  `json:"from_household_id"`
+}
+
+func (q *Queries) ReassignHouseholdBottles(ctx context.Context, arg ReassignHouseholdBottlesParams) error {
+	_, err := q.db.Exec(ctx, reassignHouseholdBottles, arg.ToHouseholdID, arg.UpdatedBy, arg.FromHouseholdID)
+	return err
+}
+
+const reassignHouseholdItems = `-- name: ReassignHouseholdItems :exec
+UPDATE userprefs.household_item hi
+SET household_id = $1,
+    updated_by   = $2::varchar,
+    updated_at   = now()
+WHERE hi.household_id = $3
+  AND NOT EXISTS (
+      SELECT 1 FROM userprefs.household_item dst
+      WHERE dst.household_id = $1
+        AND dst.item_id      = hi.item_id
+  )
+`
+
+type ReassignHouseholdItemsParams struct {
+	ToHouseholdID   int64  `json:"to_household_id"`
+	UpdatedBy       string `json:"updated_by"`
+	FromHouseholdID int64  `json:"from_household_id"`
+}
+
+// Move every source row not already folded into a target row.
+func (q *Queries) ReassignHouseholdItems(ctx context.Context, arg ReassignHouseholdItemsParams) error {
+	_, err := q.db.Exec(ctx, reassignHouseholdItems, arg.ToHouseholdID, arg.UpdatedBy, arg.FromHouseholdID)
+	return err
+}
+
+const setUserBottleFavorite = `-- name: SetUserBottleFavorite :one
+INSERT INTO userprefs.user_bottle_favorite (user_id, bottle_id, is_favorite, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $4)
+ON CONFLICT (user_id, bottle_id)
+    DO UPDATE SET
+        is_favorite = EXCLUDED.is_favorite,
+        updated_by  = EXCLUDED.updated_by,
+        updated_at  = now()
+RETURNING user_id, bottle_id, is_favorite, created_by, created_at, updated_by, updated_at
+`
+
+type SetUserBottleFavoriteParams struct {
+	UserID     int64  `json:"user_id"`
+	BottleID   int64  `json:"bottle_id"`
+	IsFavorite bool   `json:"is_favorite"`
+	CreatedBy  string `json:"created_by"`
+}
+
+func (q *Queries) SetUserBottleFavorite(ctx context.Context, arg SetUserBottleFavoriteParams) (UserprefsUserBottleFavorite, error) {
+	row := q.db.QueryRow(ctx, setUserBottleFavorite,
+		arg.UserID,
+		arg.BottleID,
+		arg.IsFavorite,
+		arg.CreatedBy,
+	)
+	var i UserprefsUserBottleFavorite
+	err := row.Scan(
+		&i.UserID,
+		&i.BottleID,
+		&i.IsFavorite,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setUserItemFavorite = `-- name: SetUserItemFavorite :one
+
+INSERT INTO userprefs.user_item_favorite (user_id, item_id, is_favorite, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $4)
+ON CONFLICT (user_id, item_id)
+    DO UPDATE SET
+        is_favorite = EXCLUDED.is_favorite,
+        updated_by  = EXCLUDED.updated_by,
+        updated_at  = now()
+RETURNING user_id, item_id, is_favorite, created_by, created_at, updated_by, updated_at
+`
+
+type SetUserItemFavoriteParams struct {
+	UserID     int64  `json:"user_id"`
+	ItemID     int64  `json:"item_id"`
+	IsFavorite bool   `json:"is_favorite"`
+	CreatedBy  string `json:"created_by"`
+}
+
+// ---------- per-user favorites (never household-scoped) ----------
+func (q *Queries) SetUserItemFavorite(ctx context.Context, arg SetUserItemFavoriteParams) (UserprefsUserItemFavorite, error) {
+	row := q.db.QueryRow(ctx, setUserItemFavorite,
+		arg.UserID,
+		arg.ItemID,
+		arg.IsFavorite,
+		arg.CreatedBy,
+	)
+	var i UserprefsUserItemFavorite
+	err := row.Scan(
+		&i.UserID,
+		&i.ItemID,
+		&i.IsFavorite,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertHouseholdBottle = `-- name: UpsertHouseholdBottle :one
+INSERT INTO userprefs.household_bottle (
+    household_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price,
+    storage_temp, location, notes, created_by, updated_by
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (household_id, bottle_id)
+    DO UPDATE SET
+        bottle_number  = EXCLUDED.bottle_number,
+        quantity       = EXCLUDED.quantity,
+        purchase_at    = EXCLUDED.purchase_at,
+        purchase_price = EXCLUDED.purchase_price,
+        storage_temp   = EXCLUDED.storage_temp,
+        location       = EXCLUDED.location,
+        notes          = EXCLUDED.notes,
+        updated_by     = EXCLUDED.updated_by,
+        updated_at     = now()
+RETURNING household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
+`
+
+type UpsertHouseholdBottleParams struct {
+	HouseholdID   int64              `json:"household_id"`
+	BottleID      int64              `json:"bottle_id"`
+	BottleNumber  pgtype.Int4        `json:"bottle_number"`
+	Quantity      int32              `json:"quantity"`
+	PurchaseAt    pgtype.Timestamptz `json:"purchase_at"`
+	PurchasePrice pgtype.Numeric     `json:"purchase_price"`
+	StorageTemp   pgtype.Numeric     `json:"storage_temp"`
+	Location      pgtype.Text        `json:"location"`
+	Notes         pgtype.Text        `json:"notes"`
+	CreatedBy     string             `json:"created_by"`
+	UpdatedBy     pgtype.Text        `json:"updated_by"`
+}
+
+func (q *Queries) UpsertHouseholdBottle(ctx context.Context, arg UpsertHouseholdBottleParams) (UserprefsHouseholdBottle, error) {
+	row := q.db.QueryRow(ctx, upsertHouseholdBottle,
+		arg.HouseholdID,
+		arg.BottleID,
+		arg.BottleNumber,
+		arg.Quantity,
+		arg.PurchaseAt,
+		arg.PurchasePrice,
+		arg.StorageTemp,
+		arg.Location,
+		arg.Notes,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i UserprefsHouseholdBottle
+	err := row.Scan(
+		&i.HouseholdBottleID,
+		&i.BottleID,
+		&i.BottleNumber,
+		&i.Quantity,
+		&i.PurchaseAt,
+		&i.PurchasePrice,
+		&i.StorageTemp,
+		&i.Location,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
+}
+
+const upsertHouseholdItem = `-- name: UpsertHouseholdItem :one
+INSERT INTO userprefs.household_item (
+    household_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, updated_by
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (household_id, item_id)
+    DO UPDATE SET
+        current_qty = EXCLUDED.current_qty,
+        min_qty     = EXCLUDED.min_qty,
+        purchase_at = EXCLUDED.purchase_at,
+        expires_at  = EXCLUDED.expires_at,
+        notes       = EXCLUDED.notes,
+        updated_by  = EXCLUDED.updated_by,
+        updated_at  = now()
+RETURNING household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
+`
+
+type UpsertHouseholdItemParams struct {
+	HouseholdID int64              `json:"household_id"`
+	ItemID      int64              `json:"item_id"`
+	CurrentQty  pgtype.Numeric     `json:"current_qty"`
+	MinQty      pgtype.Numeric     `json:"min_qty"`
+	PurchaseAt  pgtype.Timestamptz `json:"purchase_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	Notes       pgtype.Text        `json:"notes"`
+	CreatedBy   string             `json:"created_by"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
+}
+
+func (q *Queries) UpsertHouseholdItem(ctx context.Context, arg UpsertHouseholdItemParams) (UserprefsHouseholdItem, error) {
+	row := q.db.QueryRow(ctx, upsertHouseholdItem,
+		arg.HouseholdID,
+		arg.ItemID,
+		arg.CurrentQty,
+		arg.MinQty,
+		arg.PurchaseAt,
+		arg.ExpiresAt,
+		arg.Notes,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i UserprefsHouseholdItem
+	err := row.Scan(
+		&i.HouseholdItemID,
+		&i.ItemID,
+		&i.CurrentQty,
+		&i.MinQty,
+		&i.PurchaseAt,
+		&i.ExpiresAt,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
 }
 
 const upsertRecipeFavorite = `-- name: UpsertRecipeFavorite :one
+
 INSERT INTO userprefs.user_recipe_preference (user_id, recipe_id, is_favorite, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (user_id, recipe_id)
@@ -445,6 +907,7 @@ type UpsertRecipeFavoriteParams struct {
 	UpdatedBy  pgtype.Text `json:"updated_by"`
 }
 
+// ---------- recipe favorites (unchanged, per-user) ----------
 func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (UserprefsUserRecipePreference, error) {
 	row := q.db.QueryRow(ctx, upsertRecipeFavorite,
 		arg.UserID,
@@ -457,141 +920,6 @@ func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavo
 	err := row.Scan(
 		&i.UserID,
 		&i.RecipeID,
-		&i.IsFavorite,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const upsertUserBottle = `-- name: UpsertUserBottle :one
-INSERT INTO userprefs.user_bottle (
-    user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price,
-    storage_temp, location, notes, is_favorite, created_by, updated_by
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-ON CONFLICT (user_id, bottle_id)
-    DO UPDATE SET
-        bottle_number  = EXCLUDED.bottle_number,
-        quantity       = EXCLUDED.quantity,
-        purchase_at    = EXCLUDED.purchase_at,
-        purchase_price = EXCLUDED.purchase_price,
-        storage_temp   = EXCLUDED.storage_temp,
-        location       = EXCLUDED.location,
-        notes          = EXCLUDED.notes,
-        is_favorite    = EXCLUDED.is_favorite,
-        updated_by     = EXCLUDED.updated_by,
-        updated_at     = now()
-RETURNING user_bottle_id, user_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, is_favorite, created_by, created_at, updated_by, updated_at
-`
-
-type UpsertUserBottleParams struct {
-	UserID        int64              `json:"user_id"`
-	BottleID      int64              `json:"bottle_id"`
-	BottleNumber  pgtype.Int4        `json:"bottle_number"`
-	Quantity      int32              `json:"quantity"`
-	PurchaseAt    pgtype.Timestamptz `json:"purchase_at"`
-	PurchasePrice pgtype.Numeric     `json:"purchase_price"`
-	StorageTemp   pgtype.Numeric     `json:"storage_temp"`
-	Location      pgtype.Text        `json:"location"`
-	Notes         pgtype.Text        `json:"notes"`
-	IsFavorite    bool               `json:"is_favorite"`
-	CreatedBy     string             `json:"created_by"`
-	UpdatedBy     pgtype.Text        `json:"updated_by"`
-}
-
-func (q *Queries) UpsertUserBottle(ctx context.Context, arg UpsertUserBottleParams) (UserprefsUserBottle, error) {
-	row := q.db.QueryRow(ctx, upsertUserBottle,
-		arg.UserID,
-		arg.BottleID,
-		arg.BottleNumber,
-		arg.Quantity,
-		arg.PurchaseAt,
-		arg.PurchasePrice,
-		arg.StorageTemp,
-		arg.Location,
-		arg.Notes,
-		arg.IsFavorite,
-		arg.CreatedBy,
-		arg.UpdatedBy,
-	)
-	var i UserprefsUserBottle
-	err := row.Scan(
-		&i.UserBottleID,
-		&i.UserID,
-		&i.BottleID,
-		&i.BottleNumber,
-		&i.Quantity,
-		&i.PurchaseAt,
-		&i.PurchasePrice,
-		&i.StorageTemp,
-		&i.Location,
-		&i.Notes,
-		&i.IsFavorite,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const upsertUserItem = `-- name: UpsertUserItem :one
-INSERT INTO userprefs.user_item (
-    user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, updated_by
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-ON CONFLICT (user_id, item_id)
-    DO UPDATE SET
-        current_qty = EXCLUDED.current_qty,
-        min_qty     = EXCLUDED.min_qty,
-        purchase_at = EXCLUDED.purchase_at,
-        expires_at  = EXCLUDED.expires_at,
-        notes       = EXCLUDED.notes,
-        is_favorite = EXCLUDED.is_favorite,
-        updated_by  = EXCLUDED.updated_by,
-        updated_at  = now()
-RETURNING user_item_id, user_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, is_favorite, created_by, created_at, updated_by, updated_at
-`
-
-type UpsertUserItemParams struct {
-	UserID     int64              `json:"user_id"`
-	ItemID     int64              `json:"item_id"`
-	CurrentQty pgtype.Numeric     `json:"current_qty"`
-	MinQty     pgtype.Numeric     `json:"min_qty"`
-	PurchaseAt pgtype.Timestamptz `json:"purchase_at"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
-	Notes      pgtype.Text        `json:"notes"`
-	IsFavorite bool               `json:"is_favorite"`
-	CreatedBy  string             `json:"created_by"`
-	UpdatedBy  pgtype.Text        `json:"updated_by"`
-}
-
-func (q *Queries) UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) (UserprefsUserItem, error) {
-	row := q.db.QueryRow(ctx, upsertUserItem,
-		arg.UserID,
-		arg.ItemID,
-		arg.CurrentQty,
-		arg.MinQty,
-		arg.PurchaseAt,
-		arg.ExpiresAt,
-		arg.Notes,
-		arg.IsFavorite,
-		arg.CreatedBy,
-		arg.UpdatedBy,
-	)
-	var i UserprefsUserItem
-	err := row.Scan(
-		&i.UserItemID,
-		&i.UserID,
-		&i.ItemID,
-		&i.CurrentQty,
-		&i.MinQty,
-		&i.PurchaseAt,
-		&i.ExpiresAt,
-		&i.Notes,
 		&i.IsFavorite,
 		&i.CreatedBy,
 		&i.CreatedAt,

@@ -48,13 +48,13 @@ type AnalyticsUserSelectionCount struct {
 
 type GroceryGroceryList struct {
 	GroceryListID int64              `json:"grocery_list_id"`
-	UserID        int64              `json:"user_id"`
 	MealPlanID    pgtype.Int8        `json:"meal_plan_id"`
 	GeneratedAt   time.Time          `json:"generated_at"`
 	CreatedBy     string             `json:"created_by"`
 	CreatedAt     time.Time          `json:"created_at"`
 	UpdatedBy     pgtype.Text        `json:"updated_by"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	HouseholdID   int64              `json:"household_id"`
 }
 
 type GroceryGroceryListItem struct {
@@ -219,7 +219,6 @@ type InventoryUnit struct {
 
 type MealplanMealPlan struct {
 	MealPlanID         int64              `json:"meal_plan_id"`
-	UserID             int64              `json:"user_id"`
 	Name               string             `json:"name"`
 	WeekStartDate      pgtype.Date        `json:"week_start_date"`
 	WeekStartDayOfWeek int16              `json:"week_start_day_of_week"`
@@ -228,6 +227,7 @@ type MealplanMealPlan struct {
 	CreatedAt          time.Time          `json:"created_at"`
 	UpdatedBy          pgtype.Text        `json:"updated_by"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	HouseholdID        int64              `json:"household_id"`
 }
 
 type MealplanMealSlot struct {
@@ -329,33 +329,51 @@ type RecipeRecipeStep struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-type UserprefsUserBottle struct {
-	UserBottleID  int64              `json:"user_bottle_id"`
-	UserID        int64              `json:"user_id"`
-	BottleID      int64              `json:"bottle_id"`
-	BottleNumber  pgtype.Int4        `json:"bottle_number"`
-	Quantity      int32              `json:"quantity"`
-	PurchaseAt    pgtype.Timestamptz `json:"purchase_at"`
-	PurchasePrice pgtype.Numeric     `json:"purchase_price"`
-	StorageTemp   pgtype.Numeric     `json:"storage_temp"`
-	Location      pgtype.Text        `json:"location"`
-	Notes         pgtype.Text        `json:"notes"`
-	IsFavorite    bool               `json:"is_favorite"`
-	CreatedBy     string             `json:"created_by"`
-	CreatedAt     time.Time          `json:"created_at"`
-	UpdatedBy     pgtype.Text        `json:"updated_by"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+type UserprefsHouseholdBottle struct {
+	HouseholdBottleID int64              `json:"household_bottle_id"`
+	BottleID          int64              `json:"bottle_id"`
+	BottleNumber      pgtype.Int4        `json:"bottle_number"`
+	Quantity          int32              `json:"quantity"`
+	PurchaseAt        pgtype.Timestamptz `json:"purchase_at"`
+	PurchasePrice     pgtype.Numeric     `json:"purchase_price"`
+	StorageTemp       pgtype.Numeric     `json:"storage_temp"`
+	Location          pgtype.Text        `json:"location"`
+	Notes             pgtype.Text        `json:"notes"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	HouseholdID       int64              `json:"household_id"`
 }
 
-type UserprefsUserItem struct {
-	UserItemID int64              `json:"user_item_id"`
+type UserprefsHouseholdItem struct {
+	HouseholdItemID int64              `json:"household_item_id"`
+	ItemID          int64              `json:"item_id"`
+	CurrentQty      pgtype.Numeric     `json:"current_qty"`
+	MinQty          pgtype.Numeric     `json:"min_qty"`
+	PurchaseAt      pgtype.Timestamptz `json:"purchase_at"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	Notes           pgtype.Text        `json:"notes"`
+	CreatedBy       string             `json:"created_by"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedBy       pgtype.Text        `json:"updated_by"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	HouseholdID     int64              `json:"household_id"`
+}
+
+type UserprefsUserBottleFavorite struct {
+	UserID     int64              `json:"user_id"`
+	BottleID   int64              `json:"bottle_id"`
+	IsFavorite bool               `json:"is_favorite"`
+	CreatedBy  string             `json:"created_by"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedBy  pgtype.Text        `json:"updated_by"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type UserprefsUserItemFavorite struct {
 	UserID     int64              `json:"user_id"`
 	ItemID     int64              `json:"item_id"`
-	CurrentQty pgtype.Numeric     `json:"current_qty"`
-	MinQty     pgtype.Numeric     `json:"min_qty"`
-	PurchaseAt pgtype.Timestamptz `json:"purchase_at"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
-	Notes      pgtype.Text        `json:"notes"`
 	IsFavorite bool               `json:"is_favorite"`
 	CreatedBy  string             `json:"created_by"`
 	CreatedAt  time.Time          `json:"created_at"`

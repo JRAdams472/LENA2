@@ -29,8 +29,10 @@ violations:
    `LastPlannedDates`; the BFF combines them in Go. No cross-schema SQL.
 3. **`analytics` is a documented read-model exception.** It denormalises
    from `recipe.*` and `mealplan.*` for reporting queries that would be
-   expensive to reconstruct through domain APIs. This is the only such
-   exception; anything else must go through domain services.
+   expensive to reconstruct through domain APIs. Since the household
+   switchover (migration 0029) it also joins `identity.users` to fan out
+   household-scoped meal-plan history to member user IDs. This is the only
+   such exception; anything else must go through domain services.
 4. **`userprefs` owns a real `userprefs` schema.** `user_item`,
    `user_bottle`, and `user_recipe_preference` were migrated there
    (migration 0026); cross-schema foreign keys are allowed, and
@@ -43,6 +45,6 @@ violations:
 
 - New domains must add themselves to the guard test's allow-list with their
   own schema only; a foreign-schema reference fails CI.
-- If analytics queries grow beyond the two documented join targets, prefer
+- If analytics queries grow beyond the documented join targets, prefer
   publishing domain events into an `analytics`-owned projection instead of
   widening the exception.

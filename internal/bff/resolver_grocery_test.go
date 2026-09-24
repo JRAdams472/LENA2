@@ -37,7 +37,7 @@ func TestResolver_GroceryList_Happy(t *testing.T) {
 	r := &Resolver{GroceryService: g}
 
 	genAt := time.Date(2025, 2, 3, 10, 30, 0, 0, time.UTC)
-	list := grocery.GroceryList{GroceryListID: 11, UserID: grocUserID, GeneratedAt: genAt}
+	list := grocery.GroceryList{GroceryListID: 11, HouseholdID: grocUserID, GeneratedAt: genAt}
 	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).Return(list, nil)
 	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11}, grocUserID).Return(nil, nil)
 
@@ -80,8 +80,8 @@ func TestResolver_GroceryLists_Happy(t *testing.T) {
 	r := &Resolver{GroceryService: g}
 
 	lists := []grocery.GroceryList{
-		{GroceryListID: 11, UserID: grocUserID},
-		{GroceryListID: 12, UserID: grocUserID},
+		{GroceryListID: 11, HouseholdID: grocUserID},
+		{GroceryListID: 12, HouseholdID: grocUserID},
 	}
 	// page=2, pageSize=10 -> limit=10, offset=10
 	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(10)).Return(lists, nil)
@@ -159,7 +159,7 @@ func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
 	itemID := int64(42)
 	unitID := int64(3)
 	g.EXPECT().GetGroceryListByID(gomock.Any(), int64(11), grocUserID).
-		Return(grocery.GroceryList{GroceryListID: 11, UserID: grocUserID}, nil)
+		Return(grocery.GroceryList{GroceryListID: 11, HouseholdID: grocUserID}, nil)
 	// Single-list reads preload children through the shared batch loader.
 	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11}, grocUserID).Return([]grocery.GroceryListItem{
 		{GroceryListItemID: 100, GroceryListID: 11, ItemID: &itemID, QuantityNeeded: 2.5, UnitID: &unitID, Source: "recipe"},
@@ -230,9 +230,9 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	servings := int32(4)
 	// The plan must belong to the caller before a list is linked to it.
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
-		Return(mealplan.MealPlan{MealPlanID: mealPlanID, UserID: grocUserID}, nil)
+		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil)
 	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, &mealPlanID, grocEmail).
-		Return(grocery.GroceryList{GroceryListID: 21, UserID: grocUserID, MealPlanID: &mealPlanID}, nil)
+		Return(grocery.GroceryList{GroceryListID: 21, HouseholdID: grocUserID, MealPlanID: &mealPlanID}, nil)
 	mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), mealPlanID, grocUserID).
 		Return([]mealplan.MealSlot{{SlotID: 1, MealPlanID: mealPlanID, RecipeID: &recipeID}}, nil)
 	mp.EXPECT().ListMealSlotItemsByPlan(gomock.Any(), mealPlanID, grocUserID).Return(nil, nil)
@@ -240,7 +240,7 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 		Return([]recipe.Recipe{{RecipeID: recipeID, Servings: &servings}}, nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{recipeID}).
 		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: 10, UnitID: 5, Quantity: 2}}, nil)
-	up.EXPECT().ListUserItems(gomock.Any(), grocUserID, int32(1000), int32(0)).Return(nil, nil)
+	up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(1000), int32(0)).Return(nil, nil)
 	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10}).
 		Return([]inventory.Item{{ItemID: 10, UnitID: 5}}, nil)
 	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{5}).
@@ -280,7 +280,7 @@ func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 	r := &Resolver{GroceryService: g, MealPlanService: mp}
 
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
-		Return(mealplan.MealPlan{MealPlanID: 55, UserID: grocUserID}, nil)
+		Return(mealplan.MealPlan{MealPlanID: 55, HouseholdID: grocUserID}, nil)
 	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, gomock.Any(), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
@@ -411,7 +411,7 @@ func TestResolver_ToggleGroceryItemChecked_PantrySync(t *testing.T) {
 	itemID := int64(42)
 	checked := grocery.GroceryListItem{GroceryListItemID: 100, ItemID: &itemID, QuantityNeeded: 3, IsChecked: true}
 	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(checked, nil)
-	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), grocUserID, itemID, 3.0, grocEmail).Return(userprefs.UserItem{}, nil)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), grocUserID, itemID, 3.0, grocEmail).Return(userprefs.HouseholdItem{}, nil)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	require.NoError(t, err)
@@ -428,7 +428,7 @@ func TestResolver_ToggleGroceryItemChecked_PantrySyncError(t *testing.T) {
 	itemID := int64(42)
 	checked := grocery.GroceryListItem{GroceryListItemID: 100, ItemID: &itemID, QuantityNeeded: 3, IsChecked: true}
 	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(checked, nil)
-	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), grocUserID, itemID, 3.0, grocEmail).Return(userprefs.UserItem{}, errGrocBoom)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), grocUserID, itemID, 3.0, grocEmail).Return(userprefs.HouseholdItem{}, errGrocBoom)
 
 	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
 	assert.Nil(t, res)

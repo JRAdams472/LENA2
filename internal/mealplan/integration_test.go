@@ -66,7 +66,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
 
 	plan, err := svc.CreateMealPlan(ctx, MealPlan{
-		UserID:             userA,
+		HouseholdID:        userA,
 		Name:               "Week 37",
 		WeekStartDate:      week,
 		WeekStartDayOfWeek: 1,
@@ -74,7 +74,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	}, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, plan.MealPlanID)
-	assert.Equal(t, userA, plan.UserID)
+	assert.Equal(t, userA, plan.HouseholdID)
 	assert.Equal(t, "Week 37", plan.Name)
 	assert.Equal(t, week, plan.WeekStartDate)
 	assert.Equal(t, int16(1), plan.WeekStartDayOfWeek)
@@ -229,7 +229,7 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 
 	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
 	plan, err := svc.CreateMealPlan(ctx, MealPlan{
-		UserID: userA, Name: "Owned", WeekStartDate: week, IsActive: true,
+		HouseholdID: userA, Name: "Owned", WeekStartDate: week, IsActive: true,
 	}, itBy)
 	require.NoError(t, err)
 

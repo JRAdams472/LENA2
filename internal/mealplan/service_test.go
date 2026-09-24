@@ -28,12 +28,12 @@ func newService(t *testing.T) (*Service, *mock.MockQuerier) {
 func TestCreateMealPlan(t *testing.T) {
 	ctx := context.Background()
 	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	in := MealPlan{UserID: 42, Name: "Week 37", WeekStartDate: week, WeekStartDayOfWeek: 1, IsActive: true}
+	in := MealPlan{HouseholdID: 42, Name: "Week 37", WeekStartDate: week, WeekStartDayOfWeek: 1, IsActive: true}
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
 		want := sqlc.CreateMealPlanParams{
-			UserID:             42,
+			HouseholdID:        42,
 			Name:               "Week 37",
 			WeekStartDate:      pgtype.Date{Time: week, Valid: true},
 			WeekStartDayOfWeek: 1,
@@ -43,7 +43,7 @@ func TestCreateMealPlan(t *testing.T) {
 		}
 		mq.EXPECT().CreateMealPlan(ctx, want).Return(sqlc.MealplanMealPlan{
 			MealPlanID:         7,
-			UserID:             42,
+			HouseholdID:        42,
 			Name:               "Week 37",
 			WeekStartDate:      pgtype.Date{Time: week, Valid: true},
 			WeekStartDayOfWeek: 1,
@@ -53,7 +53,7 @@ func TestCreateMealPlan(t *testing.T) {
 		got, err := s.CreateMealPlan(ctx, in, "tester")
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), got.MealPlanID)
-		assert.Equal(t, int64(42), got.UserID)
+		assert.Equal(t, int64(42), got.HouseholdID)
 		assert.Equal(t, "Week 37", got.Name)
 		assert.Equal(t, week, got.WeekStartDate)
 		assert.Equal(t, int16(1), got.WeekStartDayOfWeek)
@@ -74,13 +74,13 @@ func TestGetMealPlanByID(t *testing.T) {
 
 	t.Run("success threads userID", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: 7, UserID: 42}).
-			Return(sqlc.MealplanMealPlan{MealPlanID: 7, UserID: 42, Name: "Week 37"}, nil)
+		mq.EXPECT().GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: 7, HouseholdID: 42}).
+			Return(sqlc.MealplanMealPlan{MealPlanID: 7, HouseholdID: 42, Name: "Week 37"}, nil)
 
 		got, err := s.GetMealPlanByID(ctx, 7, 42)
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), got.MealPlanID)
-		assert.Equal(t, int64(42), got.UserID)
+		assert.Equal(t, int64(42), got.HouseholdID)
 		assert.Equal(t, "Week 37", got.Name)
 	})
 
@@ -98,10 +98,10 @@ func TestListMealPlans(t *testing.T) {
 
 	t.Run("success threads userID and paging", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListMealPlans(ctx, sqlc.ListMealPlansParams{UserID: 42, Limit: 10, Offset: 5}).
+		mq.EXPECT().ListMealPlans(ctx, sqlc.ListMealPlansParams{HouseholdID: 42, Limit: 10, Offset: 5}).
 			Return([]sqlc.MealplanMealPlan{
-				{MealPlanID: 7, UserID: 42, Name: "A"},
-				{MealPlanID: 8, UserID: 42, Name: "B"},
+				{MealPlanID: 7, HouseholdID: 42, Name: "A"},
+				{MealPlanID: 8, HouseholdID: 42, Name: "B"},
 			}, nil)
 
 		got, err := s.ListMealPlans(ctx, 42, 10, 5)
@@ -129,7 +129,7 @@ func TestUpdateMealPlan(t *testing.T) {
 		s, mq := newService(t)
 		want := sqlc.UpdateMealPlanParams{
 			MealPlanID:         7,
-			UserID:             42,
+			HouseholdID:        42,
 			Name:               "Renamed",
 			WeekStartDate:      pgtype.Date{Time: week, Valid: true},
 			WeekStartDayOfWeek: 2,
@@ -153,7 +153,7 @@ func TestDeleteMealPlan(t *testing.T) {
 
 	t.Run("success threads userID", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealPlan(ctx, sqlc.DeleteMealPlanParams{MealPlanID: 7, UserID: 42}).Return(nil)
+		mq.EXPECT().DeleteMealPlan(ctx, sqlc.DeleteMealPlanParams{MealPlanID: 7, HouseholdID: 42}).Return(nil)
 		require.NoError(t, s.DeleteMealPlan(ctx, 7, 42))
 	})
 
@@ -171,8 +171,8 @@ func TestAddMealSlot(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: 7, UserID: 42}).
-			Return(sqlc.MealplanMealPlan{MealPlanID: 7, UserID: 42}, nil)
+		mq.EXPECT().GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: 7, HouseholdID: 42}).
+			Return(sqlc.MealplanMealPlan{MealPlanID: 7, HouseholdID: 42}, nil)
 		want := sqlc.AddMealSlotParams{
 			MealPlanID:      7,
 			DayOfWeek:       3,
@@ -208,7 +208,7 @@ func TestAddMealSlot(t *testing.T) {
 	t.Run("nil optionals become null params", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().GetMealPlanByID(ctx, gomock.Any()).
-			Return(sqlc.MealplanMealPlan{MealPlanID: 7, UserID: 42}, nil)
+			Return(sqlc.MealplanMealPlan{MealPlanID: 7, HouseholdID: 42}, nil)
 		mq.EXPECT().AddMealSlot(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, arg sqlc.AddMealSlotParams) (sqlc.MealplanMealSlot, error) {
 				assert.False(t, arg.RecipeID.Valid)
@@ -226,7 +226,7 @@ func TestAddMealSlot(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().GetMealPlanByID(ctx, gomock.Any()).
-			Return(sqlc.MealplanMealPlan{MealPlanID: 7, UserID: 42}, nil)
+			Return(sqlc.MealplanMealPlan{MealPlanID: 7, HouseholdID: 42}, nil)
 		mq.EXPECT().AddMealSlot(ctx, gomock.Any()).Return(sqlc.MealplanMealSlot{}, errDB)
 		_, err := s.AddMealSlot(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add meal slot")
@@ -235,7 +235,7 @@ func TestAddMealSlot(t *testing.T) {
 
 	t.Run("plan owned by another user is not found", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: 7, UserID: 42}).
+		mq.EXPECT().GetMealPlanByID(ctx, sqlc.GetMealPlanByIDParams{MealPlanID: 7, HouseholdID: 42}).
 			Return(sqlc.MealplanMealPlan{}, pgx.ErrNoRows)
 		_, err := s.AddMealSlot(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add meal slot")
@@ -248,7 +248,7 @@ func TestGetMealSlotByID(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: 55, UserID: 42}).
+		mq.EXPECT().GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: 55, HouseholdID: 42}).
 			Return(sqlc.MealplanMealSlot{SlotID: 55, MealPlanID: 7, MealType: "lunch"}, nil)
 
 		got, err := s.GetMealSlotByID(ctx, 55, 42)
@@ -271,7 +271,7 @@ func TestListMealSlotsForPlan(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListMealSlotsForPlan(ctx, sqlc.ListMealSlotsForPlanParams{MealPlanID: 7, UserID: 42}).
+		mq.EXPECT().ListMealSlotsForPlan(ctx, sqlc.ListMealSlotsForPlanParams{MealPlanID: 7, HouseholdID: 42}).
 			Return([]sqlc.MealplanMealSlot{
 				{SlotID: 55, MealPlanID: 7, MealType: "lunch"},
 				{SlotID: 56, MealPlanID: 7, MealType: "dinner"},
@@ -302,7 +302,7 @@ func TestUpdateMealSlot(t *testing.T) {
 		s, mq := newService(t)
 		want := sqlc.UpdateMealSlotParams{
 			SlotID:          55,
-			UserID:          42,
+			HouseholdID:     42,
 			DayOfWeek:       4,
 			MealType:        "dinner",
 			RecipeID:        pgtype.Int8{Int64: 99, Valid: true},
@@ -327,7 +327,7 @@ func TestDeleteMealSlot(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: 55, UserID: 42}).Return(nil)
+		mq.EXPECT().DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: 55, HouseholdID: 42}).Return(nil)
 		require.NoError(t, s.DeleteMealSlot(ctx, 55, 42))
 	})
 
@@ -345,7 +345,7 @@ func TestAddMealSlotItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: 55, UserID: 42}).
+		mq.EXPECT().GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: 55, HouseholdID: 42}).
 			Return(sqlc.MealplanMealSlot{SlotID: 55, MealPlanID: 7}, nil)
 		mq.EXPECT().AddMealSlotItem(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, arg sqlc.AddMealSlotItemParams) (sqlc.MealplanMealSlotItem, error) {
@@ -390,7 +390,7 @@ func TestAddMealSlotItem(t *testing.T) {
 
 	t.Run("slot owned by another user is not found", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: 55, UserID: 42}).
+		mq.EXPECT().GetMealSlotByID(ctx, sqlc.GetMealSlotByIDParams{SlotID: 55, HouseholdID: 42}).
 			Return(sqlc.MealplanMealSlot{}, pgx.ErrNoRows)
 		_, err := s.AddMealSlotItem(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add meal slot item")
@@ -403,7 +403,7 @@ func TestListMealSlotItems(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListMealSlotItems(ctx, sqlc.ListMealSlotItemsParams{SlotID: 55, UserID: 42}).
+		mq.EXPECT().ListMealSlotItems(ctx, sqlc.ListMealSlotItemsParams{SlotID: 55, HouseholdID: 42}).
 			Return([]sqlc.MealplanMealSlotItem{
 				{SlotItemID: 900, SlotID: 55, UnitID: 3},
 				{SlotItemID: 901, SlotID: 55, UnitID: 10},
@@ -430,7 +430,7 @@ func TestDeleteMealSlotItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: 900, UserID: 42}).Return(nil)
+		mq.EXPECT().DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: 900, HouseholdID: 42}).Return(nil)
 		require.NoError(t, s.DeleteMealSlotItem(ctx, 900, 42))
 	})
 
@@ -468,7 +468,7 @@ func TestListMealSlotItemsByPlan(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListMealSlotItemsByPlan(ctx, sqlc.ListMealSlotItemsByPlanParams{MealPlanID: 7, UserID: 42}).Return([]sqlc.MealplanMealSlotItem{
+		mq.EXPECT().ListMealSlotItemsByPlan(ctx, sqlc.ListMealSlotItemsByPlanParams{MealPlanID: 7, HouseholdID: 42}).Return([]sqlc.MealplanMealSlotItem{
 			{SlotItemID: 900, SlotID: 55, UnitID: 3},
 			{SlotItemID: 901, SlotID: 56, UnitID: 10},
 		}, nil)

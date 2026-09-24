@@ -44,7 +44,7 @@ func TestResolver_MealPlan_Happy(t *testing.T) {
 	r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec, UserPrefsService: up}
 
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{
-		MealPlanID: 10, UserID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
+		MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
 		WeekStartDayOfWeek: 1, IsActive: true,
 	}, nil)
 
@@ -112,8 +112,8 @@ func TestResolver_MealPlans_Happy(t *testing.T) {
 	r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec, UserPrefsService: up}
 
 	mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, int32(10), int32(10)).Return([]mealplan.MealPlan{
-		{MealPlanID: 10, UserID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
-		{MealPlanID: 11, UserID: mealPlanUserID, Name: "Week 2", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
+		{MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
+		{MealPlanID: 11, HouseholdID: mealPlanUserID, Name: "Week 2", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
 	}, nil)
 	mp.EXPECT().CountMealPlans(gomock.Any(), mealPlanUserID).Return(int64(5), nil)
 	mp.EXPECT().ListMealSlotsByPlans(gomock.Any(), []int64{10, 11}, mealPlanUserID).Return(nil, nil)
@@ -145,7 +145,7 @@ func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
 	r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec}
 
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{
-		MealPlanID: 10, UserID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
+		MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
 		WeekStartDayOfWeek: 1, IsActive: true,
 	}, nil)
 
@@ -201,10 +201,10 @@ func TestResolver_MealPlan_CreateMealPlan_Happy(t *testing.T) {
 	r := &Resolver{MealPlanService: mp}
 
 	mp.EXPECT().CreateMealPlan(gomock.Any(), gomock.Eq(mealplan.MealPlan{
-		UserID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
+		HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
 		WeekStartDayOfWeek: 1, IsActive: true,
 	}), mealPlanEmail).Return(mealplan.MealPlan{
-		MealPlanID: 10, UserID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
+		MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate,
 		WeekStartDayOfWeek: 1, IsActive: true,
 	}, nil)
 
@@ -223,14 +223,14 @@ func TestResolver_MealPlan_UpdateMealPlan_Happy(t *testing.T) {
 
 	gomock.InOrder(
 		mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{
-			MealPlanID: 10, UserID: mealPlanUserID, Name: "Old", WeekStartDate: mealPlanDate,
+			MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Old", WeekStartDate: mealPlanDate,
 			WeekStartDayOfWeek: 1, IsActive: true,
 		}, nil),
 		mp.EXPECT().UpdateMealPlan(gomock.Any(), int64(10), mealPlanUserID, gomock.Eq(mealplan.MealPlan{
 			Name: "New", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 2, IsActive: true,
 		}), mealPlanEmail).Return(nil),
 		mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{
-			MealPlanID: 10, UserID: mealPlanUserID, Name: "New", WeekStartDate: mealPlanDate,
+			MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "New", WeekStartDate: mealPlanDate,
 			WeekStartDayOfWeek: 2, IsActive: true,
 		}, nil),
 	)

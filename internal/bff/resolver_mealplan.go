@@ -24,14 +24,14 @@ func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (
 	if err != nil {
 		return nil, err
 	}
-	mp, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	mp, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
 	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp}, nil
 }
 
-// MealPlans resolves the current user's meal plans.
+// MealPlans resolves the current household's meal plans.
 func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
@@ -41,16 +41,16 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	plans, err := r.MealPlanService.ListMealPlans(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	plans, err := r.MealPlanService.ListMealPlans(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.MealPlanService.CountMealPlans(ctx, u.UserID)
+	total, err := r.MealPlanService.CountMealPlans(ctx, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
 	planIDs := distinctIDs(plans, func(p mealplan.MealPlan) *int64 { return &p.MealPlanID })
-	slotsByPlan, slotItemsBySlot, rc, err := r.loadMealPlanChildren(ctx, u.UserID, planIDs)
+	slotsByPlan, slotItemsBySlot, rc, err := r.loadMealPlanChildren(ctx, u, planIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -60,27 +60,29 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 // loadMealPlanChildren batch-loads the slots, slot items, and shared
 // recipe children for a page of meal plans so nested resolvers never
 // issue a query per row.
-func (r *Resolver) loadMealPlanChildren(ctx context.Context, userID int64, planIDs []int64) (map[int64][]mealplan.MealSlot, map[int64][]mealplan.MealSlotItem, *recipeChildren, error) {
+func (r *Resolver) loadMealPlanChildren(ctx context.Context, u currentuser.User, planIDs []int64) (map[int64][]mealplan.MealSlot, map[int64][]mealplan.MealSlotItem, *recipeChildren, error) {
 	slotsByPlan := make(map[int64][]mealplan.MealSlot)
 	slotItemsBySlot := make(map[int64][]mealplan.MealSlotItem)
 	if len(planIDs) == 0 {
 		return slotsByPlan, slotItemsBySlot, nil, nil
 	}
-	slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs, userID)
+	slots, err := r.MealPlanService.ListMealSlotsByPlans(ctx, planIDs, u.HouseholdID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	for _, s := range slots {
 		slotsByPlan[s.MealPlanID] = append(slotsByPlan[s.MealPlanID], s)
 	}
-	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs, userID)
+	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlans(ctx, planIDs, u.HouseholdID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	for _, si := range slotItems {
 		slotItemsBySlot[si.SlotID] = append(slotItemsBySlot[si.SlotID], si)
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, userID,
+	// Recipe children (favorites) stay per-user; only the plan rows
+	// themselves are household-scoped.
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
 		distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
 		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }))
 	if err != nil {
@@ -116,10 +118,10 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	if err != nil {
 		return nil, err
 	}
-	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.UserID); err != nil {
+	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.HouseholdID); err != nil {
 		return nil, err
 	}
-	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.UserID)
+	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +129,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	// Batch-load instead of per-slot/per-recipe fan-out: one query for all
 	// slot items, one for all referenced recipes, one for all their items,
 	// and one for the nutrients of every distinct item involved.
-	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, u.UserID)
+	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +223,7 @@ func (r *Resolver) nutritionInputs(ctx context.Context, lines []planLine) (map[i
 	return nutrientsByItem, itemMeta, unitMeta, nil
 }
 
-// CreateMealPlan creates a new meal plan for the current user.
+// CreateMealPlan creates a new meal plan for the current household.
 func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input createMealPlanInput }) (*mealPlanResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -239,7 +241,7 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 		dayOfWeek = 1
 	}
 	mp, err := r.MealPlanService.CreateMealPlan(ctx, mealplan.MealPlan{
-		UserID:             u.UserID,
+		HouseholdID:        u.HouseholdID,
 		Name:               args.Input.Name,
 		WeekStartDate:      d,
 		WeekStartDayOfWeek: dayOfWeek,
@@ -264,7 +266,7 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	existing, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	existing, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +289,7 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 			return nil, err
 		}
 	}
-	if err := r.MealPlanService.UpdateMealPlan(ctx, id, u.UserID, mealplan.MealPlan{
+	if err := r.MealPlanService.UpdateMealPlan(ctx, id, u.HouseholdID, mealplan.MealPlan{
 		Name:               name,
 		WeekStartDate:      weekStart,
 		WeekStartDayOfWeek: dayOfWeek,
@@ -295,14 +297,14 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 	}, u.Email); err != nil {
 		return nil, err
 	}
-	updated, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.UserID)
+	updated, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
 	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: updated}, nil
 }
 
-// DeleteMealPlan removes a meal plan owned by the current user.
+// DeleteMealPlan removes a meal plan owned by the current household.
 func (r *Resolver) DeleteMealPlan(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -312,7 +314,7 @@ func (r *Resolver) DeleteMealPlan(ctx context.Context, args struct{ ID graphql.I
 	if err != nil {
 		return false, err
 	}
-	if err := r.MealPlanService.DeleteMealPlan(ctx, id, u.UserID); err != nil {
+	if err := r.MealPlanService.DeleteMealPlan(ctx, id, u.HouseholdID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -350,7 +352,7 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 		RecipeID:        recipeID,
 		Servings:        args.Input.Servings,
 		ReplacementNote: derefString(args.Input.ReplacementNote),
-	}, u.UserID, u.Email)
+	}, u.HouseholdID, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +376,7 @@ func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graph
 	if err != nil {
 		return false, err
 	}
-	if err := r.MealPlanService.DeleteMealSlot(ctx, slotID, u.UserID); err != nil {
+	if err := r.MealPlanService.DeleteMealSlot(ctx, slotID, u.HouseholdID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -416,7 +418,7 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 		Quantity:     args.Input.Quantity,
 		UnitID:       unitID,
 		IsFromRecipe: isFromRecipe,
-	}, u.UserID, u.Email)
+	}, u.HouseholdID, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +435,7 @@ func (r *Resolver) RemoveMealSlotItem(ctx context.Context, args struct{ SlotItem
 	if err != nil {
 		return false, err
 	}
-	if err := r.MealPlanService.DeleteMealSlotItem(ctx, slotItemID, u.UserID); err != nil {
+	if err := r.MealPlanService.DeleteMealSlotItem(ctx, slotItemID, u.HouseholdID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -470,7 +472,7 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 		slots = r.slots
 	} else {
 		var err error
-		slots, err = r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID, r.user.UserID)
+		slots, err = r.mp.ListMealSlotsForPlan(ctx, r.plan.MealPlanID, r.user.HouseholdID)
 		if err != nil {
 			return nil, err
 		}
@@ -534,7 +536,7 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 		ch = r.rc.itemChildren
 	} else {
 		var err error
-		items, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID, r.user.UserID)
+		items, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID, r.user.HouseholdID)
 		if err != nil {
 			return nil, err
 		}

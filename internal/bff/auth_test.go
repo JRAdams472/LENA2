@@ -19,20 +19,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 )
 
 // fakeIdentityStore records UpsertUser/SetUserRole calls for assertions.
 type fakeIdentityStore struct {
-	user        identity.User
-	inactive    bool
-	upsertErr   error
-	upsertCalls int32
-	roleCalls   int32
-	lastRole    string
-	lastUserID  int64
-	roleErr     error
+	user           identity.User
+	inactive       bool
+	upsertErr      error
+	upsertCalls    int32
+	roleCalls      int32
+	lastRole       string
+	lastUserID     int64
+	roleErr        error
+	getByIDErr     error
+	householdErr   error
+	householdCalls int32
 }
 
 func (f *fakeIdentityStore) UpsertUser(_ context.Context, provider, subject, email, _ string) (identity.User, error) {
@@ -53,6 +57,42 @@ func (f *fakeIdentityStore) SetUserRole(_ context.Context, userID int64, role st
 	f.lastUserID = userID
 	f.lastRole = role
 	return f.roleErr
+}
+
+func (f *fakeIdentityStore) GetByID(_ context.Context, _ int64) (identity.User, error) {
+	if f.getByIDErr != nil {
+		return identity.User{}, f.getByIDErr
+	}
+	return f.user, nil
+}
+
+func (f *fakeIdentityStore) SetUserHousehold(_ context.Context, userID, householdID int64, _ *int64) error {
+	atomic.AddInt32(&f.householdCalls, 1)
+	if f.householdErr != nil {
+		return f.householdErr
+	}
+	f.user.HouseholdID = &householdID
+	f.lastUserID = userID
+	return nil
+}
+
+// fakeHouseholdStore records CreateHousehold calls for assertions.
+type fakeHouseholdStore struct {
+	createErr   error
+	createCalls int32
+	nextID      int64
+}
+
+func (f *fakeHouseholdStore) CreateHousehold(_ context.Context, _ string) (household.Household, error) {
+	atomic.AddInt32(&f.createCalls, 1)
+	if f.createErr != nil {
+		return household.Household{}, f.createErr
+	}
+	id := f.nextID
+	if id == 0 {
+		id = 1000
+	}
+	return household.Household{HouseholdID: id}, nil
 }
 
 // jwksIssuer is a test OIDC issuer serving discovery + a swappable JWKS.
@@ -344,7 +384,12 @@ func TestAuthMiddleware(t *testing.T) {
 // auth configuration is invalid, keeping test setup concise.
 func mustNewAuthenticator(t *testing.T, cfg AuthConfig, store identityStore) *Authenticator {
 	t.Helper()
-	a, err := NewAuthenticator(cfg, store)
+	return mustNewAuthenticatorWithHouseholds(t, cfg, store, &fakeHouseholdStore{})
+}
+
+func mustNewAuthenticatorWithHouseholds(t *testing.T, cfg AuthConfig, store identityStore, households householdStore) *Authenticator {
+	t.Helper()
+	a, err := NewAuthenticator(cfg, store, households)
 	require.NoError(t, err)
 	return a
 }

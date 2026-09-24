@@ -62,7 +62,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	mpSvc := mealplan.NewService(pool)
 	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
 	plan, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
-		UserID:             userA,
+		HouseholdID:        userA,
 		Name:               "Grocery Week",
 		WeekStartDate:      week,
 		WeekStartDayOfWeek: 1,
@@ -73,7 +73,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	list, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, list.GroceryListID)
-	assert.Equal(t, userA, list.UserID)
+	assert.Equal(t, userA, list.HouseholdID)
 	assert.Nil(t, list.MealPlanID)
 
 	gotList, err := svc.GetGroceryListByID(ctx, list.GroceryListID, userA)
@@ -151,7 +151,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.NotZero(t, gen.GroceryListID)
 	require.NotNil(t, gen.MealPlanID)
 	assert.Equal(t, plan.MealPlanID, *gen.MealPlanID)
-	assert.Equal(t, userA, gen.UserID)
+	assert.Equal(t, userA, gen.HouseholdID)
 
 	batch, err := svc.AddGroceryListItems(ctx, []GroceryListItem{
 		{GroceryListID: gen.GroceryListID, ItemID: &itemID, QuantityNeeded: 2, UnitID: &canID, Source: "mealplan"},
