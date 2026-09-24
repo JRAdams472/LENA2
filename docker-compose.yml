@@ -139,7 +139,7 @@ services:
     logging: *default-logging
 
   caddy:
-    image: caddy:2.8.4-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    image: caddy:2.11.3-alpine@sha256:86deaf5e3d3408a6ccec08fbb79989783dd26e206ae10bcf78a801dc8c9ab794
     ports:
       - "80:80"
     environment:
