@@ -17,6 +17,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/grocery"
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -48,11 +49,13 @@ func TestBFF_Integration(t *testing.T) {
 	issuer := testutil.NewTestIssuer(t)
 
 	identitySvc := identity.NewService(pool)
-	authenticator := mustNewAuthenticator(t, AuthConfig{
+	// The authenticator writes household.households, so it needs the real
+	// household service — the fake returns IDs the FK would reject.
+	authenticator := mustNewAuthenticatorWithHouseholds(t, AuthConfig{
 		Issuers:     []string{issuer.URL},
 		Audiences:   []string{issuer.Audience},
 		AdminEmails: []string{"auth@example.com", "user-a@example.com"},
-	}, identitySvc)
+	}, identitySvc, household.NewService(pool))
 
 	resolver := NewResolver(pool, Services{
 		Analytics: analytics.NewService(pool),

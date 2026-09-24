@@ -136,11 +136,18 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 	}
 	// Mirror the authenticator's default-household path: create the row,
 	// then assign it only while household_id is still NULL so an already
-	// joined household is never overwritten.
+	// joined household is never overwritten. Explicit IDs bypass the
+	// BIGSERIAL sequence, so it is bumped afterwards — otherwise
+	// CreateHousehold draws a colliding household_id.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO household.households (household_id, created_by) VALUES ($1, $2)
 		 ON CONFLICT (household_id) DO NOTHING`, u.UserID, email); err != nil {
 		t.Fatalf("create test household: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`SELECT setval('household.households_household_id_seq',
+			(SELECT COALESCE(MAX(household_id), 1) FROM household.households))`); err != nil {
+		t.Fatalf("sync household sequence: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
 		`UPDATE identity.users SET household_id = $1 WHERE user_id = $1 AND household_id IS NULL`, u.UserID); err != nil {
