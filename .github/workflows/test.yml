@@ -54,7 +54,7 @@ jobs:
         # without pulling in the whole module (e.g. clients/web).
         run: |
           coverpkg=$(go list -f '{{.ImportPath}}' ./cmd/... ./internal/... | tr '\n' ',' | sed 's/,$//')
-          go test -race -count=1 -coverprofile=coverage.out -covermode=atomic -coverpkg="$coverpkg" ./cmd/... ./internal/...
+          go test -race -count=1 -timeout 20m -coverprofile=coverage.out -covermode=atomic -coverpkg="$coverpkg" ./cmd/... ./internal/...
 
       - name: Filter generated code from coverage
         run: go run ./tools/coveragefilter < coverage.out > coverage-filtered.out

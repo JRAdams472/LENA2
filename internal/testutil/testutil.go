@@ -126,8 +126,9 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 
 // MustUser upserts a test user, ensures a default household, and returns
 // the resulting user ID. The household ID equals the user ID — the same
-// convention the 0028 migration backfill used — so solo-user tests can
-// keep using the user ID as the household scope.
+// convention the 0028 migration backfill used — unless a serially created
+// household already holds that ID, in which case a fresh serial household
+// is assigned instead.
 func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email string) int64 {
 	svc := identity.NewService(pool)
 	u, err := svc.UpsertUser(ctx, "test-provider", email, email, "Test User")
@@ -138,11 +139,23 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 	// then assign it only while household_id is still NULL so an already
 	// joined household is never overwritten. Explicit IDs bypass the
 	// BIGSERIAL sequence, so it is bumped afterwards — otherwise
-	// CreateHousehold draws a colliding household_id.
-	if _, err := pool.Exec(ctx,
+	// CreateHousehold draws a colliding household_id. The reverse can also
+	// happen: a serially created household may already hold the user ID, in
+	// which case the user gets a serial household of their own rather than
+	// silently joining someone else's.
+	householdID := u.UserID
+	tag, err := pool.Exec(ctx,
 		`INSERT INTO household.households (household_id, created_by) VALUES ($1, $2)
-		 ON CONFLICT (household_id) DO NOTHING`, u.UserID, email); err != nil {
+		 ON CONFLICT (household_id) DO NOTHING`, u.UserID, email)
+	if err != nil {
 		t.Fatalf("create test household: %v", err)
+	}
+	if tag.RowsAffected() == 0 {
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO household.households (created_by) VALUES ($1) RETURNING household_id`,
+			email).Scan(&householdID); err != nil {
+			t.Fatalf("create fallback test household: %v", err)
+		}
 	}
 	if _, err := pool.Exec(ctx,
 		`SELECT setval('household.households_household_id_seq',
@@ -150,7 +163,7 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 		t.Fatalf("sync household sequence: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`UPDATE identity.users SET household_id = $1 WHERE user_id = $1 AND household_id IS NULL`, u.UserID); err != nil {
+		`UPDATE identity.users SET household_id = $2 WHERE user_id = $1 AND household_id IS NULL`, u.UserID, householdID); err != nil {
 		t.Fatalf("assign test household: %v", err)
 	}
 	return u.UserID
