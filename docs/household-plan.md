@@ -22,7 +22,8 @@ This plan predates the audit remediation program (phases 1–8). The following c
 
 - **p1 (merged, PR #138):** additive migration `0028` (household schema, invites, `users.household_id`/`is_searchable`, deterministic `household_id = user_id` backfill), `internal/household` service, `internal/identity` household/search methods, `currentuser.User.HouseholdID`/`IsSearchable` fields.
 - **p2 (this branch):** switchover migration `0029`, `userprefs.household_item`/`household_bottle`, `user_item_favorite`/`user_bottle_favorite` split, `MergeHouseholdStock`/`ReassignHousehold`, `mealplan`/`grocery` `household_id`, analytics household fan-out, all BFF resolver call sites on `HouseholdID`/`UserID` as appropriate. **Pulled forward from p3:** the authenticator's default-household ensure (`ensureDefaultHousehold` on the cache-miss path) and `InvalidateUser` — required so `u.HouseholdID` is always populated before household-scoped queries run.
-- **p3 (next):** GraphQL schema (`HouseholdUser`, `InviteStatus` enum, household/invite resolvers), invite accept/leave orchestration with cache invalidation, `me.isSearchable`/`me.household`.
+- **p3 (this branch):** GraphQL schema (`HouseholdUser`, `InviteStatus` enum, household/invite resolvers), invite accept/leave orchestration with cache invalidation, `me.isSearchable`/`me.household`.
+- **p4 (next):** web UI — `/household` page, invite dashboard card, profile `isSearchable` toggle.
 - **p4:** web UI.
 
 ## 1. Objective

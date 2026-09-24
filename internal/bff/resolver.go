@@ -50,6 +50,8 @@ type Resolver struct {
 	WineService            WineService
 	IdentityService        IdentityService
 	RecipeImportService    RecipeImportService
+	HouseholdService       HouseholdService
+	AuthInvalidator        AuthInvalidator
 	OCRClient              OCRClient
 	NutritionPhotoMaxBytes int
 	RecipeScanMaxBytes     int
@@ -87,6 +89,8 @@ type Services struct {
 	Wine         WineService
 	Identity     IdentityService
 	RecipeImport RecipeImportService
+	Household    HouseholdService
+	Auth         AuthInvalidator
 	OCR          OCRClient
 }
 
@@ -117,6 +121,8 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		WineService:            svc.Wine,
 		IdentityService:        svc.Identity,
 		RecipeImportService:    svc.RecipeImport,
+		HouseholdService:       svc.Household,
+		AuthInvalidator:        svc.Auth,
 		OCRClient:              svc.OCR,
 		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
 		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
@@ -413,13 +419,19 @@ func (r *Resolver) Me(ctx context.Context) (*userResolver, error) {
 	if u.IsAdmin {
 		role = identity.RoleAdmin
 	}
+	var householdID *int64
+	if u.HouseholdID != 0 {
+		householdID = &u.HouseholdID
+	}
 	return &userResolver{u: identity.User{
-		UserID:      u.UserID,
-		Email:       u.Email,
-		DisplayName: u.DisplayName,
-		Role:        role,
-		IsActive:    true,
-	}}, nil
+		UserID:       u.UserID,
+		Email:        u.Email,
+		DisplayName:  u.DisplayName,
+		Role:         role,
+		IsActive:     true,
+		HouseholdID:  householdID,
+		IsSearchable: u.IsSearchable,
+	}, root: r}, nil
 }
 
 func derefString(s *string) string {
@@ -443,10 +455,12 @@ func boolValue(v *bool) bool {
 	return *v
 }
 
-// userResolver resolves User fields.
+// userResolver resolves User fields. root gives field resolvers access to
+// services for self-gated lookups like household membership.
 type userResolver struct {
 	u         identity.User
 	protected bool
+	root      *Resolver
 }
 
 func (r *userResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.u.UserID, 10)) }
@@ -472,6 +486,22 @@ func (r *userResolver) LastLoginAt() *graphql.Time {
 		return nil
 	}
 	return &graphql.Time{Time: *r.u.LastLoginAt}
+}
+
+func (r *userResolver) IsSearchable() bool { return r.u.IsSearchable }
+
+// Household resolves the user's household only when the resolved user is
+// the caller — admin user lists and other-user views never expose
+// household membership.
+func (r *userResolver) Household(ctx context.Context) (*householdResolver, error) {
+	if r.root == nil || r.root.HouseholdService == nil || r.u.HouseholdID == nil {
+		return nil, nil
+	}
+	caller, err := userFromContext(ctx)
+	if err != nil || caller.UserID != r.u.UserID {
+		return nil, nil
+	}
+	return r.root.householdWithMembers(ctx, *r.u.HouseholdID)
 }
 
 type pageInfoResolver struct {

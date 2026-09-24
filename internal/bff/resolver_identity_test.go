@@ -3,12 +3,16 @@ package bff
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/testutil"
@@ -92,6 +96,67 @@ func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, fir
 	u.FirstName, u.LastName, u.BackupEmail = first, last, backup
 	f.users[userID] = u
 	return nil
+}
+
+func (f *fakeIdentityService) SetUserHousehold(_ context.Context, userID, householdID int64, _ *int64) error {
+	u, ok := f.users[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.HouseholdID = &householdID
+	f.users[userID] = u
+	return nil
+}
+
+func (f *fakeIdentityService) SetUserSearchable(_ context.Context, userID int64, searchable bool, _ string) error {
+	u, ok := f.users[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.IsSearchable = searchable
+	f.users[userID] = u
+	return nil
+}
+
+func (f *fakeIdentityService) ListUsersByHousehold(_ context.Context, householdID int64) ([]identity.User, error) {
+	var out []identity.User
+	for _, u := range f.users {
+		if u.HouseholdID != nil && *u.HouseholdID == householdID {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeIdentityService) ListUsersByIDs(_ context.Context, ids []int64) ([]identity.User, error) {
+	out := make([]identity.User, 0, len(ids))
+	for _, id := range ids {
+		if u, ok := f.users[id]; ok {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeIdentityService) SearchUsers(_ context.Context, term string, excludeUserID, excludeHouseholdID int64, limit int32) ([]identity.User, error) {
+	term = strings.ToLower(term)
+	var out []identity.User
+	for _, u := range f.users {
+		if u.UserID == excludeUserID || !u.IsActive || !u.IsSearchable {
+			continue
+		}
+		if u.HouseholdID != nil && *u.HouseholdID == excludeHouseholdID {
+			continue
+		}
+		hay := strings.ToLower(u.Email + " " + u.DisplayName + " " + u.FirstName + " " + u.LastName)
+		if strings.Contains(hay, term) {
+			out = append(out, u)
+		}
+	}
+	if int(limit) < len(out) {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 func adminCtx() context.Context {
@@ -248,4 +313,71 @@ func TestResolver_Me_UsesIdentityService(t *testing.T) {
 	assert.Equal(t, "admin", res.Role())
 	assert.True(t, res.IsProtected())
 	assert.Equal(t, "Ada", *res.FirstName())
+}
+
+// fakeAuthInvalidator records auth-cache evictions for assertions.
+type fakeAuthInvalidator struct {
+	users   []string
+	userIDs []int64
+}
+
+func (f *fakeAuthInvalidator) InvalidateUser(provider, subject string) {
+	f.users = append(f.users, provider+"|"+subject)
+}
+
+func (f *fakeAuthInvalidator) InvalidateUserID(_ context.Context, userID int64) {
+	f.userIDs = append(f.userIDs, userID)
+}
+
+func TestResolver_UpdateMyProfile_IsSearchable(t *testing.T) {
+	svc := newFakeIdentityService(
+		identity.User{UserID: 1, Email: "me@example.com", Role: identity.RoleMember, IsActive: true, IsSearchable: true},
+	)
+	auth := &fakeAuthInvalidator{}
+	r := &Resolver{IdentityService: svc, AuthInvalidator: auth}
+	ctx := testutil.WithUser(context.Background(), 1, "me@example.com")
+	off := false
+
+	got, err := r.UpdateMyProfile(ctx, struct{ Input updateProfileInput }{
+		Input: updateProfileInput{IsSearchable: &off},
+	})
+	require.NoError(t, err)
+	assert.False(t, got.IsSearchable())
+	// A change evicts the cached identity resolution.
+	require.Len(t, auth.users, 1)
+
+	// Resubmitting the same value does not invalidate again.
+	_, err = r.UpdateMyProfile(ctx, struct{ Input updateProfileInput }{
+		Input: updateProfileInput{IsSearchable: &off},
+	})
+	require.NoError(t, err)
+	assert.Len(t, auth.users, 1)
+}
+
+func TestResolver_User_HouseholdSelfGated(t *testing.T) {
+	hhID := int64(42)
+	svc := newFakeIdentityService(
+		identity.User{UserID: 1, Email: "admin@example.com", Role: identity.RoleAdmin, IsActive: true, HouseholdID: &hhID},
+		identity.User{UserID: 2, Email: "me@example.com", Role: identity.RoleMember, IsActive: true, HouseholdID: &hhID},
+	)
+	h := mock.NewMockHouseholdService(gomock.NewController(t))
+	h.EXPECT().GetHouseholdByID(gomock.Any(), hhID).
+		Return(household.Household{HouseholdID: hhID}, nil)
+	r := &Resolver{IdentityService: svc, HouseholdService: h}
+
+	// Caller resolving their own user sees the household.
+	self, err := r.userByID(testutil.WithUser(context.Background(), 2, "me@example.com"), 2)
+	require.NoError(t, err)
+	hh, err := self.Household(testutil.WithUser(context.Background(), 2, "me@example.com"))
+	require.NoError(t, err)
+	require.NotNil(t, hh)
+	assert.Equal(t, graphql.ID("42"), hh.ID())
+
+	// A different caller resolving user 2 sees no household — the admin
+	// list path must not leak membership.
+	other, err := r.userByID(adminCtx(), 2)
+	require.NoError(t, err)
+	hh, err = other.Household(adminCtx())
+	require.NoError(t, err)
+	assert.Nil(t, hh)
 }

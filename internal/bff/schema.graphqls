@@ -109,6 +109,13 @@ type Query {
   recipeImports(page: Int = 1, pageSize: Int = 25, status: RecipeImportStatus): RecipeImportPage! @admin
   # Admin-only: pending recipe imports for review.
   pendingRecipeImports(page: Int = 1, pageSize: Int = 25): RecipeImportPage! @admin
+  # The caller's household with its members; null when the caller has none.
+  myHousehold: Household
+  # Pending invites the caller received or sent (for cancellation).
+  householdInvites: [HouseholdInvite!]!
+  # Opted-in, active users matching a name/email term; excludes the
+  # caller and current household members.
+  searchHouseholdUsers(term: String!, limit: Int = 20): [HouseholdUser!]!
 }
 
 type Mutation {
@@ -230,12 +237,21 @@ type Mutation {
   # admins, and removing the last active admin.
   setUserRole(userId: ID!, role: Role!): User! @admin
   setUserActive(userId: ID!, isActive: Boolean!): User! @admin
+
+  # Household membership: invite by user id, accept/decline received
+  # invites, cancel sent ones, or leave the current household.
+  inviteHouseholdMember(userId: ID!): HouseholdInvite!
+  acceptHouseholdInvite(inviteId: ID!): Household!
+  declineHouseholdInvite(inviteId: ID!): HouseholdInvite!
+  cancelHouseholdInvite(inviteId: ID!): HouseholdInvite!
+  leaveHousehold: Boolean!
 }
 
 input UpdateProfileInput {
   firstName: String
   lastName: String
   backupEmail: String
+  isSearchable: Boolean
 }
 
 type PageInfo {
@@ -257,11 +273,47 @@ type User {
   # can never be demoted or banned via the API.
   isProtected: Boolean!
   lastLoginAt: Time
+  # Whether the user appears in household-invite search results.
+  isSearchable: Boolean!
+  # The user's household. Only resolves non-null when the resolved user
+  # is the caller — admin user lists never expose household membership.
+  household: Household
 }
 
 type UserPage {
   items: [User!]!
   pageInfo: PageInfo!
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+# Restricted user projection for household flows — intentionally omits
+# email, role, isProtected, and lastLoginAt, which the full User type
+# returns unconditionally.
+type HouseholdUser {
+  id: ID!
+  displayName: String
+  firstName: String
+  lastName: String
+}
+
+type Household {
+  id: ID!
+  members: [HouseholdUser!]!
+  createdAt: Time!
+}
+
+type HouseholdInvite {
+  id: ID!
+  fromUser: HouseholdUser!
+  toUser: HouseholdUser!
+  status: InviteStatus!
+  createdAt: Time!
 }
 
 type Category {

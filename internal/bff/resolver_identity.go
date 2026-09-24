@@ -31,7 +31,7 @@ func (r *Resolver) Users(ctx context.Context, args struct {
 	}
 	out := make([]*userResolver, len(users))
 	for i, u := range users {
-		out[i] = &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email)}
+		out[i] = &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email), root: r}
 	}
 	return &userPageResolver{items: out, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
@@ -94,9 +94,10 @@ func (r *Resolver) SetUserActive(ctx context.Context, args struct {
 // updateProfileInput mirrors the UpdateProfileInput GraphQL input type.
 // A nil field leaves the stored value unchanged; an empty string clears it.
 type updateProfileInput struct {
-	FirstName   *string
-	LastName    *string
-	BackupEmail *string
+	FirstName    *string
+	LastName     *string
+	BackupEmail  *string
+	IsSearchable *bool
 }
 
 // UpdateMyProfile updates the caller's own profile fields.
@@ -138,6 +139,15 @@ func (r *Resolver) UpdateMyProfile(ctx context.Context, args struct {
 	if err := r.IdentityService.UpdateProfile(ctx, actor.UserID, first, last, backup, actor.Email); err != nil {
 		return nil, err
 	}
+	// Searchability lives on the identity row but is cached in the
+	// authenticator's user resolution — invalidate on change so the next
+	// request picks it up.
+	if args.Input.IsSearchable != nil && *args.Input.IsSearchable != current.IsSearchable {
+		if err := r.IdentityService.SetUserSearchable(ctx, actor.UserID, *args.Input.IsSearchable, actor.Email); err != nil {
+			return nil, err
+		}
+		r.invalidateUser(ctx, actor)
+	}
 	return r.userByID(ctx, actor.UserID)
 }
 
@@ -148,7 +158,7 @@ func (r *Resolver) userByID(ctx context.Context, userID int64) (*userResolver, e
 	if err != nil {
 		return nil, err
 	}
-	return &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email)}, nil
+	return &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email), root: r}, nil
 }
 
 // mapAdminGuardError translates identity guard failures into client-safe
