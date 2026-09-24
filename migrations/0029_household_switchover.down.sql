@@ -97,3 +97,15 @@ ALTER TABLE userprefs.user_item
     DROP COLUMN household_id;
 
 DROP TABLE userprefs.user_item_favorite;
+
+-- ---------- lena_app grants (paired with the up section) ----------
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA household
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM lena_app;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA household
+    REVOKE USAGE ON SEQUENCES FROM lena_app;
+
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA household FROM lena_app;
+REVOKE USAGE ON ALL SEQUENCES IN SCHEMA household FROM lena_app;
+REVOKE USAGE ON SCHEMA household FROM lena_app;

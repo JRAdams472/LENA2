@@ -22,6 +22,20 @@ BEGIN
     END LOOP;
 END $$;
 
+-- lena_app (migration 0024) has privileges only on the schemas named there
+-- plus userprefs (0026). The household schema is written at request time
+-- now — default-household creation in auth, invites in phase 3 — so grant
+-- it the same privileges as the other app-owned schemas.
+GRANT USAGE ON SCHEMA household TO lena_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA household TO lena_app;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA household TO lena_app;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA household
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO lena_app;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA household
+    GRANT USAGE ON SEQUENCES TO lena_app;
+
 -- ---------- pantry: userprefs.user_item -> userprefs.household_item ----------
 
 ALTER TABLE userprefs.user_item
