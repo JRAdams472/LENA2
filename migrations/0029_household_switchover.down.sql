@@ -23,8 +23,6 @@ ALTER TABLE grocery.grocery_list
 
 -- ---------- meal plans ----------
 
-ALTER INDEX mealplan.idx_meal_plan_household_week RENAME TO idx_meal_plan_user_week;
-
 ALTER TABLE mealplan.meal_plan
     ADD COLUMN user_id BIGINT REFERENCES identity.users(user_id);
 
@@ -33,9 +31,13 @@ SET user_id = u.user_id
 FROM identity.users u
 WHERE u.household_id = mp.household_id;
 
+-- Dropping household_id also drops idx_meal_plan_household_week; recreate
+-- the original user-scoped index.
 ALTER TABLE mealplan.meal_plan
     ALTER COLUMN user_id SET NOT NULL,
     DROP COLUMN household_id;
+
+CREATE INDEX idx_meal_plan_user_week ON mealplan.meal_plan (user_id, week_start_date);
 
 -- ---------- cellar ----------
 
@@ -61,13 +63,14 @@ WHERE f.user_id = ub.user_id AND f.bottle_id = ub.bottle_id;
 ALTER TABLE userprefs.user_bottle
     ALTER COLUMN user_id SET NOT NULL,
     DROP CONSTRAINT household_bottle_household_bottle,
-    ADD CONSTRAINT user_bottle_user_bottle UNIQUE (user_id, bottle_id),
+    ADD CONSTRAINT user_bottle_user_bottle_key UNIQUE (user_id, bottle_id),
     DROP COLUMN household_id;
 
 DROP TABLE userprefs.user_bottle_favorite;
 
 -- ---------- pantry ----------
 
+ALTER INDEX userprefs.idx_household_item_item_id RENAME TO idx_user_item_item_id;
 ALTER TABLE userprefs.household_item RENAME CONSTRAINT household_item_pkey TO user_item_pkey;
 ALTER SEQUENCE userprefs.household_item_household_item_id_seq RENAME TO user_item_user_item_id_seq;
 ALTER TABLE userprefs.household_item RENAME TO user_item;
@@ -90,7 +93,7 @@ WHERE f.user_id = ui.user_id AND f.item_id = ui.item_id;
 ALTER TABLE userprefs.user_item
     ALTER COLUMN user_id SET NOT NULL,
     DROP CONSTRAINT household_item_household_item,
-    ADD CONSTRAINT user_item_user_item UNIQUE (user_id, item_id),
+    ADD UNIQUE (user_id, item_id),
     DROP COLUMN household_id;
 
 DROP TABLE userprefs.user_item_favorite;

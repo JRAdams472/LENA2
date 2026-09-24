@@ -59,6 +59,7 @@ ALTER TABLE userprefs.user_item RENAME TO household_item;
 ALTER TABLE userprefs.household_item RENAME COLUMN user_item_id TO household_item_id;
 ALTER TABLE userprefs.household_item RENAME CONSTRAINT user_item_pkey TO household_item_pkey;
 ALTER SEQUENCE userprefs.user_item_user_item_id_seq RENAME TO household_item_household_item_id_seq;
+ALTER INDEX userprefs.idx_user_item_item_id RENAME TO idx_household_item_item_id;
 
 -- ---------- cellar: userprefs.user_bottle -> userprefs.household_bottle ----------
 
@@ -107,11 +108,13 @@ SET household_id = u.household_id
 FROM identity.users u
 WHERE mp.user_id = u.user_id;
 
+-- Dropping user_id also drops idx_meal_plan_user_week (it covers the
+-- column); recreate the same index against household_id.
 ALTER TABLE mealplan.meal_plan
     DROP COLUMN user_id,
     ALTER COLUMN household_id SET NOT NULL;
 
-ALTER INDEX mealplan.idx_meal_plan_user_week RENAME TO idx_meal_plan_household_week;
+CREATE INDEX idx_meal_plan_household_week ON mealplan.meal_plan (household_id, week_start_date);
 
 -- ---------- grocery lists ----------
 
