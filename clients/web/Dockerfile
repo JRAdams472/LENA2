@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build stage — Node 22 LTS matches CI (node-version: 22 in test.yml).
-FROM node:22.23.2-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS builder
+FROM node:26.9.0-alpine@sha256:dbaa92e5758cbbcf85d65d5403fdb530fe3442cbe8c6dbfb7ef23365450d5070 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -18,7 +18,7 @@ RUN if [ -z "$NEXT_PUBLIC_GOOGLE_CLIENT_ID" ] || [ "$NEXT_PUBLIC_GOOGLE_CLIENT_I
 RUN npm run build
 
 # Runtime stage
-FROM node:22.23.2-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS runner
+FROM node:26.9.0-alpine@sha256:dbaa92e5758cbbcf85d65d5403fdb530fe3442cbe8c6dbfb7ef23365450d5070 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
