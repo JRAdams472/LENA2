@@ -272,6 +272,8 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 			Wine:         wineSvc,
 			Identity:     identitySvc,
 			RecipeImport: recipeImportSvc,
+			Household:    householdSvc,
+			Auth:         authenticator,
 			OCR:          ocrClient,
 		},
 		bff.Options{

@@ -456,6 +456,20 @@ func (a *Authenticator) InvalidateUser(provider, subject string) {
 	delete(a.users, provider+"\x00"+subject)
 }
 
+// InvalidateUserID evicts every cached resolution whose user ID matches —
+// used when the resolver knows a member's ID but not their provider and
+// subject (e.g. the inviter in an invite-accept flow). The cache is small
+// (userCacheMax), so a scan is cheap.
+func (a *Authenticator) InvalidateUserID(_ context.Context, userID int64) {
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	for k, e := range a.users {
+		if e.user.UserID == userID {
+			delete(a.users, k)
+		}
+	}
+}
+
 // cachedUser returns the previously resolved identity for issuer|subject
 // when it is still fresh. A role change or ban can lag by at most
 // userCacheTTL — the tradeoff accepted to keep a request burst from

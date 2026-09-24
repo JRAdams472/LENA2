@@ -7,6 +7,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/grocery"
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
@@ -50,6 +51,7 @@ type GroceryWriter interface {
 type GroceryService interface {
 	GroceryReader
 	GroceryWriter
+	HouseholdMigration
 }
 
 var _ GroceryService = (*grocery.Service)(nil)
@@ -170,6 +172,7 @@ type MealPlanWriter interface {
 type MealPlanService interface {
 	MealPlanReader
 	MealPlanWriter
+	HouseholdMigration
 }
 
 var _ MealPlanService = (*mealplan.Service)(nil)
@@ -286,6 +289,7 @@ type UserPrefsService interface {
 	PantryStore
 	CellarStore
 	FavoriteStore
+	MergeHouseholdStock(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error
 }
 
 var _ UserPrefsService = (*userprefs.Service)(nil)
@@ -294,6 +298,17 @@ var _ UserPrefsService = (*userprefs.Service)(nil)
 type UserReader interface {
 	GetByID(ctx context.Context, userID int64) (identity.User, error)
 	IsProtected(provider, email string) bool
+}
+
+// HouseholdDirectory is the household-membership surface of identity:
+// member lookup for hydration and guarded reassignment for the
+// invite-accept and leave orchestrations.
+type HouseholdDirectory interface {
+	SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error
+	SetUserSearchable(ctx context.Context, userID int64, searchable bool, by string) error
+	ListUsersByHousehold(ctx context.Context, householdID int64) ([]identity.User, error)
+	ListUsersByIDs(ctx context.Context, ids []int64) ([]identity.User, error)
+	SearchUsers(ctx context.Context, term string, excludeUserID, excludeHouseholdID int64, limit int32) ([]identity.User, error)
 }
 
 // UserAdmin is the admin user-management surface of identity.
@@ -309,10 +324,39 @@ type UserAdmin interface {
 type IdentityService interface {
 	UserReader
 	UserAdmin
+	HouseholdDirectory
 	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error
 }
 
 var _ IdentityService = (*identity.Service)(nil)
+
+// HouseholdService is the subset of *household.Service used by the
+// resolver for household and invite lifecycle operations.
+type HouseholdService interface {
+	CreateHousehold(ctx context.Context, by string) (household.Household, error)
+	GetHouseholdByID(ctx context.Context, householdID int64) (household.Household, error)
+	CreateInvite(ctx context.Context, fromUserID, toUserID, householdID int64, by string) (household.Invite, error)
+	GetInviteByID(ctx context.Context, inviteID int64) (household.Invite, error)
+	ListPendingInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error)
+	ListSentInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error)
+	TransitionInvite(ctx context.Context, inviteID int64, to household.Status, by string) (household.Invite, error)
+}
+
+var _ HouseholdService = (*household.Service)(nil)
+
+// AuthInvalidator evicts cached identity resolutions after household
+// membership or searchability changes so the next request re-reads them.
+type AuthInvalidator interface {
+	InvalidateUser(provider, subject string)
+	InvalidateUserID(ctx context.Context, userID int64)
+}
+
+// HouseholdMigration is the cross-domain merge surface used by the
+// invite-accept orchestration. Each domain repoints its own tables;
+// schema-per-module forbids any one service from writing them all.
+type HouseholdMigration interface {
+	ReassignHousehold(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error
+}
 
 // EventRecorder is the event-ingest surface of analytics.
 type EventRecorder interface {

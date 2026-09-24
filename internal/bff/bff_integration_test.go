@@ -66,6 +66,8 @@ func TestBFF_Integration(t *testing.T) {
 		UserPrefs: userprefs.NewService(pool),
 		Wine:      wine.NewService(pool),
 		Identity:  identitySvc,
+		Household: household.NewService(pool),
+		Auth:      authenticator,
 	}, Options{})
 
 	e := echo.New()
@@ -84,6 +86,9 @@ func TestBFF_Integration(t *testing.T) {
 	})
 	t.Run("end to end", func(t *testing.T) {
 		runEndToEndTests(t, srv, issuer)
+	})
+	t.Run("household", func(t *testing.T) {
+		runHouseholdTests(t, srv, issuer)
 	})
 }
 
@@ -739,6 +744,167 @@ func runEndToEndTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestI
 	}
 	decodeData(t, gr.Data, &bMealPlans)
 	assert.False(t, containsID(bMealPlans.MealPlans.Items, mealPlanRes.CreateMealPlan.ID))
+}
+
+// runHouseholdTests exercises the household lifecycle over GraphQL:
+// search → invite → accept → shared pantry visibility → leave. It uses
+// fresh users so joining a household cannot disturb the cross-user
+// isolation assertions in runEndToEndTests.
+func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	tokC := issuer.Token(t, "hh-c", "hh-c@example.com", "HH C")
+	tokD := issuer.Token(t, "hh-d", "hh-d@example.com", "HH D")
+
+	meID := func(token string) string {
+		status, gr := doGraphQL(t, srv, token, `{ me { id isSearchable household { id members { id displayName } } } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Me struct {
+				ID           string `json:"id"`
+				IsSearchable bool   `json:"isSearchable"`
+				Household    *struct {
+					ID      string `json:"id"`
+					Members []struct {
+						ID          string `json:"id"`
+						DisplayName string `json:"displayName"`
+					} `json:"members"`
+				} `json:"household"`
+			} `json:"me"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.Me.ID
+	}
+	idC := meID(tokC)
+	idD := meID(tokD)
+
+	// D is searchable by default; C finds them by term.
+	status, gr := doGraphQL(t, srv, tokC, `query Search($term: String!) {
+		searchHouseholdUsers(term: $term) { id displayName }
+	}`, map[string]any{"term": "hh-d"})
+	require.Equal(t, http.StatusOK, status)
+	var searchRes struct {
+		Search []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"displayName"`
+		} `json:"searchHouseholdUsers"`
+	}
+	decodeData(t, gr.Data, &searchRes)
+	require.Len(t, searchRes.Search, 1)
+	assert.Equal(t, idD, searchRes.Search[0].ID)
+
+	// C invites D.
+	status, gr = doGraphQL(t, srv, tokC, `mutation Invite($userId: ID!) {
+		inviteHouseholdMember(userId: $userId) { id status fromUser { id } toUser { id } }
+	}`, map[string]any{"userId": idD})
+	require.Equal(t, http.StatusOK, status)
+	var inviteRes struct {
+		Invite struct {
+			ID       string `json:"id"`
+			Status   string `json:"status"`
+			FromUser struct {
+				ID string `json:"id"`
+			} `json:"fromUser"`
+			ToUser struct {
+				ID string `json:"id"`
+			} `json:"toUser"`
+		} `json:"inviteHouseholdMember"`
+	}
+	decodeData(t, gr.Data, &inviteRes)
+	assert.Equal(t, "PENDING", inviteRes.Invite.Status)
+	assert.Equal(t, idC, inviteRes.Invite.FromUser.ID)
+	assert.Equal(t, idD, inviteRes.Invite.ToUser.ID)
+
+	// D sees the pending invite and accepts it.
+	status, gr = doGraphQL(t, srv, tokD, `{ householdInvites { id status } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var invitesRes struct {
+		Invites []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"householdInvites"`
+	}
+	decodeData(t, gr.Data, &invitesRes)
+	require.Len(t, invitesRes.Invites, 1)
+
+	status, gr = doGraphQL(t, srv, tokD, `mutation Accept($inviteId: ID!) {
+		acceptHouseholdInvite(inviteId: $inviteId) { id members { id } }
+	}`, map[string]any{"inviteId": inviteRes.Invite.ID})
+	require.Equal(t, http.StatusOK, status)
+	var acceptRes struct {
+		Accept struct {
+			ID      string `json:"id"`
+			Members []struct {
+				ID string `json:"id"`
+			} `json:"members"`
+		} `json:"acceptHouseholdInvite"`
+	}
+	decodeData(t, gr.Data, &acceptRes)
+	require.Len(t, acceptRes.Accept.Members, 2)
+
+	// C puts an item in the shared pantry; D sees it.
+	status, gr = doGraphQL(t, srv, tokC, `{ items(page: 1, pageSize: 1) { items { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var itemsRes struct {
+		Items struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &itemsRes)
+	require.NotEmpty(t, itemsRes.Items.Items)
+	itemID := itemsRes.Items.Items[0].ID
+
+	status, gr = doGraphQL(t, srv, tokC, `mutation Adjust($itemId: ID!) {
+		adjustUserItem(itemId: $itemId, quantity: 3.0) { id currentQty }
+	}`, map[string]any{"itemId": itemID})
+	require.Equal(t, http.StatusOK, status)
+
+	status, gr = doGraphQL(t, srv, tokD, `{ userItems { items { currentQty } pageInfo { totalCount } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var pantryRes struct {
+		UserItems struct {
+			Items []struct {
+				CurrentQty float64 `json:"currentQty"`
+			} `json:"items"`
+			PageInfo struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"pageInfo"`
+		} `json:"userItems"`
+	}
+	decodeData(t, gr.Data, &pantryRes)
+	require.Equal(t, 1, pantryRes.UserItems.PageInfo.TotalCount, "household member should see shared pantry stock")
+	assert.InDelta(t, 3.0, pantryRes.UserItems.Items[0].CurrentQty, 0.001)
+
+	// D leaves: fresh household of one, shared stock stays behind.
+	status, gr = doGraphQL(t, srv, tokD, `mutation { leaveHousehold }`, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	status, gr = doGraphQL(t, srv, tokD, `{ myHousehold { id members { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var myHH struct {
+		MyHousehold *struct {
+			ID      string `json:"id"`
+			Members []struct {
+				ID string `json:"id"`
+			} `json:"members"`
+		} `json:"myHousehold"`
+	}
+	decodeData(t, gr.Data, &myHH)
+	require.NotNil(t, myHH.MyHousehold)
+	require.Len(t, myHH.MyHousehold.Members, 1)
+	assert.NotEqual(t, acceptRes.Accept.ID, myHH.MyHousehold.ID)
+
+	status, gr = doGraphQL(t, srv, tokD, `{ userItems { pageInfo { totalCount } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var afterLeave struct {
+		UserItems struct {
+			PageInfo struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"pageInfo"`
+		} `json:"userItems"`
+	}
+	decodeData(t, gr.Data, &afterLeave)
+	assert.Equal(t, 0, afterLeave.UserItems.PageInfo.TotalCount)
 }
 
 // TestIntegrationGroceryTogglePantrySync exercises the atomic toggle +
