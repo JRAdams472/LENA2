@@ -33,7 +33,7 @@ services:
         condition: service_started
 
   seq:
-    image: datalust/seq:2024.1@sha256:899c169d24f8f007034825eb6b4d5fcf119b9c13b2eb39c6fb588b2798d4923a
+    image: datalust/seq:2026.1.17114@sha256:fa405502a3c57884c88477b78b55ca76c5a3fb1a4d20c6a185c24e750db34056
     environment:
       ACCEPT_EULA: "Y"
       SEQ_FIRSTRUN_ADMINPASSWORDHASH: ${SEQ_FIRSTRUN_ADMINPASSWORDHASH:?SEQ_FIRSTRUN_ADMINPASSWORDHASH must be set (see header comment)}
