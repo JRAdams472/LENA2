@@ -17,6 +17,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/grocery"
+	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -48,11 +49,13 @@ func TestBFF_Integration(t *testing.T) {
 	issuer := testutil.NewTestIssuer(t)
 
 	identitySvc := identity.NewService(pool)
-	authenticator := mustNewAuthenticator(t, AuthConfig{
+	// The authenticator writes household.households, so it needs the real
+	// household service — the fake returns IDs the FK would reject.
+	authenticator := mustNewAuthenticatorWithHouseholds(t, AuthConfig{
 		Issuers:     []string{issuer.URL},
 		Audiences:   []string{issuer.Audience},
 		AdminEmails: []string{"auth@example.com", "user-a@example.com"},
-	}, identitySvc)
+	}, identitySvc, household.NewService(pool))
 
 	resolver := NewResolver(pool, Services{
 		Analytics: analytics.NewService(pool),
@@ -794,14 +797,14 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 		Identity:  identity.NewService(pool),
 	}, Options{})
 
-	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "toggle-sync@example.com"})
+	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, HouseholdID: userID, Email: "toggle-sync@example.com"})
 	gliID := graphql.ID(strconv.FormatInt(gli.GroceryListItemID, 10))
 
 	toggled, err := resolver.ToggleGroceryItemChecked(uctx, struct{ GroceryListItemID graphql.ID }{GroceryListItemID: gliID})
 	require.NoError(t, err)
 	assert.True(t, toggled.IsChecked())
 
-	pantry, err := upSvc.GetUserItemByUserAndItem(ctx, userID, item.ItemID)
+	pantry, err := upSvc.GetHouseholdItemByItem(ctx, userID, item.ItemID)
 	require.NoError(t, err)
 	require.NotNil(t, pantry, "checking the item should create a pantry row")
 	assert.InDelta(t, 3.0, pantry.CurrentQty, 0.0001)
@@ -810,7 +813,7 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, untoggled.IsChecked())
 
-	pantry, err = upSvc.GetUserItemByUserAndItem(ctx, userID, item.ItemID)
+	pantry, err = upSvc.GetHouseholdItemByItem(ctx, userID, item.ItemID)
 	require.NoError(t, err)
 	require.NotNil(t, pantry)
 	assert.InDelta(t, 0.0, pantry.CurrentQty, 0.0001)
@@ -861,7 +864,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	cake := mkRecipe("IT Gen Cake", 1)
 
 	plan, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
-		UserID: userID, Name: "IT Gen Plan", WeekStartDate: time.Now(), IsActive: true,
+		HouseholdID: userID, Name: "IT Gen Plan", WeekStartDate: time.Now(), IsActive: true,
 	}, "it")
 	require.NoError(t, err)
 	for i, rec := range []recipe.Recipe{bread, cake} {
@@ -872,8 +875,8 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	}
 
 	// Pantry already holds 1 kg of flour.
-	_, err = upSvc.UpsertUserItem(ctx, userprefs.UserItem{
-		UserID: userID, ItemID: flour.ItemID, CurrentQty: 1,
+	_, err = upSvc.UpsertHouseholdItem(ctx, userprefs.HouseholdItem{
+		HouseholdID: userID, ItemID: flour.ItemID, CurrentQty: 1,
 	}, "it")
 	require.NoError(t, err)
 
@@ -887,7 +890,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 		Wine:      wine.NewService(pool),
 		Identity:  identity.NewService(pool),
 	}, Options{})
-	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, Email: "grocery-gen@example.com"})
+	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, HouseholdID: userID, Email: "grocery-gen@example.com"})
 	planID := graphql.ID(strconv.FormatInt(plan.MealPlanID, 10))
 
 	res, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
@@ -898,8 +901,8 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	assert.InDelta(t, 2.0, items[0].QuantityNeeded(), 0.0001, "3 kg needed minus 1 kg on hand")
 
 	// A fully stocked pantry omits the line entirely.
-	_, err = upSvc.UpsertUserItem(ctx, userprefs.UserItem{
-		UserID: userID, ItemID: flour.ItemID, CurrentQty: 10,
+	_, err = upSvc.UpsertHouseholdItem(ctx, userprefs.HouseholdItem{
+		HouseholdID: userID, ItemID: flour.ItemID, CurrentQty: 10,
 	}, "it")
 	require.NoError(t, err)
 	res2, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})

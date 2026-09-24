@@ -74,17 +74,25 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 	candidate := testutil.MustUser(ctx, t, pool, "hh-candidate@example.com")
 	optedOut := testutil.MustUser(ctx, t, pool, "hh-hidden@example.com")
 
-	// New users have no household and default to searchable.
+	// MustUser assigns each user a default household (household_id = user_id,
+	// the 0028 backfill convention) and users default to searchable.
 	got, err := svc.GetByID(ctx, caller)
 	require.NoError(t, err)
-	assert.Nil(t, got.HouseholdID)
+	require.NotNil(t, got.HouseholdID)
+	assert.Equal(t, caller, *got.HouseholdID)
 	assert.True(t, got.IsSearchable)
+	callerH := *got.HouseholdID
 
-	// Assign both caller and mate to one household.
+	mateGot, err := svc.GetByID(ctx, mate)
+	require.NoError(t, err)
+	require.NotNil(t, mateGot.HouseholdID)
+
+	// Assign both caller and mate to one household, guarding on their
+	// current membership so a stale expected value loses with a conflict.
 	hh, err := hsvc.CreateHousehold(ctx, "hh-caller@example.com")
 	require.NoError(t, err)
-	require.NoError(t, svc.SetUserHousehold(ctx, caller, hh.HouseholdID, nil))
-	require.NoError(t, svc.SetUserHousehold(ctx, mate, hh.HouseholdID, nil))
+	require.NoError(t, svc.SetUserHousehold(ctx, caller, hh.HouseholdID, &callerH))
+	require.NoError(t, svc.SetUserHousehold(ctx, mate, hh.HouseholdID, mateGot.HouseholdID))
 
 	// A stale expected value loses the race with a conflict.
 	wrong := int64(999)

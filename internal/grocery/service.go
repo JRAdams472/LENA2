@@ -1,4 +1,4 @@
-// Package grocery owns per-user grocery lists and their items. Meal-plan
+// Package grocery owns household-scoped grocery lists and their items. Meal-plan
 // expansion and pantry-stock subtraction are composed by the BFF, which
 // is the only layer allowed to read across domains.
 package grocery
@@ -72,21 +72,21 @@ func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
-// GroceryList is a user's generated shopping list.
+// GroceryList is a household's generated shopping list.
 type GroceryList struct {
 	GroceryListID int64
-	UserID        int64
+	HouseholdID   int64
 	MealPlanID    *int64
 	GeneratedAt   time.Time
 }
 
-// CreateGroceryList creates an empty grocery list for a user.
-func (s *Service) CreateGroceryList(ctx context.Context, userID int64, mealPlanID *int64, by string) (GroceryList, error) {
+// CreateGroceryList creates an empty grocery list for a household.
+func (s *Service) CreateGroceryList(ctx context.Context, householdID int64, mealPlanID *int64, by string) (GroceryList, error) {
 	row, err := s.q.CreateGroceryList(ctx, sqlc.CreateGroceryListParams{
-		UserID:     userID,
-		MealPlanID: optInt8(mealPlanID),
-		CreatedBy:  by,
-		UpdatedBy:  textOrNull(by),
+		HouseholdID: householdID,
+		MealPlanID:  optInt8(mealPlanID),
+		CreatedBy:   by,
+		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
 		return GroceryList{}, fmt.Errorf("create grocery list: %w", err)
@@ -94,18 +94,18 @@ func (s *Service) CreateGroceryList(ctx context.Context, userID int64, mealPlanI
 	return toGroceryList(row), nil
 }
 
-// GetGroceryListByID returns a grocery list owned by the user.
-func (s *Service) GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (GroceryList, error) {
-	row, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: groceryListID, UserID: userID})
+// GetGroceryListByID returns a grocery list owned by the household.
+func (s *Service) GetGroceryListByID(ctx context.Context, groceryListID, householdID int64) (GroceryList, error) {
+	row, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: groceryListID, HouseholdID: householdID})
 	if err != nil {
 		return GroceryList{}, fmt.Errorf("get grocery list: %w", domainerr.FromStorage(err))
 	}
 	return toGroceryList(row), nil
 }
 
-// ListGroceryLists returns a user's grocery lists.
-func (s *Service) ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]GroceryList, error) {
-	rows, err := s.q.ListGroceryLists(ctx, sqlc.ListGroceryListsParams{UserID: userID, Limit: limit, Offset: offset})
+// ListGroceryLists returns a household's grocery lists.
+func (s *Service) ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]GroceryList, error) {
+	rows, err := s.q.ListGroceryLists(ctx, sqlc.ListGroceryListsParams{HouseholdID: householdID, Limit: limit, Offset: offset})
 	if err != nil {
 		return nil, fmt.Errorf("list grocery lists: %w", err)
 	}
@@ -116,18 +116,37 @@ func (s *Service) ListGroceryLists(ctx context.Context, userID int64, limit, off
 	return out, nil
 }
 
-// CountGroceryLists returns the total number of lists owned by the user.
-func (s *Service) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
-	n, err := s.q.CountGroceryLists(ctx, userID)
+// CountGroceryLists returns the total number of lists owned by the household.
+func (s *Service) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
+	n, err := s.q.CountGroceryLists(ctx, householdID)
 	if err != nil {
 		return 0, fmt.Errorf("count grocery lists: %w", err)
 	}
 	return n, nil
 }
 
-// DeleteGroceryList removes a grocery list owned by the user.
-func (s *Service) DeleteGroceryList(ctx context.Context, groceryListID, userID int64) error {
-	return s.q.DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: groceryListID, UserID: userID})
+// DeleteGroceryList removes a grocery list owned by the household.
+func (s *Service) DeleteGroceryList(ctx context.Context, groceryListID, householdID int64) error {
+	return s.q.DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: groceryListID, HouseholdID: householdID})
+}
+
+// ReassignHousehold repoints every grocery list owned by the source
+// household to the target household as part of an invite-accept merge.
+// Callers run it inside the merge unit of work so the reassignment commits
+// atomically with the household switch; a source with no lists is not an
+// error.
+func (s *Service) ReassignHousehold(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error {
+	if fromHouseholdID == toHouseholdID {
+		return nil
+	}
+	if err := s.q.ReassignGroceryListsToHousehold(ctx, sqlc.ReassignGroceryListsToHouseholdParams{
+		ToHouseholdID:   toHouseholdID,
+		UpdatedBy:       by,
+		FromHouseholdID: fromHouseholdID,
+	}); err != nil {
+		return fmt.Errorf("reassign grocery lists: %w", domainerr.FromStorage(err))
+	}
+	return nil
 }
 
 // GroceryListItem is a single item on a shopping list. ItemID is the
@@ -145,11 +164,11 @@ type GroceryListItem struct {
 	IsChecked         bool
 }
 
-// AddGroceryListItem adds an item to a grocery list owned by the user;
+// AddGroceryListItem adds an item to a grocery list owned by the household;
 // the ownership check fails with the same not-found error as
 // GetGroceryListByID.
-func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, userID int64, by string) (GroceryListItem, error) {
-	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: arg.GroceryListID, UserID: userID}); err != nil {
+func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, householdID int64, by string) (GroceryListItem, error) {
+	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: arg.GroceryListID, HouseholdID: householdID}); err != nil {
 		return GroceryListItem{}, fmt.Errorf("add grocery list item: %w", domainerr.FromStorage(err))
 	}
 	qty, err := numericFromFloat64(arg.QuantityNeeded)
@@ -178,9 +197,9 @@ func (s *Service) AddGroceryListItem(ctx context.Context, arg GroceryListItem, u
 	return gli, nil
 }
 
-// ListGroceryListItems returns all items on a list owned by the user.
-func (s *Service) ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]GroceryListItem, error) {
-	rows, err := s.q.ListGroceryListItems(ctx, sqlc.ListGroceryListItemsParams{GroceryListID: groceryListID, UserID: userID})
+// ListGroceryListItems returns all items on a list owned by the household.
+func (s *Service) ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]GroceryListItem, error) {
+	rows, err := s.q.ListGroceryListItems(ctx, sqlc.ListGroceryListItemsParams{GroceryListID: groceryListID, HouseholdID: householdID})
 	if err != nil {
 		return nil, fmt.Errorf("list grocery list items: %w", err)
 	}
@@ -196,9 +215,9 @@ func (s *Service) ListGroceryListItems(ctx context.Context, groceryListID, userI
 }
 
 // ListGroceryListItemsByLists returns all items across a set of lists
-// owned by the user in a single query.
-func (s *Service) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, userID int64) ([]GroceryListItem, error) {
-	rows, err := s.q.ListGroceryListItemsByLists(ctx, sqlc.ListGroceryListItemsByListsParams{GroceryListIds: groceryListIDs, UserID: userID})
+// owned by the household in a single query.
+func (s *Service) ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, householdID int64) ([]GroceryListItem, error) {
+	rows, err := s.q.ListGroceryListItemsByLists(ctx, sqlc.ListGroceryListItemsByListsParams{GroceryListIds: groceryListIDs, HouseholdID: householdID})
 	if err != nil {
 		return nil, fmt.Errorf("list grocery list items by lists: %w", err)
 	}
@@ -213,9 +232,9 @@ func (s *Service) ListGroceryListItemsByLists(ctx context.Context, groceryListID
 	return out, nil
 }
 
-// GetGroceryListItemByID returns an item on a list owned by the user.
-func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (GroceryListItem, error) {
-	row, err := s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, UserID: userID})
+// GetGroceryListItemByID returns an item on a list owned by the household.
+func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID, householdID int64) (GroceryListItem, error) {
+	row, err := s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
 	if err != nil {
 		return GroceryListItem{}, fmt.Errorf("get grocery list item: %w", domainerr.FromStorage(err))
 	}
@@ -226,15 +245,15 @@ func (s *Service) GetGroceryListItemByID(ctx context.Context, groceryListItemID,
 	return gli, nil
 }
 
-// UpdateGroceryListItem modifies an item on a list owned by the user.
-func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg GroceryListItem, by string) error {
+// UpdateGroceryListItem modifies an item on a list owned by the household.
+func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, householdID int64, arg GroceryListItem, by string) error {
 	qty, err := numericFromFloat64(arg.QuantityNeeded)
 	if err != nil {
 		return fmt.Errorf("update grocery list item: %w", err)
 	}
 	return s.q.UpdateGroceryListItem(ctx, sqlc.UpdateGroceryListItemParams{
 		GroceryListItemID: groceryListItemID,
-		UserID:            userID,
+		HouseholdID:       householdID,
 		ItemID:            optInt8(arg.ItemID),
 		IngredientID:      optInt8(arg.IngredientID),
 		ManualItemName:    textOrNull(arg.ManualItemName),
@@ -246,17 +265,17 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, 
 	})
 }
 
-// DeleteGroceryListItem removes an item from a list owned by the user.
-func (s *Service) DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error {
-	return s.q.DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: groceryListItemID, UserID: userID})
+// DeleteGroceryListItem removes an item from a list owned by the household.
+func (s *Service) DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error {
+	return s.q.DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
 }
 
 // ToggleGroceryListItemChecked flips the checked state of an item and
 // returns the post-toggle row in one atomic statement.
-func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (GroceryListItem, error) {
+func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (GroceryListItem, error) {
 	row, err := s.q.ToggleGroceryListItemChecked(ctx, sqlc.ToggleGroceryListItemCheckedParams{
 		GroceryListItemID: groceryListItemID,
-		UserID:            userID,
+		HouseholdID:       householdID,
 		UpdatedBy:         textOrNull(by),
 	})
 	if err != nil {
@@ -270,10 +289,10 @@ func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListI
 }
 
 // AddGroceryListItems inserts a batch of items onto a single list owned
-// by the user. All rows share one GroceryListID; callers composing the
+// by the household. All rows share one GroceryListID; callers composing the
 // batch with other writes wrap the call in a unit of work, which the
 // ctx-carried transaction joins automatically.
-func (s *Service) AddGroceryListItems(ctx context.Context, items []GroceryListItem, userID int64, by string) ([]GroceryListItem, error) {
+func (s *Service) AddGroceryListItems(ctx context.Context, items []GroceryListItem, householdID int64, by string) ([]GroceryListItem, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -283,7 +302,7 @@ func (s *Service) AddGroceryListItems(ctx context.Context, items []GroceryListIt
 			return nil, fmt.Errorf("add grocery list items: mixed list ids %d and %d", listID, it.GroceryListID)
 		}
 	}
-	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: listID, UserID: userID}); err != nil {
+	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: listID, HouseholdID: householdID}); err != nil {
 		return nil, fmt.Errorf("add grocery list items: %w", domainerr.FromStorage(err))
 	}
 	out := make([]GroceryListItem, 0, len(items))
@@ -319,7 +338,7 @@ func (s *Service) AddGroceryListItems(ctx context.Context, items []GroceryListIt
 func toGroceryList(row sqlc.GroceryGroceryList) GroceryList {
 	gl := GroceryList{
 		GroceryListID: row.GroceryListID,
-		UserID:        row.UserID,
+		HouseholdID:   row.HouseholdID,
 		GeneratedAt:   row.GeneratedAt,
 	}
 	if row.MealPlanID.Valid {

@@ -30,53 +30,50 @@ func numericVal(t *testing.T, n pgtype.Numeric) float64 {
 	return f8.Float64
 }
 
-func TestUpsertUserItem(t *testing.T) {
+func TestUpsertHouseholdItem(t *testing.T) {
 	ctx := context.Background()
 	minQty := 1.5
 	purchaseAt := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2025, 2, 2, 0, 0, 0, 0, time.UTC)
-	in := UserItem{
-		UserID:     10,
-		ItemID:     20,
-		CurrentQty: 3.25,
-		MinQty:     &minQty,
-		PurchaseAt: &purchaseAt,
-		ExpiresAt:  &expiresAt,
-		Notes:      "keep stocked",
-		IsFavorite: true,
+	in := HouseholdItem{
+		HouseholdID: 10,
+		ItemID:      20,
+		CurrentQty:  3.25,
+		MinQty:      &minQty,
+		PurchaseAt:  &purchaseAt,
+		ExpiresAt:   &expiresAt,
+		Notes:       "keep stocked",
 	}
 
 	t.Run("success passes params and maps row", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserItemParams) (sqlc.UserprefsUserItem, error) {
-				assert.Equal(t, int64(10), arg.UserID)
+		mq.EXPECT().UpsertHouseholdItem(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpsertHouseholdItemParams) (sqlc.UserprefsHouseholdItem, error) {
+				assert.Equal(t, int64(10), arg.HouseholdID)
 				assert.Equal(t, int64(20), arg.ItemID)
 				assert.InDelta(t, 3.25, numericVal(t, arg.CurrentQty), 1e-9)
 				assert.InDelta(t, 1.5, numericVal(t, arg.MinQty), 1e-9)
 				assert.Equal(t, purchaseAt, arg.PurchaseAt.Time)
 				assert.Equal(t, expiresAt, arg.ExpiresAt.Time)
 				assert.Equal(t, pgtype.Text{String: "keep stocked", Valid: true}, arg.Notes)
-				assert.True(t, arg.IsFavorite)
 				assert.Equal(t, "tester", arg.CreatedBy)
 				assert.Equal(t, pgtype.Text{String: "tester", Valid: true}, arg.UpdatedBy)
-				return sqlc.UserprefsUserItem{
-					UserItemID: 7,
-					UserID:     arg.UserID,
-					ItemID:     arg.ItemID,
-					CurrentQty: arg.CurrentQty,
-					MinQty:     arg.MinQty,
-					PurchaseAt: arg.PurchaseAt,
-					ExpiresAt:  arg.ExpiresAt,
-					Notes:      arg.Notes,
-					IsFavorite: arg.IsFavorite,
+				return sqlc.UserprefsHouseholdItem{
+					HouseholdItemID: 7,
+					HouseholdID:     arg.HouseholdID,
+					ItemID:          arg.ItemID,
+					CurrentQty:      arg.CurrentQty,
+					MinQty:          arg.MinQty,
+					PurchaseAt:      arg.PurchaseAt,
+					ExpiresAt:       arg.ExpiresAt,
+					Notes:           arg.Notes,
 				}, nil
 			})
 
-		got, err := svc.UpsertUserItem(ctx, in, "tester")
+		got, err := svc.UpsertHouseholdItem(ctx, in, "tester")
 		require.NoError(t, err)
-		assert.Equal(t, int64(7), got.UserItemID)
-		assert.Equal(t, int64(10), got.UserID)
+		assert.Equal(t, int64(7), got.HouseholdItemID)
+		assert.Equal(t, int64(10), got.HouseholdID)
 		assert.Equal(t, int64(20), got.ItemID)
 		assert.InDelta(t, 3.25, got.CurrentQty, 1e-9)
 		require.NotNil(t, got.MinQty)
@@ -86,24 +83,23 @@ func TestUpsertUserItem(t *testing.T) {
 		require.NotNil(t, got.ExpiresAt)
 		assert.Equal(t, expiresAt, *got.ExpiresAt)
 		assert.Equal(t, "keep stocked", got.Notes)
-		assert.True(t, got.IsFavorite)
 	})
 
 	t.Run("optional fields empty become invalid", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserItemParams) (sqlc.UserprefsUserItem, error) {
+		mq.EXPECT().UpsertHouseholdItem(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpsertHouseholdItemParams) (sqlc.UserprefsHouseholdItem, error) {
 				assert.False(t, arg.MinQty.Valid)
 				assert.False(t, arg.PurchaseAt.Valid)
 				assert.False(t, arg.ExpiresAt.Valid)
 				assert.False(t, arg.Notes.Valid)
 				assert.False(t, arg.UpdatedBy.Valid)
-				return sqlc.UserprefsUserItem{UserItemID: 8, UserID: arg.UserID, ItemID: arg.ItemID}, nil
+				return sqlc.UserprefsHouseholdItem{HouseholdItemID: 8, HouseholdID: arg.HouseholdID, ItemID: arg.ItemID}, nil
 			})
 
-		got, err := svc.UpsertUserItem(ctx, UserItem{UserID: 10, ItemID: 20}, "")
+		got, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{HouseholdID: 10, ItemID: 20}, "")
 		require.NoError(t, err)
-		assert.Equal(t, int64(8), got.UserItemID)
+		assert.Equal(t, int64(8), got.HouseholdItemID)
 		assert.Nil(t, got.MinQty)
 		assert.Nil(t, got.PurchaseAt)
 		assert.Nil(t, got.ExpiresAt)
@@ -111,108 +107,105 @@ func TestUpsertUserItem(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserItem(ctx, gomock.Any()).Return(sqlc.UserprefsUserItem{}, errDB)
+		mq.EXPECT().UpsertHouseholdItem(ctx, gomock.Any()).Return(sqlc.UserprefsHouseholdItem{}, errDB)
 
-		_, err := svc.UpsertUserItem(ctx, in, "tester")
+		_, err := svc.UpsertHouseholdItem(ctx, in, "tester")
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "upsert user item")
+		assert.ErrorContains(t, err, "upsert household item")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestGetUserItemByID(t *testing.T) {
+func TestGetHouseholdItemByID(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success scopes to user", func(t *testing.T) {
+	t.Run("success scopes to household", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: 7, UserID: 10}).
-			Return(sqlc.UserprefsUserItem{
-				UserItemID: 7, UserID: 10, ItemID: 20,
-				Notes:      pgtype.Text{String: "n", Valid: true},
-				IsFavorite: true,
+		mq.EXPECT().GetHouseholdItemByID(ctx, sqlc.GetHouseholdItemByIDParams{HouseholdItemID: 7, HouseholdID: 10}).
+			Return(sqlc.UserprefsHouseholdItem{
+				HouseholdItemID: 7, HouseholdID: 10, ItemID: 20,
+				Notes: pgtype.Text{String: "n", Valid: true},
 			}, nil)
 
-		got, err := svc.GetUserItemByID(ctx, 7, 10)
+		got, err := svc.GetHouseholdItemByID(ctx, 7, 10)
 		require.NoError(t, err)
-		assert.Equal(t, int64(7), got.UserItemID)
-		assert.Equal(t, int64(10), got.UserID)
+		assert.Equal(t, int64(7), got.HouseholdItemID)
+		assert.Equal(t, int64(10), got.HouseholdID)
 		assert.Equal(t, int64(20), got.ItemID)
 		assert.Equal(t, "n", got.Notes)
-		assert.True(t, got.IsFavorite)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().GetUserItemByID(ctx, sqlc.GetUserItemByIDParams{UserItemID: 7, UserID: 10}).
-			Return(sqlc.UserprefsUserItem{}, errDB)
+		mq.EXPECT().GetHouseholdItemByID(ctx, sqlc.GetHouseholdItemByIDParams{HouseholdItemID: 7, HouseholdID: 10}).
+			Return(sqlc.UserprefsHouseholdItem{}, errDB)
 
-		_, err := svc.GetUserItemByID(ctx, 7, 10)
+		_, err := svc.GetHouseholdItemByID(ctx, 7, 10)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "get user item")
+		assert.ErrorContains(t, err, "get household item")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestListUserItems(t *testing.T) {
+func TestListHouseholdItems(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success maps rows", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListUserItems(ctx, sqlc.ListUserItemsParams{UserID: 10, Limit: 50, Offset: 5}).
-			Return([]sqlc.UserprefsUserItem{
-				{UserItemID: 1, UserID: 10, ItemID: 20},
-				{UserItemID: 2, UserID: 10, ItemID: 21, IsFavorite: true},
+		mq.EXPECT().ListHouseholdItems(ctx, sqlc.ListHouseholdItemsParams{HouseholdID: 10, Limit: 50, Offset: 5}).
+			Return([]sqlc.UserprefsHouseholdItem{
+				{HouseholdItemID: 1, HouseholdID: 10, ItemID: 20},
+				{HouseholdItemID: 2, HouseholdID: 10, ItemID: 21},
 			}, nil)
 
-		got, err := svc.ListUserItems(ctx, 10, 50, 5)
+		got, err := svc.ListHouseholdItems(ctx, 10, 50, 5)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
-		assert.Equal(t, int64(1), got[0].UserItemID)
+		assert.Equal(t, int64(1), got[0].HouseholdItemID)
 		assert.Equal(t, int64(20), got[0].ItemID)
-		assert.Equal(t, int64(2), got[1].UserItemID)
-		assert.True(t, got[1].IsFavorite)
+		assert.Equal(t, int64(2), got[1].HouseholdItemID)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListUserItems(ctx, sqlc.ListUserItemsParams{UserID: 10, Limit: 50, Offset: 0}).
+		mq.EXPECT().ListHouseholdItems(ctx, sqlc.ListHouseholdItemsParams{HouseholdID: 10, Limit: 50, Offset: 0}).
 			Return(nil, errDB)
 
-		_, err := svc.ListUserItems(ctx, 10, 50, 0)
+		_, err := svc.ListHouseholdItems(ctx, 10, 50, 0)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "list user items")
+		assert.ErrorContains(t, err, "list household items")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestDeleteUserItem(t *testing.T) {
+func TestDeleteHouseholdItem(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success scopes to user", func(t *testing.T) {
+	t.Run("success scopes to household", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteUserItem(ctx, sqlc.DeleteUserItemParams{UserItemID: 7, UserID: 10}).Return(nil)
+		mq.EXPECT().DeleteHouseholdItem(ctx, sqlc.DeleteHouseholdItemParams{HouseholdItemID: 7, HouseholdID: 10}).Return(int64(1), nil)
 
-		require.NoError(t, svc.DeleteUserItem(ctx, 7, 10))
+		require.NoError(t, svc.DeleteHouseholdItem(ctx, 7, 10))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteUserItem(ctx, sqlc.DeleteUserItemParams{UserItemID: 7, UserID: 10}).Return(errDB)
+		mq.EXPECT().DeleteHouseholdItem(ctx, sqlc.DeleteHouseholdItemParams{HouseholdItemID: 7, HouseholdID: 10}).Return(int64(0), errDB)
 
-		err := svc.DeleteUserItem(ctx, 7, 10)
+		err := svc.DeleteHouseholdItem(ctx, 7, 10)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestUpsertUserBottle(t *testing.T) {
+func TestUpsertHouseholdBottle(t *testing.T) {
 	ctx := context.Background()
 	bottleNumber := int32(3)
 	price := 42.50
 	temp := 12.5
 	purchaseAt := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
-	in := UserBottle{
-		UserID:        10,
+	in := HouseholdBottle{
+		HouseholdID:   10,
 		BottleID:      30,
 		BottleNumber:  &bottleNumber,
 		Quantity:      2,
@@ -221,14 +214,13 @@ func TestUpsertUserBottle(t *testing.T) {
 		StorageTemp:   &temp,
 		Location:      "cellar",
 		Notes:         "gift",
-		IsFavorite:    true,
 	}
 
 	t.Run("success passes params and maps row", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.UserprefsUserBottle, error) {
-				assert.Equal(t, int64(10), arg.UserID)
+		mq.EXPECT().UpsertHouseholdBottle(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpsertHouseholdBottleParams) (sqlc.UserprefsHouseholdBottle, error) {
+				assert.Equal(t, int64(10), arg.HouseholdID)
 				assert.Equal(t, int64(30), arg.BottleID)
 				assert.Equal(t, pgtype.Int4{Int32: 3, Valid: true}, arg.BottleNumber)
 				assert.Equal(t, int32(2), arg.Quantity)
@@ -237,28 +229,26 @@ func TestUpsertUserBottle(t *testing.T) {
 				assert.InDelta(t, 12.5, numericVal(t, arg.StorageTemp), 1e-9)
 				assert.Equal(t, pgtype.Text{String: "cellar", Valid: true}, arg.Location)
 				assert.Equal(t, pgtype.Text{String: "gift", Valid: true}, arg.Notes)
-				assert.True(t, arg.IsFavorite)
 				assert.Equal(t, "tester", arg.CreatedBy)
 				assert.Equal(t, pgtype.Text{String: "tester", Valid: true}, arg.UpdatedBy)
-				return sqlc.UserprefsUserBottle{
-					UserBottleID:  9,
-					UserID:        arg.UserID,
-					BottleID:      arg.BottleID,
-					BottleNumber:  arg.BottleNumber,
-					Quantity:      arg.Quantity,
-					PurchaseAt:    arg.PurchaseAt,
-					PurchasePrice: arg.PurchasePrice,
-					StorageTemp:   arg.StorageTemp,
-					Location:      arg.Location,
-					Notes:         arg.Notes,
-					IsFavorite:    arg.IsFavorite,
+				return sqlc.UserprefsHouseholdBottle{
+					HouseholdBottleID: 9,
+					HouseholdID:       arg.HouseholdID,
+					BottleID:          arg.BottleID,
+					BottleNumber:      arg.BottleNumber,
+					Quantity:          arg.Quantity,
+					PurchaseAt:        arg.PurchaseAt,
+					PurchasePrice:     arg.PurchasePrice,
+					StorageTemp:       arg.StorageTemp,
+					Location:          arg.Location,
+					Notes:             arg.Notes,
 				}, nil
 			})
 
-		got, err := svc.UpsertUserBottle(ctx, in, "tester")
+		got, err := svc.UpsertHouseholdBottle(ctx, in, "tester")
 		require.NoError(t, err)
-		assert.Equal(t, int64(9), got.UserBottleID)
-		assert.Equal(t, int64(10), got.UserID)
+		assert.Equal(t, int64(9), got.HouseholdBottleID)
+		assert.Equal(t, int64(10), got.HouseholdID)
 		assert.Equal(t, int64(30), got.BottleID)
 		require.NotNil(t, got.BottleNumber)
 		assert.Equal(t, int32(3), *got.BottleNumber)
@@ -269,25 +259,24 @@ func TestUpsertUserBottle(t *testing.T) {
 		assert.InDelta(t, 12.5, *got.StorageTemp, 1e-9)
 		assert.Equal(t, "cellar", got.Location)
 		assert.Equal(t, "gift", got.Notes)
-		assert.True(t, got.IsFavorite)
 	})
 
 	t.Run("optional fields empty become invalid", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.UserprefsUserBottle, error) {
+		mq.EXPECT().UpsertHouseholdBottle(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpsertHouseholdBottleParams) (sqlc.UserprefsHouseholdBottle, error) {
 				assert.False(t, arg.BottleNumber.Valid)
 				assert.False(t, arg.PurchaseAt.Valid)
 				assert.False(t, arg.PurchasePrice.Valid)
 				assert.False(t, arg.StorageTemp.Valid)
 				assert.False(t, arg.Location.Valid)
 				assert.False(t, arg.Notes.Valid)
-				return sqlc.UserprefsUserBottle{UserBottleID: 11, UserID: arg.UserID, BottleID: arg.BottleID}, nil
+				return sqlc.UserprefsHouseholdBottle{HouseholdBottleID: 11, HouseholdID: arg.HouseholdID, BottleID: arg.BottleID}, nil
 			})
 
-		got, err := svc.UpsertUserBottle(ctx, UserBottle{UserID: 10, BottleID: 30, Quantity: 1}, "tester")
+		got, err := svc.UpsertHouseholdBottle(ctx, HouseholdBottle{HouseholdID: 10, BottleID: 30, Quantity: 1}, "tester")
 		require.NoError(t, err)
-		assert.Equal(t, int64(11), got.UserBottleID)
+		assert.Equal(t, int64(11), got.HouseholdBottleID)
 		assert.Nil(t, got.BottleNumber)
 		assert.Nil(t, got.PurchasePrice)
 		assert.Nil(t, got.StorageTemp)
@@ -295,30 +284,30 @@ func TestUpsertUserBottle(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpsertUserBottle(ctx, gomock.Any()).Return(sqlc.UserprefsUserBottle{}, errDB)
+		mq.EXPECT().UpsertHouseholdBottle(ctx, gomock.Any()).Return(sqlc.UserprefsHouseholdBottle{}, errDB)
 
-		_, err := svc.UpsertUserBottle(ctx, in, "tester")
+		_, err := svc.UpsertHouseholdBottle(ctx, in, "tester")
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "upsert user bottle")
+		assert.ErrorContains(t, err, "upsert household bottle")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestGetUserBottleByID(t *testing.T) {
+func TestGetHouseholdBottleByID(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success scopes to user", func(t *testing.T) {
+	t.Run("success scopes to household", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().GetUserBottleByID(ctx, sqlc.GetUserBottleByIDParams{UserBottleID: 9, UserID: 10}).
-			Return(sqlc.UserprefsUserBottle{
-				UserBottleID: 9, UserID: 10, BottleID: 30, Quantity: 4,
+		mq.EXPECT().GetHouseholdBottleByID(ctx, sqlc.GetHouseholdBottleByIDParams{HouseholdBottleID: 9, HouseholdID: 10}).
+			Return(sqlc.UserprefsHouseholdBottle{
+				HouseholdBottleID: 9, HouseholdID: 10, BottleID: 30, Quantity: 4,
 				Location: pgtype.Text{String: "rack", Valid: true},
 			}, nil)
 
-		got, err := svc.GetUserBottleByID(ctx, 9, 10)
+		got, err := svc.GetHouseholdBottleByID(ctx, 9, 10)
 		require.NoError(t, err)
-		assert.Equal(t, int64(9), got.UserBottleID)
-		assert.Equal(t, int64(10), got.UserID)
+		assert.Equal(t, int64(9), got.HouseholdBottleID)
+		assert.Equal(t, int64(10), got.HouseholdID)
 		assert.Equal(t, int64(30), got.BottleID)
 		assert.Equal(t, int32(4), got.Quantity)
 		assert.Equal(t, "rack", got.Location)
@@ -326,62 +315,62 @@ func TestGetUserBottleByID(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().GetUserBottleByID(ctx, sqlc.GetUserBottleByIDParams{UserBottleID: 9, UserID: 10}).
-			Return(sqlc.UserprefsUserBottle{}, errDB)
+		mq.EXPECT().GetHouseholdBottleByID(ctx, sqlc.GetHouseholdBottleByIDParams{HouseholdBottleID: 9, HouseholdID: 10}).
+			Return(sqlc.UserprefsHouseholdBottle{}, errDB)
 
-		_, err := svc.GetUserBottleByID(ctx, 9, 10)
+		_, err := svc.GetHouseholdBottleByID(ctx, 9, 10)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "get user bottle")
+		assert.ErrorContains(t, err, "get household bottle")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestListUserBottles(t *testing.T) {
+func TestListHouseholdBottles(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success maps rows", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListUserBottles(ctx, sqlc.ListUserBottlesParams{UserID: 10, Limit: 25, Offset: 0}).
-			Return([]sqlc.UserprefsUserBottle{
-				{UserBottleID: 1, UserID: 10, BottleID: 30, Quantity: 1},
-				{UserBottleID: 2, UserID: 10, BottleID: 31, Quantity: 6},
+		mq.EXPECT().ListHouseholdBottles(ctx, sqlc.ListHouseholdBottlesParams{HouseholdID: 10, Limit: 25, Offset: 0}).
+			Return([]sqlc.UserprefsHouseholdBottle{
+				{HouseholdBottleID: 1, HouseholdID: 10, BottleID: 30, Quantity: 1},
+				{HouseholdBottleID: 2, HouseholdID: 10, BottleID: 31, Quantity: 6},
 			}, nil)
 
-		got, err := svc.ListUserBottles(ctx, 10, 25, 0)
+		got, err := svc.ListHouseholdBottles(ctx, 10, 25, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
-		assert.Equal(t, int64(1), got[0].UserBottleID)
+		assert.Equal(t, int64(1), got[0].HouseholdBottleID)
 		assert.Equal(t, int64(30), got[0].BottleID)
 		assert.Equal(t, int32(6), got[1].Quantity)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().ListUserBottles(ctx, sqlc.ListUserBottlesParams{UserID: 10, Limit: 25, Offset: 0}).
+		mq.EXPECT().ListHouseholdBottles(ctx, sqlc.ListHouseholdBottlesParams{HouseholdID: 10, Limit: 25, Offset: 0}).
 			Return(nil, errDB)
 
-		_, err := svc.ListUserBottles(ctx, 10, 25, 0)
+		_, err := svc.ListHouseholdBottles(ctx, 10, 25, 0)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "list user bottles")
+		assert.ErrorContains(t, err, "list household bottles")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestDeleteUserBottle(t *testing.T) {
+func TestDeleteHouseholdBottle(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success scopes to user", func(t *testing.T) {
+	t.Run("success scopes to household", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteUserBottle(ctx, sqlc.DeleteUserBottleParams{UserBottleID: 9, UserID: 10}).Return(nil)
+		mq.EXPECT().DeleteHouseholdBottle(ctx, sqlc.DeleteHouseholdBottleParams{HouseholdBottleID: 9, HouseholdID: 10}).Return(int64(1), nil)
 
-		require.NoError(t, svc.DeleteUserBottle(ctx, 9, 10))
+		require.NoError(t, svc.DeleteHouseholdBottle(ctx, 9, 10))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteUserBottle(ctx, sqlc.DeleteUserBottleParams{UserBottleID: 9, UserID: 10}).Return(errDB)
+		mq.EXPECT().DeleteHouseholdBottle(ctx, sqlc.DeleteHouseholdBottleParams{HouseholdBottleID: 9, HouseholdID: 10}).Return(int64(0), errDB)
 
-		err := svc.DeleteUserBottle(ctx, 9, 10)
+		err := svc.DeleteHouseholdBottle(ctx, 9, 10)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, errDB)
 	})
@@ -463,48 +452,48 @@ func TestDeleteRecipeFavorite(t *testing.T) {
 	})
 }
 
-func TestCountUserItems(t *testing.T) {
+func TestCountHouseholdItems(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountUserItems(ctx, int64(10)).Return(int64(3), nil)
+		mq.EXPECT().CountHouseholdItems(ctx, int64(10)).Return(int64(3), nil)
 
-		got, err := svc.CountUserItems(ctx, 10)
+		got, err := svc.CountHouseholdItems(ctx, 10)
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), got)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountUserItems(ctx, int64(10)).Return(int64(0), errDB)
+		mq.EXPECT().CountHouseholdItems(ctx, int64(10)).Return(int64(0), errDB)
 
-		_, err := svc.CountUserItems(ctx, 10)
+		_, err := svc.CountHouseholdItems(ctx, 10)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "count user items")
+		assert.ErrorContains(t, err, "count household items")
 		assert.ErrorIs(t, err, errDB)
 	})
 }
 
-func TestCountUserBottles(t *testing.T) {
+func TestCountHouseholdBottles(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountUserBottles(ctx, int64(10)).Return(int64(7), nil)
+		mq.EXPECT().CountHouseholdBottles(ctx, int64(10)).Return(int64(7), nil)
 
-		got, err := svc.CountUserBottles(ctx, 10)
+		got, err := svc.CountHouseholdBottles(ctx, 10)
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), got)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountUserBottles(ctx, int64(10)).Return(int64(0), errDB)
+		mq.EXPECT().CountHouseholdBottles(ctx, int64(10)).Return(int64(0), errDB)
 
-		_, err := svc.CountUserBottles(ctx, 10)
+		_, err := svc.CountHouseholdBottles(ctx, 10)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "count user bottles")
+		assert.ErrorContains(t, err, "count household bottles")
 		assert.ErrorIs(t, err, errDB)
 	})
 }

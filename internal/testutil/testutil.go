@@ -124,22 +124,81 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// MustUser upserts a test user and returns the resulting user ID.
+// MustUser upserts a test user, ensures a default household, and returns
+// the resulting user ID. The household ID equals the user ID — the same
+// convention the 0028 migration backfill used — unless a serially created
+// household already holds that ID, in which case a fresh serial household
+// is assigned instead.
 func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email string) int64 {
 	svc := identity.NewService(pool)
 	u, err := svc.UpsertUser(ctx, "test-provider", email, email, "Test User")
 	if err != nil {
 		t.Fatalf("create test user: %v", err)
 	}
+	// Mirror the authenticator's default-household path: create the row,
+	// then assign it only while household_id is still NULL so an already
+	// joined household is never overwritten. Explicit IDs bypass the
+	// BIGSERIAL sequence, so it is bumped afterwards — otherwise
+	// CreateHousehold draws a colliding household_id. The reverse can also
+	// happen: a serially created household may already hold the user ID, in
+	// which case the user gets a serial household of their own rather than
+	// silently joining someone else's.
+	householdID := u.UserID
+	tag, err := pool.Exec(ctx,
+		`INSERT INTO household.households (household_id, created_by) VALUES ($1, $2)
+		 ON CONFLICT (household_id) DO NOTHING`, u.UserID, email)
+	if err != nil {
+		t.Fatalf("create test household: %v", err)
+	}
+	if tag.RowsAffected() == 0 {
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO household.households (created_by) VALUES ($1) RETURNING household_id`,
+			email).Scan(&householdID); err != nil {
+			t.Fatalf("create fallback test household: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`SELECT setval('household.households_household_id_seq',
+			(SELECT COALESCE(MAX(household_id), 1) FROM household.households))`); err != nil {
+		t.Fatalf("sync household sequence: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE identity.users SET household_id = $2 WHERE user_id = $1 AND household_id IS NULL`, u.UserID, householdID); err != nil {
+		t.Fatalf("assign test household: %v", err)
+	}
 	return u.UserID
 }
 
-// WithUser returns a context carrying a currentuser.User for resolver tests.
+// JoinHousehold moves a test user into an existing household row, leaving
+// their default household empty. For multi-member household tests.
+func JoinHousehold(ctx context.Context, t *testing.T, pool *pgxpool.Pool, userID, householdID int64) {
+	t.Helper()
+	tag, err := pool.Exec(ctx,
+		`UPDATE identity.users SET household_id = $2 WHERE user_id = $1`, userID, householdID)
+	if err != nil {
+		t.Fatalf("join test household: %v", err)
+	}
+	if tag.RowsAffected() == 0 {
+		t.Fatalf("join test household: user %d not found", userID)
+	}
+}
+
+// WithUser returns a context carrying a currentuser.User for resolver
+// tests. HouseholdID defaults to the user ID, matching MustUser's
+// default-household convention.
 func WithUser(ctx context.Context, userID int64, email string) context.Context {
+	return WithHousehold(ctx, userID, userID, email)
+}
+
+// WithHousehold returns a context carrying a currentuser.User whose
+// household scope differs from the user ID — for multi-member household
+// tests.
+func WithHousehold(ctx context.Context, userID, householdID int64, email string) context.Context {
 	return currentuser.WithUser(ctx, currentuser.User{
-		UserID:   userID,
-		Provider: "test-provider",
-		Email:    email,
+		UserID:      userID,
+		Provider:    "test-provider",
+		Email:       email,
+		HouseholdID: householdID,
 	})
 }
 
@@ -147,10 +206,11 @@ func WithUser(ctx context.Context, userID int64, email string) context.Context {
 // mutations require this after the role-based authorization change.
 func WithAdmin(ctx context.Context, userID int64, email string) context.Context {
 	return currentuser.WithUser(ctx, currentuser.User{
-		UserID:   userID,
-		Provider: "test-provider",
-		Email:    email,
-		IsAdmin:  true,
+		UserID:      userID,
+		Provider:    "test-provider",
+		Email:       email,
+		IsAdmin:     true,
+		HouseholdID: userID,
 	})
 }
 

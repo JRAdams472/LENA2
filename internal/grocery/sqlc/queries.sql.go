@@ -65,32 +65,32 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 const countGroceryLists = `-- name: CountGroceryLists :one
 SELECT COUNT(*)
 FROM grocery.grocery_list
-WHERE user_id = $1
+WHERE household_id = $1
 `
 
-func (q *Queries) CountGroceryLists(ctx context.Context, userID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countGroceryLists, userID)
+func (q *Queries) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroceryLists, householdID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createGroceryList = `-- name: CreateGroceryList :one
-INSERT INTO grocery.grocery_list (user_id, meal_plan_id, created_by, updated_by)
+INSERT INTO grocery.grocery_list (household_id, meal_plan_id, created_by, updated_by)
 VALUES ($1, $2, $3, $4)
-RETURNING grocery_list_id, user_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
 `
 
 type CreateGroceryListParams struct {
-	UserID     int64       `json:"user_id"`
-	MealPlanID pgtype.Int8 `json:"meal_plan_id"`
-	CreatedBy  string      `json:"created_by"`
-	UpdatedBy  pgtype.Text `json:"updated_by"`
+	HouseholdID int64       `json:"household_id"`
+	MealPlanID  pgtype.Int8 `json:"meal_plan_id"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error) {
 	row := q.db.QueryRow(ctx, createGroceryList,
-		arg.UserID,
+		arg.HouseholdID,
 		arg.MealPlanID,
 		arg.CreatedBy,
 		arg.UpdatedBy,
@@ -98,29 +98,29 @@ func (q *Queries) CreateGroceryList(ctx context.Context, arg CreateGroceryListPa
 	var i GroceryGroceryList
 	err := row.Scan(
 		&i.GroceryListID,
-		&i.UserID,
 		&i.MealPlanID,
 		&i.GeneratedAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.HouseholdID,
 	)
 	return i, err
 }
 
 const deleteGroceryList = `-- name: DeleteGroceryList :exec
 DELETE FROM grocery.grocery_list
-WHERE grocery_list_id = $1 AND user_id = $2
+WHERE grocery_list_id = $1 AND household_id = $2
 `
 
 type DeleteGroceryListParams struct {
 	GroceryListID int64 `json:"grocery_list_id"`
-	UserID        int64 `json:"user_id"`
+	HouseholdID   int64 `json:"household_id"`
 }
 
 func (q *Queries) DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error {
-	_, err := q.db.Exec(ctx, deleteGroceryList, arg.GroceryListID, arg.UserID)
+	_, err := q.db.Exec(ctx, deleteGroceryList, arg.GroceryListID, arg.HouseholdID)
 	return err
 }
 
@@ -128,42 +128,42 @@ const deleteGroceryListItem = `-- name: DeleteGroceryListItem :exec
 DELETE FROM grocery.grocery_list_item gli
 USING grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
-  AND gli.grocery_list_item_id = $1 AND gl.user_id = $2
+  AND gli.grocery_list_item_id = $1 AND gl.household_id = $2
 `
 
 type DeleteGroceryListItemParams struct {
 	GroceryListItemID int64 `json:"grocery_list_item_id"`
-	UserID            int64 `json:"user_id"`
+	HouseholdID       int64 `json:"household_id"`
 }
 
 func (q *Queries) DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error {
-	_, err := q.db.Exec(ctx, deleteGroceryListItem, arg.GroceryListItemID, arg.UserID)
+	_, err := q.db.Exec(ctx, deleteGroceryListItem, arg.GroceryListItemID, arg.HouseholdID)
 	return err
 }
 
 const getGroceryListByID = `-- name: GetGroceryListByID :one
-SELECT grocery_list_id, user_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
 FROM grocery.grocery_list
-WHERE grocery_list_id = $1 AND user_id = $2
+WHERE grocery_list_id = $1 AND household_id = $2
 `
 
 type GetGroceryListByIDParams struct {
 	GroceryListID int64 `json:"grocery_list_id"`
-	UserID        int64 `json:"user_id"`
+	HouseholdID   int64 `json:"household_id"`
 }
 
 func (q *Queries) GetGroceryListByID(ctx context.Context, arg GetGroceryListByIDParams) (GroceryGroceryList, error) {
-	row := q.db.QueryRow(ctx, getGroceryListByID, arg.GroceryListID, arg.UserID)
+	row := q.db.QueryRow(ctx, getGroceryListByID, arg.GroceryListID, arg.HouseholdID)
 	var i GroceryGroceryList
 	err := row.Scan(
 		&i.GroceryListID,
-		&i.UserID,
 		&i.MealPlanID,
 		&i.GeneratedAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.HouseholdID,
 	)
 	return i, err
 }
@@ -172,16 +172,16 @@ const getGroceryListItemByID = `-- name: GetGroceryListItemByID :one
 SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
 FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
-WHERE gli.grocery_list_item_id = $1 AND gl.user_id = $2
+WHERE gli.grocery_list_item_id = $1 AND gl.household_id = $2
 `
 
 type GetGroceryListItemByIDParams struct {
 	GroceryListItemID int64 `json:"grocery_list_item_id"`
-	UserID            int64 `json:"user_id"`
+	HouseholdID       int64 `json:"household_id"`
 }
 
 func (q *Queries) GetGroceryListItemByID(ctx context.Context, arg GetGroceryListItemByIDParams) (GroceryGroceryListItem, error) {
-	row := q.db.QueryRow(ctx, getGroceryListItemByID, arg.GroceryListItemID, arg.UserID)
+	row := q.db.QueryRow(ctx, getGroceryListItemByID, arg.GroceryListItemID, arg.HouseholdID)
 	var i GroceryGroceryListItem
 	err := row.Scan(
 		&i.GroceryListItemID,
@@ -205,17 +205,17 @@ const listGroceryListItems = `-- name: ListGroceryListItems :many
 SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
 FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
-WHERE gli.grocery_list_id = $1 AND gl.user_id = $2
+WHERE gli.grocery_list_id = $1 AND gl.household_id = $2
 ORDER BY gli.grocery_list_item_id
 `
 
 type ListGroceryListItemsParams struct {
 	GroceryListID int64 `json:"grocery_list_id"`
-	UserID        int64 `json:"user_id"`
+	HouseholdID   int64 `json:"household_id"`
 }
 
 func (q *Queries) ListGroceryListItems(ctx context.Context, arg ListGroceryListItemsParams) ([]GroceryGroceryListItem, error) {
-	rows, err := q.db.Query(ctx, listGroceryListItems, arg.GroceryListID, arg.UserID)
+	rows, err := q.db.Query(ctx, listGroceryListItems, arg.GroceryListID, arg.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -252,17 +252,17 @@ const listGroceryListItemsByLists = `-- name: ListGroceryListItemsByLists :many
 SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
 FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
-WHERE gli.grocery_list_id = ANY($1::bigint[]) AND gl.user_id = $2
+WHERE gli.grocery_list_id = ANY($1::bigint[]) AND gl.household_id = $2
 ORDER BY gli.grocery_list_item_id
 `
 
 type ListGroceryListItemsByListsParams struct {
 	GroceryListIds []int64 `json:"grocery_list_ids"`
-	UserID         int64   `json:"user_id"`
+	HouseholdID    int64   `json:"household_id"`
 }
 
 func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, arg ListGroceryListItemsByListsParams) ([]GroceryGroceryListItem, error) {
-	rows, err := q.db.Query(ctx, listGroceryListItemsByLists, arg.GroceryListIds, arg.UserID)
+	rows, err := q.db.Query(ctx, listGroceryListItemsByLists, arg.GroceryListIds, arg.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -296,21 +296,21 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, arg ListGroce
 }
 
 const listGroceryLists = `-- name: ListGroceryLists :many
-SELECT grocery_list_id, user_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
 FROM grocery.grocery_list
-WHERE user_id = $1
+WHERE household_id = $1
 ORDER BY generated_at DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListGroceryListsParams struct {
-	UserID int64 `json:"user_id"`
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	HouseholdID int64 `json:"household_id"`
+	Limit       int32 `json:"limit"`
+	Offset      int32 `json:"offset"`
 }
 
 func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error) {
-	rows, err := q.db.Query(ctx, listGroceryLists, arg.UserID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listGroceryLists, arg.HouseholdID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -320,13 +320,13 @@ func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsPara
 		var i GroceryGroceryList
 		if err := rows.Scan(
 			&i.GroceryListID,
-			&i.UserID,
 			&i.MealPlanID,
 			&i.GeneratedAt,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.HouseholdID,
 		); err != nil {
 			return nil, err
 		}
@@ -338,6 +338,27 @@ func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsPara
 	return items, nil
 }
 
+const reassignGroceryListsToHousehold = `-- name: ReassignGroceryListsToHousehold :exec
+UPDATE grocery.grocery_list
+SET household_id = $1,
+    updated_by   = $2::varchar,
+    updated_at   = now()
+WHERE household_id = $3
+`
+
+type ReassignGroceryListsToHouseholdParams struct {
+	ToHouseholdID   int64  `json:"to_household_id"`
+	UpdatedBy       string `json:"updated_by"`
+	FromHouseholdID int64  `json:"from_household_id"`
+}
+
+// Invite-accept merge: repoint all of the source household's lists. Zero
+// rows is not an error.
+func (q *Queries) ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error {
+	_, err := q.db.Exec(ctx, reassignGroceryListsToHousehold, arg.ToHouseholdID, arg.UpdatedBy, arg.FromHouseholdID)
+	return err
+}
+
 const toggleGroceryListItemChecked = `-- name: ToggleGroceryListItemChecked :one
 UPDATE grocery.grocery_list_item gli
 SET is_checked = NOT gli.is_checked,
@@ -346,18 +367,18 @@ SET is_checked = NOT gli.is_checked,
 FROM grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
   AND gli.grocery_list_item_id = $1
-  AND gl.user_id = $2
+  AND gl.household_id = $2
 RETURNING gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
 `
 
 type ToggleGroceryListItemCheckedParams struct {
 	GroceryListItemID int64       `json:"grocery_list_item_id"`
-	UserID            int64       `json:"user_id"`
+	HouseholdID       int64       `json:"household_id"`
 	UpdatedBy         pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error) {
-	row := q.db.QueryRow(ctx, toggleGroceryListItemChecked, arg.GroceryListItemID, arg.UserID, arg.UpdatedBy)
+	row := q.db.QueryRow(ctx, toggleGroceryListItemChecked, arg.GroceryListItemID, arg.HouseholdID, arg.UpdatedBy)
 	var i GroceryGroceryListItem
 	err := row.Scan(
 		&i.GroceryListItemID,
@@ -390,12 +411,12 @@ SET item_id          = $3,
     updated_at       = now()
 FROM grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
-  AND gli.grocery_list_item_id = $1 AND gl.user_id = $2
+  AND gli.grocery_list_item_id = $1 AND gl.household_id = $2
 `
 
 type UpdateGroceryListItemParams struct {
 	GroceryListItemID int64          `json:"grocery_list_item_id"`
-	UserID            int64          `json:"user_id"`
+	HouseholdID       int64          `json:"household_id"`
 	ItemID            pgtype.Int8    `json:"item_id"`
 	IngredientID      pgtype.Int8    `json:"ingredient_id"`
 	ManualItemName    pgtype.Text    `json:"manual_item_name"`
@@ -409,7 +430,7 @@ type UpdateGroceryListItemParams struct {
 func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error {
 	_, err := q.db.Exec(ctx, updateGroceryListItem,
 		arg.GroceryListItemID,
-		arg.UserID,
+		arg.HouseholdID,
 		arg.ItemID,
 		arg.IngredientID,
 		arg.ManualItemName,

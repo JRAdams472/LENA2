@@ -24,24 +24,26 @@ import (
 // interfaces; child resolvers hold only the narrow role they need so a
 // nested type can never reach back into a write or admin surface.
 
-// GroceryReader is the read side of the grocery domain.
+// GroceryReader is the read side of the grocery domain. Grocery lists are
+// household-scoped; householdID always comes from the authenticated
+// currentuser, never from client input.
 type GroceryReader interface {
-	GetGroceryListByID(ctx context.Context, groceryListID, userID int64) (grocery.GroceryList, error)
-	ListGroceryLists(ctx context.Context, userID int64, limit, offset int32) ([]grocery.GroceryList, error)
-	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
-	GetGroceryListItemByID(ctx context.Context, groceryListItemID, userID int64) (grocery.GroceryListItem, error)
-	ListGroceryListItems(ctx context.Context, groceryListID, userID int64) ([]grocery.GroceryListItem, error)
-	ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, userID int64) ([]grocery.GroceryListItem, error)
+	GetGroceryListByID(ctx context.Context, groceryListID, householdID int64) (grocery.GroceryList, error)
+	ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]grocery.GroceryList, error)
+	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
+	GetGroceryListItemByID(ctx context.Context, groceryListItemID, householdID int64) (grocery.GroceryListItem, error)
+	ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]grocery.GroceryListItem, error)
+	ListGroceryListItemsByLists(ctx context.Context, groceryListIDs []int64, householdID int64) ([]grocery.GroceryListItem, error)
 }
 
 // GroceryWriter is the write side of the grocery domain.
 type GroceryWriter interface {
-	CreateGroceryList(ctx context.Context, userID int64, mealPlanID *int64, by string) (grocery.GroceryList, error)
-	AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, userID int64, by string) ([]grocery.GroceryListItem, error)
-	UpdateGroceryListItem(ctx context.Context, groceryListItemID, userID int64, arg grocery.GroceryListItem, by string) error
-	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, userID int64, by string) (grocery.GroceryListItem, error)
-	DeleteGroceryListItem(ctx context.Context, groceryListItemID, userID int64) error
-	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, userID int64, by string) (grocery.GroceryListItem, error)
+	CreateGroceryList(ctx context.Context, householdID int64, mealPlanID *int64, by string) (grocery.GroceryList, error)
+	AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, householdID int64, by string) ([]grocery.GroceryListItem, error)
+	UpdateGroceryListItem(ctx context.Context, groceryListItemID, householdID int64, arg grocery.GroceryListItem, by string) error
+	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (grocery.GroceryListItem, error)
+	DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error
+	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, householdID int64, by string) (grocery.GroceryListItem, error)
 }
 
 // GroceryService is the subset of *grocery.Service used by the resolver.
@@ -138,28 +140,30 @@ type InventoryService interface {
 
 var _ InventoryService = (*inventory.Service)(nil)
 
-// MealPlanReader is the read side of the meal-plan domain.
+// MealPlanReader is the read side of the meal-plan domain. Meal plans are
+// household-scoped; householdID always comes from the authenticated
+// currentuser, never from client input.
 type MealPlanReader interface {
-	GetMealPlanByID(ctx context.Context, mealPlanID, userID int64) (mealplan.MealPlan, error)
-	ListMealPlans(ctx context.Context, userID int64, limit, offset int32) ([]mealplan.MealPlan, error)
-	CountMealPlans(ctx context.Context, userID int64) (int64, error)
-	ListMealSlotsForPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlot, error)
-	ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlot, error)
-	ListMealSlotItems(ctx context.Context, slotID, userID int64) ([]mealplan.MealSlotItem, error)
-	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, userID int64) ([]mealplan.MealSlotItem, error)
-	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, userID int64) ([]mealplan.MealSlotItem, error)
-	LastPlannedDates(ctx context.Context, userID int64, recipeIDs []int64) (map[int64]time.Time, error)
+	GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error)
+	ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error)
+	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
+	ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error)
+	ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlot, error)
+	ListMealSlotItems(ctx context.Context, slotID, householdID int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlotItem, error)
+	ListMealSlotItemsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlotItem, error)
+	LastPlannedDates(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]time.Time, error)
 }
 
 // MealPlanWriter is the write side of the meal-plan domain.
 type MealPlanWriter interface {
 	CreateMealPlan(ctx context.Context, arg mealplan.MealPlan, by string) (mealplan.MealPlan, error)
-	UpdateMealPlan(ctx context.Context, mealPlanID, userID int64, arg mealplan.MealPlan, by string) error
-	DeleteMealPlan(ctx context.Context, mealPlanID, userID int64) error
-	AddMealSlot(ctx context.Context, arg mealplan.MealSlot, userID int64, by string) (mealplan.MealSlot, error)
-	DeleteMealSlot(ctx context.Context, slotID, userID int64) error
-	AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, userID int64, by string) (mealplan.MealSlotItem, error)
-	DeleteMealSlotItem(ctx context.Context, slotItemID, userID int64) error
+	UpdateMealPlan(ctx context.Context, mealPlanID, householdID int64, arg mealplan.MealPlan, by string) error
+	DeleteMealPlan(ctx context.Context, mealPlanID, householdID int64) error
+	AddMealSlot(ctx context.Context, arg mealplan.MealSlot, householdID int64, by string) (mealplan.MealSlot, error)
+	DeleteMealSlot(ctx context.Context, slotID, householdID int64) error
+	AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, householdID int64, by string) (mealplan.MealSlotItem, error)
+	DeleteMealSlotItem(ctx context.Context, slotItemID, householdID int64) error
 }
 
 // MealPlanService is the subset of *mealplan.Service used by the resolver.
@@ -242,29 +246,39 @@ type RecipeImportService interface {
 
 var _ RecipeImportService = (*recipeimport.Service)(nil)
 
-// PantryStore is the user-item (pantry) surface of userprefs.
+// PantryStore is the household pantry surface of userprefs. Item favorites
+// are per-user and exposed through FavoriteStore instead.
 type PantryStore interface {
-	ListUserItems(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserItem, error)
-	GetUserItemByUserAndItem(ctx context.Context, userID, itemID int64) (*userprefs.UserItem, error)
-	CountUserItems(ctx context.Context, userID int64) (int64, error)
-	UpsertUserItem(ctx context.Context, arg userprefs.UserItem, by string) (userprefs.UserItem, error)
-	AdjustUserItemQuantity(ctx context.Context, userID, itemID int64, delta float64, by string) (userprefs.UserItem, error)
-	DeleteUserItem(ctx context.Context, userItemID, userID int64) error
+	ListHouseholdItems(ctx context.Context, householdID int64, limit, offset int32) ([]userprefs.HouseholdItem, error)
+	GetHouseholdItemByItem(ctx context.Context, householdID, itemID int64) (*userprefs.HouseholdItem, error)
+	CountHouseholdItems(ctx context.Context, householdID int64) (int64, error)
+	UpsertHouseholdItem(ctx context.Context, arg userprefs.HouseholdItem, by string) (userprefs.HouseholdItem, error)
+	AdjustHouseholdItemQuantity(ctx context.Context, householdID, itemID int64, delta float64, by string) (userprefs.HouseholdItem, error)
+	DeleteHouseholdItem(ctx context.Context, householdItemID, householdID int64) error
 }
 
-// CellarStore is the user-bottle (cellar) surface of userprefs.
+// CellarStore is the household cellar surface of userprefs. Bottle
+// favorites are per-user and exposed through FavoriteStore instead.
 type CellarStore interface {
-	ListUserBottles(ctx context.Context, userID int64, limit, offset int32) ([]userprefs.UserBottle, error)
-	GetUserBottleByUserAndBottle(ctx context.Context, userID, bottleID int64) (*userprefs.UserBottle, error)
-	CountUserBottles(ctx context.Context, userID int64) (int64, error)
-	UpsertUserBottle(ctx context.Context, arg userprefs.UserBottle, by string) (userprefs.UserBottle, error)
+	ListHouseholdBottles(ctx context.Context, householdID int64, limit, offset int32) ([]userprefs.HouseholdBottle, error)
+	GetHouseholdBottleByBottle(ctx context.Context, householdID, bottleID int64) (*userprefs.HouseholdBottle, error)
+	CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error)
+	UpsertHouseholdBottle(ctx context.Context, arg userprefs.HouseholdBottle, by string) (userprefs.HouseholdBottle, error)
 }
 
-// FavoriteStore is the recipe-favorite surface of userprefs.
+// FavoriteStore is the per-user favorites surface of userprefs. Recipe,
+// item, and bottle favorites stay personal under household sharing; the
+// household-scoped holding tables no longer carry favorite flags.
 type FavoriteStore interface {
 	SetRecipeFavorite(ctx context.Context, userID, recipeID int64, isFavorite bool, by string) (userprefs.RecipeFavorite, error)
 	GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (userprefs.RecipeFavorite, error)
 	ListRecipeFavorites(ctx context.Context, userID int64, recipeIDs []int64) ([]userprefs.RecipeFavorite, error)
+	SetItemFavorite(ctx context.Context, userID, itemID int64, isFavorite bool, by string) (userprefs.ItemFavorite, error)
+	GetItemFavorite(ctx context.Context, userID, itemID int64) (bool, error)
+	ListItemFavorites(ctx context.Context, userID int64, itemIDs []int64) (map[int64]bool, error)
+	SetBottleFavorite(ctx context.Context, userID, bottleID int64, isFavorite bool, by string) (userprefs.BottleFavorite, error)
+	GetBottleFavorite(ctx context.Context, userID, bottleID int64) (bool, error)
+	ListBottleFavorites(ctx context.Context, userID int64, bottleIDs []int64) (map[int64]bool, error)
 }
 
 // UserPrefsService is the subset of *userprefs.Service used by the resolver.

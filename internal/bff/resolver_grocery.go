@@ -26,7 +26,7 @@ type groceryChildren struct {
 
 // loadGroceryChildren batch-loads list items and every catalog row they
 // reference — items, units, ingredients, and per-item children.
-func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, userID int64, listIDs []int64) (*groceryChildren, error) {
+func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, householdID int64, listIDs []int64) (*groceryChildren, error) {
 	gc := &groceryChildren{
 		itemsByList: make(map[int64][]grocery.GroceryListItem),
 		items:       make(map[int64]inventory.Item),
@@ -36,7 +36,7 @@ func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, 
 	if len(listIDs) == 0 {
 		return gc, nil
 	}
-	listItems, err := g.ListGroceryListItemsByLists(ctx, listIDs, userID)
+	listItems, err := g.ListGroceryListItemsByLists(ctx, listIDs, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,20 +76,20 @@ func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }
 	if err != nil {
 		return nil, err
 	}
-	list, err := r.GroceryService.GetGroceryListByID(ctx, id, u.UserID)
+	list, err := r.GroceryService.GetGroceryListByID(ctx, id, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
 	// Single-list reads preload the same children as the list page so
 	// nested resolvers never fall back to per-row queries.
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.UserID, []int64{id})
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, []int64{id})
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, list: list, items: gc.itemsByList[id], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[id], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
 }
 
-// GroceryLists resolves the current user's grocery lists.
+// GroceryLists resolves the current household's grocery lists.
 func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
@@ -99,19 +99,19 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	lists, err := r.GroceryService.ListGroceryLists(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.GroceryService.CountGroceryLists(ctx, u.UserID)
+	total, err := r.GroceryService.CountGroceryLists(ctx, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.UserID, distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID }))
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID }))
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, lists: lists, itemsByList: gc.itemsByList, items: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, lists: lists, itemsByList: gc.itemsByList, items: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // GenerateGroceryList generates a grocery list from a meal plan. The BFF
@@ -129,25 +129,25 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		return nil, err
 	}
 	// Verify the plan belongs to the caller before creating a list linked
-	// to it — otherwise the mutation is an existence oracle on other
+	// to it — otherwise the mutation is an existence oracle on
 	// users' plan IDs via the FK error.
-	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.UserID); err != nil {
+	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.HouseholdID); err != nil {
 		return nil, err
 	}
 
 	var list grocery.GroceryList
 	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
-		created, err := r.GroceryService.CreateGroceryList(ctx, u.UserID, &mealPlanID, u.Email)
+		created, err := r.GroceryService.CreateGroceryList(ctx, u.HouseholdID, &mealPlanID, u.Email)
 		if err != nil {
 			return err
 		}
 		list = created
 
-		slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.UserID)
+		slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.HouseholdID)
 		if err != nil {
 			return err
 		}
-		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, u.UserID)
+		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, u.HouseholdID)
 		if err != nil {
 			return err
 		}
@@ -161,7 +161,7 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 			return nil
 		}
 
-		stock, err := r.userItemStock(ctx, u.UserID)
+		stock, err := r.householdItemStock(ctx, u.HouseholdID)
 		if err != nil {
 			return err
 		}
@@ -187,18 +187,18 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		}
 
 		lines := groceryNeedLines(list.GroceryListID, needs, stock, itemsByID, unitsByID)
-		_, err = r.GroceryService.AddGroceryListItems(ctx, lines, u.UserID, u.Email)
+		_, err = r.GroceryService.AddGroceryListItems(ctx, lines, u.HouseholdID, u.Email)
 		return err
 	}); err != nil {
 		return nil, err
 	}
 	// Preload the freshly generated list's children so nested resolvers
 	// never fall back to per-row queries.
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.UserID, []int64{list.GroceryListID})
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, []int64{list.GroceryListID})
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, userID: u.UserID, list: list, items: gc.itemsByList[list.GroceryListID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[list.GroceryListID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
 }
 
 // planLine is one expanded plan contribution: a quantity of a catalog
@@ -294,13 +294,13 @@ func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealS
 	return out
 }
 
-// userItemStock returns the user's on-hand quantity per item, expressed in
+// householdItemStock returns the household's on-hand quantity per item, expressed in
 // each item's canonical unit.
-func (r *Resolver) userItemStock(ctx context.Context, userID int64) (map[int64]float64, error) {
+func (r *Resolver) householdItemStock(ctx context.Context, householdID int64) (map[int64]float64, error) {
 	stock := make(map[int64]float64)
 	const page int32 = 1000
 	for offset := int32(0); ; offset += page {
-		rows, err := r.UserPrefsService.ListUserItems(ctx, userID, page, offset)
+		rows, err := r.UserPrefsService.ListHouseholdItems(ctx, householdID, page, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -363,7 +363,7 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 
 	var updated grocery.GroceryListItem
 	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
-		toggled, err := r.GroceryService.ToggleGroceryListItemChecked(ctx, id, u.UserID, u.Email)
+		toggled, err := r.GroceryService.ToggleGroceryListItemChecked(ctx, id, u.HouseholdID, u.Email)
 		if err != nil {
 			return err
 		}
@@ -372,7 +372,7 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 			if !toggled.IsChecked {
 				delta = -delta
 			}
-			if _, err := r.UserPrefsService.AdjustUserItemQuantity(ctx, u.UserID, *toggled.ItemID, delta, u.Email); err != nil {
+			if _, err := r.UserPrefsService.AdjustHouseholdItemQuantity(ctx, u.HouseholdID, *toggled.ItemID, delta, u.Email); err != nil {
 				return err
 			}
 		}
@@ -394,7 +394,7 @@ func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryLi
 	if err != nil {
 		return false, err
 	}
-	if err := r.GroceryService.DeleteGroceryListItem(ctx, id, u.UserID); err != nil {
+	if err := r.GroceryService.DeleteGroceryListItem(ctx, id, u.HouseholdID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -410,7 +410,7 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 	if err != nil {
 		return nil, err
 	}
-	it, err := r.GroceryService.AddGroceryListItem(ctx, item, u.UserID, u.Email)
+	it, err := r.GroceryService.AddGroceryListItem(ctx, item, u.HouseholdID, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ func (r *Resolver) parseGroceryItemInput(ctx context.Context, in addGroceryItemI
 type groceryListResolver struct {
 	g           GroceryService
 	inv         ItemReader
-	userID      int64
+	householdID int64
 	list        grocery.GroceryList
 	items       []grocery.GroceryListItem
 	catItems    map[int64]inventory.Item
@@ -489,7 +489,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 	} else {
 		slog.Default().Warn("groceryList.items missed preload; lazy-loading", "grocery_list_id", r.list.GroceryListID)
 		var err error
-		items, err = r.g.ListGroceryListItems(ctx, r.list.GroceryListID, r.userID)
+		items, err = r.g.ListGroceryListItems(ctx, r.list.GroceryListID, r.householdID)
 		if err != nil {
 			return nil, err
 		}
@@ -571,7 +571,7 @@ func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, erro
 type groceryListPageResolver struct {
 	g           GroceryService
 	inv         ItemReader
-	userID      int64
+	householdID int64
 	lists       []grocery.GroceryList
 	itemsByList map[int64][]grocery.GroceryListItem
 	items       map[int64]inventory.Item
@@ -586,7 +586,7 @@ type groceryListPageResolver struct {
 func (r *groceryListPageResolver) Items() []*groceryListResolver {
 	out := make([]*groceryListResolver, len(r.lists))
 	for i := range r.lists {
-		out[i] = &groceryListResolver{g: r.g, inv: r.inv, userID: r.userID, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch}
+		out[i] = &groceryListResolver{g: r.g, inv: r.inv, householdID: r.householdID, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch}
 	}
 	return out
 }

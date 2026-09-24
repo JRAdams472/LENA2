@@ -10,7 +10,7 @@ import (
 
 type Querier interface {
 	AddGroceryListItem(ctx context.Context, arg AddGroceryListItemParams) (GroceryGroceryListItem, error)
-	CountGroceryLists(ctx context.Context, userID int64) (int64, error)
+	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
 	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
 	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error
@@ -19,6 +19,9 @@ type Querier interface {
 	ListGroceryListItems(ctx context.Context, arg ListGroceryListItemsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryListItemsByLists(ctx context.Context, arg ListGroceryListItemsByListsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error)
+	// Invite-accept merge: repoint all of the source household's lists. Zero
+	// rows is not an error.
+	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
 	ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error)
 	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error
 }

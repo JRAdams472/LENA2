@@ -9,26 +9,46 @@ import (
 )
 
 type Querier interface {
-	// Atomically adjust the user's pantry quantity by delta, clamping at 0.
+	// Atomically adjust the household's pantry quantity by delta, clamping at 0.
 	// Creates the row if it does not yet exist, preserving all other fields
 	// on an existing row.
-	AdjustUserItemQuantity(ctx context.Context, arg AdjustUserItemQuantityParams) (UserprefsUserItem, error)
-	CountUserBottles(ctx context.Context, userID int64) (int64, error)
-	CountUserItems(ctx context.Context, userID int64) (int64, error)
+	AdjustHouseholdItemQuantity(ctx context.Context, arg AdjustHouseholdItemQuantityParams) (UserprefsHouseholdItem, error)
+	CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error)
+	CountHouseholdItems(ctx context.Context, householdID int64) (int64, error)
+	DeleteHouseholdBottle(ctx context.Context, arg DeleteHouseholdBottleParams) (int64, error)
+	DeleteHouseholdItem(ctx context.Context, arg DeleteHouseholdItemParams) (int64, error)
+	DeleteMergedHouseholdBottles(ctx context.Context, arg DeleteMergedHouseholdBottlesParams) error
+	// Drop source rows that were folded into a target row.
+	DeleteMergedHouseholdItems(ctx context.Context, arg DeleteMergedHouseholdItemsParams) error
 	DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavoriteParams) error
-	DeleteUserBottle(ctx context.Context, arg DeleteUserBottleParams) error
-	DeleteUserItem(ctx context.Context, arg DeleteUserItemParams) error
+	DeleteUserBottleFavorite(ctx context.Context, arg DeleteUserBottleFavoriteParams) error
+	DeleteUserItemFavorite(ctx context.Context, arg DeleteUserItemFavoriteParams) error
+	GetHouseholdBottleByBottle(ctx context.Context, arg GetHouseholdBottleByBottleParams) (UserprefsHouseholdBottle, error)
+	GetHouseholdBottleByID(ctx context.Context, arg GetHouseholdBottleByIDParams) (UserprefsHouseholdBottle, error)
+	GetHouseholdItemByID(ctx context.Context, arg GetHouseholdItemByIDParams) (UserprefsHouseholdItem, error)
+	GetHouseholdItemByItem(ctx context.Context, arg GetHouseholdItemByItemParams) (UserprefsHouseholdItem, error)
 	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
-	GetUserBottleByID(ctx context.Context, arg GetUserBottleByIDParams) (UserprefsUserBottle, error)
-	GetUserBottleByUserAndBottle(ctx context.Context, arg GetUserBottleByUserAndBottleParams) (UserprefsUserBottle, error)
-	GetUserItemByID(ctx context.Context, arg GetUserItemByIDParams) (UserprefsUserItem, error)
-	GetUserItemByUserAndItem(ctx context.Context, arg GetUserItemByUserAndItemParams) (UserprefsUserItem, error)
+	ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error)
+	ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error)
-	ListUserBottles(ctx context.Context, arg ListUserBottlesParams) ([]UserprefsUserBottle, error)
-	ListUserItems(ctx context.Context, arg ListUserItemsParams) ([]UserprefsUserItem, error)
+	ListUserBottleFavorites(ctx context.Context, arg ListUserBottleFavoritesParams) ([]UserprefsUserBottleFavorite, error)
+	ListUserItemFavorites(ctx context.Context, arg ListUserItemFavoritesParams) ([]UserprefsUserItemFavorite, error)
+	MergeHouseholdBottleConflicts(ctx context.Context, arg MergeHouseholdBottleConflictsParams) error
+	// ---------- household merge (invite accept) ----------
+	// For items present in both households, fold the source row into the
+	// target: quantities sum, min_qty takes the max, timestamps keep the most
+	// recent non-null, notes prefer the incoming non-null value.
+	MergeHouseholdItemConflicts(ctx context.Context, arg MergeHouseholdItemConflictsParams) error
+	ReassignHouseholdBottles(ctx context.Context, arg ReassignHouseholdBottlesParams) error
+	// Move every source row not already folded into a target row.
+	ReassignHouseholdItems(ctx context.Context, arg ReassignHouseholdItemsParams) error
+	SetUserBottleFavorite(ctx context.Context, arg SetUserBottleFavoriteParams) (UserprefsUserBottleFavorite, error)
+	// ---------- per-user favorites (never household-scoped) ----------
+	SetUserItemFavorite(ctx context.Context, arg SetUserItemFavoriteParams) (UserprefsUserItemFavorite, error)
+	UpsertHouseholdBottle(ctx context.Context, arg UpsertHouseholdBottleParams) (UserprefsHouseholdBottle, error)
+	UpsertHouseholdItem(ctx context.Context, arg UpsertHouseholdItemParams) (UserprefsHouseholdItem, error)
+	// ---------- recipe favorites (unchanged, per-user) ----------
 	UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
-	UpsertUserBottle(ctx context.Context, arg UpsertUserBottleParams) (UserprefsUserBottle, error)
-	UpsertUserItem(ctx context.Context, arg UpsertUserItemParams) (UserprefsUserItem, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -364,7 +364,7 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	if err != nil {
 		return nil, err
 	}
-	recency, err := r.ratingRecencyScores(ctx, u.UserID, limit)
+	recency, err := r.ratingRecencyScores(ctx, u.UserID, u.HouseholdID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -402,13 +402,13 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 // combined here (A1-01 — SQL never crosses schemas). Recipes never
 // planned score 1; the score decays linearly to 0 over 180 days since the
 // last plan week. Returns the best `limit` scores keyed by recipe.
-func (r *Resolver) ratingRecencyScores(ctx context.Context, userID int64, limit int32) (map[int64]float64, error) {
+func (r *Resolver) ratingRecencyScores(ctx context.Context, userID, householdID int64, limit int32) (map[int64]float64, error) {
 	rated, err := r.RecipeService.ListRatedAtLeast(ctx, userID, ratingRecencyMinRating)
 	if err != nil {
 		return nil, err
 	}
 	ratedIDs := distinctIDs(rated, func(rr recipe.RecipeRating) *int64 { return &rr.RecipeID })
-	lastPlanned, err := r.MealPlanService.LastPlannedDates(ctx, userID, ratedIDs)
+	lastPlanned, err := r.MealPlanService.LastPlannedDates(ctx, householdID, ratedIDs)
 	if err != nil {
 		return nil, err
 	}

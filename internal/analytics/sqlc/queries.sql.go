@@ -92,9 +92,10 @@ WITH new_items AS (
     WHERE recipe_id = $2::bigint
 ),
 hist AS (
-    SELECT DISTINCT mp.user_id, ms.recipe_id
+    SELECT DISTINCT u.user_id, ms.recipe_id
     FROM mealplan.meal_slot ms
     JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
+    JOIN identity.users u ON u.household_id = mp.household_id AND u.is_active
     WHERE ms.recipe_id IS NOT NULL AND ms.recipe_id <> $2::bigint
 ),
 scored AS (
@@ -132,6 +133,8 @@ type IngredientOverlapScoresRow struct {
 // For a newly created recipe ($1), compute each user's best Jaccard
 // similarity between the new recipe's item set and the item sets of the
 // recipes in that user's meal-plan history (|intersection| / |union|).
+// Meal plans are household-scoped, so plan history fans out to every
+// active member of the household via identity.users (ADR-001 read-model).
 func (q *Queries) IngredientOverlapScores(ctx context.Context, arg IngredientOverlapScoresParams) ([]IngredientOverlapScoresRow, error) {
 	rows, err := q.db.Query(ctx, ingredientOverlapScores, arg.MinScore, arg.RecipeID)
 	if err != nil {

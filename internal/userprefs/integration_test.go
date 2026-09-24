@@ -84,59 +84,56 @@ func TestIntegrationUserItemLifecycle(t *testing.T) {
 
 	minQty1 := 1.0
 	minQty2 := 2.0
-	ui1, err := svc.UpsertUserItem(ctx, UserItem{
-		UserID:     userA,
-		ItemID:     itemID,
-		CurrentQty: 5.0,
-		MinQty:     &minQty1,
-		Notes:      "first",
-		IsFavorite: false,
+	ui1, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userA,
+		ItemID:      itemID,
+		CurrentQty:  5.0,
+		MinQty:      &minQty1,
+		Notes:       "first",
 	}, itBy)
 	require.NoError(t, err)
-	require.NotZero(t, ui1.UserItemID)
-	assert.Equal(t, userA, ui1.UserID)
+	require.NotZero(t, ui1.HouseholdItemID)
+	assert.Equal(t, userA, ui1.HouseholdID)
 	assert.Equal(t, itemID, ui1.ItemID)
 	assert.InDelta(t, 5.0, ui1.CurrentQty, 0.0001)
 	assert.Equal(t, "first", ui1.Notes)
 
-	ui2, err := svc.UpsertUserItem(ctx, UserItem{
-		UserID:     userA,
-		ItemID:     itemID,
-		CurrentQty: 10.0,
-		MinQty:     &minQty2,
-		Notes:      "second",
-		IsFavorite: true,
+	ui2, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userA,
+		ItemID:      itemID,
+		CurrentQty:  10.0,
+		MinQty:      &minQty2,
+		Notes:       "second",
 	}, itBy)
 	require.NoError(t, err)
-	assert.Equal(t, ui1.UserItemID, ui2.UserItemID)
+	assert.Equal(t, ui1.HouseholdItemID, ui2.HouseholdItemID)
 	assert.InDelta(t, 10.0, ui2.CurrentQty, 0.0001)
 	assert.Equal(t, "second", ui2.Notes)
-	assert.True(t, ui2.IsFavorite)
 
-	got, err := svc.GetUserItemByID(ctx, ui1.UserItemID, userA)
+	got, err := svc.GetHouseholdItemByID(ctx, ui1.HouseholdItemID, userA)
 	require.NoError(t, err)
-	assert.Equal(t, ui1.UserItemID, got.UserItemID)
+	assert.Equal(t, ui1.HouseholdItemID, got.HouseholdItemID)
 	assert.InDelta(t, 10.0, got.CurrentQty, 0.0001)
 
-	items, err := svc.ListUserItems(ctx, userA, 100, 0)
+	items, err := svc.ListHouseholdItems(ctx, userA, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 
-	_, err = svc.GetUserItemByID(ctx, ui1.UserItemID, userB)
+	_, err = svc.GetHouseholdItemByID(ctx, ui1.HouseholdItemID, userB)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
-	itemsB, err := svc.ListUserItems(ctx, userB, 100, 0)
+	itemsB, err := svc.ListHouseholdItems(ctx, userB, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, itemsB)
 
-	require.NoError(t, svc.DeleteUserItem(ctx, ui1.UserItemID, userB))
-	items, err = svc.ListUserItems(ctx, userA, 100, 0)
+	require.NoError(t, svc.DeleteHouseholdItem(ctx, ui1.HouseholdItemID, userB))
+	items, err = svc.ListHouseholdItems(ctx, userA, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 
-	require.NoError(t, svc.DeleteUserItem(ctx, ui1.UserItemID, userA))
-	items, err = svc.ListUserItems(ctx, userA, 100, 0)
+	require.NoError(t, svc.DeleteHouseholdItem(ctx, ui1.HouseholdItemID, userA))
+	items, err = svc.ListHouseholdItems(ctx, userA, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, items)
 }
@@ -152,53 +149,50 @@ func TestIntegrationUserBottleLifecycle(t *testing.T) {
 	userB := testutil.MustUser(ctx, t, pool, "bottle-b@example.com")
 	bottleID := createTestBottle(ctx, t, pool)
 
-	ub1, err := svc.UpsertUserBottle(ctx, UserBottle{
-		UserID:     userA,
-		BottleID:   bottleID,
-		Quantity:   1,
-		Notes:      "first",
-		IsFavorite: false,
+	ub1, err := svc.UpsertHouseholdBottle(ctx, HouseholdBottle{
+		HouseholdID: userA,
+		BottleID:    bottleID,
+		Quantity:    1,
+		Notes:       "first",
 	}, itBy)
 	require.NoError(t, err)
-	require.NotZero(t, ub1.UserBottleID)
+	require.NotZero(t, ub1.HouseholdBottleID)
 
-	ub2, err := svc.UpsertUserBottle(ctx, UserBottle{
-		UserID:     userA,
-		BottleID:   bottleID,
-		Quantity:   5,
-		Notes:      "second",
-		IsFavorite: true,
+	ub2, err := svc.UpsertHouseholdBottle(ctx, HouseholdBottle{
+		HouseholdID: userA,
+		BottleID:    bottleID,
+		Quantity:    5,
+		Notes:       "second",
 	}, itBy)
 	require.NoError(t, err)
-	assert.Equal(t, ub1.UserBottleID, ub2.UserBottleID)
+	assert.Equal(t, ub1.HouseholdBottleID, ub2.HouseholdBottleID)
 	assert.Equal(t, int32(5), ub2.Quantity)
 	assert.Equal(t, "second", ub2.Notes)
-	assert.True(t, ub2.IsFavorite)
 
-	got, err := svc.GetUserBottleByID(ctx, ub1.UserBottleID, userA)
+	got, err := svc.GetHouseholdBottleByID(ctx, ub1.HouseholdBottleID, userA)
 	require.NoError(t, err)
-	assert.Equal(t, ub1.UserBottleID, got.UserBottleID)
+	assert.Equal(t, ub1.HouseholdBottleID, got.HouseholdBottleID)
 	assert.Equal(t, int32(5), got.Quantity)
 
-	bottles, err := svc.ListUserBottles(ctx, userA, 100, 0)
+	bottles, err := svc.ListHouseholdBottles(ctx, userA, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, bottles, 1)
 
-	_, err = svc.GetUserBottleByID(ctx, ub1.UserBottleID, userB)
+	_, err = svc.GetHouseholdBottleByID(ctx, ub1.HouseholdBottleID, userB)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
-	bottlesB, err := svc.ListUserBottles(ctx, userB, 100, 0)
+	bottlesB, err := svc.ListHouseholdBottles(ctx, userB, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, bottlesB)
 
-	require.NoError(t, svc.DeleteUserBottle(ctx, ub1.UserBottleID, userB))
-	bottles, err = svc.ListUserBottles(ctx, userA, 100, 0)
+	require.NoError(t, svc.DeleteHouseholdBottle(ctx, ub1.HouseholdBottleID, userB))
+	bottles, err = svc.ListHouseholdBottles(ctx, userA, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, bottles, 1)
 
-	require.NoError(t, svc.DeleteUserBottle(ctx, ub1.UserBottleID, userA))
-	bottles, err = svc.ListUserBottles(ctx, userA, 100, 0)
+	require.NoError(t, svc.DeleteHouseholdBottle(ctx, ub1.HouseholdBottleID, userA))
+	bottles, err = svc.ListHouseholdBottles(ctx, userA, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, bottles)
 }
@@ -264,7 +258,7 @@ func TestIntegrationRecipeFavoriteLifecycle(t *testing.T) {
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
-func TestIntegrationAdjustUserItemQuantityConcurrent(t *testing.T) {
+func TestIntegrationAdjustHouseholdItemQuantityConcurrent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
@@ -274,10 +268,10 @@ func TestIntegrationAdjustUserItemQuantityConcurrent(t *testing.T) {
 	userA := testutil.MustUser(ctx, t, pool, "adjust-concurrent-a@example.com")
 	itemID := createTestItem(ctx, t, pool)
 
-	_, err := svc.UpsertUserItem(ctx, UserItem{
-		UserID:     userA,
-		ItemID:     itemID,
-		CurrentQty: 20.0,
+	_, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userA,
+		ItemID:      itemID,
+		CurrentQty:  20.0,
 	}, itBy)
 	require.NoError(t, err)
 
@@ -286,19 +280,168 @@ func TestIntegrationAdjustUserItemQuantityConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = svc.AdjustUserItemQuantity(ctx, userA, itemID, 1.0, itBy)
+			_, _ = svc.AdjustHouseholdItemQuantity(ctx, userA, itemID, 1.0, itBy)
 		}()
 	}
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = svc.AdjustUserItemQuantity(ctx, userA, itemID, -1.0, itBy)
+			_, _ = svc.AdjustHouseholdItemQuantity(ctx, userA, itemID, -1.0, itBy)
 		}()
 	}
 	wg.Wait()
 
-	got, err := svc.GetUserItemByUserAndItem(ctx, userA, itemID)
+	got, err := svc.GetHouseholdItemByItem(ctx, userA, itemID)
 	require.NoError(t, err)
 	assert.InDelta(t, 20.0, got.CurrentQty, 0.0001)
+}
+
+// TestIntegrationHouseholdSharedHoldings proves that two users in the same
+// household read and mutate one shared pantry/cellar scope.
+func TestIntegrationHouseholdSharedHoldings(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testutil.MustUser(ctx, t, pool, "shared-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "shared-b@example.com")
+	testutil.JoinHousehold(ctx, t, pool, userB, userA)
+	itemID := createTestItem(ctx, t, pool)
+	bottleID := createTestBottle(ctx, t, pool)
+
+	ui, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userA, ItemID: itemID, CurrentQty: 4.0,
+	}, itBy)
+	require.NoError(t, err)
+
+	// The second member reads the same holding through the shared scope.
+	got, err := svc.GetHouseholdItemByItem(ctx, userA, itemID)
+	require.NoError(t, err)
+	assert.Equal(t, ui.HouseholdItemID, got.HouseholdItemID)
+
+	items, err := svc.ListHouseholdItems(ctx, userA, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	// A quantity adjustment by the second member lands on the same row.
+	adjusted, err := svc.AdjustHouseholdItemQuantity(ctx, userA, itemID, -1.5, itBy)
+	require.NoError(t, err)
+	assert.Equal(t, ui.HouseholdItemID, adjusted.HouseholdItemID)
+	assert.InDelta(t, 2.5, adjusted.CurrentQty, 0.0001)
+
+	ub, err := svc.UpsertHouseholdBottle(ctx, HouseholdBottle{
+		HouseholdID: userA, BottleID: bottleID, Quantity: 3,
+	}, itBy)
+	require.NoError(t, err)
+	gotB, err := svc.GetHouseholdBottleByBottle(ctx, userA, bottleID)
+	require.NoError(t, err)
+	assert.Equal(t, ub.HouseholdBottleID, gotB.HouseholdBottleID)
+}
+
+// TestIntegrationHouseholdFavoritesStayPersonal proves the favorites split:
+// members of one household share holdings but keep per-user favorites.
+func TestIntegrationHouseholdFavoritesStayPersonal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testutil.MustUser(ctx, t, pool, "favshare-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "favshare-b@example.com")
+	testutil.JoinHousehold(ctx, t, pool, userB, userA)
+	itemID := createTestItem(ctx, t, pool)
+	bottleID := createTestBottle(ctx, t, pool)
+
+	_, err := svc.SetItemFavorite(ctx, userB, itemID, true, itBy)
+	require.NoError(t, err)
+	_, err = svc.SetBottleFavorite(ctx, userB, bottleID, true, itBy)
+	require.NoError(t, err)
+
+	favB, err := svc.GetItemFavorite(ctx, userB, itemID)
+	require.NoError(t, err)
+	assert.True(t, favB)
+	favA, err := svc.GetItemFavorite(ctx, userA, itemID)
+	require.NoError(t, err)
+	assert.False(t, favA)
+
+	favsB, err := svc.ListItemFavorites(ctx, userB, []int64{itemID})
+	require.NoError(t, err)
+	assert.True(t, favsB[itemID])
+	favsA, err := svc.ListItemFavorites(ctx, userA, []int64{itemID})
+	require.NoError(t, err)
+	assert.False(t, favsA[itemID])
+
+	bfavB, err := svc.GetBottleFavorite(ctx, userB, bottleID)
+	require.NoError(t, err)
+	assert.True(t, bfavB)
+	bfavA, err := svc.GetBottleFavorite(ctx, userA, bottleID)
+	require.NoError(t, err)
+	assert.False(t, bfavA)
+
+	// Unfavoriting for B leaves A's (absent) favorite untouched.
+	_, err = svc.SetItemFavorite(ctx, userB, itemID, false, itBy)
+	require.NoError(t, err)
+	favB, err = svc.GetItemFavorite(ctx, userB, itemID)
+	require.NoError(t, err)
+	assert.False(t, favB)
+}
+
+// TestIntegrationMergeHouseholdStock verifies duplicate-key merge semantics:
+// when two households combine, quantities for the same catalog item sum.
+func TestIntegrationMergeHouseholdStock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testutil.MustUser(ctx, t, pool, "merge-a@example.com")
+	userB := testutil.MustUser(ctx, t, pool, "merge-b@example.com")
+	itemID := createTestItem(ctx, t, pool)
+	itemID2 := createTestItem(ctx, t, pool)
+	bottleID := createTestBottle(ctx, t, pool)
+
+	_, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userA, ItemID: itemID, CurrentQty: 3.0,
+	}, itBy)
+	require.NoError(t, err)
+	_, err = svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userB, ItemID: itemID, CurrentQty: 2.0,
+	}, itBy)
+	require.NoError(t, err)
+	_, err = svc.UpsertHouseholdItem(ctx, HouseholdItem{
+		HouseholdID: userB, ItemID: itemID2, CurrentQty: 7.0,
+	}, itBy)
+	require.NoError(t, err)
+	_, err = svc.UpsertHouseholdBottle(ctx, HouseholdBottle{
+		HouseholdID: userB, BottleID: bottleID, Quantity: 2,
+	}, itBy)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.MergeHouseholdStock(ctx, userB, userA, itBy))
+
+	got, err := svc.GetHouseholdItemByItem(ctx, userA, itemID)
+	require.NoError(t, err)
+	assert.InDelta(t, 5.0, got.CurrentQty, 0.0001, "duplicate item quantities sum on merge")
+
+	got2, err := svc.GetHouseholdItemByItem(ctx, userA, itemID2)
+	require.NoError(t, err)
+	assert.InDelta(t, 7.0, got2.CurrentQty, 0.0001, "unique items move wholesale")
+
+	bottlesA, err := svc.ListHouseholdBottles(ctx, userA, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, bottlesA, 1)
+	assert.Equal(t, int32(2), bottlesA[0].Quantity)
+
+	// The source household is emptied.
+	itemsB, err := svc.ListHouseholdItems(ctx, userB, 100, 0)
+	require.NoError(t, err)
+	assert.Empty(t, itemsB)
+	bottlesB, err := svc.ListHouseholdBottles(ctx, userB, 100, 0)
+	require.NoError(t, err)
+	assert.Empty(t, bottlesB)
 }

@@ -25,6 +25,8 @@ const (
 	upEmail  = "prefs@example.com"
 )
 
+// upCtx builds a request context whose household equals upUserID (the
+// testutil convention for solo users).
 func upCtx() context.Context {
 	return testutil.WithUser(context.Background(), upUserID, upEmail)
 }
@@ -37,11 +39,12 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 
 	minQty := 1.5
 	purchaseAt := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(20), int32(40)).Return([]userprefs.UserItem{
-		{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 3, MinQty: &minQty, PurchaseAt: &purchaseAt, Notes: "restock", IsFavorite: true},
-		{UserItemID: 6, UserID: upUserID, ItemID: 43, CurrentQty: 0.5},
+	up.EXPECT().ListHouseholdItems(gomock.Any(), upUserID, int32(20), int32(40)).Return([]userprefs.HouseholdItem{
+		{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 3, MinQty: &minQty, PurchaseAt: &purchaseAt, Notes: "restock"},
+		{HouseholdItemID: 6, HouseholdID: upUserID, ItemID: 43, CurrentQty: 0.5},
 	}, nil)
-	up.EXPECT().CountUserItems(gomock.Any(), upUserID).Return(int64(5), nil)
+	up.EXPECT().CountHouseholdItems(gomock.Any(), upUserID).Return(int64(5), nil)
+	up.EXPECT().ListItemFavorites(gomock.Any(), upUserID, []int64{42, 43}).Return(map[int64]bool{42: true}, nil)
 	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{42, 43}).Return([]inventory.Item{
 		{ItemID: 42, Name: "Flour", CategoryID: 1},
 		{ItemID: 43, Name: "Sugar", CategoryID: 1},
@@ -93,7 +96,7 @@ func TestResolver_UserItems_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserItems(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
+	up.EXPECT().ListHouseholdItems(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
 
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32
@@ -112,10 +115,11 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 	bottleNum := int32(2)
 	price := 24.99
 	temp := 55.0
-	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return([]userprefs.UserBottle{
-		{UserBottleID: 30, UserID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 6, PurchasePrice: &price, StorageTemp: &temp, Location: "cellar", IsFavorite: true},
+	up.EXPECT().ListHouseholdBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return([]userprefs.HouseholdBottle{
+		{HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 6, PurchasePrice: &price, StorageTemp: &temp, Location: "cellar"},
 	}, nil)
-	up.EXPECT().CountUserBottles(gomock.Any(), upUserID).Return(int64(5), nil)
+	up.EXPECT().CountHouseholdBottles(gomock.Any(), upUserID).Return(int64(5), nil)
+	up.EXPECT().ListBottleFavorites(gomock.Any(), upUserID, []int64{88}).Return(map[int64]bool{88: true}, nil)
 	w.EXPECT().GetBottlesByIDs(gomock.Any(), []int64{88}).Return([]wine.Bottle{{BottleID: 88, BottleSize: "750ml"}}, nil)
 	w.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
 	w.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
@@ -160,7 +164,7 @@ func TestResolver_UserBottles_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListUserBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
+	up.EXPECT().ListHouseholdBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
 
 	res, err := r.UserBottles(upCtx(), struct {
 		Page     int32
@@ -177,20 +181,21 @@ func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 
 	minQty := 1.0
 	expiresAt := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
-	existing := userprefs.UserItem{
-		UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 1,
-		MinQty: &minQty, ExpiresAt: &expiresAt, Notes: "keep", IsFavorite: true,
+	existing := userprefs.HouseholdItem{
+		HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 1,
+		MinQty: &minQty, ExpiresAt: &expiresAt, Notes: "keep",
 	}
 	purchaseAt := time.Date(2025, 2, 20, 0, 0, 0, 0, time.UTC)
-	wantArg := userprefs.UserItem{
-		UserID: upUserID, ItemID: 42, CurrentQty: 4.5,
-		MinQty: &minQty, PurchaseAt: &purchaseAt, ExpiresAt: &expiresAt, Notes: "keep", IsFavorite: true,
+	wantArg := userprefs.HouseholdItem{
+		HouseholdID: upUserID, ItemID: 42, CurrentQty: 4.5,
+		MinQty: &minQty, PurchaseAt: &purchaseAt, ExpiresAt: &expiresAt, Notes: "keep",
 	}
 	updated := wantArg
-	updated.UserItemID = 5
+	updated.HouseholdItemID = 5
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(true, nil)
 
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
@@ -209,10 +214,11 @@ func TestResolver_AdjustUserItem_NoExisting(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Eq(userprefs.UserItem{
-		UserID: upUserID, ItemID: 42, CurrentQty: 2,
-	}), upEmail).Return(userprefs.UserItem{UserItemID: 7, UserID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(userprefs.HouseholdItem{
+		HouseholdID: upUserID, ItemID: 42, CurrentQty: 2,
+	}), upEmail).Return(userprefs.HouseholdItem{HouseholdItemID: 7, HouseholdID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(false, nil)
 
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
@@ -240,8 +246,8 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserItem{}, errUpBoom)
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.HouseholdItem{}, errUpBoom)
 
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
@@ -257,15 +263,11 @@ func TestResolver_SetItemFavorite_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	existing := userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 3, Notes: "n"}
-	wantArg := userprefs.UserItem{
-		UserID: upUserID, ItemID: 42, CurrentQty: 3, Notes: "n", IsFavorite: true,
-	}
-	updated := wantArg
-	updated.UserItemID = 5
+	existing := userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 3, Notes: "n"}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
-	up.EXPECT().UpsertUserItem(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	up.EXPECT().SetItemFavorite(gomock.Any(), upUserID, int64(42), true, upEmail).
+		Return(userprefs.ItemFavorite{UserID: upUserID, ItemID: 42, IsFavorite: true}, nil)
 
 	res, err := r.SetItemFavorite(upCtx(), struct {
 		ItemID     graphql.ID
@@ -274,6 +276,29 @@ func TestResolver_SetItemFavorite_Happy(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, res.IsFavorite())
 	assert.Equal(t, 3.0, res.CurrentQty())
+}
+
+func TestResolver_SetItemFavorite_CreatesHolding(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	// No household holding yet: the favorite write creates one inside the
+	// same unit of work so it surfaces in the pantry list.
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+	up.EXPECT().SetItemFavorite(gomock.Any(), upUserID, int64(42), true, upEmail).
+		Return(userprefs.ItemFavorite{UserID: upUserID, ItemID: 42, IsFavorite: true}, nil)
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(userprefs.HouseholdItem{
+		HouseholdID: upUserID, ItemID: 42, CurrentQty: 0,
+	}), upEmail).Return(userprefs.HouseholdItem{HouseholdItemID: 8, HouseholdID: upUserID, ItemID: 42}, nil)
+
+	res, err := r.SetItemFavorite(upCtx(), struct {
+		ItemID     graphql.ID
+		IsFavorite bool
+	}{ItemID: "42", IsFavorite: true})
+	require.NoError(t, err)
+	assert.True(t, res.IsFavorite())
+	assert.Equal(t, graphql.ID("8"), res.ID())
 }
 
 func TestResolver_SetItemFavorite_Unauthorized(t *testing.T) {
@@ -291,9 +316,9 @@ func TestResolver_DeleteUserItem_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).
-		Return(&userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42}, nil)
-	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(nil)
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).
+		Return(&userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42}, nil)
+	up.EXPECT().DeleteHouseholdItem(gomock.Any(), int64(5), upUserID).Return(nil)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "42"})
 	require.NoError(t, err)
@@ -305,8 +330,8 @@ func TestResolver_DeleteUserItem_NotFound(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	// ItemID 99 not present -> returns false without calling DeleteUserItem.
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(99)).Return(nil, nil)
+	// ItemID 99 not present -> returns false without calling DeleteHouseholdItem.
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(99)).Return(nil, nil)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "99"})
 	require.NoError(t, err)
@@ -325,8 +350,9 @@ func TestResolver_IncrementUserItem_PositiveExisting(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), 2.0, upEmail).
-		Return(userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 5}, nil)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), upUserID, int64(42), 2.0, upEmail).
+		Return(userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 5}, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(false, nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
 		ItemID graphql.ID
@@ -343,8 +369,9 @@ func TestResolver_IncrementUserItem_PositiveNew(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), 2.0, upEmail).
-		Return(userprefs.UserItem{UserItemID: 7, UserID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), upUserID, int64(42), 2.0, upEmail).
+		Return(userprefs.HouseholdItem{HouseholdItemID: 7, HouseholdID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(false, nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
 		ItemID graphql.ID
@@ -361,9 +388,9 @@ func TestResolver_IncrementUserItem_NegativeDelete(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), -3.0, upEmail).
-		Return(userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42, CurrentQty: 0}, nil)
-	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(nil)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), upUserID, int64(42), -3.0, upEmail).
+		Return(userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 0}, nil)
+	up.EXPECT().DeleteHouseholdItem(gomock.Any(), int64(5), upUserID).Return(nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
 		ItemID graphql.ID
@@ -378,9 +405,9 @@ func TestResolver_IncrementUserItem_NegativeNoExisting(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().AdjustUserItemQuantity(gomock.Any(), upUserID, int64(42), -2.0, upEmail).
-		Return(userprefs.UserItem{UserItemID: 8, UserID: upUserID, ItemID: 42, CurrentQty: 0}, nil)
-	up.EXPECT().DeleteUserItem(gomock.Any(), int64(8), upUserID).Return(nil)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), upUserID, int64(42), -2.0, upEmail).
+		Return(userprefs.HouseholdItem{HouseholdItemID: 8, HouseholdID: upUserID, ItemID: 42, CurrentQty: 0}, nil)
+	up.EXPECT().DeleteHouseholdItem(gomock.Any(), int64(8), upUserID).Return(nil)
 
 	res, err := r.IncrementUserItem(upCtx(), struct {
 		ItemID graphql.ID
@@ -415,9 +442,9 @@ func TestResolver_DeleteUserItem_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserItemByUserAndItem(gomock.Any(), upUserID, int64(42)).
-		Return(&userprefs.UserItem{UserItemID: 5, UserID: upUserID, ItemID: 42}, nil)
-	up.EXPECT().DeleteUserItem(gomock.Any(), int64(5), upUserID).Return(errUpBoom)
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).
+		Return(&userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42}, nil)
+	up.EXPECT().DeleteHouseholdItem(gomock.Any(), int64(5), upUserID).Return(errUpBoom)
 
 	ok, err := r.DeleteUserItem(upCtx(), struct{ ItemID graphql.ID }{ItemID: "42"})
 	assert.False(t, ok)
@@ -431,19 +458,20 @@ func TestResolver_AdjustUserBottle_Happy(t *testing.T) {
 
 	bottleNum := int32(1)
 	price := 30.0
-	existing := userprefs.UserBottle{
-		UserBottleID: 30, UserID: upUserID, BottleID: 88, BottleNumber: &bottleNum,
-		Quantity: 2, PurchasePrice: &price, Location: "rack", IsFavorite: true,
+	existing := userprefs.HouseholdBottle{
+		HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88, BottleNumber: &bottleNum,
+		Quantity: 2, PurchasePrice: &price, Location: "rack",
 	}
-	wantArg := userprefs.UserBottle{
-		UserID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 5,
-		PurchasePrice: &price, Location: "rack", IsFavorite: true,
+	wantArg := userprefs.HouseholdBottle{
+		HouseholdID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 5,
+		PurchasePrice: &price, Location: "rack",
 	}
 	updated := wantArg
-	updated.UserBottleID = 30
+	updated.HouseholdBottleID = 30
 
-	up.EXPECT().GetUserBottleByUserAndBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
-	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
+	up.EXPECT().GetHouseholdBottleByBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
+	up.EXPECT().UpsertHouseholdBottle(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
+	up.EXPECT().GetBottleFavorite(gomock.Any(), upUserID, int64(88)).Return(true, nil)
 
 	res, err := r.AdjustUserBottle(upCtx(), struct {
 		BottleID graphql.ID
@@ -472,8 +500,8 @@ func TestResolver_AdjustUserBottle_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().GetUserBottleByUserAndBottle(gomock.Any(), upUserID, int64(88)).Return(nil, nil)
-	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.UserBottle{}, errUpBoom)
+	up.EXPECT().GetHouseholdBottleByBottle(gomock.Any(), upUserID, int64(88)).Return(nil, nil)
+	up.EXPECT().UpsertHouseholdBottle(gomock.Any(), gomock.Any(), upEmail).Return(userprefs.HouseholdBottle{}, errUpBoom)
 
 	res, err := r.AdjustUserBottle(upCtx(), struct {
 		BottleID graphql.ID
@@ -488,15 +516,11 @@ func TestResolver_SetBottleFavorite_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	existing := userprefs.UserBottle{UserBottleID: 30, UserID: upUserID, BottleID: 88, Quantity: 4, Notes: "nice"}
-	wantArg := userprefs.UserBottle{
-		UserID: upUserID, BottleID: 88, Quantity: 4, Notes: "nice", IsFavorite: true,
-	}
-	updated := wantArg
-	updated.UserBottleID = 30
+	existing := userprefs.HouseholdBottle{HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88, Quantity: 4, Notes: "nice"}
 
-	up.EXPECT().GetUserBottleByUserAndBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
-	up.EXPECT().UpsertUserBottle(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
+	up.EXPECT().GetHouseholdBottleByBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
+	up.EXPECT().SetBottleFavorite(gomock.Any(), upUserID, int64(88), true, upEmail).
+		Return(userprefs.BottleFavorite{UserID: upUserID, BottleID: 88, IsFavorite: true}, nil)
 
 	res, err := r.SetBottleFavorite(upCtx(), struct {
 		BottleID   graphql.ID

@@ -11,15 +11,15 @@ import (
 type Querier interface {
 	AddMealSlot(ctx context.Context, arg AddMealSlotParams) (MealplanMealSlot, error)
 	AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams) (MealplanMealSlotItem, error)
-	CountMealPlans(ctx context.Context, userID int64) (int64, error)
+	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
 	CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) (MealplanMealPlan, error)
 	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
 	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error
 	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error
 	GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams) (MealplanMealPlan, error)
 	GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams) (MealplanMealSlot, error)
-	// For one user: the most recent plan week in which each recipe appeared.
-	// The BFF combines this with recipe ratings for recency scoring.
+	// For one household: the most recent plan week in which each recipe
+	// appeared. The BFF combines this with recipe ratings for recency scoring.
 	ListLastPlannedDates(ctx context.Context, arg ListLastPlannedDatesParams) ([]ListLastPlannedDatesRow, error)
 	ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([]MealplanMealPlan, error)
 	ListMealSlotItems(ctx context.Context, arg ListMealSlotItemsParams) ([]MealplanMealSlotItem, error)
@@ -27,6 +27,9 @@ type Querier interface {
 	ListMealSlotItemsByPlans(ctx context.Context, arg ListMealSlotItemsByPlansParams) ([]MealplanMealSlotItem, error)
 	ListMealSlotsByPlans(ctx context.Context, arg ListMealSlotsByPlansParams) ([]MealplanMealSlot, error)
 	ListMealSlotsForPlan(ctx context.Context, arg ListMealSlotsForPlanParams) ([]MealplanMealSlot, error)
+	// Invite-accept merge: repoint all of the source household's plans. Zero
+	// rows is not an error (the source may have had none).
+	ReassignMealPlansToHousehold(ctx context.Context, arg ReassignMealPlansToHouseholdParams) error
 	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) error
 	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error
 }

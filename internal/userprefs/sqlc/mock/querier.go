@@ -41,49 +41,107 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
-// AdjustUserItemQuantity mocks base method.
-func (m *MockQuerier) AdjustUserItemQuantity(ctx context.Context, arg sqlc.AdjustUserItemQuantityParams) (sqlc.UserprefsUserItem, error) {
+// AdjustHouseholdItemQuantity mocks base method.
+func (m *MockQuerier) AdjustHouseholdItemQuantity(ctx context.Context, arg sqlc.AdjustHouseholdItemQuantityParams) (sqlc.UserprefsHouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AdjustUserItemQuantity", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
+	ret := m.ctrl.Call(m, "AdjustHouseholdItemQuantity", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// AdjustUserItemQuantity indicates an expected call of AdjustUserItemQuantity.
-func (mr *MockQuerierMockRecorder) AdjustUserItemQuantity(ctx, arg any) *gomock.Call {
+// AdjustHouseholdItemQuantity indicates an expected call of AdjustHouseholdItemQuantity.
+func (mr *MockQuerierMockRecorder) AdjustHouseholdItemQuantity(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustUserItemQuantity", reflect.TypeOf((*MockQuerier)(nil).AdjustUserItemQuantity), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustHouseholdItemQuantity", reflect.TypeOf((*MockQuerier)(nil).AdjustHouseholdItemQuantity), ctx, arg)
 }
 
-// CountUserBottles mocks base method.
-func (m *MockQuerier) CountUserBottles(ctx context.Context, userID int64) (int64, error) {
+// CountHouseholdBottles mocks base method.
+func (m *MockQuerier) CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountUserBottles", ctx, userID)
+	ret := m.ctrl.Call(m, "CountHouseholdBottles", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountUserBottles indicates an expected call of CountUserBottles.
-func (mr *MockQuerierMockRecorder) CountUserBottles(ctx, userID any) *gomock.Call {
+// CountHouseholdBottles indicates an expected call of CountHouseholdBottles.
+func (mr *MockQuerierMockRecorder) CountHouseholdBottles(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUserBottles", reflect.TypeOf((*MockQuerier)(nil).CountUserBottles), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdBottles", reflect.TypeOf((*MockQuerier)(nil).CountHouseholdBottles), ctx, householdID)
 }
 
-// CountUserItems mocks base method.
-func (m *MockQuerier) CountUserItems(ctx context.Context, userID int64) (int64, error) {
+// CountHouseholdItems mocks base method.
+func (m *MockQuerier) CountHouseholdItems(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountUserItems", ctx, userID)
+	ret := m.ctrl.Call(m, "CountHouseholdItems", ctx, householdID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountUserItems indicates an expected call of CountUserItems.
-func (mr *MockQuerierMockRecorder) CountUserItems(ctx, userID any) *gomock.Call {
+// CountHouseholdItems indicates an expected call of CountHouseholdItems.
+func (mr *MockQuerierMockRecorder) CountHouseholdItems(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUserItems", reflect.TypeOf((*MockQuerier)(nil).CountUserItems), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdItems", reflect.TypeOf((*MockQuerier)(nil).CountHouseholdItems), ctx, householdID)
+}
+
+// DeleteHouseholdBottle mocks base method.
+func (m *MockQuerier) DeleteHouseholdBottle(ctx context.Context, arg sqlc.DeleteHouseholdBottleParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdBottle", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteHouseholdBottle indicates an expected call of DeleteHouseholdBottle.
+func (mr *MockQuerierMockRecorder) DeleteHouseholdBottle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdBottle", reflect.TypeOf((*MockQuerier)(nil).DeleteHouseholdBottle), ctx, arg)
+}
+
+// DeleteHouseholdItem mocks base method.
+func (m *MockQuerier) DeleteHouseholdItem(ctx context.Context, arg sqlc.DeleteHouseholdItemParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdItem", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteHouseholdItem indicates an expected call of DeleteHouseholdItem.
+func (mr *MockQuerierMockRecorder) DeleteHouseholdItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdItem", reflect.TypeOf((*MockQuerier)(nil).DeleteHouseholdItem), ctx, arg)
+}
+
+// DeleteMergedHouseholdBottles mocks base method.
+func (m *MockQuerier) DeleteMergedHouseholdBottles(ctx context.Context, arg sqlc.DeleteMergedHouseholdBottlesParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMergedHouseholdBottles", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMergedHouseholdBottles indicates an expected call of DeleteMergedHouseholdBottles.
+func (mr *MockQuerierMockRecorder) DeleteMergedHouseholdBottles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMergedHouseholdBottles", reflect.TypeOf((*MockQuerier)(nil).DeleteMergedHouseholdBottles), ctx, arg)
+}
+
+// DeleteMergedHouseholdItems mocks base method.
+func (m *MockQuerier) DeleteMergedHouseholdItems(ctx context.Context, arg sqlc.DeleteMergedHouseholdItemsParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMergedHouseholdItems", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMergedHouseholdItems indicates an expected call of DeleteMergedHouseholdItems.
+func (mr *MockQuerierMockRecorder) DeleteMergedHouseholdItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMergedHouseholdItems", reflect.TypeOf((*MockQuerier)(nil).DeleteMergedHouseholdItems), ctx, arg)
 }
 
 // DeleteRecipeFavorite mocks base method.
@@ -100,32 +158,92 @@ func (mr *MockQuerierMockRecorder) DeleteRecipeFavorite(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecipeFavorite", reflect.TypeOf((*MockQuerier)(nil).DeleteRecipeFavorite), ctx, arg)
 }
 
-// DeleteUserBottle mocks base method.
-func (m *MockQuerier) DeleteUserBottle(ctx context.Context, arg sqlc.DeleteUserBottleParams) error {
+// DeleteUserBottleFavorite mocks base method.
+func (m *MockQuerier) DeleteUserBottleFavorite(ctx context.Context, arg sqlc.DeleteUserBottleFavoriteParams) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUserBottle", ctx, arg)
+	ret := m.ctrl.Call(m, "DeleteUserBottleFavorite", ctx, arg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteUserBottle indicates an expected call of DeleteUserBottle.
-func (mr *MockQuerierMockRecorder) DeleteUserBottle(ctx, arg any) *gomock.Call {
+// DeleteUserBottleFavorite indicates an expected call of DeleteUserBottleFavorite.
+func (mr *MockQuerierMockRecorder) DeleteUserBottleFavorite(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserBottle", reflect.TypeOf((*MockQuerier)(nil).DeleteUserBottle), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserBottleFavorite", reflect.TypeOf((*MockQuerier)(nil).DeleteUserBottleFavorite), ctx, arg)
 }
 
-// DeleteUserItem mocks base method.
-func (m *MockQuerier) DeleteUserItem(ctx context.Context, arg sqlc.DeleteUserItemParams) error {
+// DeleteUserItemFavorite mocks base method.
+func (m *MockQuerier) DeleteUserItemFavorite(ctx context.Context, arg sqlc.DeleteUserItemFavoriteParams) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUserItem", ctx, arg)
+	ret := m.ctrl.Call(m, "DeleteUserItemFavorite", ctx, arg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteUserItem indicates an expected call of DeleteUserItem.
-func (mr *MockQuerierMockRecorder) DeleteUserItem(ctx, arg any) *gomock.Call {
+// DeleteUserItemFavorite indicates an expected call of DeleteUserItemFavorite.
+func (mr *MockQuerierMockRecorder) DeleteUserItemFavorite(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserItem", reflect.TypeOf((*MockQuerier)(nil).DeleteUserItem), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserItemFavorite", reflect.TypeOf((*MockQuerier)(nil).DeleteUserItemFavorite), ctx, arg)
+}
+
+// GetHouseholdBottleByBottle mocks base method.
+func (m *MockQuerier) GetHouseholdBottleByBottle(ctx context.Context, arg sqlc.GetHouseholdBottleByBottleParams) (sqlc.UserprefsHouseholdBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdBottleByBottle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdBottleByBottle indicates an expected call of GetHouseholdBottleByBottle.
+func (mr *MockQuerierMockRecorder) GetHouseholdBottleByBottle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdBottleByBottle", reflect.TypeOf((*MockQuerier)(nil).GetHouseholdBottleByBottle), ctx, arg)
+}
+
+// GetHouseholdBottleByID mocks base method.
+func (m *MockQuerier) GetHouseholdBottleByID(ctx context.Context, arg sqlc.GetHouseholdBottleByIDParams) (sqlc.UserprefsHouseholdBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdBottleByID", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdBottleByID indicates an expected call of GetHouseholdBottleByID.
+func (mr *MockQuerierMockRecorder) GetHouseholdBottleByID(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdBottleByID", reflect.TypeOf((*MockQuerier)(nil).GetHouseholdBottleByID), ctx, arg)
+}
+
+// GetHouseholdItemByID mocks base method.
+func (m *MockQuerier) GetHouseholdItemByID(ctx context.Context, arg sqlc.GetHouseholdItemByIDParams) (sqlc.UserprefsHouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdItemByID", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdItemByID indicates an expected call of GetHouseholdItemByID.
+func (mr *MockQuerierMockRecorder) GetHouseholdItemByID(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdItemByID", reflect.TypeOf((*MockQuerier)(nil).GetHouseholdItemByID), ctx, arg)
+}
+
+// GetHouseholdItemByItem mocks base method.
+func (m *MockQuerier) GetHouseholdItemByItem(ctx context.Context, arg sqlc.GetHouseholdItemByItemParams) (sqlc.UserprefsHouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdItemByItem", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdItemByItem indicates an expected call of GetHouseholdItemByItem.
+func (mr *MockQuerierMockRecorder) GetHouseholdItemByItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdItemByItem", reflect.TypeOf((*MockQuerier)(nil).GetHouseholdItemByItem), ctx, arg)
 }
 
 // GetRecipeFavorite mocks base method.
@@ -143,64 +261,34 @@ func (mr *MockQuerierMockRecorder) GetRecipeFavorite(ctx, arg any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeFavorite", reflect.TypeOf((*MockQuerier)(nil).GetRecipeFavorite), ctx, arg)
 }
 
-// GetUserBottleByID mocks base method.
-func (m *MockQuerier) GetUserBottleByID(ctx context.Context, arg sqlc.GetUserBottleByIDParams) (sqlc.UserprefsUserBottle, error) {
+// ListHouseholdBottles mocks base method.
+func (m *MockQuerier) ListHouseholdBottles(ctx context.Context, arg sqlc.ListHouseholdBottlesParams) ([]sqlc.UserprefsHouseholdBottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserBottleByID", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserBottle)
+	ret := m.ctrl.Call(m, "ListHouseholdBottles", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.UserprefsHouseholdBottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetUserBottleByID indicates an expected call of GetUserBottleByID.
-func (mr *MockQuerierMockRecorder) GetUserBottleByID(ctx, arg any) *gomock.Call {
+// ListHouseholdBottles indicates an expected call of ListHouseholdBottles.
+func (mr *MockQuerierMockRecorder) ListHouseholdBottles(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByID", reflect.TypeOf((*MockQuerier)(nil).GetUserBottleByID), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdBottles", reflect.TypeOf((*MockQuerier)(nil).ListHouseholdBottles), ctx, arg)
 }
 
-// GetUserBottleByUserAndBottle mocks base method.
-func (m *MockQuerier) GetUserBottleByUserAndBottle(ctx context.Context, arg sqlc.GetUserBottleByUserAndBottleParams) (sqlc.UserprefsUserBottle, error) {
+// ListHouseholdItems mocks base method.
+func (m *MockQuerier) ListHouseholdItems(ctx context.Context, arg sqlc.ListHouseholdItemsParams) ([]sqlc.UserprefsHouseholdItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserBottleByUserAndBottle", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserBottle)
+	ret := m.ctrl.Call(m, "ListHouseholdItems", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.UserprefsHouseholdItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetUserBottleByUserAndBottle indicates an expected call of GetUserBottleByUserAndBottle.
-func (mr *MockQuerierMockRecorder) GetUserBottleByUserAndBottle(ctx, arg any) *gomock.Call {
+// ListHouseholdItems indicates an expected call of ListHouseholdItems.
+func (mr *MockQuerierMockRecorder) ListHouseholdItems(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserBottleByUserAndBottle", reflect.TypeOf((*MockQuerier)(nil).GetUserBottleByUserAndBottle), ctx, arg)
-}
-
-// GetUserItemByID mocks base method.
-func (m *MockQuerier) GetUserItemByID(ctx context.Context, arg sqlc.GetUserItemByIDParams) (sqlc.UserprefsUserItem, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserItemByID", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetUserItemByID indicates an expected call of GetUserItemByID.
-func (mr *MockQuerierMockRecorder) GetUserItemByID(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByID", reflect.TypeOf((*MockQuerier)(nil).GetUserItemByID), ctx, arg)
-}
-
-// GetUserItemByUserAndItem mocks base method.
-func (m *MockQuerier) GetUserItemByUserAndItem(ctx context.Context, arg sqlc.GetUserItemByUserAndItemParams) (sqlc.UserprefsUserItem, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserItemByUserAndItem", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetUserItemByUserAndItem indicates an expected call of GetUserItemByUserAndItem.
-func (mr *MockQuerierMockRecorder) GetUserItemByUserAndItem(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserItemByUserAndItem", reflect.TypeOf((*MockQuerier)(nil).GetUserItemByUserAndItem), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdItems", reflect.TypeOf((*MockQuerier)(nil).ListHouseholdItems), ctx, arg)
 }
 
 // ListRecipeFavorites mocks base method.
@@ -218,34 +306,150 @@ func (mr *MockQuerierMockRecorder) ListRecipeFavorites(ctx, arg any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeFavorites", reflect.TypeOf((*MockQuerier)(nil).ListRecipeFavorites), ctx, arg)
 }
 
-// ListUserBottles mocks base method.
-func (m *MockQuerier) ListUserBottles(ctx context.Context, arg sqlc.ListUserBottlesParams) ([]sqlc.UserprefsUserBottle, error) {
+// ListUserBottleFavorites mocks base method.
+func (m *MockQuerier) ListUserBottleFavorites(ctx context.Context, arg sqlc.ListUserBottleFavoritesParams) ([]sqlc.UserprefsUserBottleFavorite, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUserBottles", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.UserprefsUserBottle)
+	ret := m.ctrl.Call(m, "ListUserBottleFavorites", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserBottleFavorite)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListUserBottles indicates an expected call of ListUserBottles.
-func (mr *MockQuerierMockRecorder) ListUserBottles(ctx, arg any) *gomock.Call {
+// ListUserBottleFavorites indicates an expected call of ListUserBottleFavorites.
+func (mr *MockQuerierMockRecorder) ListUserBottleFavorites(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserBottles", reflect.TypeOf((*MockQuerier)(nil).ListUserBottles), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserBottleFavorites", reflect.TypeOf((*MockQuerier)(nil).ListUserBottleFavorites), ctx, arg)
 }
 
-// ListUserItems mocks base method.
-func (m *MockQuerier) ListUserItems(ctx context.Context, arg sqlc.ListUserItemsParams) ([]sqlc.UserprefsUserItem, error) {
+// ListUserItemFavorites mocks base method.
+func (m *MockQuerier) ListUserItemFavorites(ctx context.Context, arg sqlc.ListUserItemFavoritesParams) ([]sqlc.UserprefsUserItemFavorite, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUserItems", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.UserprefsUserItem)
+	ret := m.ctrl.Call(m, "ListUserItemFavorites", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserItemFavorite)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListUserItems indicates an expected call of ListUserItems.
-func (mr *MockQuerierMockRecorder) ListUserItems(ctx, arg any) *gomock.Call {
+// ListUserItemFavorites indicates an expected call of ListUserItemFavorites.
+func (mr *MockQuerierMockRecorder) ListUserItemFavorites(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserItems", reflect.TypeOf((*MockQuerier)(nil).ListUserItems), ctx, arg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserItemFavorites", reflect.TypeOf((*MockQuerier)(nil).ListUserItemFavorites), ctx, arg)
+}
+
+// MergeHouseholdBottleConflicts mocks base method.
+func (m *MockQuerier) MergeHouseholdBottleConflicts(ctx context.Context, arg sqlc.MergeHouseholdBottleConflictsParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeHouseholdBottleConflicts", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MergeHouseholdBottleConflicts indicates an expected call of MergeHouseholdBottleConflicts.
+func (mr *MockQuerierMockRecorder) MergeHouseholdBottleConflicts(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeHouseholdBottleConflicts", reflect.TypeOf((*MockQuerier)(nil).MergeHouseholdBottleConflicts), ctx, arg)
+}
+
+// MergeHouseholdItemConflicts mocks base method.
+func (m *MockQuerier) MergeHouseholdItemConflicts(ctx context.Context, arg sqlc.MergeHouseholdItemConflictsParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeHouseholdItemConflicts", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MergeHouseholdItemConflicts indicates an expected call of MergeHouseholdItemConflicts.
+func (mr *MockQuerierMockRecorder) MergeHouseholdItemConflicts(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeHouseholdItemConflicts", reflect.TypeOf((*MockQuerier)(nil).MergeHouseholdItemConflicts), ctx, arg)
+}
+
+// ReassignHouseholdBottles mocks base method.
+func (m *MockQuerier) ReassignHouseholdBottles(ctx context.Context, arg sqlc.ReassignHouseholdBottlesParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReassignHouseholdBottles", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReassignHouseholdBottles indicates an expected call of ReassignHouseholdBottles.
+func (mr *MockQuerierMockRecorder) ReassignHouseholdBottles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignHouseholdBottles", reflect.TypeOf((*MockQuerier)(nil).ReassignHouseholdBottles), ctx, arg)
+}
+
+// ReassignHouseholdItems mocks base method.
+func (m *MockQuerier) ReassignHouseholdItems(ctx context.Context, arg sqlc.ReassignHouseholdItemsParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReassignHouseholdItems", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReassignHouseholdItems indicates an expected call of ReassignHouseholdItems.
+func (mr *MockQuerierMockRecorder) ReassignHouseholdItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignHouseholdItems", reflect.TypeOf((*MockQuerier)(nil).ReassignHouseholdItems), ctx, arg)
+}
+
+// SetUserBottleFavorite mocks base method.
+func (m *MockQuerier) SetUserBottleFavorite(ctx context.Context, arg sqlc.SetUserBottleFavoriteParams) (sqlc.UserprefsUserBottleFavorite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserBottleFavorite", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsUserBottleFavorite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetUserBottleFavorite indicates an expected call of SetUserBottleFavorite.
+func (mr *MockQuerierMockRecorder) SetUserBottleFavorite(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserBottleFavorite", reflect.TypeOf((*MockQuerier)(nil).SetUserBottleFavorite), ctx, arg)
+}
+
+// SetUserItemFavorite mocks base method.
+func (m *MockQuerier) SetUserItemFavorite(ctx context.Context, arg sqlc.SetUserItemFavoriteParams) (sqlc.UserprefsUserItemFavorite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserItemFavorite", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsUserItemFavorite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetUserItemFavorite indicates an expected call of SetUserItemFavorite.
+func (mr *MockQuerierMockRecorder) SetUserItemFavorite(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserItemFavorite", reflect.TypeOf((*MockQuerier)(nil).SetUserItemFavorite), ctx, arg)
+}
+
+// UpsertHouseholdBottle mocks base method.
+func (m *MockQuerier) UpsertHouseholdBottle(ctx context.Context, arg sqlc.UpsertHouseholdBottleParams) (sqlc.UserprefsHouseholdBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertHouseholdBottle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertHouseholdBottle indicates an expected call of UpsertHouseholdBottle.
+func (mr *MockQuerierMockRecorder) UpsertHouseholdBottle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertHouseholdBottle", reflect.TypeOf((*MockQuerier)(nil).UpsertHouseholdBottle), ctx, arg)
+}
+
+// UpsertHouseholdItem mocks base method.
+func (m *MockQuerier) UpsertHouseholdItem(ctx context.Context, arg sqlc.UpsertHouseholdItemParams) (sqlc.UserprefsHouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertHouseholdItem", ctx, arg)
+	ret0, _ := ret[0].(sqlc.UserprefsHouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertHouseholdItem indicates an expected call of UpsertHouseholdItem.
+func (mr *MockQuerierMockRecorder) UpsertHouseholdItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertHouseholdItem", reflect.TypeOf((*MockQuerier)(nil).UpsertHouseholdItem), ctx, arg)
 }
 
 // UpsertRecipeFavorite mocks base method.
@@ -261,34 +465,4 @@ func (m *MockQuerier) UpsertRecipeFavorite(ctx context.Context, arg sqlc.UpsertR
 func (mr *MockQuerierMockRecorder) UpsertRecipeFavorite(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertRecipeFavorite", reflect.TypeOf((*MockQuerier)(nil).UpsertRecipeFavorite), ctx, arg)
-}
-
-// UpsertUserBottle mocks base method.
-func (m *MockQuerier) UpsertUserBottle(ctx context.Context, arg sqlc.UpsertUserBottleParams) (sqlc.UserprefsUserBottle, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUserBottle", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserBottle)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpsertUserBottle indicates an expected call of UpsertUserBottle.
-func (mr *MockQuerierMockRecorder) UpsertUserBottle(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserBottle", reflect.TypeOf((*MockQuerier)(nil).UpsertUserBottle), ctx, arg)
-}
-
-// UpsertUserItem mocks base method.
-func (m *MockQuerier) UpsertUserItem(ctx context.Context, arg sqlc.UpsertUserItemParams) (sqlc.UserprefsUserItem, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUserItem", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsUserItem)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpsertUserItem indicates an expected call of UpsertUserItem.
-func (mr *MockQuerierMockRecorder) UpsertUserItem(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserItem", reflect.TypeOf((*MockQuerier)(nil).UpsertUserItem), ctx, arg)
 }

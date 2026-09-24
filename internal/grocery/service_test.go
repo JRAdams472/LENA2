@@ -31,14 +31,14 @@ func TestCreateGroceryList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
 		want := sqlc.CreateGroceryListParams{
-			UserID:     42,
-			MealPlanID: pgtype.Int8{Int64: 7, Valid: true},
-			CreatedBy:  "tester",
-			UpdatedBy:  pgtype.Text{String: "tester", Valid: true},
+			HouseholdID: 42,
+			MealPlanID:  pgtype.Int8{Int64: 7, Valid: true},
+			CreatedBy:   "tester",
+			UpdatedBy:   pgtype.Text{String: "tester", Valid: true},
 		}
 		mq.EXPECT().CreateGroceryList(ctx, want).Return(sqlc.GroceryGroceryList{
 			GroceryListID: 3,
-			UserID:        42,
+			HouseholdID:   42,
 			MealPlanID:    pgtype.Int8{Int64: 7, Valid: true},
 			GeneratedAt:   now,
 		}, nil)
@@ -46,7 +46,7 @@ func TestCreateGroceryList(t *testing.T) {
 		got, err := s.CreateGroceryList(ctx, 42, &mealPlanID, "tester")
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), got.GroceryListID)
-		assert.Equal(t, int64(42), got.UserID)
+		assert.Equal(t, int64(42), got.HouseholdID)
 		require.NotNil(t, got.MealPlanID)
 		assert.Equal(t, int64(7), *got.MealPlanID)
 		assert.Equal(t, now, got.GeneratedAt)
@@ -57,7 +57,7 @@ func TestCreateGroceryList(t *testing.T) {
 		mq.EXPECT().CreateGroceryList(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, arg sqlc.CreateGroceryListParams) (sqlc.GroceryGroceryList, error) {
 				assert.False(t, arg.MealPlanID.Valid)
-				return sqlc.GroceryGroceryList{GroceryListID: 4, UserID: arg.UserID}, nil
+				return sqlc.GroceryGroceryList{GroceryListID: 4, HouseholdID: arg.HouseholdID}, nil
 			})
 
 		got, err := s.CreateGroceryList(ctx, 42, nil, "tester")
@@ -79,13 +79,13 @@ func TestGetGroceryListByID(t *testing.T) {
 
 	t.Run("success threads userID", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).
-			Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, HouseholdID: 42}).
+			Return(sqlc.GroceryGroceryList{GroceryListID: 3, HouseholdID: 42}, nil)
 
 		got, err := s.GetGroceryListByID(ctx, 3, 42)
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), got.GroceryListID)
-		assert.Equal(t, int64(42), got.UserID)
+		assert.Equal(t, int64(42), got.HouseholdID)
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
@@ -102,10 +102,10 @@ func TestListGroceryLists(t *testing.T) {
 
 	t.Run("success threads userID and paging", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListGroceryLists(ctx, sqlc.ListGroceryListsParams{UserID: 42, Limit: 10, Offset: 5}).
+		mq.EXPECT().ListGroceryLists(ctx, sqlc.ListGroceryListsParams{HouseholdID: 42, Limit: 10, Offset: 5}).
 			Return([]sqlc.GroceryGroceryList{
-				{GroceryListID: 3, UserID: 42},
-				{GroceryListID: 4, UserID: 42},
+				{GroceryListID: 3, HouseholdID: 42},
+				{GroceryListID: 4, HouseholdID: 42},
 			}, nil)
 
 		got, err := s.ListGroceryLists(ctx, 42, 10, 5)
@@ -129,7 +129,7 @@ func TestDeleteGroceryList(t *testing.T) {
 
 	t.Run("success threads userID", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: 3, UserID: 42}).Return(nil)
+		mq.EXPECT().DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: 3, HouseholdID: 42}).Return(nil)
 		require.NoError(t, s.DeleteGroceryList(ctx, 3, 42))
 	})
 
@@ -156,7 +156,7 @@ func TestAddGroceryListItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, HouseholdID: 42}).Return(sqlc.GroceryGroceryList{GroceryListID: 3, HouseholdID: 42}, nil)
 		mq.EXPECT().AddGroceryListItem(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, arg sqlc.AddGroceryListItemParams) (sqlc.GroceryGroceryListItem, error) {
 				assert.Equal(t, int64(3), arg.GroceryListID)
@@ -195,7 +195,7 @@ func TestAddGroceryListItem(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, HouseholdID: 42}).Return(sqlc.GroceryGroceryList{GroceryListID: 3, HouseholdID: 42}, nil)
 		mq.EXPECT().AddGroceryListItem(ctx, gomock.Any()).Return(sqlc.GroceryGroceryListItem{}, errDB)
 		_, err := s.AddGroceryListItem(ctx, in, 42, "tester")
 		assert.ErrorContains(t, err, "add grocery list item")
@@ -208,7 +208,7 @@ func TestListGroceryListItems(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().ListGroceryListItems(ctx, sqlc.ListGroceryListItemsParams{GroceryListID: 3, UserID: 42}).
+		mq.EXPECT().ListGroceryListItems(ctx, sqlc.ListGroceryListItemsParams{GroceryListID: 3, HouseholdID: 42}).
 			Return([]sqlc.GroceryGroceryListItem{
 				{GroceryListItemID: 900, GroceryListID: 3, Source: "manual"},
 				{GroceryListItemID: 901, GroceryListID: 3, Source: "recipe", IsChecked: true},
@@ -235,7 +235,7 @@ func TestGetGroceryListItemByID(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: 900, UserID: 42}).
+		mq.EXPECT().GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: 900, HouseholdID: 42}).
 			Return(sqlc.GroceryGroceryListItem{
 				GroceryListItemID: 900,
 				GroceryListID:     3,
@@ -302,7 +302,7 @@ func TestDeleteGroceryListItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: 900, UserID: 42}).Return(nil)
+		mq.EXPECT().DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: 900, HouseholdID: 42}).Return(nil)
 		require.NoError(t, s.DeleteGroceryListItem(ctx, 900, 42))
 	})
 
@@ -318,8 +318,8 @@ func TestAddGroceryListItems(t *testing.T) {
 
 	t.Run("inserts the batch after one ownership check", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, UserID: 42}).
-			Return(sqlc.GroceryGroceryList{GroceryListID: 3, UserID: 42}, nil)
+		mq.EXPECT().GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: 3, HouseholdID: 42}).
+			Return(sqlc.GroceryGroceryList{GroceryListID: 3, HouseholdID: 42}, nil)
 		itemID := int64(10)
 		unitID := int64(5)
 		mq.EXPECT().AddGroceryListItem(ctx, gomock.Any()).

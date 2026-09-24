@@ -380,7 +380,7 @@ func TestIntegrationRatingRecency(t *testing.T) {
 
 	// userA planned `recent` this week; `stale` was never planned.
 	plan, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
-		UserID: userA, Name: "IT Recency Plan", WeekStartDate: time.Now(), IsActive: true,
+		HouseholdID: userA, Name: "IT Recency Plan", WeekStartDate: time.Now(), IsActive: true,
 	}, itBy)
 	require.NoError(t, err)
 	_, err = mpSvc.AddMealSlot(ctx, mealplan.MealSlot{
