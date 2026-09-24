@@ -14,6 +14,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-lena}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-lena}
+      # postgres:18 images moved PGDATA to /var/lib/postgresql/18/docker and
+      # fail when a volume is mounted at the legacy path; pinning PGDATA keeps
+      # the existing pg_data volume layout working.
+      PGDATA: /var/lib/postgresql/data
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
