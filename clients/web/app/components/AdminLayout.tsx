@@ -23,9 +23,15 @@ import WineBarIcon from "@mui/icons-material/WineBar";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import ListItemIcon from "@mui/material/ListItemIcon";
+import Badge from "@mui/material/Badge";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import NotificationsIcon from "@mui/icons-material/Notifications";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
+import { api } from "@/lib/api";
+import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
 import LoginScreen from "@/app/components/LoginScreen";
@@ -114,6 +120,116 @@ function isActive(pathname: string, href: string): boolean {
 
 function isGroupActive(pathname: string, children: NavItem[]): boolean {
   return children.some((child) => isActive(pathname, child.href));
+}
+
+// NotificationBell polls the unread count on a 30s interval and fetches
+// the feed only while the menu is open. Deliberately not react-query:
+// AdminLayout must render without QueryClientProvider (same constraint as
+// useMe).
+function NotificationBell() {
+  const router = useRouter();
+  const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
+  const [unread, setUnread] = React.useState(0);
+  const [items, setItems] = React.useState<HouseholdNotification[]>([]);
+  const [marking, setMarking] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api
+        .getUnreadNotificationCount()
+        .then((n) => !cancelled && setUnread(n))
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (anchor === null) return;
+    let cancelled = false;
+    api
+      .getMyNotifications(20)
+      .then((ns) => !cancelled && setItems(ns))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [anchor]);
+
+  const markAllRead = () => {
+    setMarking(true);
+    api
+      .markAllNotificationsRead()
+      .then(() => setUnread(0))
+      .catch(() => {})
+      .finally(() => setMarking(false));
+  };
+
+  return (
+    <>
+      <IconButton
+        color="inherit"
+        aria-label="notifications"
+        onClick={(e) => setAnchor(e.currentTarget)}
+        sx={{ mr: 1 }}
+      >
+        <Badge badgeContent={unread} color="error" data-testid="notification-badge">
+          <NotificationsIcon />
+        </Badge>
+      </IconButton>
+      <Menu
+        anchorEl={anchor}
+        open={anchor !== null}
+        onClose={() => setAnchor(null)}
+      >
+        {items.length === 0 && <MenuItem disabled>No notifications</MenuItem>}
+        {items.map((n) => (
+          <MenuItem
+            key={n.notificationID}
+            onClick={() => {
+              setAnchor(null);
+              router.push("/household");
+            }}
+          >
+            {notificationText(n)}
+          </MenuItem>
+        ))}
+        {items.length > 0 && (
+          <MenuItem onClick={markAllRead} disabled={marking}>
+            Mark all read
+          </MenuItem>
+        )}
+      </Menu>
+    </>
+  );
+}
+
+function notificationText(n: HouseholdNotification): string {
+  const actor = n.actor?.displayName ?? "Someone";
+  switch (n.kind) {
+    case "INVITE_RECEIVED":
+      return `${actor} invited you to their household`;
+    case "INVITE_ACCEPTED":
+      return `${actor} accepted your household invite`;
+    case "INVITE_DECLINED":
+      return `${actor} declined your household invite`;
+    case "INVITE_CANCELLED":
+      return `${actor} cancelled a household invite`;
+    case "MEMBER_JOINED":
+      return `${actor} joined your household`;
+    case "MEMBER_LEFT":
+      return `${actor} left your household`;
+    case "MEMBER_REMOVED":
+      return "You were removed from a household";
+    case "ROLE_CHANGED":
+      return `${actor} changed a household role`;
+    case "HOUSEHOLD_RENAMED":
+      return `${actor} renamed the household`;
+  }
 }
 
 export default function AdminLayout({
@@ -262,6 +378,7 @@ export default function AdminLayout({
           </Typography>
           {user && (
             <>
+              <NotificationBell />
               <Typography variant="body2" sx={{ mr: 2 }}>
                 {user.email}
               </Typography>

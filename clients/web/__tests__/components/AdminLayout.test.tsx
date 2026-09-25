@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { usePathname } from "next/navigation";
 import AdminLayout from "@/app/components/AdminLayout";
 import { AuthProvider } from "@/app/auth/AuthProvider";
@@ -42,11 +42,66 @@ function renderLayout() {
   );
 }
 
+const mockFetch = global.fetch as jest.Mock;
+
+function gql(data: object) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => "application/json" },
+    json: async () => ({ data }),
+  };
+}
+
+const meResponse = {
+  me: {
+    id: "1",
+    email: "admin@example.com",
+    displayName: "Admin",
+    firstName: null,
+    lastName: null,
+    backupEmail: null,
+    role: "admin",
+    isActive: true,
+    isProtected: false,
+    lastLoginAt: null,
+    isSearchable: true,
+    household: null,
+  },
+};
+
 describe("AdminLayout", () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
     mockedUsePathname.mockReturnValue("/");
+    mockFetch.mockReset();
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("unreadNotificationCount"))
+        return Promise.resolve(gql({ unreadNotificationCount: 2 }));
+      if (body.query.includes("myNotifications"))
+        return Promise.resolve(
+          gql({
+            myNotifications: [
+              {
+                id: "3",
+                kind: "INVITE_RECEIVED",
+                createdAt: "2026-09-20T10:00:00Z",
+                actor: {
+                  id: "9",
+                  displayName: "Mate",
+                  firstName: null,
+                  lastName: null,
+                },
+              },
+            ],
+          })
+        );
+      if (body.query.includes("markAllNotificationsRead"))
+        return Promise.resolve(gql({ markAllNotificationsRead: true }));
+      return Promise.resolve(gql(meResponse));
+    });
   });
 
   it("gates the app behind the login screen when signed out", () => {
@@ -93,6 +148,37 @@ describe("AdminLayout", () => {
       expect(screen.getByTestId("page-content")).toBeInTheDocument()
     );
     expect((await screen.findAllByText("Categories")).length).toBeGreaterThan(0);
+  });
+
+  it("shows the unread badge and lists notifications in the bell menu", async () => {
+    signIn();
+    renderLayout();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("notification-badge")).toHaveTextContent("2")
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    expect(
+      await screen.findByText("Mate invited you to their household")
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark all read"));
+    });
+    expect(
+      mockFetch.mock.calls.some(([, init]) =>
+        (init as RequestInit).body
+          ?.toString()
+          .includes("markAllNotificationsRead")
+      )
+    ).toBe(true);
+    // MUI keeps the last count in the DOM; the invisible class is the signal.
+    expect(
+      screen
+        .getByTestId("notification-badge")
+        .querySelector(".MuiBadge-badge")
+    ).toHaveClass("MuiBadge-invisible");
   });
 
   it("signs out and returns to the login screen", async () => {
