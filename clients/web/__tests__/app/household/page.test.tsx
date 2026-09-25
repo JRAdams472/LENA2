@@ -55,9 +55,15 @@ const target = { userID: 11, displayName: "Target", firstName: null, lastName: n
 
 const household = {
   householdID: 42,
+  name: null,
+  myRole: "OWNER" as const,
   members: [
-    { userID: 7, displayName: "Me", firstName: null, lastName: null },
-    mate,
+    {
+      user: { userID: 7, displayName: "Me", firstName: null, lastName: null },
+      role: "OWNER" as const,
+      isMe: true,
+    },
+    { user: mate, role: "MEMBER" as const, isMe: false },
   ],
   createdAt: "2026-01-01T00:00:00Z",
 };
@@ -105,7 +111,8 @@ describe("household page", () => {
   it("lists household members", async () => {
     renderPage();
     expect(await screen.findByText("Mate")).toBeInTheDocument();
-    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("owner — you")).toBeInTheDocument();
+    expect(screen.getByText("member")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /leave household/i })
     ).toBeInTheDocument();

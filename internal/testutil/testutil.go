@@ -163,18 +163,20 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 		t.Fatalf("sync household sequence: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`UPDATE identity.users SET household_id = $2 WHERE user_id = $1 AND household_id IS NULL`, u.UserID, householdID); err != nil {
+		`UPDATE identity.users SET household_id = $2, household_role = 'owner'
+		 WHERE user_id = $1 AND household_id IS NULL`, u.UserID, householdID); err != nil {
 		t.Fatalf("assign test household: %v", err)
 	}
 	return u.UserID
 }
 
-// JoinHousehold moves a test user into an existing household row, leaving
-// their default household empty. For multi-member household tests.
+// JoinHousehold moves a test user into an existing household row as a
+// member, leaving their default household empty. For multi-member
+// household tests.
 func JoinHousehold(ctx context.Context, t *testing.T, pool *pgxpool.Pool, userID, householdID int64) {
 	t.Helper()
 	tag, err := pool.Exec(ctx,
-		`UPDATE identity.users SET household_id = $2 WHERE user_id = $1`, userID, householdID)
+		`UPDATE identity.users SET household_id = $2, household_role = 'member' WHERE user_id = $1`, userID, householdID)
 	if err != nil {
 		t.Fatalf("join test household: %v", err)
 	}
@@ -192,13 +194,22 @@ func WithUser(ctx context.Context, userID int64, email string) context.Context {
 
 // WithHousehold returns a context carrying a currentuser.User whose
 // household scope differs from the user ID — for multi-member household
-// tests.
+// tests. HouseholdRole defaults to 'owner', matching the
+// default-household convention.
 func WithHousehold(ctx context.Context, userID, householdID int64, email string) context.Context {
+	return WithHouseholdRole(ctx, userID, householdID, "owner", email)
+}
+
+// WithHouseholdRole is WithHousehold with an explicit household role —
+// for permission-matrix tests (e.g. a plain member attempting an
+// owner-only mutation).
+func WithHouseholdRole(ctx context.Context, userID, householdID int64, role, email string) context.Context {
 	return currentuser.WithUser(ctx, currentuser.User{
-		UserID:      userID,
-		Provider:    "test-provider",
-		Email:       email,
-		HouseholdID: householdID,
+		UserID:        userID,
+		Provider:      "test-provider",
+		Email:         email,
+		HouseholdID:   householdID,
+		HouseholdRole: role,
 	})
 }
 

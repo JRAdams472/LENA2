@@ -116,6 +116,10 @@ type Query {
   # Opted-in, active users matching a name/email term; excludes the
   # caller and current household members.
   searchHouseholdUsers(term: String!, limit: Int = 20): [HouseholdUser!]!
+  # The caller's household notifications, newest first.
+  myNotifications(limit: Int = 20): [HouseholdNotification!]!
+  # Unread notification count — backs the nav badge; clients poll it.
+  unreadNotificationCount: Int!
 }
 
 type Mutation {
@@ -245,6 +249,17 @@ type Mutation {
   declineHouseholdInvite(inviteId: ID!): HouseholdInvite!
   cancelHouseholdInvite(inviteId: ID!): HouseholdInvite!
   leaveHousehold: Boolean!
+  # Owner-only: set or clear the household's display name (empty clears).
+  renameHousehold(name: String!): Household!
+  # Owner-only: promote a member to admin or demote an admin to member.
+  setHouseholdRole(userId: ID!, role: HouseholdRole!): Household!
+  # Owner removes admins and members; admins remove members only.
+  removeHouseholdMember(userId: ID!): Household!
+  # Owner-only: hand ownership to another member; the caller becomes a
+  # member.
+  transferHouseholdOwnership(userId: ID!): Household!
+  # Marks every unread notification read; returns whether any changed.
+  markAllNotificationsRead: Boolean!
 }
 
 input UpdateProfileInput {
@@ -292,6 +307,24 @@ enum InviteStatus {
   CANCELLED
 }
 
+enum HouseholdRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum NotificationKind {
+  INVITE_RECEIVED
+  INVITE_ACCEPTED
+  INVITE_DECLINED
+  INVITE_CANCELLED
+  MEMBER_JOINED
+  MEMBER_LEFT
+  MEMBER_REMOVED
+  ROLE_CHANGED
+  HOUSEHOLD_RENAMED
+}
+
 # Restricted user projection for household flows — intentionally omits
 # email, role, isProtected, and lastLoginAt, which the full User type
 # returns unconditionally.
@@ -304,7 +337,27 @@ type HouseholdUser {
 
 type Household {
   id: ID!
-  members: [HouseholdUser!]!
+  name: String
+  members: [HouseholdMember!]!
+  # The caller's own role within this household.
+  myRole: HouseholdRole!
+  createdAt: Time!
+}
+
+# A member entry pairs the restricted user projection with household
+# metadata. Role lives here rather than on HouseholdUser so invite/search
+# results never expose which role a stranger holds in their household.
+type HouseholdMember {
+  user: HouseholdUser!
+  role: HouseholdRole!
+  isMe: Boolean!
+}
+
+type HouseholdNotification {
+  id: ID!
+  kind: NotificationKind!
+  # The member whose action produced the event; null for system rows.
+  actor: HouseholdUser
   createdAt: Time!
 }
 

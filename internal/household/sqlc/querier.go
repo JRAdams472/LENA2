@@ -9,12 +9,27 @@ import (
 )
 
 type Querier interface {
+	// Leave/remove cleanup: pending invites a departing member sent for that
+	// household are cancelled so they can no longer be accepted against a
+	// household the sender no longer belongs to.
+	CancelPendingInvitesFrom(ctx context.Context, arg CancelPendingInvitesFromParams) ([]HouseholdInvite, error)
+	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
 	CreateHousehold(ctx context.Context, createdBy string) (HouseholdHousehold, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (HouseholdInvite, error)
+	CreateNotification(ctx context.Context, arg CreateNotificationParams) (HouseholdNotification, error)
 	GetHouseholdByID(ctx context.Context, householdID int64) (HouseholdHousehold, error)
+	// Row lock: serialize member-count checks and membership transitions for
+	// concurrent accept/leave/remove operations against the same household.
+	GetHouseholdByIDForUpdate(ctx context.Context, householdID int64) (HouseholdHousehold, error)
 	GetInviteByID(ctx context.Context, inviteID int64) (HouseholdInvite, error)
+	ListNotificationsForUser(ctx context.Context, arg ListNotificationsForUserParams) ([]HouseholdNotification, error)
 	ListPendingInvitesForUser(ctx context.Context, toUserID int64) ([]HouseholdInvite, error)
 	ListSentInvitesForUser(ctx context.Context, fromUserID int64) ([]HouseholdInvite, error)
+	MarkAllNotificationsRead(ctx context.Context, userID int64) (int64, error)
+	// Retention: keep at most the 100 most recent read notifications per user;
+	// called inside the same transaction as CreateNotification.
+	PruneReadNotifications(ctx context.Context, userID int64) error
+	RenameHousehold(ctx context.Context, arg RenameHouseholdParams) (HouseholdHousehold, error)
 	// Status-guarded: only a pending invite can transition, so a concurrent
 	// accept/decline/cancel loses with zero rows instead of a lost update.
 	TransitionInvite(ctx context.Context, arg TransitionInviteParams) (HouseholdInvite, error)

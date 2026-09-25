@@ -328,16 +328,17 @@ func TestHouseholdQueries(t *testing.T) {
 				assert.Equal(t, int64(2), arg.UserID)
 				assert.Equal(t, pgtype.Int8{Int64: 10, Valid: true}, arg.HouseholdID)
 				assert.Equal(t, pgtype.Int8{Int64: 2, Valid: true}, arg.ExpectedHouseholdID)
+				assert.Equal(t, HouseholdRoleMember, arg.HouseholdRole)
 				return 1, nil
 			})
 		exp := int64(2)
-		require.NoError(t, svc.SetUserHousehold(ctx, 2, 10, &exp))
+		require.NoError(t, svc.SetUserHousehold(ctx, 2, 10, HouseholdRoleMember, &exp))
 	})
 
 	t.Run("set household stale expectation is a conflict", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().SetUserHousehold(ctx, gomock.Any()).Return(int64(0), nil)
-		err := svc.SetUserHousehold(ctx, 2, 10, nil)
+		err := svc.SetUserHousehold(ctx, 2, 10, HouseholdRoleMember, nil)
 		assert.ErrorIs(t, err, domainerr.ErrConflict)
 	})
 

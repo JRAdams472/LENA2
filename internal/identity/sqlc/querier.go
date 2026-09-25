@@ -15,6 +15,7 @@ type Querier interface {
 	ConditionalSetUserRole(ctx context.Context, arg ConditionalSetUserRoleParams) (int64, error)
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
+	CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	GetUserByProviderSubject(ctx context.Context, arg GetUserByProviderSubjectParams) (IdentityUser, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
@@ -27,7 +28,12 @@ type Querier interface {
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
 	// Conditional update: the expected-household guard turns a concurrent
 	// accept/leave race into a zero-row conflict instead of a lost update.
+	// household_role is set atomically with the move: 'owner' for fresh
+	// default households, 'member' when joining via invite accept.
 	SetUserHousehold(ctx context.Context, arg SetUserHouseholdParams) (int64, error)
+	// Role change within the same household; the expected-household guard
+	// keeps a stale actor from re-adding a role after the user moved.
+	SetUserHouseholdRole(ctx context.Context, arg SetUserHouseholdRoleParams) (int64, error)
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
 	SetUserSearchable(ctx context.Context, arg SetUserSearchableParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error

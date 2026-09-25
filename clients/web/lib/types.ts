@@ -41,9 +41,40 @@ export interface HouseholdUser {
   lastName: string | null;
 }
 
+export type HouseholdRole = "OWNER" | "ADMIN" | "MEMBER";
+
+export type NotificationKind =
+  | "INVITE_RECEIVED"
+  | "INVITE_ACCEPTED"
+  | "INVITE_DECLINED"
+  | "INVITE_CANCELLED"
+  | "MEMBER_JOINED"
+  | "MEMBER_LEFT"
+  | "MEMBER_REMOVED"
+  | "ROLE_CHANGED"
+  | "HOUSEHOLD_RENAMED";
+
+// A member entry pairs the restricted user projection with household
+// role metadata — roles never appear on HouseholdUser itself so invite
+// and search results cannot leak them.
+export interface HouseholdMember {
+  user: HouseholdUser;
+  role: HouseholdRole;
+  isMe: boolean;
+}
+
 export interface Household {
   householdID: number;
-  members: HouseholdUser[];
+  name: string | null;
+  members: HouseholdMember[];
+  myRole: HouseholdRole;
+  createdAt: string;
+}
+
+export interface HouseholdNotification {
+  notificationID: number;
+  kind: NotificationKind;
+  actor: HouseholdUser | null;
   createdAt: string;
 }
 

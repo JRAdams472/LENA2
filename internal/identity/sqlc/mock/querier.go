@@ -102,6 +102,21 @@ func (mr *MockQuerierMockRecorder) CountUsers(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsers", reflect.TypeOf((*MockQuerier)(nil).CountUsers), ctx)
 }
 
+// CountUsersByHousehold mocks base method.
+func (m *MockQuerier) CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountUsersByHousehold", ctx, householdID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountUsersByHousehold indicates an expected call of CountUsersByHousehold.
+func (mr *MockQuerierMockRecorder) CountUsersByHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsersByHousehold", reflect.TypeOf((*MockQuerier)(nil).CountUsersByHousehold), ctx, householdID)
+}
+
 // GetUserByID mocks base method.
 func (m *MockQuerier) GetUserByID(ctx context.Context, userID int64) (sqlc.IdentityUser, error) {
 	m.ctrl.T.Helper()
@@ -219,6 +234,21 @@ func (m *MockQuerier) SetUserHousehold(ctx context.Context, arg sqlc.SetUserHous
 func (mr *MockQuerierMockRecorder) SetUserHousehold(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHousehold", reflect.TypeOf((*MockQuerier)(nil).SetUserHousehold), ctx, arg)
+}
+
+// SetUserHouseholdRole mocks base method.
+func (m *MockQuerier) SetUserHouseholdRole(ctx context.Context, arg sqlc.SetUserHouseholdRoleParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserHouseholdRole", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetUserHouseholdRole indicates an expected call of SetUserHouseholdRole.
+func (mr *MockQuerierMockRecorder) SetUserHouseholdRole(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHouseholdRole", reflect.TypeOf((*MockQuerier)(nil).SetUserHouseholdRole), ctx, arg)
 }
 
 // SetUserRole mocks base method.

@@ -15,6 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -98,14 +99,35 @@ func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, fir
 	return nil
 }
 
-func (f *fakeIdentityService) SetUserHousehold(_ context.Context, userID, householdID int64, _ *int64) error {
+func (f *fakeIdentityService) SetUserHousehold(_ context.Context, userID, householdID int64, role string, _ *int64) error {
 	u, ok := f.users[userID]
 	if !ok {
 		return errors.New("not found")
 	}
 	u.HouseholdID = &householdID
+	u.HouseholdRole = role
 	f.users[userID] = u
 	return nil
+}
+
+func (f *fakeIdentityService) SetUserHouseholdRole(_ context.Context, userID, householdID int64, role, _ string) error {
+	u, ok := f.users[userID]
+	if !ok || u.HouseholdID == nil || *u.HouseholdID != householdID {
+		return domainerr.ErrConflict
+	}
+	u.HouseholdRole = role
+	f.users[userID] = u
+	return nil
+}
+
+func (f *fakeIdentityService) CountUsersByHousehold(_ context.Context, householdID int64) (int64, error) {
+	var n int64
+	for _, u := range f.users {
+		if u.HouseholdID != nil && *u.HouseholdID == householdID {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *fakeIdentityService) SetUserSearchable(_ context.Context, userID int64, searchable bool, _ string) error {

@@ -90,6 +90,9 @@ func TestBFF_Integration(t *testing.T) {
 	t.Run("household", func(t *testing.T) {
 		runHouseholdTests(t, srv, issuer)
 	})
+	t.Run("household management", func(t *testing.T) {
+		runHouseholdManagementTests(t, srv, issuer)
+	})
 }
 
 // runAuthorizationTests verifies that a plain member (a valid token, no
@@ -755,7 +758,7 @@ func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.Test
 	tokD := issuer.Token(t, "hh-d", "hh-d@example.com", "HH D")
 
 	meID := func(token string) string {
-		status, gr := doGraphQL(t, srv, token, `{ me { id isSearchable household { id members { id displayName } } } }`, nil)
+		status, gr := doGraphQL(t, srv, token, `{ me { id isSearchable household { id myRole members { user { id displayName } role isMe } } } }`, nil)
 		require.Equal(t, http.StatusOK, status)
 		var res struct {
 			Me struct {
@@ -763,9 +766,14 @@ func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.Test
 				IsSearchable bool   `json:"isSearchable"`
 				Household    *struct {
 					ID      string `json:"id"`
+					MyRole  string `json:"myRole"`
 					Members []struct {
-						ID          string `json:"id"`
-						DisplayName string `json:"displayName"`
+						User struct {
+							ID          string `json:"id"`
+							DisplayName string `json:"displayName"`
+						} `json:"user"`
+						Role string `json:"role"`
+						IsMe bool   `json:"isMe"`
 					} `json:"members"`
 				} `json:"household"`
 			} `json:"me"`
@@ -826,19 +834,44 @@ func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.Test
 	require.Len(t, invitesRes.Invites, 1)
 
 	status, gr = doGraphQL(t, srv, tokD, `mutation Accept($inviteId: ID!) {
-		acceptHouseholdInvite(inviteId: $inviteId) { id members { id } }
+		acceptHouseholdInvite(inviteId: $inviteId) { id myRole members { user { id } role isMe } }
 	}`, map[string]any{"inviteId": inviteRes.Invite.ID})
 	require.Equal(t, http.StatusOK, status)
 	var acceptRes struct {
 		Accept struct {
 			ID      string `json:"id"`
+			MyRole  string `json:"myRole"`
 			Members []struct {
-				ID string `json:"id"`
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+				Role string `json:"role"`
+				IsMe bool   `json:"isMe"`
 			} `json:"members"`
 		} `json:"acceptHouseholdInvite"`
 	}
 	decodeData(t, gr.Data, &acceptRes)
 	require.Len(t, acceptRes.Accept.Members, 2)
+	// D joins as a member; C remains the owner.
+	assert.Equal(t, "MEMBER", acceptRes.Accept.MyRole)
+	roles := map[string]string{}
+	for _, m := range acceptRes.Accept.Members {
+		roles[m.User.ID] = m.Role
+	}
+	assert.Equal(t, "OWNER", roles[idC])
+	assert.Equal(t, "MEMBER", roles[idD])
+
+	// The invite fan-out produced an unread notification for C
+	// (invite_accepted); D's feed holds invite_received.
+	status, gr = doGraphQL(t, srv, tokC, `{ unreadNotificationCount }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var unreadC struct {
+		Count int `json:"unreadNotificationCount"`
+	}
+	decodeData(t, gr.Data, &unreadC)
+	assert.Equal(t, 1, unreadC.Count)
+	status, gr = doGraphQL(t, srv, tokC, `mutation { markAllNotificationsRead }`, nil)
+	require.Equal(t, http.StatusOK, status)
 
 	// C puts an item in the shared pantry; D sees it.
 	status, gr = doGraphQL(t, srv, tokC, `{ items(page: 1, pageSize: 1) { items { id } } }`, nil)
@@ -879,20 +912,31 @@ func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.Test
 	status, gr = doGraphQL(t, srv, tokD, `mutation { leaveHousehold }`, nil)
 	require.Equal(t, http.StatusOK, status)
 
-	status, gr = doGraphQL(t, srv, tokD, `{ myHousehold { id members { id } } }`, nil)
+	status, gr = doGraphQL(t, srv, tokD, `{ myHousehold { id myRole members { user { id } role } } }`, nil)
 	require.Equal(t, http.StatusOK, status)
 	var myHH struct {
 		MyHousehold *struct {
 			ID      string `json:"id"`
+			MyRole  string `json:"myRole"`
 			Members []struct {
-				ID string `json:"id"`
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+				Role string `json:"role"`
 			} `json:"members"`
 		} `json:"myHousehold"`
 	}
 	decodeData(t, gr.Data, &myHH)
 	require.NotNil(t, myHH.MyHousehold)
 	require.Len(t, myHH.MyHousehold.Members, 1)
+	assert.Equal(t, "OWNER", myHH.MyHousehold.MyRole)
 	assert.NotEqual(t, acceptRes.Accept.ID, myHH.MyHousehold.ID)
+
+	// C was notified that D left.
+	status, gr = doGraphQL(t, srv, tokC, `{ unreadNotificationCount }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	decodeData(t, gr.Data, &unreadC)
+	assert.Equal(t, 1, unreadC.Count)
 
 	status, gr = doGraphQL(t, srv, tokD, `{ userItems { pageInfo { totalCount } } }`, nil)
 	require.Equal(t, http.StatusOK, status)
@@ -905,6 +949,204 @@ func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.Test
 	}
 	decodeData(t, gr.Data, &afterLeave)
 	assert.Equal(t, 0, afterLeave.UserItems.PageInfo.TotalCount)
+}
+
+// runHouseholdManagementTests exercises the multi-member and role surface:
+// a three-member household, owner rename/setRole/transfer, the admin
+// boundary, member removal, and the notification trail each step leaves.
+func runHouseholdManagementTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	tokE := issuer.Token(t, "hh-e", "hh-e@example.com", "HH E")
+	tokF := issuer.Token(t, "hh-f", "hh-f@example.com", "HH F")
+	tokG := issuer.Token(t, "hh-g", "hh-g@example.com", "HH G")
+
+	meID := func(token string) string {
+		status, gr := doGraphQL(t, srv, token, `{ me { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Me struct {
+				ID string `json:"id"`
+			} `json:"me"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.Me.ID
+	}
+	idE, idF, idG := meID(tokE), meID(tokF), meID(tokG)
+
+	inviteAndAccept := func(ownerTok, memberTok, memberID string) {
+		status, gr := doGraphQL(t, srv, ownerTok, `mutation Invite($userId: ID!) {
+			inviteHouseholdMember(userId: $userId) { id }
+		}`, map[string]any{"userId": memberID})
+		require.Equal(t, http.StatusOK, status)
+		var inv struct {
+			Invite struct {
+				ID string `json:"id"`
+			} `json:"inviteHouseholdMember"`
+		}
+		decodeData(t, gr.Data, &inv)
+		status, gr = doGraphQL(t, srv, memberTok, `mutation Accept($inviteId: ID!) {
+			acceptHouseholdInvite(inviteId: $inviteId) { id }
+		}`, map[string]any{"inviteId": inv.Invite.ID})
+		require.Equal(t, http.StatusOK, status)
+	}
+	inviteAndAccept(tokE, tokF, idF)
+	inviteAndAccept(tokE, tokG, idG)
+
+	// Three-member household: E owner, F and G members.
+	status, gr := doGraphQL(t, srv, tokE, `{ myHousehold { name myRole members { user { id } role } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var hhRes struct {
+		Household struct {
+			Name    *string `json:"name"`
+			MyRole  string  `json:"myRole"`
+			Members []struct {
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+				Role string `json:"role"`
+			} `json:"members"`
+		} `json:"myHousehold"`
+	}
+	decodeData(t, gr.Data, &hhRes)
+	require.Len(t, hhRes.Household.Members, 3)
+	assert.Equal(t, "OWNER", hhRes.Household.MyRole)
+	assert.Nil(t, hhRes.Household.Name)
+
+	// E renames; F's feed records the event.
+	status, gr = doGraphQL(t, srv, tokE, `mutation { renameHousehold(name: "Casa E") { name } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	status, gr = doGraphQL(t, srv, tokF, `{ myNotifications { kind actor { id } } unreadNotificationCount }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var notifRes struct {
+		Notifs []struct {
+			Kind  string `json:"kind"`
+			Actor *struct {
+				ID string `json:"id"`
+			} `json:"actor"`
+		} `json:"myNotifications"`
+		Unread int `json:"unreadNotificationCount"`
+	}
+	decodeData(t, gr.Data, &notifRes)
+	kinds := map[string]bool{}
+	for _, n := range notifRes.Notifs {
+		kinds[n.Kind] = true
+	}
+	assert.True(t, kinds["HOUSEHOLD_RENAMED"], "rename must fan out to members")
+	assert.True(t, kinds["MEMBER_JOINED"], "accepts must notify existing members")
+	assert.Greater(t, notifRes.Unread, 0)
+
+	// E promotes G to admin.
+	status, gr = doGraphQL(t, srv, tokE, `mutation SetRole($userId: ID!) {
+		setHouseholdRole(userId: $userId, role: ADMIN) { members { user { id } role } }
+	}`, map[string]any{"userId": idG})
+	require.Equal(t, http.StatusOK, status)
+	var roleRes struct {
+		HH struct {
+			Members []struct {
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+				Role string `json:"role"`
+			} `json:"members"`
+		} `json:"setHouseholdRole"`
+	}
+	decodeData(t, gr.Data, &roleRes)
+	roles := map[string]string{}
+	for _, m := range roleRes.HH.Members {
+		roles[m.User.ID] = m.Role
+	}
+	assert.Equal(t, "ADMIN", roles[idG])
+	assert.Equal(t, "OWNER", roles[idE])
+
+	// Admins cannot transfer ownership or set roles — owner-only.
+	_, grErr := doGraphQLExpectErrors(t, srv, tokG, `mutation Transfer($userId: ID!) {
+		transferHouseholdOwnership(userId: $userId) { id }
+	}`, map[string]any{"userId": idF})
+	require.NotEmpty(t, grErr.Errors)
+	assert.Equal(t, codeForbidden, grErr.Errors[0].Extensions["code"])
+
+	// Admins can remove a member: G removes F.
+	status, gr = doGraphQL(t, srv, tokG, `mutation Remove($userId: ID!) {
+		removeHouseholdMember(userId: $userId) { members { user { id } } }
+	}`, map[string]any{"userId": idF})
+	require.Equal(t, http.StatusOK, status)
+	var removeRes struct {
+		HH struct {
+			Members []struct {
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+			} `json:"members"`
+		} `json:"removeHouseholdMember"`
+	}
+	decodeData(t, gr.Data, &removeRes)
+	require.Len(t, removeRes.HH.Members, 2)
+
+	// F lands in a fresh single-member household with a removal notice.
+	status, gr = doGraphQL(t, srv, tokF, `{ myHousehold { myRole } myNotifications { kind } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var fRes struct {
+		HH *struct {
+			MyRole string `json:"myRole"`
+		} `json:"myHousehold"`
+		Notifs []struct {
+			Kind string `json:"kind"`
+		} `json:"myNotifications"`
+	}
+	decodeData(t, gr.Data, &fRes)
+	require.NotNil(t, fRes.HH)
+	assert.Equal(t, "OWNER", fRes.HH.MyRole)
+	fKinds := map[string]bool{}
+	for _, n := range fRes.Notifs {
+		fKinds[n.Kind] = true
+	}
+	assert.True(t, fKinds["MEMBER_REMOVED"], "removed member must be notified")
+
+	// E transfers ownership to G, then leaves as a member.
+	status, gr = doGraphQL(t, srv, tokE, `mutation Transfer($userId: ID!) {
+		transferHouseholdOwnership(userId: $userId) { myRole members { user { id } role } }
+	}`, map[string]any{"userId": idG})
+	require.Equal(t, http.StatusOK, status)
+	var transferRes struct {
+		HH struct {
+			MyRole  string `json:"myRole"`
+			Members []struct {
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+				Role string `json:"role"`
+			} `json:"members"`
+		} `json:"transferHouseholdOwnership"`
+	}
+	decodeData(t, gr.Data, &transferRes)
+	assert.Equal(t, "MEMBER", transferRes.HH.MyRole)
+	roles = map[string]string{}
+	for _, m := range transferRes.HH.Members {
+		roles[m.User.ID] = m.Role
+	}
+	assert.Equal(t, "OWNER", roles[idG])
+
+	status, gr = doGraphQL(t, srv, tokE, `mutation { leaveHousehold }`, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	// G is sole owner of the remaining household; the rename persisted.
+	status, gr = doGraphQL(t, srv, tokG, `{ myHousehold { name myRole members { user { id } } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var gRes struct {
+		HH struct {
+			Name    *string `json:"name"`
+			MyRole  string  `json:"myRole"`
+			Members []struct {
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+			} `json:"members"`
+		} `json:"myHousehold"`
+	}
+	decodeData(t, gr.Data, &gRes)
+	require.Len(t, gRes.HH.Members, 1)
+	assert.Equal(t, "OWNER", gRes.HH.MyRole)
+	require.NotNil(t, gRes.HH.Name)
+	assert.Equal(t, "Casa E", *gRes.HH.Name)
 }
 
 // TestIntegrationGroceryTogglePantrySync exercises the atomic toggle +

@@ -66,12 +66,13 @@ func (f *fakeIdentityStore) GetByID(_ context.Context, _ int64) (identity.User, 
 	return f.user, nil
 }
 
-func (f *fakeIdentityStore) SetUserHousehold(_ context.Context, userID, householdID int64, _ *int64) error {
+func (f *fakeIdentityStore) SetUserHousehold(_ context.Context, userID, householdID int64, role string, _ *int64) error {
 	atomic.AddInt32(&f.householdCalls, 1)
 	if f.householdErr != nil {
 		return f.householdErr
 	}
 	f.user.HouseholdID = &householdID
+	f.user.HouseholdRole = role
 	f.lastUserID = userID
 	return nil
 }

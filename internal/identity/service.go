@@ -114,6 +114,15 @@ const (
 	RoleAdmin  = "admin"
 )
 
+// HouseholdRole* are the per-household membership roles persisted on
+// identity.users.household_role. They are unrelated to the site-wide
+// Role above despite sharing the "admin"/"member" vocabulary.
+const (
+	HouseholdRoleOwner  = "owner"
+	HouseholdRoleAdmin  = "admin"
+	HouseholdRoleMember = "member"
+)
+
 // Guard errors returned by the admin mutation methods; the BFF maps these
 // to forbidden responses.
 var (
@@ -137,9 +146,12 @@ type User struct {
 	LastLoginAt     *time.Time
 	// HouseholdID is nil for users created before the household feature
 	// backfills or before the authenticator ensures a default household.
-	HouseholdID  *int64
-	IsSearchable bool
-	CreatedAt    time.Time
+	HouseholdID *int64
+	// HouseholdRole is the user's role within their household
+	// (owner/admin/member); empty when HouseholdID is nil.
+	HouseholdRole string
+	IsSearchable  bool
+	CreatedAt     time.Time
 }
 
 // IsAdmin reports whether the user holds the admin role.
@@ -212,7 +224,7 @@ func (s *Service) CountUsers(ctx context.Context) (int64, error) {
 // concurrent accept or leave won the race — yields zero rows and surfaces
 // as domainerr.ErrConflict; a missing user surfaces as ErrConflict too,
 // since callers pre-fetch via GetByID when they need to distinguish.
-func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error {
+func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error {
 	exp := pgtype.Int8{}
 	if expected != nil {
 		exp = pgtype.Int8{Int64: *expected, Valid: true}
@@ -220,6 +232,7 @@ func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int6
 	n, err := s.q.SetUserHousehold(ctx, sqlc.SetUserHouseholdParams{
 		UserID:              userID,
 		HouseholdID:         pgtype.Int8{Int64: householdID, Valid: true},
+		HouseholdRole:       role,
 		ExpectedHouseholdID: exp,
 	})
 	if err != nil {
@@ -229,6 +242,36 @@ func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int6
 		return fmt.Errorf("set user household: %w", domainerr.ErrConflict)
 	}
 	return nil
+}
+
+// SetUserHouseholdRole changes a member's role within their current
+// household. The household_id predicate makes the update conditional on
+// the user still belonging to that household — a concurrent leave/remove
+// yields zero rows and surfaces as domainerr.ErrConflict.
+func (s *Service) SetUserHouseholdRole(ctx context.Context, userID, householdID int64, role, by string) error {
+	n, err := s.q.SetUserHouseholdRole(ctx, sqlc.SetUserHouseholdRoleParams{
+		UserID:        userID,
+		HouseholdID:   pgtype.Int8{Int64: householdID, Valid: true},
+		HouseholdRole: role,
+		By:            textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set user household role: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set user household role: %w", domainerr.ErrConflict)
+	}
+	return nil
+}
+
+// CountUsersByHousehold returns the household's member count; the
+// accept-path cap check runs it under a household row lock.
+func (s *Service) CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error) {
+	n, err := s.q.CountUsersByHousehold(ctx, pgtype.Int8{Int64: householdID, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("count users by household: %w", domainerr.FromStorage(err))
+	}
+	return n, nil
 }
 
 // SetUserSearchable toggles whether the user appears in household-invite
@@ -392,6 +435,7 @@ func toUser(row sqlc.IdentityUser) User {
 		BackupEmail:     row.BackupEmail.String,
 		IsActive:        row.IsActive,
 		Role:            row.Role,
+		HouseholdRole:   row.HouseholdRole,
 		IsSearchable:    row.IsSearchable,
 		CreatedAt:       row.CreatedAt,
 	}

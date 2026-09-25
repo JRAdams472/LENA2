@@ -501,7 +501,7 @@ func (r *userResolver) Household(ctx context.Context) (*householdResolver, error
 	if err != nil || caller.UserID != r.u.UserID {
 		return nil, nil
 	}
-	return r.root.householdWithMembers(ctx, *r.u.HouseholdID)
+	return r.root.householdWithMembers(ctx, *r.u.HouseholdID, r.u.UserID)
 }
 
 type pageInfoResolver struct {
