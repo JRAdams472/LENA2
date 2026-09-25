@@ -91,8 +91,21 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countUsersByHousehold = `-- name: CountUsersByHousehold :one
+SELECT count(*)
+FROM identity.users
+WHERE household_id = $1
+`
+
+func (q *Queries) CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsersByHousehold, householdID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 FROM identity.users
 WHERE user_id = $1
 `
@@ -118,12 +131,13 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (IdentityUser, 
 		&i.BackupEmail,
 		&i.HouseholdID,
 		&i.IsSearchable,
+		&i.HouseholdRole,
 	)
 	return i, err
 }
 
 const getUserByProviderSubject = `-- name: GetUserByProviderSubject :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 FROM identity.users
 WHERE provider = $1
   AND external_subject = $2
@@ -155,12 +169,13 @@ func (q *Queries) GetUserByProviderSubject(ctx context.Context, arg GetUserByPro
 		&i.BackupEmail,
 		&i.HouseholdID,
 		&i.IsSearchable,
+		&i.HouseholdRole,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 FROM identity.users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -198,6 +213,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 			&i.BackupEmail,
 			&i.HouseholdID,
 			&i.IsSearchable,
+			&i.HouseholdRole,
 		); err != nil {
 			return nil, err
 		}
@@ -210,7 +226,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 }
 
 const listUsersByHousehold = `-- name: ListUsersByHousehold :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 FROM identity.users
 WHERE household_id = $1
 ORDER BY created_at
@@ -243,6 +259,7 @@ func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID pgtype.I
 			&i.BackupEmail,
 			&i.HouseholdID,
 			&i.IsSearchable,
+			&i.HouseholdRole,
 		); err != nil {
 			return nil, err
 		}
@@ -255,7 +272,7 @@ func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID pgtype.I
 }
 
 const listUsersByIDs = `-- name: ListUsersByIDs :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 FROM identity.users
 WHERE user_id = ANY($1::bigint[])
 `
@@ -287,6 +304,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 			&i.BackupEmail,
 			&i.HouseholdID,
 			&i.IsSearchable,
+			&i.HouseholdRole,
 		); err != nil {
 			return nil, err
 		}
@@ -299,7 +317,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 }
 
 const searchUsers = `-- name: SearchUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 FROM identity.users
 WHERE is_active
   AND is_searchable
@@ -358,6 +376,7 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Ide
 			&i.BackupEmail,
 			&i.HouseholdID,
 			&i.IsSearchable,
+			&i.HouseholdRole,
 		); err != nil {
 			return nil, err
 		}
@@ -390,22 +409,62 @@ func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) er
 
 const setUserHousehold = `-- name: SetUserHousehold :execrows
 UPDATE identity.users
-SET household_id = $1,
-    updated_at   = now()
-WHERE user_id = $2
-  AND household_id IS NOT DISTINCT FROM $3
+SET household_id   = $1,
+    household_role = $2,
+    updated_at     = now()
+WHERE user_id = $3
+  AND household_id IS NOT DISTINCT FROM $4
 `
 
 type SetUserHouseholdParams struct {
 	HouseholdID         pgtype.Int8 `json:"household_id"`
+	HouseholdRole       string      `json:"household_role"`
 	UserID              int64       `json:"user_id"`
 	ExpectedHouseholdID pgtype.Int8 `json:"expected_household_id"`
 }
 
 // Conditional update: the expected-household guard turns a concurrent
 // accept/leave race into a zero-row conflict instead of a lost update.
+// household_role is set atomically with the move: 'owner' for fresh
+// default households, 'member' when joining via invite accept.
 func (q *Queries) SetUserHousehold(ctx context.Context, arg SetUserHouseholdParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setUserHousehold, arg.HouseholdID, arg.UserID, arg.ExpectedHouseholdID)
+	result, err := q.db.Exec(ctx, setUserHousehold,
+		arg.HouseholdID,
+		arg.HouseholdRole,
+		arg.UserID,
+		arg.ExpectedHouseholdID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setUserHouseholdRole = `-- name: SetUserHouseholdRole :execrows
+UPDATE identity.users
+SET household_role = $1,
+    updated_by     = $2,
+    updated_at     = now()
+WHERE user_id = $3
+  AND household_id = $4
+`
+
+type SetUserHouseholdRoleParams struct {
+	HouseholdRole string      `json:"household_role"`
+	By            pgtype.Text `json:"by"`
+	UserID        int64       `json:"user_id"`
+	HouseholdID   pgtype.Int8 `json:"household_id"`
+}
+
+// Role change within the same household; the expected-household guard
+// keeps a stale actor from re-adding a role after the user moved.
+func (q *Queries) SetUserHouseholdRole(ctx context.Context, arg SetUserHouseholdRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserHouseholdRole,
+		arg.HouseholdRole,
+		arg.By,
+		arg.UserID,
+		arg.HouseholdID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -528,7 +587,7 @@ ON CONFLICT (provider, external_subject)
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
-RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable
+RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
 `
 
 type UpsertUserParams struct {
@@ -568,6 +627,7 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (Identit
 		&i.BackupEmail,
 		&i.HouseholdID,
 		&i.IsSearchable,
+		&i.HouseholdRole,
 	)
 	return i, err
 }

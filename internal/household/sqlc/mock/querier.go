@@ -41,6 +41,36 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// CancelPendingInvitesFrom mocks base method.
+func (m *MockQuerier) CancelPendingInvitesFrom(ctx context.Context, arg sqlc.CancelPendingInvitesFromParams) ([]sqlc.HouseholdInvite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelPendingInvitesFrom", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.HouseholdInvite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CancelPendingInvitesFrom indicates an expected call of CancelPendingInvitesFrom.
+func (mr *MockQuerierMockRecorder) CancelPendingInvitesFrom(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelPendingInvitesFrom", reflect.TypeOf((*MockQuerier)(nil).CancelPendingInvitesFrom), ctx, arg)
+}
+
+// CountUnreadNotifications mocks base method.
+func (m *MockQuerier) CountUnreadNotifications(ctx context.Context, userID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountUnreadNotifications", ctx, userID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountUnreadNotifications indicates an expected call of CountUnreadNotifications.
+func (mr *MockQuerierMockRecorder) CountUnreadNotifications(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUnreadNotifications", reflect.TypeOf((*MockQuerier)(nil).CountUnreadNotifications), ctx, userID)
+}
+
 // CreateHousehold mocks base method.
 func (m *MockQuerier) CreateHousehold(ctx context.Context, createdBy string) (sqlc.HouseholdHousehold, error) {
 	m.ctrl.T.Helper()
@@ -71,6 +101,21 @@ func (mr *MockQuerierMockRecorder) CreateInvite(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInvite", reflect.TypeOf((*MockQuerier)(nil).CreateInvite), ctx, arg)
 }
 
+// CreateNotification mocks base method.
+func (m *MockQuerier) CreateNotification(ctx context.Context, arg sqlc.CreateNotificationParams) (sqlc.HouseholdNotification, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateNotification", ctx, arg)
+	ret0, _ := ret[0].(sqlc.HouseholdNotification)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateNotification indicates an expected call of CreateNotification.
+func (mr *MockQuerierMockRecorder) CreateNotification(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNotification", reflect.TypeOf((*MockQuerier)(nil).CreateNotification), ctx, arg)
+}
+
 // GetHouseholdByID mocks base method.
 func (m *MockQuerier) GetHouseholdByID(ctx context.Context, householdID int64) (sqlc.HouseholdHousehold, error) {
 	m.ctrl.T.Helper()
@@ -86,6 +131,21 @@ func (mr *MockQuerierMockRecorder) GetHouseholdByID(ctx, householdID any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdByID", reflect.TypeOf((*MockQuerier)(nil).GetHouseholdByID), ctx, householdID)
 }
 
+// GetHouseholdByIDForUpdate mocks base method.
+func (m *MockQuerier) GetHouseholdByIDForUpdate(ctx context.Context, householdID int64) (sqlc.HouseholdHousehold, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHouseholdByIDForUpdate", ctx, householdID)
+	ret0, _ := ret[0].(sqlc.HouseholdHousehold)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHouseholdByIDForUpdate indicates an expected call of GetHouseholdByIDForUpdate.
+func (mr *MockQuerierMockRecorder) GetHouseholdByIDForUpdate(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHouseholdByIDForUpdate", reflect.TypeOf((*MockQuerier)(nil).GetHouseholdByIDForUpdate), ctx, householdID)
+}
+
 // GetInviteByID mocks base method.
 func (m *MockQuerier) GetInviteByID(ctx context.Context, inviteID int64) (sqlc.HouseholdInvite, error) {
 	m.ctrl.T.Helper()
@@ -99,6 +159,21 @@ func (m *MockQuerier) GetInviteByID(ctx context.Context, inviteID int64) (sqlc.H
 func (mr *MockQuerierMockRecorder) GetInviteByID(ctx, inviteID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInviteByID", reflect.TypeOf((*MockQuerier)(nil).GetInviteByID), ctx, inviteID)
+}
+
+// ListNotificationsForUser mocks base method.
+func (m *MockQuerier) ListNotificationsForUser(ctx context.Context, arg sqlc.ListNotificationsForUserParams) ([]sqlc.HouseholdNotification, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNotificationsForUser", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.HouseholdNotification)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListNotificationsForUser indicates an expected call of ListNotificationsForUser.
+func (mr *MockQuerierMockRecorder) ListNotificationsForUser(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNotificationsForUser", reflect.TypeOf((*MockQuerier)(nil).ListNotificationsForUser), ctx, arg)
 }
 
 // ListPendingInvitesForUser mocks base method.
@@ -129,6 +204,50 @@ func (m *MockQuerier) ListSentInvitesForUser(ctx context.Context, fromUserID int
 func (mr *MockQuerierMockRecorder) ListSentInvitesForUser(ctx, fromUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSentInvitesForUser", reflect.TypeOf((*MockQuerier)(nil).ListSentInvitesForUser), ctx, fromUserID)
+}
+
+// MarkAllNotificationsRead mocks base method.
+func (m *MockQuerier) MarkAllNotificationsRead(ctx context.Context, userID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkAllNotificationsRead", ctx, userID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkAllNotificationsRead indicates an expected call of MarkAllNotificationsRead.
+func (mr *MockQuerierMockRecorder) MarkAllNotificationsRead(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkAllNotificationsRead", reflect.TypeOf((*MockQuerier)(nil).MarkAllNotificationsRead), ctx, userID)
+}
+
+// PruneReadNotifications mocks base method.
+func (m *MockQuerier) PruneReadNotifications(ctx context.Context, userID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PruneReadNotifications", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PruneReadNotifications indicates an expected call of PruneReadNotifications.
+func (mr *MockQuerierMockRecorder) PruneReadNotifications(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PruneReadNotifications", reflect.TypeOf((*MockQuerier)(nil).PruneReadNotifications), ctx, userID)
+}
+
+// RenameHousehold mocks base method.
+func (m *MockQuerier) RenameHousehold(ctx context.Context, arg sqlc.RenameHouseholdParams) (sqlc.HouseholdHousehold, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameHousehold", ctx, arg)
+	ret0, _ := ret[0].(sqlc.HouseholdHousehold)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenameHousehold indicates an expected call of RenameHousehold.
+func (mr *MockQuerierMockRecorder) RenameHousehold(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameHousehold", reflect.TypeOf((*MockQuerier)(nil).RenameHousehold), ctx, arg)
 }
 
 // TransitionInvite mocks base method.

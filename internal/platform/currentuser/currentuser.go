@@ -19,6 +19,9 @@ type User struct {
 	// plans, grocery lists). Zero means the user has no household yet; the
 	// authenticator ensures one on the first cache miss after sign-in.
 	HouseholdID int64
+	// HouseholdRole is the caller's role within their household:
+	// 'owner', 'admin', or 'member'. Empty when HouseholdID is zero.
+	HouseholdRole string
 	// IsSearchable controls whether the user appears in household-invite
 	// search results.
 	IsSearchable bool

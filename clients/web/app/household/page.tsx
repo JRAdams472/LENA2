@@ -122,14 +122,16 @@ export default function HouseholdPage() {
 
       <Paper sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
-          Members
+          {household?.name ? `${household.name} — Members` : "Members"}
         </Typography>
         <List dense>
           {(household?.members ?? []).map((m) => (
-            <ListItem key={m.userID}>
+            <ListItem key={m.user.userID}>
               <ListItemText
-                primary={userName(m)}
-                secondary={m.userID === me.userID ? "You" : undefined}
+                primary={userName(m.user)}
+                secondary={
+                  `${m.role.toLowerCase()}${m.isMe ? " — you" : ""}`
+                }
               />
             </ListItem>
           ))}

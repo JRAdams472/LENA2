@@ -11,10 +11,74 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelPendingInvitesFrom = `-- name: CancelPendingInvitesFrom :many
+UPDATE household.invites
+SET status     = 'cancelled',
+    updated_by = $3,
+    updated_at = now()
+WHERE from_user_id = $1
+  AND household_id = $2
+  AND status = 'pending'
+RETURNING invite_id, from_user_id, to_user_id, household_id, status, created_by, created_at, updated_by, updated_at
+`
+
+type CancelPendingInvitesFromParams struct {
+	FromUserID  int64       `json:"from_user_id"`
+	HouseholdID int64       `json:"household_id"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+// Leave/remove cleanup: pending invites a departing member sent for that
+// household are cancelled so they can no longer be accepted against a
+// household the sender no longer belongs to.
+func (q *Queries) CancelPendingInvitesFrom(ctx context.Context, arg CancelPendingInvitesFromParams) ([]HouseholdInvite, error) {
+	rows, err := q.db.Query(ctx, cancelPendingInvitesFrom, arg.FromUserID, arg.HouseholdID, arg.UpdatedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdInvite{}
+	for rows.Next() {
+		var i HouseholdInvite
+		if err := rows.Scan(
+			&i.InviteID,
+			&i.FromUserID,
+			&i.ToUserID,
+			&i.HouseholdID,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countUnreadNotifications = `-- name: CountUnreadNotifications :one
+SELECT count(*)
+FROM household.notifications
+WHERE user_id = $1
+  AND read_at IS NULL
+`
+
+func (q *Queries) CountUnreadNotifications(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadNotifications, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createHousehold = `-- name: CreateHousehold :one
 INSERT INTO household.households (created_by)
 VALUES ($1)
-RETURNING household_id, created_by, created_at, updated_at
+RETURNING household_id, created_by, created_at, updated_at, name, updated_by
 `
 
 func (q *Queries) CreateHousehold(ctx context.Context, createdBy string) (HouseholdHousehold, error) {
@@ -25,6 +89,8 @@ func (q *Queries) CreateHousehold(ctx context.Context, createdBy string) (Househ
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Name,
+		&i.UpdatedBy,
 	)
 	return i, err
 }
@@ -64,8 +130,45 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Hou
 	return i, err
 }
 
+const createNotification = `-- name: CreateNotification :one
+INSERT INTO household.notifications
+    (user_id, household_id, kind, actor_user_id, invite_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at
+`
+
+type CreateNotificationParams struct {
+	UserID      int64       `json:"user_id"`
+	HouseholdID pgtype.Int8 `json:"household_id"`
+	Kind        string      `json:"kind"`
+	ActorUserID pgtype.Int8 `json:"actor_user_id"`
+	InviteID    pgtype.Int8 `json:"invite_id"`
+}
+
+func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotificationParams) (HouseholdNotification, error) {
+	row := q.db.QueryRow(ctx, createNotification,
+		arg.UserID,
+		arg.HouseholdID,
+		arg.Kind,
+		arg.ActorUserID,
+		arg.InviteID,
+	)
+	var i HouseholdNotification
+	err := row.Scan(
+		&i.NotificationID,
+		&i.UserID,
+		&i.HouseholdID,
+		&i.Kind,
+		&i.ActorUserID,
+		&i.InviteID,
+		&i.ReadAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getHouseholdByID = `-- name: GetHouseholdByID :one
-SELECT household_id, created_by, created_at, updated_at
+SELECT household_id, created_by, created_at, updated_at, name, updated_by
 FROM household.households
 WHERE household_id = $1
 `
@@ -78,6 +181,31 @@ func (q *Queries) GetHouseholdByID(ctx context.Context, householdID int64) (Hous
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Name,
+		&i.UpdatedBy,
+	)
+	return i, err
+}
+
+const getHouseholdByIDForUpdate = `-- name: GetHouseholdByIDForUpdate :one
+SELECT household_id, created_by, created_at, updated_at, name, updated_by
+FROM household.households
+WHERE household_id = $1
+FOR UPDATE
+`
+
+// Row lock: serialize member-count checks and membership transitions for
+// concurrent accept/leave/remove operations against the same household.
+func (q *Queries) GetHouseholdByIDForUpdate(ctx context.Context, householdID int64) (HouseholdHousehold, error) {
+	row := q.db.QueryRow(ctx, getHouseholdByIDForUpdate, householdID)
+	var i HouseholdHousehold
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+		&i.UpdatedBy,
 	)
 	return i, err
 }
@@ -103,6 +231,48 @@ func (q *Queries) GetInviteByID(ctx context.Context, inviteID int64) (HouseholdI
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listNotificationsForUser = `-- name: ListNotificationsForUser :many
+SELECT notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at
+FROM household.notifications
+WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT $2
+`
+
+type ListNotificationsForUserParams struct {
+	UserID int64 `json:"user_id"`
+	Limit  int32 `json:"limit"`
+}
+
+func (q *Queries) ListNotificationsForUser(ctx context.Context, arg ListNotificationsForUserParams) ([]HouseholdNotification, error) {
+	rows, err := q.db.Query(ctx, listNotificationsForUser, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdNotification{}
+	for rows.Next() {
+		var i HouseholdNotification
+		if err := rows.Scan(
+			&i.NotificationID,
+			&i.UserID,
+			&i.HouseholdID,
+			&i.Kind,
+			&i.ActorUserID,
+			&i.InviteID,
+			&i.ReadAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPendingInvitesForUser = `-- name: ListPendingInvitesForUser :many
@@ -179,6 +349,71 @@ func (q *Queries) ListSentInvitesForUser(ctx context.Context, fromUserID int64) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const markAllNotificationsRead = `-- name: MarkAllNotificationsRead :execrows
+UPDATE household.notifications
+SET read_at = now()
+WHERE user_id = $1
+  AND read_at IS NULL
+`
+
+func (q *Queries) MarkAllNotificationsRead(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, markAllNotificationsRead, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const pruneReadNotifications = `-- name: PruneReadNotifications :exec
+DELETE FROM household.notifications n
+WHERE n.user_id = $1
+  AND n.read_at IS NOT NULL
+  AND n.notification_id NOT IN (
+      SELECT k.notification_id
+      FROM household.notifications k
+      WHERE k.user_id = $1
+        AND k.read_at IS NOT NULL
+      ORDER BY k.created_at DESC
+      LIMIT 100
+  )
+`
+
+// Retention: keep at most the 100 most recent read notifications per user;
+// called inside the same transaction as CreateNotification.
+func (q *Queries) PruneReadNotifications(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, pruneReadNotifications, userID)
+	return err
+}
+
+const renameHousehold = `-- name: RenameHousehold :one
+UPDATE household.households
+SET name       = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE household_id = $1
+RETURNING household_id, created_by, created_at, updated_at, name, updated_by
+`
+
+type RenameHouseholdParams struct {
+	HouseholdID int64       `json:"household_id"`
+	Name        pgtype.Text `json:"name"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) RenameHousehold(ctx context.Context, arg RenameHouseholdParams) (HouseholdHousehold, error) {
+	row := q.db.QueryRow(ctx, renameHousehold, arg.HouseholdID, arg.Name, arg.UpdatedBy)
+	var i HouseholdHousehold
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+		&i.UpdatedBy,
+	)
+	return i, err
 }
 
 const transitionInvite = `-- name: TransitionInvite :one

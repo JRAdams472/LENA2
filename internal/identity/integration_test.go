@@ -91,12 +91,12 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 	// current membership so a stale expected value loses with a conflict.
 	hh, err := hsvc.CreateHousehold(ctx, "hh-caller@example.com")
 	require.NoError(t, err)
-	require.NoError(t, svc.SetUserHousehold(ctx, caller, hh.HouseholdID, &callerH))
-	require.NoError(t, svc.SetUserHousehold(ctx, mate, hh.HouseholdID, mateGot.HouseholdID))
+	require.NoError(t, svc.SetUserHousehold(ctx, caller, hh.HouseholdID, identity.HouseholdRoleOwner, &callerH))
+	require.NoError(t, svc.SetUserHousehold(ctx, mate, hh.HouseholdID, identity.HouseholdRoleMember, mateGot.HouseholdID))
 
 	// A stale expected value loses the race with a conflict.
 	wrong := int64(999)
-	err = svc.SetUserHousehold(ctx, caller, hh.HouseholdID, &wrong)
+	err = svc.SetUserHousehold(ctx, caller, hh.HouseholdID, identity.HouseholdRoleOwner, &wrong)
 	assert.ErrorIs(t, err, domainerr.ErrConflict)
 
 	got, err = svc.GetByID(ctx, caller)

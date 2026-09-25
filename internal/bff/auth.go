@@ -49,7 +49,7 @@ type identityStore interface {
 	UpsertUser(ctx context.Context, provider, subject, email, displayName string) (identity.User, error)
 	SetUserRole(ctx context.Context, userID int64, role string) error
 	GetByID(ctx context.Context, userID int64) (identity.User, error)
-	SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error
+	SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error
 }
 
 // householdStore is the subset of household.Service the authenticator needs
@@ -402,6 +402,7 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		DisplayName:     u.DisplayName,
 		IsAdmin:         u.IsAdmin(),
 		IsSearchable:    u.IsSearchable,
+		HouseholdRole:   u.HouseholdRole,
 	}
 	if u.HouseholdID != nil {
 		cu.HouseholdID = *u.HouseholdID
@@ -428,7 +429,7 @@ func (a *Authenticator) ensureDefaultHousehold(ctx context.Context, u *identity.
 	if err != nil {
 		return err
 	}
-	if err := a.identity.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, nil); err != nil {
+	if err := a.identity.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, identity.HouseholdRoleOwner, nil); err != nil {
 		if !errors.Is(err, domainerr.ErrConflict) {
 			return err
 		}
@@ -443,6 +444,7 @@ func (a *Authenticator) ensureDefaultHousehold(ctx context.Context, u *identity.
 		return nil
 	}
 	u.HouseholdID = &hh.HouseholdID
+	u.HouseholdRole = identity.HouseholdRoleOwner
 	return nil
 }
 

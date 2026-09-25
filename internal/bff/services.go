@@ -304,10 +304,12 @@ type UserReader interface {
 // member lookup for hydration and guarded reassignment for the
 // invite-accept and leave orchestrations.
 type HouseholdDirectory interface {
-	SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error
+	SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error
+	SetUserHouseholdRole(ctx context.Context, userID, householdID int64, role, by string) error
 	SetUserSearchable(ctx context.Context, userID int64, searchable bool, by string) error
 	ListUsersByHousehold(ctx context.Context, householdID int64) ([]identity.User, error)
 	ListUsersByIDs(ctx context.Context, ids []int64) ([]identity.User, error)
+	CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error)
 	SearchUsers(ctx context.Context, term string, excludeUserID, excludeHouseholdID int64, limit int32) ([]identity.User, error)
 }
 
@@ -340,6 +342,13 @@ type HouseholdService interface {
 	ListPendingInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error)
 	ListSentInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error)
 	TransitionInvite(ctx context.Context, inviteID int64, to household.Status, by string) (household.Invite, error)
+	RenameHousehold(ctx context.Context, householdID int64, name, by string) (household.Household, error)
+	LockHousehold(ctx context.Context, householdID int64) (household.Household, error)
+	CancelPendingInvitesFrom(ctx context.Context, fromUserID, householdID int64, by string) ([]household.Invite, error)
+	CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID, actorUserID, inviteID *int64) error
+	ListNotificationsForUser(ctx context.Context, userID int64, limit int32) ([]household.Notification, error)
+	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
+	MarkAllNotificationsRead(ctx context.Context, userID int64) error
 }
 
 var _ HouseholdService = (*household.Service)(nil)

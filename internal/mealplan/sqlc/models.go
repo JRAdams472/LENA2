@@ -78,6 +78,8 @@ type HouseholdHousehold struct {
 	CreatedBy   string             `json:"created_by"`
 	CreatedAt   time.Time          `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Name        pgtype.Text        `json:"name"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
 }
 
 type HouseholdInvite struct {
@@ -90,6 +92,17 @@ type HouseholdInvite struct {
 	CreatedAt   time.Time          `json:"created_at"`
 	UpdatedBy   pgtype.Text        `json:"updated_by"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type HouseholdNotification struct {
+	NotificationID int64              `json:"notification_id"`
+	UserID         int64              `json:"user_id"`
+	HouseholdID    pgtype.Int8        `json:"household_id"`
+	Kind           string             `json:"kind"`
+	ActorUserID    pgtype.Int8        `json:"actor_user_id"`
+	InviteID       pgtype.Int8        `json:"invite_id"`
+	ReadAt         pgtype.Timestamptz `json:"read_at"`
+	CreatedAt      time.Time          `json:"created_at"`
 }
 
 type IdentityUser struct {
@@ -110,6 +123,7 @@ type IdentityUser struct {
 	BackupEmail     pgtype.Text        `json:"backup_email"`
 	HouseholdID     pgtype.Int8        `json:"household_id"`
 	IsSearchable    bool               `json:"is_searchable"`
+	HouseholdRole   string             `json:"household_role"`
 }
 
 type InventoryBrand struct {

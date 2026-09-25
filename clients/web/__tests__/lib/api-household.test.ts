@@ -29,7 +29,9 @@ const gqlHouseholdUser = {
 
 const gqlHousehold = {
   id: "42",
-  members: [gqlHouseholdUser],
+  name: "The Smiths",
+  myRole: "OWNER",
+  members: [{ user: gqlHouseholdUser, role: "MEMBER", isMe: false }],
   createdAt: "2026-01-01T00:00:00Z",
 };
 
@@ -51,8 +53,14 @@ describe("api client: household", () => {
     const hh = await api.getMyHousehold();
     expect(hh).toEqual({
       householdID: 42,
+      name: "The Smiths",
+      myRole: "OWNER",
       members: [
-        { userID: 9, displayName: "Mate", firstName: "Ann", lastName: "Lee" },
+        {
+          user: { userID: 9, displayName: "Mate", firstName: "Ann", lastName: "Lee" },
+          role: "MEMBER",
+          isMe: false,
+        },
       ],
       createdAt: "2026-01-01T00:00:00Z",
     });

@@ -29,8 +29,12 @@ import {
   GroceryListItem,
   Household,
   HouseholdInvite,
+  HouseholdMember,
+  HouseholdNotification,
+  HouseholdRole,
   HouseholdUser,
   InviteStatus,
+  NotificationKind,
   RecipeImport,
   RecipeImportDraft,
   RecipeImportDraftItem,
@@ -527,9 +531,24 @@ interface GqlHouseholdUser {
   lastName: string | null;
 }
 
+interface GqlHouseholdMember {
+  user: GqlHouseholdUser;
+  role: string;
+  isMe: boolean;
+}
+
 interface GqlHousehold {
   id: string;
-  members: GqlHouseholdUser[];
+  name: string | null;
+  members: GqlHouseholdMember[];
+  myRole: string;
+  createdAt: string;
+}
+
+interface GqlHouseholdNotification {
+  id: string;
+  kind: string;
+  actor: GqlHouseholdUser | null;
   createdAt: string;
 }
 
@@ -574,10 +593,30 @@ const toHouseholdUser = (u: GqlHouseholdUser): HouseholdUser => ({
   lastName: u.lastName ?? null,
 });
 
+const toHouseholdRole = (r: string): HouseholdRole =>
+  r === "OWNER" || r === "ADMIN" ? r : "MEMBER";
+
+const toHouseholdMember = (m: GqlHouseholdMember): HouseholdMember => ({
+  user: toHouseholdUser(m.user),
+  role: toHouseholdRole(m.role),
+  isMe: m.isMe === true,
+});
+
 const toHousehold = (h: GqlHousehold): Household => ({
   householdID: num(h.id),
-  members: (h.members ?? []).map(toHouseholdUser),
+  name: h.name ?? null,
+  members: (h.members ?? []).map(toHouseholdMember),
+  myRole: toHouseholdRole(h.myRole),
   createdAt: h.createdAt,
+});
+
+const toHouseholdNotification = (
+  n: GqlHouseholdNotification
+): HouseholdNotification => ({
+  notificationID: num(n.id),
+  kind: n.kind as NotificationKind,
+  actor: n.actor ? toHouseholdUser(n.actor) : null,
+  createdAt: n.createdAt,
 });
 
 const toHouseholdInvite = (i: GqlHouseholdInvite): HouseholdInvite => ({
@@ -1201,7 +1240,7 @@ export const api = {
   // Auth
   getMe: async (): Promise<User> => {
     const data = await request<{ me: GqlUser }>(
-      `query { me { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt isSearchable household { id members { id displayName firstName lastName } createdAt } } }`
+      `query { me { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt isSearchable household { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } } }`
     );
     return toUser(data.me);
   },
@@ -1223,7 +1262,7 @@ export const api = {
   // Household
   getMyHousehold: async (): Promise<Household | null> => {
     const data = await request<{ myHousehold: GqlHousehold | null }>(
-      `query { myHousehold { id members { id displayName firstName lastName } createdAt } }`
+      `query { myHousehold { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`
     );
     return data.myHousehold ? toHousehold(data.myHousehold) : null;
   },
@@ -1256,7 +1295,7 @@ export const api = {
 
   acceptHouseholdInvite: async (inviteID: number): Promise<Household> => {
     const data = await request<{ acceptHouseholdInvite: GqlHousehold }>(
-      `mutation ($inviteId: ID!) { acceptHouseholdInvite(inviteId: $inviteId) { id members { id displayName firstName lastName } createdAt } }`,
+      `mutation ($inviteId: ID!) { acceptHouseholdInvite(inviteId: $inviteId) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
       { inviteId: String(inviteID) }
     );
     return toHousehold(data.acceptHouseholdInvite);
@@ -1283,6 +1322,67 @@ export const api = {
       `mutation { leaveHousehold }`
     );
     return data.leaveHousehold;
+  },
+
+  renameHousehold: async (name: string): Promise<Household> => {
+    const data = await request<{ renameHousehold: GqlHousehold }>(
+      `mutation ($name: String!) { renameHousehold(name: $name) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      { name }
+    );
+    return toHousehold(data.renameHousehold);
+  },
+
+  setHouseholdRole: async (
+    userID: number,
+    role: HouseholdRole
+  ): Promise<Household> => {
+    const data = await request<{ setHouseholdRole: GqlHousehold }>(
+      `mutation ($userId: ID!, $role: HouseholdRole!) { setHouseholdRole(userId: $userId, role: $role) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      { userId: String(userID), role }
+    );
+    return toHousehold(data.setHouseholdRole);
+  },
+
+  removeHouseholdMember: async (userID: number): Promise<Household> => {
+    const data = await request<{ removeHouseholdMember: GqlHousehold }>(
+      `mutation ($userId: ID!) { removeHouseholdMember(userId: $userId) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      { userId: String(userID) }
+    );
+    return toHousehold(data.removeHouseholdMember);
+  },
+
+  transferHouseholdOwnership: async (
+    userID: number
+  ): Promise<Household> => {
+    const data = await request<{ transferHouseholdOwnership: GqlHousehold }>(
+      `mutation ($userId: ID!) { transferHouseholdOwnership(userId: $userId) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      { userId: String(userID) }
+    );
+    return toHousehold(data.transferHouseholdOwnership);
+  },
+
+  getMyNotifications: async (
+    limit = 20
+  ): Promise<HouseholdNotification[]> => {
+    const data = await request<{ myNotifications: GqlHouseholdNotification[] }>(
+      `query ($limit: Int) { myNotifications(limit: $limit) { id kind createdAt actor { id displayName firstName lastName } } }`,
+      { limit }
+    );
+    return (data.myNotifications ?? []).map(toHouseholdNotification);
+  },
+
+  getUnreadNotificationCount: async (): Promise<number> => {
+    const data = await request<{ unreadNotificationCount: number }>(
+      `query { unreadNotificationCount }`
+    );
+    return data.unreadNotificationCount ?? 0;
+  },
+
+  markAllNotificationsRead: async (): Promise<boolean> => {
+    const data = await request<{ markAllNotificationsRead: boolean }>(
+      `mutation { markAllNotificationsRead }`
+    );
+    return data.markAllNotificationsRead;
   },
 
   // Admin user management

@@ -105,11 +105,29 @@ WHERE user_id = $1;
 -- name: SetUserHousehold :execrows
 -- Conditional update: the expected-household guard turns a concurrent
 -- accept/leave race into a zero-row conflict instead of a lost update.
+-- household_role is set atomically with the move: 'owner' for fresh
+-- default households, 'member' when joining via invite accept.
 UPDATE identity.users
-SET household_id = sqlc.arg(household_id),
-    updated_at   = now()
+SET household_id   = sqlc.arg(household_id),
+    household_role = sqlc.arg(household_role),
+    updated_at     = now()
 WHERE user_id = sqlc.arg(user_id)
   AND household_id IS NOT DISTINCT FROM sqlc.narg(expected_household_id);
+
+-- name: SetUserHouseholdRole :execrows
+-- Role change within the same household; the expected-household guard
+-- keeps a stale actor from re-adding a role after the user moved.
+UPDATE identity.users
+SET household_role = sqlc.arg(household_role),
+    updated_by     = sqlc.arg(by),
+    updated_at     = now()
+WHERE user_id = sqlc.arg(user_id)
+  AND household_id = sqlc.arg(household_id);
+
+-- name: CountUsersByHousehold :one
+SELECT count(*)
+FROM identity.users
+WHERE household_id = $1;
 
 -- name: SetUserSearchable :execrows
 UPDATE identity.users

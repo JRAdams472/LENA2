@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -33,9 +34,39 @@ const (
 // Household is a group of users sharing operational data.
 type Household struct {
 	HouseholdID int64
+	Name        *string
 	CreatedBy   string
 	CreatedAt   time.Time
 	UpdatedAt   *time.Time
+}
+
+// NotificationKind identifies the household event a notification records.
+type NotificationKind string
+
+// Notification kinds written inside the transaction that produces them.
+const (
+	KindInviteReceived   NotificationKind = "invite_received"
+	KindInviteAccepted   NotificationKind = "invite_accepted"
+	KindInviteDeclined   NotificationKind = "invite_declined"
+	KindInviteCancelled  NotificationKind = "invite_cancelled"
+	KindMemberJoined     NotificationKind = "member_joined"
+	KindMemberLeft       NotificationKind = "member_left"
+	KindMemberRemoved    NotificationKind = "member_removed"
+	KindRoleChanged      NotificationKind = "role_changed"
+	KindHouseholdRenamed NotificationKind = "household_renamed"
+)
+
+// Notification is an in-app household event surfaced to a user via the
+// unread badge and notification feed.
+type Notification struct {
+	NotificationID int64
+	UserID         int64
+	HouseholdID    *int64
+	Kind           NotificationKind
+	ActorUserID    *int64
+	InviteID       *int64
+	ReadAt         *time.Time
+	CreatedAt      time.Time
 }
 
 // Invite is a pending or concluded household invitation.
@@ -189,11 +220,148 @@ func (s *Service) TransitionInvite(ctx context.Context, inviteID int64, to Statu
 	return toInvite(row), nil
 }
 
+// RenameHousehold sets the household's display name; empty or whitespace
+// clears it back to NULL so clients fall back to a member-derived label.
+func (s *Service) RenameHousehold(ctx context.Context, householdID int64, name, by string) (Household, error) {
+	trimmed := strings.TrimSpace(name)
+	n := pgtype.Text{}
+	if trimmed != "" {
+		n = pgtype.Text{String: trimmed, Valid: true}
+	}
+	row, err := s.q.RenameHousehold(ctx, sqlc.RenameHouseholdParams{
+		HouseholdID: householdID,
+		Name:        n,
+		UpdatedBy:   pgtype.Text{String: by, Valid: true},
+	})
+	if err != nil {
+		return Household{}, fmt.Errorf("rename household: %w", domainerr.FromStorage(err))
+	}
+	return toHousehold(row), nil
+}
+
+// LockHousehold fetches a household with SELECT ... FOR UPDATE inside the
+// caller's transaction. Membership mutations that must serialize against
+// each other — accept, leave, remove — lock the row before checking
+// member counts or roles.
+func (s *Service) LockHousehold(ctx context.Context, householdID int64) (Household, error) {
+	row, err := s.q.GetHouseholdByIDForUpdate(ctx, householdID)
+	if err != nil {
+		return Household{}, fmt.Errorf("lock household: %w", domainerr.FromStorage(err))
+	}
+	return toHousehold(row), nil
+}
+
+// CreateNotification records a household event for a member and prunes
+// their read backlog; call it inside the producing operation's
+// transaction so the notification can never outlive a rolled-back change.
+func (s *Service) CreateNotification(ctx context.Context, userID int64, kind NotificationKind, householdID *int64, actorUserID *int64, inviteID *int64) error {
+	hh := pgtype.Int8{}
+	if householdID != nil {
+		hh = pgtype.Int8{Int64: *householdID, Valid: true}
+	}
+	actor := pgtype.Int8{}
+	if actorUserID != nil {
+		actor = pgtype.Int8{Int64: *actorUserID, Valid: true}
+	}
+	inv := pgtype.Int8{}
+	if inviteID != nil {
+		inv = pgtype.Int8{Int64: *inviteID, Valid: true}
+	}
+	if _, err := s.q.CreateNotification(ctx, sqlc.CreateNotificationParams{
+		UserID:      userID,
+		HouseholdID: hh,
+		Kind:        string(kind),
+		ActorUserID: actor,
+		InviteID:    inv,
+	}); err != nil {
+		return fmt.Errorf("create notification: %w", domainerr.FromStorage(err))
+	}
+	return s.q.PruneReadNotifications(ctx, userID)
+}
+
+// ListNotificationsForUser returns the user's notifications newest-first.
+func (s *Service) ListNotificationsForUser(ctx context.Context, userID int64, limit int32) ([]Notification, error) {
+	rows, err := s.q.ListNotificationsForUser(ctx, sqlc.ListNotificationsForUserParams{
+		UserID: userID,
+		Limit:  limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list notifications: %w", domainerr.FromStorage(err))
+	}
+	out := make([]Notification, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toNotification(r))
+	}
+	return out, nil
+}
+
+// CountUnreadNotifications backs the nav badge.
+func (s *Service) CountUnreadNotifications(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountUnreadNotifications(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("count unread notifications: %w", domainerr.FromStorage(err))
+	}
+	return n, nil
+}
+
+// MarkAllNotificationsRead clears the user's unread set.
+func (s *Service) MarkAllNotificationsRead(ctx context.Context, userID int64) error {
+	if _, err := s.q.MarkAllNotificationsRead(ctx, userID); err != nil {
+		return fmt.Errorf("mark notifications read: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// CancelPendingInvitesFrom cancels pending invites a departing member
+// sent for the given household and returns them — callers fan out
+// invite_cancelled notifications per recipient.
+func (s *Service) CancelPendingInvitesFrom(ctx context.Context, fromUserID, householdID int64, by string) ([]Invite, error) {
+	rows, err := s.q.CancelPendingInvitesFrom(ctx, sqlc.CancelPendingInvitesFromParams{
+		FromUserID:  fromUserID,
+		HouseholdID: householdID,
+		UpdatedBy:   pgtype.Text{String: by, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cancel pending invites: %w", domainerr.FromStorage(err))
+	}
+	return toInvites(rows), nil
+}
+
+func toNotification(row sqlc.HouseholdNotification) Notification {
+	n := Notification{
+		NotificationID: row.NotificationID,
+		UserID:         row.UserID,
+		Kind:           NotificationKind(row.Kind),
+		CreatedAt:      row.CreatedAt,
+	}
+	if row.HouseholdID.Valid {
+		id := row.HouseholdID.Int64
+		n.HouseholdID = &id
+	}
+	if row.ActorUserID.Valid {
+		id := row.ActorUserID.Int64
+		n.ActorUserID = &id
+	}
+	if row.InviteID.Valid {
+		id := row.InviteID.Int64
+		n.InviteID = &id
+	}
+	if row.ReadAt.Valid {
+		t := row.ReadAt.Time
+		n.ReadAt = &t
+	}
+	return n
+}
+
 func toHousehold(row sqlc.HouseholdHousehold) Household {
 	h := Household{
 		HouseholdID: row.HouseholdID,
 		CreatedBy:   row.CreatedBy,
 		CreatedAt:   row.CreatedAt,
+	}
+	if row.Name.Valid {
+		s := row.Name.String
+		h.Name = &s
 	}
 	if row.UpdatedAt.Valid {
 		t := row.UpdatedAt.Time

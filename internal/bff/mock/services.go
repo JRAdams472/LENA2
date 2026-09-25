@@ -4903,6 +4903,21 @@ func (m *MockHouseholdDirectory) EXPECT() *MockHouseholdDirectoryMockRecorder {
 	return m.recorder
 }
 
+// CountUsersByHousehold mocks base method.
+func (m *MockHouseholdDirectory) CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountUsersByHousehold", ctx, householdID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountUsersByHousehold indicates an expected call of CountUsersByHousehold.
+func (mr *MockHouseholdDirectoryMockRecorder) CountUsersByHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsersByHousehold", reflect.TypeOf((*MockHouseholdDirectory)(nil).CountUsersByHousehold), ctx, householdID)
+}
+
 // ListUsersByHousehold mocks base method.
 func (m *MockHouseholdDirectory) ListUsersByHousehold(ctx context.Context, householdID int64) ([]identity.User, error) {
 	m.ctrl.T.Helper()
@@ -4949,17 +4964,31 @@ func (mr *MockHouseholdDirectoryMockRecorder) SearchUsers(ctx, term, excludeUser
 }
 
 // SetUserHousehold mocks base method.
-func (m *MockHouseholdDirectory) SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error {
+func (m *MockHouseholdDirectory) SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetUserHousehold", ctx, userID, householdID, expected)
+	ret := m.ctrl.Call(m, "SetUserHousehold", ctx, userID, householdID, role, expected)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetUserHousehold indicates an expected call of SetUserHousehold.
-func (mr *MockHouseholdDirectoryMockRecorder) SetUserHousehold(ctx, userID, householdID, expected any) *gomock.Call {
+func (mr *MockHouseholdDirectoryMockRecorder) SetUserHousehold(ctx, userID, householdID, role, expected any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHousehold", reflect.TypeOf((*MockHouseholdDirectory)(nil).SetUserHousehold), ctx, userID, householdID, expected)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHousehold", reflect.TypeOf((*MockHouseholdDirectory)(nil).SetUserHousehold), ctx, userID, householdID, role, expected)
+}
+
+// SetUserHouseholdRole mocks base method.
+func (m *MockHouseholdDirectory) SetUserHouseholdRole(ctx context.Context, userID, householdID int64, role, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserHouseholdRole", ctx, userID, householdID, role, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUserHouseholdRole indicates an expected call of SetUserHouseholdRole.
+func (mr *MockHouseholdDirectoryMockRecorder) SetUserHouseholdRole(ctx, userID, householdID, role, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHouseholdRole", reflect.TypeOf((*MockHouseholdDirectory)(nil).SetUserHouseholdRole), ctx, userID, householdID, role, by)
 }
 
 // SetUserSearchable mocks base method.
@@ -5125,6 +5154,21 @@ func (mr *MockIdentityServiceMockRecorder) CountUsers(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsers", reflect.TypeOf((*MockIdentityService)(nil).CountUsers), ctx)
 }
 
+// CountUsersByHousehold mocks base method.
+func (m *MockIdentityService) CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountUsersByHousehold", ctx, householdID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountUsersByHousehold indicates an expected call of CountUsersByHousehold.
+func (mr *MockIdentityServiceMockRecorder) CountUsersByHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsersByHousehold", reflect.TypeOf((*MockIdentityService)(nil).CountUsersByHousehold), ctx, householdID)
+}
+
 // GetByID mocks base method.
 func (m *MockIdentityService) GetByID(ctx context.Context, userID int64) (identity.User, error) {
 	m.ctrl.T.Helper()
@@ -5215,17 +5259,31 @@ func (mr *MockIdentityServiceMockRecorder) SearchUsers(ctx, term, excludeUserID,
 }
 
 // SetUserHousehold mocks base method.
-func (m *MockIdentityService) SetUserHousehold(ctx context.Context, userID, householdID int64, expected *int64) error {
+func (m *MockIdentityService) SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetUserHousehold", ctx, userID, householdID, expected)
+	ret := m.ctrl.Call(m, "SetUserHousehold", ctx, userID, householdID, role, expected)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetUserHousehold indicates an expected call of SetUserHousehold.
-func (mr *MockIdentityServiceMockRecorder) SetUserHousehold(ctx, userID, householdID, expected any) *gomock.Call {
+func (mr *MockIdentityServiceMockRecorder) SetUserHousehold(ctx, userID, householdID, role, expected any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHousehold", reflect.TypeOf((*MockIdentityService)(nil).SetUserHousehold), ctx, userID, householdID, expected)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHousehold", reflect.TypeOf((*MockIdentityService)(nil).SetUserHousehold), ctx, userID, householdID, role, expected)
+}
+
+// SetUserHouseholdRole mocks base method.
+func (m *MockIdentityService) SetUserHouseholdRole(ctx context.Context, userID, householdID int64, role, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserHouseholdRole", ctx, userID, householdID, role, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUserHouseholdRole indicates an expected call of SetUserHouseholdRole.
+func (mr *MockIdentityServiceMockRecorder) SetUserHouseholdRole(ctx, userID, householdID, role, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserHouseholdRole", reflect.TypeOf((*MockIdentityService)(nil).SetUserHouseholdRole), ctx, userID, householdID, role, by)
 }
 
 // SetUserSearchable mocks base method.
@@ -5280,6 +5338,36 @@ func (m *MockHouseholdService) EXPECT() *MockHouseholdServiceMockRecorder {
 	return m.recorder
 }
 
+// CancelPendingInvitesFrom mocks base method.
+func (m *MockHouseholdService) CancelPendingInvitesFrom(ctx context.Context, fromUserID, householdID int64, by string) ([]household.Invite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelPendingInvitesFrom", ctx, fromUserID, householdID, by)
+	ret0, _ := ret[0].([]household.Invite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CancelPendingInvitesFrom indicates an expected call of CancelPendingInvitesFrom.
+func (mr *MockHouseholdServiceMockRecorder) CancelPendingInvitesFrom(ctx, fromUserID, householdID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelPendingInvitesFrom", reflect.TypeOf((*MockHouseholdService)(nil).CancelPendingInvitesFrom), ctx, fromUserID, householdID, by)
+}
+
+// CountUnreadNotifications mocks base method.
+func (m *MockHouseholdService) CountUnreadNotifications(ctx context.Context, userID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountUnreadNotifications", ctx, userID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountUnreadNotifications indicates an expected call of CountUnreadNotifications.
+func (mr *MockHouseholdServiceMockRecorder) CountUnreadNotifications(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUnreadNotifications", reflect.TypeOf((*MockHouseholdService)(nil).CountUnreadNotifications), ctx, userID)
+}
+
 // CreateHousehold mocks base method.
 func (m *MockHouseholdService) CreateHousehold(ctx context.Context, by string) (household.Household, error) {
 	m.ctrl.T.Helper()
@@ -5308,6 +5396,20 @@ func (m *MockHouseholdService) CreateInvite(ctx context.Context, fromUserID, toU
 func (mr *MockHouseholdServiceMockRecorder) CreateInvite(ctx, fromUserID, toUserID, householdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInvite", reflect.TypeOf((*MockHouseholdService)(nil).CreateInvite), ctx, fromUserID, toUserID, householdID, by)
+}
+
+// CreateNotification mocks base method.
+func (m *MockHouseholdService) CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID, actorUserID, inviteID *int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateNotification", ctx, userID, kind, householdID, actorUserID, inviteID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateNotification indicates an expected call of CreateNotification.
+func (mr *MockHouseholdServiceMockRecorder) CreateNotification(ctx, userID, kind, householdID, actorUserID, inviteID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNotification", reflect.TypeOf((*MockHouseholdService)(nil).CreateNotification), ctx, userID, kind, householdID, actorUserID, inviteID)
 }
 
 // GetHouseholdByID mocks base method.
@@ -5340,6 +5442,21 @@ func (mr *MockHouseholdServiceMockRecorder) GetInviteByID(ctx, inviteID any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInviteByID", reflect.TypeOf((*MockHouseholdService)(nil).GetInviteByID), ctx, inviteID)
 }
 
+// ListNotificationsForUser mocks base method.
+func (m *MockHouseholdService) ListNotificationsForUser(ctx context.Context, userID int64, limit int32) ([]household.Notification, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNotificationsForUser", ctx, userID, limit)
+	ret0, _ := ret[0].([]household.Notification)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListNotificationsForUser indicates an expected call of ListNotificationsForUser.
+func (mr *MockHouseholdServiceMockRecorder) ListNotificationsForUser(ctx, userID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNotificationsForUser", reflect.TypeOf((*MockHouseholdService)(nil).ListNotificationsForUser), ctx, userID, limit)
+}
+
 // ListPendingInvitesForUser mocks base method.
 func (m *MockHouseholdService) ListPendingInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error) {
 	m.ctrl.T.Helper()
@@ -5368,6 +5485,50 @@ func (m *MockHouseholdService) ListSentInvitesForUser(ctx context.Context, userI
 func (mr *MockHouseholdServiceMockRecorder) ListSentInvitesForUser(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSentInvitesForUser", reflect.TypeOf((*MockHouseholdService)(nil).ListSentInvitesForUser), ctx, userID)
+}
+
+// LockHousehold mocks base method.
+func (m *MockHouseholdService) LockHousehold(ctx context.Context, householdID int64) (household.Household, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockHousehold", ctx, householdID)
+	ret0, _ := ret[0].(household.Household)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LockHousehold indicates an expected call of LockHousehold.
+func (mr *MockHouseholdServiceMockRecorder) LockHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockHousehold", reflect.TypeOf((*MockHouseholdService)(nil).LockHousehold), ctx, householdID)
+}
+
+// MarkAllNotificationsRead mocks base method.
+func (m *MockHouseholdService) MarkAllNotificationsRead(ctx context.Context, userID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkAllNotificationsRead", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkAllNotificationsRead indicates an expected call of MarkAllNotificationsRead.
+func (mr *MockHouseholdServiceMockRecorder) MarkAllNotificationsRead(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkAllNotificationsRead", reflect.TypeOf((*MockHouseholdService)(nil).MarkAllNotificationsRead), ctx, userID)
+}
+
+// RenameHousehold mocks base method.
+func (m *MockHouseholdService) RenameHousehold(ctx context.Context, householdID int64, name, by string) (household.Household, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameHousehold", ctx, householdID, name, by)
+	ret0, _ := ret[0].(household.Household)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenameHousehold indicates an expected call of RenameHousehold.
+func (mr *MockHouseholdServiceMockRecorder) RenameHousehold(ctx, householdID, name, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameHousehold", reflect.TypeOf((*MockHouseholdService)(nil).RenameHousehold), ctx, householdID, name, by)
 }
 
 // TransitionInvite mocks base method.
