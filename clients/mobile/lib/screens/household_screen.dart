@@ -43,6 +43,18 @@ const String householdQuery = r'''
         lastName
       }
     }
+    myNotifications(limit: 10) {
+      id
+      kind
+      createdAt
+      actor {
+        id
+        displayName
+        firstName
+        lastName
+      }
+    }
+    unreadNotificationCount
     searchHouseholdUsers(term: $term, limit: 10) @include(if: $search) {
       id
       displayName
@@ -112,6 +124,52 @@ const String updateProfileMutation = r'''
   }
 ''';
 
+const String markAllReadMutation = r'''
+  mutation MarkAllRead {
+    markAllNotificationsRead
+  }
+''';
+
+String _notificationText(Map<String, dynamic> n) {
+  final actor = n['actor'] as Map<String, dynamic>?;
+  final who =
+      actor == null ? 'Someone' : _userName(actor);
+  switch (n['kind'] as String?) {
+    case 'INVITE_RECEIVED':
+      return '$who invited you to their household';
+    case 'INVITE_ACCEPTED':
+      return '$who accepted your household invite';
+    case 'INVITE_DECLINED':
+      return '$who declined your household invite';
+    case 'INVITE_CANCELLED':
+      return '$who cancelled a household invite';
+    case 'MEMBER_JOINED':
+      return '$who joined your household';
+    case 'MEMBER_LEFT':
+      return '$who left your household';
+    case 'MEMBER_REMOVED':
+      return 'You were removed from a household';
+    case 'ROLE_CHANGED':
+      return '$who changed a household role';
+    case 'HOUSEHOLD_RENAMED':
+      return '$who renamed the household';
+    default:
+      return 'Household update';
+  }
+}
+
+String _timeAgo(String? iso) {
+  if (iso == null) return '';
+  final then = DateTime.tryParse(iso);
+  if (then == null) return '';
+  final mins = DateTime.now().difference(then).inMinutes;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return '${mins}m ago';
+  final hours = mins ~/ 60;
+  if (hours < 24) return '${hours}h ago';
+  return '${hours ~/ 24}d ago';
+}
+
 String _userName(Map<String, dynamic> u) {
   final display = u['displayName'] as String?;
   if (display != null && display.isNotEmpty) return display;
@@ -136,12 +194,16 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
   String? _error;
   VoidCallback? _refetch;
   Timer? _poll;
+  bool _markedReadOnOpen = false;
 
   @override
   void initState() {
     super.initState();
+    // The notification feed lives on this screen, so while it's open we
+    // poll at the 5s feed cadence (web uses the same split: 30s idle /
+    // 5s feed-open).
     _poll = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 5),
       (_) => _refetch?.call(),
     );
   }
@@ -305,7 +367,24 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
     final searchResults =
         (result.data?['searchHouseholdUsers'] as List? ?? [])
             .cast<Map<String, dynamic>>();
+    final notifications =
+        (result.data?['myNotifications'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
+    final unread = result.data?['unreadNotificationCount'] as int? ?? 0;
     final atCap = members.length >= maxHouseholdMembers;
+
+    // Mark-read-on-open, matching the web bell: once the feed has been
+    // displayed, clear the unread set. Runs once per screen mount so the
+    // 5s poll doesn't keep re-marking. Deferred past the build phase —
+    // _mutate touches GraphQLProvider and setState.
+    if (!_markedReadOnOpen) {
+      _markedReadOnOpen = true;
+      if (unread > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _mutate(markAllReadMutation, const {});
+        });
+      }
+    }
 
     if (_nameCtrl.text.isEmpty && household?['name'] != null) {
       _nameCtrl.text = household!['name'] as String;
@@ -355,6 +434,33 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
+          if (notifications.isNotEmpty) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Notifications',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Badge(
+                  isLabelVisible: unread > 0,
+                  label: Text('$unread'),
+                  child: const Icon(Icons.notifications),
+                ),
+              ],
+            ),
+            ...notifications.map((n) {
+              final ago = _timeAgo(n['createdAt'] as String?);
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.notifications_outlined),
+                title: Text(_notificationText(n)),
+                subtitle: ago.isEmpty ? null : Text(ago),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
           Text(
             'Members — ${members.length} of $maxHouseholdMembers',
             style: Theme.of(context).textTheme.titleMedium,

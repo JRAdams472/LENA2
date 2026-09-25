@@ -122,16 +122,27 @@ function isGroupActive(pathname: string, children: NavItem[]): boolean {
   return children.some((child) => isActive(pathname, child.href));
 }
 
-// NotificationBell polls the unread count on a 30s interval and fetches
-// the feed only while the menu is open. Deliberately not react-query:
-// AdminLayout must render without QueryClientProvider (same constraint as
-// useMe).
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// NotificationBell polls the unread count every 30s while idle. Opening
+// the menu fetches the feed, marks everything read, and refreshes the
+// feed every 5s until closed — the recipes/pending cadence precedent.
+// Deliberately not react-query: AdminLayout must render without
+// QueryClientProvider (same constraint as useMe).
 function NotificationBell() {
   const router = useRouter();
   const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
   const [unread, setUnread] = React.useState(0);
   const [items, setItems] = React.useState<HouseholdNotification[]>([]);
-  const [marking, setMarking] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -151,23 +162,25 @@ function NotificationBell() {
   React.useEffect(() => {
     if (anchor === null) return;
     let cancelled = false;
-    api
-      .getMyNotifications(20)
-      .then((ns) => !cancelled && setItems(ns))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [anchor]);
-
-  const markAllRead = () => {
-    setMarking(true);
+    const load = () =>
+      api
+        .getMyNotifications(20)
+        .then((ns) => !cancelled && setItems(ns))
+        .catch(() => {});
+    load();
+    // Mark-read-on-open: whatever was unread when the menu opened is
+    // cleared; items arriving while the menu is up stay unread until the
+    // next open, so they still trigger the badge.
     api
       .markAllNotificationsRead()
-      .then(() => setUnread(0))
-      .catch(() => {})
-      .finally(() => setMarking(false));
-  };
+      .then(() => !cancelled && setUnread(0))
+      .catch(() => {});
+    const timer = setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [anchor]);
 
   return (
     <>
@@ -195,14 +208,12 @@ function NotificationBell() {
               router.push("/household");
             }}
           >
-            {notificationText(n)}
+            <ListItemText
+              primary={notificationText(n)}
+              secondary={timeAgo(n.createdAt)}
+            />
           </MenuItem>
         ))}
-        {items.length > 0 && (
-          <MenuItem onClick={markAllRead} disabled={marking}>
-            Mark all read
-          </MenuItem>
-        )}
       </Menu>
     </>
   );
