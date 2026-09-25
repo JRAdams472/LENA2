@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
@@ -28,14 +30,55 @@ const String dashboardQuery = r'''
       score
     }
     me {
+      id
       email
       displayName
     }
+    householdInvites {
+      id
+      status
+      fromUser {
+        id
+        displayName
+        firstName
+        lastName
+      }
+      toUser {
+        id
+      }
+    }
+    unreadNotificationCount
   }
 ''';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  VoidCallback? _refetch;
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    // Poll invites/notifications so the badge reflects invites sent while
+    // the app sits open. Timer.periodic (not QueryOptions.pollInterval)
+    // because it cancels on dispose, keeping widget tests timer-clean.
+    _poll = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _refetch?.call(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +88,7 @@ class DashboardScreen extends StatelessWidget {
         variables: const {'limit': 10},
       ),
       builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+        _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Dashboard')),
           body: _body(context, result, refetch),
@@ -88,6 +132,13 @@ class DashboardScreen extends StatelessWidget {
     final name = (me?['displayName'] as String?) ?? (me?['email'] as String?) ?? 'there';
     final plans = result.data?['mealPlans']?['items'] as List? ?? [];
     final recommendations = result.data?['recommendedRecipes'] as List? ?? [];
+    final myId = me?['id'] as String?;
+    final incomingInvites = (result.data?['householdInvites'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .where((i) =>
+            (i['toUser'] as Map?)?['id'] == myId && i['status'] == 'PENDING')
+        .toList();
+    final unread = result.data?['unreadNotificationCount'] as int? ?? 0;
 
     final slots = _todaysSlots(plans);
 
@@ -97,6 +148,34 @@ class DashboardScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         children: [
           Text('Hello, $name', style: Theme.of(context).textTheme.headlineSmall),
+          if (incomingInvites.isNotEmpty || unread > 0) ...[
+            const SizedBox(height: 8),
+            for (final inv in incomingInvites)
+              Card(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                child: ListTile(
+                  leading: const Icon(Icons.mail_outline),
+                  title: Text(
+                    '${_inviteSender(inv['fromUser'] as Map<String, dynamic>?)} invited you to their household',
+                  ),
+                  subtitle: const Text('Open the Household tab to respond'),
+                ),
+              ),
+            if (unread > 0)
+              Card(
+                child: ListTile(
+                  leading: Badge(
+                    label: Text('$unread'),
+                    child: const Icon(Icons.notifications),
+                  ),
+                  title: Text(
+                    unread == 1
+                        ? '1 unread household notification'
+                        : '$unread unread household notifications',
+                  ),
+                ),
+              ),
+          ],
           const SizedBox(height: 24),
           Text('Today\'s Meal Plan', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
@@ -141,6 +220,16 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _inviteSender(Map<String, dynamic>? u) {
+    if (u == null) return 'Someone';
+    final display = u['displayName'] as String?;
+    if (display != null && display.isNotEmpty) return display;
+    final combined = [u['firstName'], u['lastName']]
+        .whereType<String>()
+        .join(' ');
+    return combined.isNotEmpty ? combined : 'Someone';
   }
 
   List<Map<String, dynamic>> _todaysSlots(List<dynamic> plans) {
