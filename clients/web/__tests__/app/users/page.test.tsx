@@ -39,6 +39,8 @@ const member = {
   lastLoginAt: null,
   externalSubject: null,
   provider: null,
+  isSearchable: true,
+  household: null,
 };
 
 const admin = { ...member, userID: 1, email: "admin@example.com", role: "admin" as const };

@@ -2,10 +2,12 @@
 
 import { useMemo, Fragment } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useMe } from "@/app/auth/useMe";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
@@ -71,6 +73,28 @@ export default function Dashboard() {
     queryFn: () => api.getRecommendedRecipes(10),
   });
 
+  const queryClient = useQueryClient();
+  const { me } = useMe();
+  const invitesQuery = useQuery({
+    queryKey: ["householdInvites"],
+    queryFn: () => api.getHouseholdInvites(),
+  });
+  const pendingIncoming = useMemo(
+    () =>
+      (invitesQuery.data ?? []).filter(
+        (i) => i.status === "PENDING" && i.toUser.userID === me?.userID
+      ),
+    [invitesQuery.data, me?.userID]
+  );
+  const inviteAction = useMutation({
+    mutationFn: async ({ id, accept }: { id: number; accept: boolean }): Promise<unknown> =>
+      accept ? api.acceptHouseholdInvite(id) : api.declineHouseholdInvite(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["householdInvites"] });
+      queryClient.invalidateQueries({ queryKey: ["myHousehold"] });
+    },
+  });
+
   const todaySlots = useMemo(() => {
     if (!planQuery.data?.mealSlots) return [];
     return planQuery.data.mealSlots.filter((s) => s.dayOfWeek === todayDay);
@@ -105,6 +129,54 @@ export default function Dashboard() {
           day: "numeric",
         })}
       </Typography>
+      {pendingIncoming.length > 0 && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Household invitations
+          </Typography>
+          {pendingIncoming.map((inv) => (
+            <Box
+              key={inv.inviteID}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 2,
+              }}
+            >
+              <Typography>
+                {inv.fromUser.displayName ??
+                  [inv.fromUser.firstName, inv.fromUser.lastName]
+                    .filter(Boolean)
+                    .join(" ") ??
+                  `User ${inv.fromUser.userID}`}{" "}
+                invited you to their household
+              </Typography>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() =>
+                    inviteAction.mutate({ id: inv.inviteID, accept: true })
+                  }
+                  disabled={inviteAction.isPending}
+                >
+                  Accept
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    inviteAction.mutate({ id: inv.inviteID, accept: false })
+                  }
+                  disabled={inviteAction.isPending}
+                >
+                  Decline
+                </Button>
+              </Box>
+            </Box>
+          ))}
+        </Paper>
+      )}
       <Paper sx={{ p: 2 }}>
         {activePlanId === null ? (
           <Typography color="text.secondary">

@@ -26,6 +26,33 @@ export interface User {
   lastLoginAt: string | null;
   externalSubject: string | null;
   provider: string | null;
+  isSearchable: boolean;
+  household: Household | null;
+}
+
+export type InviteStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED";
+
+// Restricted user projection for household flows — the API never returns
+// email, role, or activity fields here.
+export interface HouseholdUser {
+  userID: number;
+  displayName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface Household {
+  householdID: number;
+  members: HouseholdUser[];
+  createdAt: string;
+}
+
+export interface HouseholdInvite {
+  inviteID: number;
+  fromUser: HouseholdUser;
+  toUser: HouseholdUser;
+  status: InviteStatus;
+  createdAt: string;
 }
 
 export interface Category extends AuditableEntity {
