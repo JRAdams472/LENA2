@@ -5,16 +5,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { api, ApiError } from "@/lib/api";
-import { HouseholdUser } from "@/lib/types";
+import { HouseholdMember, HouseholdRole, HouseholdUser } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
+
+const MAX_MEMBERS = 10;
 
 function userName(u: HouseholdUser): string {
   return (
@@ -24,12 +31,21 @@ function userName(u: HouseholdUser): string {
   );
 }
 
+function roleChipColor(role: HouseholdRole): "primary" | "secondary" | "default" {
+  if (role === "OWNER") return "primary";
+  if (role === "ADMIN") return "secondary";
+  return "default";
+}
+
 export default function HouseholdPage() {
   const queryClient = useQueryClient();
   const { me } = useMe();
   const [term, setTerm] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<HouseholdMember | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   const householdQuery = useQuery({
     queryKey: ["myHousehold"],
@@ -49,6 +65,9 @@ export default function HouseholdPage() {
     queryClient.invalidateQueries({ queryKey: ["myHousehold"] });
     queryClient.invalidateQueries({ queryKey: ["householdInvites"] });
     queryClient.invalidateQueries({ queryKey: ["searchHouseholdUsers"] });
+    queryClient.invalidateQueries({ queryKey: ["unreadNotificationCount"] });
+    queryClient.invalidateQueries({ queryKey: ["myNotifications"] });
+    queryClient.invalidateQueries({ queryKey: ["me"] });
   };
   const onErr = (e: unknown) =>
     setError(e instanceof ApiError ? e.message : "Request failed");
@@ -93,6 +112,57 @@ export default function HouseholdPage() {
     },
     onError: onErr,
   });
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => api.renameHousehold(name),
+    onSuccess: () => {
+      setError(null);
+      setNameDraft(null);
+      invalidate();
+    },
+    onError: onErr,
+  });
+  const setRoleMutation = useMutation({
+    mutationFn: ({ userID, role }: { userID: number; role: HouseholdRole }) =>
+      api.setHouseholdRole(userID, role),
+    onSuccess: () => {
+      setError(null);
+      closeMenu();
+      invalidate();
+    },
+    onError: (e) => {
+      closeMenu();
+      onErr(e);
+    },
+  });
+  const removeMutation = useMutation({
+    mutationFn: (userID: number) => api.removeHouseholdMember(userID),
+    onSuccess: () => {
+      setError(null);
+      closeMenu();
+      invalidate();
+    },
+    onError: (e) => {
+      closeMenu();
+      onErr(e);
+    },
+  });
+  const transferMutation = useMutation({
+    mutationFn: (userID: number) => api.transferHouseholdOwnership(userID),
+    onSuccess: () => {
+      setError(null);
+      closeMenu();
+      invalidate();
+    },
+    onError: (e) => {
+      closeMenu();
+      onErr(e);
+    },
+  });
+
+  function closeMenu() {
+    setMenuFor(null);
+    setMenuAnchor(null);
+  }
 
   if (householdQuery.isLoading || invitesQuery.isLoading || !me) {
     return (
@@ -114,6 +184,18 @@ export default function HouseholdPage() {
   const invites = invitesQuery.data ?? [];
   const incoming = invites.filter((i) => i.toUser.userID === me.userID);
   const outgoing = invites.filter((i) => i.fromUser.userID === me.userID);
+  const memberCount = household?.members.length ?? 0;
+  const isOwner = household?.myRole === "OWNER";
+  const isAdmin = household?.myRole === "ADMIN";
+  const atCap = memberCount >= MAX_MEMBERS;
+
+  // Mirrors the backend matrix: owner acts on admins/members, admin acts on
+  // members only, nobody acts on the owner or themselves.
+  const canManage = (m: HouseholdMember): boolean => {
+    if (m.isMe || m.role === "OWNER") return false;
+    if (isOwner) return true;
+    return isAdmin && m.role === "MEMBER";
+  };
 
   return (
     <Box sx={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -121,22 +203,135 @@ export default function HouseholdPage() {
       {error && <Alert severity="error">{error}</Alert>}
 
       <Paper sx={{ p: 2 }}>
+        {isOwner ? (
+          <Box
+            component="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              renameMutation.mutate(nameDraft ?? "");
+            }}
+            sx={{ display: "flex", gap: 1, mb: 1 }}
+          >
+            <TextField
+              label="Household name"
+              value={nameDraft ?? household?.name ?? ""}
+              onChange={(e) => setNameDraft(e.target.value)}
+              size="small"
+              fullWidth
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+            />
+            <Button
+              type="submit"
+              variant="outlined"
+              disabled={renameMutation.isPending}
+            >
+              Save
+            </Button>
+          </Box>
+        ) : (
+          household?.name && (
+            <Typography variant="h6" gutterBottom>
+              {household.name}
+            </Typography>
+          )
+        )}
         <Typography variant="h6" gutterBottom>
-          {household?.name ? `${household.name} — Members` : "Members"}
+          Members
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          {memberCount} of {MAX_MEMBERS} members
         </Typography>
         <List dense>
           {(household?.members ?? []).map((m) => (
-            <ListItem key={m.user.userID}>
+            <ListItem
+              key={m.user.userID}
+              secondaryAction={
+                canManage(m) ? (
+                  <IconButton
+                    aria-label={`Manage ${userName(m.user)}`}
+                    onClick={(e) => {
+                      setMenuFor(m);
+                      setMenuAnchor(e.currentTarget);
+                    }}
+                  >
+                    <MoreVertIcon />
+                  </IconButton>
+                ) : undefined
+              }
+            >
               <ListItemText
-                primary={userName(m.user)}
-                secondary={
-                  `${m.role.toLowerCase()}${m.isMe ? " — you" : ""}`
+                primary={
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    {userName(m.user)}
+                    <Chip
+                      label={m.role.toLowerCase()}
+                      size="small"
+                      color={roleChipColor(m.role)}
+                    />
+                    {m.isMe && (
+                      <Typography variant="body2" color="text.secondary">
+                        you
+                      </Typography>
+                    )}
+                  </Box>
                 }
               />
             </ListItem>
           ))}
         </List>
-        {(household?.members.length ?? 0) > 1 && (
+        <Menu
+          anchorEl={menuAnchor}
+          open={menuAnchor !== null}
+          onClose={closeMenu}
+        >
+          {menuFor && isOwner && (
+            <MenuItem
+              onClick={() =>
+                setRoleMutation.mutate({
+                  userID: menuFor.user.userID,
+                  role: menuFor.role === "ADMIN" ? "MEMBER" : "ADMIN",
+                })
+              }
+            >
+              {menuFor.role === "ADMIN" ? "Demote to member" : "Make admin"}
+            </MenuItem>
+          )}
+          {menuFor && isOwner && (
+            <MenuItem
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Transfer ownership to ${userName(menuFor.user)}? You will become a regular member.`
+                  )
+                ) {
+                  transferMutation.mutate(menuFor.user.userID);
+                } else {
+                  closeMenu();
+                }
+              }}
+            >
+              Transfer ownership
+            </MenuItem>
+          )}
+          {menuFor && canManage(menuFor) && (
+            <MenuItem
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Remove ${userName(menuFor.user)} from the household? They get a fresh empty pantry; their shared data stays here.`
+                  )
+                ) {
+                  removeMutation.mutate(menuFor.user.userID);
+                } else {
+                  closeMenu();
+                }
+              }}
+            >
+              Remove from household
+            </MenuItem>
+          )}
+        </Menu>
+        {memberCount > 1 && (
           <Button
             color="error"
             onClick={() => {
@@ -224,6 +419,11 @@ export default function HouseholdPage() {
         <Typography variant="h6" gutterBottom>
           Invite someone
         </Typography>
+        {atCap && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            This household is at the {MAX_MEMBERS}-member limit.
+          </Alert>
+        )}
         <Box
           component="form"
           onSubmit={(e) => {
@@ -258,7 +458,7 @@ export default function HouseholdPage() {
                   size="small"
                   variant="contained"
                   onClick={() => inviteMutation.mutate(u.userID)}
-                  disabled={inviteMutation.isPending}
+                  disabled={inviteMutation.isPending || atCap}
                 >
                   Invite
                 </Button>

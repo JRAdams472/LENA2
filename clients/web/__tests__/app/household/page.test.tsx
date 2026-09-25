@@ -20,6 +20,10 @@ jest.mock("../../../lib/api", () => ({
     declineHouseholdInvite: jest.fn(),
     cancelHouseholdInvite: jest.fn(),
     leaveHousehold: jest.fn(),
+    renameHousehold: jest.fn(),
+    setHouseholdRole: jest.fn(),
+    removeHouseholdMember: jest.fn(),
+    transferHouseholdOwnership: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -108,13 +112,138 @@ describe("household page", () => {
     mockedApi.searchHouseholdUsers.mockResolvedValue([]);
   });
 
-  it("lists household members", async () => {
+  it("lists household members with role chips", async () => {
     renderPage();
     expect(await screen.findByText("Mate")).toBeInTheDocument();
-    expect(screen.getByText("owner — you")).toBeInTheDocument();
+    expect(screen.getByText("owner")).toBeInTheDocument();
     expect(screen.getByText("member")).toBeInTheDocument();
+    expect(screen.getByText("you")).toBeInTheDocument();
+    expect(screen.getByText("2 of 10 members")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /leave household/i })
+    ).toBeInTheDocument();
+  });
+
+  it("lets the owner rename the household", async () => {
+    mockedApi.renameHousehold.mockResolvedValue(household);
+    renderPage();
+    await screen.findByText("Mate");
+    const input = screen.getByLabelText(/household name/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "Casa");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(mockedApi.renameHousehold).toHaveBeenCalledWith("Casa")
+    );
+  });
+
+  it("owner can promote, transfer, and remove via the member menu", async () => {
+    renderPage();
+    await screen.findByText("Mate");
+    await userEvent.click(
+      screen.getByRole("button", { name: /manage mate/i })
+    );
+    expect(await screen.findByText("Make admin")).toBeInTheDocument();
+    expect(screen.getByText("Transfer ownership")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Make admin"));
+    await waitFor(() =>
+      expect(mockedApi.setHouseholdRole).toHaveBeenCalledWith(9, "ADMIN")
+    );
+  });
+
+  it("owner removes a member after confirmation", async () => {
+    const confirm = jest.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage();
+    await screen.findByText("Mate");
+    await userEvent.click(
+      screen.getByRole("button", { name: /manage mate/i })
+    );
+    await userEvent.click(await screen.findByText("Remove from household"));
+    await waitFor(() =>
+      expect(mockedApi.removeHouseholdMember).toHaveBeenCalledWith(9)
+    );
+    confirm.mockRestore();
+  });
+
+  it("hides manage controls from plain members", async () => {
+    mockedApi.getMyHousehold.mockResolvedValue({
+      ...household,
+      myRole: "MEMBER",
+      members: [
+        { user: mate, role: "OWNER" as const, isMe: false },
+        {
+          user: { userID: 7, displayName: "Me", firstName: null, lastName: null },
+          role: "MEMBER" as const,
+          isMe: true,
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText("Mate");
+    expect(
+      screen.queryByRole("button", { name: /manage/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/household name/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("admin can remove members but not manage admins", async () => {
+    const adminMember = {
+      user: { userID: 13, displayName: "Boss", firstName: null, lastName: null },
+      role: "ADMIN" as const,
+      isMe: false,
+    };
+    mockedApi.getMyHousehold.mockResolvedValue({
+      ...household,
+      myRole: "ADMIN",
+      members: [
+        adminMember,
+        { user: mate, role: "MEMBER" as const, isMe: false },
+        {
+          user: { userID: 7, displayName: "Me", firstName: null, lastName: null },
+          role: "ADMIN" as const,
+          isMe: true,
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText("Mate");
+    expect(
+      screen.getByRole("button", { name: /manage mate/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /manage boss/i })
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /manage mate/i })
+    );
+    expect(await screen.findByText("Remove from household")).toBeInTheDocument();
+    expect(screen.queryByText("Make admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Transfer ownership")).not.toBeInTheDocument();
+  });
+
+  it("shows the member cap notice at 10 members", async () => {
+    mockedApi.getMyHousehold.mockResolvedValue({
+      ...household,
+      members: [
+        household.members[0],
+        ...Array.from({ length: 9 }, (_, i) => ({
+          user: {
+            userID: 20 + i,
+            displayName: `Member ${i}`,
+            firstName: null,
+            lastName: null,
+          },
+          role: "MEMBER" as const,
+          isMe: false,
+        })),
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("10 of 10 members")).toBeInTheDocument();
+    expect(
+      screen.getByText(/at the 10-member limit/i)
     ).toBeInTheDocument();
   });
 
