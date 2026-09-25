@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import 'grocery_lists_screen.dart';
+import 'household_screen.dart';
 import 'pantry_screen.dart';
 import 'scan_screen.dart';
 
@@ -19,6 +20,7 @@ class _MainScreenState extends State<MainScreen> {
     GroceryListsScreen(),
     ScanScreen(),
     PantryScreen(),
+    HouseholdScreen(),
   ];
 
   @override
@@ -48,6 +50,10 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.kitchen),
             label: 'Pantry',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.group),
+            label: 'Household',
           ),
         ],
       ),
