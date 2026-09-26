@@ -1463,6 +1463,11 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	}`, map[string]any{"inviteId": inviteRes.Invite.ID})
 	require.Equal(t, http.StatusOK, status)
 
+	// Clear H's invite_accepted notification so the unread counts below
+	// reflect only event activity.
+	status, gr = doGraphQL(t, srv, tokH, `mutation { markAllNotificationsRead }`, nil)
+	require.Equal(t, http.StatusOK, status)
+
 	// H creates an event; I sees it listed (shared household scope) and is
 	// notified with the event deep-link.
 	status, gr = doGraphQL(t, srv, tokH, `mutation {
