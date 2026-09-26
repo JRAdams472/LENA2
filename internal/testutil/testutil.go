@@ -38,7 +38,7 @@ func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error)
 	// postgres logs "ready to accept connections" twice: once during initdb
 	// bootstrap and once after the real startup. Wait for the second
 	// occurrence plus the port, otherwise the first connection hits EOF.
-	container, err := postgres.Run(ctx, "postgres:16-alpine",
+	container, err := postgres.Run(ctx, "postgres:18-alpine",
 		postgres.WithDatabase("lena"),
 		postgres.WithUsername("lena"),
 		postgres.WithPassword("change-me"),
