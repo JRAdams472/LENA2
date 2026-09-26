@@ -106,17 +106,47 @@ Each phase: own branch, PR to `main`, merge after green CI + approval.
 - `AdminLayout` notification text + `/events` deep-link; nav link
 - Jest coverage for page, api, notification labels
 
-### Deferred — master timeline phase (not this work)
+### Phase 4 — `events-p4`: timeline engine + step snapshots + web timeline
 
-- Engine backwards-schedules from `event_recipe.target_time` over the
-  step DAG (`depends_on_step_number`, default = previous step), subtracts
-  `duration_minutes`, overlaps `is_passive` steps, contends `appliance`
-  resources; Ollama-assisted adjustment advice when appliances are
-  oversubscribed; NULL durations fall back to recipe-level prep/cook
-  split or flag the recipe unschedulable
-- Mobile events UI + timeline land together in that phase
-- Persistence (compute-on-read vs cache table) decided then; current
-  schema supports either
+- `internal/event/timeline.go` — pure compute-on-read engine: backwards-
+  schedules each recipe's step DAG from `target_time` (default edge =
+  previous step; `depends_on_step_number` overrides), rounds durations up
+  to the event's slot granularity, estimates NULL durations as one slot
+  (flagged `estimated`), marks dependency cycles/free-form slots
+  `unschedulable`, and flags overlapping `appliance` usage as `conflicts`
+- Migration `0032` + `event.event_recipe_step` — per-slot step snapshot:
+  linking a recipe copies its steps; all event-context step edits write
+  only to the snapshot so the original recipe is never altered. The
+  timeline schedules the snapshot, so a later recipe edit/delete can't
+  move a laid-out plan. `syncEventRecipeSteps` re-copies; unlinking keeps
+  the snapshot as free-form steps. Added late in the phase after review
+  flagged that event-context edits would otherwise hit shared recipe rows
+- GraphQL `eventTimeline(foodEventId)` → `EventTimeline` /
+  `EventTimelineRecipe` / `TimelineStep` (computed on read — the cache-
+  table persistence option was dropped in favor of compute-on-read);
+  `EventRecipe.steps` exposes the snapshot; `addEventRecipeStep` /
+  `updateEventRecipeStep` / `removeEventRecipeStep` /
+  `syncEventRecipeSteps` mutations
+- Web: `getEventTimeline` API + a lazy "Generate Timeline" section on
+  `/events/[id]` showing per-recipe step tables, start-by times, and
+  conflict warnings; expandable per-slot step editor (add/edit/delete,
+  sync-from-recipe) writing only to the snapshot
+- Migration `0033` + `event.event_recipe_item` — per-slot ingredient
+  snapshot (same isolation guarantee as steps). `event_recipe.
+  base_servings` freezes the recipe's servings at link time so
+  `quantity × servings ÷ base_servings` scales correctly even if the
+  recipe's serving count changes later — the same rule `expandPlanLines`
+  uses for meal-plan grocery scaling. Added after the user confirmed
+  servings scaling is in scope. Item mutations mirror the step ones;
+  `syncEventRecipeSteps` was widened into `syncEventRecipe` (steps +
+  items + base servings), and the web slot expander shows scaled
+  quantities with add/edit/delete and a servings scale hint
+
+### Remaining deferred work
+
+- Ollama-assisted adjustment advice when appliances are oversubscribed
+  (the `internal/platform/ollamaclient` infrastructure already exists)
+- Mobile events UI + timeline view
 
 ## Fix-preservation audit
 

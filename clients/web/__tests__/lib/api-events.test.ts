@@ -228,6 +228,262 @@ describe("food event api client", () => {
     expect(body.query).toContain("removeEventRecipe");
     expect(body.variables.id).toBe("9");
   });
+
+  it("getEventTimeline maps recipes and steps", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        eventTimeline: {
+          foodEventId: "3",
+          warnings: ["appliance conflict: oven"],
+          recipes: [
+            {
+              eventRecipeId: "9",
+              name: "Casserole",
+              targetTime: "2026-11-26T18:30:00Z",
+              servings: 8,
+              startBy: "2026-11-26T17:30:00Z",
+              unschedulable: false,
+              warnings: ["1 step(s) have no duration — estimated"],
+              steps: [
+                {
+                  stepNumber: 1,
+                  instruction: "mix",
+                  stepType: "prep",
+                  isPassive: false,
+                  appliance: null,
+                  durationMinutes: null,
+                  scheduledMinutes: 30,
+                  estimated: true,
+                  startTime: "2026-11-26T17:30:00Z",
+                  endTime: "2026-11-26T18:00:00Z",
+                  conflicts: ["oven is needed"],
+                },
+              ],
+            },
+          ],
+        },
+      })
+    );
+
+    const tl = await api.getEventTimeline(3);
+
+    const body = lastBody();
+    expect(body.query).toContain("eventTimeline");
+    expect(body.variables.id).toBe("3");
+    expect(tl.foodEventID).toBe(3);
+    expect(tl.warnings).toEqual(["appliance conflict: oven"]);
+    expect(tl.recipes).toHaveLength(1);
+    const r = tl.recipes[0];
+    expect(r.eventRecipeID).toBe(9);
+    expect(r.startBy).toBe("2026-11-26T17:30:00Z");
+    const s = r.steps[0];
+    expect(s.scheduledMinutes).toBe(30);
+    expect(s.estimated).toBe(true);
+    expect(s.conflicts).toEqual(["oven is needed"]);
+  });
+
+  it("getEventTimeline throws 404 when the event is null", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ eventTimeline: null }));
+
+    await expect(api.getEventTimeline(3)).rejects.toThrow(ApiError);
+  });
+
+  it("addEventRecipeStep sends the step input", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        addEventRecipeStep: {
+          id: "60",
+          stepNumber: 3,
+          instruction: "rest",
+          durationMinutes: 20,
+          stepType: "rest",
+          isPassive: true,
+          dependsOnStepNumber: null,
+          appliance: null,
+        },
+      })
+    );
+
+    const s = await api.addEventRecipeStep(9, {
+      instruction: "rest",
+      durationMinutes: 20,
+      stepType: "rest",
+      isPassive: true,
+    });
+
+    const body = lastBody();
+    expect(body.query).toContain("addEventRecipeStep");
+    expect(body.variables.id).toBe("9");
+    expect(body.variables.input).toEqual({
+      instruction: "rest",
+      durationMinutes: 20,
+      stepType: "rest",
+      isPassive: true,
+      dependsOnStepNumber: null,
+      appliance: null,
+    });
+    expect(s.eventRecipeStepID).toBe(60);
+    expect(s.stepNumber).toBe(3);
+    expect(s.isPassive).toBe(true);
+  });
+
+  it("updateEventRecipeStep sends the step input by step id", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        updateEventRecipeStep: {
+          id: "60",
+          stepNumber: 3,
+          instruction: "rest longer",
+          durationMinutes: 45,
+          stepType: null,
+          isPassive: false,
+          dependsOnStepNumber: null,
+          appliance: "oven",
+        },
+      })
+    );
+
+    const s = await api.updateEventRecipeStep(60, {
+      instruction: "rest longer",
+      durationMinutes: 45,
+      appliance: "oven",
+    });
+
+    const body = lastBody();
+    expect(body.query).toContain("updateEventRecipeStep");
+    expect(body.variables.id).toBe("60");
+    expect(body.variables.input.instruction).toBe("rest longer");
+    expect(s.instruction).toBe("rest longer");
+    expect(s.appliance).toBe("oven");
+  });
+
+  it("removeEventRecipeStep posts the mutation", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ removeEventRecipeStep: true })
+    );
+
+    await api.removeEventRecipeStep(60);
+
+    const body = lastBody();
+    expect(body.query).toContain("removeEventRecipeStep");
+    expect(body.variables.id).toBe("60");
+  });
+
+  it("syncEventRecipe returns the slot with fresh steps and items", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        syncEventRecipe: {
+          id: "9",
+          mealType: "dinner",
+          targetTime: "2026-11-26T18:30:00Z",
+          servings: 8,
+          baseServings: 4,
+          scalingFactor: 2,
+          notes: "turkey",
+          recipe: null,
+          steps: [
+            {
+              id: "61",
+              stepNumber: 1,
+              instruction: "fresh step",
+              durationMinutes: 10,
+              stepType: null,
+              isPassive: false,
+              dependsOnStepNumber: null,
+              appliance: null,
+            },
+          ],
+          items: [
+            {
+              id: "70",
+              item: { id: "50", name: "Flour" },
+              quantity: 4,
+              baseQuantity: 2,
+              unit: "cup",
+              section: null,
+              displayOrder: 0,
+              notes: null,
+              isOptional: false,
+            },
+          ],
+        },
+      })
+    );
+
+    const slot = await api.syncEventRecipe(9);
+
+    const body = lastBody();
+    expect(body.query).toContain("syncEventRecipe");
+    expect(body.variables.id).toBe("9");
+    expect(slot.eventRecipeID).toBe(9);
+    expect(slot.steps).toHaveLength(1);
+    expect(slot.steps![0].instruction).toBe("fresh step");
+    expect(slot.items).toHaveLength(1);
+    expect(slot.items![0].quantity).toBe(4);
+    expect(slot.items![0].baseQuantity).toBe(2);
+  });
+
+  it("addEventRecipeItem posts the item input", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        addEventRecipeItem: {
+          id: "70",
+          item: { id: "50", name: "Flour" },
+          quantity: 3,
+          baseQuantity: 3,
+          unit: "cup",
+          section: null,
+          displayOrder: 0,
+          notes: null,
+          isOptional: false,
+        },
+      })
+    );
+
+    const item = await api.addEventRecipeItem(9, { itemID: 50, quantity: 3, unit: "cup" });
+
+    const body = lastBody();
+    expect(body.query).toContain("addEventRecipeItem");
+    expect(body.variables.id).toBe("9");
+    expect(body.variables.input).toMatchObject({ itemId: "50", quantity: 3, unit: "cup" });
+    expect(item.eventRecipeItemID).toBe(70);
+    expect(item.itemName).toBe("Flour");
+  });
+
+  it("updateEventRecipeItem posts the new quantity", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        updateEventRecipeItem: {
+          id: "70",
+          item: { id: "50", name: "Flour" },
+          quantity: 6,
+          baseQuantity: 6,
+          unit: "cup",
+          section: null,
+          displayOrder: 0,
+          notes: null,
+          isOptional: false,
+        },
+      })
+    );
+
+    const item = await api.updateEventRecipeItem(70, { itemID: 50, quantity: 6, unit: "cup" });
+
+    const body = lastBody();
+    expect(body.query).toContain("updateEventRecipeItem");
+    expect(body.variables.id).toBe("70");
+    expect(item.quantity).toBe(6);
+  });
+
+  it("removeEventRecipeItem deletes by id", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ removeEventRecipeItem: true }));
+
+    await api.removeEventRecipeItem(70);
+
+    const body = lastBody();
+    expect(body.query).toContain("removeEventRecipeItem");
+    expect(body.variables.id).toBe("70");
+  });
 });
 
 describe("recipe step timing round-trip", () => {

@@ -35,6 +35,9 @@ import {
   HouseholdUser,
   FoodEvent,
   EventRecipe,
+  EventRecipeItem,
+  EventRecipeStep,
+  EventTimeline,
   InviteStatus,
   NotificationKind,
   RecipeImport,
@@ -484,13 +487,40 @@ interface GqlMealPlanPage {
   pageInfo: GqlPageInfo;
 }
 
+interface GqlEventRecipeStep {
+  id: string;
+  stepNumber: number;
+  instruction: string;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
+}
+
+interface GqlEventRecipeItem {
+  id: string;
+  item: { id: string; name: string } | null;
+  quantity: number;
+  baseQuantity: number;
+  unit: string;
+  section: string | null;
+  displayOrder: number;
+  notes: string | null;
+  isOptional: boolean;
+}
+
 interface GqlEventRecipe {
   id: string;
   mealType: string;
   targetTime: string;
   servings: number | null;
+  baseServings: number | null;
+  scalingFactor: number;
   notes: string | null;
   recipe: GqlRecipe | null;
+  steps: GqlEventRecipeStep[];
+  items: GqlEventRecipeItem[];
 }
 
 interface GqlFoodEvent {
@@ -505,6 +535,38 @@ interface GqlFoodEvent {
 interface GqlFoodEventPage {
   items: GqlFoodEvent[];
   pageInfo: GqlPageInfo;
+}
+
+interface GqlTimelineStep {
+  stepNumber: number;
+  instruction: string;
+  stepType: string | null;
+  isPassive: boolean;
+  appliance: string | null;
+  durationMinutes: number | null;
+  scheduledMinutes: number;
+  estimated: boolean;
+  startTime: string;
+  endTime: string;
+  conflicts: string[];
+}
+
+interface GqlEventTimelineRecipe {
+  eventRecipeId: string;
+  name: string;
+  targetTime: string;
+  servings: number | null;
+  baseServings: number | null;
+  startBy: string | null;
+  unschedulable: boolean;
+  warnings: string[];
+  steps: GqlTimelineStep[];
+}
+
+interface GqlEventTimeline {
+  foodEventId: string;
+  warnings: string[];
+  recipes: GqlEventTimelineRecipe[];
 }
 
 interface GqlNutritionSummary {
@@ -1104,6 +1166,82 @@ function toMealPlan(p: GqlMealPlan): MealPlan {
   };
 }
 
+// EventRecipeStepInput is the writable shape of an event slot's snapshot
+// step — step_number is server-assigned on add.
+export interface EventRecipeStepInput {
+  instruction: string;
+  durationMinutes?: number | null;
+  stepType?: string | null;
+  isPassive?: boolean | null;
+  dependsOnStepNumber?: number | null;
+  appliance?: string | null;
+}
+
+function toEventStepVariables(step: EventRecipeStepInput) {
+  return {
+    instruction: step.instruction,
+    durationMinutes: step.durationMinutes ?? null,
+    stepType: step.stepType ?? null,
+    isPassive: step.isPassive ?? null,
+    dependsOnStepNumber: step.dependsOnStepNumber ?? null,
+    appliance: step.appliance ?? null,
+  };
+}
+
+// EventRecipeItemInput is the writable shape of an event slot's snapshot
+// ingredient — quantity is the unscaled (per-base-servings) amount, and
+// unit is a name or abbreviation resolved by the shared unit catalog.
+export interface EventRecipeItemInput {
+  itemID: number;
+  quantity: number;
+  unit: string;
+  section?: string | null;
+  displayOrder?: number | null;
+  notes?: string | null;
+  isOptional?: boolean | null;
+}
+
+function toEventItemVariables(item: EventRecipeItemInput) {
+  return {
+    itemId: String(item.itemID),
+    ingredientId: null,
+    quantity: item.quantity,
+    unit: item.unit,
+    section: item.section ?? null,
+    displayOrder: item.displayOrder ?? null,
+    notes: item.notes ?? null,
+    isOptional: item.isOptional ?? null,
+  };
+}
+
+function toEventRecipeStep(s: GqlEventRecipeStep): EventRecipeStep {
+  return {
+    eventRecipeStepID: num(s.id),
+    stepNumber: s.stepNumber,
+    instruction: s.instruction,
+    durationMinutes: s.durationMinutes,
+    stepType: s.stepType,
+    isPassive: s.isPassive,
+    dependsOnStepNumber: s.dependsOnStepNumber,
+    appliance: s.appliance,
+  };
+}
+
+function toEventRecipeItem(i: GqlEventRecipeItem): EventRecipeItem {
+  return {
+    eventRecipeItemID: num(i.id),
+    itemID: i.item ? num(i.item.id) : 0,
+    itemName: i.item?.name ?? null,
+    quantity: i.quantity,
+    baseQuantity: i.baseQuantity,
+    unit: i.unit,
+    section: i.section,
+    displayOrder: i.displayOrder,
+    notes: i.notes,
+    isOptional: i.isOptional,
+  };
+}
+
 function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
   return {
     eventRecipeID: num(er.id),
@@ -1112,8 +1250,12 @@ function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
     mealType: er.mealType,
     targetTime: er.targetTime,
     servings: er.servings,
+    baseServings: er.baseServings,
+    scalingFactor: er.scalingFactor,
     notes: er.notes,
     recipe: er.recipe ? toRecipe(er.recipe) : null,
+    steps: (er.steps ?? []).map(toEventRecipeStep),
+    items: (er.items ?? []).map(toEventRecipeItem),
   };
 }
 
@@ -1126,6 +1268,36 @@ function toFoodEvent(e: GqlFoodEvent): FoodEvent {
     slotGranularityMinutes: e.slotGranularityMinutes,
     isActive: e.isActive,
     eventRecipes: (e.recipes ?? []).map((r) => toEventRecipe(foodEventID, r)),
+  };
+}
+
+function toEventTimeline(t: GqlEventTimeline): EventTimeline {
+  return {
+    foodEventID: num(t.foodEventId),
+    warnings: t.warnings ?? [],
+    recipes: (t.recipes ?? []).map((r) => ({
+      eventRecipeID: num(r.eventRecipeId),
+      name: r.name,
+      targetTime: r.targetTime,
+      servings: r.servings,
+      baseServings: r.baseServings,
+      startBy: r.startBy,
+      unschedulable: r.unschedulable,
+      warnings: r.warnings ?? [],
+      steps: (r.steps ?? []).map((s) => ({
+        stepNumber: s.stepNumber,
+        instruction: s.instruction,
+        stepType: s.stepType,
+        isPassive: s.isPassive,
+        appliance: s.appliance,
+        durationMinutes: s.durationMinutes,
+        scheduledMinutes: s.scheduledMinutes,
+        estimated: s.estimated,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        conflicts: s.conflicts ?? [],
+      })),
+    })),
   };
 }
 
@@ -1202,9 +1374,21 @@ const MEAL_PLAN_FIELDS = `
   }
 `;
 
+const EVENT_RECIPE_STEP_FIELDS = `
+  id stepNumber instruction durationMinutes stepType isPassive
+  dependsOnStepNumber appliance
+`;
+
+const EVENT_RECIPE_ITEM_FIELDS = `
+  id quantity baseQuantity unit section displayOrder notes isOptional
+  item { id name }
+`;
+
 const EVENT_RECIPE_FIELDS = `
-  id mealType targetTime servings notes
+  id mealType targetTime servings baseServings scalingFactor notes
   recipe { ${RECIPE_FIELDS} }
+  steps { ${EVENT_RECIPE_STEP_FIELDS} }
+  items { ${EVENT_RECIPE_ITEM_FIELDS} }
 `;
 
 const FOOD_EVENT_FIELDS = `
@@ -2892,6 +3076,93 @@ export const api = {
       `mutation ($id: ID!) { removeEventRecipe(id: $id) }`,
       { id: String(id) }
     );
+  },
+
+  addEventRecipeStep: async (eventRecipeId: number, step: EventRecipeStepInput): Promise<EventRecipeStep> => {
+    const data = await request<{ addEventRecipeStep: GqlEventRecipeStep }>(
+      `mutation ($id: ID!, $input: EventRecipeStepInput!) {
+        addEventRecipeStep(eventRecipeId: $id, input: $input) { ${EVENT_RECIPE_STEP_FIELDS} }
+      }`,
+      { id: String(eventRecipeId), input: toEventStepVariables(step) }
+    );
+    return toEventRecipeStep(data.addEventRecipeStep);
+  },
+
+  updateEventRecipeStep: async (id: number, step: EventRecipeStepInput): Promise<EventRecipeStep> => {
+    const data = await request<{ updateEventRecipeStep: GqlEventRecipeStep }>(
+      `mutation ($id: ID!, $input: EventRecipeStepInput!) {
+        updateEventRecipeStep(id: $id, input: $input) { ${EVENT_RECIPE_STEP_FIELDS} }
+      }`,
+      { id: String(id), input: toEventStepVariables(step) }
+    );
+    return toEventRecipeStep(data.updateEventRecipeStep);
+  },
+
+  removeEventRecipeStep: async (id: number): Promise<void> => {
+    await request<{ removeEventRecipeStep: boolean }>(
+      `mutation ($id: ID!) { removeEventRecipeStep(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  addEventRecipeItem: async (eventRecipeId: number, item: EventRecipeItemInput): Promise<EventRecipeItem> => {
+    const data = await request<{ addEventRecipeItem: GqlEventRecipeItem }>(
+      `mutation ($id: ID!, $input: EventRecipeItemInput!) {
+        addEventRecipeItem(eventRecipeId: $id, input: $input) { ${EVENT_RECIPE_ITEM_FIELDS} }
+      }`,
+      { id: String(eventRecipeId), input: toEventItemVariables(item) }
+    );
+    return toEventRecipeItem(data.addEventRecipeItem);
+  },
+
+  updateEventRecipeItem: async (id: number, item: EventRecipeItemInput): Promise<EventRecipeItem> => {
+    const data = await request<{ updateEventRecipeItem: GqlEventRecipeItem }>(
+      `mutation ($id: ID!, $input: EventRecipeItemInput!) {
+        updateEventRecipeItem(id: $id, input: $input) { ${EVENT_RECIPE_ITEM_FIELDS} }
+      }`,
+      { id: String(id), input: toEventItemVariables(item) }
+    );
+    return toEventRecipeItem(data.updateEventRecipeItem);
+  },
+
+  removeEventRecipeItem: async (id: number): Promise<void> => {
+    await request<{ removeEventRecipeItem: boolean }>(
+      `mutation ($id: ID!) { removeEventRecipeItem(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  syncEventRecipe: async (eventRecipeId: number): Promise<EventRecipe> => {
+    const data = await request<{ syncEventRecipe: GqlEventRecipe }>(
+      `mutation ($id: ID!) {
+        syncEventRecipe(eventRecipeId: $id) { ${EVENT_RECIPE_FIELDS} }
+      }`,
+      { id: String(eventRecipeId) }
+    );
+    return toEventRecipe(0, data.syncEventRecipe);
+  },
+
+  getEventTimeline: async (foodEventId: number): Promise<EventTimeline> => {
+    const data = await request<{ eventTimeline: GqlEventTimeline | null }>(
+      `query ($id: ID!) {
+        eventTimeline(foodEventId: $id) {
+          foodEventId
+          warnings
+          recipes {
+            eventRecipeId name targetTime servings baseServings startBy
+            unschedulable warnings
+            steps {
+              stepNumber instruction stepType isPassive appliance
+              durationMinutes scheduledMinutes estimated
+              startTime endTime conflicts
+            }
+          }
+        }
+      }`,
+      { id: String(foodEventId) }
+    );
+    if (!data.eventTimeline) throw new ApiError(404, `Timeline for event ${foodEventId} not found`);
+    return toEventTimeline(data.eventTimeline);
   },
 
   // Grocery Lists

@@ -473,6 +473,10 @@ CREATE INDEX idx_event_recipe_event ON event.event_recipe (food_event_id);
 
 `recipe_id` is nullable with `SET NULL` so a deleted recipe leaves the slot as free-form notes; the BFF resolves it cross-domain — no SQL join to `recipe` exists in module code. `household.notifications.food_event_id` (added in the same migration) deep-links `event_*` notification kinds.
 
+`event.event_recipe_step` (migration 0032) is a **per-slot snapshot** of the recipe's steps: it copies `recipe_step` rows when a slot is linked to a recipe, and event-context step edits write only to it. The original `recipe.recipe_step` rows are never touched by event mutations, and a later recipe edit or delete does not move a laid-out plan (the timeline schedules the snapshot). It mirrors the timing columns (`duration_minutes`, `step_type`, `is_passive`, `appliance`) plus the `depends_on_step_number` composite FK pattern — against `(event_recipe_id, step_number)` rather than recipe.
+
+`event.event_recipe_item` (migration 0033) is the same snapshot pattern for ingredients: `recipe_item` rows copy into the slot at link time, and `event.event_recipe.base_servings` freezes the recipe's `servings` as the scaling denominator — so `quantity × servings ÷ base_servings` stays correct even if the original recipe's serving count changes later. Event-context item edits write only to the snapshot. `syncEventRecipe` re-copies steps, items, and base servings over the snapshots; unlinking a slot keeps both as free-form content.
+
 ## 11. Data-Isolation Notes
 
 - `identity.users` is the only table referenced by foreign keys from other schemas for scoping.

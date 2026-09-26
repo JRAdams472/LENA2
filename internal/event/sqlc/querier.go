@@ -10,19 +10,39 @@ import (
 
 type Querier interface {
 	AddEventRecipe(ctx context.Context, arg AddEventRecipeParams) (EventEventRecipe, error)
+	AddEventRecipeItem(ctx context.Context, arg AddEventRecipeItemParams) (EventEventRecipeItem, error)
+	AddEventRecipeStep(ctx context.Context, arg AddEventRecipeStepParams) (EventEventRecipeStep, error)
 	CountFoodEvents(ctx context.Context, householdID int64) (int64, error)
 	CreateFoodEvent(ctx context.Context, arg CreateFoodEventParams) (EventFoodEvent, error)
 	DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipeParams) error
+	DeleteEventRecipeItem(ctx context.Context, arg DeleteEventRecipeItemParams) error
+	// Clears a slot's item snapshot before a re-materialization replace.
+	DeleteEventRecipeItems(ctx context.Context, arg DeleteEventRecipeItemsParams) error
+	DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) error
+	// Clears a slot's snapshot before a re-materialization replace.
+	DeleteEventRecipeSteps(ctx context.Context, arg DeleteEventRecipeStepsParams) error
 	DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams) error
 	GetEventRecipeByID(ctx context.Context, arg GetEventRecipeByIDParams) (EventEventRecipe, error)
+	GetEventRecipeItemByID(ctx context.Context, arg GetEventRecipeItemByIDParams) (EventEventRecipeItem, error)
+	GetEventRecipeStepByID(ctx context.Context, arg GetEventRecipeStepByIDParams) (EventEventRecipeStep, error)
 	GetFoodEventByID(ctx context.Context, arg GetFoodEventByIDParams) (EventFoodEvent, error)
+	ListEventRecipeItems(ctx context.Context, arg ListEventRecipeItemsParams) ([]EventEventRecipeItem, error)
+	// Batch: items for every slot of the given events, owned by the household.
+	ListEventRecipeItemsForEvents(ctx context.Context, arg ListEventRecipeItemsForEventsParams) ([]EventEventRecipeItem, error)
+	ListEventRecipeSteps(ctx context.Context, arg ListEventRecipeStepsParams) ([]EventEventRecipeStep, error)
+	// Batch: steps for every slot of the given events, owned by the household.
+	ListEventRecipeStepsForEvents(ctx context.Context, arg ListEventRecipeStepsForEventsParams) ([]EventEventRecipeStep, error)
 	ListEventRecipesByEvents(ctx context.Context, arg ListEventRecipesByEventsParams) ([]EventEventRecipe, error)
 	ListEventRecipesForEvent(ctx context.Context, arg ListEventRecipesForEventParams) ([]EventEventRecipe, error)
 	ListFoodEvents(ctx context.Context, arg ListFoodEventsParams) ([]EventFoodEvent, error)
 	// Invite-accept merge: repoint all of the source household's events. Zero
 	// rows is not an error (the source may have had none).
 	ReassignFoodEventsToHousehold(ctx context.Context, arg ReassignFoodEventsToHouseholdParams) error
+	// Freezes the linked recipe's servings as the scaling denominator.
+	SetEventRecipeBaseServings(ctx context.Context, arg SetEventRecipeBaseServingsParams) error
 	UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipeParams) error
+	UpdateEventRecipeItem(ctx context.Context, arg UpdateEventRecipeItemParams) error
+	UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) error
 	UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams) error
 }
 

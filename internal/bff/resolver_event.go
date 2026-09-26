@@ -36,7 +36,15 @@ func (r *Resolver) FoodEvent(ctx context.Context, args struct{ ID graphql.ID }) 
 	if err != nil {
 		return nil, err
 	}
-	return &foodEventResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, event: ev, recipes: recipes, rc: rc, loaded: true}, nil
+	stepsBy, err := r.eventStepsByEventRecipe(ctx, []int64{ev.FoodEventID}, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	itemsBy, err := r.eventItemsByEventRecipe(ctx, []int64{ev.FoodEventID}, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	return &foodEventResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, event: ev, recipes: recipes, rc: rc, stepsBy: stepsBy, itemsBy: itemsBy, loaded: true}, nil
 }
 
 // FoodEvents resolves a page of the caller's household events.
@@ -68,7 +76,99 @@ func (r *Resolver) FoodEvents(ctx context.Context, args struct {
 			recipesByEvent[er.FoodEventID] = append(recipesByEvent[er.FoodEventID], er)
 		}
 	}
-	return &foodEventPageResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, events: events, recipesByEvent: recipesByEvent, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	stepsBy, err := r.eventStepsByEventRecipe(ctx, eventIDs, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	itemsBy, err := r.eventItemsByEventRecipe(ctx, eventIDs, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	return &foodEventPageResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, events: events, recipesByEvent: recipesByEvent, stepsBy: stepsBy, itemsBy: itemsBy, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// EventTimeline computes the event's master schedule on read: load the
+// slots and their recipe steps, then hand everything to the pure engine.
+func (r *Resolver) EventTimeline(ctx context.Context, args struct {
+	FoodEventID graphql.ID
+}) (*eventTimelineResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.FoodEventID))
+	if err != nil {
+		return nil, err
+	}
+	ev, err := r.EventService.GetFoodEventByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	recipes, err := r.EventService.ListEventRecipesForEvent(ctx, ev.FoodEventID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	// Recipe names come off the shared recipe rows; the scheduled steps
+	// come off each slot's own snapshot so event-specific edits — and a
+	// later recipe edit or deletion — never move a laid-out plan.
+	var names map[int64]string
+	recipeIDs := distinctIDs(recipes, func(er event.EventRecipe) *int64 { return er.RecipeID })
+	if len(recipeIDs) > 0 {
+		recs, err := r.RecipeService.GetRecipesByIDs(ctx, recipeIDs)
+		if err != nil {
+			return nil, err
+		}
+		names = make(map[int64]string, len(recs))
+		for _, rec := range recs {
+			names[rec.RecipeID] = rec.Name
+		}
+	}
+	snapshot, err := r.EventService.ListEventRecipeStepsForEvents(ctx, []int64{ev.FoodEventID}, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	stepsBy := make(map[int64][]event.EventRecipeStep)
+	for _, st := range snapshot {
+		stepsBy[st.EventRecipeID] = append(stepsBy[st.EventRecipeID], st)
+	}
+	slots := make([]event.TimelineRecipeInput, len(recipes))
+	for i, er := range recipes {
+		var steps []event.TimelineStepInput
+		for _, s := range stepsBy[er.EventRecipeID] {
+			steps = append(steps, event.TimelineStepInput{
+				StepNumber:          s.StepNumber,
+				Instruction:         s.Instruction,
+				DurationMinutes:     s.DurationMinutes,
+				StepType:            s.StepType,
+				IsPassive:           s.IsPassive,
+				DependsOnStepNumber: s.DependsOnStepNumber,
+				Appliance:           s.Appliance,
+			})
+		}
+		name := ""
+		if er.RecipeID != nil {
+			name = names[*er.RecipeID]
+		}
+		if name == "" {
+			name = er.Notes
+		}
+		if name == "" {
+			name = er.MealType
+		}
+		if name == "" {
+			name = "Unnamed dish"
+		}
+		slots[i] = event.TimelineRecipeInput{
+			EventRecipeID: er.EventRecipeID,
+			Name:          name,
+			TargetTime:    er.TargetTime,
+			Servings:      er.Servings,
+			BaseServings:  er.BaseServings,
+			Steps:         steps,
+		}
+	}
+	tl := event.BuildTimeline(ev, slots)
+	return &eventTimelineResolver{tl: tl}, nil
 }
 
 // CreateFoodEvent creates a new event for the caller's household.
@@ -180,7 +280,15 @@ func (r *Resolver) UpdateFoodEvent(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &foodEventResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, event: updated, recipes: recipes, rc: rc, loaded: true}, nil
+	stepsBy, err := r.eventStepsByEventRecipe(ctx, []int64{updated.FoodEventID}, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	itemsBy, err := r.eventItemsByEventRecipe(ctx, []int64{updated.FoodEventID}, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	return &foodEventResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, event: updated, recipes: recipes, rc: rc, stepsBy: stepsBy, itemsBy: itemsBy, loaded: true}, nil
 }
 
 // DeleteFoodEvent removes an event owned by the caller's household. The
@@ -250,6 +358,9 @@ func (r *Resolver) AddEventRecipe(ctx context.Context, args struct{ Input addEve
 		if err != nil {
 			return err
 		}
+		if err := r.snapshotRecipeContents(ctx, er, u); err != nil {
+			return err
+		}
 		return r.notifyMembers(ctx, u, household.KindEventUpdated, &foodEventID)
 	})
 	if err != nil {
@@ -277,10 +388,14 @@ func (r *Resolver) UpdateEventRecipe(ctx context.Context, args struct {
 		return nil, err
 	}
 	recipeID := existing.RecipeID
+	recipeChanged := false
 	if args.Input.RecipeID != nil {
 		rid, err := parseID(string(*args.Input.RecipeID))
 		if err != nil {
 			return nil, err
+		}
+		if existing.RecipeID == nil || *existing.RecipeID != rid {
+			recipeChanged = true
 		}
 		recipeID = &rid
 	}
@@ -320,6 +435,14 @@ func (r *Resolver) UpdateEventRecipe(ctx context.Context, args struct {
 		}, u.Email); err != nil {
 			return err
 		}
+		// Linking a different recipe re-materializes the snapshots from
+		// the new source; edits made to the old copies are dropped.
+		if recipeChanged {
+			slot := event.EventRecipe{EventRecipeID: id, RecipeID: recipeID}
+			if err := r.snapshotRecipeContents(ctx, slot, u); err != nil {
+				return err
+			}
+		}
 		return r.notifyMembers(ctx, u, household.KindEventUpdated, &existing.FoodEventID)
 	})
 	if err != nil {
@@ -356,6 +479,316 @@ func (r *Resolver) RemoveEventRecipe(ctx context.Context, args struct{ ID graphq
 		return false, err
 	}
 	return true, nil
+}
+
+// AddEventRecipeStep appends a step to a slot's snapshot.
+func (r *Resolver) AddEventRecipeStep(ctx context.Context, args struct {
+	EventRecipeID graphql.ID
+	Input         eventRecipeStepInput
+}) (*eventRecipeStepResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eventRecipeID, err := parseID(string(args.EventRecipeID))
+	if err != nil {
+		return nil, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, eventRecipeID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	var st event.EventRecipeStep
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var err error
+		st, err = r.EventService.AddEventRecipeStep(ctx, event.EventRecipeStep{
+			EventRecipeID:       eventRecipeID,
+			Instruction:         args.Input.Instruction,
+			DurationMinutes:     args.Input.DurationMinutes,
+			StepType:            derefString(args.Input.StepType),
+			IsPassive:           derefBool(args.Input.IsPassive),
+			DependsOnStepNumber: args.Input.DependsOnStepNumber,
+			Appliance:           derefString(args.Input.Appliance),
+		}, u.HouseholdID, u.Email)
+		if err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &eventRecipeStepResolver{st: st}, nil
+}
+
+// UpdateEventRecipeStep edits a snapshot step; the shared recipe step it
+// was copied from is untouched.
+func (r *Resolver) UpdateEventRecipeStep(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input eventRecipeStepInput
+}) (*eventRecipeStepResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.EventService.GetEventRecipeStepByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, existing.EventRecipeID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.EventService.UpdateEventRecipeStep(ctx, id, u.HouseholdID, event.EventRecipeStep{
+			Instruction:         args.Input.Instruction,
+			DurationMinutes:     args.Input.DurationMinutes,
+			StepType:            derefString(args.Input.StepType),
+			IsPassive:           derefBool(args.Input.IsPassive),
+			DependsOnStepNumber: args.Input.DependsOnStepNumber,
+			Appliance:           derefString(args.Input.Appliance),
+		}, u.Email); err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	updated, err := r.EventService.GetEventRecipeStepByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	return &eventRecipeStepResolver{st: updated}, nil
+}
+
+// RemoveEventRecipeStep deletes a snapshot step owned by the household.
+func (r *Resolver) RemoveEventRecipeStep(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	st, err := r.EventService.GetEventRecipeStepByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return false, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, st.EventRecipeID, u.HouseholdID)
+	if err != nil {
+		return false, err
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.EventService.DeleteEventRecipeStep(ctx, id, u.HouseholdID); err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AddEventRecipeItem appends an ingredient to a slot's snapshot.
+func (r *Resolver) AddEventRecipeItem(ctx context.Context, args struct {
+	EventRecipeID graphql.ID
+	Input         eventRecipeItemInput
+}) (*eventRecipeItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eventRecipeID, err := parseID(string(args.EventRecipeID))
+	if err != nil {
+		return nil, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, eventRecipeID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	item, err := r.eventRecipeItemFromInput(ctx, args.Input)
+	if err != nil {
+		return nil, err
+	}
+	item.EventRecipeID = eventRecipeID
+	var out event.EventRecipeItem
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var err error
+		out, err = r.EventService.AddEventRecipeItem(ctx, item, u.HouseholdID, u.Email)
+		if err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &eventRecipeItemResolver{inv: r.InventoryService, it: out, scale: er.ScalingFactor()}, nil
+}
+
+// UpdateEventRecipeItem edits a snapshot ingredient; the shared recipe
+// item it was copied from is untouched.
+func (r *Resolver) UpdateEventRecipeItem(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input eventRecipeItemInput
+}) (*eventRecipeItemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.EventService.GetEventRecipeItemByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, existing.EventRecipeID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	item, err := r.eventRecipeItemFromInput(ctx, args.Input)
+	if err != nil {
+		return nil, err
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.EventService.UpdateEventRecipeItem(ctx, id, u.HouseholdID, item, u.Email); err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	updated, err := r.EventService.GetEventRecipeItemByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	return &eventRecipeItemResolver{inv: r.InventoryService, it: updated, scale: er.ScalingFactor()}, nil
+}
+
+// RemoveEventRecipeItem deletes a snapshot ingredient owned by the
+// household.
+func (r *Resolver) RemoveEventRecipeItem(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	existing, err := r.EventService.GetEventRecipeItemByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return false, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, existing.EventRecipeID, u.HouseholdID)
+	if err != nil {
+		return false, err
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.EventService.DeleteEventRecipeItem(ctx, id, u.HouseholdID); err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SyncEventRecipe re-copies the linked recipe's steps, ingredients, and
+// base servings over the slot's snapshots. Slot-specific edits are
+// intentionally discarded.
+func (r *Resolver) SyncEventRecipe(ctx context.Context, args struct {
+	EventRecipeID graphql.ID
+}) (*eventRecipeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eventRecipeID, err := parseID(string(args.EventRecipeID))
+	if err != nil {
+		return nil, err
+	}
+	er, err := r.EventService.GetEventRecipeByID(ctx, eventRecipeID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	if er.RecipeID == nil {
+		return nil, badInputf("eventRecipe %d has no linked recipe to sync from", eventRecipeID)
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.snapshotRecipeContents(ctx, er, u); err != nil {
+			return err
+		}
+		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &eventRecipeResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, er: er}, nil
+}
+
+// snapshotRecipeContents materializes the slot's step and ingredient
+// snapshots from its linked recipe inside the caller's transaction, and
+// freezes the recipe's servings as base_servings — the denominator the
+// UI uses to scale quantities for the slot's requested servings. A slot
+// with no linked recipe has nothing to copy and is left as-is.
+func (r *Resolver) snapshotRecipeContents(ctx context.Context, er event.EventRecipe, u currentuser.User) error {
+	if er.RecipeID == nil {
+		return nil
+	}
+	rec, err := r.RecipeService.GetRecipeByID(ctx, *er.RecipeID)
+	if err != nil {
+		return err
+	}
+	steps, err := r.RecipeService.ListRecipeStepsByRecipes(ctx, []int64{*er.RecipeID})
+	if err != nil {
+		return err
+	}
+	snap := make([]event.EventRecipeStep, len(steps))
+	for i, s := range steps {
+		snap[i] = event.EventRecipeStep{
+			StepNumber:          s.StepNumber,
+			Instruction:         s.Instruction,
+			DurationMinutes:     s.DurationMinutes,
+			StepType:            s.StepType,
+			IsPassive:           s.IsPassive,
+			DependsOnStepNumber: s.DependsOnStepNumber,
+			Appliance:           s.Appliance,
+		}
+	}
+	if err := r.EventService.ReplaceEventRecipeSteps(ctx, er.EventRecipeID, u.HouseholdID, snap, u.Email); err != nil {
+		return err
+	}
+	items, err := r.RecipeService.ListRecipeItemsByRecipes(ctx, []int64{*er.RecipeID})
+	if err != nil {
+		return err
+	}
+	snapItems := make([]event.EventRecipeItem, len(items))
+	for i, it := range items {
+		snapItems[i] = event.EventRecipeItem{
+			ItemID:       it.ItemID,
+			IngredientID: it.IngredientID,
+			Quantity:     it.Quantity,
+			UnitID:       it.UnitID,
+			SectionName:  it.SectionName,
+			DisplayOrder: it.DisplayOrder,
+			Notes:        it.Notes,
+			IsOptional:   it.IsOptional,
+		}
+	}
+	return r.EventService.ReplaceEventRecipeItems(ctx, er.EventRecipeID, u.HouseholdID, snapItems, rec.Servings, u.Email)
 }
 
 // notifyMembers fans an event notification out to every household member
@@ -419,6 +852,8 @@ type foodEventResolver struct {
 	event   event.FoodEvent
 	recipes []event.EventRecipe
 	rc      *recipeChildren
+	stepsBy map[int64][]event.EventRecipeStep
+	itemsBy map[int64][]event.EventRecipeItem
 	loaded  bool
 }
 
@@ -449,20 +884,26 @@ func (r *foodEventResolver) Recipes(ctx context.Context) ([]*eventRecipeResolver
 	}
 	out := make([]*eventRecipeResolver, len(recipes))
 	for i := range recipes {
-		out[i] = &eventRecipeResolver{ev: r.ev, rec: r.rec, up: r.up, inv: r.inv, user: r.user, er: recipes[i], rc: r.rc}
+		out[i] = &eventRecipeResolver{ev: r.ev, rec: r.rec, up: r.up, inv: r.inv, user: r.user, er: recipes[i], rc: r.rc, steps: r.stepsBy[recipes[i].EventRecipeID], stepsLoaded: r.stepsBy != nil, items: r.itemsBy[recipes[i].EventRecipeID], itemsLoaded: r.itemsBy != nil}
 	}
 	return out, nil
 }
 
-// eventRecipeResolver resolves EventRecipe fields.
+// eventRecipeResolver resolves EventRecipe fields. steps holds the slot's
+// snapshot when it was batch-loaded with the parent event; otherwise the
+// Steps field loads it lazily.
 type eventRecipeResolver struct {
-	ev   EventService
-	rec  RecipeService
-	up   UserPrefsService
-	inv  ItemReader
-	user currentuser.User
-	er   event.EventRecipe
-	rc   *recipeChildren
+	ev          EventService
+	rec         RecipeService
+	up          UserPrefsService
+	inv         ItemReader
+	user        currentuser.User
+	er          event.EventRecipe
+	rc          *recipeChildren
+	steps       []event.EventRecipeStep
+	stepsLoaded bool
+	items       []event.EventRecipeItem
+	itemsLoaded bool
 }
 
 func (r *eventRecipeResolver) ID() graphql.ID {
@@ -475,7 +916,54 @@ func (r *eventRecipeResolver) TargetTime() graphql.Time { return graphql.Time{Ti
 
 func (r *eventRecipeResolver) Servings() *int32 { return r.er.Servings }
 
+// BaseServings is the recipe's servings frozen at link time — the
+// scaling denominator. Nil for free-form slots or recipes without a
+// serving count.
+func (r *eventRecipeResolver) BaseServings() *int32 { return r.er.BaseServings }
+
+// ScalingFactor is servings ÷ baseServings, or 1 when scaling does not
+// apply — the multiplier applied to snapshot item quantities.
+func (r *eventRecipeResolver) ScalingFactor() float64 { return r.er.ScalingFactor() }
+
 func (r *eventRecipeResolver) Notes() *string { return nilIfEmpty(r.er.Notes) }
+
+// Items returns the slot's ingredient snapshot with quantities already
+// scaled by ScalingFactor — preloaded with the event, or lazily when the
+// resolver was built outside the preload paths.
+func (r *eventRecipeResolver) Items(ctx context.Context) ([]*eventRecipeItemResolver, error) {
+	items := r.items
+	if !r.itemsLoaded {
+		var err error
+		items, err = r.ev.ListEventRecipeItems(ctx, r.er.EventRecipeID, r.user.HouseholdID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	scale := r.er.ScalingFactor()
+	out := make([]*eventRecipeItemResolver, len(items))
+	for i := range items {
+		out[i] = &eventRecipeItemResolver{inv: r.inv, it: items[i], scale: scale}
+	}
+	return out, nil
+}
+
+// Steps returns the slot's snapshot steps — preloaded with the event, or
+// lazily when the resolver was built outside the preload paths.
+func (r *eventRecipeResolver) Steps(ctx context.Context) ([]*eventRecipeStepResolver, error) {
+	steps := r.steps
+	if !r.stepsLoaded {
+		var err error
+		steps, err = r.ev.ListEventRecipeSteps(ctx, r.er.EventRecipeID, r.user.HouseholdID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	out := make([]*eventRecipeStepResolver, len(steps))
+	for i := range steps {
+		out[i] = &eventRecipeStepResolver{st: steps[i]}
+	}
+	return out, nil
+}
 
 func (r *eventRecipeResolver) Recipe(ctx context.Context) (*recipeResolver, error) {
 	if r.er.RecipeID == nil {
@@ -495,6 +983,40 @@ func (r *eventRecipeResolver) Recipe(ctx context.Context) (*recipeResolver, erro
 	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec}, nil
 }
 
+// eventStepsByEventRecipe batch-loads snapshot steps for every slot of
+// the given events and groups them by event_recipe_id.
+func (r *Resolver) eventStepsByEventRecipe(ctx context.Context, foodEventIDs []int64, householdID int64) (map[int64][]event.EventRecipeStep, error) {
+	stepsBy := make(map[int64][]event.EventRecipeStep)
+	if len(foodEventIDs) == 0 {
+		return stepsBy, nil
+	}
+	steps, err := r.EventService.ListEventRecipeStepsForEvents(ctx, foodEventIDs, householdID)
+	if err != nil {
+		return nil, err
+	}
+	for _, st := range steps {
+		stepsBy[st.EventRecipeID] = append(stepsBy[st.EventRecipeID], st)
+	}
+	return stepsBy, nil
+}
+
+// eventItemsByEventRecipe batch-loads ingredient snapshots for every
+// slot of the given events and groups them by event_recipe_id.
+func (r *Resolver) eventItemsByEventRecipe(ctx context.Context, foodEventIDs []int64, householdID int64) (map[int64][]event.EventRecipeItem, error) {
+	itemsBy := make(map[int64][]event.EventRecipeItem)
+	if len(foodEventIDs) == 0 {
+		return itemsBy, nil
+	}
+	items, err := r.EventService.ListEventRecipeItemsForEvents(ctx, foodEventIDs, householdID)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		itemsBy[it.EventRecipeID] = append(itemsBy[it.EventRecipeID], it)
+	}
+	return itemsBy, nil
+}
+
 // foodEventPageResolver resolves FoodEventPage.
 type foodEventPageResolver struct {
 	ev             EventService
@@ -504,6 +1026,8 @@ type foodEventPageResolver struct {
 	user           currentuser.User
 	events         []event.FoodEvent
 	recipesByEvent map[int64][]event.EventRecipe
+	stepsBy        map[int64][]event.EventRecipeStep
+	itemsBy        map[int64][]event.EventRecipeItem
 	page           int32
 	pageSize       int32
 	total          int32
@@ -512,7 +1036,7 @@ type foodEventPageResolver struct {
 func (r *foodEventPageResolver) Items() []*foodEventResolver {
 	out := make([]*foodEventResolver, len(r.events))
 	for i := range r.events {
-		out[i] = &foodEventResolver{ev: r.ev, rec: r.rec, up: r.up, inv: r.inv, user: r.user, event: r.events[i], recipes: r.recipesByEvent[r.events[i].FoodEventID], loaded: true}
+		out[i] = &foodEventResolver{ev: r.ev, rec: r.rec, up: r.up, inv: r.inv, user: r.user, event: r.events[i], recipes: r.recipesByEvent[r.events[i].FoodEventID], stepsBy: r.stepsBy, itemsBy: r.itemsBy, loaded: true}
 	}
 	return out
 }
@@ -549,4 +1073,221 @@ type updateEventRecipeInput struct {
 	TargetTime *graphql.Time
 	Servings   *int32
 	Notes      *string
+}
+
+// eventTimelineResolver resolves the computed EventTimeline.
+type eventTimelineResolver struct {
+	tl event.Timeline
+}
+
+func (r *eventTimelineResolver) FoodEventID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.tl.FoodEventID, 10))
+}
+
+func (r *eventTimelineResolver) Warnings() []string { return r.tl.Warnings }
+
+func (r *eventTimelineResolver) Recipes() []*eventTimelineRecipeResolver {
+	out := make([]*eventTimelineRecipeResolver, len(r.tl.Recipes))
+	for i := range r.tl.Recipes {
+		out[i] = &eventTimelineRecipeResolver{rt: r.tl.Recipes[i]}
+	}
+	return out
+}
+
+// eventTimelineRecipeResolver resolves EventTimelineRecipe.
+type eventTimelineRecipeResolver struct {
+	rt event.RecipeTimeline
+}
+
+func (r *eventTimelineRecipeResolver) EventRecipeID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.rt.EventRecipeID, 10))
+}
+
+func (r *eventTimelineRecipeResolver) Name() string { return r.rt.Name }
+
+func (r *eventTimelineRecipeResolver) TargetTime() graphql.Time {
+	return graphql.Time{Time: r.rt.TargetTime}
+}
+
+func (r *eventTimelineRecipeResolver) Servings() *int32 { return r.rt.Servings }
+
+func (r *eventTimelineRecipeResolver) BaseServings() *int32 { return r.rt.BaseServings }
+
+func (r *eventTimelineRecipeResolver) StartBy() *graphql.Time {
+	if r.rt.StartBy == nil {
+		return nil
+	}
+	return &graphql.Time{Time: *r.rt.StartBy}
+}
+
+func (r *eventTimelineRecipeResolver) Unschedulable() bool { return r.rt.Unschedulable }
+
+func (r *eventTimelineRecipeResolver) Warnings() []string { return r.rt.Warnings }
+
+func (r *eventTimelineRecipeResolver) Steps() []*timelineStepResolver {
+	out := make([]*timelineStepResolver, len(r.rt.Steps))
+	for i := range r.rt.Steps {
+		out[i] = &timelineStepResolver{st: r.rt.Steps[i]}
+	}
+	return out
+}
+
+// timelineStepResolver resolves TimelineStep.
+type timelineStepResolver struct {
+	st event.ScheduledStep
+}
+
+func (r *timelineStepResolver) StepNumber() int32 { return r.st.StepNumber }
+
+func (r *timelineStepResolver) Instruction() string { return r.st.Instruction }
+
+func (r *timelineStepResolver) StepType() *string { return nilIfEmpty(r.st.StepType) }
+
+func (r *timelineStepResolver) IsPassive() bool { return r.st.IsPassive }
+
+func (r *timelineStepResolver) Appliance() *string { return nilIfEmpty(r.st.Appliance) }
+
+func (r *timelineStepResolver) DurationMinutes() *int32 { return r.st.DurationMinute }
+
+func (r *timelineStepResolver) ScheduledMinutes() int32 { return r.st.ScheduledMinutes }
+
+func (r *timelineStepResolver) Estimated() bool { return r.st.Estimated }
+
+func (r *timelineStepResolver) StartTime() graphql.Time {
+	return graphql.Time{Time: r.st.Start}
+}
+
+func (r *timelineStepResolver) EndTime() graphql.Time {
+	return graphql.Time{Time: r.st.End}
+}
+
+func (r *timelineStepResolver) Conflicts() []string { return r.st.Conflicts }
+
+// eventRecipeStepResolver resolves EventRecipeStep.
+type eventRecipeStepResolver struct {
+	st event.EventRecipeStep
+}
+
+func (r *eventRecipeStepResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.st.EventRecipeStepID, 10))
+}
+
+func (r *eventRecipeStepResolver) StepNumber() int32 { return r.st.StepNumber }
+
+func (r *eventRecipeStepResolver) Instruction() string { return r.st.Instruction }
+
+func (r *eventRecipeStepResolver) DurationMinutes() *int32 { return r.st.DurationMinutes }
+
+func (r *eventRecipeStepResolver) StepType() *string { return nilIfEmpty(r.st.StepType) }
+
+func (r *eventRecipeStepResolver) IsPassive() bool { return r.st.IsPassive }
+
+func (r *eventRecipeStepResolver) DependsOnStepNumber() *int32 { return r.st.DependsOnStepNumber }
+
+func (r *eventRecipeStepResolver) Appliance() *string { return nilIfEmpty(r.st.Appliance) }
+
+type eventRecipeStepInput struct {
+	Instruction         string
+	DurationMinutes     *int32
+	StepType            *string
+	IsPassive           *bool
+	DependsOnStepNumber *int32
+	Appliance           *string
+}
+
+// eventRecipeItemResolver resolves an EventRecipeItem. Quantity is
+// reported scaled by the slot's factor; BaseQuantity is the raw
+// per-base-servings amount stored on the snapshot.
+type eventRecipeItemResolver struct {
+	inv   ItemReader
+	it    event.EventRecipeItem
+	scale float64
+}
+
+func (r *eventRecipeItemResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.it.EventRecipeItemID, 10))
+}
+
+func (r *eventRecipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	it, err := r.inv.GetItemByID(ctx, r.it.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	return &itemResolver{inv: r.inv, it: it}, nil
+}
+
+func (r *eventRecipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
+	if r.it.IngredientID == nil {
+		return nil, nil
+	}
+	in, err := r.inv.GetIngredientByID(ctx, *r.it.IngredientID)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.inv, in: in}, nil
+}
+
+func (r *eventRecipeItemResolver) Quantity() float64 { return r.it.Quantity * r.scale }
+
+func (r *eventRecipeItemResolver) BaseQuantity() float64 { return r.it.Quantity }
+
+func (r *eventRecipeItemResolver) Unit(ctx context.Context) (string, error) {
+	return unitName(ctx, r.inv, nil, r.it.UnitID)
+}
+
+func (r *eventRecipeItemResolver) Section() *string { return nilIfEmpty(r.it.SectionName) }
+
+func (r *eventRecipeItemResolver) DisplayOrder() int32 { return r.it.DisplayOrder }
+
+func (r *eventRecipeItemResolver) Notes() *string { return nilIfEmpty(r.it.Notes) }
+
+func (r *eventRecipeItemResolver) IsOptional() bool { return r.it.IsOptional }
+
+type eventRecipeItemInput struct {
+	ItemID       graphql.ID
+	IngredientID *graphql.ID
+	Quantity     float64
+	Unit         string
+	Section      *string
+	DisplayOrder *int32
+	Notes        *string
+	IsOptional   *bool
+}
+
+// eventRecipeItemFromInput maps the input and resolves the unit name
+// through the shared unit catalog, like recipe items do.
+func (r *Resolver) eventRecipeItemFromInput(ctx context.Context, in eventRecipeItemInput) (event.EventRecipeItem, error) {
+	itemID, err := parseID(string(in.ItemID))
+	if err != nil {
+		return event.EventRecipeItem{}, err
+	}
+	unitID, err := resolveUnitID(ctx, r.InventoryService, in.Unit)
+	if err != nil {
+		return event.EventRecipeItem{}, err
+	}
+	var ingredientID *int64
+	if in.IngredientID != nil {
+		v, err := parseID(string(*in.IngredientID))
+		if err != nil {
+			return event.EventRecipeItem{}, err
+		}
+		ingredientID = &v
+	}
+	if in.Quantity <= 0 {
+		return event.EventRecipeItem{}, badInputf("quantity must be positive")
+	}
+	var displayOrder int32
+	if in.DisplayOrder != nil {
+		displayOrder = *in.DisplayOrder
+	}
+	return event.EventRecipeItem{
+		ItemID:       itemID,
+		IngredientID: ingredientID,
+		Quantity:     in.Quantity,
+		UnitID:       unitID,
+		SectionName:  derefString(in.Section),
+		DisplayOrder: displayOrder,
+		Notes:        derefString(in.Notes),
+		IsOptional:   derefBool(in.IsOptional),
+	}, nil
 }

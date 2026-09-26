@@ -188,6 +188,12 @@ type EventReader interface {
 	ListEventRecipesForEvent(ctx context.Context, foodEventID, householdID int64) ([]event.EventRecipe, error)
 	ListEventRecipesByEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipe, error)
 	GetEventRecipeByID(ctx context.Context, eventRecipeID, householdID int64) (event.EventRecipe, error)
+	ListEventRecipeStepsForEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipeStep, error)
+	ListEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64) ([]event.EventRecipeStep, error)
+	GetEventRecipeStepByID(ctx context.Context, eventRecipeStepID, householdID int64) (event.EventRecipeStep, error)
+	ListEventRecipeItemsForEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipeItem, error)
+	ListEventRecipeItems(ctx context.Context, eventRecipeID, householdID int64) ([]event.EventRecipeItem, error)
+	GetEventRecipeItemByID(ctx context.Context, eventRecipeItemID, householdID int64) (event.EventRecipeItem, error)
 }
 
 // EventWriter is the write side of the food-event domain.
@@ -198,6 +204,14 @@ type EventWriter interface {
 	AddEventRecipe(ctx context.Context, arg event.EventRecipe, householdID int64, by string) (event.EventRecipe, error)
 	UpdateEventRecipe(ctx context.Context, eventRecipeID, householdID int64, arg event.EventRecipe, by string) error
 	DeleteEventRecipe(ctx context.Context, eventRecipeID, householdID int64) error
+	ReplaceEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64, steps []event.EventRecipeStep, by string) error
+	AddEventRecipeStep(ctx context.Context, arg event.EventRecipeStep, householdID int64, by string) (event.EventRecipeStep, error)
+	UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64, arg event.EventRecipeStep, by string) error
+	DeleteEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64) error
+	ReplaceEventRecipeItems(ctx context.Context, eventRecipeID, householdID int64, items []event.EventRecipeItem, baseServings *int32, by string) error
+	AddEventRecipeItem(ctx context.Context, arg event.EventRecipeItem, householdID int64, by string) (event.EventRecipeItem, error)
+	UpdateEventRecipeItem(ctx context.Context, eventRecipeItemID, householdID int64, arg event.EventRecipeItem, by string) error
+	DeleteEventRecipeItem(ctx context.Context, eventRecipeItemID, householdID int64) error
 }
 
 // EventService is the subset of *event.Service used by the resolver.

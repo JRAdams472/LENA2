@@ -1589,6 +1589,223 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	require.Len(t, evRes.Event.Recipes, 1)
 	assert.Equal(t, slotID, evRes.Event.Recipes[0].ID)
 
+	// The timeline computes on read; a free-form slot has no steps and is
+	// flagged unschedulable rather than dropped.
+	status, gr = doGraphQL(t, srv, tokI, `query Timeline($id: ID!) {
+		eventTimeline(foodEventId: $id) {
+			foodEventId warnings
+			recipes { eventRecipeId name unschedulable warnings startBy }
+		}
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var tlRes struct {
+		Timeline *struct {
+			FoodEventID string `json:"foodEventId"`
+			Recipes     []struct {
+				EventRecipeID string   `json:"eventRecipeId"`
+				Name          string   `json:"name"`
+				Unschedulable bool     `json:"unschedulable"`
+				Warnings      []string `json:"warnings"`
+				StartBy       *string  `json:"startBy"`
+			} `json:"recipes"`
+		} `json:"eventTimeline"`
+	}
+	decodeData(t, gr.Data, &tlRes)
+	require.NotNil(t, tlRes.Timeline)
+	assert.Equal(t, eventID, tlRes.Timeline.FoodEventID)
+	require.Len(t, tlRes.Timeline.Recipes, 1)
+	assert.Equal(t, slotID, tlRes.Timeline.Recipes[0].EventRecipeID)
+	assert.Equal(t, "turkey", tlRes.Timeline.Recipes[0].Name)
+	assert.True(t, tlRes.Timeline.Recipes[0].Unschedulable)
+	assert.Nil(t, tlRes.Timeline.Recipes[0].StartBy)
+
+	// Snapshot steps belong to the slot, not any shared recipe — a
+	// free-form slot gets its own hand-entered schedule.
+	status, gr = doGraphQL(t, srv, tokI, `mutation AddStep($slotId: ID!) {
+		addEventRecipeStep(eventRecipeId: $slotId, input: { instruction: "pick up turkey", durationMinutes: 60, stepType: "other" }) {
+			id stepNumber instruction durationMinutes
+		}
+	}`, map[string]any{"slotId": slotID})
+	require.Equal(t, http.StatusOK, status)
+	var stepRes struct {
+		Step struct {
+			ID              string `json:"id"`
+			StepNumber      int    `json:"stepNumber"`
+			Instruction     string `json:"instruction"`
+			DurationMinutes *int   `json:"durationMinutes"`
+		} `json:"addEventRecipeStep"`
+	}
+	decodeData(t, gr.Data, &stepRes)
+	assert.Equal(t, 1, stepRes.Step.StepNumber)
+	assert.Equal(t, "pick up turkey", stepRes.Step.Instruction)
+
+	status, gr = doGraphQL(t, srv, tokI, `query Timeline($id: ID!) {
+		eventTimeline(foodEventId: $id) {
+			recipes { unschedulable startBy steps { stepNumber startTime endTime scheduledMinutes } }
+		}
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var tlRes2 struct {
+		Timeline *struct {
+			Recipes []struct {
+				Unschedulable bool    `json:"unschedulable"`
+				StartBy       *string `json:"startBy"`
+				Steps         []struct {
+					StepNumber       int    `json:"stepNumber"`
+					StartTime        string `json:"startTime"`
+					EndTime          string `json:"endTime"`
+					ScheduledMinutes int    `json:"scheduledMinutes"`
+				} `json:"steps"`
+			} `json:"recipes"`
+		} `json:"eventTimeline"`
+	}
+	decodeData(t, gr.Data, &tlRes2)
+	require.NotNil(t, tlRes2.Timeline)
+	require.Len(t, tlRes2.Timeline.Recipes, 1)
+	assert.False(t, tlRes2.Timeline.Recipes[0].Unschedulable)
+	require.NotNil(t, tlRes2.Timeline.Recipes[0].StartBy)
+	require.Len(t, tlRes2.Timeline.Recipes[0].Steps, 1)
+	// 60 minutes on a 30-minute grid ends exactly at the 18:30 target.
+	assert.Equal(t, "2026-11-26T17:30:00Z", tlRes2.Timeline.Recipes[0].Steps[0].StartTime)
+	assert.Equal(t, "2026-11-26T18:30:00Z", tlRes2.Timeline.Recipes[0].Steps[0].EndTime)
+
+	// The slot's steps field exposes the same snapshot.
+	status, gr = doGraphQL(t, srv, tokH, `query EventSteps($id: ID!) {
+		foodEvent(id: $id) { recipes { id steps { stepNumber instruction } } }
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var stepsRes struct {
+		Event *struct {
+			Recipes []struct {
+				Steps []struct {
+					StepNumber  int    `json:"stepNumber"`
+					Instruction string `json:"instruction"`
+				} `json:"steps"`
+			} `json:"recipes"`
+		} `json:"foodEvent"`
+	}
+	decodeData(t, gr.Data, &stepsRes)
+	require.NotNil(t, stepsRes.Event)
+	require.Len(t, stepsRes.Event.Recipes, 1)
+	require.Len(t, stepsRes.Event.Recipes[0].Steps, 1)
+	assert.Equal(t, "pick up turkey", stepsRes.Event.Recipes[0].Steps[0].Instruction)
+
+	// A linked recipe materializes an ingredient snapshot scaled by
+	// servings ÷ base_servings. The item ID comes from the global catalog.
+	status, gr = doGraphQL(t, srv, tokI, `{ items(page: 1, pageSize: 1) { items { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var anyItem struct {
+		Items struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &anyItem)
+	require.NotEmpty(t, anyItem.Items.Items)
+
+	// createRecipe is @admin — the recipe lives in the shared catalog, so
+	// a global admin creates it and the member household links it.
+	tokAdmin := issuer.Token(t, "ev-admin", "user-a@example.com", "EV Admin")
+	status, gr = doGraphQL(t, srv, tokAdmin, `mutation CreateRecipe($input: CreateRecipeInput!) {
+		createRecipe(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{
+		"name":     "EV Gravy",
+		"servings": 4,
+		"items": []map[string]any{
+			{"itemId": anyItem.Items.Items[0].ID, "quantity": 2.0, "unit": "cup"},
+		},
+		"steps": []map[string]any{
+			{"stepNumber": 1, "instruction": "Simmer"},
+		},
+	}})
+	require.Equal(t, http.StatusOK, status)
+	var evRecipeRes struct {
+		Recipe struct {
+			ID string `json:"id"`
+		} `json:"createRecipe"`
+	}
+	decodeData(t, gr.Data, &evRecipeRes)
+
+	status, gr = doGraphQL(t, srv, tokI, `mutation AddLinkedSlot($eventId: ID!, $recipeId: ID!) {
+		addEventRecipe(input: { foodEventId: $eventId, recipeId: $recipeId, mealType: "dinner", targetTime: "2026-11-26T18:00:00Z", servings: 8 }) {
+			id servings baseServings scalingFactor
+			items { id quantity baseQuantity unit item { id name } }
+		}
+	}`, map[string]any{"eventId": eventID, "recipeId": evRecipeRes.Recipe.ID})
+	require.Equal(t, http.StatusOK, status)
+	var linkedRes struct {
+		Slot struct {
+			ID            string  `json:"id"`
+			Servings      *int    `json:"servings"`
+			BaseServings  *int    `json:"baseServings"`
+			ScalingFactor float64 `json:"scalingFactor"`
+			Items         []struct {
+				ID           string  `json:"id"`
+				Quantity     float64 `json:"quantity"`
+				BaseQuantity float64 `json:"baseQuantity"`
+				Unit         string  `json:"unit"`
+			} `json:"items"`
+		} `json:"addEventRecipe"`
+	}
+	decodeData(t, gr.Data, &linkedRes)
+	require.NotNil(t, linkedRes.Slot.BaseServings)
+	assert.Equal(t, 4, *linkedRes.Slot.BaseServings)
+	assert.Equal(t, 2.0, linkedRes.Slot.ScalingFactor)
+	require.Len(t, linkedRes.Slot.Items, 1)
+	// 8 servings on a recipe written for 4 doubles the copied amount.
+	assert.Equal(t, 4.0, linkedRes.Slot.Items[0].Quantity)
+	assert.Equal(t, 2.0, linkedRes.Slot.Items[0].BaseQuantity)
+	linkedSlotID := linkedRes.Slot.ID
+	linkedItemID := linkedRes.Slot.Items[0].ID
+
+	// Editing the snapshot item changes the event's copy only; the shared
+	// recipe item keeps its original quantity.
+	status, gr = doGraphQL(t, srv, tokI, `mutation EditItem($id: ID!, $itemId: ID!) {
+		updateEventRecipeItem(id: $id, input: { itemId: $itemId, quantity: 5, unit: "cup" }) {
+			id baseQuantity
+		}
+	}`, map[string]any{"id": linkedItemID, "itemId": anyItem.Items.Items[0].ID})
+	require.Equal(t, http.StatusOK, status)
+	var editItemRes struct {
+		Item struct {
+			BaseQuantity float64 `json:"baseQuantity"`
+		} `json:"updateEventRecipeItem"`
+	}
+	decodeData(t, gr.Data, &editItemRes)
+	assert.Equal(t, 5.0, editItemRes.Item.BaseQuantity)
+
+	status, gr = doGraphQL(t, srv, tokI, `query OrigRecipe($id: ID!) { recipe(id: $id) { items { quantity } } }`,
+		map[string]any{"id": evRecipeRes.Recipe.ID})
+	require.Equal(t, http.StatusOK, status)
+	var origRecipe struct {
+		Recipe *struct {
+			Items []struct {
+				Quantity float64 `json:"quantity"`
+			} `json:"items"`
+		} `json:"recipe"`
+	}
+	decodeData(t, gr.Data, &origRecipe)
+	require.NotNil(t, origRecipe.Recipe)
+	require.Len(t, origRecipe.Recipe.Items, 1)
+	assert.Equal(t, 2.0, origRecipe.Recipe.Items[0].Quantity)
+
+	// Syncing re-copies the recipe and restores the snapshot.
+	status, gr = doGraphQL(t, srv, tokI, `mutation SyncSlot($id: ID!) {
+		syncEventRecipe(eventRecipeId: $id) { items { baseQuantity } }
+	}`, map[string]any{"id": linkedSlotID})
+	require.Equal(t, http.StatusOK, status)
+	var syncRes struct {
+		Slot struct {
+			Items []struct {
+				BaseQuantity float64 `json:"baseQuantity"`
+			} `json:"items"`
+		} `json:"syncEventRecipe"`
+	}
+	decodeData(t, gr.Data, &syncRes)
+	require.Len(t, syncRes.Slot.Items, 1)
+	assert.Equal(t, 2.0, syncRes.Slot.Items[0].BaseQuantity)
+
 	// J is a different household: no visibility, no mutation.
 	status, gr = doGraphQL(t, srv, tokJ, `{ foodEvents(page: 1, pageSize: 10) { items { id } pageInfo { totalCount } } }`, nil)
 	require.Equal(t, http.StatusOK, status)
