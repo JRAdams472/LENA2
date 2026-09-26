@@ -44,17 +44,22 @@ func (q *Queries) AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) er
 }
 
 const addRecipeStep = `-- name: AddRecipeStep :one
-INSERT INTO recipe.recipe_step (recipe_id, step_number, instruction, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at
+INSERT INTO recipe.recipe_step (recipe_id, step_number, instruction, duration_minutes, step_type, is_passive, depends_on_step_number, appliance, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at, duration_minutes, step_type, is_passive, depends_on_step_number, appliance
 `
 
 type AddRecipeStepParams struct {
-	RecipeID    int64       `json:"recipe_id"`
-	StepNumber  int32       `json:"step_number"`
-	Instruction string      `json:"instruction"`
-	CreatedBy   string      `json:"created_by"`
-	UpdatedBy   pgtype.Text `json:"updated_by"`
+	RecipeID            int64       `json:"recipe_id"`
+	StepNumber          int32       `json:"step_number"`
+	Instruction         string      `json:"instruction"`
+	DurationMinutes     pgtype.Int4 `json:"duration_minutes"`
+	StepType            pgtype.Text `json:"step_type"`
+	IsPassive           bool        `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4 `json:"depends_on_step_number"`
+	Appliance           pgtype.Text `json:"appliance"`
+	CreatedBy           string      `json:"created_by"`
+	UpdatedBy           pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (RecipeRecipeStep, error) {
@@ -62,6 +67,11 @@ func (q *Queries) AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (R
 		arg.RecipeID,
 		arg.StepNumber,
 		arg.Instruction,
+		arg.DurationMinutes,
+		arg.StepType,
+		arg.IsPassive,
+		arg.DependsOnStepNumber,
+		arg.Appliance,
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
@@ -75,6 +85,11 @@ func (q *Queries) AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (R
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.DurationMinutes,
+		&i.StepType,
+		&i.IsPassive,
+		&i.DependsOnStepNumber,
+		&i.Appliance,
 	)
 	return i, err
 }
@@ -455,7 +470,7 @@ func (q *Queries) ListRecipeRatingsAtLeast(ctx context.Context, arg ListRecipeRa
 }
 
 const listRecipeSteps = `-- name: ListRecipeSteps :many
-SELECT step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at
+SELECT step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at, duration_minutes, step_type, is_passive, depends_on_step_number, appliance
 FROM recipe.recipe_step
 WHERE recipe_id = $1
 ORDER BY step_number
@@ -479,6 +494,11 @@ func (q *Queries) ListRecipeSteps(ctx context.Context, recipeID int64) ([]Recipe
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.DurationMinutes,
+			&i.StepType,
+			&i.IsPassive,
+			&i.DependsOnStepNumber,
+			&i.Appliance,
 		); err != nil {
 			return nil, err
 		}
@@ -491,7 +511,7 @@ func (q *Queries) ListRecipeSteps(ctx context.Context, recipeID int64) ([]Recipe
 }
 
 const listRecipeStepsByRecipes = `-- name: ListRecipeStepsByRecipes :many
-SELECT step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at
+SELECT step_id, recipe_id, step_number, instruction, created_by, created_at, updated_by, updated_at, duration_minutes, step_type, is_passive, depends_on_step_number, appliance
 FROM recipe.recipe_step
 WHERE recipe_id = ANY($1::bigint[])
 ORDER BY step_number
@@ -515,6 +535,11 @@ func (q *Queries) ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int6
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.DurationMinutes,
+			&i.StepType,
+			&i.IsPassive,
+			&i.DependsOnStepNumber,
+			&i.Appliance,
 		); err != nil {
 			return nil, err
 		}
@@ -636,6 +661,8 @@ type UpdateRecipeStepParams struct {
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
+// Timing columns are written only by the create/replace-children path
+// (AddRecipeStep); this partial update preserves them.
 func (q *Queries) UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) error {
 	_, err := q.db.Exec(ctx, updateRecipeStep,
 		arg.StepID,

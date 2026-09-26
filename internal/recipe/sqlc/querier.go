@@ -32,6 +32,8 @@ type Querier interface {
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)
 	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
 	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) error
+	// Timing columns are written only by the create/replace-children path
+	// (AddRecipeStep); this partial update preserves them.
 	UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) error
 	UpsertRecipeRating(ctx context.Context, arg UpsertRecipeRatingParams) (RecipeRecipeRating, error)
 }
