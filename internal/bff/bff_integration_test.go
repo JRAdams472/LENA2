@@ -1704,7 +1704,10 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	decodeData(t, gr.Data, &anyItem)
 	require.NotEmpty(t, anyItem.Items.Items)
 
-	status, gr = doGraphQL(t, srv, tokI, `mutation CreateRecipe($input: CreateRecipeInput!) {
+	// createRecipe is @admin — the recipe lives in the shared catalog, so
+	// a global admin creates it and the member household links it.
+	tokAdmin := issuer.Token(t, "ev-admin", "user-a@example.com", "EV Admin")
+	status, gr = doGraphQL(t, srv, tokAdmin, `mutation CreateRecipe($input: CreateRecipeInput!) {
 		createRecipe(input: $input) { id }
 	}`, map[string]any{"input": map[string]any{
 		"name":     "EV Gravy",
