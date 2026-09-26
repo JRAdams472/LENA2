@@ -138,3 +138,21 @@ Each phase: own branch, PR to `main`, merge after green CI + approval.
 (integration in CI), `sqlc generate`, mock regen, `gofmt`, `go vet`,
 `golangci-lint`; p3 adds `tsc`, jest, eslint, `next build`,
 `docker compose config`.
+
+### Final phase — `events-closeout` (after the last feature phase merges)
+
+Run once the last implementation PR has merged, before any new plan:
+
+- **Branch cleanup** — delete all merged `events-*` branches locally and
+  on GitHub; confirm each PR state with `gh` first.
+- **Coverage check** — no new feature may sit at 0% coverage; every new
+  service, resolver, or page needs at least one unit or integration test.
+- **Audit regression check** — re-walk the corrected findings in
+  `audit/summary.md` to confirm no remediation regressed.
+- **Follow-up notes** — record improvements or feature ideas inspired by
+  the shipped work (e.g. append to `docs/newfeatures.md`).
+- **README update** — refresh `README.md` so features and architecture
+  match what shipped.
+
+This close-out phase is a standing convention — every future plan ends
+with the same five steps.
