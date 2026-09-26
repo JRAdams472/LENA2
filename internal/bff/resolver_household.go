@@ -257,6 +257,11 @@ func (r *Resolver) acceptInvite(ctx context.Context, u currentuser.User, inv hou
 			if err := r.GroceryService.ReassignHousehold(ctx, *target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
 				return err
 			}
+			if r.EventService != nil {
+				if err := r.EventService.ReassignHousehold(ctx, *target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
+					return err
+				}
+			}
 		}
 		if err := r.IdentityService.SetUserHousehold(ctx, u.UserID, inv.HouseholdID, identity.HouseholdRoleMember, target.HouseholdID); err != nil {
 			return err
@@ -704,6 +709,11 @@ func (r *Resolver) hydrateNotifications(ctx context.Context, notifs []household.
 // notify writes a notification row for each target inside the caller's
 // transaction. A nil or empty target list is a no-op.
 func (r *Resolver) notify(ctx context.Context, userIDs []int64, kind household.NotificationKind, householdID int64, actorID int64, inviteID *int64) error {
+	return r.notifyEvent(ctx, userIDs, kind, householdID, actorID, inviteID, nil)
+}
+
+// notifyEvent is notify with a food-event deep-link target.
+func (r *Resolver) notifyEvent(ctx context.Context, userIDs []int64, kind household.NotificationKind, householdID int64, actorID int64, inviteID, foodEventID *int64) error {
 	for _, uid := range userIDs {
 		hh := householdID
 		var actor *int64
@@ -711,7 +721,7 @@ func (r *Resolver) notify(ctx context.Context, userIDs []int64, kind household.N
 			a := actorID
 			actor = &a
 		}
-		if err := r.HouseholdService.CreateNotification(ctx, uid, kind, &hh, actor, inviteID); err != nil {
+		if err := r.HouseholdService.CreateNotification(ctx, uid, kind, &hh, actor, inviteID, foodEventID); err != nil {
 			return err
 		}
 	}
@@ -868,6 +878,14 @@ func (r *householdNotificationResolver) Kind() string {
 }
 
 func (r *householdNotificationResolver) Actor() *householdUserResolver { return r.actor }
+
+func (r *householdNotificationResolver) FoodEventID() *graphql.ID {
+	if r.n.FoodEventID == nil {
+		return nil
+	}
+	id := graphql.ID(strconv.FormatInt(*r.n.FoodEventID, 10))
+	return &id
+}
 
 func (r *householdNotificationResolver) CreatedAt() graphql.Time {
 	return graphql.Time{Time: r.n.CreatedAt}

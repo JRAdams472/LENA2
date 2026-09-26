@@ -27,6 +27,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff"
+	"github.com/JRAdams472/LENA2/internal/event"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -147,6 +148,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	grocerySvc := grocery.NewService(pool)
 	householdSvc := household.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
+	eventSvc := event.NewService(pool)
 	mealPlanSvc := mealplan.NewService(pool)
 	recipeSvc := recipe.NewService(pool)
 	userPrefsSvc := userprefs.NewService(pool)
@@ -267,6 +269,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 			Grocery:      grocerySvc,
 			Inventory:    inventorySvc,
 			MealPlan:     mealPlanSvc,
+			Event:        eventSvc,
 			Recipe:       recipeSvc,
 			UserPrefs:    userPrefsSvc,
 			Wine:         wineSvc,

@@ -171,9 +171,17 @@ func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItem
 	}
 	outSteps := make([]recipe.RecipeStep, 0, len(steps))
 	for _, rs := range steps {
+		if rs.DurationMinutes != nil && *rs.DurationMinutes < 0 {
+			return nil, nil, badInputf("step %d durationMinutes must not be negative", rs.StepNumber)
+		}
 		outSteps = append(outSteps, recipe.RecipeStep{
-			StepNumber:  rs.StepNumber,
-			Instruction: rs.Instruction,
+			StepNumber:          rs.StepNumber,
+			Instruction:         rs.Instruction,
+			DurationMinutes:     rs.DurationMinutes,
+			StepType:            derefString(rs.StepType),
+			IsPassive:           boolValue(rs.IsPassive),
+			DependsOnStepNumber: rs.DependsOnStepNumber,
+			Appliance:           derefString(rs.Appliance),
 		})
 	}
 	return outItems, outSteps, nil
@@ -771,6 +779,16 @@ func (r *recipeStepResolver) StepNumber() int32 { return r.step.StepNumber }
 
 func (r *recipeStepResolver) Instruction() string { return r.step.Instruction }
 
+func (r *recipeStepResolver) DurationMinutes() *int32 { return r.step.DurationMinutes }
+
+func (r *recipeStepResolver) StepType() *string { return nilIfEmpty(r.step.StepType) }
+
+func (r *recipeStepResolver) IsPassive() bool { return r.step.IsPassive }
+
+func (r *recipeStepResolver) DependsOnStepNumber() *int32 { return r.step.DependsOnStepNumber }
+
+func (r *recipeStepResolver) Appliance() *string { return nilIfEmpty(r.step.Appliance) }
+
 type recipePageResolver struct {
 	inv      ItemReader
 	rec      RecipeService
@@ -817,6 +835,11 @@ type recipeItemInput struct {
 }
 
 type recipeStepInput struct {
-	StepNumber  int32
-	Instruction string
+	StepNumber          int32
+	Instruction         string
+	DurationMinutes     *int32
+	StepType            *string
+	IsPassive           *bool
+	DependsOnStepNumber *int32
+	Appliance           *string
 }

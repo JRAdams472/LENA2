@@ -6,6 +6,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
+	"github.com/JRAdams472/LENA2/internal/event"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -177,6 +178,37 @@ type MealPlanService interface {
 
 var _ MealPlanService = (*mealplan.Service)(nil)
 
+// EventReader is the read side of the food-event domain. Events are
+// household-scoped; householdID always comes from the authenticated
+// currentuser, never from client input.
+type EventReader interface {
+	GetFoodEventByID(ctx context.Context, foodEventID, householdID int64) (event.FoodEvent, error)
+	ListFoodEvents(ctx context.Context, householdID int64, limit, offset int32) ([]event.FoodEvent, error)
+	CountFoodEvents(ctx context.Context, householdID int64) (int64, error)
+	ListEventRecipesForEvent(ctx context.Context, foodEventID, householdID int64) ([]event.EventRecipe, error)
+	ListEventRecipesByEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipe, error)
+	GetEventRecipeByID(ctx context.Context, eventRecipeID, householdID int64) (event.EventRecipe, error)
+}
+
+// EventWriter is the write side of the food-event domain.
+type EventWriter interface {
+	CreateFoodEvent(ctx context.Context, arg event.FoodEvent, by string) (event.FoodEvent, error)
+	UpdateFoodEvent(ctx context.Context, foodEventID, householdID int64, arg event.FoodEvent, by string) error
+	DeleteFoodEvent(ctx context.Context, foodEventID, householdID int64) error
+	AddEventRecipe(ctx context.Context, arg event.EventRecipe, householdID int64, by string) (event.EventRecipe, error)
+	UpdateEventRecipe(ctx context.Context, eventRecipeID, householdID int64, arg event.EventRecipe, by string) error
+	DeleteEventRecipe(ctx context.Context, eventRecipeID, householdID int64) error
+}
+
+// EventService is the subset of *event.Service used by the resolver.
+type EventService interface {
+	EventReader
+	EventWriter
+	HouseholdMigration
+}
+
+var _ EventService = (*event.Service)(nil)
+
 // RecipeReader is the read side of the recipe domain.
 type RecipeReader interface {
 	GetRecipeByID(ctx context.Context, recipeID int64) (recipe.Recipe, error)
@@ -345,7 +377,7 @@ type HouseholdService interface {
 	RenameHousehold(ctx context.Context, householdID int64, name, by string) (household.Household, error)
 	LockHousehold(ctx context.Context, householdID int64) (household.Household, error)
 	CancelPendingInvitesFrom(ctx context.Context, fromUserID, householdID int64, by string) ([]household.Invite, error)
-	CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID, actorUserID, inviteID *int64) error
+	CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID, actorUserID, inviteID, foodEventID *int64) error
 	ListNotificationsForUser(ctx context.Context, userID int64, limit int32) ([]household.Notification, error)
 	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
 	MarkAllNotificationsRead(ctx context.Context, userID int64) error

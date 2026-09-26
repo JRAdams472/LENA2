@@ -46,6 +46,7 @@ const String householdQuery = r'''
     myNotifications(limit: 10) {
       id
       kind
+      foodEventId
       createdAt
       actor {
         id
@@ -153,6 +154,12 @@ String _notificationText(Map<String, dynamic> n) {
       return '$who changed a household role';
     case 'HOUSEHOLD_RENAMED':
       return '$who renamed the household';
+    case 'EVENT_CREATED':
+      return '$who created an event';
+    case 'EVENT_UPDATED':
+      return '$who updated an event';
+    case 'EVENT_DELETED':
+      return '$who deleted an event';
     default:
       return 'Household update';
   }

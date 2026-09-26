@@ -212,7 +212,7 @@ func TestCreateNotification(t *testing.T) {
 			return sqlc.HouseholdNotification{}, nil
 		})
 	mq.EXPECT().PruneReadNotifications(ctx, int64(3)).Return(nil)
-	err := svc.CreateNotification(ctx, 3, KindMemberJoined, &hh, &actor, &inv)
+	err := svc.CreateNotification(ctx, 3, KindMemberJoined, &hh, &actor, &inv, nil)
 	require.NoError(t, err)
 }
 

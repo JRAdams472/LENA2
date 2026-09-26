@@ -61,8 +61,8 @@ FOR UPDATE;
 
 -- name: CreateNotification :one
 INSERT INTO household.notifications
-    (user_id, household_id, kind, actor_user_id, invite_id)
-VALUES ($1, sqlc.narg(household_id), sqlc.arg(kind), sqlc.narg(actor_user_id), sqlc.narg(invite_id))
+    (user_id, household_id, kind, actor_user_id, invite_id, food_event_id)
+VALUES ($1, sqlc.narg(household_id), sqlc.arg(kind), sqlc.narg(actor_user_id), sqlc.narg(invite_id), sqlc.narg(food_event_id))
 RETURNING *;
 
 -- name: PruneReadNotifications :exec

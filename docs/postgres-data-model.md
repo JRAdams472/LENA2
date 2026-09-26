@@ -318,11 +318,20 @@ CREATE TABLE recipe.recipe_step (
     recipe_id     BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
     step_number   INTEGER NOT NULL,
     instruction   VARCHAR(2000) NOT NULL,
+    -- Timing metadata for the event master-timeline scheduler (0031_event):
+    duration_minutes       INTEGER,
+    step_type              VARCHAR(30),
+    is_passive             BOOLEAN NOT NULL DEFAULT FALSE,
+    depends_on_step_number INTEGER,
+    appliance              VARCHAR(60),
     created_by    VARCHAR(100) NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by    VARCHAR(100),
     updated_at    TIMESTAMPTZ,
-    UNIQUE (recipe_id, step_number)
+    UNIQUE (recipe_id, step_number),
+    FOREIGN KEY (recipe_id, depends_on_step_number)
+        REFERENCES recipe.recipe_step (recipe_id, step_number)
+        ON DELETE SET NULL
 );
 
 CREATE TABLE recipe.user_recipe_preference (
@@ -426,7 +435,45 @@ The `inventory.item` table gained approval/ownership columns during the mobile r
 
 These support the mobile scan-and-submit flow: a user scans an unknown UPC, submits a new catalog item with optional nutrients, and an admin approves it via the web `/items/pending` page before it is visible to all users.
 
-## 10. Data-Isolation Notes
+## 10. Event (household-scoped)
+
+Added in migration `0031_event`. Events are shared household data, like meal plans — `household_id`, not `user_id`, scopes every row, and invite acceptance reassigns them on household merge.
+
+```sql
+CREATE TABLE event.food_event (
+    food_event_id            BIGSERIAL PRIMARY KEY,
+    household_id             BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
+    name                     VARCHAR(200) NOT NULL,
+    event_date               DATE NOT NULL,
+    slot_granularity_minutes SMALLINT NOT NULL DEFAULT 15
+        CHECK (slot_granularity_minutes IN (15, 30)),
+    is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by               VARCHAR(100) NOT NULL,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by               VARCHAR(100),
+    updated_at               TIMESTAMPTZ
+);
+CREATE INDEX idx_food_event_household_date ON event.food_event (household_id, event_date);
+
+CREATE TABLE event.event_recipe (
+    event_recipe_id BIGSERIAL PRIMARY KEY,
+    food_event_id   BIGINT NOT NULL REFERENCES event.food_event(food_event_id) ON DELETE CASCADE,
+    recipe_id       BIGINT REFERENCES recipe.recipe(recipe_id) ON DELETE SET NULL,
+    meal_type       VARCHAR(50) NOT NULL,
+    target_time     TIMESTAMPTZ NOT NULL,
+    servings        INTEGER,
+    notes           VARCHAR(500),
+    created_by      VARCHAR(100) NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by      VARCHAR(100),
+    updated_at      TIMESTAMPTZ
+);
+CREATE INDEX idx_event_recipe_event ON event.event_recipe (food_event_id);
+```
+
+`recipe_id` is nullable with `SET NULL` so a deleted recipe leaves the slot as free-form notes; the BFF resolves it cross-domain — no SQL join to `recipe` exists in module code. `household.notifications.food_event_id` (added in the same migration) deep-links `event_*` notification kinds.
+
+## 11. Data-Isolation Notes
 
 - `identity.users` is the only table referenced by foreign keys from other schemas for scoping.
 - All catalog tables are global and may be mutated by any authenticated user initially.

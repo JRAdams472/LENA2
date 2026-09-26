@@ -240,6 +240,12 @@ function notificationText(n: HouseholdNotification): string {
       return `${actor} changed a household role`;
     case "HOUSEHOLD_RENAMED":
       return `${actor} renamed the household`;
+    case "EVENT_CREATED":
+      return `${actor} created an event`;
+    case "EVENT_UPDATED":
+      return `${actor} updated an event`;
+    case "EVENT_DELETED":
+      return `${actor} deleted an event`;
   }
 }
 
