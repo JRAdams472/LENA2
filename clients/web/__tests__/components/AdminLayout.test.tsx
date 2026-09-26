@@ -158,14 +158,15 @@ describe("AdminLayout", () => {
       expect(screen.getByTestId("notification-badge")).toHaveTextContent("2")
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    });
     expect(
       await screen.findByText("Mate invited you to their household")
     ).toBeInTheDocument();
+    expect(screen.getByText(/ago|just now/)).toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.click(screen.getByText("Mark all read"));
-    });
+    // Opening the menu marks everything read.
     expect(
       mockFetch.mock.calls.some(([, init]) =>
         (init as RequestInit).body
