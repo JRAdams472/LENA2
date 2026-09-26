@@ -105,6 +105,7 @@ const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?
     label: "Meal Planning",
     children: [
       { label: "Weekly Plan", href: "/meal-plans" },
+      { label: "Events", href: "/events" },
       { label: "Grocery Lists", href: "/grocery-lists" },
     ],
   },
@@ -205,7 +206,13 @@ function NotificationBell() {
             key={n.notificationID}
             onClick={() => {
               setAnchor(null);
-              router.push("/household");
+              // Event notifications deep-link to the event; household
+              // activity goes to the household page.
+              router.push(
+                n.foodEventId != null
+                  ? `/events/${n.foodEventId}`
+                  : "/household"
+              );
             }}
           >
             <ListItemText

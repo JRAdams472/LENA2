@@ -295,6 +295,35 @@ export interface RecipeStep extends AuditableEntity {
   recipeID: number;
   stepNumber: number;
   instruction: string;
+  // Timing metadata feeding the event master-timeline scheduler.
+  durationMinutes?: number | null;
+  stepType?: string | null;
+  isPassive?: boolean;
+  dependsOnStepNumber?: number | null;
+  appliance?: string | null;
+  recipe?: Recipe | null;
+}
+
+// A household food event groups recipes (or free-form slots) scheduled to
+// be served at absolute times on one date.
+export interface FoodEvent {
+  foodEventID: number;
+  name: string;
+  eventDate: string;
+  // Serve times must land on this boundary: 15 or 30 minutes.
+  slotGranularityMinutes: number;
+  isActive: boolean;
+  eventRecipes?: EventRecipe[];
+}
+
+export interface EventRecipe {
+  eventRecipeID: number;
+  foodEventID: number;
+  recipeID: number | null;
+  mealType: string;
+  targetTime: string;
+  servings: number | null;
+  notes: string | null;
   recipe?: Recipe | null;
 }
 

@@ -8,7 +8,11 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
 import CircularProgress from "@mui/material/CircularProgress";
+import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
 import Divider from "@mui/material/Divider";
 import Paper from "@mui/material/Paper";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -36,6 +40,11 @@ export default function RecipeDetailPage() {
 
   const [stepNumber, setStepNumber] = useState("");
   const [instruction, setInstruction] = useState("");
+  const [stepDuration, setStepDuration] = useState("");
+  const [stepType, setStepType] = useState("");
+  const [stepPassive, setStepPassive] = useState(false);
+  const [stepDependsOn, setStepDependsOn] = useState("");
+  const [stepAppliance, setStepAppliance] = useState("");
   const [editingStepId, setEditingStepId] = useState<number | null>(null);
   const [brand, setBrand] = useState<string | "">("");
   const [brandInput, setBrandInput] = useState("");
@@ -123,7 +132,7 @@ export default function RecipeDetailPage() {
   });
 
   const addStepMutation = useMutation({
-    mutationFn: (payload: { stepNumber: number; instruction: string }) =>
+    mutationFn: (payload: Partial<RecipeStep> & { stepNumber: number; instruction: string }) =>
       api.addRecipeStep(recipeId, payload),
     onSuccess: () => {
       resetStepForm();
@@ -137,9 +146,8 @@ export default function RecipeDetailPage() {
       ...payload
     }: {
       stepId: number;
-      stepNumber: number;
-      instruction: string;
-    }) => api.updateRecipeStep(recipeId, stepId, payload),
+    } & Partial<RecipeStep> & { stepNumber: number; instruction: string }) =>
+      api.updateRecipeStep(recipeId, stepId, payload),
     onSuccess: () => {
       resetStepForm();
       return invalidateSteps();
@@ -162,7 +170,20 @@ export default function RecipeDetailPage() {
     setEditingStepId(null);
     setStepNumber("");
     setInstruction("");
+    setStepDuration("");
+    setStepType("");
+    setStepPassive(false);
+    setStepDependsOn("");
+    setStepAppliance("");
   };
+
+  const stepTimingFields = () => ({
+    durationMinutes: stepDuration === "" ? null : Number(stepDuration),
+    stepType: stepType === "" ? null : stepType,
+    isPassive: stepPassive,
+    dependsOnStepNumber: stepDependsOn === "" ? null : Number(stepDependsOn),
+    appliance: stepAppliance === "" ? null : stepAppliance,
+  });
 
   const handleAddItem = () => {
     if (itemId === "" || portion === "") return;
@@ -180,12 +201,14 @@ export default function RecipeDetailPage() {
       addStepMutation.mutate({
         stepNumber: Number(stepNumber),
         instruction,
+        ...stepTimingFields(),
       });
     } else {
       updateStepMutation.mutate({
         stepId: editingStepId,
         stepNumber: Number(stepNumber),
         instruction,
+        ...stepTimingFields(),
       });
     }
   };
@@ -194,6 +217,11 @@ export default function RecipeDetailPage() {
     setEditingStepId(step.recipeStepID);
     setStepNumber(String(step.stepNumber));
     setInstruction(step.instruction);
+    setStepDuration(step.durationMinutes != null ? String(step.durationMinutes) : "");
+    setStepType(step.stepType ?? "");
+    setStepPassive(step.isPassive ?? false);
+    setStepDependsOn(step.dependsOnStepNumber != null ? String(step.dependsOnStepNumber) : "");
+    setStepAppliance(step.appliance ?? "");
   };
 
   const handleDeleteStep = (step: RecipeStep) => {
@@ -452,6 +480,58 @@ export default function RecipeDetailPage() {
             <Button onClick={resetStepForm}>Cancel</Button>
           )}
         </Box>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2, alignItems: "center" }}>
+          <TextField
+            size="small"
+            label="Duration (min)"
+            type="number"
+            value={stepDuration}
+            onChange={(e) => setStepDuration(e.target.value)}
+            helperText="Feeds the event timeline"
+          />
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel id="step-type-label">Step Type</InputLabel>
+            <Select
+              labelId="step-type-label"
+              label="Step Type"
+              value={stepType}
+              onChange={(e) => setStepType(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              {["prep", "cook", "rest", "wait", "serve", "other"].map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={stepPassive}
+                onChange={(e) => setStepPassive(e.target.checked)}
+              />
+            }
+            label="Passive (hands-free)"
+          />
+          <TextField
+            size="small"
+            label="Depends On Step"
+            type="number"
+            value={stepDependsOn}
+            onChange={(e) => setStepDependsOn(e.target.value)}
+            helperText="Defaults to previous step"
+          />
+          <TextField
+            size="small"
+            label="Appliance"
+            value={stepAppliance}
+            onChange={(e) => setStepAppliance(e.target.value)}
+            helperText='e.g. "oven", "stovetop"'
+          />
+        </Box>
 
         {addStepMutation.error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -491,7 +571,19 @@ export default function RecipeDetailPage() {
               }}
             >
               <Typography sx={{ minWidth: 32 }}>{step.stepNumber}.</Typography>
-              <Typography sx={{ flexGrow: 1 }}>{step.instruction}</Typography>
+              <Typography sx={{ flexGrow: 1 }}>
+                {step.instruction}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ minWidth: 180 }}>
+                {[
+                  step.durationMinutes != null ? `${step.durationMinutes}m` : null,
+                  step.stepType,
+                  step.isPassive ? "passive" : null,
+                  step.appliance,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Typography>
               <Button size="small" onClick={() => handleEditStep(step)}>
                 Edit
               </Button>

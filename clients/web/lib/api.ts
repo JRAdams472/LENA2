@@ -33,6 +33,8 @@ import {
   HouseholdNotification,
   HouseholdRole,
   HouseholdUser,
+  FoodEvent,
+  EventRecipe,
   InviteStatus,
   NotificationKind,
   RecipeImport,
@@ -240,6 +242,11 @@ interface GqlRecipeItem {
 interface GqlRecipeStep {
   stepNumber: number;
   instruction: string;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
 }
 
 interface GqlRecipe {
@@ -474,6 +481,29 @@ interface GqlMealPlan {
 
 interface GqlMealPlanPage {
   items: GqlMealPlan[];
+  pageInfo: GqlPageInfo;
+}
+
+interface GqlEventRecipe {
+  id: string;
+  mealType: string;
+  targetTime: string;
+  servings: number | null;
+  notes: string | null;
+  recipe: GqlRecipe | null;
+}
+
+interface GqlFoodEvent {
+  id: string;
+  name: string;
+  eventDate: string;
+  slotGranularityMinutes: number;
+  isActive: boolean;
+  recipes: GqlEventRecipe[];
+}
+
+interface GqlFoodEventPage {
+  items: GqlFoodEvent[];
   pageInfo: GqlPageInfo;
 }
 
@@ -751,6 +781,11 @@ function toRecipeStep(recipeID: number, s: GqlRecipeStep): RecipeStep {
     recipeID,
     stepNumber: s.stepNumber,
     instruction: s.instruction,
+    durationMinutes: s.durationMinutes,
+    stepType: s.stepType,
+    isPassive: s.isPassive,
+    dependsOnStepNumber: s.dependsOnStepNumber,
+    appliance: s.appliance,
     recipe: null,
   };
 }
@@ -1069,6 +1104,31 @@ function toMealPlan(p: GqlMealPlan): MealPlan {
   };
 }
 
+function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
+  return {
+    eventRecipeID: num(er.id),
+    foodEventID,
+    recipeID: er.recipe ? num(er.recipe.id) : null,
+    mealType: er.mealType,
+    targetTime: er.targetTime,
+    servings: er.servings,
+    notes: er.notes,
+    recipe: er.recipe ? toRecipe(er.recipe) : null,
+  };
+}
+
+function toFoodEvent(e: GqlFoodEvent): FoodEvent {
+  const foodEventID = num(e.id);
+  return {
+    foodEventID,
+    name: e.name,
+    eventDate: e.eventDate,
+    slotGranularityMinutes: e.slotGranularityMinutes,
+    isActive: e.isActive,
+    eventRecipes: (e.recipes ?? []).map((r) => toEventRecipe(foodEventID, r)),
+  };
+}
+
 function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListItem {
   return {
     ...audit(),
@@ -1115,7 +1175,7 @@ const ITEM_FIELDS = `
 const RECIPE_FIELDS = `
   id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount myRating averageRating ratingCount
   items { quantity unit notes isOptional item { ${ITEM_FIELDS} } }
-  steps { stepNumber instruction }
+  steps { stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance }
 `;
 
 const RECIPE_IMPORT_FIELDS = `
@@ -1140,6 +1200,16 @@ const MEAL_PLAN_FIELDS = `
     recipe { ${RECIPE_FIELDS} }
     items { id quantity unit isFromRecipe item { ${ITEM_FIELDS} } }
   }
+`;
+
+const EVENT_RECIPE_FIELDS = `
+  id mealType targetTime servings notes
+  recipe { ${RECIPE_FIELDS} }
+`;
+
+const FOOD_EVENT_FIELDS = `
+  id name eventDate slotGranularityMinutes isActive
+  recipes { ${EVENT_RECIPE_FIELDS} }
 `;
 
 const GROCERY_LIST_FIELDS = `
@@ -2493,13 +2563,10 @@ export const api = {
   getRecipeSteps: async (recipeId: number): Promise<RecipeStep[]> =>
     (await api.getRecipe(recipeId)).recipeSteps ?? [],
 
-  addRecipeStep: async (recipeId: number, step: { stepNumber: number; instruction: string }): Promise<RecipeStep> => {
+  addRecipeStep: async (recipeId: number, step: Partial<RecipeStep> & { stepNumber: number; instruction: string }): Promise<RecipeStep> => {
     const recipe = await api.getRecipe(recipeId);
-    const steps = (recipe.recipeSteps ?? []).map((s) => ({
-      stepNumber: s.stepNumber,
-      instruction: s.instruction,
-    }));
-    steps.push(step);
+    const steps = (recipe.recipeSteps ?? []).map(toStepInput);
+    steps.push(toStepInput(step));
     await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }));
     return {
       ...audit(),
@@ -2507,16 +2574,21 @@ export const api = {
       recipeID: recipeId,
       stepNumber: step.stepNumber,
       instruction: step.instruction,
+      durationMinutes: step.durationMinutes ?? null,
+      stepType: step.stepType ?? null,
+      isPassive: step.isPassive ?? false,
+      dependsOnStepNumber: step.dependsOnStepNumber ?? null,
+      appliance: step.appliance ?? null,
       recipe: null,
     };
   },
 
-  updateRecipeStep: async (recipeId: number, stepId: number, step: { stepNumber: number; instruction: string }): Promise<RecipeStep> => {
+  updateRecipeStep: async (recipeId: number, stepId: number, step: Partial<RecipeStep> & { stepNumber: number; instruction: string }): Promise<RecipeStep> => {
     const recipe = await api.getRecipe(recipeId);
     const steps = (recipe.recipeSteps ?? []).map((s) =>
       s.recipeStepID === stepId || s.stepNumber === stepId
-        ? { stepNumber: step.stepNumber, instruction: step.instruction }
-        : { stepNumber: s.stepNumber, instruction: s.instruction }
+        ? toStepInput(step)
+        : toStepInput(s)
     );
     await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }));
     return {
@@ -2525,6 +2597,11 @@ export const api = {
       recipeID: recipeId,
       stepNumber: step.stepNumber,
       instruction: step.instruction,
+      durationMinutes: step.durationMinutes ?? null,
+      stepType: step.stepType ?? null,
+      isPassive: step.isPassive ?? false,
+      dependsOnStepNumber: step.dependsOnStepNumber ?? null,
+      appliance: step.appliance ?? null,
       recipe: null,
     };
   },
@@ -2533,7 +2610,7 @@ export const api = {
     const recipe = await api.getRecipe(recipeId);
     const steps = (recipe.recipeSteps ?? [])
       .filter((s) => s.recipeStepID !== stepId && s.stepNumber !== stepId)
-      .map((s) => ({ stepNumber: s.stepNumber, instruction: s.instruction }));
+      .map(toStepInput);
     await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }));
   },
 
@@ -2717,6 +2794,106 @@ export const api = {
     );
   },
 
+  // Food Events (household-scoped gatherings grouping recipes by serve time)
+  getFoodEventsPaged: async (pageNumber: number, pageSize: number): Promise<PagedResult<FoodEvent>> => {
+    const data = await request<{ foodEvents: GqlFoodEventPage }>(
+      `query ($page: Int, $pageSize: Int) { foodEvents(page: $page, pageSize: $pageSize) { items { ${FOOD_EVENT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page: pageNumber, pageSize }
+    );
+    return toPaged(data.foodEvents.items.map(toFoodEvent), data.foodEvents.pageInfo);
+  },
+
+  getFoodEvent: async (id: number): Promise<FoodEvent> => {
+    const data = await request<{ foodEvent: GqlFoodEvent | null }>(
+      `query ($id: ID!) { foodEvent(id: $id) { ${FOOD_EVENT_FIELDS} } }`,
+      { id: String(id) }
+    );
+    if (!data.foodEvent) throw new ApiError(404, `FoodEvent ${id} not found`);
+    return toFoodEvent(data.foodEvent);
+  },
+
+  createFoodEvent: async (ev: { name: string; eventDate: string; slotGranularityMinutes?: number | null }): Promise<FoodEvent> => {
+    const data = await request<{ createFoodEvent: GqlFoodEvent }>(
+      `mutation ($input: CreateFoodEventInput!) { createFoodEvent(input: $input) { ${FOOD_EVENT_FIELDS} } }`,
+      {
+        input: {
+          name: ev.name,
+          eventDate: ev.eventDate,
+          slotGranularityMinutes: ev.slotGranularityMinutes ?? null,
+        },
+      }
+    );
+    return toFoodEvent(data.createFoodEvent);
+  },
+
+  updateFoodEvent: async (id: number, ev: { name?: string; eventDate?: string; slotGranularityMinutes?: number; isActive?: boolean }): Promise<FoodEvent> => {
+    const data = await request<{ updateFoodEvent: GqlFoodEvent }>(
+      `mutation ($id: ID!, $input: UpdateFoodEventInput!) { updateFoodEvent(id: $id, input: $input) { ${FOOD_EVENT_FIELDS} } }`,
+      {
+        id: String(id),
+        input: {
+          name: ev.name ?? null,
+          eventDate: ev.eventDate ?? null,
+          slotGranularityMinutes: ev.slotGranularityMinutes ?? null,
+          isActive: ev.isActive ?? null,
+        },
+      }
+    );
+    return toFoodEvent(data.updateFoodEvent);
+  },
+
+  deleteFoodEvent: async (id: number): Promise<void> => {
+    await request<{ deleteFoodEvent: boolean }>(
+      `mutation ($id: ID!) { deleteFoodEvent(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  addEventRecipe: async (foodEventId: number, slot: { recipeID?: number | null; mealType: string; targetTime: string; servings?: number | null; notes?: string | null }): Promise<EventRecipe> => {
+    const data = await request<{ addEventRecipe: GqlEventRecipe }>(
+      `mutation ($input: AddEventRecipeInput!) {
+        addEventRecipe(input: $input) { ${EVENT_RECIPE_FIELDS} }
+      }`,
+      {
+        input: {
+          foodEventId: String(foodEventId),
+          recipeId: slot.recipeID != null ? String(slot.recipeID) : null,
+          mealType: slot.mealType,
+          targetTime: slot.targetTime,
+          servings: slot.servings ?? null,
+          notes: slot.notes ?? null,
+        },
+      }
+    );
+    return toEventRecipe(foodEventId, data.addEventRecipe);
+  },
+
+  updateEventRecipe: async (id: number, slot: { recipeID?: number | null; mealType?: string; targetTime?: string; servings?: number | null; notes?: string | null }): Promise<EventRecipe> => {
+    const data = await request<{ updateEventRecipe: GqlEventRecipe }>(
+      `mutation ($id: ID!, $input: UpdateEventRecipeInput!) {
+        updateEventRecipe(id: $id, input: $input) { ${EVENT_RECIPE_FIELDS} }
+      }`,
+      {
+        id: String(id),
+        input: {
+          recipeId: slot.recipeID != null ? String(slot.recipeID) : null,
+          mealType: slot.mealType ?? null,
+          targetTime: slot.targetTime ?? null,
+          servings: slot.servings ?? null,
+          notes: slot.notes ?? null,
+        },
+      }
+    );
+    return toEventRecipe(0, data.updateEventRecipe);
+  },
+
+  removeEventRecipe: async (id: number): Promise<void> => {
+    await request<{ removeEventRecipe: boolean }>(
+      `mutation ($id: ID!) { removeEventRecipe(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
   // Grocery Lists
   getGroceryLists: async (): Promise<GroceryList[]> => {
     const data = await request<{ groceryLists: GqlGroceryListPage }>(
@@ -2804,7 +2981,30 @@ interface RecipeInputShape {
     notes: string | null;
     isOptional: boolean;
   }[];
-  steps: { stepNumber: number; instruction: string }[];
+  steps: {
+    stepNumber: number;
+    instruction: string;
+    durationMinutes?: number | null;
+    stepType?: string | null;
+    isPassive?: boolean;
+    dependsOnStepNumber?: number | null;
+    appliance?: string | null;
+  }[];
+}
+
+// toStepInput preserves the step-timing fields through the
+// fetch-modify-updateRecipe round trip — dropping them would silently
+// erase duration/appliance data on every web-side step save.
+function toStepInput(s: Partial<RecipeStep> & { stepNumber: number; instruction: string }) {
+  return {
+    stepNumber: s.stepNumber,
+    instruction: s.instruction,
+    durationMinutes: s.durationMinutes ?? null,
+    stepType: s.stepType ?? null,
+    isPassive: s.isPassive ?? false,
+    dependsOnStepNumber: s.dependsOnStepNumber ?? null,
+    appliance: s.appliance ?? null,
+  };
 }
 
 function toRecipeInput(recipe: Partial<Recipe>): RecipeInputShape {
@@ -2821,10 +3021,7 @@ function toRecipeInput(recipe: Partial<Recipe>): RecipeInputShape {
       notes: i.notes ?? null,
       isOptional: i.isOptional,
     })),
-    steps: (recipe.recipeSteps ?? []).map((s) => ({
-      stepNumber: s.stepNumber,
-      instruction: s.instruction,
-    })),
+    steps: (recipe.recipeSteps ?? []).map(toStepInput),
   };
 }
 
@@ -2855,6 +3052,11 @@ function recipeInputOverride(
       recipeID: recipe.recipeID,
       stepNumber: s.stepNumber,
       instruction: s.instruction,
+      durationMinutes: s.durationMinutes ?? null,
+      stepType: s.stepType ?? null,
+      isPassive: s.isPassive ?? false,
+      dependsOnStepNumber: s.dependsOnStepNumber ?? null,
+      appliance: s.appliance ?? null,
     })),
   };
 }

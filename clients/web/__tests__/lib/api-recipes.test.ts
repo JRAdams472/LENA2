@@ -275,7 +275,17 @@ describe("api client: recipes", () => {
             isOptional: false,
           },
         ],
-        steps: [{ stepNumber: 1, instruction: "Mix" }],
+        steps: [
+          {
+            stepNumber: 1,
+            instruction: "Mix",
+            durationMinutes: null,
+            stepType: null,
+            isPassive: false,
+            dependsOnStepNumber: null,
+            appliance: null,
+          },
+        ],
       },
     });
     expect(recipe.recipeName).toBe("Pancakes");
@@ -414,9 +424,33 @@ describe("api client: recipes", () => {
     });
 
     expect(lastRequestBody().variables.input.steps).toEqual([
-      { stepNumber: 1, instruction: "Mix" },
-      { stepNumber: 2, instruction: "Cook" },
-      { stepNumber: 3, instruction: "Serve" },
+      {
+        stepNumber: 1,
+        instruction: "Mix",
+        durationMinutes: null,
+        stepType: null,
+        isPassive: false,
+        dependsOnStepNumber: null,
+        appliance: null,
+      },
+      {
+        stepNumber: 2,
+        instruction: "Cook",
+        durationMinutes: null,
+        stepType: null,
+        isPassive: false,
+        dependsOnStepNumber: null,
+        appliance: null,
+      },
+      {
+        stepNumber: 3,
+        instruction: "Serve",
+        durationMinutes: null,
+        stepType: null,
+        isPassive: false,
+        dependsOnStepNumber: null,
+        appliance: null,
+      },
     ]);
     expect(step.stepNumber).toBe(3);
     expect(step.instruction).toBe("Serve");
@@ -437,8 +471,24 @@ describe("api client: recipes", () => {
     });
 
     expect(lastRequestBody().variables.input.steps).toEqual([
-      { stepNumber: 1, instruction: "Mix" },
-      { stepNumber: 2, instruction: "Bake" },
+      {
+        stepNumber: 1,
+        instruction: "Mix",
+        durationMinutes: null,
+        stepType: null,
+        isPassive: false,
+        dependsOnStepNumber: null,
+        appliance: null,
+      },
+      {
+        stepNumber: 2,
+        instruction: "Bake",
+        durationMinutes: null,
+        stepType: null,
+        isPassive: false,
+        dependsOnStepNumber: null,
+        appliance: null,
+      },
     ]);
     expect(step.instruction).toBe("Bake");
   });
@@ -454,7 +504,15 @@ describe("api client: recipes", () => {
     await api.deleteRecipeStep(1, 1);
 
     expect(lastRequestBody().variables.input.steps).toEqual([
-      { stepNumber: 2, instruction: "Cook" },
+      {
+        stepNumber: 2,
+        instruction: "Cook",
+        durationMinutes: null,
+        stepType: null,
+        isPassive: false,
+        dependsOnStepNumber: null,
+        appliance: null,
+      },
     ]);
   });
 });
