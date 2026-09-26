@@ -46,6 +46,33 @@ type AnalyticsUserSelectionCount struct {
 	LastSelectedAt pgtype.Timestamptz `json:"last_selected_at"`
 }
 
+type EventEventRecipe struct {
+	EventRecipeID int64              `json:"event_recipe_id"`
+	FoodEventID   int64              `json:"food_event_id"`
+	RecipeID      pgtype.Int8        `json:"recipe_id"`
+	MealType      string             `json:"meal_type"`
+	TargetTime    time.Time          `json:"target_time"`
+	Servings      pgtype.Int4        `json:"servings"`
+	Notes         pgtype.Text        `json:"notes"`
+	CreatedBy     string             `json:"created_by"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedBy     pgtype.Text        `json:"updated_by"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type EventFoodEvent struct {
+	FoodEventID            int64              `json:"food_event_id"`
+	HouseholdID            int64              `json:"household_id"`
+	Name                   string             `json:"name"`
+	EventDate              pgtype.Date        `json:"event_date"`
+	SlotGranularityMinutes int16              `json:"slot_granularity_minutes"`
+	IsActive               bool               `json:"is_active"`
+	CreatedBy              string             `json:"created_by"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedBy              pgtype.Text        `json:"updated_by"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+}
+
 type GroceryGroceryList struct {
 	GroceryListID int64              `json:"grocery_list_id"`
 	MealPlanID    pgtype.Int8        `json:"meal_plan_id"`
@@ -103,6 +130,7 @@ type HouseholdNotification struct {
 	InviteID       pgtype.Int8        `json:"invite_id"`
 	ReadAt         pgtype.Timestamptz `json:"read_at"`
 	CreatedAt      time.Time          `json:"created_at"`
+	FoodEventID    pgtype.Int8        `json:"food_event_id"`
 }
 
 type IdentityUser struct {
@@ -333,14 +361,19 @@ type RecipeRecipeRating struct {
 }
 
 type RecipeRecipeStep struct {
-	StepID      int64              `json:"step_id"`
-	RecipeID    int64              `json:"recipe_id"`
-	StepNumber  int32              `json:"step_number"`
-	Instruction string             `json:"instruction"`
-	CreatedBy   string             `json:"created_by"`
-	CreatedAt   time.Time          `json:"created_at"`
-	UpdatedBy   pgtype.Text        `json:"updated_by"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	StepID              int64              `json:"step_id"`
+	RecipeID            int64              `json:"recipe_id"`
+	StepNumber          int32              `json:"step_number"`
+	Instruction         string             `json:"instruction"`
+	CreatedBy           string             `json:"created_by"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedBy           pgtype.Text        `json:"updated_by"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	DurationMinutes     pgtype.Int4        `json:"duration_minutes"`
+	StepType            pgtype.Text        `json:"step_type"`
+	IsPassive           bool               `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4        `json:"depends_on_step_number"`
+	Appliance           pgtype.Text        `json:"appliance"`
 }
 
 type UserprefsHouseholdBottle struct {

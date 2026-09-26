@@ -66,8 +66,8 @@ DELETE FROM recipe.recipe_item
 WHERE recipe_item_id = $1;
 
 -- name: AddRecipeStep :one
-INSERT INTO recipe.recipe_step (recipe_id, step_number, instruction, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO recipe.recipe_step (recipe_id, step_number, instruction, duration_minutes, step_type, is_passive, depends_on_step_number, appliance, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListRecipeSteps :many
@@ -83,6 +83,8 @@ WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
 ORDER BY step_number;
 
 -- name: UpdateRecipeStep :exec
+-- Timing columns are written only by the create/replace-children path
+-- (AddRecipeStep); this partial update preserves them.
 UPDATE recipe.recipe_step
 SET step_number = $2,
     instruction = $3,

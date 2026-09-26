@@ -130,6 +130,22 @@ sql:
               type: "Time"
   - engine: "postgresql"
     schema: "migrations/"
+    queries: "internal/event/queries.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/event/sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+  - engine: "postgresql"
+    schema: "migrations/"
     queries: "internal/analytics/queries.sql"
     gen:
       go:

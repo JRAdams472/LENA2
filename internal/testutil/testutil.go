@@ -170,6 +170,18 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 	return u.UserID
 }
 
+// MustHousehold creates a bare household row (no users) and returns its
+// ID. For tests that scope data to a household without needing a member.
+func MustHousehold(ctx context.Context, t *testing.T, pool *pgxpool.Pool) int64 {
+	t.Helper()
+	var householdID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO household.households (created_by) VALUES ('test') RETURNING household_id`).Scan(&householdID); err != nil {
+		t.Fatalf("create test household: %v", err)
+	}
+	return householdID
+}
+
 // JoinHousehold moves a test user into an existing household row as a
 // member, leaving their default household empty. For multi-member
 // household tests.

@@ -238,7 +238,8 @@ func (s *Service) CreateRecipeWithChildren(ctx context.Context, arg Recipe, item
 			}
 		}
 		for _, step := range steps {
-			if _, err := addRecipeStep(ctx, q, rec.RecipeID, step.StepNumber, step.Instruction, by); err != nil {
+			step.RecipeID = rec.RecipeID
+			if _, err := addRecipeStep(ctx, q, step, by); err != nil {
 				return err
 			}
 		}
@@ -270,7 +271,8 @@ func (s *Service) UpdateRecipeWithChildren(ctx context.Context, recipeID int64, 
 			}
 		}
 		for _, step := range steps {
-			if _, err := addRecipeStep(ctx, q, recipeID, step.StepNumber, step.Instruction, by); err != nil {
+			step.RecipeID = recipeID
+			if _, err := addRecipeStep(ctx, q, step, by); err != nil {
 				return err
 			}
 		}
@@ -354,26 +356,40 @@ func (s *Service) RemoveRecipeItem(ctx context.Context, recipeItemID int64) erro
 	return s.q.RemoveRecipeItem(ctx, recipeItemID)
 }
 
-// RecipeStep is one step in a recipe.
+// RecipeStep is one step in a recipe. The timing fields feed the future
+// event-timeline scheduler: DurationMinutes is how long the step takes,
+// IsPassive marks hands-off work (rest, bake, marinade) that frees the
+// cook, DependsOnStepNumber overrides the default previous-step edge, and
+// Appliance names the resource the step occupies.
 type RecipeStep struct {
-	StepID      int64
-	RecipeID    int64
-	StepNumber  int32
-	Instruction string
+	StepID              int64
+	RecipeID            int64
+	StepNumber          int32
+	Instruction         string
+	DurationMinutes     *int32
+	StepType            string
+	IsPassive           bool
+	DependsOnStepNumber *int32
+	Appliance           string
 }
 
 // AddRecipeStep adds a step to a recipe.
 func (s *Service) AddRecipeStep(ctx context.Context, recipeID int64, stepNumber int32, instruction, by string) (RecipeStep, error) {
-	return addRecipeStep(ctx, s.q, recipeID, stepNumber, instruction, by)
+	return addRecipeStep(ctx, s.q, RecipeStep{RecipeID: recipeID, StepNumber: stepNumber, Instruction: instruction}, by)
 }
 
-func addRecipeStep(ctx context.Context, q sqlc.Querier, recipeID int64, stepNumber int32, instruction, by string) (RecipeStep, error) {
+func addRecipeStep(ctx context.Context, q sqlc.Querier, step RecipeStep, by string) (RecipeStep, error) {
 	row, err := q.AddRecipeStep(ctx, sqlc.AddRecipeStepParams{
-		RecipeID:    recipeID,
-		StepNumber:  stepNumber,
-		Instruction: instruction,
-		CreatedBy:   by,
-		UpdatedBy:   textOrNull(by),
+		RecipeID:            step.RecipeID,
+		StepNumber:          step.StepNumber,
+		Instruction:         step.Instruction,
+		DurationMinutes:     optInt4(step.DurationMinutes),
+		StepType:            textOrNull(step.StepType),
+		IsPassive:           step.IsPassive,
+		DependsOnStepNumber: optInt4(step.DependsOnStepNumber),
+		Appliance:           textOrNull(step.Appliance),
+		CreatedBy:           by,
+		UpdatedBy:           textOrNull(by),
 	})
 	if err != nil {
 		return RecipeStep{}, fmt.Errorf("add recipe step: %w", err)
@@ -560,12 +576,24 @@ func toRecipeItem(row sqlc.RecipeRecipeItem) (RecipeItem, error) {
 }
 
 func toRecipeStep(row sqlc.RecipeRecipeStep) RecipeStep {
-	return RecipeStep{
+	s := RecipeStep{
 		StepID:      row.StepID,
 		RecipeID:    row.RecipeID,
 		StepNumber:  row.StepNumber,
 		Instruction: row.Instruction,
+		StepType:    row.StepType.String,
+		IsPassive:   row.IsPassive,
+		Appliance:   row.Appliance.String,
 	}
+	if row.DurationMinutes.Valid {
+		v := row.DurationMinutes.Int32
+		s.DurationMinutes = &v
+	}
+	if row.DependsOnStepNumber.Valid {
+		v := row.DependsOnStepNumber.Int32
+		s.DependsOnStepNumber = &v
+	}
+	return s
 }
 
 func textOrNull(s string) pgtype.Text {

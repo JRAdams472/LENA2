@@ -784,3 +784,59 @@ func TestGetRecipesByIDs(t *testing.T) {
 		assert.ErrorContains(t, err, "get recipes by ids:")
 	})
 }
+
+func TestRecipeStepTimingFields(t *testing.T) {
+	dur := int32(20)
+	dep := int32(1)
+
+	t.Run("addRecipeStep maps timing fields into params", func(t *testing.T) {
+		svc, mq := newService(t)
+		want := sqlc.AddRecipeStepParams{
+			RecipeID:            7,
+			StepNumber:          2,
+			Instruction:         "Bake until golden",
+			DurationMinutes:     pgtype.Int4{Int32: 20, Valid: true},
+			StepType:            pgtype.Text{String: "cook", Valid: true},
+			IsPassive:           true,
+			DependsOnStepNumber: pgtype.Int4{Int32: 1, Valid: true},
+			Appliance:           pgtype.Text{String: "oven", Valid: true},
+			CreatedBy:           "alice",
+			UpdatedBy:           textOrNull("alice"),
+		}
+		mq.EXPECT().AddRecipeStep(gomock.Any(), want).Return(stepRow(), nil)
+
+		_, err := addRecipeStep(context.Background(), svc.q, RecipeStep{
+			RecipeID: 7, StepNumber: 2, Instruction: "Bake until golden",
+			DurationMinutes: &dur, StepType: "cook", IsPassive: true,
+			DependsOnStepNumber: &dep, Appliance: "oven",
+		}, "alice")
+		require.NoError(t, err)
+	})
+
+	t.Run("toRecipeStep maps timing fields back", func(t *testing.T) {
+		row := stepRow()
+		row.DurationMinutes = pgtype.Int4{Int32: 20, Valid: true}
+		row.StepType = pgtype.Text{String: "cook", Valid: true}
+		row.IsPassive = true
+		row.DependsOnStepNumber = pgtype.Int4{Int32: 1, Valid: true}
+		row.Appliance = pgtype.Text{String: "oven", Valid: true}
+
+		got := toRecipeStep(row)
+		require.NotNil(t, got.DurationMinutes)
+		assert.Equal(t, int32(20), *got.DurationMinutes)
+		assert.Equal(t, "cook", got.StepType)
+		assert.True(t, got.IsPassive)
+		require.NotNil(t, got.DependsOnStepNumber)
+		assert.Equal(t, int32(1), *got.DependsOnStepNumber)
+		assert.Equal(t, "oven", got.Appliance)
+	})
+
+	t.Run("null timing fields map to zero values", func(t *testing.T) {
+		got := toRecipeStep(stepRow())
+		assert.Nil(t, got.DurationMinutes)
+		assert.Empty(t, got.StepType)
+		assert.False(t, got.IsPassive)
+		assert.Nil(t, got.DependsOnStepNumber)
+		assert.Empty(t, got.Appliance)
+	})
+}

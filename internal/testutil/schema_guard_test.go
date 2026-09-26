@@ -23,6 +23,7 @@ import (
 var allowedSchemas = map[string][]string{
 	"analytics":        {"analytics", "recipe", "mealplan", "identity"},
 	"app/recipeimport": {"recipe"},
+	"event":            {"event"},
 	"grocery":          {"grocery"},
 	"household":        {"household"},
 	"identity":         {"identity"},
