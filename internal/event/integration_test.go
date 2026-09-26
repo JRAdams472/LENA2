@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
@@ -299,5 +300,102 @@ func TestIntegrationEventRecipeSteps(t *testing.T) {
 
 	// Cross-household writes denied.
 	err = svc.ReplaceEventRecipeSteps(ctx, slot.EventRecipeID, hhB, snap, itBy)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+// TestIntegrationEventRecipeItems exercises the per-slot ingredient
+// snapshot: materialize a recipe's items with the frozen base_servings
+// denominator, edit them without touching shared recipe rows, batch-load,
+// and delete.
+func TestIntegrationEventRecipeItems(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	hhA := testutil.MustHousehold(ctx, t, pool)
+	hhB := testutil.MustHousehold(ctx, t, pool)
+
+	invSvc := inventory.NewService(pool)
+	recipeSvc := recipe.NewService(pool)
+	cat, err := invSvc.CreateCategory(ctx, "IT Event Item Cat", "", itBy)
+	require.NoError(t, err)
+	unit, err := invSvc.GetUnitByName(ctx, "cup")
+	require.NoError(t, err)
+	item, err := invSvc.CreateItem(ctx, inventory.Item{
+		Name: "IT Event Flour", CategoryID: cat.CategoryID, UnitID: unit.UnitID,
+	}, itBy)
+	require.NoError(t, err)
+
+	servings := int32(4)
+	rec, err := recipeSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{
+		Name: "IT Item Snapshot Recipe", Servings: &servings, IsActive: true,
+	}, []recipe.RecipeItem{
+		{ItemID: item.ItemID, Quantity: 2, UnitID: unit.UnitID},
+	}, nil, itBy)
+	require.NoError(t, err)
+
+	day := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	ev, err := svc.CreateFoodEvent(ctx, FoodEvent{
+		HouseholdID: hhA, Name: "Party", EventDate: day, SlotGranularityMinutes: 15, IsActive: true,
+	}, itBy)
+	require.NoError(t, err)
+	slot, err := svc.AddEventRecipe(ctx, EventRecipe{
+		FoodEventID: ev.FoodEventID, RecipeID: &rec.RecipeID, MealType: "dinner",
+		TargetTime: time.Date(2026, 10, 31, 18, 0, 0, 0, time.UTC), Servings: &[]int32{8}[0],
+	}, hhA, itBy)
+	require.NoError(t, err)
+
+	// Materialize the snapshot — mirrors what the BFF does on add.
+	src, err := recipeSvc.ListRecipeItemsByRecipes(ctx, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	snap := make([]EventRecipeItem, len(src))
+	for i, s := range src {
+		snap[i] = EventRecipeItem{
+			ItemID: s.ItemID, Quantity: s.Quantity, UnitID: s.UnitID,
+		}
+	}
+	require.NoError(t, svc.ReplaceEventRecipeItems(ctx, slot.EventRecipeID, hhA, snap, rec.Servings, itBy))
+
+	got, err := svc.ListEventRecipeItems(ctx, slot.EventRecipeID, hhA)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, 2.0, got[0].Quantity)
+
+	// The slot now carries the frozen denominator — 8 over 4 scales ×2.
+	loaded, err := svc.GetEventRecipeByID(ctx, slot.EventRecipeID, hhA)
+	require.NoError(t, err)
+	require.NotNil(t, loaded.BaseServings)
+	assert.Equal(t, int32(4), *loaded.BaseServings)
+	assert.Equal(t, 2.0, loaded.ScalingFactor())
+
+	// Batch load by event; other households see nothing.
+	batch, err := svc.ListEventRecipeItemsForEvents(ctx, []int64{ev.FoodEventID}, hhA)
+	require.NoError(t, err)
+	assert.Len(t, batch, 1)
+	batchB, err := svc.ListEventRecipeItemsForEvents(ctx, []int64{ev.FoodEventID}, hhB)
+	require.NoError(t, err)
+	assert.Empty(t, batchB)
+
+	// Editing the snapshot must not alter the shared recipe item.
+	require.NoError(t, svc.UpdateEventRecipeItem(ctx, got[0].EventRecipeItemID, hhA,
+		EventRecipeItem{ItemID: item.ItemID, Quantity: 5, UnitID: unit.UnitID}, itBy))
+	orig, err := recipeSvc.ListRecipeItemsByRecipes(ctx, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	assert.Equal(t, 2.0, orig[0].Quantity)
+
+	// Add a hand-entered item, then remove it.
+	added, err := svc.AddEventRecipeItem(ctx, EventRecipeItem{
+		EventRecipeID: slot.EventRecipeID, ItemID: item.ItemID, Quantity: 1, UnitID: unit.UnitID,
+	}, hhA, itBy)
+	require.NoError(t, err)
+	require.NoError(t, svc.DeleteEventRecipeItem(ctx, added.EventRecipeItemID, hhA))
+	got, err = svc.ListEventRecipeItems(ctx, slot.EventRecipeID, hhA)
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
+
+	// Cross-household writes denied.
+	err = svc.ReplaceEventRecipeItems(ctx, slot.EventRecipeID, hhB, snap, rec.Servings, itBy)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }

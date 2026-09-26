@@ -15,7 +15,7 @@ import (
 const addEventRecipe = `-- name: AddEventRecipe :one
 INSERT INTO event.event_recipe (food_event_id, recipe_id, meal_type, target_time, servings, notes, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING event_recipe_id, food_event_id, recipe_id, meal_type, target_time, servings, notes, created_by, created_at, updated_by, updated_at
+RETURNING event_recipe_id, food_event_id, recipe_id, meal_type, target_time, servings, notes, created_by, created_at, updated_by, updated_at, base_servings
 `
 
 type AddEventRecipeParams struct {
@@ -49,6 +49,63 @@ func (q *Queries) AddEventRecipe(ctx context.Context, arg AddEventRecipeParams) 
 		&i.TargetTime,
 		&i.Servings,
 		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.BaseServings,
+	)
+	return i, err
+}
+
+const addEventRecipeItem = `-- name: AddEventRecipeItem :one
+INSERT INTO event.event_recipe_item
+    (event_recipe_id, item_id, ingredient_id, quantity, unit_id,
+     section_name, display_order, notes, is_optional, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING event_recipe_item_id, event_recipe_id, item_id, ingredient_id, quantity, unit_id, section_name, display_order, notes, is_optional, created_by, created_at, updated_by, updated_at
+`
+
+type AddEventRecipeItemParams struct {
+	EventRecipeID int64          `json:"event_recipe_id"`
+	ItemID        int64          `json:"item_id"`
+	IngredientID  pgtype.Int8    `json:"ingredient_id"`
+	Quantity      pgtype.Numeric `json:"quantity"`
+	UnitID        int64          `json:"unit_id"`
+	SectionName   pgtype.Text    `json:"section_name"`
+	DisplayOrder  int32          `json:"display_order"`
+	Notes         pgtype.Text    `json:"notes"`
+	IsOptional    bool           `json:"is_optional"`
+	CreatedBy     string         `json:"created_by"`
+	UpdatedBy     pgtype.Text    `json:"updated_by"`
+}
+
+func (q *Queries) AddEventRecipeItem(ctx context.Context, arg AddEventRecipeItemParams) (EventEventRecipeItem, error) {
+	row := q.db.QueryRow(ctx, addEventRecipeItem,
+		arg.EventRecipeID,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.UnitID,
+		arg.SectionName,
+		arg.DisplayOrder,
+		arg.Notes,
+		arg.IsOptional,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i EventEventRecipeItem
+	err := row.Scan(
+		&i.EventRecipeItemID,
+		&i.EventRecipeID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.Quantity,
+		&i.UnitID,
+		&i.SectionName,
+		&i.DisplayOrder,
+		&i.Notes,
+		&i.IsOptional,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
@@ -181,6 +238,43 @@ func (q *Queries) DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipePa
 	return err
 }
 
+const deleteEventRecipeItem = `-- name: DeleteEventRecipeItem :exec
+DELETE FROM event.event_recipe_item eri
+USING event.event_recipe er, event.food_event fe
+WHERE eri.event_recipe_id = er.event_recipe_id
+  AND er.food_event_id = fe.food_event_id
+  AND eri.event_recipe_item_id = $1 AND fe.household_id = $2
+`
+
+type DeleteEventRecipeItemParams struct {
+	EventRecipeItemID int64 `json:"event_recipe_item_id"`
+	HouseholdID       int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteEventRecipeItem(ctx context.Context, arg DeleteEventRecipeItemParams) error {
+	_, err := q.db.Exec(ctx, deleteEventRecipeItem, arg.EventRecipeItemID, arg.HouseholdID)
+	return err
+}
+
+const deleteEventRecipeItems = `-- name: DeleteEventRecipeItems :exec
+DELETE FROM event.event_recipe_item eri
+USING event.event_recipe er, event.food_event fe
+WHERE eri.event_recipe_id = er.event_recipe_id
+  AND er.food_event_id = fe.food_event_id
+  AND eri.event_recipe_id = $1 AND fe.household_id = $2
+`
+
+type DeleteEventRecipeItemsParams struct {
+	EventRecipeID int64 `json:"event_recipe_id"`
+	HouseholdID   int64 `json:"household_id"`
+}
+
+// Clears a slot's item snapshot before a re-materialization replace.
+func (q *Queries) DeleteEventRecipeItems(ctx context.Context, arg DeleteEventRecipeItemsParams) error {
+	_, err := q.db.Exec(ctx, deleteEventRecipeItems, arg.EventRecipeID, arg.HouseholdID)
+	return err
+}
+
 const deleteEventRecipeStep = `-- name: DeleteEventRecipeStep :exec
 DELETE FROM event.event_recipe_step ers
 USING event.event_recipe er, event.food_event fe
@@ -234,7 +328,7 @@ func (q *Queries) DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams
 }
 
 const getEventRecipeByID = `-- name: GetEventRecipeByID :one
-SELECT er.event_recipe_id, er.food_event_id, er.recipe_id, er.meal_type, er.target_time, er.servings, er.notes, er.created_by, er.created_at, er.updated_by, er.updated_at
+SELECT er.event_recipe_id, er.food_event_id, er.recipe_id, er.meal_type, er.target_time, er.servings, er.notes, er.created_by, er.created_at, er.updated_by, er.updated_at, er.base_servings
 FROM event.event_recipe er
 JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
 WHERE er.event_recipe_id = $1 AND fe.household_id = $2
@@ -256,6 +350,42 @@ func (q *Queries) GetEventRecipeByID(ctx context.Context, arg GetEventRecipeByID
 		&i.TargetTime,
 		&i.Servings,
 		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.BaseServings,
+	)
+	return i, err
+}
+
+const getEventRecipeItemByID = `-- name: GetEventRecipeItemByID :one
+SELECT eri.event_recipe_item_id, eri.event_recipe_id, eri.item_id, eri.ingredient_id, eri.quantity, eri.unit_id, eri.section_name, eri.display_order, eri.notes, eri.is_optional, eri.created_by, eri.created_at, eri.updated_by, eri.updated_at
+FROM event.event_recipe_item eri
+JOIN event.event_recipe er ON eri.event_recipe_id = er.event_recipe_id
+JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
+WHERE eri.event_recipe_item_id = $1 AND fe.household_id = $2
+`
+
+type GetEventRecipeItemByIDParams struct {
+	EventRecipeItemID int64 `json:"event_recipe_item_id"`
+	HouseholdID       int64 `json:"household_id"`
+}
+
+func (q *Queries) GetEventRecipeItemByID(ctx context.Context, arg GetEventRecipeItemByIDParams) (EventEventRecipeItem, error) {
+	row := q.db.QueryRow(ctx, getEventRecipeItemByID, arg.EventRecipeItemID, arg.HouseholdID)
+	var i EventEventRecipeItem
+	err := row.Scan(
+		&i.EventRecipeItemID,
+		&i.EventRecipeID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.Quantity,
+		&i.UnitID,
+		&i.SectionName,
+		&i.DisplayOrder,
+		&i.Notes,
+		&i.IsOptional,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
@@ -325,6 +455,105 @@ func (q *Queries) GetFoodEventByID(ctx context.Context, arg GetFoodEventByIDPara
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listEventRecipeItems = `-- name: ListEventRecipeItems :many
+SELECT eri.event_recipe_item_id, eri.event_recipe_id, eri.item_id, eri.ingredient_id, eri.quantity, eri.unit_id, eri.section_name, eri.display_order, eri.notes, eri.is_optional, eri.created_by, eri.created_at, eri.updated_by, eri.updated_at
+FROM event.event_recipe_item eri
+JOIN event.event_recipe er ON eri.event_recipe_id = er.event_recipe_id
+JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
+WHERE eri.event_recipe_id = $1 AND fe.household_id = $2
+ORDER BY eri.display_order, eri.event_recipe_item_id
+`
+
+type ListEventRecipeItemsParams struct {
+	EventRecipeID int64 `json:"event_recipe_id"`
+	HouseholdID   int64 `json:"household_id"`
+}
+
+func (q *Queries) ListEventRecipeItems(ctx context.Context, arg ListEventRecipeItemsParams) ([]EventEventRecipeItem, error) {
+	rows, err := q.db.Query(ctx, listEventRecipeItems, arg.EventRecipeID, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventEventRecipeItem{}
+	for rows.Next() {
+		var i EventEventRecipeItem
+		if err := rows.Scan(
+			&i.EventRecipeItemID,
+			&i.EventRecipeID,
+			&i.ItemID,
+			&i.IngredientID,
+			&i.Quantity,
+			&i.UnitID,
+			&i.SectionName,
+			&i.DisplayOrder,
+			&i.Notes,
+			&i.IsOptional,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventRecipeItemsForEvents = `-- name: ListEventRecipeItemsForEvents :many
+SELECT eri.event_recipe_item_id, eri.event_recipe_id, eri.item_id, eri.ingredient_id, eri.quantity, eri.unit_id, eri.section_name, eri.display_order, eri.notes, eri.is_optional, eri.created_by, eri.created_at, eri.updated_by, eri.updated_at
+FROM event.event_recipe_item eri
+JOIN event.event_recipe er ON eri.event_recipe_id = er.event_recipe_id
+JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
+WHERE er.food_event_id = ANY($1::bigint[]) AND fe.household_id = $2
+ORDER BY eri.event_recipe_id, eri.display_order, eri.event_recipe_item_id
+`
+
+type ListEventRecipeItemsForEventsParams struct {
+	FoodEventIds []int64 `json:"food_event_ids"`
+	HouseholdID  int64   `json:"household_id"`
+}
+
+// Batch: items for every slot of the given events, owned by the household.
+func (q *Queries) ListEventRecipeItemsForEvents(ctx context.Context, arg ListEventRecipeItemsForEventsParams) ([]EventEventRecipeItem, error) {
+	rows, err := q.db.Query(ctx, listEventRecipeItemsForEvents, arg.FoodEventIds, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventEventRecipeItem{}
+	for rows.Next() {
+		var i EventEventRecipeItem
+		if err := rows.Scan(
+			&i.EventRecipeItemID,
+			&i.EventRecipeID,
+			&i.ItemID,
+			&i.IngredientID,
+			&i.Quantity,
+			&i.UnitID,
+			&i.SectionName,
+			&i.DisplayOrder,
+			&i.Notes,
+			&i.IsOptional,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEventRecipeSteps = `-- name: ListEventRecipeSteps :many
@@ -425,7 +654,7 @@ func (q *Queries) ListEventRecipeStepsForEvents(ctx context.Context, arg ListEve
 }
 
 const listEventRecipesByEvents = `-- name: ListEventRecipesByEvents :many
-SELECT er.event_recipe_id, er.food_event_id, er.recipe_id, er.meal_type, er.target_time, er.servings, er.notes, er.created_by, er.created_at, er.updated_by, er.updated_at
+SELECT er.event_recipe_id, er.food_event_id, er.recipe_id, er.meal_type, er.target_time, er.servings, er.notes, er.created_by, er.created_at, er.updated_by, er.updated_at, er.base_servings
 FROM event.event_recipe er
 JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
 WHERE er.food_event_id = ANY($1::bigint[]) AND fe.household_id = $2
@@ -458,6 +687,7 @@ func (q *Queries) ListEventRecipesByEvents(ctx context.Context, arg ListEventRec
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.BaseServings,
 		); err != nil {
 			return nil, err
 		}
@@ -470,7 +700,7 @@ func (q *Queries) ListEventRecipesByEvents(ctx context.Context, arg ListEventRec
 }
 
 const listEventRecipesForEvent = `-- name: ListEventRecipesForEvent :many
-SELECT er.event_recipe_id, er.food_event_id, er.recipe_id, er.meal_type, er.target_time, er.servings, er.notes, er.created_by, er.created_at, er.updated_by, er.updated_at
+SELECT er.event_recipe_id, er.food_event_id, er.recipe_id, er.meal_type, er.target_time, er.servings, er.notes, er.created_by, er.created_at, er.updated_by, er.updated_at, er.base_servings
 FROM event.event_recipe er
 JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
 WHERE er.food_event_id = $1 AND fe.household_id = $2
@@ -503,6 +733,7 @@ func (q *Queries) ListEventRecipesForEvent(ctx context.Context, arg ListEventRec
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.BaseServings,
 		); err != nil {
 			return nil, err
 		}
@@ -580,6 +811,31 @@ func (q *Queries) ReassignFoodEventsToHousehold(ctx context.Context, arg Reassig
 	return err
 }
 
+const setEventRecipeBaseServings = `-- name: SetEventRecipeBaseServings :exec
+UPDATE event.event_recipe er
+SET base_servings = $3, updated_by = $4, updated_at = now()
+FROM event.food_event fe
+WHERE er.food_event_id = fe.food_event_id AND er.event_recipe_id = $1 AND fe.household_id = $2
+`
+
+type SetEventRecipeBaseServingsParams struct {
+	EventRecipeID int64       `json:"event_recipe_id"`
+	HouseholdID   int64       `json:"household_id"`
+	BaseServings  pgtype.Int4 `json:"base_servings"`
+	UpdatedBy     pgtype.Text `json:"updated_by"`
+}
+
+// Freezes the linked recipe's servings as the scaling denominator.
+func (q *Queries) SetEventRecipeBaseServings(ctx context.Context, arg SetEventRecipeBaseServingsParams) error {
+	_, err := q.db.Exec(ctx, setEventRecipeBaseServings,
+		arg.EventRecipeID,
+		arg.HouseholdID,
+		arg.BaseServings,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
 const updateEventRecipe = `-- name: UpdateEventRecipe :exec
 UPDATE event.event_recipe er
 SET recipe_id   = $3,
@@ -613,6 +869,55 @@ func (q *Queries) UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipePa
 		arg.TargetTime,
 		arg.Servings,
 		arg.Notes,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const updateEventRecipeItem = `-- name: UpdateEventRecipeItem :exec
+UPDATE event.event_recipe_item eri
+SET item_id       = $3,
+    ingredient_id = $4,
+    quantity      = $5,
+    unit_id       = $6,
+    section_name  = $7,
+    display_order = $8,
+    notes         = $9,
+    is_optional   = $10,
+    updated_by    = $11,
+    updated_at    = now()
+FROM event.event_recipe er, event.food_event fe
+WHERE eri.event_recipe_id = er.event_recipe_id
+  AND er.food_event_id = fe.food_event_id
+  AND eri.event_recipe_item_id = $1 AND fe.household_id = $2
+`
+
+type UpdateEventRecipeItemParams struct {
+	EventRecipeItemID int64          `json:"event_recipe_item_id"`
+	HouseholdID       int64          `json:"household_id"`
+	ItemID            int64          `json:"item_id"`
+	IngredientID      pgtype.Int8    `json:"ingredient_id"`
+	Quantity          pgtype.Numeric `json:"quantity"`
+	UnitID            int64          `json:"unit_id"`
+	SectionName       pgtype.Text    `json:"section_name"`
+	DisplayOrder      int32          `json:"display_order"`
+	Notes             pgtype.Text    `json:"notes"`
+	IsOptional        bool           `json:"is_optional"`
+	UpdatedBy         pgtype.Text    `json:"updated_by"`
+}
+
+func (q *Queries) UpdateEventRecipeItem(ctx context.Context, arg UpdateEventRecipeItemParams) error {
+	_, err := q.db.Exec(ctx, updateEventRecipeItem,
+		arg.EventRecipeItemID,
+		arg.HouseholdID,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.UnitID,
+		arg.SectionName,
+		arg.DisplayOrder,
+		arg.Notes,
+		arg.IsOptional,
 		arg.UpdatedBy,
 	)
 	return err

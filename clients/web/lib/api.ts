@@ -35,6 +35,7 @@ import {
   HouseholdUser,
   FoodEvent,
   EventRecipe,
+  EventRecipeItem,
   EventRecipeStep,
   EventTimeline,
   InviteStatus,
@@ -497,14 +498,29 @@ interface GqlEventRecipeStep {
   appliance: string | null;
 }
 
+interface GqlEventRecipeItem {
+  id: string;
+  item: { id: string; name: string } | null;
+  quantity: number;
+  baseQuantity: number;
+  unit: string;
+  section: string | null;
+  displayOrder: number;
+  notes: string | null;
+  isOptional: boolean;
+}
+
 interface GqlEventRecipe {
   id: string;
   mealType: string;
   targetTime: string;
   servings: number | null;
+  baseServings: number | null;
+  scalingFactor: number;
   notes: string | null;
   recipe: GqlRecipe | null;
   steps: GqlEventRecipeStep[];
+  items: GqlEventRecipeItem[];
 }
 
 interface GqlFoodEvent {
@@ -540,6 +556,7 @@ interface GqlEventTimelineRecipe {
   name: string;
   targetTime: string;
   servings: number | null;
+  baseServings: number | null;
   startBy: string | null;
   unschedulable: boolean;
   warnings: string[];
@@ -1171,6 +1188,32 @@ function toEventStepVariables(step: EventRecipeStepInput) {
   };
 }
 
+// EventRecipeItemInput is the writable shape of an event slot's snapshot
+// ingredient — quantity is the unscaled (per-base-servings) amount, and
+// unit is a name or abbreviation resolved by the shared unit catalog.
+export interface EventRecipeItemInput {
+  itemID: number;
+  quantity: number;
+  unit: string;
+  section?: string | null;
+  displayOrder?: number | null;
+  notes?: string | null;
+  isOptional?: boolean | null;
+}
+
+function toEventItemVariables(item: EventRecipeItemInput) {
+  return {
+    itemId: String(item.itemID),
+    ingredientId: null,
+    quantity: item.quantity,
+    unit: item.unit,
+    section: item.section ?? null,
+    displayOrder: item.displayOrder ?? null,
+    notes: item.notes ?? null,
+    isOptional: item.isOptional ?? null,
+  };
+}
+
 function toEventRecipeStep(s: GqlEventRecipeStep): EventRecipeStep {
   return {
     eventRecipeStepID: num(s.id),
@@ -1184,6 +1227,21 @@ function toEventRecipeStep(s: GqlEventRecipeStep): EventRecipeStep {
   };
 }
 
+function toEventRecipeItem(i: GqlEventRecipeItem): EventRecipeItem {
+  return {
+    eventRecipeItemID: num(i.id),
+    itemID: i.item ? num(i.item.id) : 0,
+    itemName: i.item?.name ?? null,
+    quantity: i.quantity,
+    baseQuantity: i.baseQuantity,
+    unit: i.unit,
+    section: i.section,
+    displayOrder: i.displayOrder,
+    notes: i.notes,
+    isOptional: i.isOptional,
+  };
+}
+
 function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
   return {
     eventRecipeID: num(er.id),
@@ -1192,9 +1250,12 @@ function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
     mealType: er.mealType,
     targetTime: er.targetTime,
     servings: er.servings,
+    baseServings: er.baseServings,
+    scalingFactor: er.scalingFactor,
     notes: er.notes,
     recipe: er.recipe ? toRecipe(er.recipe) : null,
     steps: (er.steps ?? []).map(toEventRecipeStep),
+    items: (er.items ?? []).map(toEventRecipeItem),
   };
 }
 
@@ -1219,6 +1280,7 @@ function toEventTimeline(t: GqlEventTimeline): EventTimeline {
       name: r.name,
       targetTime: r.targetTime,
       servings: r.servings,
+      baseServings: r.baseServings,
       startBy: r.startBy,
       unschedulable: r.unschedulable,
       warnings: r.warnings ?? [],
@@ -1317,10 +1379,16 @@ const EVENT_RECIPE_STEP_FIELDS = `
   dependsOnStepNumber appliance
 `;
 
+const EVENT_RECIPE_ITEM_FIELDS = `
+  id quantity baseQuantity unit section displayOrder notes isOptional
+  item { id name }
+`;
+
 const EVENT_RECIPE_FIELDS = `
-  id mealType targetTime servings notes
+  id mealType targetTime servings baseServings scalingFactor notes
   recipe { ${RECIPE_FIELDS} }
   steps { ${EVENT_RECIPE_STEP_FIELDS} }
+  items { ${EVENT_RECIPE_ITEM_FIELDS} }
 `;
 
 const FOOD_EVENT_FIELDS = `
@@ -3037,14 +3105,41 @@ export const api = {
     );
   },
 
-  syncEventRecipeSteps: async (eventRecipeId: number): Promise<EventRecipe> => {
-    const data = await request<{ syncEventRecipeSteps: GqlEventRecipe }>(
+  addEventRecipeItem: async (eventRecipeId: number, item: EventRecipeItemInput): Promise<EventRecipeItem> => {
+    const data = await request<{ addEventRecipeItem: GqlEventRecipeItem }>(
+      `mutation ($id: ID!, $input: EventRecipeItemInput!) {
+        addEventRecipeItem(eventRecipeId: $id, input: $input) { ${EVENT_RECIPE_ITEM_FIELDS} }
+      }`,
+      { id: String(eventRecipeId), input: toEventItemVariables(item) }
+    );
+    return toEventRecipeItem(data.addEventRecipeItem);
+  },
+
+  updateEventRecipeItem: async (id: number, item: EventRecipeItemInput): Promise<EventRecipeItem> => {
+    const data = await request<{ updateEventRecipeItem: GqlEventRecipeItem }>(
+      `mutation ($id: ID!, $input: EventRecipeItemInput!) {
+        updateEventRecipeItem(id: $id, input: $input) { ${EVENT_RECIPE_ITEM_FIELDS} }
+      }`,
+      { id: String(id), input: toEventItemVariables(item) }
+    );
+    return toEventRecipeItem(data.updateEventRecipeItem);
+  },
+
+  removeEventRecipeItem: async (id: number): Promise<void> => {
+    await request<{ removeEventRecipeItem: boolean }>(
+      `mutation ($id: ID!) { removeEventRecipeItem(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  syncEventRecipe: async (eventRecipeId: number): Promise<EventRecipe> => {
+    const data = await request<{ syncEventRecipe: GqlEventRecipe }>(
       `mutation ($id: ID!) {
-        syncEventRecipeSteps(eventRecipeId: $id) { ${EVENT_RECIPE_FIELDS} }
+        syncEventRecipe(eventRecipeId: $id) { ${EVENT_RECIPE_FIELDS} }
       }`,
       { id: String(eventRecipeId) }
     );
-    return toEventRecipe(0, data.syncEventRecipeSteps);
+    return toEventRecipe(0, data.syncEventRecipe);
   },
 
   getEventTimeline: async (foodEventId: number): Promise<EventTimeline> => {
@@ -3054,7 +3149,7 @@ export const api = {
           foodEventId
           warnings
           recipes {
-            eventRecipeId name targetTime servings startBy
+            eventRecipeId name targetTime servings baseServings startBy
             unschedulable warnings
             steps {
               stepNumber instruction stepType isPassive appliance

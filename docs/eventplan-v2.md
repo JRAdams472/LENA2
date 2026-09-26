@@ -131,6 +131,16 @@ Each phase: own branch, PR to `main`, merge after green CI + approval.
   `/events/[id]` showing per-recipe step tables, start-by times, and
   conflict warnings; expandable per-slot step editor (add/edit/delete,
   sync-from-recipe) writing only to the snapshot
+- Migration `0033` + `event.event_recipe_item` — per-slot ingredient
+  snapshot (same isolation guarantee as steps). `event_recipe.
+  base_servings` freezes the recipe's servings at link time so
+  `quantity × servings ÷ base_servings` scales correctly even if the
+  recipe's serving count changes later — the same rule `expandPlanLines`
+  uses for meal-plan grocery scaling. Added after the user confirmed
+  servings scaling is in scope. Item mutations mirror the step ones;
+  `syncEventRecipeSteps` was widened into `syncEventRecipe` (steps +
+  items + base servings), and the web slot expander shows scaled
+  quantities with add/edit/delete and a servings scale hint
 
 ### Remaining deferred work
 

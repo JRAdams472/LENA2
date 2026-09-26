@@ -1690,6 +1690,119 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	require.Len(t, stepsRes.Event.Recipes[0].Steps, 1)
 	assert.Equal(t, "pick up turkey", stepsRes.Event.Recipes[0].Steps[0].Instruction)
 
+	// A linked recipe materializes an ingredient snapshot scaled by
+	// servings ÷ base_servings. The item ID comes from the global catalog.
+	status, gr = doGraphQL(t, srv, tokI, `{ items(page: 1, pageSize: 1) { items { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var anyItem struct {
+		Items struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &anyItem)
+	require.NotEmpty(t, anyItem.Items.Items)
+
+	status, gr = doGraphQL(t, srv, tokI, `mutation CreateRecipe($input: CreateRecipeInput!) {
+		createRecipe(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{
+		"name":     "EV Gravy",
+		"servings": 4,
+		"items": []map[string]any{
+			{"itemId": anyItem.Items.Items[0].ID, "quantity": 2.0, "unit": "cup"},
+		},
+		"steps": []map[string]any{
+			{"stepNumber": 1, "instruction": "Simmer"},
+		},
+	}})
+	require.Equal(t, http.StatusOK, status)
+	var evRecipeRes struct {
+		Recipe struct {
+			ID string `json:"id"`
+		} `json:"createRecipe"`
+	}
+	decodeData(t, gr.Data, &evRecipeRes)
+
+	status, gr = doGraphQL(t, srv, tokI, `mutation AddLinkedSlot($eventId: ID!, $recipeId: ID!) {
+		addEventRecipe(input: { foodEventId: $eventId, recipeId: $recipeId, mealType: "dinner", targetTime: "2026-11-26T18:00:00Z", servings: 8 }) {
+			id servings baseServings scalingFactor
+			items { id quantity baseQuantity unit item { id name } }
+		}
+	}`, map[string]any{"eventId": eventID, "recipeId": evRecipeRes.Recipe.ID})
+	require.Equal(t, http.StatusOK, status)
+	var linkedRes struct {
+		Slot struct {
+			ID            string  `json:"id"`
+			Servings      *int    `json:"servings"`
+			BaseServings  *int    `json:"baseServings"`
+			ScalingFactor float64 `json:"scalingFactor"`
+			Items         []struct {
+				ID           string  `json:"id"`
+				Quantity     float64 `json:"quantity"`
+				BaseQuantity float64 `json:"baseQuantity"`
+				Unit         string  `json:"unit"`
+			} `json:"items"`
+		} `json:"addEventRecipe"`
+	}
+	decodeData(t, gr.Data, &linkedRes)
+	require.NotNil(t, linkedRes.Slot.BaseServings)
+	assert.Equal(t, 4, *linkedRes.Slot.BaseServings)
+	assert.Equal(t, 2.0, linkedRes.Slot.ScalingFactor)
+	require.Len(t, linkedRes.Slot.Items, 1)
+	// 8 servings on a recipe written for 4 doubles the copied amount.
+	assert.Equal(t, 4.0, linkedRes.Slot.Items[0].Quantity)
+	assert.Equal(t, 2.0, linkedRes.Slot.Items[0].BaseQuantity)
+	linkedSlotID := linkedRes.Slot.ID
+	linkedItemID := linkedRes.Slot.Items[0].ID
+
+	// Editing the snapshot item changes the event's copy only; the shared
+	// recipe item keeps its original quantity.
+	status, gr = doGraphQL(t, srv, tokI, `mutation EditItem($id: ID!, $itemId: ID!) {
+		updateEventRecipeItem(id: $id, input: { itemId: $itemId, quantity: 5, unit: "cup" }) {
+			id baseQuantity
+		}
+	}`, map[string]any{"id": linkedItemID, "itemId": anyItem.Items.Items[0].ID})
+	require.Equal(t, http.StatusOK, status)
+	var editItemRes struct {
+		Item struct {
+			BaseQuantity float64 `json:"baseQuantity"`
+		} `json:"updateEventRecipeItem"`
+	}
+	decodeData(t, gr.Data, &editItemRes)
+	assert.Equal(t, 5.0, editItemRes.Item.BaseQuantity)
+
+	status, gr = doGraphQL(t, srv, tokI, `query OrigRecipe($id: ID!) { recipe(id: $id) { items { quantity } } }`,
+		map[string]any{"id": evRecipeRes.Recipe.ID})
+	require.Equal(t, http.StatusOK, status)
+	var origRecipe struct {
+		Recipe *struct {
+			Items []struct {
+				Quantity float64 `json:"quantity"`
+			} `json:"items"`
+		} `json:"recipe"`
+	}
+	decodeData(t, gr.Data, &origRecipe)
+	require.NotNil(t, origRecipe.Recipe)
+	require.Len(t, origRecipe.Recipe.Items, 1)
+	assert.Equal(t, 2.0, origRecipe.Recipe.Items[0].Quantity)
+
+	// Syncing re-copies the recipe and restores the snapshot.
+	status, gr = doGraphQL(t, srv, tokI, `mutation SyncSlot($id: ID!) {
+		syncEventRecipe(eventRecipeId: $id) { items { baseQuantity } }
+	}`, map[string]any{"id": linkedSlotID})
+	require.Equal(t, http.StatusOK, status)
+	var syncRes struct {
+		Slot struct {
+			Items []struct {
+				BaseQuantity float64 `json:"baseQuantity"`
+			} `json:"items"`
+		} `json:"syncEventRecipe"`
+	}
+	decodeData(t, gr.Data, &syncRes)
+	require.Len(t, syncRes.Slot.Items, 1)
+	assert.Equal(t, 2.0, syncRes.Slot.Items[0].BaseQuantity)
+
 	// J is a different household: no visibility, no mutation.
 	status, gr = doGraphQL(t, srv, tokJ, `{ foodEvents(page: 1, pageSize: 10) { items { id } pageInfo { totalCount } } }`, nil)
 	require.Equal(t, http.StatusOK, status)

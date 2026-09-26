@@ -328,3 +328,94 @@ func TestDeleteEventRecipeStep(t *testing.T) {
 	mq.EXPECT().DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{EventRecipeStepID: 60, HouseholdID: 42}).Return(nil)
 	require.NoError(t, s.DeleteEventRecipeStep(ctx, 60, 42))
 }
+
+func TestEventRecipeScalingFactor(t *testing.T) {
+	servings, base := int32(8), int32(4)
+	assert.Equal(t, 2.0, EventRecipe{Servings: &servings, BaseServings: &base}.ScalingFactor())
+	assert.Equal(t, 1.0, EventRecipe{Servings: &servings}.ScalingFactor())
+	assert.Equal(t, 1.0, EventRecipe{BaseServings: &base}.ScalingFactor())
+	zero := int32(0)
+	assert.Equal(t, 1.0, EventRecipe{Servings: &servings, BaseServings: &zero}.ScalingFactor())
+}
+
+func TestReplaceEventRecipeItems(t *testing.T) {
+	ctx := context.Background()
+	base := int32(4)
+	qty, err := numericFromFloat64(2)
+	require.NoError(t, err)
+	s, mq := newService(t)
+	mq.EXPECT().GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: 9, HouseholdID: 42}).
+		Return(sqlc.EventEventRecipe{EventRecipeID: 9, FoodEventID: 3}, nil)
+	mq.EXPECT().DeleteEventRecipeItems(ctx, sqlc.DeleteEventRecipeItemsParams{EventRecipeID: 9, HouseholdID: 42}).Return(nil)
+	mq.EXPECT().AddEventRecipeItem(ctx, sqlc.AddEventRecipeItemParams{
+		EventRecipeID: 9,
+		ItemID:        50,
+		Quantity:      qty,
+		UnitID:        3,
+		CreatedBy:     "tester",
+		UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
+	}).Return(sqlc.EventEventRecipeItem{EventRecipeItemID: 1, EventRecipeID: 9}, nil)
+	mq.EXPECT().SetEventRecipeBaseServings(ctx, sqlc.SetEventRecipeBaseServingsParams{
+		EventRecipeID: 9, HouseholdID: 42,
+		BaseServings: pgtype.Int4{Int32: 4, Valid: true},
+		UpdatedBy:    pgtype.Text{String: "tester", Valid: true},
+	}).Return(nil)
+
+	err = s.ReplaceEventRecipeItems(ctx, 9, 42, []EventRecipeItem{
+		{ItemID: 50, Quantity: 2, UnitID: 3},
+	}, &base, "tester")
+	require.NoError(t, err)
+}
+
+func TestReplaceEventRecipeItems_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s, mq := newService(t)
+	mq.EXPECT().GetEventRecipeByID(ctx, gomock.Any()).Return(sqlc.EventEventRecipe{}, pgx.ErrNoRows)
+
+	err := s.ReplaceEventRecipeItems(ctx, 9, 42, nil, nil, "tester")
+	require.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+func TestAddEventRecipeItem(t *testing.T) {
+	ctx := context.Background()
+	qty, err := numericFromFloat64(1.5)
+	require.NoError(t, err)
+	s, mq := newService(t)
+	mq.EXPECT().GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: 9, HouseholdID: 42}).
+		Return(sqlc.EventEventRecipe{EventRecipeID: 9, FoodEventID: 3}, nil)
+	mq.EXPECT().AddEventRecipeItem(ctx, sqlc.AddEventRecipeItemParams{
+		EventRecipeID: 9,
+		ItemID:        50,
+		Quantity:      qty,
+		UnitID:        3,
+		CreatedBy:     "tester",
+		UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
+	}).Return(sqlc.EventEventRecipeItem{EventRecipeItemID: 60, EventRecipeID: 9, ItemID: 50, Quantity: qty, UnitID: 3}, nil)
+
+	got, err := s.AddEventRecipeItem(ctx, EventRecipeItem{EventRecipeID: 9, ItemID: 50, Quantity: 1.5, UnitID: 3}, 42, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, int64(60), got.EventRecipeItemID)
+	assert.Equal(t, 1.5, got.Quantity)
+}
+
+func TestUpdateEventRecipeItem(t *testing.T) {
+	ctx := context.Background()
+	s, mq := newService(t)
+	mq.EXPECT().UpdateEventRecipeItem(ctx, gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.UpdateEventRecipeItemParams) error {
+			assert.Equal(t, int64(60), p.EventRecipeItemID)
+			assert.Equal(t, int64(42), p.HouseholdID)
+			assert.Equal(t, int64(50), p.ItemID)
+			return nil
+		})
+
+	err := s.UpdateEventRecipeItem(ctx, 60, 42, EventRecipeItem{ItemID: 50, Quantity: 3, UnitID: 3}, "tester")
+	require.NoError(t, err)
+}
+
+func TestDeleteEventRecipeItem(t *testing.T) {
+	ctx := context.Background()
+	s, mq := newService(t)
+	mq.EXPECT().DeleteEventRecipeItem(ctx, sqlc.DeleteEventRecipeItemParams{EventRecipeItemID: 60, HouseholdID: 42}).Return(nil)
+	require.NoError(t, s.DeleteEventRecipeItem(ctx, 60, 42))
+}

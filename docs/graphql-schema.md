@@ -263,12 +263,17 @@ type GroceryListItem {
 
 `eventTimeline(foodEventId)` computes the master schedule on read: each slot's **snapshot** step DAG is placed backwards from its `targetTime` (sinks end at the target, each step ends by its dependents' latest start). Durations round up to the event's slot granularity so all boundaries align; a missing `durationMinutes` is estimated as one slot and flagged `estimated`. Steps that name the same `appliance` and overlap are marked in `conflicts` and surfaced in recipe/event `warnings` — the engine reports contention but does not resolve it. `EventTimelineRecipe.startBy` is the earliest required start; `unschedulable` covers free-form slots and dependency cycles.
 
-`EventRecipe.steps` is the slot's own copy of the recipe's steps (snapshot): linking a recipe copies `recipe_step` rows into `event_recipe_step`, and the step mutations below edit that copy — the shared recipe is never altered. `syncEventRecipeSteps` re-copies the linked recipe, discarding slot edits.
+`EventRecipe.steps` is the slot's own copy of the recipe's steps (snapshot): linking a recipe copies `recipe_step` rows into `event_recipe_step`, and the step mutations below edit that copy — the shared recipe is never altered. `EventRecipe.items` is the same pattern for ingredients: `recipe_item` rows copy into `event_recipe_item` at link time, `baseServings` freezes the recipe's servings as the scaling denominator, and `items[].quantity` is reported scaled by `scalingFactor` (slot `servings` ÷ `baseServings`, or 1 when either is unset) while `baseQuantity` stays the raw per-base-servings amount. `syncEventRecipe` re-copies steps, items, and base servings, discarding slot edits.
 
 - `addEventRecipeStep(eventRecipeId: ID!, input: EventRecipeStepInput!): EventRecipeStep!`
 - `updateEventRecipeStep(id: ID!, input: EventRecipeStepInput!): EventRecipeStep!`
 - `removeEventRecipeStep(id: ID!): Boolean!`
-- `syncEventRecipeSteps(eventRecipeId: ID!): EventRecipe!`
+- `addEventRecipeItem(eventRecipeId: ID!, input: EventRecipeItemInput!): EventRecipeItem!`
+- `updateEventRecipeItem(id: ID!, input: EventRecipeItemInput!): EventRecipeItem!`
+- `removeEventRecipeItem(id: ID!): Boolean!`
+- `syncEventRecipe(eventRecipeId: ID!): EventRecipe!`
+
+`EventRecipeItemInput` takes `unit` as a name or abbreviation resolved through the shared unit catalog (like `RecipeItemInput`), plus `itemId`, `quantity` (the unscaled base amount), `section`, `displayOrder`, `notes`, and `isOptional`.
 
 ## Example operations
 

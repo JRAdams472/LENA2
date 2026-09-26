@@ -276,13 +276,16 @@ type Mutation {
   addEventRecipe(input: AddEventRecipeInput!): EventRecipe!
   updateEventRecipe(id: ID!, input: UpdateEventRecipeInput!): EventRecipe!
   removeEventRecipe(id: ID!): Boolean!
-  # Event recipe step mutations edit the slot's snapshot only — never the
-  # shared recipe. syncEventRecipeSteps re-copies the linked recipe's
-  # current steps over the snapshot.
+  # Event recipe step/item mutations edit the slot's snapshots only —
+  # never the shared recipe. syncEventRecipe re-copies the linked recipe's
+  # steps, items, and base servings over the snapshots.
   addEventRecipeStep(eventRecipeId: ID!, input: EventRecipeStepInput!): EventRecipeStep!
   updateEventRecipeStep(id: ID!, input: EventRecipeStepInput!): EventRecipeStep!
   removeEventRecipeStep(id: ID!): Boolean!
-  syncEventRecipeSteps(eventRecipeId: ID!): EventRecipe!
+  addEventRecipeItem(eventRecipeId: ID!, input: EventRecipeItemInput!): EventRecipeItem!
+  updateEventRecipeItem(id: ID!, input: EventRecipeItemInput!): EventRecipeItem!
+  removeEventRecipeItem(id: ID!): Boolean!
+  syncEventRecipe(eventRecipeId: ID!): EventRecipe!
 }
 
 input UpdateProfileInput {
@@ -698,17 +701,22 @@ type FoodEvent {
 }
 
 # EventRecipe assigns a recipe to a serve time within an event. recipe is
-# null when the referenced recipe has been deleted. steps is the slot's
-# own snapshot of the recipe's steps — edits here never touch the
-# original recipe.
+# null when the referenced recipe has been deleted. steps and items are
+# the slot's own snapshots — edits here never touch the original recipe.
+# baseServings freezes the recipe's servings at link time; scalingFactor
+# is servings ÷ baseServings (1 when either is unset) and multiplies
+# every snapshot item's quantity.
 type EventRecipe {
   id: ID!
   mealType: String!
   targetTime: Time!
   servings: Int
+  baseServings: Int
+  scalingFactor: Float!
   notes: String
   recipe: Recipe
   steps: [EventRecipeStep!]!
+  items: [EventRecipeItem!]!
 }
 
 # EventRecipeStep is one step in an event slot's recipe snapshot. It is
@@ -723,6 +731,22 @@ type EventRecipeStep {
   isPassive: Boolean!
   dependsOnStepNumber: Int
   appliance: String
+}
+
+# EventRecipeItem is one ingredient in an event slot's snapshot.
+# quantity is already scaled by the slot's scalingFactor; baseQuantity is
+# the per-base-servings amount copied from the recipe.
+type EventRecipeItem {
+  id: ID!
+  item: Item!
+  ingredient: Ingredient
+  quantity: Float!
+  baseQuantity: Float!
+  unit: String!
+  section: String
+  displayOrder: Int!
+  notes: String
+  isOptional: Boolean!
 }
 
 type FoodEventPage {
@@ -769,6 +793,17 @@ input EventRecipeStepInput {
   appliance: String
 }
 
+input EventRecipeItemInput {
+  itemId: ID!
+  ingredientId: ID
+  quantity: Float!
+  unit: String!
+  section: String
+  displayOrder: Int
+  notes: String
+  isOptional: Boolean
+}
+
 # EventTimeline is the master schedule for a food event: each recipe's
 # steps placed backwards from its targetTime. warnings carries event-level
 # issues such as appliance contention between recipes.
@@ -785,6 +820,7 @@ type EventTimelineRecipe {
   name: String!
   targetTime: Time!
   servings: Int
+  baseServings: Int
   startBy: Time
   unschedulable: Boolean!
   warnings: [String!]!

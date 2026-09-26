@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, use, useMemo, useState } from "react";
+import { Fragment, use, useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -30,8 +31,8 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import { api, EventRecipeStepInput } from "@/lib/api";
-import { EventRecipe, EventRecipeStep, EventTimelineRecipe } from "@/lib/types";
+import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
+import { EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
 const STEP_TYPES = ["prep", "cook", "rest", "wait", "serve", "other"];
@@ -77,6 +78,19 @@ interface StepForm {
   appliance: string;
 }
 
+interface ItemForm {
+  eventRecipeItemID: number | null;
+  eventRecipeID: number;
+  // itemID is preserved from the row being edited; item is set when the
+  // user picks a different one in the autocomplete.
+  itemID: number;
+  item: Item | null;
+  quantity: string;
+  unit: string;
+  isOptional: boolean;
+  notes: string;
+}
+
 export default function EventDetailPage({
   params,
 }: {
@@ -90,6 +104,10 @@ export default function EventDetailPage({
   const [form, setForm] = useState<SlotForm | null>(null);
   const [stepDialogOpen, setStepDialogOpen] = useState(false);
   const [stepForm, setStepForm] = useState<StepForm | null>(null);
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [itemForm, setItemForm] = useState<ItemForm | null>(null);
+  const [itemSearch, setItemSearch] = useState("");
+  const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
 
@@ -108,6 +126,17 @@ export default function EventDetailPage({
   const recipesQuery = useQuery({
     queryKey: ["recipes"],
     queryFn: () => api.getRecipes(),
+  });
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedItemSearch(itemSearch), 300);
+    return () => clearTimeout(t);
+  }, [itemSearch]);
+
+  const itemSearchQuery = useQuery({
+    queryKey: ["items-search", debouncedItemSearch],
+    queryFn: () => api.searchItems(debouncedItemSearch),
+    enabled: debouncedItemSearch.length >= 2,
   });
 
   const event = eventQuery.data;
@@ -172,8 +201,32 @@ export default function EventDetailPage({
     onSuccess: invalidate,
   });
 
+  const saveItemMutation = useMutation({
+    mutationFn: (f: ItemForm) => {
+      const payload: EventRecipeItemInput = {
+        itemID: f.item?.itemID ?? f.itemID,
+        quantity: Number(f.quantity),
+        unit: f.unit,
+        isOptional: f.isOptional,
+        notes: f.notes === "" ? null : f.notes,
+      };
+      return f.eventRecipeItemID === null
+        ? api.addEventRecipeItem(f.eventRecipeID, payload)
+        : api.updateEventRecipeItem(f.eventRecipeItemID, payload);
+    },
+    onSuccess: () => {
+      invalidate();
+      setItemDialogOpen(false);
+    },
+  });
+
+  const removeItemMutation = useMutation({
+    mutationFn: (itemId: number) => api.removeEventRecipeItem(itemId),
+    onSuccess: invalidate,
+  });
+
   const syncStepsMutation = useMutation({
-    mutationFn: (eventRecipeId: number) => api.syncEventRecipeSteps(eventRecipeId),
+    mutationFn: (eventRecipeId: number) => api.syncEventRecipe(eventRecipeId),
     onSuccess: invalidate,
   });
 
@@ -228,6 +281,38 @@ export default function EventDetailPage({
       appliance: s.appliance ?? "",
     });
     setStepDialogOpen(true);
+  };
+
+  const openItemCreate = (r: EventRecipe) => {
+    setItemForm({
+      eventRecipeItemID: null,
+      eventRecipeID: r.eventRecipeID,
+      itemID: 0,
+      item: null,
+      quantity: "",
+      unit: "",
+      isOptional: false,
+      notes: "",
+    });
+    setItemSearch("");
+    setDebouncedItemSearch("");
+    setItemDialogOpen(true);
+  };
+
+  const openItemEdit = (r: EventRecipe, i: EventRecipeItem) => {
+    setItemForm({
+      eventRecipeItemID: i.eventRecipeItemID,
+      eventRecipeID: r.eventRecipeID,
+      itemID: i.itemID,
+      item: null,
+      quantity: String(i.baseQuantity),
+      unit: i.unit,
+      isOptional: i.isOptional,
+      notes: i.notes ?? "",
+    });
+    setItemSearch(i.itemName ?? "");
+    setDebouncedItemSearch("");
+    setItemDialogOpen(true);
   };
 
   if (isNaN(eventId)) {
@@ -327,7 +412,19 @@ export default function EventDetailPage({
                           {expandedSlot === r.eventRecipeID ? " ▲" : " ▼"}
                         </Button>
                       </TableCell>
-                      <TableCell>{r.servings ?? "—"}</TableCell>
+                      <TableCell>
+                        {r.servings ?? "—"}
+                        {r.scalingFactor !== 1 && r.baseServings != null && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: "block" }}
+                          >
+                            ×{r.scalingFactor} of {r.baseServings}
+                          </Typography>
+                        )}
+                      </TableCell>
                       <TableCell>{r.notes ?? ""}</TableCell>
                       <TableCell>
                         <IconButton size="small" aria-label="Edit" onClick={() => openEdit(r)}>
@@ -353,12 +450,19 @@ export default function EventDetailPage({
                             onSync={() => {
                               if (
                                 window.confirm(
-                                  "Re-copy the linked recipe's steps? Edits to this slot's steps will be lost."
+                                  "Re-copy the linked recipe's steps and ingredients? Edits to this slot's copies will be lost."
                                 )
                               ) {
                                 syncStepsMutation.mutate(r.eventRecipeID);
                               }
                             }}
+                          />
+                          <Divider sx={{ my: 1 }} />
+                          <SlotItems
+                            slot={r}
+                            onAdd={() => openItemCreate(r)}
+                            onEdit={(i) => openItemEdit(r, i)}
+                            onRemove={(id) => removeItemMutation.mutate(id)}
                           />
                         </TableCell>
                       </TableRow>
@@ -569,6 +673,86 @@ export default function EventDetailPage({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={itemDialogOpen} onClose={() => setItemDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          {itemForm?.eventRecipeItemID === null ? "Add Ingredient" : "Edit Ingredient"}
+        </DialogTitle>
+        <DialogContent>
+          {itemForm && (
+            <>
+              <Autocomplete
+                options={itemSearchQuery.data ?? []}
+                getOptionLabel={(item) => item?.name ?? ""}
+                isOptionEqualToValue={(option, value) => option?.itemID === value?.itemID}
+                inputValue={itemSearch}
+                onInputChange={(_, value) => setItemSearch(value)}
+                value={itemForm.item}
+                onChange={(_, value) => {
+                  setItemForm({ ...itemForm, item: value });
+                  if (value) void api.recordSelection("item", value.itemID);
+                }}
+                filterOptions={(options) => options}
+                loading={itemSearchQuery.isLoading}
+                noOptionsText={
+                  debouncedItemSearch.length < 2 ? "Type at least 2 characters" : "No items found"
+                }
+                renderInput={(params) => (
+                  <TextField {...params} label="Item" margin="dense" />
+                )}
+              />
+              <TextField
+                label="Quantity (per recipe serving)"
+                type="number"
+                fullWidth
+                margin="dense"
+                value={itemForm.quantity}
+                onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
+                helperText="The base amount — it is multiplied by the slot's servings ÷ recipe servings when displayed."
+              />
+              <TextField
+                label="Unit"
+                fullWidth
+                margin="dense"
+                value={itemForm.unit}
+                onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
+                helperText='Name or abbreviation, e.g. "cup", "g", "each"'
+              />
+              <TextField
+                label="Notes"
+                fullWidth
+                margin="dense"
+                value={itemForm.notes}
+                onChange={(e) => setItemForm({ ...itemForm, notes: e.target.value })}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={itemForm.isOptional}
+                    onChange={(e) => setItemForm({ ...itemForm, isOptional: e.target.checked })}
+                  />
+                }
+                label="Optional"
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setItemDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => itemForm && saveItemMutation.mutate(itemForm)}
+            disabled={
+              saveItemMutation.isPending ||
+              (itemForm?.item?.itemID ?? itemForm?.itemID ?? 0) === 0 ||
+              itemForm?.quantity.trim() === "" ||
+              itemForm?.unit.trim() === ""
+            }
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Divider />
     </Box>
   );
@@ -643,6 +827,100 @@ function SlotSteps({
                     size="small"
                     aria-label="Delete step"
                     onClick={() => onRemove(s.eventRecipeStepID)}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Box>
+  );
+}
+
+// SlotItems lists a slot's ingredient snapshot with quantities scaled by
+// the slot's servings ÷ the recipe's frozen base servings. These rows
+// live on the event slot — edits never reach the shared recipe.
+function SlotItems({
+  slot,
+  onAdd,
+  onEdit,
+  onRemove,
+}: {
+  slot: EventRecipe;
+  onAdd: () => void;
+  onEdit: (item: EventRecipeItem) => void;
+  onRemove: (itemId: number) => void;
+}) {
+  const items = [...(slot.items ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
+  return (
+    <Box sx={{ py: 1 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+        <Typography variant="subtitle2">
+          Ingredients
+          {slot.baseServings != null
+            ? ` — scaled for ${slot.servings ?? "—"} servings (recipe makes ${slot.baseServings})`
+            : slot.recipeID
+            ? " (copied from recipe — edits stay on this event)"
+            : ""}
+        </Typography>
+        <Button size="small" variant="outlined" onClick={onAdd}>
+          Add ingredient
+        </Button>
+      </Box>
+      {items.length === 0 ? (
+        <Typography color="text.secondary" variant="body2">
+          No ingredients yet.
+        </Typography>
+      ) : (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Item</TableCell>
+              <TableCell align="right">Qty</TableCell>
+              <TableCell>Unit</TableCell>
+              <TableCell>Section</TableCell>
+              <TableCell>Notes</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {items.map((i) => (
+              <TableRow key={i.eventRecipeItemID}>
+                <TableCell>
+                  {i.itemName ?? `Item ${i.itemID}`}
+                  {i.isOptional && (
+                    <Typography component="span" variant="caption" color="text.secondary">
+                      {" "}(optional)
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell align="right">
+                  {i.quantity}
+                  {i.quantity !== i.baseQuantity && (
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      {i.baseQuantity} base
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell>{i.unit}</TableCell>
+                <TableCell>{i.section ?? "—"}</TableCell>
+                <TableCell>{i.notes ?? ""}</TableCell>
+                <TableCell>
+                  <IconButton size="small" aria-label="Edit ingredient" onClick={() => onEdit(i)}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    aria-label="Delete ingredient"
+                    onClick={() => onRemove(i.eventRecipeItemID)}
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>

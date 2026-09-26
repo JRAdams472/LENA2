@@ -323,11 +323,33 @@ export interface EventRecipe {
   mealType: string;
   targetTime: string;
   servings: number | null;
+  // The linked recipe's servings frozen at link time — the scaling
+  // denominator. Null for free-form slots or recipes without servings.
+  baseServings: number | null;
+  // servings ÷ baseServings, or 1 when scaling does not apply.
+  scalingFactor: number;
   notes: string | null;
   recipe?: Recipe | null;
-  // The slot's own copy of the recipe's steps — edits here never touch
-  // the original recipe.
+  // The slot's own copies of the recipe's steps and items — edits here
+  // never touch the original recipe.
   steps?: EventRecipeStep[];
+  items?: EventRecipeItem[];
+}
+
+// One ingredient in a slot's snapshot. quantity is already scaled by the
+// slot's scalingFactor; baseQuantity is the per-base-servings amount
+// copied from the recipe.
+export interface EventRecipeItem {
+  eventRecipeItemID: number;
+  itemID: number;
+  itemName: string | null;
+  quantity: number;
+  baseQuantity: number;
+  unit: string;
+  section: string | null;
+  displayOrder: number;
+  notes: string | null;
+  isOptional: boolean;
 }
 
 export interface EventRecipeStep {
@@ -354,6 +376,7 @@ export interface EventTimelineRecipe {
   name: string;
   targetTime: string;
   servings: number | null;
+  baseServings: number | null;
   // Earliest moment work must begin; null when unschedulable.
   startBy: string | null;
   unschedulable: boolean;

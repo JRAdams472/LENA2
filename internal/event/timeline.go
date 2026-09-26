@@ -27,6 +27,7 @@ type TimelineRecipeInput struct {
 	Name          string
 	TargetTime    time.Time
 	Servings      *int32
+	BaseServings  *int32
 	Steps         []TimelineStepInput
 }
 
@@ -53,6 +54,7 @@ type RecipeTimeline struct {
 	Name          string
 	TargetTime    time.Time
 	Servings      *int32
+	BaseServings  *int32
 	// StartBy is the earliest moment work must begin for the target to be
 	// met; nil when the recipe is unschedulable.
 	StartBy       *time.Time
@@ -98,6 +100,7 @@ func scheduleRecipe(granularity int16, slot TimelineRecipeInput) RecipeTimeline 
 		Name:          slot.Name,
 		TargetTime:    slot.TargetTime,
 		Servings:      slot.Servings,
+		BaseServings:  slot.BaseServings,
 	}
 	if len(slot.Steps) == 0 {
 		rt.Unschedulable = true
