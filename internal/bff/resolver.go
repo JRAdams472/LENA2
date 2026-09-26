@@ -45,6 +45,7 @@ type Resolver struct {
 	GroceryService         GroceryService
 	InventoryService       InventoryService
 	MealPlanService        MealPlanService
+	EventService           EventService
 	RecipeService          RecipeService
 	UserPrefsService       UserPrefsService
 	WineService            WineService
@@ -84,6 +85,7 @@ type Services struct {
 	Grocery      GroceryService
 	Inventory    InventoryService
 	MealPlan     MealPlanService
+	Event        EventService
 	Recipe       RecipeService
 	UserPrefs    UserPrefsService
 	Wine         WineService
@@ -116,6 +118,7 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		GroceryService:         svc.Grocery,
 		InventoryService:       svc.Inventory,
 		MealPlanService:        svc.MealPlan,
+		EventService:           svc.Event,
 		RecipeService:          svc.Recipe,
 		UserPrefsService:       svc.UserPrefs,
 		WineService:            svc.Wine,

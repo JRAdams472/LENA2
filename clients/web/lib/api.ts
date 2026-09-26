@@ -549,6 +549,7 @@ interface GqlHouseholdNotification {
   id: string;
   kind: string;
   actor: GqlHouseholdUser | null;
+  foodEventId: string | null;
   createdAt: string;
 }
 
@@ -616,6 +617,7 @@ const toHouseholdNotification = (
   notificationID: num(n.id),
   kind: n.kind as NotificationKind,
   actor: n.actor ? toHouseholdUser(n.actor) : null,
+  foodEventId: n.foodEventId ? num(n.foodEventId) : null,
   createdAt: n.createdAt,
 });
 
@@ -1365,7 +1367,7 @@ export const api = {
     limit = 20
   ): Promise<HouseholdNotification[]> => {
     const data = await request<{ myNotifications: GqlHouseholdNotification[] }>(
-      `query ($limit: Int) { myNotifications(limit: $limit) { id kind createdAt actor { id displayName firstName lastName } } }`,
+      `query ($limit: Int) { myNotifications(limit: $limit) { id kind foodEventId createdAt actor { id displayName firstName lastName } } }`,
       { limit }
     );
     return (data.myNotifications ?? []).map(toHouseholdNotification);

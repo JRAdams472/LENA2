@@ -132,8 +132,8 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Hou
 
 const createNotification = `-- name: CreateNotification :one
 INSERT INTO household.notifications
-    (user_id, household_id, kind, actor_user_id, invite_id)
-VALUES ($1, $2, $3, $4, $5)
+    (user_id, household_id, kind, actor_user_id, invite_id, food_event_id)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at, food_event_id
 `
 
@@ -143,6 +143,7 @@ type CreateNotificationParams struct {
 	Kind        string      `json:"kind"`
 	ActorUserID pgtype.Int8 `json:"actor_user_id"`
 	InviteID    pgtype.Int8 `json:"invite_id"`
+	FoodEventID pgtype.Int8 `json:"food_event_id"`
 }
 
 func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotificationParams) (HouseholdNotification, error) {
@@ -152,6 +153,7 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		arg.Kind,
 		arg.ActorUserID,
 		arg.InviteID,
+		arg.FoodEventID,
 	)
 	var i HouseholdNotification
 	err := row.Scan(

@@ -120,6 +120,9 @@ type Query {
   myNotifications(limit: Int = 20): [HouseholdNotification!]!
   # Unread notification count — backs the nav badge; clients poll it.
   unreadNotificationCount: Int!
+  # The household's food events, newest event date first.
+  foodEvents(page: Int = 1, pageSize: Int = 25): FoodEventPage!
+  foodEvent(id: ID!): FoodEvent
 }
 
 type Mutation {
@@ -260,6 +263,15 @@ type Mutation {
   transferHouseholdOwnership(userId: ID!): Household!
   # Marks every unread notification read; returns whether any changed.
   markAllNotificationsRead: Boolean!
+
+  # Food events: household-scoped gatherings grouping recipes by serve
+  # time. All members may create and edit.
+  createFoodEvent(input: CreateFoodEventInput!): FoodEvent!
+  updateFoodEvent(id: ID!, input: UpdateFoodEventInput!): FoodEvent!
+  deleteFoodEvent(id: ID!): Boolean!
+  addEventRecipe(input: AddEventRecipeInput!): EventRecipe!
+  updateEventRecipe(id: ID!, input: UpdateEventRecipeInput!): EventRecipe!
+  removeEventRecipe(id: ID!): Boolean!
 }
 
 input UpdateProfileInput {
@@ -323,6 +335,9 @@ enum NotificationKind {
   MEMBER_REMOVED
   ROLE_CHANGED
   HOUSEHOLD_RENAMED
+  EVENT_CREATED
+  EVENT_UPDATED
+  EVENT_DELETED
 }
 
 # Restricted user projection for household flows — intentionally omits
@@ -358,6 +373,9 @@ type HouseholdNotification {
   kind: NotificationKind!
   # The member whose action produced the event; null for system rows.
   actor: HouseholdUser
+  # Deep-link target for event_* kinds; null otherwise or once the event
+  # row is deleted (FK is ON DELETE SET NULL).
+  foodEventId: ID
   createdAt: Time!
 }
 
@@ -532,6 +550,17 @@ type RecipeItemSection {
 type RecipeStep {
   stepNumber: Int!
   instruction: String!
+  # Timing metadata feeding the future event-timeline scheduler; null
+  # duration means the step's length is unknown.
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean!
+  # Overrides the default previous-step dependency edge, by step number
+  # within the same recipe.
+  dependsOnStepNumber: Int
+  # The resource the step occupies (e.g. "oven"), for contention-aware
+  # scheduling.
+  appliance: String
 }
 
 type RecipePage {
@@ -643,6 +672,64 @@ type MealSlotItem {
 type MealPlanPage {
   items: [MealPlan!]!
   pageInfo: PageInfo!
+}
+
+# FoodEvent is a household gathering (party, holiday meal) that groups
+# recipes scheduled to be served at absolute times.
+type FoodEvent {
+  id: ID!
+  name: String!
+  eventDate: String!
+  # Serve times must land on this boundary: 15 or 30 minutes.
+  slotGranularityMinutes: Int!
+  isActive: Boolean!
+  recipes: [EventRecipe!]!
+}
+
+# EventRecipe assigns a recipe to a serve time within an event. recipe is
+# null when the referenced recipe has been deleted.
+type EventRecipe {
+  id: ID!
+  mealType: String!
+  targetTime: Time!
+  servings: Int
+  notes: String
+  recipe: Recipe
+}
+
+type FoodEventPage {
+  items: [FoodEvent!]!
+  pageInfo: PageInfo!
+}
+
+input CreateFoodEventInput {
+  name: String!
+  eventDate: String!
+  slotGranularityMinutes: Int
+}
+
+input UpdateFoodEventInput {
+  name: String
+  eventDate: String
+  slotGranularityMinutes: Int
+  isActive: Boolean
+}
+
+input AddEventRecipeInput {
+  foodEventId: ID!
+  recipeId: ID
+  mealType: String!
+  targetTime: Time!
+  servings: Int
+  notes: String
+}
+
+input UpdateEventRecipeInput {
+  recipeId: ID
+  mealType: String
+  targetTime: Time
+  servings: Int
+  notes: String
 }
 
 type GroceryList {
@@ -831,6 +918,11 @@ input RecipeItemInput {
 input RecipeStepInput {
   stepNumber: Int!
   instruction: String!
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean
+  dependsOnStepNumber: Int
+  appliance: String
 }
 
 input UpdateItemInput {

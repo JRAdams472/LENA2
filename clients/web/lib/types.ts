@@ -52,7 +52,10 @@ export type NotificationKind =
   | "MEMBER_LEFT"
   | "MEMBER_REMOVED"
   | "ROLE_CHANGED"
-  | "HOUSEHOLD_RENAMED";
+  | "HOUSEHOLD_RENAMED"
+  | "EVENT_CREATED"
+  | "EVENT_UPDATED"
+  | "EVENT_DELETED";
 
 // A member entry pairs the restricted user projection with household
 // role metadata — roles never appear on HouseholdUser itself so invite
@@ -75,6 +78,9 @@ export interface HouseholdNotification {
   notificationID: number;
   kind: NotificationKind;
   actor: HouseholdUser | null;
+  // Deep-link target for EVENT_* kinds; null otherwise or once the event
+  // row is gone.
+  foodEventId: number | null;
   createdAt: string;
 }
 

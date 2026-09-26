@@ -54,6 +54,9 @@ const (
 	KindMemberRemoved    NotificationKind = "member_removed"
 	KindRoleChanged      NotificationKind = "role_changed"
 	KindHouseholdRenamed NotificationKind = "household_renamed"
+	KindEventCreated     NotificationKind = "event_created"
+	KindEventUpdated     NotificationKind = "event_updated"
+	KindEventDeleted     NotificationKind = "event_deleted"
 )
 
 // Notification is an in-app household event surfaced to a user via the
@@ -65,8 +68,11 @@ type Notification struct {
 	Kind           NotificationKind
 	ActorUserID    *int64
 	InviteID       *int64
-	ReadAt         *time.Time
-	CreatedAt      time.Time
+	// FoodEventID deep-links event notifications to the event; null for
+	// non-event kinds or after the event row is deleted (SET NULL).
+	FoodEventID *int64
+	ReadAt      *time.Time
+	CreatedAt   time.Time
 }
 
 // Invite is a pending or concluded household invitation.
@@ -254,7 +260,7 @@ func (s *Service) LockHousehold(ctx context.Context, householdID int64) (Househo
 // CreateNotification records a household event for a member and prunes
 // their read backlog; call it inside the producing operation's
 // transaction so the notification can never outlive a rolled-back change.
-func (s *Service) CreateNotification(ctx context.Context, userID int64, kind NotificationKind, householdID *int64, actorUserID *int64, inviteID *int64) error {
+func (s *Service) CreateNotification(ctx context.Context, userID int64, kind NotificationKind, householdID *int64, actorUserID *int64, inviteID *int64, foodEventID *int64) error {
 	hh := pgtype.Int8{}
 	if householdID != nil {
 		hh = pgtype.Int8{Int64: *householdID, Valid: true}
@@ -267,12 +273,17 @@ func (s *Service) CreateNotification(ctx context.Context, userID int64, kind Not
 	if inviteID != nil {
 		inv = pgtype.Int8{Int64: *inviteID, Valid: true}
 	}
+	ev := pgtype.Int8{}
+	if foodEventID != nil {
+		ev = pgtype.Int8{Int64: *foodEventID, Valid: true}
+	}
 	if _, err := s.q.CreateNotification(ctx, sqlc.CreateNotificationParams{
 		UserID:      userID,
 		HouseholdID: hh,
 		Kind:        string(kind),
 		ActorUserID: actor,
 		InviteID:    inv,
+		FoodEventID: ev,
 	}); err != nil {
 		return fmt.Errorf("create notification: %w", domainerr.FromStorage(err))
 	}
@@ -345,6 +356,10 @@ func toNotification(row sqlc.HouseholdNotification) Notification {
 	if row.InviteID.Valid {
 		id := row.InviteID.Int64
 		n.InviteID = &id
+	}
+	if row.FoodEventID.Valid {
+		id := row.FoodEventID.Int64
+		n.FoodEventID = &id
 	}
 	if row.ReadAt.Valid {
 		t := row.ReadAt.Time

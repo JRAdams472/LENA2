@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/event"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -59,6 +60,7 @@ func TestBFF_Integration(t *testing.T) {
 
 	resolver := NewResolver(pool, Services{
 		Analytics: analytics.NewService(pool),
+		Event:     event.NewService(pool),
 		Grocery:   grocery.NewService(pool),
 		Inventory: inventory.NewService(pool),
 		MealPlan:  mealplan.NewService(pool),
@@ -92,6 +94,9 @@ func TestBFF_Integration(t *testing.T) {
 	})
 	t.Run("household management", func(t *testing.T) {
 		runHouseholdManagementTests(t, srv, issuer)
+	})
+	t.Run("events", func(t *testing.T) {
+		runEventTests(t, srv, issuer)
 	})
 }
 
@@ -1417,4 +1422,218 @@ func containsID(items []struct {
 		}
 	}
 	return false
+}
+
+// runEventTests exercises the household-scoped event surface: a two-member
+// household where both members see and mutate shared events, the
+// event_created/event_updated/event_deleted notification fan-out, target-time
+// validation, and isolation from other households.
+func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	tokH := issuer.Token(t, "ev-h", "ev-h@example.com", "EV H")
+	tokI := issuer.Token(t, "ev-i", "ev-i@example.com", "EV I")
+	tokJ := issuer.Token(t, "ev-j", "ev-j@example.com", "EV J")
+
+	meID := func(token string) string {
+		status, gr := doGraphQL(t, srv, token, `{ me { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Me struct {
+				ID string `json:"id"`
+			} `json:"me"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.Me.ID
+	}
+	idI := meID(tokI)
+
+	// H invites I; I accepts. J stays in a household of one.
+	status, gr := doGraphQL(t, srv, tokH, `mutation Invite($userId: ID!) {
+		inviteHouseholdMember(userId: $userId) { id }
+	}`, map[string]any{"userId": idI})
+	require.Equal(t, http.StatusOK, status)
+	var inviteRes struct {
+		Invite struct {
+			ID string `json:"id"`
+		} `json:"inviteHouseholdMember"`
+	}
+	decodeData(t, gr.Data, &inviteRes)
+
+	status, gr = doGraphQL(t, srv, tokI, `mutation Accept($inviteId: ID!) {
+		acceptHouseholdInvite(inviteId: $inviteId) { id }
+	}`, map[string]any{"inviteId": inviteRes.Invite.ID})
+	require.Equal(t, http.StatusOK, status)
+
+	// Clear H's invite_accepted notification so the unread counts below
+	// reflect only event activity.
+	status, gr = doGraphQL(t, srv, tokH, `mutation { markAllNotificationsRead }`, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	// H creates an event; I sees it listed (shared household scope) and is
+	// notified with the event deep-link.
+	status, gr = doGraphQL(t, srv, tokH, `mutation {
+		createFoodEvent(input: { name: "Friendsgiving", eventDate: "2026-11-26", slotGranularityMinutes: 30 }) {
+			id name eventDate slotGranularityMinutes isActive
+		}
+	}`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var createRes struct {
+		Event struct {
+			ID                     string `json:"id"`
+			Name                   string `json:"name"`
+			EventDate              string `json:"eventDate"`
+			SlotGranularityMinutes int    `json:"slotGranularityMinutes"`
+			IsActive               bool   `json:"isActive"`
+		} `json:"createFoodEvent"`
+	}
+	decodeData(t, gr.Data, &createRes)
+	eventID := createRes.Event.ID
+	assert.Equal(t, "Friendsgiving", createRes.Event.Name)
+	assert.Equal(t, "2026-11-26", createRes.Event.EventDate)
+	assert.Equal(t, 30, createRes.Event.SlotGranularityMinutes)
+	assert.True(t, createRes.Event.IsActive)
+
+	status, gr = doGraphQL(t, srv, tokI, `{
+		foodEvents(page: 1, pageSize: 10) {
+			items { id name }
+			pageInfo { totalCount }
+		}
+	}`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var listRes struct {
+		FoodEvents struct {
+			Items []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"items"`
+			PageInfo struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"pageInfo"`
+		} `json:"foodEvents"`
+	}
+	decodeData(t, gr.Data, &listRes)
+	require.Len(t, listRes.FoodEvents.Items, 1)
+	assert.Equal(t, eventID, listRes.FoodEvents.Items[0].ID)
+
+	status, gr = doGraphQL(t, srv, tokI, `{ myNotifications(limit: 5) { id kind foodEventId } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var notifRes struct {
+		Notifs []struct {
+			ID          string  `json:"id"`
+			Kind        string  `json:"kind"`
+			FoodEventID *string `json:"foodEventId"`
+		} `json:"myNotifications"`
+	}
+	decodeData(t, gr.Data, &notifRes)
+	var sawEventCreated bool
+	for _, n := range notifRes.Notifs {
+		if n.Kind == "EVENT_CREATED" {
+			sawEventCreated = true
+			require.NotNil(t, n.FoodEventID)
+			assert.Equal(t, eventID, *n.FoodEventID)
+		}
+	}
+	assert.True(t, sawEventCreated, "invitee should get an event_created notification with the deep-link")
+
+	// I adds a recipe slot (free-form, no recipe row — recipeId is optional).
+	status, gr = doGraphQL(t, srv, tokI, `mutation AddSlot($eventId: ID!) {
+		addEventRecipe(input: { foodEventId: $eventId, mealType: "dinner", targetTime: "2026-11-26T18:30:00Z", servings: 8, notes: "turkey" }) {
+			id mealType servings notes
+		}
+	}`, map[string]any{"eventId": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var addRes struct {
+		Slot struct {
+			ID       string  `json:"id"`
+			MealType string  `json:"mealType"`
+			Servings *int    `json:"servings"`
+			Notes    *string `json:"notes"`
+		} `json:"addEventRecipe"`
+	}
+	decodeData(t, gr.Data, &addRes)
+	slotID := addRes.Slot.ID
+	assert.Equal(t, "dinner", addRes.Slot.MealType)
+	require.NotNil(t, addRes.Slot.Servings)
+	assert.Equal(t, 8, *addRes.Slot.Servings)
+
+	// Off-boundary and off-date target times are rejected with BAD_USER_INPUT.
+	status, gr = doGraphQLExpectErrors(t, srv, tokI, `mutation BadSlot($eventId: ID!) {
+		addEventRecipe(input: { foodEventId: $eventId, mealType: "dinner", targetTime: "2026-11-26T18:07:00Z" }) { id }
+	}`, map[string]any{"eventId": eventID})
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, gr.Errors)
+	assert.Equal(t, codeBadUserInput, gr.Errors[0].Extensions["code"])
+
+	status, gr = doGraphQLExpectErrors(t, srv, tokI, `mutation BadDate($eventId: ID!) {
+		addEventRecipe(input: { foodEventId: $eventId, mealType: "dinner", targetTime: "2026-11-27T18:00:00Z" }) { id }
+	}`, map[string]any{"eventId": eventID})
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, gr.Errors)
+	assert.Equal(t, codeBadUserInput, gr.Errors[0].Extensions["code"])
+
+	// H reads the slot back through the event.
+	status, gr = doGraphQL(t, srv, tokH, `query Event($id: ID!) {
+		foodEvent(id: $id) { id recipes { id mealType notes } }
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var evRes struct {
+		Event *struct {
+			ID      string `json:"id"`
+			Recipes []struct {
+				ID       string `json:"id"`
+				MealType string `json:"mealType"`
+			} `json:"recipes"`
+		} `json:"foodEvent"`
+	}
+	decodeData(t, gr.Data, &evRes)
+	require.NotNil(t, evRes.Event)
+	require.Len(t, evRes.Event.Recipes, 1)
+	assert.Equal(t, slotID, evRes.Event.Recipes[0].ID)
+
+	// J is a different household: no visibility, no mutation.
+	status, gr = doGraphQL(t, srv, tokJ, `{ foodEvents(page: 1, pageSize: 10) { items { id } pageInfo { totalCount } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var jList struct {
+		FoodEvents struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"foodEvents"`
+	}
+	decodeData(t, gr.Data, &jList)
+	assert.Empty(t, jList.FoodEvents.Items)
+
+	status, gr = doGraphQLExpectErrors(t, srv, tokJ, `query Peek($id: ID!) { foodEvent(id: $id) { id } }`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, gr.Errors, "foreign-household read must fail")
+	assert.Equal(t, codeNotFound, gr.Errors[0].Extensions["code"])
+
+	// I updates the slot and the event; H's unread count climbs.
+	status, gr = doGraphQL(t, srv, tokI, `mutation Upd($id: ID!) {
+		updateEventRecipe(id: $id, input: { servings: 10 }) { id servings }
+	}`, map[string]any{"id": slotID})
+	require.Equal(t, http.StatusOK, status)
+
+	status, gr = doGraphQL(t, srv, tokH, `{ unreadNotificationCount }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var unreadH struct {
+		Count int `json:"unreadNotificationCount"`
+	}
+	decodeData(t, gr.Data, &unreadH)
+	// Slot add + slot update were both I-originated and notified H.
+	assert.Equal(t, 2, unreadH.Count)
+
+	// Delete the event; members get event_deleted (deep-link nulled by SET NULL).
+	status, gr = doGraphQL(t, srv, tokH, `mutation Del($id: ID!) { deleteFoodEvent(id: $id) }`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+
+	status, gr = doGraphQL(t, srv, tokI, `{ myNotifications(limit: 10) { kind foodEventId } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	decodeData(t, gr.Data, &notifRes)
+	var sawDeleted bool
+	for _, n := range notifRes.Notifs {
+		if n.Kind == "EVENT_DELETED" {
+			sawDeleted = true
+		}
+	}
+	assert.True(t, sawDeleted)
 }

@@ -83,6 +83,12 @@ type RecipeItem {
 type RecipeStep {
   stepNumber: Int!
   instruction: String!
+  # Timing metadata feeding the event master-timeline scheduler.
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean!
+  dependsOnStepNumber: Int
+  appliance: String
 }
 ```
 
@@ -204,6 +210,8 @@ type GroceryListItem {
 | `mealPlans(page, pageSize)` | `Int, Int` | `MealPlanPage!` | Current user's plans |
 | `groceryList(id)` | `ID!` | `GroceryList` | Single grocery list |
 | `groceryLists(page, pageSize)` | `Int, Int` | `GroceryListPage!` | Current user's lists |
+| `foodEvent(id)` | `ID!` | `FoodEvent` | Single household event |
+| `foodEvents(page, pageSize)` | `Int, Int` | `FoodEventPage!` | Household's events |
 
 ## Mutations
 
@@ -240,6 +248,17 @@ type GroceryListItem {
 - `generateGroceryList(mealPlanId: ID!): GroceryList!`
 - `toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!`
 - `deleteGroceryItem(groceryListItemId: ID!): Boolean!`
+
+### Events (household-scoped)
+
+`FoodEvent` groups `EventRecipe` slots — a recipe (or free-form note) with a `mealType`, a `targetTime` serve time on the event date, and optional `servings`. `targetTime` must fall on the event's `slotGranularityMinutes` boundary (15 or 30) and on `eventDate`; violations return BAD_USER_INPUT. All members of the household can create and edit events; each mutation notifies the other members (`event_created`/`event_updated`/`event_deleted` kinds carrying `foodEventId` for deep-linking).
+
+- `createFoodEvent(input: CreateFoodEventInput!): FoodEvent!`
+- `updateFoodEvent(id: ID!, input: UpdateFoodEventInput!): FoodEvent!`
+- `deleteFoodEvent(id: ID!): Boolean!`
+- `addEventRecipe(input: AddEventRecipeInput!): EventRecipe!`
+- `updateEventRecipe(id: ID!, input: UpdateEventRecipeInput!): EventRecipe!`
+- `removeEventRecipe(id: ID!): Boolean!`
 
 ## Example operations
 
