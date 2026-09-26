@@ -228,6 +228,65 @@ describe("food event api client", () => {
     expect(body.query).toContain("removeEventRecipe");
     expect(body.variables.id).toBe("9");
   });
+
+  it("getEventTimeline maps recipes and steps", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        eventTimeline: {
+          foodEventId: "3",
+          warnings: ["appliance conflict: oven"],
+          recipes: [
+            {
+              eventRecipeId: "9",
+              name: "Casserole",
+              targetTime: "2026-11-26T18:30:00Z",
+              servings: 8,
+              startBy: "2026-11-26T17:30:00Z",
+              unschedulable: false,
+              warnings: ["1 step(s) have no duration — estimated"],
+              steps: [
+                {
+                  stepNumber: 1,
+                  instruction: "mix",
+                  stepType: "prep",
+                  isPassive: false,
+                  appliance: null,
+                  durationMinutes: null,
+                  scheduledMinutes: 30,
+                  estimated: true,
+                  startTime: "2026-11-26T17:30:00Z",
+                  endTime: "2026-11-26T18:00:00Z",
+                  conflicts: ["oven is needed"],
+                },
+              ],
+            },
+          ],
+        },
+      })
+    );
+
+    const tl = await api.getEventTimeline(3);
+
+    const body = lastBody();
+    expect(body.query).toContain("eventTimeline");
+    expect(body.variables.id).toBe("3");
+    expect(tl.foodEventID).toBe(3);
+    expect(tl.warnings).toEqual(["appliance conflict: oven"]);
+    expect(tl.recipes).toHaveLength(1);
+    const r = tl.recipes[0];
+    expect(r.eventRecipeID).toBe(9);
+    expect(r.startBy).toBe("2026-11-26T17:30:00Z");
+    const s = r.steps[0];
+    expect(s.scheduledMinutes).toBe(30);
+    expect(s.estimated).toBe(true);
+    expect(s.conflicts).toEqual(["oven is needed"]);
+  });
+
+  it("getEventTimeline throws 404 when the event is null", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ eventTimeline: null }));
+
+    await expect(api.getEventTimeline(3)).rejects.toThrow(ApiError);
+  });
 });
 
 describe("recipe step timing round-trip", () => {

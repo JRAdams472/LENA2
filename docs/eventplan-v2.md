@@ -106,17 +106,26 @@ Each phase: own branch, PR to `main`, merge after green CI + approval.
 - `AdminLayout` notification text + `/events` deep-link; nav link
 - Jest coverage for page, api, notification labels
 
-### Deferred — master timeline phase (not this work)
+### Phase 4 — `events-p4`: master timeline engine + web timeline
 
-- Engine backwards-schedules from `event_recipe.target_time` over the
-  step DAG (`depends_on_step_number`, default = previous step), subtracts
-  `duration_minutes`, overlaps `is_passive` steps, contends `appliance`
-  resources; Ollama-assisted adjustment advice when appliances are
-  oversubscribed; NULL durations fall back to recipe-level prep/cook
-  split or flag the recipe unschedulable
-- Mobile events UI + timeline land together in that phase
-- Persistence (compute-on-read vs cache table) decided then; current
-  schema supports either
+- `internal/event/timeline.go` — pure compute-on-read engine: backwards-
+  schedules each recipe's step DAG from `target_time` (default edge =
+  previous step; `depends_on_step_number` overrides), rounds durations up
+  to the event's slot granularity, estimates NULL durations as one slot
+  (flagged `estimated`), marks dependency cycles/free-form slots
+  `unschedulable`, and flags overlapping `appliance` usage as `conflicts`
+- GraphQL `eventTimeline(foodEventId)` → `EventTimeline` /
+  `EventTimelineRecipe` / `TimelineStep` (computed on read — the cache-
+  table persistence option was dropped in favor of compute-on-read)
+- Web: `getEventTimeline` API + a lazy "Generate Timeline" section on
+  `/events/[id]` showing per-recipe step tables, start-by times, and
+  conflict warnings
+
+### Remaining deferred work
+
+- Ollama-assisted adjustment advice when appliances are oversubscribed
+  (the `internal/platform/ollamaclient` infrastructure already exists)
+- Mobile events UI + timeline view
 
 ## Fix-preservation audit
 

@@ -1589,6 +1589,36 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	require.Len(t, evRes.Event.Recipes, 1)
 	assert.Equal(t, slotID, evRes.Event.Recipes[0].ID)
 
+	// The timeline computes on read; a free-form slot has no steps and is
+	// flagged unschedulable rather than dropped.
+	status, gr = doGraphQL(t, srv, tokI, `query Timeline($id: ID!) {
+		eventTimeline(foodEventId: $id) {
+			foodEventId warnings
+			recipes { eventRecipeId name unschedulable warnings startBy }
+		}
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var tlRes struct {
+		Timeline *struct {
+			FoodEventID string `json:"foodEventId"`
+			Recipes     []struct {
+				EventRecipeID string   `json:"eventRecipeId"`
+				Name          string   `json:"name"`
+				Unschedulable bool     `json:"unschedulable"`
+				Warnings      []string `json:"warnings"`
+				StartBy       *string  `json:"startBy"`
+			} `json:"recipes"`
+		} `json:"eventTimeline"`
+	}
+	decodeData(t, gr.Data, &tlRes)
+	require.NotNil(t, tlRes.Timeline)
+	assert.Equal(t, eventID, tlRes.Timeline.FoodEventID)
+	require.Len(t, tlRes.Timeline.Recipes, 1)
+	assert.Equal(t, slotID, tlRes.Timeline.Recipes[0].EventRecipeID)
+	assert.Equal(t, "turkey", tlRes.Timeline.Recipes[0].Name)
+	assert.True(t, tlRes.Timeline.Recipes[0].Unschedulable)
+	assert.Nil(t, tlRes.Timeline.Recipes[0].StartBy)
+
 	// J is a different household: no visibility, no mutation.
 	status, gr = doGraphQL(t, srv, tokJ, `{ foodEvents(page: 1, pageSize: 10) { items { id } pageInfo { totalCount } } }`, nil)
 	require.Equal(t, http.StatusOK, status)

@@ -327,6 +327,42 @@ export interface EventRecipe {
   recipe?: Recipe | null;
 }
 
+// The master schedule for an event: every recipe's steps backwards-
+// scheduled from their serve times, computed on read.
+export interface EventTimeline {
+  foodEventID: number;
+  warnings: string[];
+  recipes: EventTimelineRecipe[];
+}
+
+export interface EventTimelineRecipe {
+  eventRecipeID: number;
+  name: string;
+  targetTime: string;
+  servings: number | null;
+  // Earliest moment work must begin; null when unschedulable.
+  startBy: string | null;
+  unschedulable: boolean;
+  warnings: string[];
+  steps: TimelineStep[];
+}
+
+export interface TimelineStep {
+  stepNumber: number;
+  instruction: string;
+  stepType: string | null;
+  isPassive: boolean;
+  appliance: string | null;
+  durationMinutes: number | null;
+  // Effective slot time used (duration rounded up to slot granularity).
+  scheduledMinutes: number;
+  // Duration was missing and estimated as one slot.
+  estimated: boolean;
+  startTime: string;
+  endTime: string;
+  conflicts: string[];
+}
+
 export interface MealPlan extends AuditableEntity {
   mealPlanID: number;
   planName: string;

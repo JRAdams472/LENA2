@@ -212,6 +212,7 @@ type GroceryListItem {
 | `groceryLists(page, pageSize)` | `Int, Int` | `GroceryListPage!` | Current user's lists |
 | `foodEvent(id)` | `ID!` | `FoodEvent` | Single household event |
 | `foodEvents(page, pageSize)` | `Int, Int` | `FoodEventPage!` | Household's events |
+| `eventTimeline(foodEventId)` | `ID!` | `EventTimeline` | Backwards-scheduled master timeline |
 
 ## Mutations
 
@@ -259,6 +260,8 @@ type GroceryListItem {
 - `addEventRecipe(input: AddEventRecipeInput!): EventRecipe!`
 - `updateEventRecipe(id: ID!, input: UpdateEventRecipeInput!): EventRecipe!`
 - `removeEventRecipe(id: ID!): Boolean!`
+
+`eventTimeline(foodEventId)` computes the master schedule on read: each recipe's step DAG is placed backwards from its `targetTime` (sinks end at the target, each step ends by its dependents' latest start). Durations round up to the event's slot granularity so all boundaries align; a missing `durationMinutes` is estimated as one slot and flagged `estimated`. Steps that name the same `appliance` and overlap are marked in `conflicts` and surfaced in recipe/event `warnings` — the engine reports contention but does not resolve it. `EventTimelineRecipe.startBy` is the earliest required start; `unschedulable` covers free-form slots and dependency cycles.
 
 ## Example operations
 

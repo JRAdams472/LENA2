@@ -123,6 +123,10 @@ type Query {
   # The household's food events, newest event date first.
   foodEvents(page: Int = 1, pageSize: Int = 25): FoodEventPage!
   foodEvent(id: ID!): FoodEvent
+  # Master timeline for an event: every recipe's steps backwards-scheduled
+  # from their serve times, with missing-duration estimates and appliance
+  # contention warnings. Computed on read.
+  eventTimeline(foodEventId: ID!): EventTimeline
 }
 
 type Mutation {
@@ -730,6 +734,46 @@ input UpdateEventRecipeInput {
   targetTime: Time
   servings: Int
   notes: String
+}
+
+# EventTimeline is the master schedule for a food event: each recipe's
+# steps placed backwards from its targetTime. warnings carries event-level
+# issues such as appliance contention between recipes.
+type EventTimeline {
+  foodEventId: ID!
+  warnings: [String!]!
+  recipes: [EventTimelineRecipe!]!
+}
+
+# EventTimelineRecipe is one event slot's computed schedule. startBy is
+# the earliest moment work must begin; null when unschedulable.
+type EventTimelineRecipe {
+  eventRecipeId: ID!
+  name: String!
+  targetTime: Time!
+  servings: Int
+  startBy: Time
+  unschedulable: Boolean!
+  warnings: [String!]!
+  steps: [TimelineStep!]!
+}
+
+# TimelineStep is one recipe step placed on the timeline. scheduledMinutes
+# is the effective slot time used (duration rounded up to the event's
+# granularity); estimated marks a step that had no duration and was given
+# one slot. conflicts lists appliance-contention messages.
+type TimelineStep {
+  stepNumber: Int!
+  instruction: String!
+  stepType: String
+  isPassive: Boolean!
+  appliance: String
+  durationMinutes: Int
+  scheduledMinutes: Int!
+  estimated: Boolean!
+  startTime: Time!
+  endTime: Time!
+  conflicts: [String!]!
 }
 
 type GroceryList {

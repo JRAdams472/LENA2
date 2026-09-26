@@ -71,6 +71,73 @@ func (r *Resolver) FoodEvents(ctx context.Context, args struct {
 	return &foodEventPageResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, events: events, recipesByEvent: recipesByEvent, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
+// EventTimeline computes the event's master schedule on read: load the
+// slots and their recipe steps, then hand everything to the pure engine.
+func (r *Resolver) EventTimeline(ctx context.Context, args struct {
+	FoodEventID graphql.ID
+}) (*eventTimelineResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.FoodEventID))
+	if err != nil {
+		return nil, err
+	}
+	ev, err := r.EventService.GetFoodEventByID(ctx, id, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	recipes, err := r.EventService.ListEventRecipesForEvent(ctx, ev.FoodEventID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
+		distinctIDs(recipes, func(er event.EventRecipe) *int64 { return er.RecipeID }), nil)
+	if err != nil {
+		return nil, err
+	}
+	slots := make([]event.TimelineRecipeInput, len(recipes))
+	for i, er := range recipes {
+		var steps []event.TimelineStepInput
+		name := ""
+		if er.RecipeID != nil {
+			if rec, ok := rc.recipes[*er.RecipeID]; ok {
+				name = rec.Name
+				for _, s := range rc.stepsBy[*er.RecipeID] {
+					steps = append(steps, event.TimelineStepInput{
+						StepNumber:          s.StepNumber,
+						Instruction:         s.Instruction,
+						DurationMinutes:     s.DurationMinutes,
+						StepType:            s.StepType,
+						IsPassive:           s.IsPassive,
+						DependsOnStepNumber: s.DependsOnStepNumber,
+						Appliance:           s.Appliance,
+					})
+				}
+			}
+		}
+		if name == "" {
+			name = er.Notes
+		}
+		if name == "" {
+			name = er.MealType
+		}
+		if name == "" {
+			name = "Unnamed dish"
+		}
+		slots[i] = event.TimelineRecipeInput{
+			EventRecipeID: er.EventRecipeID,
+			Name:          name,
+			TargetTime:    er.TargetTime,
+			Servings:      er.Servings,
+			Steps:         steps,
+		}
+	}
+	tl := event.BuildTimeline(ev, slots)
+	return &eventTimelineResolver{tl: tl}, nil
+}
+
 // CreateFoodEvent creates a new event for the caller's household.
 func (r *Resolver) CreateFoodEvent(ctx context.Context, args struct{ Input createFoodEventInput }) (*foodEventResolver, error) {
 	u, err := userFromContext(ctx)
@@ -550,3 +617,89 @@ type updateEventRecipeInput struct {
 	Servings   *int32
 	Notes      *string
 }
+
+// eventTimelineResolver resolves the computed EventTimeline.
+type eventTimelineResolver struct {
+	tl event.Timeline
+}
+
+func (r *eventTimelineResolver) FoodEventID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.tl.FoodEventID, 10))
+}
+
+func (r *eventTimelineResolver) Warnings() []string { return r.tl.Warnings }
+
+func (r *eventTimelineResolver) Recipes() []*eventTimelineRecipeResolver {
+	out := make([]*eventTimelineRecipeResolver, len(r.tl.Recipes))
+	for i := range r.tl.Recipes {
+		out[i] = &eventTimelineRecipeResolver{rt: r.tl.Recipes[i]}
+	}
+	return out
+}
+
+// eventTimelineRecipeResolver resolves EventTimelineRecipe.
+type eventTimelineRecipeResolver struct {
+	rt event.RecipeTimeline
+}
+
+func (r *eventTimelineRecipeResolver) EventRecipeID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.rt.EventRecipeID, 10))
+}
+
+func (r *eventTimelineRecipeResolver) Name() string { return r.rt.Name }
+
+func (r *eventTimelineRecipeResolver) TargetTime() graphql.Time {
+	return graphql.Time{Time: r.rt.TargetTime}
+}
+
+func (r *eventTimelineRecipeResolver) Servings() *int32 { return r.rt.Servings }
+
+func (r *eventTimelineRecipeResolver) StartBy() *graphql.Time {
+	if r.rt.StartBy == nil {
+		return nil
+	}
+	return &graphql.Time{Time: *r.rt.StartBy}
+}
+
+func (r *eventTimelineRecipeResolver) Unschedulable() bool { return r.rt.Unschedulable }
+
+func (r *eventTimelineRecipeResolver) Warnings() []string { return r.rt.Warnings }
+
+func (r *eventTimelineRecipeResolver) Steps() []*timelineStepResolver {
+	out := make([]*timelineStepResolver, len(r.rt.Steps))
+	for i := range r.rt.Steps {
+		out[i] = &timelineStepResolver{st: r.rt.Steps[i]}
+	}
+	return out
+}
+
+// timelineStepResolver resolves TimelineStep.
+type timelineStepResolver struct {
+	st event.ScheduledStep
+}
+
+func (r *timelineStepResolver) StepNumber() int32 { return r.st.StepNumber }
+
+func (r *timelineStepResolver) Instruction() string { return r.st.Instruction }
+
+func (r *timelineStepResolver) StepType() *string { return nilIfEmpty(r.st.StepType) }
+
+func (r *timelineStepResolver) IsPassive() bool { return r.st.IsPassive }
+
+func (r *timelineStepResolver) Appliance() *string { return nilIfEmpty(r.st.Appliance) }
+
+func (r *timelineStepResolver) DurationMinutes() *int32 { return r.st.DurationMinute }
+
+func (r *timelineStepResolver) ScheduledMinutes() int32 { return r.st.ScheduledMinutes }
+
+func (r *timelineStepResolver) Estimated() bool { return r.st.Estimated }
+
+func (r *timelineStepResolver) StartTime() graphql.Time {
+	return graphql.Time{Time: r.st.Start}
+}
+
+func (r *timelineStepResolver) EndTime() graphql.Time {
+	return graphql.Time{Time: r.st.End}
+}
+
+func (r *timelineStepResolver) Conflicts() []string { return r.st.Conflicts }

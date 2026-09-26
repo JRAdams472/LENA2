@@ -323,5 +323,65 @@ func TestResolver_RemoveEventRecipe(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestResolver_EventTimeline(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ev := mock.NewMockEventService(ctrl)
+	rec := mock.NewMockRecipeService(ctrl)
+	r := &Resolver{EventService: ev, RecipeService: rec}
+
+	recipeID := int64(11)
+	dur := int32(30)
+	ev.EXPECT().GetFoodEventByID(gomock.Any(), int64(3), int64(7)).Return(evRow(3), nil)
+	ev.EXPECT().ListEventRecipesForEvent(gomock.Any(), int64(3), int64(7)).Return([]event.EventRecipe{
+		{EventRecipeID: 9, FoodEventID: 3, RecipeID: &recipeID, MealType: "dinner", TargetTime: evTarget},
+		{EventRecipeID: 10, FoodEventID: 3, MealType: "appetizer", Notes: "Cheese board", TargetTime: evTarget},
+	}, nil)
+	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{11}).Return([]recipe.Recipe{{RecipeID: 11, Name: "Casserole"}}, nil)
+	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeItem{}, nil)
+	rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeStep{
+		{RecipeID: 11, StepNumber: 1, Instruction: "mix", DurationMinutes: &dur},
+		{RecipeID: 11, StepNumber: 2, Instruction: "bake", DurationMinutes: &dur, Appliance: "oven"},
+	}, nil)
+	rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(7), []int64{11}).Return([]recipe.RecipeRating{}, nil)
+	rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{11}).Return([]recipe.RatingSummary{}, nil)
+
+	res, err := r.EventTimeline(evCtx(), struct{ FoodEventID graphql.ID }{FoodEventID: "3"})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, graphql.ID("3"), res.FoodEventID())
+	assert.Empty(t, res.Warnings())
+
+	recipes := res.Recipes()
+	require.Len(t, recipes, 2)
+	assert.Equal(t, "Casserole", recipes[0].Name())
+	assert.False(t, recipes[0].Unschedulable())
+	require.NotNil(t, recipes[0].StartBy())
+	assert.Equal(t, evTarget.Add(-60*time.Minute), recipes[0].StartBy().Time)
+
+	steps := recipes[0].Steps()
+	require.Len(t, steps, 2)
+	assert.Equal(t, evTarget.Add(-60*time.Minute), steps[0].StartTime().Time)
+	assert.Equal(t, evTarget.Add(-30*time.Minute), steps[0].EndTime().Time)
+	assert.Equal(t, evTarget, steps[1].EndTime().Time)
+
+	// Free-form slot falls back to notes for a name and is unschedulable.
+	assert.Equal(t, "Cheese board", recipes[1].Name())
+	assert.True(t, recipes[1].Unschedulable())
+	assert.NotEmpty(t, recipes[1].Warnings())
+}
+
+func TestResolver_EventTimeline_WrongHousehold(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ev := mock.NewMockEventService(ctrl)
+	r := &Resolver{EventService: ev}
+
+	ev.EXPECT().GetFoodEventByID(gomock.Any(), int64(3), int64(7)).
+		Return(event.FoodEvent{}, domainerr.ErrNotFound)
+
+	res, err := r.EventTimeline(evCtx(), struct{ FoodEventID graphql.ID }{FoodEventID: "3"})
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+	assert.Nil(t, res)
+}
+
 func int64Ptr(v int64) *int64 { return &v }
 func strPtr(v string) *string { return &v }

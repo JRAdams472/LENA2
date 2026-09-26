@@ -29,7 +29,7 @@ import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { api } from "@/lib/api";
-import { EventRecipe } from "@/lib/types";
+import { EventRecipe, EventTimelineRecipe } from "@/lib/types";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
 
@@ -75,11 +75,18 @@ export default function EventDetailPage({
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<SlotForm | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   const eventQuery = useQuery({
     queryKey: ["foodEvent", eventId],
     queryFn: () => api.getFoodEvent(eventId),
     enabled: !isNaN(eventId),
+  });
+
+  const timelineQuery = useQuery({
+    queryKey: ["eventTimeline", eventId],
+    queryFn: () => api.getEventTimeline(eventId),
+    enabled: !isNaN(eventId) && showTimeline,
   });
 
   const recipesQuery = useQuery({
@@ -91,8 +98,10 @@ export default function EventDetailPage({
   const granularity = event?.slotGranularityMinutes ?? 15;
   const slots = useMemo(() => timeOptions(granularity), [granularity]);
 
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["foodEvent", eventId] });
+    queryClient.invalidateQueries({ queryKey: ["eventTimeline", eventId] });
+  };
 
   const saveSlotMutation = useMutation({
     mutationFn: (f: SlotForm) => {
@@ -254,6 +263,44 @@ export default function EventDetailPage({
         )}
       </Paper>
 
+      <Paper sx={{ p: 3 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+          <Typography variant="h5">Timeline</Typography>
+          <Button
+            variant="outlined"
+            onClick={() => setShowTimeline((v) => !v)}
+          >
+            {showTimeline ? "Hide Timeline" : "Generate Timeline"}
+          </Button>
+        </Box>
+        {showTimeline && (
+          <>
+            {timelineQuery.isLoading && <CircularProgress size={24} />}
+            {timelineQuery.error && (
+              <Alert severity="error">{(timelineQuery.error as Error).message}</Alert>
+            )}
+            {timelineQuery.data && (
+              <>
+                {timelineQuery.data.warnings.map((w) => (
+                  <Alert severity="warning" key={w} sx={{ mb: 1 }}>
+                    {w}
+                  </Alert>
+                ))}
+                {timelineQuery.data.recipes.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No dishes to schedule yet.
+                  </Typography>
+                ) : (
+                  timelineQuery.data.recipes.map((r) => (
+                    <TimelineRecipeCard key={r.eventRecipeID} recipe={r} />
+                  ))
+                )}
+              </>
+            )}
+          </>
+        )}
+      </Paper>
+
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           {form?.eventRecipeID === null ? "Add Dish" : "Edit Dish"}
@@ -344,6 +391,73 @@ export default function EventDetailPage({
         </DialogActions>
       </Dialog>
       <Divider />
+    </Box>
+  );
+}
+
+function TimelineRecipeCard({ recipe }: { recipe: EventTimelineRecipe }) {
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="h6">
+        {recipe.name}
+        <Typography component="span" color="text.secondary" sx={{ ml: 1 }}>
+          serve {hhmmOf(recipe.targetTime)}
+          {recipe.startBy && ` · start by ${hhmmOf(recipe.startBy)}`}
+        </Typography>
+      </Typography>
+      {recipe.warnings.map((w) => (
+        <Alert severity="warning" key={w} sx={{ my: 1 }}>
+          {w}
+        </Alert>
+      ))}
+      {recipe.unschedulable ? (
+        <Typography color="text.secondary">
+          This dish cannot be scheduled (no recipe steps).
+        </Typography>
+      ) : (
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Start</TableCell>
+                <TableCell>End</TableCell>
+                <TableCell>Step</TableCell>
+                <TableCell>Appliance</TableCell>
+                <TableCell>Flags</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {recipe.steps.map((s) => (
+                <TableRow
+                  key={s.stepNumber}
+                  sx={s.conflicts.length > 0 ? { backgroundColor: "error.light" } : undefined}
+                >
+                  <TableCell>{hhmmOf(s.startTime)}</TableCell>
+                  <TableCell>{hhmmOf(s.endTime)}</TableCell>
+                  <TableCell>
+                    {s.stepNumber}. {s.instruction}
+                    {s.stepType && (
+                      <Typography component="span" color="text.secondary">
+                        {" "}({s.stepType})
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>{s.appliance ?? "—"}</TableCell>
+                  <TableCell>
+                    {s.estimated && "est. "}
+                    {s.isPassive && "hands-off "}
+                    {s.conflicts.length > 0 && (
+                      <Typography component="span" color="error">
+                        conflict
+                      </Typography>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
     </Box>
   );
 }
