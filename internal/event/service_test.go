@@ -251,3 +251,80 @@ func TestDeleteEventRecipe(t *testing.T) {
 	mq.EXPECT().DeleteEventRecipe(ctx, sqlc.DeleteEventRecipeParams{EventRecipeID: 3, HouseholdID: 42}).Return(nil)
 	require.NoError(t, s.DeleteEventRecipe(ctx, 3, 42))
 }
+
+func TestReplaceEventRecipeSteps(t *testing.T) {
+	ctx := context.Background()
+	dur := int32(30)
+	s, mq := newService(t)
+	mq.EXPECT().GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: 9, HouseholdID: 42}).
+		Return(sqlc.EventEventRecipe{EventRecipeID: 9, FoodEventID: 3}, nil)
+	mq.EXPECT().DeleteEventRecipeSteps(ctx, sqlc.DeleteEventRecipeStepsParams{EventRecipeID: 9, HouseholdID: 42}).Return(nil)
+	mq.EXPECT().AddEventRecipeStep(ctx, sqlc.AddEventRecipeStepParams{
+		EventRecipeID:   9,
+		StepNumber:      1,
+		Instruction:     "mix",
+		DurationMinutes: pgtype.Int4{Int32: 30, Valid: true},
+		CreatedBy:       "tester",
+		UpdatedBy:       pgtype.Text{String: "tester", Valid: true},
+	}).Return(sqlc.EventEventRecipeStep{EventRecipeStepID: 1, EventRecipeID: 9, StepNumber: 1}, nil)
+
+	err := s.ReplaceEventRecipeSteps(ctx, 9, 42, []EventRecipeStep{
+		{StepNumber: 1, Instruction: "mix", DurationMinutes: &dur},
+	}, "tester")
+	require.NoError(t, err)
+}
+
+func TestReplaceEventRecipeSteps_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s, mq := newService(t)
+	mq.EXPECT().GetEventRecipeByID(ctx, gomock.Any()).Return(sqlc.EventEventRecipe{}, pgx.ErrNoRows)
+
+	err := s.ReplaceEventRecipeSteps(ctx, 9, 42, nil, "tester")
+	require.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+func TestAddEventRecipeStep_NextNumber(t *testing.T) {
+	ctx := context.Background()
+	s, mq := newService(t)
+	mq.EXPECT().GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: 9, HouseholdID: 42}).
+		Return(sqlc.EventEventRecipe{EventRecipeID: 9, FoodEventID: 3}, nil)
+	mq.EXPECT().ListEventRecipeSteps(ctx, sqlc.ListEventRecipeStepsParams{EventRecipeID: 9, HouseholdID: 42}).
+		Return([]sqlc.EventEventRecipeStep{
+			{EventRecipeStepID: 50, EventRecipeID: 9, StepNumber: 1},
+			{EventRecipeStepID: 51, EventRecipeID: 9, StepNumber: 2},
+		}, nil)
+	mq.EXPECT().AddEventRecipeStep(ctx, gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.AddEventRecipeStepParams) (sqlc.EventEventRecipeStep, error) {
+			assert.Equal(t, int32(3), p.StepNumber)
+			return sqlc.EventEventRecipeStep{EventRecipeStepID: 52, EventRecipeID: 9, StepNumber: p.StepNumber, Instruction: p.Instruction}, nil
+		})
+
+	got, err := s.AddEventRecipeStep(ctx, EventRecipeStep{EventRecipeID: 9, Instruction: "rest"}, 42, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), got.StepNumber)
+	assert.Equal(t, "rest", got.Instruction)
+}
+
+func TestUpdateEventRecipeStep(t *testing.T) {
+	ctx := context.Background()
+	dur := int32(45)
+	s, mq := newService(t)
+	mq.EXPECT().UpdateEventRecipeStep(ctx, gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.UpdateEventRecipeStepParams) error {
+			assert.Equal(t, int64(60), p.EventRecipeStepID)
+			assert.Equal(t, int64(42), p.HouseholdID)
+			assert.Equal(t, "rest longer", p.Instruction)
+			assert.Equal(t, int32(45), p.DurationMinutes.Int32)
+			return nil
+		})
+
+	err := s.UpdateEventRecipeStep(ctx, 60, 42, EventRecipeStep{Instruction: "rest longer", DurationMinutes: &dur}, "tester")
+	require.NoError(t, err)
+}
+
+func TestDeleteEventRecipeStep(t *testing.T) {
+	ctx := context.Background()
+	s, mq := newService(t)
+	mq.EXPECT().DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{EventRecipeStepID: 60, HouseholdID: 42}).Return(nil)
+	require.NoError(t, s.DeleteEventRecipeStep(ctx, 60, 42))
+}

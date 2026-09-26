@@ -259,6 +259,174 @@ func (s *Service) DeleteEventRecipe(ctx context.Context, eventRecipeID, househol
 	return s.q.DeleteEventRecipe(ctx, sqlc.DeleteEventRecipeParams{EventRecipeID: eventRecipeID, HouseholdID: householdID})
 }
 
+// EventRecipeStep is one step in an event slot's recipe snapshot. The
+// snapshot — not the shared recipe.recipe_step rows — is what the
+// timeline schedules and what event-context edits mutate, so adjusting a
+// dish for one event never alters the original recipe.
+type EventRecipeStep struct {
+	EventRecipeStepID   int64
+	EventRecipeID       int64
+	StepNumber          int32
+	Instruction         string
+	DurationMinutes     *int32
+	StepType            string
+	IsPassive           bool
+	DependsOnStepNumber *int32
+	Appliance           string
+}
+
+// ListEventRecipeStepsForEvents batch-loads the snapshot steps for every
+// slot of the given household-owned events.
+func (s *Service) ListEventRecipeStepsForEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]EventRecipeStep, error) {
+	rows, err := s.q.ListEventRecipeStepsForEvents(ctx, sqlc.ListEventRecipeStepsForEventsParams{
+		FoodEventIds: foodEventIDs,
+		HouseholdID:  householdID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list event recipe steps: %w", err)
+	}
+	out := make([]EventRecipeStep, len(rows))
+	for i := range rows {
+		out[i] = toEventRecipeStep(rows[i])
+	}
+	return out, nil
+}
+
+// ListEventRecipeSteps returns one slot's snapshot steps, ordered.
+func (s *Service) ListEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64) ([]EventRecipeStep, error) {
+	rows, err := s.q.ListEventRecipeSteps(ctx, sqlc.ListEventRecipeStepsParams{
+		EventRecipeID: eventRecipeID,
+		HouseholdID:   householdID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list event recipe steps: %w", err)
+	}
+	out := make([]EventRecipeStep, len(rows))
+	for i := range rows {
+		out[i] = toEventRecipeStep(rows[i])
+	}
+	return out, nil
+}
+
+// GetEventRecipeStepByID returns a snapshot step owned by the household.
+func (s *Service) GetEventRecipeStepByID(ctx context.Context, eventRecipeStepID, householdID int64) (EventRecipeStep, error) {
+	row, err := s.q.GetEventRecipeStepByID(ctx, sqlc.GetEventRecipeStepByIDParams{
+		EventRecipeStepID: eventRecipeStepID,
+		HouseholdID:       householdID,
+	})
+	if err != nil {
+		return EventRecipeStep{}, fmt.Errorf("get event recipe step: %w", domainerr.FromStorage(err))
+	}
+	return toEventRecipeStep(row), nil
+}
+
+// ReplaceEventRecipeSteps rewrites a slot's whole snapshot — used to
+// materialize a recipe's steps when a slot is linked, and to re-sync.
+func (s *Service) ReplaceEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64, steps []EventRecipeStep, by string) error {
+	if _, err := s.q.GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: eventRecipeID, HouseholdID: householdID}); err != nil {
+		return fmt.Errorf("replace event recipe steps: %w", domainerr.FromStorage(err))
+	}
+	if err := s.q.DeleteEventRecipeSteps(ctx, sqlc.DeleteEventRecipeStepsParams{EventRecipeID: eventRecipeID, HouseholdID: householdID}); err != nil {
+		return fmt.Errorf("replace event recipe steps: %w", err)
+	}
+	for _, st := range steps {
+		if _, err := s.q.AddEventRecipeStep(ctx, sqlc.AddEventRecipeStepParams{
+			EventRecipeID:       eventRecipeID,
+			StepNumber:          st.StepNumber,
+			Instruction:         st.Instruction,
+			DurationMinutes:     optInt4(st.DurationMinutes),
+			StepType:            textOrNull(st.StepType),
+			IsPassive:           st.IsPassive,
+			DependsOnStepNumber: optInt4(st.DependsOnStepNumber),
+			Appliance:           textOrNull(st.Appliance),
+			CreatedBy:           by,
+			UpdatedBy:           textOrNull(by),
+		}); err != nil {
+			return fmt.Errorf("replace event recipe steps: %w", err)
+		}
+	}
+	return nil
+}
+
+// AddEventRecipeStep appends a step to a slot's snapshot with the next
+// step number.
+func (s *Service) AddEventRecipeStep(ctx context.Context, arg EventRecipeStep, householdID int64, by string) (EventRecipeStep, error) {
+	if _, err := s.q.GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: arg.EventRecipeID, HouseholdID: householdID}); err != nil {
+		return EventRecipeStep{}, fmt.Errorf("add event recipe step: %w", domainerr.FromStorage(err))
+	}
+	existing, err := s.ListEventRecipeSteps(ctx, arg.EventRecipeID, householdID)
+	if err != nil {
+		return EventRecipeStep{}, err
+	}
+	next := int32(1)
+	for _, st := range existing {
+		if st.StepNumber >= next {
+			next = st.StepNumber + 1
+		}
+	}
+	row, err := s.q.AddEventRecipeStep(ctx, sqlc.AddEventRecipeStepParams{
+		EventRecipeID:       arg.EventRecipeID,
+		StepNumber:          next,
+		Instruction:         arg.Instruction,
+		DurationMinutes:     optInt4(arg.DurationMinutes),
+		StepType:            textOrNull(arg.StepType),
+		IsPassive:           arg.IsPassive,
+		DependsOnStepNumber: optInt4(arg.DependsOnStepNumber),
+		Appliance:           textOrNull(arg.Appliance),
+		CreatedBy:           by,
+		UpdatedBy:           textOrNull(by),
+	})
+	if err != nil {
+		return EventRecipeStep{}, fmt.Errorf("add event recipe step: %w", err)
+	}
+	return toEventRecipeStep(row), nil
+}
+
+// UpdateEventRecipeStep edits a snapshot step in place; step_number is
+// the row's identity and does not change.
+func (s *Service) UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64, arg EventRecipeStep, by string) error {
+	return s.q.UpdateEventRecipeStep(ctx, sqlc.UpdateEventRecipeStepParams{
+		EventRecipeStepID:   eventRecipeStepID,
+		HouseholdID:         householdID,
+		Instruction:         arg.Instruction,
+		DurationMinutes:     optInt4(arg.DurationMinutes),
+		StepType:            textOrNull(arg.StepType),
+		IsPassive:           arg.IsPassive,
+		DependsOnStepNumber: optInt4(arg.DependsOnStepNumber),
+		Appliance:           textOrNull(arg.Appliance),
+		UpdatedBy:           textOrNull(by),
+	})
+}
+
+// DeleteEventRecipeStep removes a snapshot step owned by the household.
+func (s *Service) DeleteEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64) error {
+	return s.q.DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{
+		EventRecipeStepID: eventRecipeStepID,
+		HouseholdID:       householdID,
+	})
+}
+
+func toEventRecipeStep(row sqlc.EventEventRecipeStep) EventRecipeStep {
+	st := EventRecipeStep{
+		EventRecipeStepID: row.EventRecipeStepID,
+		EventRecipeID:     row.EventRecipeID,
+		StepNumber:        row.StepNumber,
+		Instruction:       row.Instruction,
+		StepType:          row.StepType.String,
+		IsPassive:         row.IsPassive,
+		Appliance:         row.Appliance.String,
+	}
+	if row.DurationMinutes.Valid {
+		v := row.DurationMinutes.Int32
+		st.DurationMinutes = &v
+	}
+	if row.DependsOnStepNumber.Valid {
+		v := row.DependsOnStepNumber.Int32
+		st.DependsOnStepNumber = &v
+	}
+	return st
+}
+
 func toFoodEvent(row sqlc.EventFoodEvent) FoodEvent {
 	return FoodEvent{
 		FoodEventID:            row.FoodEventID,

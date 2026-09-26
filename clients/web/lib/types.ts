@@ -325,6 +325,20 @@ export interface EventRecipe {
   servings: number | null;
   notes: string | null;
   recipe?: Recipe | null;
+  // The slot's own copy of the recipe's steps — edits here never touch
+  // the original recipe.
+  steps?: EventRecipeStep[];
+}
+
+export interface EventRecipeStep {
+  eventRecipeStepID: number;
+  stepNumber: number;
+  instruction: string;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
 }
 
 // The master schedule for an event: every recipe's steps backwards-

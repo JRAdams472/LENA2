@@ -35,6 +35,7 @@ import {
   HouseholdUser,
   FoodEvent,
   EventRecipe,
+  EventRecipeStep,
   EventTimeline,
   InviteStatus,
   NotificationKind,
@@ -485,6 +486,17 @@ interface GqlMealPlanPage {
   pageInfo: GqlPageInfo;
 }
 
+interface GqlEventRecipeStep {
+  id: string;
+  stepNumber: number;
+  instruction: string;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
+}
+
 interface GqlEventRecipe {
   id: string;
   mealType: string;
@@ -492,6 +504,7 @@ interface GqlEventRecipe {
   servings: number | null;
   notes: string | null;
   recipe: GqlRecipe | null;
+  steps: GqlEventRecipeStep[];
 }
 
 interface GqlFoodEvent {
@@ -1136,6 +1149,41 @@ function toMealPlan(p: GqlMealPlan): MealPlan {
   };
 }
 
+// EventRecipeStepInput is the writable shape of an event slot's snapshot
+// step — step_number is server-assigned on add.
+export interface EventRecipeStepInput {
+  instruction: string;
+  durationMinutes?: number | null;
+  stepType?: string | null;
+  isPassive?: boolean | null;
+  dependsOnStepNumber?: number | null;
+  appliance?: string | null;
+}
+
+function toEventStepVariables(step: EventRecipeStepInput) {
+  return {
+    instruction: step.instruction,
+    durationMinutes: step.durationMinutes ?? null,
+    stepType: step.stepType ?? null,
+    isPassive: step.isPassive ?? null,
+    dependsOnStepNumber: step.dependsOnStepNumber ?? null,
+    appliance: step.appliance ?? null,
+  };
+}
+
+function toEventRecipeStep(s: GqlEventRecipeStep): EventRecipeStep {
+  return {
+    eventRecipeStepID: num(s.id),
+    stepNumber: s.stepNumber,
+    instruction: s.instruction,
+    durationMinutes: s.durationMinutes,
+    stepType: s.stepType,
+    isPassive: s.isPassive,
+    dependsOnStepNumber: s.dependsOnStepNumber,
+    appliance: s.appliance,
+  };
+}
+
 function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
   return {
     eventRecipeID: num(er.id),
@@ -1146,6 +1194,7 @@ function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
     servings: er.servings,
     notes: er.notes,
     recipe: er.recipe ? toRecipe(er.recipe) : null,
+    steps: (er.steps ?? []).map(toEventRecipeStep),
   };
 }
 
@@ -1263,9 +1312,15 @@ const MEAL_PLAN_FIELDS = `
   }
 `;
 
+const EVENT_RECIPE_STEP_FIELDS = `
+  id stepNumber instruction durationMinutes stepType isPassive
+  dependsOnStepNumber appliance
+`;
+
 const EVENT_RECIPE_FIELDS = `
   id mealType targetTime servings notes
   recipe { ${RECIPE_FIELDS} }
+  steps { ${EVENT_RECIPE_STEP_FIELDS} }
 `;
 
 const FOOD_EVENT_FIELDS = `
@@ -2953,6 +3008,43 @@ export const api = {
       `mutation ($id: ID!) { removeEventRecipe(id: $id) }`,
       { id: String(id) }
     );
+  },
+
+  addEventRecipeStep: async (eventRecipeId: number, step: EventRecipeStepInput): Promise<EventRecipeStep> => {
+    const data = await request<{ addEventRecipeStep: GqlEventRecipeStep }>(
+      `mutation ($id: ID!, $input: EventRecipeStepInput!) {
+        addEventRecipeStep(eventRecipeId: $id, input: $input) { ${EVENT_RECIPE_STEP_FIELDS} }
+      }`,
+      { id: String(eventRecipeId), input: toEventStepVariables(step) }
+    );
+    return toEventRecipeStep(data.addEventRecipeStep);
+  },
+
+  updateEventRecipeStep: async (id: number, step: EventRecipeStepInput): Promise<EventRecipeStep> => {
+    const data = await request<{ updateEventRecipeStep: GqlEventRecipeStep }>(
+      `mutation ($id: ID!, $input: EventRecipeStepInput!) {
+        updateEventRecipeStep(id: $id, input: $input) { ${EVENT_RECIPE_STEP_FIELDS} }
+      }`,
+      { id: String(id), input: toEventStepVariables(step) }
+    );
+    return toEventRecipeStep(data.updateEventRecipeStep);
+  },
+
+  removeEventRecipeStep: async (id: number): Promise<void> => {
+    await request<{ removeEventRecipeStep: boolean }>(
+      `mutation ($id: ID!) { removeEventRecipeStep(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  syncEventRecipeSteps: async (eventRecipeId: number): Promise<EventRecipe> => {
+    const data = await request<{ syncEventRecipeSteps: GqlEventRecipe }>(
+      `mutation ($id: ID!) {
+        syncEventRecipeSteps(eventRecipeId: $id) { ${EVENT_RECIPE_FIELDS} }
+      }`,
+      { id: String(eventRecipeId) }
+    );
+    return toEventRecipe(0, data.syncEventRecipeSteps);
   },
 
   getEventTimeline: async (foodEventId: number): Promise<EventTimeline> => {

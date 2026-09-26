@@ -3045,6 +3045,21 @@ func (mr *MockEventReaderMockRecorder) GetEventRecipeByID(ctx, eventRecipeID, ho
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventRecipeByID", reflect.TypeOf((*MockEventReader)(nil).GetEventRecipeByID), ctx, eventRecipeID, householdID)
 }
 
+// GetEventRecipeStepByID mocks base method.
+func (m *MockEventReader) GetEventRecipeStepByID(ctx context.Context, eventRecipeStepID, householdID int64) (event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEventRecipeStepByID", ctx, eventRecipeStepID, householdID)
+	ret0, _ := ret[0].(event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEventRecipeStepByID indicates an expected call of GetEventRecipeStepByID.
+func (mr *MockEventReaderMockRecorder) GetEventRecipeStepByID(ctx, eventRecipeStepID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventRecipeStepByID", reflect.TypeOf((*MockEventReader)(nil).GetEventRecipeStepByID), ctx, eventRecipeStepID, householdID)
+}
+
 // GetFoodEventByID mocks base method.
 func (m *MockEventReader) GetFoodEventByID(ctx context.Context, foodEventID, householdID int64) (event.FoodEvent, error) {
 	m.ctrl.T.Helper()
@@ -3058,6 +3073,36 @@ func (m *MockEventReader) GetFoodEventByID(ctx context.Context, foodEventID, hou
 func (mr *MockEventReaderMockRecorder) GetFoodEventByID(ctx, foodEventID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFoodEventByID", reflect.TypeOf((*MockEventReader)(nil).GetFoodEventByID), ctx, foodEventID, householdID)
+}
+
+// ListEventRecipeSteps mocks base method.
+func (m *MockEventReader) ListEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64) ([]event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListEventRecipeSteps", ctx, eventRecipeID, householdID)
+	ret0, _ := ret[0].([]event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListEventRecipeSteps indicates an expected call of ListEventRecipeSteps.
+func (mr *MockEventReaderMockRecorder) ListEventRecipeSteps(ctx, eventRecipeID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEventRecipeSteps", reflect.TypeOf((*MockEventReader)(nil).ListEventRecipeSteps), ctx, eventRecipeID, householdID)
+}
+
+// ListEventRecipeStepsForEvents mocks base method.
+func (m *MockEventReader) ListEventRecipeStepsForEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListEventRecipeStepsForEvents", ctx, foodEventIDs, householdID)
+	ret0, _ := ret[0].([]event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListEventRecipeStepsForEvents indicates an expected call of ListEventRecipeStepsForEvents.
+func (mr *MockEventReaderMockRecorder) ListEventRecipeStepsForEvents(ctx, foodEventIDs, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEventRecipeStepsForEvents", reflect.TypeOf((*MockEventReader)(nil).ListEventRecipeStepsForEvents), ctx, foodEventIDs, householdID)
 }
 
 // ListEventRecipesByEvents mocks base method.
@@ -3144,6 +3189,21 @@ func (mr *MockEventWriterMockRecorder) AddEventRecipe(ctx, arg, householdID, by 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddEventRecipe", reflect.TypeOf((*MockEventWriter)(nil).AddEventRecipe), ctx, arg, householdID, by)
 }
 
+// AddEventRecipeStep mocks base method.
+func (m *MockEventWriter) AddEventRecipeStep(ctx context.Context, arg event.EventRecipeStep, householdID int64, by string) (event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddEventRecipeStep", ctx, arg, householdID, by)
+	ret0, _ := ret[0].(event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddEventRecipeStep indicates an expected call of AddEventRecipeStep.
+func (mr *MockEventWriterMockRecorder) AddEventRecipeStep(ctx, arg, householdID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddEventRecipeStep", reflect.TypeOf((*MockEventWriter)(nil).AddEventRecipeStep), ctx, arg, householdID, by)
+}
+
 // CreateFoodEvent mocks base method.
 func (m *MockEventWriter) CreateFoodEvent(ctx context.Context, arg event.FoodEvent, by string) (event.FoodEvent, error) {
 	m.ctrl.T.Helper()
@@ -3173,6 +3233,20 @@ func (mr *MockEventWriterMockRecorder) DeleteEventRecipe(ctx, eventRecipeID, hou
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteEventRecipe", reflect.TypeOf((*MockEventWriter)(nil).DeleteEventRecipe), ctx, eventRecipeID, householdID)
 }
 
+// DeleteEventRecipeStep mocks base method.
+func (m *MockEventWriter) DeleteEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteEventRecipeStep", ctx, eventRecipeStepID, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteEventRecipeStep indicates an expected call of DeleteEventRecipeStep.
+func (mr *MockEventWriterMockRecorder) DeleteEventRecipeStep(ctx, eventRecipeStepID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteEventRecipeStep", reflect.TypeOf((*MockEventWriter)(nil).DeleteEventRecipeStep), ctx, eventRecipeStepID, householdID)
+}
+
 // DeleteFoodEvent mocks base method.
 func (m *MockEventWriter) DeleteFoodEvent(ctx context.Context, foodEventID, householdID int64) error {
 	m.ctrl.T.Helper()
@@ -3187,6 +3261,20 @@ func (mr *MockEventWriterMockRecorder) DeleteFoodEvent(ctx, foodEventID, househo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFoodEvent", reflect.TypeOf((*MockEventWriter)(nil).DeleteFoodEvent), ctx, foodEventID, householdID)
 }
 
+// ReplaceEventRecipeSteps mocks base method.
+func (m *MockEventWriter) ReplaceEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64, steps []event.EventRecipeStep, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceEventRecipeSteps", ctx, eventRecipeID, householdID, steps, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplaceEventRecipeSteps indicates an expected call of ReplaceEventRecipeSteps.
+func (mr *MockEventWriterMockRecorder) ReplaceEventRecipeSteps(ctx, eventRecipeID, householdID, steps, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceEventRecipeSteps", reflect.TypeOf((*MockEventWriter)(nil).ReplaceEventRecipeSteps), ctx, eventRecipeID, householdID, steps, by)
+}
+
 // UpdateEventRecipe mocks base method.
 func (m *MockEventWriter) UpdateEventRecipe(ctx context.Context, eventRecipeID, householdID int64, arg event.EventRecipe, by string) error {
 	m.ctrl.T.Helper()
@@ -3199,6 +3287,20 @@ func (m *MockEventWriter) UpdateEventRecipe(ctx context.Context, eventRecipeID, 
 func (mr *MockEventWriterMockRecorder) UpdateEventRecipe(ctx, eventRecipeID, householdID, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEventRecipe", reflect.TypeOf((*MockEventWriter)(nil).UpdateEventRecipe), ctx, eventRecipeID, householdID, arg, by)
+}
+
+// UpdateEventRecipeStep mocks base method.
+func (m *MockEventWriter) UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64, arg event.EventRecipeStep, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEventRecipeStep", ctx, eventRecipeStepID, householdID, arg, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateEventRecipeStep indicates an expected call of UpdateEventRecipeStep.
+func (mr *MockEventWriterMockRecorder) UpdateEventRecipeStep(ctx, eventRecipeStepID, householdID, arg, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEventRecipeStep", reflect.TypeOf((*MockEventWriter)(nil).UpdateEventRecipeStep), ctx, eventRecipeStepID, householdID, arg, by)
 }
 
 // UpdateFoodEvent mocks base method.
@@ -3254,6 +3356,21 @@ func (mr *MockEventServiceMockRecorder) AddEventRecipe(ctx, arg, householdID, by
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddEventRecipe", reflect.TypeOf((*MockEventService)(nil).AddEventRecipe), ctx, arg, householdID, by)
 }
 
+// AddEventRecipeStep mocks base method.
+func (m *MockEventService) AddEventRecipeStep(ctx context.Context, arg event.EventRecipeStep, householdID int64, by string) (event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddEventRecipeStep", ctx, arg, householdID, by)
+	ret0, _ := ret[0].(event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddEventRecipeStep indicates an expected call of AddEventRecipeStep.
+func (mr *MockEventServiceMockRecorder) AddEventRecipeStep(ctx, arg, householdID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddEventRecipeStep", reflect.TypeOf((*MockEventService)(nil).AddEventRecipeStep), ctx, arg, householdID, by)
+}
+
 // CountFoodEvents mocks base method.
 func (m *MockEventService) CountFoodEvents(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -3298,6 +3415,20 @@ func (mr *MockEventServiceMockRecorder) DeleteEventRecipe(ctx, eventRecipeID, ho
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteEventRecipe", reflect.TypeOf((*MockEventService)(nil).DeleteEventRecipe), ctx, eventRecipeID, householdID)
 }
 
+// DeleteEventRecipeStep mocks base method.
+func (m *MockEventService) DeleteEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteEventRecipeStep", ctx, eventRecipeStepID, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteEventRecipeStep indicates an expected call of DeleteEventRecipeStep.
+func (mr *MockEventServiceMockRecorder) DeleteEventRecipeStep(ctx, eventRecipeStepID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteEventRecipeStep", reflect.TypeOf((*MockEventService)(nil).DeleteEventRecipeStep), ctx, eventRecipeStepID, householdID)
+}
+
 // DeleteFoodEvent mocks base method.
 func (m *MockEventService) DeleteFoodEvent(ctx context.Context, foodEventID, householdID int64) error {
 	m.ctrl.T.Helper()
@@ -3327,6 +3458,21 @@ func (mr *MockEventServiceMockRecorder) GetEventRecipeByID(ctx, eventRecipeID, h
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventRecipeByID", reflect.TypeOf((*MockEventService)(nil).GetEventRecipeByID), ctx, eventRecipeID, householdID)
 }
 
+// GetEventRecipeStepByID mocks base method.
+func (m *MockEventService) GetEventRecipeStepByID(ctx context.Context, eventRecipeStepID, householdID int64) (event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEventRecipeStepByID", ctx, eventRecipeStepID, householdID)
+	ret0, _ := ret[0].(event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEventRecipeStepByID indicates an expected call of GetEventRecipeStepByID.
+func (mr *MockEventServiceMockRecorder) GetEventRecipeStepByID(ctx, eventRecipeStepID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventRecipeStepByID", reflect.TypeOf((*MockEventService)(nil).GetEventRecipeStepByID), ctx, eventRecipeStepID, householdID)
+}
+
 // GetFoodEventByID mocks base method.
 func (m *MockEventService) GetFoodEventByID(ctx context.Context, foodEventID, householdID int64) (event.FoodEvent, error) {
 	m.ctrl.T.Helper()
@@ -3340,6 +3486,36 @@ func (m *MockEventService) GetFoodEventByID(ctx context.Context, foodEventID, ho
 func (mr *MockEventServiceMockRecorder) GetFoodEventByID(ctx, foodEventID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFoodEventByID", reflect.TypeOf((*MockEventService)(nil).GetFoodEventByID), ctx, foodEventID, householdID)
+}
+
+// ListEventRecipeSteps mocks base method.
+func (m *MockEventService) ListEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64) ([]event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListEventRecipeSteps", ctx, eventRecipeID, householdID)
+	ret0, _ := ret[0].([]event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListEventRecipeSteps indicates an expected call of ListEventRecipeSteps.
+func (mr *MockEventServiceMockRecorder) ListEventRecipeSteps(ctx, eventRecipeID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEventRecipeSteps", reflect.TypeOf((*MockEventService)(nil).ListEventRecipeSteps), ctx, eventRecipeID, householdID)
+}
+
+// ListEventRecipeStepsForEvents mocks base method.
+func (m *MockEventService) ListEventRecipeStepsForEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListEventRecipeStepsForEvents", ctx, foodEventIDs, householdID)
+	ret0, _ := ret[0].([]event.EventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListEventRecipeStepsForEvents indicates an expected call of ListEventRecipeStepsForEvents.
+func (mr *MockEventServiceMockRecorder) ListEventRecipeStepsForEvents(ctx, foodEventIDs, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEventRecipeStepsForEvents", reflect.TypeOf((*MockEventService)(nil).ListEventRecipeStepsForEvents), ctx, foodEventIDs, householdID)
 }
 
 // ListEventRecipesByEvents mocks base method.
@@ -3401,6 +3577,20 @@ func (mr *MockEventServiceMockRecorder) ReassignHousehold(ctx, fromHouseholdID, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignHousehold", reflect.TypeOf((*MockEventService)(nil).ReassignHousehold), ctx, fromHouseholdID, toHouseholdID, by)
 }
 
+// ReplaceEventRecipeSteps mocks base method.
+func (m *MockEventService) ReplaceEventRecipeSteps(ctx context.Context, eventRecipeID, householdID int64, steps []event.EventRecipeStep, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceEventRecipeSteps", ctx, eventRecipeID, householdID, steps, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplaceEventRecipeSteps indicates an expected call of ReplaceEventRecipeSteps.
+func (mr *MockEventServiceMockRecorder) ReplaceEventRecipeSteps(ctx, eventRecipeID, householdID, steps, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceEventRecipeSteps", reflect.TypeOf((*MockEventService)(nil).ReplaceEventRecipeSteps), ctx, eventRecipeID, householdID, steps, by)
+}
+
 // UpdateEventRecipe mocks base method.
 func (m *MockEventService) UpdateEventRecipe(ctx context.Context, eventRecipeID, householdID int64, arg event.EventRecipe, by string) error {
 	m.ctrl.T.Helper()
@@ -3413,6 +3603,20 @@ func (m *MockEventService) UpdateEventRecipe(ctx context.Context, eventRecipeID,
 func (mr *MockEventServiceMockRecorder) UpdateEventRecipe(ctx, eventRecipeID, householdID, arg, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEventRecipe", reflect.TypeOf((*MockEventService)(nil).UpdateEventRecipe), ctx, eventRecipeID, householdID, arg, by)
+}
+
+// UpdateEventRecipeStep mocks base method.
+func (m *MockEventService) UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64, arg event.EventRecipeStep, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEventRecipeStep", ctx, eventRecipeStepID, householdID, arg, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateEventRecipeStep indicates an expected call of UpdateEventRecipeStep.
+func (mr *MockEventServiceMockRecorder) UpdateEventRecipeStep(ctx, eventRecipeStepID, householdID, arg, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEventRecipeStep", reflect.TypeOf((*MockEventService)(nil).UpdateEventRecipeStep), ctx, eventRecipeStepID, householdID, arg, by)
 }
 
 // UpdateFoodEvent mocks base method.

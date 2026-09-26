@@ -10,12 +10,20 @@ import (
 
 type Querier interface {
 	AddEventRecipe(ctx context.Context, arg AddEventRecipeParams) (EventEventRecipe, error)
+	AddEventRecipeStep(ctx context.Context, arg AddEventRecipeStepParams) (EventEventRecipeStep, error)
 	CountFoodEvents(ctx context.Context, householdID int64) (int64, error)
 	CreateFoodEvent(ctx context.Context, arg CreateFoodEventParams) (EventFoodEvent, error)
 	DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipeParams) error
+	DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) error
+	// Clears a slot's snapshot before a re-materialization replace.
+	DeleteEventRecipeSteps(ctx context.Context, arg DeleteEventRecipeStepsParams) error
 	DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams) error
 	GetEventRecipeByID(ctx context.Context, arg GetEventRecipeByIDParams) (EventEventRecipe, error)
+	GetEventRecipeStepByID(ctx context.Context, arg GetEventRecipeStepByIDParams) (EventEventRecipeStep, error)
 	GetFoodEventByID(ctx context.Context, arg GetFoodEventByIDParams) (EventFoodEvent, error)
+	ListEventRecipeSteps(ctx context.Context, arg ListEventRecipeStepsParams) ([]EventEventRecipeStep, error)
+	// Batch: steps for every slot of the given events, owned by the household.
+	ListEventRecipeStepsForEvents(ctx context.Context, arg ListEventRecipeStepsForEventsParams) ([]EventEventRecipeStep, error)
 	ListEventRecipesByEvents(ctx context.Context, arg ListEventRecipesByEventsParams) ([]EventEventRecipe, error)
 	ListEventRecipesForEvent(ctx context.Context, arg ListEventRecipesForEventParams) ([]EventEventRecipe, error)
 	ListFoodEvents(ctx context.Context, arg ListFoodEventsParams) ([]EventFoodEvent, error)
@@ -23,6 +31,7 @@ type Querier interface {
 	// rows is not an error (the source may have had none).
 	ReassignFoodEventsToHousehold(ctx context.Context, arg ReassignFoodEventsToHouseholdParams) error
 	UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipeParams) error
+	UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) error
 	UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams) error
 }
 

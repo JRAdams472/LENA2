@@ -1,11 +1,12 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { Fragment, use, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -13,6 +14,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -28,10 +30,11 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import { api } from "@/lib/api";
-import { EventRecipe, EventTimelineRecipe } from "@/lib/types";
+import { api, EventRecipeStepInput } from "@/lib/api";
+import { EventRecipe, EventRecipeStep, EventTimelineRecipe } from "@/lib/types";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
+const STEP_TYPES = ["prep", "cook", "rest", "wait", "serve", "other"];
 
 // Generate "HH:mm" options at the event's slot granularity.
 function timeOptions(granularity: number): string[] {
@@ -64,6 +67,16 @@ interface SlotForm {
   notes: string;
 }
 
+interface StepForm {
+  eventRecipeStepID: number | null;
+  eventRecipeID: number;
+  instruction: string;
+  durationMinutes: string;
+  stepType: string;
+  isPassive: boolean;
+  appliance: string;
+}
+
 export default function EventDetailPage({
   params,
 }: {
@@ -75,6 +88,9 @@ export default function EventDetailPage({
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<SlotForm | null>(null);
+  const [stepDialogOpen, setStepDialogOpen] = useState(false);
+  const [stepForm, setStepForm] = useState<StepForm | null>(null);
+  const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
 
   const eventQuery = useQuery({
@@ -132,6 +148,35 @@ export default function EventDetailPage({
     onSuccess: () => router.push("/events"),
   });
 
+  const saveStepMutation = useMutation({
+    mutationFn: (f: StepForm) => {
+      const payload: EventRecipeStepInput = {
+        instruction: f.instruction,
+        durationMinutes: f.durationMinutes === "" ? null : Number(f.durationMinutes),
+        stepType: f.stepType === "" ? null : f.stepType,
+        isPassive: f.isPassive,
+        appliance: f.appliance === "" ? null : f.appliance,
+      };
+      return f.eventRecipeStepID === null
+        ? api.addEventRecipeStep(f.eventRecipeID, payload)
+        : api.updateEventRecipeStep(f.eventRecipeStepID, payload);
+    },
+    onSuccess: () => {
+      invalidate();
+      setStepDialogOpen(false);
+    },
+  });
+
+  const removeStepMutation = useMutation({
+    mutationFn: (stepId: number) => api.removeEventRecipeStep(stepId),
+    onSuccess: invalidate,
+  });
+
+  const syncStepsMutation = useMutation({
+    mutationFn: (eventRecipeId: number) => api.syncEventRecipeSteps(eventRecipeId),
+    onSuccess: invalidate,
+  });
+
   const openCreate = () => {
     setForm({
       eventRecipeID: null,
@@ -158,6 +203,32 @@ export default function EventDetailPage({
 
   const recipeName = (r: EventRecipe) =>
     r.recipe?.recipeName ?? (r.recipeID ? `Recipe ${r.recipeID}` : null);
+
+  const openStepCreate = (r: EventRecipe) => {
+    setStepForm({
+      eventRecipeStepID: null,
+      eventRecipeID: r.eventRecipeID,
+      instruction: "",
+      durationMinutes: "",
+      stepType: "",
+      isPassive: false,
+      appliance: "",
+    });
+    setStepDialogOpen(true);
+  };
+
+  const openStepEdit = (r: EventRecipe, s: EventRecipeStep) => {
+    setStepForm({
+      eventRecipeStepID: s.eventRecipeStepID,
+      eventRecipeID: r.eventRecipeID,
+      instruction: s.instruction,
+      durationMinutes: s.durationMinutes != null ? String(s.durationMinutes) : "",
+      stepType: s.stepType ?? "",
+      isPassive: s.isPassive,
+      appliance: s.appliance ?? "",
+    });
+    setStepDialogOpen(true);
+  };
 
   if (isNaN(eventId)) {
     return <Alert severity="error">Invalid event id</Alert>;
@@ -230,6 +301,7 @@ export default function EventDetailPage({
                   <TableCell>Serve At</TableCell>
                   <TableCell>Meal</TableCell>
                   <TableCell>Recipe</TableCell>
+                  <TableCell>Steps</TableCell>
                   <TableCell>Servings</TableCell>
                   <TableCell>Notes</TableCell>
                   <TableCell>Actions</TableCell>
@@ -237,25 +309,61 @@ export default function EventDetailPage({
               </TableHead>
               <TableBody>
                 {rows.map((r) => (
-                  <TableRow key={r.eventRecipeID}>
-                    <TableCell>{hhmmOf(r.targetTime)}</TableCell>
-                    <TableCell>{r.mealType}</TableCell>
-                    <TableCell>{recipeName(r) ?? <em>Free-form</em>}</TableCell>
-                    <TableCell>{r.servings ?? "—"}</TableCell>
-                    <TableCell>{r.notes ?? ""}</TableCell>
-                    <TableCell>
-                      <IconButton size="small" aria-label="Edit" onClick={() => openEdit(r)}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        aria-label="Delete"
-                        onClick={() => removeSlotMutation.mutate(r.eventRecipeID)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
+                  <Fragment key={r.eventRecipeID}>
+                    <TableRow>
+                      <TableCell>{hhmmOf(r.targetTime)}</TableCell>
+                      <TableCell>{r.mealType}</TableCell>
+                      <TableCell>{recipeName(r) ?? <em>Free-form</em>}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          onClick={() =>
+                            setExpandedSlot(
+                              expandedSlot === r.eventRecipeID ? null : r.eventRecipeID
+                            )
+                          }
+                        >
+                          {(r.steps ?? []).length}
+                          {expandedSlot === r.eventRecipeID ? " ▲" : " ▼"}
+                        </Button>
+                      </TableCell>
+                      <TableCell>{r.servings ?? "—"}</TableCell>
+                      <TableCell>{r.notes ?? ""}</TableCell>
+                      <TableCell>
+                        <IconButton size="small" aria-label="Edit" onClick={() => openEdit(r)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          aria-label="Delete"
+                          onClick={() => removeSlotMutation.mutate(r.eventRecipeID)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                    {expandedSlot === r.eventRecipeID && (
+                      <TableRow>
+                        <TableCell colSpan={7} sx={{ backgroundColor: "action.hover" }}>
+                          <SlotSteps
+                            slot={r}
+                            onAdd={() => openStepCreate(r)}
+                            onEdit={(s) => openStepEdit(r, s)}
+                            onRemove={(id) => removeStepMutation.mutate(id)}
+                            onSync={() => {
+                              if (
+                                window.confirm(
+                                  "Re-copy the linked recipe's steps? Edits to this slot's steps will be lost."
+                                )
+                              ) {
+                                syncStepsMutation.mutate(r.eventRecipeID);
+                              }
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
@@ -390,7 +498,160 @@ export default function EventDetailPage({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={stepDialogOpen} onClose={() => setStepDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          {stepForm?.eventRecipeStepID === null ? "Add Step" : "Edit Step"}
+        </DialogTitle>
+        <DialogContent>
+          {stepForm && (
+            <>
+              <TextField
+                label="Instruction"
+                fullWidth
+                margin="dense"
+                value={stepForm.instruction}
+                onChange={(e) => setStepForm({ ...stepForm, instruction: e.target.value })}
+              />
+              <TextField
+                label="Duration (minutes)"
+                type="number"
+                fullWidth
+                margin="dense"
+                value={stepForm.durationMinutes}
+                onChange={(e) => setStepForm({ ...stepForm, durationMinutes: e.target.value })}
+              />
+              <FormControl fullWidth margin="dense">
+                <InputLabel id="step-type-label">Type</InputLabel>
+                <Select
+                  labelId="step-type-label"
+                  label="Type"
+                  value={stepForm.stepType}
+                  onChange={(e) => setStepForm({ ...stepForm, stepType: e.target.value })}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {STEP_TYPES.map((t) => (
+                    <MenuItem key={t} value={t}>
+                      {t}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Appliance"
+                fullWidth
+                margin="dense"
+                value={stepForm.appliance}
+                onChange={(e) => setStepForm({ ...stepForm, appliance: e.target.value })}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={stepForm.isPassive}
+                    onChange={(e) => setStepForm({ ...stepForm, isPassive: e.target.checked })}
+                  />
+                }
+                label="Hands-off (runs unattended)"
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStepDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => stepForm && saveStepMutation.mutate(stepForm)}
+            disabled={saveStepMutation.isPending || stepForm?.instruction.trim() === ""}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Divider />
+    </Box>
+  );
+}
+
+// SlotSteps lists a slot's snapshot steps with per-event edit actions.
+// These rows live on the event slot — edits never reach the shared recipe.
+function SlotSteps({
+  slot,
+  onAdd,
+  onEdit,
+  onRemove,
+  onSync,
+}: {
+  slot: EventRecipe;
+  onAdd: () => void;
+  onEdit: (step: EventRecipeStep) => void;
+  onRemove: (stepId: number) => void;
+  onSync: () => void;
+}) {
+  const steps = slot.steps ?? [];
+  return (
+    <Box sx={{ py: 1 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+        <Typography variant="subtitle2">
+          Event-specific steps{slot.recipeID ? " (copied from recipe — edits stay on this event)" : ""}
+        </Typography>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          {slot.recipeID != null && (
+            <Button size="small" onClick={onSync}>
+              Sync from recipe
+            </Button>
+          )}
+          <Button size="small" variant="outlined" onClick={onAdd}>
+            Add step
+          </Button>
+        </Box>
+      </Box>
+      {steps.length === 0 ? (
+        <Typography color="text.secondary" variant="body2">
+          No steps yet — add steps to include this dish in the timeline.
+        </Typography>
+      ) : (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>#</TableCell>
+              <TableCell>Instruction</TableCell>
+              <TableCell>Duration</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>Appliance</TableCell>
+              <TableCell>Flags</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {steps.map((s) => (
+              <TableRow key={s.eventRecipeStepID}>
+                <TableCell>{s.stepNumber}</TableCell>
+                <TableCell>{s.instruction}</TableCell>
+                <TableCell>
+                  {s.durationMinutes != null ? `${s.durationMinutes} min` : "—"}
+                </TableCell>
+                <TableCell>{s.stepType ?? "—"}</TableCell>
+                <TableCell>{s.appliance ?? "—"}</TableCell>
+                <TableCell>{s.isPassive ? "hands-off" : ""}</TableCell>
+                <TableCell>
+                  <IconButton size="small" aria-label="Edit step" onClick={() => onEdit(s)}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    aria-label="Delete step"
+                    onClick={() => onRemove(s.eventRecipeStepID)}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </Box>
   );
 }

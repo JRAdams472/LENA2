@@ -1619,6 +1619,77 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	assert.True(t, tlRes.Timeline.Recipes[0].Unschedulable)
 	assert.Nil(t, tlRes.Timeline.Recipes[0].StartBy)
 
+	// Snapshot steps belong to the slot, not any shared recipe — a
+	// free-form slot gets its own hand-entered schedule.
+	status, gr = doGraphQL(t, srv, tokI, `mutation AddStep($slotId: ID!) {
+		addEventRecipeStep(eventRecipeId: $slotId, input: { instruction: "pick up turkey", durationMinutes: 60, stepType: "other" }) {
+			id stepNumber instruction durationMinutes
+		}
+	}`, map[string]any{"slotId": slotID})
+	require.Equal(t, http.StatusOK, status)
+	var stepRes struct {
+		Step struct {
+			ID              string `json:"id"`
+			StepNumber      int    `json:"stepNumber"`
+			Instruction     string `json:"instruction"`
+			DurationMinutes *int   `json:"durationMinutes"`
+		} `json:"addEventRecipeStep"`
+	}
+	decodeData(t, gr.Data, &stepRes)
+	assert.Equal(t, 1, stepRes.Step.StepNumber)
+	assert.Equal(t, "pick up turkey", stepRes.Step.Instruction)
+
+	status, gr = doGraphQL(t, srv, tokI, `query Timeline($id: ID!) {
+		eventTimeline(foodEventId: $id) {
+			recipes { unschedulable startBy steps { stepNumber startTime endTime scheduledMinutes } }
+		}
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var tlRes2 struct {
+		Timeline *struct {
+			Recipes []struct {
+				Unschedulable bool    `json:"unschedulable"`
+				StartBy       *string `json:"startBy"`
+				Steps         []struct {
+					StepNumber       int    `json:"stepNumber"`
+					StartTime        string `json:"startTime"`
+					EndTime          string `json:"endTime"`
+					ScheduledMinutes int    `json:"scheduledMinutes"`
+				} `json:"steps"`
+			} `json:"recipes"`
+		} `json:"eventTimeline"`
+	}
+	decodeData(t, gr.Data, &tlRes2)
+	require.NotNil(t, tlRes2.Timeline)
+	require.Len(t, tlRes2.Timeline.Recipes, 1)
+	assert.False(t, tlRes2.Timeline.Recipes[0].Unschedulable)
+	require.NotNil(t, tlRes2.Timeline.Recipes[0].StartBy)
+	require.Len(t, tlRes2.Timeline.Recipes[0].Steps, 1)
+	// 60 minutes on a 30-minute grid ends exactly at the 18:30 target.
+	assert.Equal(t, "2026-11-26T17:30:00Z", tlRes2.Timeline.Recipes[0].Steps[0].StartTime)
+	assert.Equal(t, "2026-11-26T18:30:00Z", tlRes2.Timeline.Recipes[0].Steps[0].EndTime)
+
+	// The slot's steps field exposes the same snapshot.
+	status, gr = doGraphQL(t, srv, tokH, `query EventSteps($id: ID!) {
+		foodEvent(id: $id) { recipes { id steps { stepNumber instruction } } }
+	}`, map[string]any{"id": eventID})
+	require.Equal(t, http.StatusOK, status)
+	var stepsRes struct {
+		Event *struct {
+			Recipes []struct {
+				Steps []struct {
+					StepNumber  int    `json:"stepNumber"`
+					Instruction string `json:"instruction"`
+				} `json:"steps"`
+			} `json:"recipes"`
+		} `json:"foodEvent"`
+	}
+	decodeData(t, gr.Data, &stepsRes)
+	require.NotNil(t, stepsRes.Event)
+	require.Len(t, stepsRes.Event.Recipes, 1)
+	require.Len(t, stepsRes.Event.Recipes[0].Steps, 1)
+	assert.Equal(t, "pick up turkey", stepsRes.Event.Recipes[0].Steps[0].Instruction)
+
 	// J is a different household: no visibility, no mutation.
 	status, gr = doGraphQL(t, srv, tokJ, `{ foodEvents(page: 1, pageSize: 10) { items { id } pageInfo { totalCount } } }`, nil)
 	require.Equal(t, http.StatusOK, status)

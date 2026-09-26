@@ -219,3 +219,85 @@ func TestIntegrationReassignHousehold(t *testing.T) {
 	// Same-id reassign is a no-op, not an error.
 	require.NoError(t, svc.ReassignHousehold(ctx, hhB, hhB, itBy))
 }
+
+// TestIntegrationEventRecipeSteps exercises the per-slot step snapshot:
+// materialize a recipe's steps into the slot, edit them without touching
+// shared recipe rows, batch-load, and delete.
+func TestIntegrationEventRecipeSteps(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	hhA := testutil.MustHousehold(ctx, t, pool)
+	hhB := testutil.MustHousehold(ctx, t, pool)
+
+	recipeSvc := recipe.NewService(pool)
+	dur := int32(30)
+	rec, err := recipeSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{Name: "IT Snapshot Recipe", IsActive: true},
+		nil, []recipe.RecipeStep{
+			{StepNumber: 1, Instruction: "mix", DurationMinutes: &dur},
+			{StepNumber: 2, Instruction: "bake", DurationMinutes: &dur, Appliance: "oven"},
+		}, itBy)
+	require.NoError(t, err)
+
+	day := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	ev, err := svc.CreateFoodEvent(ctx, FoodEvent{
+		HouseholdID: hhA, Name: "Party", EventDate: day, SlotGranularityMinutes: 15, IsActive: true,
+	}, itBy)
+	require.NoError(t, err)
+	slot, err := svc.AddEventRecipe(ctx, EventRecipe{
+		FoodEventID: ev.FoodEventID, RecipeID: &rec.RecipeID, MealType: "dinner",
+		TargetTime: time.Date(2026, 10, 31, 18, 0, 0, 0, time.UTC),
+	}, hhA, itBy)
+	require.NoError(t, err)
+
+	// Materialize the snapshot — mirrors what the BFF does on add.
+	steps, err := recipeSvc.ListRecipeStepsByRecipes(ctx, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	snap := make([]EventRecipeStep, len(steps))
+	for i, s := range steps {
+		snap[i] = EventRecipeStep{
+			StepNumber: s.StepNumber, Instruction: s.Instruction,
+			DurationMinutes: s.DurationMinutes, StepType: s.StepType,
+			IsPassive: s.IsPassive, DependsOnStepNumber: s.DependsOnStepNumber,
+			Appliance: s.Appliance,
+		}
+	}
+	require.NoError(t, svc.ReplaceEventRecipeSteps(ctx, slot.EventRecipeID, hhA, snap, itBy))
+
+	got, err := svc.ListEventRecipeSteps(ctx, slot.EventRecipeID, hhA)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "mix", got[0].Instruction)
+
+	// Batch load by event.
+	batch, err := svc.ListEventRecipeStepsForEvents(ctx, []int64{ev.FoodEventID}, hhA)
+	require.NoError(t, err)
+	assert.Len(t, batch, 2)
+	batchB, err := svc.ListEventRecipeStepsForEvents(ctx, []int64{ev.FoodEventID}, hhB)
+	require.NoError(t, err)
+	assert.Empty(t, batchB)
+
+	// Editing the snapshot must not alter the shared recipe step.
+	dur45 := int32(45)
+	require.NoError(t, svc.UpdateEventRecipeStep(ctx, got[0].EventRecipeStepID, hhA,
+		EventRecipeStep{Instruction: "mix longer", DurationMinutes: &dur45}, itBy))
+	orig, err := recipeSvc.ListRecipeStepsByRecipes(ctx, []int64{rec.RecipeID})
+	require.NoError(t, err)
+	assert.Equal(t, "mix", orig[0].Instruction)
+
+	// Add a hand-entered step (gets the next step number), then remove it.
+	added, err := svc.AddEventRecipeStep(ctx, EventRecipeStep{EventRecipeID: slot.EventRecipeID, Instruction: "rest"}, hhA, itBy)
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), added.StepNumber)
+	require.NoError(t, svc.DeleteEventRecipeStep(ctx, added.EventRecipeStepID, hhA))
+	got, err = svc.ListEventRecipeSteps(ctx, slot.EventRecipeID, hhA)
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+
+	// Cross-household writes denied.
+	err = svc.ReplaceEventRecipeSteps(ctx, slot.EventRecipeID, hhB, snap, itBy)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}

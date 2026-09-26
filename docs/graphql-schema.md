@@ -261,7 +261,14 @@ type GroceryListItem {
 - `updateEventRecipe(id: ID!, input: UpdateEventRecipeInput!): EventRecipe!`
 - `removeEventRecipe(id: ID!): Boolean!`
 
-`eventTimeline(foodEventId)` computes the master schedule on read: each recipe's step DAG is placed backwards from its `targetTime` (sinks end at the target, each step ends by its dependents' latest start). Durations round up to the event's slot granularity so all boundaries align; a missing `durationMinutes` is estimated as one slot and flagged `estimated`. Steps that name the same `appliance` and overlap are marked in `conflicts` and surfaced in recipe/event `warnings` — the engine reports contention but does not resolve it. `EventTimelineRecipe.startBy` is the earliest required start; `unschedulable` covers free-form slots and dependency cycles.
+`eventTimeline(foodEventId)` computes the master schedule on read: each slot's **snapshot** step DAG is placed backwards from its `targetTime` (sinks end at the target, each step ends by its dependents' latest start). Durations round up to the event's slot granularity so all boundaries align; a missing `durationMinutes` is estimated as one slot and flagged `estimated`. Steps that name the same `appliance` and overlap are marked in `conflicts` and surfaced in recipe/event `warnings` — the engine reports contention but does not resolve it. `EventTimelineRecipe.startBy` is the earliest required start; `unschedulable` covers free-form slots and dependency cycles.
+
+`EventRecipe.steps` is the slot's own copy of the recipe's steps (snapshot): linking a recipe copies `recipe_step` rows into `event_recipe_step`, and the step mutations below edit that copy — the shared recipe is never altered. `syncEventRecipeSteps` re-copies the linked recipe, discarding slot edits.
+
+- `addEventRecipeStep(eventRecipeId: ID!, input: EventRecipeStepInput!): EventRecipeStep!`
+- `updateEventRecipeStep(id: ID!, input: EventRecipeStepInput!): EventRecipeStep!`
+- `removeEventRecipeStep(id: ID!): Boolean!`
+- `syncEventRecipeSteps(eventRecipeId: ID!): EventRecipe!`
 
 ## Example operations
 

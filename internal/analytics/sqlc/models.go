@@ -60,6 +60,22 @@ type EventEventRecipe struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+type EventEventRecipeStep struct {
+	EventRecipeStepID   int64              `json:"event_recipe_step_id"`
+	EventRecipeID       int64              `json:"event_recipe_id"`
+	StepNumber          int32              `json:"step_number"`
+	Instruction         string             `json:"instruction"`
+	DurationMinutes     pgtype.Int4        `json:"duration_minutes"`
+	StepType            pgtype.Text        `json:"step_type"`
+	IsPassive           bool               `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4        `json:"depends_on_step_number"`
+	Appliance           pgtype.Text        `json:"appliance"`
+	CreatedBy           string             `json:"created_by"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedBy           pgtype.Text        `json:"updated_by"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
 type EventFoodEvent struct {
 	FoodEventID            int64              `json:"food_event_id"`
 	HouseholdID            int64              `json:"household_id"`

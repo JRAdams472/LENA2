@@ -57,6 +57,59 @@ func (q *Queries) AddEventRecipe(ctx context.Context, arg AddEventRecipeParams) 
 	return i, err
 }
 
+const addEventRecipeStep = `-- name: AddEventRecipeStep :one
+INSERT INTO event.event_recipe_step
+    (event_recipe_id, step_number, instruction, duration_minutes, step_type,
+     is_passive, depends_on_step_number, appliance, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING event_recipe_step_id, event_recipe_id, step_number, instruction, duration_minutes, step_type, is_passive, depends_on_step_number, appliance, created_by, created_at, updated_by, updated_at
+`
+
+type AddEventRecipeStepParams struct {
+	EventRecipeID       int64       `json:"event_recipe_id"`
+	StepNumber          int32       `json:"step_number"`
+	Instruction         string      `json:"instruction"`
+	DurationMinutes     pgtype.Int4 `json:"duration_minutes"`
+	StepType            pgtype.Text `json:"step_type"`
+	IsPassive           bool        `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4 `json:"depends_on_step_number"`
+	Appliance           pgtype.Text `json:"appliance"`
+	CreatedBy           string      `json:"created_by"`
+	UpdatedBy           pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) AddEventRecipeStep(ctx context.Context, arg AddEventRecipeStepParams) (EventEventRecipeStep, error) {
+	row := q.db.QueryRow(ctx, addEventRecipeStep,
+		arg.EventRecipeID,
+		arg.StepNumber,
+		arg.Instruction,
+		arg.DurationMinutes,
+		arg.StepType,
+		arg.IsPassive,
+		arg.DependsOnStepNumber,
+		arg.Appliance,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i EventEventRecipeStep
+	err := row.Scan(
+		&i.EventRecipeStepID,
+		&i.EventRecipeID,
+		&i.StepNumber,
+		&i.Instruction,
+		&i.DurationMinutes,
+		&i.StepType,
+		&i.IsPassive,
+		&i.DependsOnStepNumber,
+		&i.Appliance,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const countFoodEvents = `-- name: CountFoodEvents :one
 SELECT COUNT(*)
 FROM event.food_event
@@ -128,6 +181,43 @@ func (q *Queries) DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipePa
 	return err
 }
 
+const deleteEventRecipeStep = `-- name: DeleteEventRecipeStep :exec
+DELETE FROM event.event_recipe_step ers
+USING event.event_recipe er, event.food_event fe
+WHERE ers.event_recipe_id = er.event_recipe_id
+  AND er.food_event_id = fe.food_event_id
+  AND ers.event_recipe_step_id = $1 AND fe.household_id = $2
+`
+
+type DeleteEventRecipeStepParams struct {
+	EventRecipeStepID int64 `json:"event_recipe_step_id"`
+	HouseholdID       int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) error {
+	_, err := q.db.Exec(ctx, deleteEventRecipeStep, arg.EventRecipeStepID, arg.HouseholdID)
+	return err
+}
+
+const deleteEventRecipeSteps = `-- name: DeleteEventRecipeSteps :exec
+DELETE FROM event.event_recipe_step ers
+USING event.event_recipe er, event.food_event fe
+WHERE ers.event_recipe_id = er.event_recipe_id
+  AND er.food_event_id = fe.food_event_id
+  AND ers.event_recipe_id = $1 AND fe.household_id = $2
+`
+
+type DeleteEventRecipeStepsParams struct {
+	EventRecipeID int64 `json:"event_recipe_id"`
+	HouseholdID   int64 `json:"household_id"`
+}
+
+// Clears a slot's snapshot before a re-materialization replace.
+func (q *Queries) DeleteEventRecipeSteps(ctx context.Context, arg DeleteEventRecipeStepsParams) error {
+	_, err := q.db.Exec(ctx, deleteEventRecipeSteps, arg.EventRecipeID, arg.HouseholdID)
+	return err
+}
+
 const deleteFoodEvent = `-- name: DeleteFoodEvent :exec
 DELETE FROM event.food_event
 WHERE food_event_id = $1 AND household_id = $2
@@ -174,6 +264,40 @@ func (q *Queries) GetEventRecipeByID(ctx context.Context, arg GetEventRecipeByID
 	return i, err
 }
 
+const getEventRecipeStepByID = `-- name: GetEventRecipeStepByID :one
+SELECT ers.event_recipe_step_id, ers.event_recipe_id, ers.step_number, ers.instruction, ers.duration_minutes, ers.step_type, ers.is_passive, ers.depends_on_step_number, ers.appliance, ers.created_by, ers.created_at, ers.updated_by, ers.updated_at
+FROM event.event_recipe_step ers
+JOIN event.event_recipe er ON ers.event_recipe_id = er.event_recipe_id
+JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
+WHERE ers.event_recipe_step_id = $1 AND fe.household_id = $2
+`
+
+type GetEventRecipeStepByIDParams struct {
+	EventRecipeStepID int64 `json:"event_recipe_step_id"`
+	HouseholdID       int64 `json:"household_id"`
+}
+
+func (q *Queries) GetEventRecipeStepByID(ctx context.Context, arg GetEventRecipeStepByIDParams) (EventEventRecipeStep, error) {
+	row := q.db.QueryRow(ctx, getEventRecipeStepByID, arg.EventRecipeStepID, arg.HouseholdID)
+	var i EventEventRecipeStep
+	err := row.Scan(
+		&i.EventRecipeStepID,
+		&i.EventRecipeID,
+		&i.StepNumber,
+		&i.Instruction,
+		&i.DurationMinutes,
+		&i.StepType,
+		&i.IsPassive,
+		&i.DependsOnStepNumber,
+		&i.Appliance,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getFoodEventByID = `-- name: GetFoodEventByID :one
 SELECT food_event_id, household_id, name, event_date, slot_granularity_minutes, is_active, created_by, created_at, updated_by, updated_at
 FROM event.food_event
@@ -201,6 +325,103 @@ func (q *Queries) GetFoodEventByID(ctx context.Context, arg GetFoodEventByIDPara
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listEventRecipeSteps = `-- name: ListEventRecipeSteps :many
+SELECT ers.event_recipe_step_id, ers.event_recipe_id, ers.step_number, ers.instruction, ers.duration_minutes, ers.step_type, ers.is_passive, ers.depends_on_step_number, ers.appliance, ers.created_by, ers.created_at, ers.updated_by, ers.updated_at
+FROM event.event_recipe_step ers
+JOIN event.event_recipe er ON ers.event_recipe_id = er.event_recipe_id
+JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
+WHERE ers.event_recipe_id = $1 AND fe.household_id = $2
+ORDER BY ers.step_number
+`
+
+type ListEventRecipeStepsParams struct {
+	EventRecipeID int64 `json:"event_recipe_id"`
+	HouseholdID   int64 `json:"household_id"`
+}
+
+func (q *Queries) ListEventRecipeSteps(ctx context.Context, arg ListEventRecipeStepsParams) ([]EventEventRecipeStep, error) {
+	rows, err := q.db.Query(ctx, listEventRecipeSteps, arg.EventRecipeID, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventEventRecipeStep{}
+	for rows.Next() {
+		var i EventEventRecipeStep
+		if err := rows.Scan(
+			&i.EventRecipeStepID,
+			&i.EventRecipeID,
+			&i.StepNumber,
+			&i.Instruction,
+			&i.DurationMinutes,
+			&i.StepType,
+			&i.IsPassive,
+			&i.DependsOnStepNumber,
+			&i.Appliance,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventRecipeStepsForEvents = `-- name: ListEventRecipeStepsForEvents :many
+SELECT ers.event_recipe_step_id, ers.event_recipe_id, ers.step_number, ers.instruction, ers.duration_minutes, ers.step_type, ers.is_passive, ers.depends_on_step_number, ers.appliance, ers.created_by, ers.created_at, ers.updated_by, ers.updated_at
+FROM event.event_recipe_step ers
+JOIN event.event_recipe er ON ers.event_recipe_id = er.event_recipe_id
+JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
+WHERE er.food_event_id = ANY($1::bigint[]) AND fe.household_id = $2
+ORDER BY ers.event_recipe_id, ers.step_number
+`
+
+type ListEventRecipeStepsForEventsParams struct {
+	FoodEventIds []int64 `json:"food_event_ids"`
+	HouseholdID  int64   `json:"household_id"`
+}
+
+// Batch: steps for every slot of the given events, owned by the household.
+func (q *Queries) ListEventRecipeStepsForEvents(ctx context.Context, arg ListEventRecipeStepsForEventsParams) ([]EventEventRecipeStep, error) {
+	rows, err := q.db.Query(ctx, listEventRecipeStepsForEvents, arg.FoodEventIds, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventEventRecipeStep{}
+	for rows.Next() {
+		var i EventEventRecipeStep
+		if err := rows.Scan(
+			&i.EventRecipeStepID,
+			&i.EventRecipeID,
+			&i.StepNumber,
+			&i.Instruction,
+			&i.DurationMinutes,
+			&i.StepType,
+			&i.IsPassive,
+			&i.DependsOnStepNumber,
+			&i.Appliance,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEventRecipesByEvents = `-- name: ListEventRecipesByEvents :many
@@ -392,6 +613,49 @@ func (q *Queries) UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipePa
 		arg.TargetTime,
 		arg.Servings,
 		arg.Notes,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const updateEventRecipeStep = `-- name: UpdateEventRecipeStep :exec
+UPDATE event.event_recipe_step ers
+SET instruction            = $3,
+    duration_minutes       = $4,
+    step_type              = $5,
+    is_passive             = $6,
+    depends_on_step_number = $7,
+    appliance              = $8,
+    updated_by             = $9,
+    updated_at             = now()
+FROM event.event_recipe er, event.food_event fe
+WHERE ers.event_recipe_id = er.event_recipe_id
+  AND er.food_event_id = fe.food_event_id
+  AND ers.event_recipe_step_id = $1 AND fe.household_id = $2
+`
+
+type UpdateEventRecipeStepParams struct {
+	EventRecipeStepID   int64       `json:"event_recipe_step_id"`
+	HouseholdID         int64       `json:"household_id"`
+	Instruction         string      `json:"instruction"`
+	DurationMinutes     pgtype.Int4 `json:"duration_minutes"`
+	StepType            pgtype.Text `json:"step_type"`
+	IsPassive           bool        `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4 `json:"depends_on_step_number"`
+	Appliance           pgtype.Text `json:"appliance"`
+	UpdatedBy           pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) error {
+	_, err := q.db.Exec(ctx, updateEventRecipeStep,
+		arg.EventRecipeStepID,
+		arg.HouseholdID,
+		arg.Instruction,
+		arg.DurationMinutes,
+		arg.StepType,
+		arg.IsPassive,
+		arg.DependsOnStepNumber,
+		arg.Appliance,
 		arg.UpdatedBy,
 	)
 	return err

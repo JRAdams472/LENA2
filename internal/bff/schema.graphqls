@@ -276,6 +276,13 @@ type Mutation {
   addEventRecipe(input: AddEventRecipeInput!): EventRecipe!
   updateEventRecipe(id: ID!, input: UpdateEventRecipeInput!): EventRecipe!
   removeEventRecipe(id: ID!): Boolean!
+  # Event recipe step mutations edit the slot's snapshot only — never the
+  # shared recipe. syncEventRecipeSteps re-copies the linked recipe's
+  # current steps over the snapshot.
+  addEventRecipeStep(eventRecipeId: ID!, input: EventRecipeStepInput!): EventRecipeStep!
+  updateEventRecipeStep(id: ID!, input: EventRecipeStepInput!): EventRecipeStep!
+  removeEventRecipeStep(id: ID!): Boolean!
+  syncEventRecipeSteps(eventRecipeId: ID!): EventRecipe!
 }
 
 input UpdateProfileInput {
@@ -691,7 +698,9 @@ type FoodEvent {
 }
 
 # EventRecipe assigns a recipe to a serve time within an event. recipe is
-# null when the referenced recipe has been deleted.
+# null when the referenced recipe has been deleted. steps is the slot's
+# own snapshot of the recipe's steps — edits here never touch the
+# original recipe.
 type EventRecipe {
   id: ID!
   mealType: String!
@@ -699,6 +708,21 @@ type EventRecipe {
   servings: Int
   notes: String
   recipe: Recipe
+  steps: [EventRecipeStep!]!
+}
+
+# EventRecipeStep is one step in an event slot's recipe snapshot. It is
+# copied from recipe_step when the slot is linked to a recipe; event
+# mutations edit this copy only.
+type EventRecipeStep {
+  id: ID!
+  stepNumber: Int!
+  instruction: String!
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean!
+  dependsOnStepNumber: Int
+  appliance: String
 }
 
 type FoodEventPage {
@@ -734,6 +758,15 @@ input UpdateEventRecipeInput {
   targetTime: Time
   servings: Int
   notes: String
+}
+
+input EventRecipeStepInput {
+  instruction: String!
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean
+  dependsOnStepNumber: Int
+  appliance: String
 }
 
 # EventTimeline is the master schedule for a food event: each recipe's
