@@ -30,8 +30,11 @@ We may need to add age of users to weight preferences towards those of legal dri
 Add an AI bartender to the system that works simmilarly to the wine adviser, but for cocktails
 Do we need to add a Liquor flag to items to do this?
 Do we need to flag recipe types as drink or cocktail vs meal?
-## Generic interface
+### Generic interface
 Ensure the AI integration is generic enough that Ollama can be swapped out for a commercial ai system like claud or chat gpt with minimal changes.
+
+## System validations
+Make sure the entire interface and api is idempotent.
 
 ## Recipe Categories
 We need to be able to categorize recipes to make searching easier.
