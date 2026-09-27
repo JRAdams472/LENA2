@@ -66,3 +66,13 @@ This should include the barcode scanner
 this shoudl include the abilitty build the meal plan, which is curently limited to web version
 This should have a new recpipe interface that scrolls through the steps so people can read as they prep
 This should include the ability to watch a tiktok or youtube video in an embedded window if possible.
+
+## Instacart or other shopper integration
+It would be cool if the application could validate the grocery list against a store or stores in instacart to send the order in automatically
+
+## Grocery store routing
+Order the grocery list by the aisles in the grocery store.
+This can take store input from the user
+It would be great if we could use the users data logs to track as well. 
+Keep track of the order items are checked off the grocery list.
+Make educated guess on what order the list should be in for the future based on past logs.
