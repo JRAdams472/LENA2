@@ -15,6 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -231,6 +232,9 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	// The plan must belong to the caller before a list is linked to it.
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
 		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil)
+	// No prior list for this plan — falls through to creation.
+	g.EXPECT().GetLatestGroceryListByPlan(gomock.Any(), mealPlanID, grocUserID).
+		Return(grocery.GroceryList{}, domainerr.ErrNotFound)
 	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, &mealPlanID, grocEmail).
 		Return(grocery.GroceryList{GroceryListID: 21, HouseholdID: grocUserID, MealPlanID: &mealPlanID}, nil)
 	mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), mealPlanID, grocUserID).
@@ -266,6 +270,51 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	assert.Equal(t, graphql.ID("21"), res.ID())
 }
 
+// A second generation for the same plan reuses the existing list:
+// generated lines are replaced via ReplaceGeneratedItems and no new
+// list is created.
+func TestResolver_GenerateGroceryList_RegeneratesInPlace(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	mp := mock.NewMockMealPlanService(ctrl)
+	rec := mock.NewMockRecipeService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{GroceryService: g, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, InventoryService: inv}
+
+	mealPlanID := int64(55)
+	recipeID := int64(7)
+	servings := int32(4)
+	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
+		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil)
+	g.EXPECT().GetLatestGroceryListByPlan(gomock.Any(), mealPlanID, grocUserID).
+		Return(grocery.GroceryList{GroceryListID: 21, HouseholdID: grocUserID, MealPlanID: &mealPlanID}, nil)
+	mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), mealPlanID, grocUserID).
+		Return([]mealplan.MealSlot{{SlotID: 1, MealPlanID: mealPlanID, RecipeID: &recipeID}}, nil)
+	mp.EXPECT().ListMealSlotItemsByPlan(gomock.Any(), mealPlanID, grocUserID).Return(nil, nil)
+	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{recipeID}).
+		Return([]recipe.Recipe{{RecipeID: recipeID, Servings: &servings}}, nil)
+	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{recipeID}).
+		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: 10, UnitID: 5, Quantity: 2}}, nil)
+	up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(1000), int32(0)).Return(nil, nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10}).
+		Return([]inventory.Item{{ItemID: 10, UnitID: 5}}, nil)
+	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{5}).
+		Return([]inventory.Unit{{UnitID: 5, Name: "gram", Kind: "weight"}}, nil)
+	g.EXPECT().ReplaceGeneratedItems(gomock.Any(), int64(21), grocUserID, gomock.Any(), grocEmail).
+		DoAndReturn(func(_ context.Context, _ int64, _ int64, items []grocery.GroceryListItem, _ string) ([]grocery.GroceryListItem, error) {
+			require.Len(t, items, 1)
+			assert.Equal(t, int64(21), items[0].GroceryListID)
+			assert.Equal(t, "mealplan", items[0].Source)
+			return items, nil
+		})
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{21}, grocUserID).Return(nil, nil)
+
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("21"), res.ID())
+}
+
 func TestResolver_GenerateGroceryList_Unauthorized(t *testing.T) {
 	r := &Resolver{}
 	res, err := r.GenerateGroceryList(context.Background(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
@@ -281,6 +330,8 @@ func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
 		Return(mealplan.MealPlan{MealPlanID: 55, HouseholdID: grocUserID}, nil)
+	g.EXPECT().GetLatestGroceryListByPlan(gomock.Any(), int64(55), grocUserID).
+		Return(grocery.GroceryList{}, domainerr.ErrNotFound)
 	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, gomock.Any(), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
 
 	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})

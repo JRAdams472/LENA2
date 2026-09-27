@@ -12,10 +12,14 @@ type Querier interface {
 	AddGroceryListItem(ctx context.Context, arg AddGroceryListItemParams) (GroceryGroceryListItem, error)
 	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
+	// Regenerate-in-place: generated lines (source <> 'manual') are replaced
+	// wholesale; manual lines are preserved.
+	DeleteGeneratedGroceryListItems(ctx context.Context, groceryListID int64) error
 	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
 	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error
 	GetGroceryListByID(ctx context.Context, arg GetGroceryListByIDParams) (GroceryGroceryList, error)
 	GetGroceryListItemByID(ctx context.Context, arg GetGroceryListItemByIDParams) (GroceryGroceryListItem, error)
+	GetLatestGroceryListByPlan(ctx context.Context, arg GetLatestGroceryListByPlanParams) (GroceryGroceryList, error)
 	ListGroceryListItems(ctx context.Context, arg ListGroceryListItemsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryListItemsByLists(ctx context.Context, arg ListGroceryListItemsByListsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error)
@@ -23,6 +27,7 @@ type Querier interface {
 	// rows is not an error.
 	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
 	ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error)
+	TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroceryListGeneratedAtParams) (GroceryGroceryList, error)
 	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error
 }
 

@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/graph-gophers/graphql-go"
 )
@@ -137,11 +139,24 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 
 	var list grocery.GroceryList
 	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
-		created, err := r.GroceryService.CreateGroceryList(ctx, u.HouseholdID, &mealPlanID, u.Email)
-		if err != nil {
-			return err
+		// Regenerate-in-place: a second generation for the same plan
+		// replaces the latest list's generated lines instead of stacking
+		// up a duplicate list.
+		regenerate := true
+		existing, lerr := r.GroceryService.GetLatestGroceryListByPlan(ctx, mealPlanID, u.HouseholdID)
+		switch {
+		case lerr == nil:
+			list = existing
+		case errors.Is(lerr, domainerr.ErrNotFound):
+			regenerate = false
+			created, err := r.GroceryService.CreateGroceryList(ctx, u.HouseholdID, &mealPlanID, u.Email)
+			if err != nil {
+				return err
+			}
+			list = created
+		default:
+			return lerr
 		}
-		list = created
 
 		slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.HouseholdID)
 		if err != nil {
@@ -158,6 +173,12 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		}
 		needs := aggregateGroceryNeeds(slots, slotItems, recipes, recipeItems)
 		if len(needs) == 0 {
+			if regenerate {
+				// The plan now contributes nothing — still clear the
+				// previously generated lines so the list reflects it.
+				_, err := r.GroceryService.ReplaceGeneratedItems(ctx, list.GroceryListID, u.HouseholdID, nil, u.Email)
+				return err
+			}
 			return nil
 		}
 
@@ -187,7 +208,11 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		}
 
 		lines := groceryNeedLines(list.GroceryListID, needs, stock, itemsByID, unitsByID)
-		_, err = r.GroceryService.AddGroceryListItems(ctx, lines, u.HouseholdID, u.Email)
+		if regenerate {
+			_, err = r.GroceryService.ReplaceGeneratedItems(ctx, list.GroceryListID, u.HouseholdID, lines, u.Email)
+		} else {
+			_, err = r.GroceryService.AddGroceryListItems(ctx, lines, u.HouseholdID, u.Email)
+		}
 		return err
 	}); err != nil {
 		return nil, err

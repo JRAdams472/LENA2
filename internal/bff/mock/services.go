@@ -100,6 +100,21 @@ func (mr *MockGroceryReaderMockRecorder) GetGroceryListItemByID(ctx, groceryList
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockGroceryReader)(nil).GetGroceryListItemByID), ctx, groceryListItemID, householdID)
 }
 
+// GetLatestGroceryListByPlan mocks base method.
+func (m *MockGroceryReader) GetLatestGroceryListByPlan(ctx context.Context, mealPlanID, householdID int64) (grocery.GroceryList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestGroceryListByPlan", ctx, mealPlanID, householdID)
+	ret0, _ := ret[0].(grocery.GroceryList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestGroceryListByPlan indicates an expected call of GetLatestGroceryListByPlan.
+func (mr *MockGroceryReaderMockRecorder) GetLatestGroceryListByPlan(ctx, mealPlanID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestGroceryListByPlan", reflect.TypeOf((*MockGroceryReader)(nil).GetLatestGroceryListByPlan), ctx, mealPlanID, householdID)
+}
+
 // ListGroceryListItems mocks base method.
 func (m *MockGroceryReader) ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
@@ -226,6 +241,21 @@ func (m *MockGroceryWriter) DeleteGroceryListItem(ctx context.Context, groceryLi
 func (mr *MockGroceryWriterMockRecorder) DeleteGroceryListItem(ctx, groceryListItemID, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryWriter)(nil).DeleteGroceryListItem), ctx, groceryListItemID, householdID)
+}
+
+// ReplaceGeneratedItems mocks base method.
+func (m *MockGroceryWriter) ReplaceGeneratedItems(ctx context.Context, groceryListID, householdID int64, items []grocery.GroceryListItem, by string) ([]grocery.GroceryListItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceGeneratedItems", ctx, groceryListID, householdID, items, by)
+	ret0, _ := ret[0].([]grocery.GroceryListItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReplaceGeneratedItems indicates an expected call of ReplaceGeneratedItems.
+func (mr *MockGroceryWriterMockRecorder) ReplaceGeneratedItems(ctx, groceryListID, householdID, items, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceGeneratedItems", reflect.TypeOf((*MockGroceryWriter)(nil).ReplaceGeneratedItems), ctx, groceryListID, householdID, items, by)
 }
 
 // ToggleGroceryListItemChecked mocks base method.
@@ -385,6 +415,21 @@ func (mr *MockGroceryServiceMockRecorder) GetGroceryListItemByID(ctx, groceryLis
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockGroceryService)(nil).GetGroceryListItemByID), ctx, groceryListItemID, householdID)
 }
 
+// GetLatestGroceryListByPlan mocks base method.
+func (m *MockGroceryService) GetLatestGroceryListByPlan(ctx context.Context, mealPlanID, householdID int64) (grocery.GroceryList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestGroceryListByPlan", ctx, mealPlanID, householdID)
+	ret0, _ := ret[0].(grocery.GroceryList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestGroceryListByPlan indicates an expected call of GetLatestGroceryListByPlan.
+func (mr *MockGroceryServiceMockRecorder) GetLatestGroceryListByPlan(ctx, mealPlanID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestGroceryListByPlan", reflect.TypeOf((*MockGroceryService)(nil).GetLatestGroceryListByPlan), ctx, mealPlanID, householdID)
+}
+
 // ListGroceryListItems mocks base method.
 func (m *MockGroceryService) ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]grocery.GroceryListItem, error) {
 	m.ctrl.T.Helper()
@@ -442,6 +487,21 @@ func (m *MockGroceryService) ReassignHousehold(ctx context.Context, fromHousehol
 func (mr *MockGroceryServiceMockRecorder) ReassignHousehold(ctx, fromHouseholdID, toHouseholdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignHousehold", reflect.TypeOf((*MockGroceryService)(nil).ReassignHousehold), ctx, fromHouseholdID, toHouseholdID, by)
+}
+
+// ReplaceGeneratedItems mocks base method.
+func (m *MockGroceryService) ReplaceGeneratedItems(ctx context.Context, groceryListID, householdID int64, items []grocery.GroceryListItem, by string) ([]grocery.GroceryListItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceGeneratedItems", ctx, groceryListID, householdID, items, by)
+	ret0, _ := ret[0].([]grocery.GroceryListItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReplaceGeneratedItems indicates an expected call of ReplaceGeneratedItems.
+func (mr *MockGroceryServiceMockRecorder) ReplaceGeneratedItems(ctx, groceryListID, householdID, items, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceGeneratedItems", reflect.TypeOf((*MockGroceryService)(nil).ReplaceGeneratedItems), ctx, groceryListID, householdID, items, by)
 }
 
 // ToggleGroceryListItemChecked mocks base method.

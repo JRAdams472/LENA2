@@ -86,6 +86,20 @@ func (mr *MockQuerierMockRecorder) CreateGroceryList(ctx, arg any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockQuerier)(nil).CreateGroceryList), ctx, arg)
 }
 
+// DeleteGeneratedGroceryListItems mocks base method.
+func (m *MockQuerier) DeleteGeneratedGroceryListItems(ctx context.Context, groceryListID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteGeneratedGroceryListItems", ctx, groceryListID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteGeneratedGroceryListItems indicates an expected call of DeleteGeneratedGroceryListItems.
+func (mr *MockQuerierMockRecorder) DeleteGeneratedGroceryListItems(ctx, groceryListID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGeneratedGroceryListItems", reflect.TypeOf((*MockQuerier)(nil).DeleteGeneratedGroceryListItems), ctx, groceryListID)
+}
+
 // DeleteGroceryList mocks base method.
 func (m *MockQuerier) DeleteGroceryList(ctx context.Context, arg sqlc.DeleteGroceryListParams) error {
 	m.ctrl.T.Helper()
@@ -142,6 +156,21 @@ func (m *MockQuerier) GetGroceryListItemByID(ctx context.Context, arg sqlc.GetGr
 func (mr *MockQuerierMockRecorder) GetGroceryListItemByID(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroceryListItemByID", reflect.TypeOf((*MockQuerier)(nil).GetGroceryListItemByID), ctx, arg)
+}
+
+// GetLatestGroceryListByPlan mocks base method.
+func (m *MockQuerier) GetLatestGroceryListByPlan(ctx context.Context, arg sqlc.GetLatestGroceryListByPlanParams) (sqlc.GroceryGroceryList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestGroceryListByPlan", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryGroceryList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestGroceryListByPlan indicates an expected call of GetLatestGroceryListByPlan.
+func (mr *MockQuerierMockRecorder) GetLatestGroceryListByPlan(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestGroceryListByPlan", reflect.TypeOf((*MockQuerier)(nil).GetLatestGroceryListByPlan), ctx, arg)
 }
 
 // ListGroceryListItems mocks base method.
@@ -216,6 +245,21 @@ func (m *MockQuerier) ToggleGroceryListItemChecked(ctx context.Context, arg sqlc
 func (mr *MockQuerierMockRecorder) ToggleGroceryListItemChecked(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGroceryListItemChecked", reflect.TypeOf((*MockQuerier)(nil).ToggleGroceryListItemChecked), ctx, arg)
+}
+
+// TouchGroceryListGeneratedAt mocks base method.
+func (m *MockQuerier) TouchGroceryListGeneratedAt(ctx context.Context, arg sqlc.TouchGroceryListGeneratedAtParams) (sqlc.GroceryGroceryList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TouchGroceryListGeneratedAt", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryGroceryList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TouchGroceryListGeneratedAt indicates an expected call of TouchGroceryListGeneratedAt.
+func (mr *MockQuerierMockRecorder) TouchGroceryListGeneratedAt(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TouchGroceryListGeneratedAt", reflect.TypeOf((*MockQuerier)(nil).TouchGroceryListGeneratedAt), ctx, arg)
 }
 
 // UpdateGroceryListItem mocks base method.

@@ -103,6 +103,37 @@ func (s *Service) GetGroceryListByID(ctx context.Context, groceryListID, househo
 	return toGroceryList(row), nil
 }
 
+// GetLatestGroceryListByPlan returns the most recently generated list
+// linked to a meal plan owned by the household.
+func (s *Service) GetLatestGroceryListByPlan(ctx context.Context, mealPlanID, householdID int64) (GroceryList, error) {
+	row, err := s.q.GetLatestGroceryListByPlan(ctx, sqlc.GetLatestGroceryListByPlanParams{HouseholdID: householdID, MealPlanID: optInt8(&mealPlanID)})
+	if err != nil {
+		return GroceryList{}, fmt.Errorf("get grocery list by plan: %w", domainerr.FromStorage(err))
+	}
+	return toGroceryList(row), nil
+}
+
+// ReplaceGeneratedItems swaps a list's generated lines (source <> 'manual')
+// for the supplied set and stamps the list's generated_at, leaving manual
+// lines and the list itself untouched. Callers compose it inside their
+// unit of work.
+func (s *Service) ReplaceGeneratedItems(ctx context.Context, groceryListID, householdID int64, items []GroceryListItem, by string) ([]GroceryListItem, error) {
+	if _, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: groceryListID, HouseholdID: householdID}); err != nil {
+		return nil, fmt.Errorf("replace generated items: %w", domainerr.FromStorage(err))
+	}
+	if err := s.q.DeleteGeneratedGroceryListItems(ctx, groceryListID); err != nil {
+		return nil, fmt.Errorf("replace generated items: %w", err)
+	}
+	out, err := s.AddGroceryListItems(ctx, items, householdID, by)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.q.TouchGroceryListGeneratedAt(ctx, sqlc.TouchGroceryListGeneratedAtParams{GroceryListID: groceryListID, HouseholdID: householdID, UpdatedBy: textOrNull(by)}); err != nil {
+		return nil, fmt.Errorf("replace generated items: %w", err)
+	}
+	return out, nil
+}
+
 // ListGroceryLists returns a household's grocery lists.
 func (s *Service) ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]GroceryList, error) {
 	rows, err := s.q.ListGroceryLists(ctx, sqlc.ListGroceryListsParams{HouseholdID: householdID, Limit: limit, Offset: offset})

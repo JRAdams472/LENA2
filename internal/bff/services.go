@@ -31,6 +31,7 @@ import (
 // currentuser, never from client input.
 type GroceryReader interface {
 	GetGroceryListByID(ctx context.Context, groceryListID, householdID int64) (grocery.GroceryList, error)
+	GetLatestGroceryListByPlan(ctx context.Context, mealPlanID, householdID int64) (grocery.GroceryList, error)
 	ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]grocery.GroceryList, error)
 	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
 	GetGroceryListItemByID(ctx context.Context, groceryListItemID, householdID int64) (grocery.GroceryListItem, error)
@@ -46,6 +47,7 @@ type GroceryWriter interface {
 	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (grocery.GroceryListItem, error)
 	DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error
 	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, householdID int64, by string) (grocery.GroceryListItem, error)
+	ReplaceGeneratedItems(ctx context.Context, groceryListID, householdID int64, items []grocery.GroceryListItem, by string) ([]grocery.GroceryListItem, error)
 }
 
 // GroceryService is the subset of *grocery.Service used by the resolver.

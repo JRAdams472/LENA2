@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/graph-gophers/graphql-go"
 )
@@ -321,6 +323,17 @@ func (r *Resolver) DeleteMealPlan(ctx context.Context, args struct{ ID graphql.I
 }
 
 // AddMealSlot adds a slot to a meal plan.
+// mealSlotWriteError maps a service-layer write failure to a client-safe
+// error: the unique (plan, day, meal type) constraint becomes CONFLICT.
+func mealSlotWriteError(err error) error {
+	if errors.Is(err, domainerr.ErrConflict) {
+		return &clientError{msg: "that day and meal type already has a slot on this plan", code: codeConflict}
+	}
+	return err
+}
+
+// AddMealSlot places a recipe (or free-form entry) on a day/meal-type
+// cell of a meal plan owned by the caller's household.
 func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSlotInput }) (*mealSlotResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -354,7 +367,7 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 		ReplacementNote: derefString(args.Input.ReplacementNote),
 	}, u.HouseholdID, u.Email)
 	if err != nil {
-		return nil, err
+		return nil, mealSlotWriteError(err)
 	}
 	if slot.RecipeID != nil {
 		r.recordEventAsync(u.UserID, u.Email, analytics.Event{

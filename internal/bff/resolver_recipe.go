@@ -209,7 +209,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 		IsActive:        true,
 	}, items, steps, u.Email)
 	if err != nil {
-		return nil, err
+		return nil, recipeWriteError(err)
 	}
 	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
 		EventType:  analytics.EventRecipeCreated,
@@ -247,13 +247,22 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 		return nil, err
 	}
 	if err := r.RecipeService.UpdateRecipeWithChildren(ctx, id, patch, items, steps, u.Email); err != nil {
-		return nil, err
+		return nil, recipeWriteError(err)
 	}
 	updated, err := r.RecipeService.GetRecipeByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: updated}, nil
+}
+
+// recipeWriteError maps a service-layer write failure to a client-safe
+// error: unique name violations become CONFLICT.
+func recipeWriteError(err error) error {
+	if errors.Is(err, domainerr.ErrConflict) {
+		return &clientError{msg: "a recipe with that name already exists", code: codeConflict}
+	}
+	return err
 }
 
 // mergeRecipePatch applies a PATCH-style input over the existing recipe:
