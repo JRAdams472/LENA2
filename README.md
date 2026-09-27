@@ -182,6 +182,18 @@ LENA2 uses Google OIDC ID tokens:
 
 Initial admins are promoted by adding their email to `LENA_ADMIN_EMAILS`. Protected admins can be listed in `LENA_PROTECTED_EMAILS` so they cannot be banned or demoted.
 
+## API idempotency
+
+Every GraphQL mutation is safe to retry — client retries, mobile offline replays, and double-submits apply exactly once:
+
+- Both clients send an `Idempotency-Key: <uuid>` header on mutations. The server stores `(user_id, key) → response`; a replayed request returns the stored response verbatim with `Idempotency-Replayed: true` and never re-executes the resolver.
+- The same key with a different payload is rejected (`IDEMPOTENCY_KEY_REUSED`); a duplicate arriving while the first is still running waits briefly, then replays (`IDEMPOTENCY_IN_FLIGHT` if the twin stalls).
+- Requests without a key are deduplicated by a payload hash inside a short window (default 30 s), which covers double-clicks and browser retries.
+- Queries bypass deduplication entirely. Keys are scoped to the authenticated user; the table self-cleans via TTL.
+- Knobs: `LENA_IDEMPOTENCY_{ENABLED,KEY_TTL,AUTO_TTL,IN_FLIGHT_TTL,WAIT_TIMEOUT}`. Details in `docs/idempotency-plan.md`.
+
+Semantic note: `generateGroceryList` regenerates in place — a second call for the same plan replaces the generated lines in the existing list rather than creating a duplicate, and manual lines are preserved.
+
 ---
 
 ## Testing
