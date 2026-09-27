@@ -142,11 +142,34 @@ Each phase: own branch, PR to `main`, merge after green CI + approval.
   items + base servings), and the web slot expander shows scaled
   quantities with add/edit/delete and a servings scale hint
 
-### Remaining deferred work
+### Phase 5 — `events-p5`: mobile events UI + timeline
 
-- Ollama-assisted adjustment advice when appliances are oversubscribed
-  (the `internal/platform/ollamaclient` infrastructure already exists)
-- Mobile events UI + timeline view
+- Flutter screens mirroring the existing patterns (`meal_plans_screen`,
+  `grocery_lists_screen`): events list (create/edit name, date, 15/30-min
+  granularity), event detail (dish slots — recipe or free-form, meal
+  type, servings, serve time), and a timeline view rendering
+  `eventTimeline` as a cook-from checklist with start-by times,
+  passive/conflict/estimated markers
+- Navigation entry point alongside the existing bottom tabs or within
+  the meal-planning area; GraphQL queries/mutations through the
+  existing client
+- Step/ingredient snapshot editing stays web-first; mobile covers
+  planning, viewing, and cooking
+- Widget tests mirroring the existing `test/` suites
+
+### Phase 6 — `events-p6`: Ollama appliance-contention advice
+
+- New GraphQL surface (e.g. `eventTimelineAdvice`) that runs the
+  timeline, collects appliance `conflicts` + warnings, builds a prompt
+  from the step schedule, and returns LLM-suggested adjustments via
+  `internal/platform/ollamaclient` (the `Chat(ctx, system, user)`
+  client already exists)
+- Graceful degradation when Ollama is unreachable — advice is
+  optional, never an error path
+- Web: "Suggest fixes" affordance next to conflict rows on the
+  timeline section
+- Unit tests with a mocked Ollama client; e2e asserting the field
+  shape when available
 
 ## Fix-preservation audit
 
