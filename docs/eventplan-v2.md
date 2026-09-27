@@ -183,6 +183,8 @@ Run once the last implementation PR has merged, before any new plan:
   the shipped work (e.g. append to `docs/newfeatures.md`).
 - **README update** — refresh `README.md` so features and architecture
   match what shipped.
+- **Wiki update** — refresh the GitHub wiki (`LENA2.wiki.git`, a separate
+  repo) with pages covering what shipped; clone, edit, push to `master`.
 
 This close-out phase is a standing convention — every future plan ends
-with the same five steps.
+with the same six steps.
