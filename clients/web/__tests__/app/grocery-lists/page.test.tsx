@@ -180,6 +180,24 @@ describe("grocery list detail page", () => {
     expect(screen.getByText("Milk")).toBeInTheDocument();
   });
 
+  it("renders meal-plan-sourced items under From Menu", async () => {
+    // generateGroceryList writes source "mealplan"; the group must render.
+    mockFetch.mockImplementation((_, init) => {
+      void JSON.parse((init as RequestInit).body as string);
+      return Promise.resolve(
+        gql({
+          groceryList: {
+            ...list,
+            items: [{ ...list.items[0], source: "mealplan" }],
+          },
+        })
+      );
+    });
+    await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+    await waitFor(() => expect(screen.getByText("From Menu")).toBeInTheDocument());
+    expect(screen.getByText("Milk")).toBeInTheDocument();
+  });
+
   it("toggles an item checked", async () => {
     await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
     await waitFor(() => screen.getByText("Milk"));
