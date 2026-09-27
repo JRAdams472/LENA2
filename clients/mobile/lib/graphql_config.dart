@@ -1,5 +1,6 @@
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'auth/auth_service.dart';
+import 'idempotency_link.dart';
 
 const String lenaApiUrl = String.fromEnvironment(
   'LENA_API_URL',
@@ -32,5 +33,12 @@ final ErrorLink errorLink = ErrorLink(
 
 final GraphQLClient graphQLClient = GraphQLClient(
   cache: GraphQLCache(),
-  link: Link.from([errorLink, authLink, HttpLink(lenaApiUrl)]),
+  link: Link.from([
+    errorLink,
+    authLink,
+    // Before HttpLink so the key reaches the wire; the server's dedup layer
+    // replays retried mutations instead of re-executing them.
+    IdempotencyLink(),
+    HttpLink(lenaApiUrl),
+  ]),
 );
