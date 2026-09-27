@@ -66,7 +66,8 @@ How "TikTok Recipe Integration" Actually WorksBecause the official TikTok for De
 Nutrition is already built into the items. Expand this to give nutrution breakdowns for each recipe and meal
 Allow uesers to track daily and weekly nutrition iformation
 Show nutrition tracking compared to health recomendations. Proably mostly European until the US gets their health agencies rebuilt.
-evaluate integration with samsum health, whatever applese rip off of samsung health is and any other popular health apps.
+Evaluate integration with android Health and iOS HealthKit
+Using Flutter for a cross-platform mobile app simplifies the integration process. Instead of writing separate native Swift and Kotlin code, a single unified wrapper can bridge iOS HealthKit and Android Health Connect into a single Dart API.The industry standard for this is the open-source health package on pub.dev. It handles permission dialogs, data translation, and writes to both native health vaults using a single set of commands.
 
 ## Kitchen appliance
 Create an updated version of the mobil interface, or update the exiting one for use on large tablets
