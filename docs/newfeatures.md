@@ -20,6 +20,7 @@ Suggest recipies that the whole house is likey to enjoy that will consume in sto
 AI integration for meal events to assisnt in recipe modifications to meet serving times
 Integration should take into account limitations of cooking appliances
 Integration should be able to make suggestions to alter recipie cooking time and temp so multiple dishes can be prepared at the same time.
+The event timeline already detects appliance conflicts between scheduled steps — the AI layer should suggest resolutions for those flagged conflicts (shift serve times, reorder steps, reassign appliances).
 ### Sommerlier Integration
 If the user has a wine collection, the system should be able to, when prompted, suggest wine pairings with dishes
 If the request happens during meal planning or event planning there should be an option to limit to wine in stock or advise on wines to be purchased.
@@ -29,6 +30,8 @@ We may need to add age of users to weight preferences towards those of legal dri
 Add an AI bartender to the system that works simmilarly to the wine adviser, but for cocktails
 Do we need to add a Liquor flag to items to do this?
 Do we need to flag recipe types as drink or cocktail vs meal?
+## Generic interface
+Ensure the AI integration is generic enough that Ollama can be swapped out for a commercial ai system like claud or chat gpt with minimal changes.
 
 ## Recipe Categories
 We need to be able to categorize recipes to make searching easier.
@@ -46,6 +49,7 @@ Difficulty categorization (Easy, Medium, Skilled, Etc)
 Main Ingredient, i.e. Chicken, Beef, Fish, Vegetarian
 Regional origin, i.e. Italian, Spanish, Southwestern US, Mexican, Etc.
 Categories of the same type should be exclusive, i.e. it can not both be Mexican and Italian, but recipes should be allowed to belong to multimple categories, i.e. Mexican, Beef, Dinner
+When searching for recipes, either in meal planning or a general recipe search, the user should have the ablilty to filter by category.
 
 # Version 2
 ## TokTok Integration 

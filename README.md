@@ -10,12 +10,14 @@ LENA2 is a personal, privacy-first household management system. It replaces scat
 
 - **Track food and supplies** — keep a catalog of items and your own pantry quantities, minimum-stock thresholds, and favorites.
 - **Plan meals** — build weekly meal plans with servings and generate grocery lists automatically.
-- **Manage recipes** — store ingredients, steps, and portions, then pull them into meal plans.
+- **Plan food events** — combine recipes into a gathering with absolute serve times, then generate a backwards-scheduled cooking timeline that flags appliance conflicts.
+- **Manage recipes** — store ingredients, steps, and portions, then pull them into meal plans and events. Recipe steps carry timing metadata (duration, type, passive/hands-off, dependencies, appliance) that powers event scheduling.
 - **Shop smarter** — check off grocery items while you shop; checked-off food items can update pantry stock automatically.
 - **Track wine** — maintain a wine cellar with bottles, types, countries, regions, vintages, and grape varieties.
 - **Add items on the go** — use the mobile app to scan a UPC barcode, look up catalog items, and submit missing products for approval.
+- **Share a household** — invite family members; recipes, plans, lists, events, pantry, and cellar are household-scoped, and changes notify the other members.
 
-Every user owns their own data. Authentication is handled by Google sign-in via OpenID Connect, and the backend stores a `user_id` so all per-user records (meal plans, grocery lists, pantry entries, wine cellar) are isolated.
+Authentication is handled by Google sign-in via OpenID Connect. Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar, and accepting a household invite merges the new member's existing plans, lists, and events into the shared household.
 
 ---
 
@@ -68,8 +70,9 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 ### Recipes & planning
 
-- `/recipes` — recipe list, detail, and edit with ingredients and steps.
-- `/meal-plans` — weekly meal plans with daily slots.
+- `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata).
+- `/meal-plans` — weekly meal plans with daily slots and per-slot servings.
+- `/events` — food events: dish slots with granularity-snapped serve times, per-slot recipe snapshots (steps + ingredients copied per event so edits never touch the shared recipe), servings scaling, and a generated cooking timeline with conflict warnings.
 - `/grocery-lists` — shopping lists generated from meal plans, with check-off.
 - **OCR recipe import** — bulk-import scanned cookbook pages, recipe cards, and photos using local OCR and a local LLM. Admin-only; see `docs/recipe-ocr-usage.md`.
 
@@ -82,7 +85,10 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 - `/users` — user management (admin only).
 - `/items/pending` — approve or reject user-submitted items (admin only).
-- `/profile` — current-user profile.
+- `/household` — household members, roles, and invites.
+- `/profile` — current-user profile (name, backup email, discoverability).
+
+The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item.
 
 Most catalog pages require an **admin** role; day-to-day pantry and planning features are available to all authenticated users.
 
@@ -93,11 +99,13 @@ Most catalog pages require an **admin** role; day-to-day pantry and planning fea
 The Flutter app (`clients/mobile`) is intended for quick, on-the-go actions:
 
 - **Google sign-in** — securely persists the ID token to device storage; signed-out or expired tokens return to the login screen.
-- **Dashboard** — today’s meal-plan slots and recommended recipes.
+- **Dashboard** — today’s meal-plan slots, recommended recipes, and pending household invites.
 - **Grocery lists** — browse lists, check items off while shopping, and view list details.
-- **Pantry** — view pantry quantities for tracked items.
+- **Events** — browse food events, manage dish slots (recipe or free-form, meal type, servings, serve time), and view the cooking timeline as a step-by-step checklist.
+- **Pantry** — view pantry quantities and minimums for tracked items.
 - **Scan** — use the camera to scan a barcode, look up the item by UPC, add or remove stock, or submit a missing item for admin approval.
-- **Bottom navigation** — Dashboard, Grocery, Scan (center action), Pantry.
+- **Household** — members, roles, and invites; the tab badge shows unread household notifications.
+- **Bottom navigation** — Dashboard, Grocery, Events, Scan, Pantry, Household.
 
 UPC normalization follows this rule: 12 digits go to `upc12`, 13 digits are left-padded with `0` and treated as `upc14`, and 14 digits go straight to `upc14`. Anything else is considered not found.
 
@@ -250,8 +258,10 @@ flutter test
 
 ## Useful notes
 
-- **Data isolation** — every per-user table is scoped by `user_id` from the request context; the backend never trusts a `userId` parameter from the client.
-- **Admin vs member** — catalog reference data and user management require the `admin` role; meal plans, grocery lists, pantry, and cellar are per-user.
+- **Data isolation** — shared data is scoped by `household_id` resolved from the authenticated user in the request context; the backend never trusts a client-supplied household or user parameter.
+- **Household sharing** — invites move a user's meal plans, grocery lists, and food events into the target household inside the accept transaction; mutations notify the other members.
+- **Admin vs member** — catalog reference data and user management require the `admin` role; meal plans, grocery lists, pantry, events, and cellar are per-household.
+- **Event snapshots** — linking a recipe to an event copies its steps and ingredients into the slot; edits inside the event never modify the shared recipe, and `syncEventRecipe` re-copies on demand.
 - **UPC lookup** — mobile and web can query `itemByUpc` to find an item by UPC before adding it to pantry.
 - **Item submission** — non-admin users can `submitItem` for items not yet in the catalog. Submitted items are visible only to their creator until an admin approves them.
 - **Grocery sync** — checking a grocery item off can increase `inventory.user_item` stock by the quantity needed; unchecking decreases it.

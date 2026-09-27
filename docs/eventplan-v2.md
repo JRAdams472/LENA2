@@ -157,19 +157,15 @@ Each phase: own branch, PR to `main`, merge after green CI + approval.
   planning, viewing, and cooking
 - Widget tests mirroring the existing `test/` suites
 
-### Phase 6 — `events-p6`: Ollama appliance-contention advice
+### Phase 6 — deferred to the AI-integration plan
 
-- New GraphQL surface (e.g. `eventTimelineAdvice`) that runs the
-  timeline, collects appliance `conflicts` + warnings, builds a prompt
-  from the step schedule, and returns LLM-suggested adjustments via
-  `internal/platform/ollamaclient` (the `Chat(ctx, system, user)`
-  client already exists)
-- Graceful degradation when Ollama is unreachable — advice is
-  optional, never an error path
-- Web: "Suggest fixes" affordance next to conflict rows on the
-  timeline section
-- Unit tests with a mocked Ollama client; e2e asserting the field
-  shape when available
+Ollama-assisted appliance-contention advice was scoped here but moved:
+it is folded into the broader AI integration tracked in
+`docs/newfeatures.md` ("Meal event integration" + "Generic interface"),
+which covers LLM-suggested schedule adjustments alongside meal-planner,
+sommelier, and bartender advice with a provider-agnostic client
+(`internal/platform/ollamaclient` already exists). The timeline engine
+reports conflicts today; AI resolution lands with that plan.
 
 ## Fix-preservation audit
 
