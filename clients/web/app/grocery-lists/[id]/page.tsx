@@ -23,8 +23,9 @@ interface ManualForm {
   unitOfMeasure: string;
 }
 
-const SOURCE_ORDER = ["recipe", "pantry", "manual"];
+const SOURCE_ORDER = ["mealplan", "recipe", "pantry", "manual"];
 const SOURCE_LABELS: Record<string, string> = {
+  mealplan: "From Menu",
   recipe: "From Menu",
   pantry: "Depleted Stock",
   manual: "Manual",
