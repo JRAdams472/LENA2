@@ -60,6 +60,7 @@ Give the app the ability to link a TikToc cooking video.
 Should be able to build the recipe from the video
 On the day the recipe is to be made, a link to the video should appear along with the recipe in the dashboard
 Evaluate if it makes sense to add Youtube and Reels
+How "TikTok Recipe Integration" Actually WorksBecause the official TikTok for Developers portal focuses almost entirely on user login, video publishing, or marketing analytics, apps that extract recipes usually rely on one of two methods:AI-Powered Transcription and Parsing (Most Common):An app takes a TikTok URL from the user, uses a basic web scraping method to read the video metadata/description, or grabs the automated subtitles/audio. It then passes that raw text into a Large Language Model (like GPT-4 or Gemini) via an API with a strict structured output instruction. The AI effortlessly structures it into standard recipe JSON (e.g., separating ingredients and steps).Third-Party Pre-Built APIs:Some micro-SaaS developers have built ready-made wrappers like the TikTok Recipe Extractor API on RapidAPI or open-source self-hosted scripts like Pick-a-Recipe that do the scraping and AI restructuring for you in a single API call
 
 ## Nutrition tracker
 Nutrition is already built into the items. Expand this to give nutrution breakdowns for each recipe and meal
@@ -76,6 +77,14 @@ This should include the ability to watch a tiktok or youtube video in an embedde
 
 ## Instacart or other shopper integration
 It would be cool if the application could validate the grocery list against a store or stores in instacart to send the order in automatically
+### Yes, Instacart publishes the Instacart Developer Platform API (IDP), which allows third-party app developers to generate shoppable lists. However, it does not let an external app silently or automatically inject items directly into a user’s active Instacart cart or account background storage via API credentials.
+### How the Instacart Developer Platform API Works
+Create Shopping List Endpoint: You send a POST request with line items to the API (/idp/v1/products/products_link).
+Returns a URL: The API responds with a unique, shareable URL pointing to a pre-populated shopping list page on the Instacart Marketplace.
+User Hand-off: The user clicks that link from your application. It opens Instacart where they choose their local store, review available products, and move the items into their active cart before checking out.
+### Key Limitations for a Shopping App
+No Direct Cart Injection: For privacy, security, and store inventory variances, external third-party apps cannot programmatically push lists straight into a logged-in user's live cart without the user clicking through the generated web/marketplace link first.
+Authentication: The workflow relies on handing the user over to the Instacart web or app interface via the deep link, where their existing account status is recognized if they are already logged in on that device/browser.
 
 ## Grocery store routing
 Order the grocery list by the aisles in the grocery store.
