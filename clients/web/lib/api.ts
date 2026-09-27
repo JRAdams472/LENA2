@@ -94,6 +94,41 @@ interface GraphQLResponse<T> {
   errors?: GraphQLError[];
 }
 
+// All mutation strings in this module declare the keyword, so a leading
+// check is enough — a miss only skips the dedup header, never blocks.
+function isMutation(query: string): boolean {
+  return query.trimStart().toLowerCase().startsWith("mutation");
+}
+
+// Idempotency keys need uniqueness, not secrecy: a fresh key per logical
+// operation lets the server dedup retries, while a network-failure retry
+// below reuses the same key so the attempt that actually landed is
+// replayed rather than re-executed.
+function newIdempotencyKey(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  // Non-secure contexts (http on LAN dev hosts) lack crypto.randomUUID.
+  return (
+    Date.now().toString(36) +
+    "-" +
+    Math.random().toString(36).slice(2) +
+    Math.random().toString(36).slice(2)
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// One retry, after a short pause, on transport failure only — fetch's
+// TypeError means the request may or may not have reached the server; the
+// reused idempotency key makes the retry safe either way.
+const NETWORK_RETRY_DELAY_MS = 300;
+
 /**
  * Executes a GraphQL operation against the BFF endpoint.
  * POSTs `{ query, variables }` to API_BASE_URL and returns `data`.
@@ -104,16 +139,26 @@ async function request<T>(
   variables?: Record<string, unknown>
 ): Promise<T> {
   const idToken = getAuthToken();
-
-  const res = await fetch(API_BASE_URL, {
+  const init: RequestInit = {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      ...(isMutation(query)
+        ? { "Idempotency-Key": newIdempotencyKey() }
+        : {}),
     },
     body: JSON.stringify({ query, variables: variables ?? {} }),
-  });
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(API_BASE_URL, init);
+  } catch {
+    await sleep(NETWORK_RETRY_DELAY_MS);
+    res = await fetch(API_BASE_URL, init);
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
