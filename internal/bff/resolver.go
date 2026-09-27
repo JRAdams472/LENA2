@@ -444,6 +444,10 @@ func derefString(s *string) string {
 	return *s
 }
 
+func derefBool(b *bool) bool {
+	return b != nil && *b
+}
+
 func int32Value(v *int32) int32 {
 	if v == nil {
 		return 0

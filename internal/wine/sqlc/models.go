@@ -58,6 +58,40 @@ type EventEventRecipe struct {
 	CreatedAt     time.Time          `json:"created_at"`
 	UpdatedBy     pgtype.Text        `json:"updated_by"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	BaseServings  pgtype.Int4        `json:"base_servings"`
+}
+
+type EventEventRecipeItem struct {
+	EventRecipeItemID int64              `json:"event_recipe_item_id"`
+	EventRecipeID     int64              `json:"event_recipe_id"`
+	ItemID            int64              `json:"item_id"`
+	IngredientID      pgtype.Int8        `json:"ingredient_id"`
+	Quantity          pgtype.Numeric     `json:"quantity"`
+	UnitID            int64              `json:"unit_id"`
+	SectionName       pgtype.Text        `json:"section_name"`
+	DisplayOrder      int32              `json:"display_order"`
+	Notes             pgtype.Text        `json:"notes"`
+	IsOptional        bool               `json:"is_optional"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type EventEventRecipeStep struct {
+	EventRecipeStepID   int64              `json:"event_recipe_step_id"`
+	EventRecipeID       int64              `json:"event_recipe_id"`
+	StepNumber          int32              `json:"step_number"`
+	Instruction         string             `json:"instruction"`
+	DurationMinutes     pgtype.Int4        `json:"duration_minutes"`
+	StepType            pgtype.Text        `json:"step_type"`
+	IsPassive           bool               `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4        `json:"depends_on_step_number"`
+	Appliance           pgtype.Text        `json:"appliance"`
+	CreatedBy           string             `json:"created_by"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedBy           pgtype.Text        `json:"updated_by"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 }
 
 type EventFoodEvent struct {

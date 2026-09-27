@@ -17,3 +17,4 @@ After the final phase of any plan merges, before starting the next:
 3. Re-walk corrected audit findings (`audit/summary.md`) for regressions.
 4. Note improvements or new features inspired by the completed work (e.g. `docs/newfeatures.md`).
 5. Update `README.md` so features and architecture reflect what shipped.
+6. Update the GitHub wiki (`LENA2.wiki.git`) — it lives outside the repo, so clone it, add/refresh pages for what shipped, and push to `master`.

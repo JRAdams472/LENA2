@@ -323,8 +323,81 @@ export interface EventRecipe {
   mealType: string;
   targetTime: string;
   servings: number | null;
+  // The linked recipe's servings frozen at link time — the scaling
+  // denominator. Null for free-form slots or recipes without servings.
+  baseServings: number | null;
+  // servings ÷ baseServings, or 1 when scaling does not apply.
+  scalingFactor: number;
   notes: string | null;
   recipe?: Recipe | null;
+  // The slot's own copies of the recipe's steps and items — edits here
+  // never touch the original recipe.
+  steps?: EventRecipeStep[];
+  items?: EventRecipeItem[];
+}
+
+// One ingredient in a slot's snapshot. quantity is already scaled by the
+// slot's scalingFactor; baseQuantity is the per-base-servings amount
+// copied from the recipe.
+export interface EventRecipeItem {
+  eventRecipeItemID: number;
+  itemID: number;
+  itemName: string | null;
+  quantity: number;
+  baseQuantity: number;
+  unit: string;
+  section: string | null;
+  displayOrder: number;
+  notes: string | null;
+  isOptional: boolean;
+}
+
+export interface EventRecipeStep {
+  eventRecipeStepID: number;
+  stepNumber: number;
+  instruction: string;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
+}
+
+// The master schedule for an event: every recipe's steps backwards-
+// scheduled from their serve times, computed on read.
+export interface EventTimeline {
+  foodEventID: number;
+  warnings: string[];
+  recipes: EventTimelineRecipe[];
+}
+
+export interface EventTimelineRecipe {
+  eventRecipeID: number;
+  name: string;
+  targetTime: string;
+  servings: number | null;
+  baseServings: number | null;
+  // Earliest moment work must begin; null when unschedulable.
+  startBy: string | null;
+  unschedulable: boolean;
+  warnings: string[];
+  steps: TimelineStep[];
+}
+
+export interface TimelineStep {
+  stepNumber: number;
+  instruction: string;
+  stepType: string | null;
+  isPassive: boolean;
+  appliance: string | null;
+  durationMinutes: number | null;
+  // Effective slot time used (duration rounded up to slot granularity).
+  scheduledMinutes: number;
+  // Duration was missing and estimated as one slot.
+  estimated: boolean;
+  startTime: string;
+  endTime: string;
+  conflicts: string[];
 }
 
 export interface MealPlan extends AuditableEntity {
