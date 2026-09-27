@@ -30,6 +30,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/event"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/household"
+	"github.com/JRAdams472/LENA2/internal/idempotency"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -154,6 +155,19 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	userPrefsSvc := userprefs.NewService(pool)
 	wineSvc := wine.NewService(pool)
 	ocrClient := ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout)
+
+	// The dedup store is a plain pool-backed component, not a domain
+	// service: its writes must commit immediately and never join a
+	// request's transaction.
+	var idemStore *idempotency.Store
+	if cfg.IdempotencyEnabled {
+		idemStore = idempotency.NewStore(pool, idempotency.Config{
+			KeyTTL:      cfg.IdempotencyKeyTTL,
+			AutoTTL:     cfg.IdempotencyAutoTTL,
+			InFlightTTL: cfg.IdempotencyInFlightTTL,
+			WaitTimeout: cfg.IdempotencyWaitTimeout,
+		})
+	}
 
 	// Kept as the interface so a missing URL yields an untyped nil —
 	// recipeimport checks `ollama == nil` to disable the draft stage.
@@ -282,6 +296,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		bff.Options{
 			NutritionPhotoMaxBytes: cfg.NutritionPhotoMaxBytes,
 			RecipeScanMaxBytes:     cfg.RecipeScanMaxBytes,
+			Idempotency:            idemStore,
 		})
 	handler, err := bff.NewGraphQLHandler(resolver,
 		cfg.GraphQLTimeout,

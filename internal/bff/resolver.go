@@ -3,8 +3,10 @@ package bff
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/idempotency"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/async"
@@ -54,6 +57,7 @@ type Resolver struct {
 	HouseholdService       HouseholdService
 	AuthInvalidator        AuthInvalidator
 	OCRClient              OCRClient
+	IdemStore              IdempotencyStore
 	NutritionPhotoMaxBytes int
 	RecipeScanMaxBytes     int
 
@@ -104,6 +108,8 @@ type Options struct {
 	// UploadRatePerMinute bounds upload mutations per user; <=0 uses the
 	// built-in default.
 	UploadRatePerMinute int
+	// Idempotency enables request dedup for mutations when non-nil.
+	Idempotency IdempotencyStore
 }
 
 // NewResolver returns a new BFF resolver wired to the domain services.
@@ -129,6 +135,7 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		OCRClient:              svc.OCR,
 		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
 		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
+		IdemStore:              opts.Idempotency,
 		uploads:                newUserRateLimiter(uploadRate),
 	}
 }
@@ -1069,12 +1076,15 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOp
 		timeout = 10 * time.Second
 	}
 	return func(c echo.Context) error {
+		// Read the body once up front: the dedup layer hashes the exact
+		// bytes, so they must be captured before decoding.
+		body, err := io.ReadAll(c.Request().Body)
 		var req struct {
 			Query         string                 `json:"query"`
 			Variables     map[string]interface{} `json:"variables"`
 			OperationName string                 `json:"operationName"`
 		}
-		if err := c.Bind(&req); err != nil {
+		if err != nil || json.Unmarshal(body, &req) != nil {
 			// Return bind failures in GraphQL error shape so clients get a
 			// consistent contract instead of an Echo HTML error page.
 			return c.JSON(http.StatusOK, map[string]any{
@@ -1084,6 +1094,28 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOp
 				}},
 			})
 		}
+
+		// Mutation dedup: a replayed response skips execution entirely, and
+		// a held claim caches the response for the next identical retry.
+		var claim *idemClaim
+		if r.IdemStore != nil && isMutationOperation(req.Query) {
+			if u, uerr := userFromContext(c.Request().Context()); uerr == nil {
+				var stored *idempotency.Stored
+				var rej *idemRejection
+				claim, stored, rej = r.beginDedup(c, u.UserID, body)
+				if rej != nil {
+					return c.JSON(http.StatusOK, idemErrorBody(rej.msg, rej.code))
+				}
+				if stored != nil {
+					c.Response().Header().Set(headerIdempotencyReplayed, "true")
+					return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, stored.Body)
+				}
+				if claim != nil {
+					defer claim.abandonIfPending()
+				}
+			}
+		}
+
 		ctx, cancel := context.WithTimeoutCause(c.Request().Context(), timeout, errQueryTimeout)
 		limiter := &costLimiter{max: maxCost, fire: cancel}
 		ctx = context.WithValue(ctx, costLimiterContextKey{}, limiter)
@@ -1092,7 +1124,14 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOp
 		cancel()
 		sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
 		applyLimitErrors(ctx, resp, limiter)
-		return c.JSON(http.StatusOK, resp)
+		out, err := json.Marshal(resp)
+		if err != nil {
+			return err
+		}
+		if claim != nil {
+			claim.complete(out)
+		}
+		return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, out)
 	}, nil
 }
 

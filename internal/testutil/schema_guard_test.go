@@ -26,6 +26,7 @@ var allowedSchemas = map[string][]string{
 	"event":            {"event"},
 	"grocery":          {"grocery"},
 	"household":        {"household"},
+	"idempotency":      {"platform"},
 	"identity":         {"identity"},
 	"inventory":        {"inventory"},
 	"mealplan":         {"mealplan"},
