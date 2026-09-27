@@ -34,7 +34,7 @@ Do we need to flag recipe types as drink or cocktail vs meal?
 Ensure the AI integration is generic enough that Ollama can be swapped out for a commercial ai system like claud or chat gpt with minimal changes.
 
 ## System validations
-Make sure the entire interface and api is idempotent.
+~~Make sure the entire interface and api is idempotent.~~ ✅ Done — `Idempotency-Key` transport dedup on all mutations (PRs #159–#162, see `docs/idempotency-plan.md`).
 
 ## Recipe Categories
 We need to be able to categorize recipes to make searching easier.
