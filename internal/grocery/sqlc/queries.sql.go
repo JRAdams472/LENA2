@@ -109,6 +109,18 @@ func (q *Queries) CreateGroceryList(ctx context.Context, arg CreateGroceryListPa
 	return i, err
 }
 
+const deleteGeneratedGroceryListItems = `-- name: DeleteGeneratedGroceryListItems :exec
+DELETE FROM grocery.grocery_list_item
+WHERE grocery_list_id = $1 AND source <> 'manual'
+`
+
+// Regenerate-in-place: generated lines (source <> 'manual') are replaced
+// wholesale; manual lines are preserved.
+func (q *Queries) DeleteGeneratedGroceryListItems(ctx context.Context, groceryListID int64) error {
+	_, err := q.db.Exec(ctx, deleteGeneratedGroceryListItems, groceryListID)
+	return err
+}
+
 const deleteGroceryList = `-- name: DeleteGroceryList :exec
 DELETE FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND household_id = $2
@@ -197,6 +209,35 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, arg GetGroceryList
 		&i.UpdatedAt,
 		&i.IngredientID,
 		&i.UnitID,
+	)
+	return i, err
+}
+
+const getLatestGroceryListByPlan = `-- name: GetLatestGroceryListByPlan :one
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+FROM grocery.grocery_list
+WHERE household_id = $1 AND meal_plan_id = $2
+ORDER BY generated_at DESC, grocery_list_id DESC
+LIMIT 1
+`
+
+type GetLatestGroceryListByPlanParams struct {
+	HouseholdID int64       `json:"household_id"`
+	MealPlanID  pgtype.Int8 `json:"meal_plan_id"`
+}
+
+func (q *Queries) GetLatestGroceryListByPlan(ctx context.Context, arg GetLatestGroceryListByPlanParams) (GroceryGroceryList, error) {
+	row := q.db.QueryRow(ctx, getLatestGroceryListByPlan, arg.HouseholdID, arg.MealPlanID)
+	var i GroceryGroceryList
+	err := row.Scan(
+		&i.GroceryListID,
+		&i.MealPlanID,
+		&i.GeneratedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
 	)
 	return i, err
 }
@@ -394,6 +435,37 @@ func (q *Queries) ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGr
 		&i.UpdatedAt,
 		&i.IngredientID,
 		&i.UnitID,
+	)
+	return i, err
+}
+
+const touchGroceryListGeneratedAt = `-- name: TouchGroceryListGeneratedAt :one
+UPDATE grocery.grocery_list
+SET generated_at = now(),
+    updated_by   = $3,
+    updated_at   = now()
+WHERE grocery_list_id = $1 AND household_id = $2
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+`
+
+type TouchGroceryListGeneratedAtParams struct {
+	GroceryListID int64       `json:"grocery_list_id"`
+	HouseholdID   int64       `json:"household_id"`
+	UpdatedBy     pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroceryListGeneratedAtParams) (GroceryGroceryList, error) {
+	row := q.db.QueryRow(ctx, touchGroceryListGeneratedAt, arg.GroceryListID, arg.HouseholdID, arg.UpdatedBy)
+	var i GroceryGroceryList
+	err := row.Scan(
+		&i.GroceryListID,
+		&i.MealPlanID,
+		&i.GeneratedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
 	)
 	return i, err
 }

@@ -1323,6 +1323,49 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	items2, err := res2.Items(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, items2, "fully stocked pantry produces no grocery lines")
+
+	// Regenerate-in-place: generation against the same plan reuses the
+	// same list — no duplicate is created, generated lines are refreshed,
+	// and manual lines survive.
+	assert.Equal(t, res.ID(), res2.ID(), "second generation must reuse the same list")
+	lists, err := grocerySvc.ListGroceryLists(ctx, userID, 50, 0)
+	require.NoError(t, err)
+	assert.Len(t, lists, 1, "regeneration must not stack up duplicate lists")
+
+	listID, err := strconv.ParseInt(string(res.ID()), 10, 64)
+	require.NoError(t, err)
+	_, err = grocerySvc.AddGroceryListItem(ctx, grocery.GroceryListItem{
+		GroceryListID:  listID,
+		ManualItemName: "IT Gen Candles",
+		Source:         "manual",
+		QuantityNeeded: 1,
+	}, userID, "it")
+	require.NoError(t, err)
+
+	// Drop pantry stock so the plan contributes again, then regenerate.
+	_, err = upSvc.UpsertHouseholdItem(ctx, userprefs.HouseholdItem{
+		HouseholdID: userID, ItemID: flour.ItemID, CurrentQty: 0,
+	}, "it")
+	require.NoError(t, err)
+	res3, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
+	require.NoError(t, err)
+	assert.Equal(t, res.ID(), res3.ID())
+	items3, err := res3.Items(ctx)
+	require.NoError(t, err)
+	require.Len(t, items3, 2, "regenerated flour line plus preserved manual line")
+
+	var sawManual, sawGenerated bool
+	for _, it := range items3 {
+		switch it.Source() {
+		case "manual":
+			sawManual = true
+		case "mealplan":
+			sawGenerated = true
+			assert.InDelta(t, 3.0, it.QuantityNeeded(), 0.0001)
+		}
+	}
+	assert.True(t, sawManual, "manual lines survive regeneration")
+	assert.True(t, sawGenerated, "generated lines are recomputed")
 }
 
 // doGraphQL posts a query and requires a clean response: decodable body

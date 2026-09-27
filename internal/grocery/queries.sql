@@ -24,6 +24,27 @@ WHERE household_id = $1;
 DELETE FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND household_id = $2;
 
+-- name: GetLatestGroceryListByPlan :one
+SELECT *
+FROM grocery.grocery_list
+WHERE household_id = $1 AND meal_plan_id = $2
+ORDER BY generated_at DESC, grocery_list_id DESC
+LIMIT 1;
+
+-- name: DeleteGeneratedGroceryListItems :exec
+-- Regenerate-in-place: generated lines (source <> 'manual') are replaced
+-- wholesale; manual lines are preserved.
+DELETE FROM grocery.grocery_list_item
+WHERE grocery_list_id = $1 AND source <> 'manual';
+
+-- name: TouchGroceryListGeneratedAt :one
+UPDATE grocery.grocery_list
+SET generated_at = now(),
+    updated_by   = $3,
+    updated_at   = now()
+WHERE grocery_list_id = $1 AND household_id = $2
+RETURNING *;
+
 -- name: ReassignGroceryListsToHousehold :exec
 -- Invite-accept merge: repoint all of the source household's lists. Zero
 -- rows is not an error.
