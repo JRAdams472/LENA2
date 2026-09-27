@@ -271,6 +271,11 @@ func TestResolver_AddEventRecipe(t *testing.T) {
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindEventUpdated,
 		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	// Post-tx re-read populates base_servings from the snapshot freeze.
+	ev.EXPECT().GetEventRecipeByID(gomock.Any(), int64(9), int64(7)).Return(event.EventRecipe{
+		EventRecipeID: 9, FoodEventID: 3, RecipeID: int64Ptr(11), MealType: "dinner",
+		TargetTime: evTarget, BaseServings: &base,
+	}, nil)
 
 	res, err := r.AddEventRecipe(evCtx(), struct{ Input addEventRecipeInput }{
 		Input: addEventRecipeInput{
@@ -636,12 +641,18 @@ func TestResolver_SyncEventRecipe(t *testing.T) {
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindEventUpdated,
 		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	// Post-tx re-read reflects the synced base_servings.
+	ev.EXPECT().GetEventRecipeByID(gomock.Any(), int64(9), int64(7)).Return(event.EventRecipe{
+		EventRecipeID: 9, FoodEventID: 3, RecipeID: &recipeID, MealType: "dinner",
+		TargetTime: evTarget, BaseServings: &base,
+	}, nil)
 
 	res, err := r.SyncEventRecipe(evCtx(), struct {
 		EventRecipeID graphql.ID
 	}{EventRecipeID: "9"})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("9"), res.ID())
+	assert.Equal(t, int32(4), *res.BaseServings())
 }
 
 func TestResolver_SyncEventRecipe_FreeForm(t *testing.T) {

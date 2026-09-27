@@ -366,6 +366,12 @@ func (r *Resolver) AddEventRecipe(ctx context.Context, args struct{ Input addEve
 	if err != nil {
 		return nil, err
 	}
+	// Re-read so base_servings (set by the snapshot freeze inside the tx)
+	// is populated on the response.
+	er, err = r.EventService.GetEventRecipeByID(ctx, er.EventRecipeID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
 	return &eventRecipeResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, er: er}, nil
 }
 
@@ -733,6 +739,11 @@ func (r *Resolver) SyncEventRecipe(ctx context.Context, args struct {
 		}
 		return r.notifyMembers(ctx, u, household.KindEventUpdated, &er.FoodEventID)
 	})
+	if err != nil {
+		return nil, err
+	}
+	// Re-read so the synced base_servings is populated on the response.
+	er, err = r.EventService.GetEventRecipeByID(ctx, er.EventRecipeID, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
