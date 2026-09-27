@@ -6,7 +6,7 @@ import 'package:lena_mobile/screens/main_screen.dart';
 
 void main() {
   testWidgets(
-    'MainScreen bottom nav has Dashboard, Grocery, Scan, Pantry, and Household',
+    'MainScreen bottom nav has Dashboard, Grocery, Events, Scan, Pantry, and Household',
     (tester) async {
       await tester.pumpWidget(
         GraphQLProvider(
@@ -17,11 +17,18 @@ void main() {
       await tester.pump();
 
       final nav = find.byType(BottomNavigationBar);
-      expect(find.descendant(of: nav, matching: find.text('Dashboard')), findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Grocery')), findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Scan')), findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Pantry')), findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Household')), findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Dashboard')),
+          findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Grocery')),
+          findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Events')),
+          findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Scan')),
+          findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Pantry')),
+          findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Household')),
+          findsOneWidget);
     },
   );
 

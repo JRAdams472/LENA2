@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'dashboard_screen.dart';
+import 'events_screen.dart';
 import 'grocery_lists_screen.dart';
 import 'household_screen.dart';
 import 'pantry_screen.dart';
@@ -30,6 +31,7 @@ class _MainScreenState extends State<MainScreen> {
   final _screens = const [
     DashboardScreen(),
     GroceryListsScreen(),
+    EventsScreen(),
     ScanScreen(),
     PantryScreen(),
     HouseholdScreen(),
@@ -86,6 +88,10 @@ class _MainScreenState extends State<MainScreen> {
           const BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
             label: 'Grocery',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.event),
+            label: 'Events',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.qr_code_scanner),
