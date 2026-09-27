@@ -1824,7 +1824,11 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	require.NotEmpty(t, gr.Errors, "foreign-household read must fail")
 	assert.Equal(t, codeNotFound, gr.Errors[0].Extensions["code"])
 
-	// I updates the slot and the event; H's unread count climbs.
+	// I updates the slot; H's unread count climbs. Mark H's earlier event
+	// notifications read first so the count isolates this mutation.
+	status, gr = doGraphQL(t, srv, tokH, `mutation { markAllNotificationsRead }`, nil)
+	require.Equal(t, http.StatusOK, status)
+
 	status, gr = doGraphQL(t, srv, tokI, `mutation Upd($id: ID!) {
 		updateEventRecipe(id: $id, input: { servings: 10 }) { id servings }
 	}`, map[string]any{"id": slotID})
@@ -1836,8 +1840,7 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 		Count int `json:"unreadNotificationCount"`
 	}
 	decodeData(t, gr.Data, &unreadH)
-	// Slot add + slot update were both I-originated and notified H.
-	assert.Equal(t, 2, unreadH.Count)
+	assert.Equal(t, 1, unreadH.Count)
 
 	// Delete the event; members get event_deleted (deep-link nulled by SET NULL).
 	status, gr = doGraphQL(t, srv, tokH, `mutation Del($id: ID!) { deleteFoodEvent(id: $id) }`, map[string]any{"id": eventID})

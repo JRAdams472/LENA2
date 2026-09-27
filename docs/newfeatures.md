@@ -3,7 +3,9 @@
 Opt out of notifications by category
 Opt out of notifications for a time period
 add new notification types
-that protien notification based on weekly meal plan
+Add a protien notification based on weekly meal plan
+48 hours before any protien is called for, the notification should be sent to remind the user to remove it from the freezer if needed
+If the amount of protien is more than 8 lbs, move the notification. It should estimate 24 hours per 4 lbs, rounded up. So if it is 10 lbs, send 3 days early. 20 lbs should be 5 days early, etc.
 prep notifications on recipes with multi day steps
 Notifications when things are about to expire 
 this particular notification should allow you to add a replacement item onto your weekly grocery list.
@@ -17,7 +19,7 @@ Suggest recipies that the whole house is likey to enjoy that will consume in sto
 AI integration for meal events to assisnt in recipe modifications to meet serving times
 Integration should take into account limitations of cooking appliances
 Integration should be able to make suggestions to alter recipie cooking time and temp so multiple dishes can be prepared at the same time.
-## Solmenier Integration
+## Sommerlier Integration
 If the user has a wine collection, the system should be able to, when prompted, suggest wine pairings with dishes
 If the request happens during meal planning or event planning there should be an option to limit to wine in stock or advise on wines to be purchased.
 AI should consider the contents of each recipie in the meal as well as any preferences that have been found in the household.
