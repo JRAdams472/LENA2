@@ -334,6 +334,18 @@ type MealplanMealSlotItem struct {
 	UnitID       int64              `json:"unit_id"`
 }
 
+type PlatformIdempotencyKey struct {
+	UserID         int64              `json:"user_id"`
+	Key            string             `json:"key"`
+	RequestHash    []byte             `json:"request_hash"`
+	Status         string             `json:"status"`
+	Response       []byte             `json:"response"`
+	ResponseStatus pgtype.Int4        `json:"response_status"`
+	CreatedAt      time.Time          `json:"created_at"`
+	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
+	ExpiresAt      time.Time          `json:"expires_at"`
+}
+
 type RecipeRecipe struct {
 	RecipeID        int64              `json:"recipe_id"`
 	Name            string             `json:"name"`

@@ -124,6 +124,21 @@ type Config struct {
 	// ProfanityExtraTerms is a comma-separated list of additional English
 	// terms the profanity detector should flag beyond the built-in deny-list.
 	ProfanityExtraTerms string `envconfig:"PROFANITY_EXTRA_TERMS" default:""`
+	// IdempotencyEnabled turns on mutation dedup: Idempotency-Key replays
+	// and the byte-identical payload fallback.
+	IdempotencyEnabled bool `envconfig:"IDEMPOTENCY_ENABLED" default:"true"`
+	// IdempotencyKeyTTL bounds how long a completed mutation response is
+	// kept for replay under an explicit Idempotency-Key.
+	IdempotencyKeyTTL time.Duration `envconfig:"IDEMPOTENCY_KEY_TTL" default:"24h"`
+	// IdempotencyAutoTTL is the fallback dedup window for byte-identical
+	// mutation payloads that arrive without a key.
+	IdempotencyAutoTTL time.Duration `envconfig:"IDEMPOTENCY_AUTO_TTL" default:"30s"`
+	// IdempotencyInFlightTTL bounds how long a claimed-but-unfinished
+	// request may hold its key before a duplicate reclaims it.
+	IdempotencyInFlightTTL time.Duration `envconfig:"IDEMPOTENCY_IN_FLIGHT_TTL" default:"60s"`
+	// IdempotencyWaitTimeout bounds how long a duplicate waits on an
+	// in-flight twin before returning IDEMPOTENCY_IN_FLIGHT.
+	IdempotencyWaitTimeout time.Duration `envconfig:"IDEMPOTENCY_WAIT_TIMEOUT" default:"30s"`
 }
 
 // Load reads configuration from environment variables.

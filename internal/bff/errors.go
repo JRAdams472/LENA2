@@ -21,6 +21,9 @@ const (
 	codeTimeout         = "TIMEOUT"
 	codeCostExceeded    = "QUERY_COST_EXCEEDED"
 	codeBusy            = "BUSY"
+	codeIdemKeyReused   = "IDEMPOTENCY_KEY_REUSED"
+	codeIdemInFlight    = "IDEMPOTENCY_IN_FLIGHT"
+	codeIdemKeyInvalid  = "IDEMPOTENCY_KEY_INVALID"
 )
 
 // clientError is a resolver error whose message is safe to return to the
