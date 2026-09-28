@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/graph-gophers/graphql-go"
@@ -39,7 +40,11 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &userBottlePageResolver{wine: r.WineService, bottles: bottles, favorites: favorites, bc: bc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	counts, err := loadBottleSelectionCounts(ctx, r.AnalyticsService, u.UserID, bottleIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottlePageResolver{wine: r.WineService, bottles: bottles, favorites: favorites, bc: bc, counts: counts, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // UserItems resolves the current household's pantry items with the current
@@ -130,6 +135,15 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	eventType := analytics.EventPantryItemAdjusted
+	if existing == nil {
+		eventType = analytics.EventPantryItemAdded
+	}
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+		EventType:  eventType,
+		EntityType: analytics.EntityItem,
+		EntityID:   itemID,
+	})
 	isFav, err := r.UserPrefsService.GetItemFavorite(ctx, u.UserID, itemID)
 	if err != nil {
 		return nil, err
@@ -243,6 +257,11 @@ func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
 	if result == nil {
 		return nil, nil
 	}
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+		EventType:  analytics.EventPantryItemAdjusted,
+		EntityType: analytics.EntityItem,
+		EntityID:   itemID,
+	})
 	isFav, err := r.UserPrefsService.GetItemFavorite(ctx, u.UserID, itemID)
 	if err != nil {
 		return nil, err
@@ -296,6 +315,11 @@ func (r *Resolver) AdjustUserBottle(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+		EventType:  analytics.EventBottleSelected,
+		EntityType: analytics.EntityBottle,
+		EntityID:   bottleID,
+	})
 	isFav, err := r.UserPrefsService.GetBottleFavorite(ctx, u.UserID, bottleID)
 	if err != nil {
 		return nil, err
@@ -425,6 +449,7 @@ type userBottleResolver struct {
 	bottle     userprefs.HouseholdBottle
 	isFavorite bool
 	bc         *bottleChildren
+	counts     countPair
 }
 
 func (r *userBottleResolver) ID() graphql.ID {
@@ -453,13 +478,13 @@ func (r *userBottleResolver) Bottle(ctx context.Context) (*bottleResolver, error
 		if !ok {
 			return nil, nil
 		}
-		return &bottleResolver{wine: r.wine, b: b, bc: r.bc}, nil
+		return &bottleResolver{wine: r.wine, b: b, bc: r.bc, counts: r.counts}, nil
 	}
 	b, err := r.wine.GetBottleByID(ctx, r.bottle.BottleID)
 	if err != nil {
 		return nil, err
 	}
-	return &bottleResolver{wine: r.wine, b: b}, nil
+	return &bottleResolver{wine: r.wine, b: b, counts: r.counts}, nil
 }
 
 type userBottlePageResolver struct {
@@ -467,6 +492,7 @@ type userBottlePageResolver struct {
 	bottles   []userprefs.HouseholdBottle
 	favorites map[int64]bool
 	bc        *bottleChildren
+	counts    map[int64]countPair
 	page      int32
 	pageSize  int32
 	total     int32
@@ -475,7 +501,7 @@ type userBottlePageResolver struct {
 func (r *userBottlePageResolver) Items() []*userBottleResolver {
 	out := make([]*userBottleResolver, len(r.bottles))
 	for i := range r.bottles {
-		out[i] = &userBottleResolver{wine: r.wine, bottle: r.bottles[i], isFavorite: r.favorites[r.bottles[i].BottleID], bc: r.bc}
+		out[i] = &userBottleResolver{wine: r.wine, bottle: r.bottles[i], isFavorite: r.favorites[r.bottles[i].BottleID], bc: r.bc, counts: r.counts[r.bottles[i].BottleID]}
 	}
 	return out
 }

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
@@ -138,6 +139,7 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 	}
 
 	var list grocery.GroceryList
+	var needs []groceryNeed
 	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
 		// Regenerate-in-place: a second generation for the same plan
 		// replaces the latest list's generated lines instead of stacking
@@ -171,7 +173,7 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		if err != nil {
 			return err
 		}
-		needs := aggregateGroceryNeeds(slots, slotItems, recipes, recipeItems)
+		needs = aggregateGroceryNeeds(slots, slotItems, recipes, recipeItems)
 		if len(needs) == 0 {
 			if regenerate {
 				// The plan now contributes nothing — still clear the
@@ -216,6 +218,15 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		return err
 	}); err != nil {
 		return nil, err
+	}
+	// Generated lines are planned usage — each catalog item on the list is
+	// a grocery signal for ranking.
+	for _, n := range needs {
+		r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+			EventType:  analytics.EventGroceryItemAdded,
+			EntityType: analytics.EntityItem,
+			EntityID:   n.itemID,
+		})
 	}
 	// Preload the freshly generated list's children so nested resolvers
 	// never fall back to per-row queries.
@@ -406,7 +417,29 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 	}); err != nil {
 		return nil, err
 	}
+	// A check-off is real purchase intent (unchecking records nothing).
+	if updated.IsChecked {
+		r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemChecked, updated))
+	}
 	return &groceryListItemResolver{inv: r.InventoryService, item: updated}, nil
+}
+
+// groceryEntityEvent maps a grocery line to an analytics event: catalog
+// item and ingredient IDs become entity references; a manual line records
+// its name as a search term so repeat manual adds still build signal.
+func groceryEntityEvent(eventType string, it grocery.GroceryListItem) analytics.Event {
+	e := analytics.Event{EventType: eventType}
+	switch {
+	case it.ItemID != nil:
+		e.EntityType = analytics.EntityItem
+		e.EntityID = *it.ItemID
+	case it.IngredientID != nil:
+		e.EntityType = analytics.EntityIngredient
+		e.EntityID = *it.IngredientID
+	default:
+		e.SearchTerm = it.ManualItemName
+	}
+	return e
 }
 
 // DeleteGroceryItem removes an item from a grocery list.
@@ -439,6 +472,7 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 	if err != nil {
 		return nil, err
 	}
+	r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemAdded, it))
 	return &groceryListItemResolver{inv: r.InventoryService, item: it}, nil
 }
 

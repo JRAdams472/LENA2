@@ -7,8 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,11 +20,39 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 )
 
+// Config tunes the decay job that rebuilds analytics.selection_score.
+type Config struct {
+	// DecayInterval is how often selection scores are rebuilt. Default 6h.
+	DecayInterval time.Duration
+	// HalfLifeDays is the signal half-life in days — an event contributes
+	// half its weight after this many days. Default 90.
+	HalfLifeDays float64
+}
+
+func (c Config) withDefaults() Config {
+	if c.DecayInterval <= 0 {
+		c.DecayInterval = 6 * time.Hour
+	}
+	if c.HalfLifeDays <= 0 {
+		c.HalfLifeDays = 90
+	}
+	return c
+}
+
+// scheduler holds the decay goroutine's lifecycle so WithTx can copy the
+// service without duplicating a sync.WaitGroup.
+type scheduler struct {
+	stop context.CancelFunc
+	wg   sync.WaitGroup
+}
+
 // Service provides interaction tracking and selection-count aggregation.
 type Service struct {
-	q    sqlc.Querier
-	pool dbtx.Pool
-	tx   pgx.Tx
+	q     sqlc.Querier
+	pool  dbtx.Pool
+	tx    pgx.Tx
+	cfg   Config
+	sched *scheduler
 	// newQ builds the querier bound to a transaction. Tests inject a
 	// factory returning their mock so InTx still exercises the real
 	// Begin/Commit flow while statements land on the mock.
@@ -32,10 +63,12 @@ type Service struct {
 // The querier resolves a ctx-carried transaction first (see
 // dbtx.ContextExecer) so calls made inside a UnitOfWork join that
 // transaction automatically.
-func NewService(pool dbtx.Pool) *Service {
+func NewService(pool dbtx.Pool, cfg Config) *Service {
 	return &Service{
-		q:    sqlc.New(dbtx.NewTimedExecer(dbtx.ContextExecer(pool), "analytics")),
-		pool: pool,
+		q:     sqlc.New(dbtx.NewTimedExecer(dbtx.ContextExecer(pool), "analytics")),
+		pool:  pool,
+		cfg:   cfg.withDefaults(),
+		sched: &scheduler{},
 		newQ: func(tx pgx.Tx) sqlc.Querier {
 			return sqlc.New(dbtx.NewTimedExecer(tx, "analytics"))
 		},
@@ -74,35 +107,65 @@ func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
 
 // EntityType values identify the class of catalog object being tracked.
 const (
-	EntityItem   = "item"
-	EntityBrand  = "brand"
-	EntityRecipe = "recipe"
+	EntityItem       = "item"
+	EntityBrand      = "brand"
+	EntityRecipe     = "recipe"
+	EntityBottle     = "bottle"
+	EntityIngredient = "ingredient"
 )
 
 // EventType values classify the kind of interaction being recorded.
 const (
-	EventItemSelected   = "item_selected"
-	EventBrandSelected  = "brand_selected"
-	EventRecipeSelected = "recipe_selected"
-	EventItemSearched   = "item_searched"
-	EventRecipeSearched = "recipe_searched"
-	EventRecipeViewed   = "recipe_viewed"
-	EventRecipeCreated  = "recipe_created"
-	EventMenuAdd        = "menu_add"
-	EventRatingGiven    = "rating_given"
+	EventItemSelected       = "item_selected"
+	EventBrandSelected      = "brand_selected"
+	EventRecipeSelected     = "recipe_selected"
+	EventItemSearched       = "item_searched"
+	EventRecipeSearched     = "recipe_searched"
+	EventBrandSearched      = "brand_searched"
+	EventItemViewed         = "item_viewed"
+	EventBrandViewed        = "brand_viewed"
+	EventRecipeViewed       = "recipe_viewed"
+	EventRecipeCreated      = "recipe_created"
+	EventMenuAdd            = "menu_add"
+	EventRatingGiven        = "rating_given"
+	EventBottleSelected     = "bottle_selected"
+	EventBottleViewed       = "bottle_viewed"
+	EventBottleSearched     = "bottle_searched"
+	EventBottleCreated      = "bottle_created"
+	EventIngredientSelected = "ingredient_selected"
+	EventIngredientSearched = "ingredient_searched"
+	EventIngredientViewed   = "ingredient_viewed"
+	EventPantryItemAdded    = "pantry_item_added"
+	EventPantryItemAdjusted = "pantry_item_adjusted"
+	EventGroceryItemAdded   = "grocery_item_added"
+	EventGroceryItemChecked = "grocery_item_checked"
 )
 
 // Weights are based on the signal-value table from docs/updates.md.
 var eventWeights = map[string]int16{
-	EventItemSelected:   1,
-	EventBrandSelected:  1,
-	EventRecipeSelected: 1,
-	EventItemSearched:   2,
-	EventRecipeSearched: 2,
-	EventRecipeViewed:   1,
-	EventRecipeCreated:  4,
-	EventMenuAdd:        4,
-	EventRatingGiven:    5,
+	EventItemSelected:       1,
+	EventBrandSelected:      1,
+	EventRecipeSelected:     1,
+	EventItemSearched:       2,
+	EventRecipeSearched:     2,
+	EventBrandSearched:      2,
+	EventItemViewed:         1,
+	EventBrandViewed:        1,
+	EventRecipeViewed:       1,
+	EventRecipeCreated:      4,
+	EventMenuAdd:            4,
+	EventRatingGiven:        5,
+	EventBottleSelected:     2,
+	EventBottleViewed:       1,
+	EventBottleSearched:     2,
+	EventBottleCreated:      4,
+	EventIngredientSelected: 1,
+	EventIngredientSearched: 2,
+	EventIngredientViewed:   1,
+	EventPantryItemAdded:    2,
+	EventPantryItemAdjusted: 1,
+	EventGroceryItemAdded:   2,
+	EventGroceryItemChecked: 2,
 }
 
 // Event is one user interaction to record.
@@ -445,4 +508,197 @@ func (s *Service) RecipeEngagementSets(ctx context.Context, userID, householdID 
 		}
 	}
 	return out, nil
+}
+
+// ---------- decayed selection scores ----------
+
+// Selection-score scopes stored in analytics.selection_score.
+const (
+	ScopeUser      = "user"
+	ScopeHousehold = "household"
+	ScopeGlobal    = "global"
+)
+
+// EntityScore is one entity's decayed engagement score within a scope.
+type EntityScore struct {
+	EntityID       int64
+	Score          float64
+	EventCount     int64
+	LastSelectedAt time.Time
+}
+
+// TopScores returns the highest-scoring entities for one scope, best first.
+// scopeID is the user_id or household_id; pass 0 for ScopeGlobal.
+func (s *Service) TopScores(ctx context.Context, scope string, scopeID int64, entityType string, limit int32) ([]EntityScore, error) {
+	rows, err := s.q.TopSelectionScores(ctx, sqlc.TopSelectionScoresParams{
+		ScopeType:  scope,
+		ScopeID:    scopeID,
+		EntityType: entityType,
+		Limit:      limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("top selection scores: %w", err)
+	}
+	out := make([]EntityScore, len(rows))
+	for i, r := range rows {
+		out[i] = EntityScore{
+			EntityID:       r.EntityID,
+			Score:          r.Score,
+			EventCount:     r.EventCount,
+			LastSelectedAt: r.LastSelectedAt.Time,
+		}
+	}
+	return out, nil
+}
+
+// DecayScores rebuilds every selection-score scope from the event log in a
+// single transaction. The rebuild is idempotent and safe to re-run — the
+// table is a derived rollup, not a source of truth.
+func (s *Service) DecayScores(ctx context.Context) error {
+	halfLife := s.cfg.withDefaults().HalfLifeDays
+	return s.InTx(ctx, func(tx *Service) error {
+		if err := tx.q.ClearSelectionScores(ctx); err != nil {
+			return fmt.Errorf("clear selection scores: %w", err)
+		}
+		if err := tx.q.RebuildUserSelectionScores(ctx, halfLife); err != nil {
+			return fmt.Errorf("rebuild user scores: %w", err)
+		}
+		if err := tx.q.RebuildHouseholdSelectionScores(ctx, halfLife); err != nil {
+			return fmt.Errorf("rebuild household scores: %w", err)
+		}
+		if err := tx.q.RebuildGlobalSelectionScores(ctx, halfLife); err != nil {
+			return fmt.Errorf("rebuild global scores: %w", err)
+		}
+		return nil
+	})
+}
+
+// Start launches the periodic score-decay rebuild on a background
+// goroutine, mirroring the notifier sweep lifecycle. Scores are stale by at
+// most DecayInterval between runs; callers needing fresh values can invoke
+// DecayScores directly.
+func (s *Service) Start(ctx context.Context) {
+	sched := s.sched
+	if sched == nil {
+		sched = &scheduler{}
+		s.sched = sched
+	}
+	decayCtx, cancel := context.WithCancel(context.Background())
+	sched.stop = cancel
+	sched.wg.Add(1)
+	go func() {
+		defer sched.wg.Done()
+		s.runDecay(decayCtx)
+		t := time.NewTicker(s.cfg.DecayInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-decayCtx.Done():
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				s.runDecay(decayCtx)
+			}
+		}
+	}()
+}
+
+// Stop cancels the decay goroutine and waits for an in-flight rebuild to
+// finish. Called from Resolver.Shutdown ahead of pool close.
+func (s *Service) Stop() {
+	if s.sched == nil {
+		return
+	}
+	if s.sched.stop != nil {
+		s.sched.stop()
+	}
+	s.sched.wg.Wait()
+}
+
+func (s *Service) runDecay(ctx context.Context) {
+	if err := s.DecayScores(ctx); err != nil {
+		slog.Warn("analytics score decay failed", "error", err)
+	}
+}
+
+// ---------- generalized entity engagement ----------
+
+// EntityEngagement carries per-entity ranking inputs for any searchable
+// entity type. Personal/Household/Global IDs come from the decayed
+// selection-score table (best score first); ViewedIDs and SearchTerms come
+// straight from the event log. All slices are ordered by signal strength.
+type EntityEngagement struct {
+	PersonalIDs  []int64
+	HouseholdIDs []int64
+	GlobalIDs    []int64
+	ViewedIDs    []int64
+	SearchTerms  []string
+}
+
+// engagementLimit caps each signal array so ANY()/array_position lookups
+// stay cheap. 500 covers far more history than ranking tiers need.
+const engagementLimit = 500
+
+// EntityEngagementSets loads every ranking input for one entity type in one
+// call. Personal/viewed/searched are user-scoped; household aggregates all
+// members of householdID; global is the whole-catalog popularity fallback.
+func (s *Service) EntityEngagementSets(ctx context.Context, userID, householdID int64, entityType string) (EntityEngagement, error) {
+	personal, err := s.TopScores(ctx, ScopeUser, userID, entityType, engagementLimit)
+	if err != nil {
+		return EntityEngagement{}, fmt.Errorf("engagement personal: %w", err)
+	}
+	var household []EntityScore
+	if householdID != 0 {
+		household, err = s.TopScores(ctx, ScopeHousehold, householdID, entityType, engagementLimit)
+		if err != nil {
+			return EntityEngagement{}, fmt.Errorf("engagement household: %w", err)
+		}
+	}
+	global, err := s.TopScores(ctx, ScopeGlobal, 0, entityType, engagementLimit)
+	if err != nil {
+		return EntityEngagement{}, fmt.Errorf("engagement global: %w", err)
+	}
+	viewed, err := s.q.UserViewedEntityIDs(ctx, sqlc.UserViewedEntityIDsParams{
+		EntityType: entityType,
+		UserID:     userID,
+		Limit:      engagementLimit,
+	})
+	if err != nil {
+		return EntityEngagement{}, fmt.Errorf("engagement viewed: %w", err)
+	}
+	terms, err := s.q.UserEntitySearchTerms(ctx, sqlc.UserEntitySearchTermsParams{
+		EntityType: entityType,
+		UserID:     userID,
+	})
+	if err != nil {
+		return EntityEngagement{}, fmt.Errorf("engagement search terms: %w", err)
+	}
+
+	out := EntityEngagement{
+		PersonalIDs:  scoreIDs(personal),
+		HouseholdIDs: scoreIDs(household),
+		GlobalIDs:    scoreIDs(global),
+		ViewedIDs:    make([]int64, 0, len(viewed)),
+		SearchTerms:  make([]string, 0, len(terms)),
+	}
+	for _, v := range viewed {
+		if v.EntityID.Valid {
+			out.ViewedIDs = append(out.ViewedIDs, v.EntityID.Int64)
+		}
+	}
+	for _, t := range terms {
+		if t.Valid {
+			out.SearchTerms = append(out.SearchTerms, t.String)
+		}
+	}
+	return out, nil
+}
+
+func scoreIDs(scores []EntityScore) []int64 {
+	out := make([]int64, len(scores))
+	for i, s := range scores {
+		out[i] = s.EntityID
+	}
+	return out
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/inventory"
@@ -457,7 +458,15 @@ func TestResolver_ToggleGroceryItemChecked_PantrySync(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)
 	up := mock.NewMockUserPrefsService(ctrl)
-	r := &Resolver{GroceryService: g, UserPrefsService: up}
+	an := newAnalyticsMock(t)
+	r := &Resolver{GroceryService: g, UserPrefsService: up, AnalyticsService: an}
+	// Checking off a catalog item records purchase intent for ranking.
+	an.EXPECT().RecordEvent(gomock.Any(), analytics.Event{
+		UserID:     grocUserID,
+		EventType:  analytics.EventGroceryItemChecked,
+		EntityType: analytics.EntityItem,
+		EntityID:   42,
+	}, grocEmail).Return(nil)
 
 	itemID := int64(42)
 	checked := grocery.GroceryListItem{GroceryListItemID: 100, ItemID: &itemID, QuantityNeeded: 3, IsChecked: true}
@@ -468,6 +477,25 @@ func TestResolver_ToggleGroceryItemChecked_PantrySync(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.True(t, res.IsChecked())
+	require.NoError(t, r.Shutdown(context.Background()))
+}
+
+func TestResolver_ToggleGroceryItemChecked_UncheckRecordsNothing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	an := newAnalyticsMock(t) // no RecordEvent expected — unchecking is not a signal
+	r := &Resolver{GroceryService: g, UserPrefsService: up, AnalyticsService: an}
+
+	itemID := int64(42)
+	unchecked := grocery.GroceryListItem{GroceryListItemID: 100, ItemID: &itemID, QuantityNeeded: 3, IsChecked: false}
+	g.EXPECT().ToggleGroceryListItemChecked(gomock.Any(), int64(100), grocUserID, grocEmail).Return(unchecked, nil)
+	up.EXPECT().AdjustHouseholdItemQuantity(gomock.Any(), grocUserID, itemID, -3.0, grocEmail).Return(userprefs.HouseholdItem{}, nil)
+
+	res, err := r.ToggleGroceryItemChecked(grocCtx(), struct{ GroceryListItemID graphql.ID }{GroceryListItemID: "100"})
+	require.NoError(t, err)
+	assert.False(t, res.IsChecked())
+	require.NoError(t, r.Shutdown(context.Background()))
 }
 
 func TestResolver_ToggleGroceryItemChecked_PantrySyncError(t *testing.T) {

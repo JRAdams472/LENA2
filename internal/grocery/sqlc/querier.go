@@ -26,6 +26,9 @@ type Querier interface {
 	// Invite-accept merge: repoint all of the source household's lists. Zero
 	// rows is not an error.
 	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
+	// Checking stamps checked_at and assigns the next per-list checked_seq so
+	// the order items were checked off survives for store-routing analytics;
+	// unchecking clears both.
 	ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error)
 	TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroceryListGeneratedAtParams) (GroceryGroceryList, error)
 	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error

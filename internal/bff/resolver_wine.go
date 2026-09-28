@@ -4,13 +4,15 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/wine"
 	"github.com/graph-gophers/graphql-go"
 )
 
 // Bottle resolves a single wine bottle by ID.
 func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*bottleResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
@@ -21,7 +23,11 @@ func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*b
 	if err != nil {
 		return nil, err
 	}
-	return &bottleResolver{wine: r.WineService, b: b}, nil
+	counts, err := loadBottleSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{wine: r.WineService, b: b, counts: counts[id]}, nil
 }
 
 // Bottles resolves a paginated list of wine bottles.
@@ -29,7 +35,8 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
 }) (*bottlePageResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
@@ -41,11 +48,16 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	bc, err := loadBottleChildren(ctx, r.WineService, distinctIDs(bottles, func(b wine.Bottle) *int64 { return &b.BottleID }), false)
+	bottleIDs := distinctIDs(bottles, func(b wine.Bottle) *int64 { return &b.BottleID })
+	bc, err := loadBottleChildren(ctx, r.WineService, bottleIDs, false)
 	if err != nil {
 		return nil, err
 	}
-	return &bottlePageResolver{wine: r.WineService, bottles: bottles, bc: bc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	counts, err := loadBottleSelectionCounts(ctx, r.AnalyticsService, u.UserID, bottleIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &bottlePageResolver{wine: r.WineService, bottles: bottles, bc: bc, counts: counts, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // Types resolves all wine types.
@@ -302,6 +314,11 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 	if err != nil {
 		return nil, err
 	}
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+		EventType:  analytics.EventBottleCreated,
+		EntityType: analytics.EntityBottle,
+		EntityID:   b.BottleID,
+	})
 	return &bottleResolver{wine: r.WineService, b: b}, nil
 }
 
@@ -468,9 +485,10 @@ func (r *Resolver) RemoveBottleFlavorProfile(ctx context.Context, args struct {
 // bottleResolver resolves Bottle fields. When bc is non-nil its
 // batch-loaded maps are used instead of per-bottle service calls.
 type bottleResolver struct {
-	wine BottleReader
-	b    wine.Bottle
-	bc   *bottleChildren
+	wine   BottleReader
+	b      wine.Bottle
+	bc     *bottleChildren
+	counts countPair
 }
 
 func (r *bottleResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.b.BottleID, 10)) }
@@ -503,6 +521,16 @@ func (r *bottleResolver) OakIntegration() *bool { return r.b.OakIntegration }
 
 func (r *bottleResolver) BottleSize() string { return r.b.BottleSize }
 
+// SelectionCount is the lifetime global selection count for this bottle.
+func (r *bottleResolver) SelectionCount() int32 {
+	return int64ToInt32(r.counts.global)
+}
+
+// PersonalSelectionCount is the current user's lifetime selection count.
+func (r *bottleResolver) PersonalSelectionCount() int32 {
+	return int64ToInt32(r.counts.personal)
+}
+
 func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVarietyResolver, error) {
 	var varieties []wine.BottleGrapeVariety
 	if r.bc != nil {
@@ -525,6 +553,7 @@ type bottlePageResolver struct {
 	wine     BottleReader
 	bottles  []wine.Bottle
 	bc       *bottleChildren
+	counts   map[int64]countPair
 	page     int32
 	pageSize int32
 	total    int32
@@ -533,7 +562,7 @@ type bottlePageResolver struct {
 func (r *bottlePageResolver) Items() []*bottleResolver {
 	out := make([]*bottleResolver, len(r.bottles))
 	for i := range r.bottles {
-		out[i] = &bottleResolver{wine: r.wine, b: r.bottles[i], bc: r.bc}
+		out[i] = &bottleResolver{wine: r.wine, b: r.bottles[i], bc: r.bc, counts: r.counts[r.bottles[i].BottleID]}
 	}
 	return out
 }

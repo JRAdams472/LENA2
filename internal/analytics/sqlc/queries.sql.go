@@ -11,6 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearSelectionScores = `-- name: ClearSelectionScores :exec
+
+DELETE FROM analytics.selection_score
+`
+
+// ---------- decayed selection scores (analytics ranking) ----------
+// Full rebuild strategy: the decay job clears and repopulates in one tx so
+// scores always reflect a consistent decay epoch.
+func (q *Queries) ClearSelectionScores(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearSelectionScores)
+	return err
+}
+
 const getGlobalSelectionCounts = `-- name: GetGlobalSelectionCounts :many
 SELECT entity_type, entity_id, select_count, last_selected_at
 FROM analytics.global_selection_count
@@ -266,6 +279,72 @@ func (q *Queries) ListRecipeRecommendations(ctx context.Context, arg ListRecipeR
 	return items, nil
 }
 
+const rebuildGlobalSelectionScores = `-- name: RebuildGlobalSelectionScores :exec
+INSERT INTO analytics.selection_score (
+    entity_type, entity_id, scope_type, scope_id, score, event_count, last_selected_at
+)
+SELECT entity_type, entity_id, 'global', 0,
+       SUM(weight * exp(-ln(2) * EXTRACT(EPOCH FROM (now() - created_at)) / 86400.0
+           / $1::float8)),
+       COUNT(*), MAX(created_at)
+FROM analytics.interaction_event
+WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL
+  AND event_type NOT LIKE '%\_viewed' ESCAPE '\'
+  AND event_type NOT LIKE '%\_searched' ESCAPE '\'
+GROUP BY entity_type, entity_id
+`
+
+func (q *Queries) RebuildGlobalSelectionScores(ctx context.Context, halfLifeDays float64) error {
+	_, err := q.db.Exec(ctx, rebuildGlobalSelectionScores, halfLifeDays)
+	return err
+}
+
+const rebuildHouseholdSelectionScores = `-- name: RebuildHouseholdSelectionScores :exec
+INSERT INTO analytics.selection_score (
+    entity_type, entity_id, scope_type, scope_id, score, event_count, last_selected_at
+)
+SELECT e.entity_type, e.entity_id, 'household', u.household_id,
+       SUM(e.weight * exp(-ln(2) * EXTRACT(EPOCH FROM (now() - e.created_at)) / 86400.0
+           / $1::float8)),
+       COUNT(*), MAX(e.created_at)
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.entity_type IS NOT NULL AND e.entity_id IS NOT NULL
+  AND u.household_id IS NOT NULL
+  AND e.event_type NOT LIKE '%\_viewed' ESCAPE '\'
+  AND e.event_type NOT LIKE '%\_searched' ESCAPE '\'
+GROUP BY e.entity_type, e.entity_id, u.household_id
+`
+
+// Household scope = aggregate of every member's selection events (ADR-001
+// read-model join through identity.users).
+func (q *Queries) RebuildHouseholdSelectionScores(ctx context.Context, halfLifeDays float64) error {
+	_, err := q.db.Exec(ctx, rebuildHouseholdSelectionScores, halfLifeDays)
+	return err
+}
+
+const rebuildUserSelectionScores = `-- name: RebuildUserSelectionScores :exec
+INSERT INTO analytics.selection_score (
+    entity_type, entity_id, scope_type, scope_id, score, event_count, last_selected_at
+)
+SELECT entity_type, entity_id, 'user', user_id,
+       SUM(weight * exp(-ln(2) * EXTRACT(EPOCH FROM (now() - created_at)) / 86400.0
+           / $1::float8)),
+       COUNT(*), MAX(created_at)
+FROM analytics.interaction_event
+WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL AND user_id IS NOT NULL
+  AND event_type NOT LIKE '%\_viewed' ESCAPE '\'
+  AND event_type NOT LIKE '%\_searched' ESCAPE '\'
+GROUP BY entity_type, entity_id, user_id
+`
+
+// score = SUM(weight * 2^(-age_days/half_life)); selection-intent events
+// only — *_viewed / *_searched feed their own ranking tiers.
+func (q *Queries) RebuildUserSelectionScores(ctx context.Context, halfLifeDays float64) error {
+	_, err := q.db.Exec(ctx, rebuildUserSelectionScores, halfLifeDays)
+	return err
+}
+
 const topGlobalSelections = `-- name: TopGlobalSelections :many
 SELECT entity_type, entity_id, select_count, last_selected_at
 FROM analytics.global_selection_count
@@ -292,6 +371,61 @@ func (q *Queries) TopGlobalSelections(ctx context.Context, arg TopGlobalSelectio
 			&i.EntityType,
 			&i.EntityID,
 			&i.SelectCount,
+			&i.LastSelectedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const topSelectionScores = `-- name: TopSelectionScores :many
+SELECT entity_id, score::float8 AS score, event_count, last_selected_at
+FROM analytics.selection_score
+WHERE scope_type = $1 AND scope_id = $2 AND entity_type = $3
+ORDER BY score DESC, last_selected_at DESC NULLS LAST
+LIMIT $4
+`
+
+type TopSelectionScoresParams struct {
+	ScopeType  string `json:"scope_type"`
+	ScopeID    int64  `json:"scope_id"`
+	EntityType string `json:"entity_type"`
+	Limit      int32  `json:"limit"`
+}
+
+type TopSelectionScoresRow struct {
+	EntityID       int64              `json:"entity_id"`
+	Score          float64            `json:"score"`
+	EventCount     int64              `json:"event_count"`
+	LastSelectedAt pgtype.Timestamptz `json:"last_selected_at"`
+}
+
+// Highest-scoring entities for one scope — drives the used/household/
+// popular ranking tiers. scope_id is the user_id or household_id; pass 0
+// for 'global'.
+func (q *Queries) TopSelectionScores(ctx context.Context, arg TopSelectionScoresParams) ([]TopSelectionScoresRow, error) {
+	rows, err := q.db.Query(ctx, topSelectionScores,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.EntityType,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TopSelectionScoresRow{}
+	for rows.Next() {
+		var i TopSelectionScoresRow
+		if err := rows.Scan(
+			&i.EntityID,
+			&i.Score,
+			&i.EventCount,
 			&i.LastSelectedAt,
 		); err != nil {
 			return nil, err
@@ -413,6 +547,41 @@ func (q *Queries) UpsertUserSelectionCount(ctx context.Context, arg UpsertUserSe
 	return err
 }
 
+const userEntitySearchTerms = `-- name: UserEntitySearchTerms :many
+SELECT DISTINCT search_term
+FROM analytics.interaction_event
+WHERE event_type = $1::text || '_searched'
+  AND user_id = $2::bigint
+  AND search_term IS NOT NULL
+  AND search_term <> ''
+`
+
+type UserEntitySearchTermsParams struct {
+	EntityType string `json:"entity_type"`
+	UserID     int64  `json:"user_id"`
+}
+
+// Distinct terms the caller has searched for a given entity type.
+func (q *Queries) UserEntitySearchTerms(ctx context.Context, arg UserEntitySearchTermsParams) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, userEntitySearchTerms, arg.EntityType, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Text{}
+	for rows.Next() {
+		var search_term pgtype.Text
+		if err := rows.Scan(&search_term); err != nil {
+			return nil, err
+		}
+		items = append(items, search_term)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const userRecipeSearchTerms = `-- name: UserRecipeSearchTerms :many
 SELECT DISTINCT search_term
 FROM analytics.interaction_event
@@ -437,6 +606,52 @@ func (q *Queries) UserRecipeSearchTerms(ctx context.Context, userID int64) ([]pg
 			return nil, err
 		}
 		items = append(items, search_term)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const userViewedEntityIDs = `-- name: UserViewedEntityIDs :many
+
+SELECT entity_id, COUNT(*) AS hits
+FROM analytics.interaction_event
+WHERE event_type = $1::text || '_viewed'
+  AND entity_type = $1::text
+  AND user_id = $2::bigint
+GROUP BY entity_id
+ORDER BY hits DESC, MAX(created_at) DESC
+LIMIT $3::int
+`
+
+type UserViewedEntityIDsParams struct {
+	EntityType string `json:"entity_type"`
+	UserID     int64  `json:"user_id"`
+	Limit      int32  `json:"limit"`
+}
+
+type UserViewedEntityIDsRow struct {
+	EntityID pgtype.Int8 `json:"entity_id"`
+	Hits     int64       `json:"hits"`
+}
+
+// ---------- generic per-entity engagement inputs ----------
+// Entities of any type the caller has viewed, most-viewed first.
+// event_type is derived as '<entity_type>_viewed'.
+func (q *Queries) UserViewedEntityIDs(ctx context.Context, arg UserViewedEntityIDsParams) ([]UserViewedEntityIDsRow, error) {
+	rows, err := q.db.Query(ctx, userViewedEntityIDs, arg.EntityType, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserViewedEntityIDsRow{}
+	for rows.Next() {
+		var i UserViewedEntityIDsRow
+		if err := rows.Scan(&i.EntityID, &i.Hits); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

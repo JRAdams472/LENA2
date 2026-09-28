@@ -1224,11 +1224,13 @@ func (r *Resolver) RecordView(ctx context.Context, args struct {
 	return true, nil
 }
 
+// viewEventType derives the '<entity>_viewed' event name; the
+// UserViewedEntityIDs ranking query derives it the same way, so any entity
+// type works without a lookup table.
 func viewEventType(entityType string) string {
-	switch strings.ToLower(strings.TrimSpace(entityType)) {
-	case analytics.EntityRecipe:
-		return analytics.EventRecipeViewed
-	default:
+	t := strings.ToLower(strings.TrimSpace(entityType))
+	if t == "" {
 		return "viewed"
 	}
+	return t + "_viewed"
 }

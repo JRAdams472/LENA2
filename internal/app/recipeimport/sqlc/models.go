@@ -38,6 +38,17 @@ type AnalyticsRecipeRecommendation struct {
 	GeneratedAt      time.Time      `json:"generated_at"`
 }
 
+type AnalyticsSelectionScore struct {
+	EntityType     string             `json:"entity_type"`
+	EntityID       int64              `json:"entity_id"`
+	ScopeType      string             `json:"scope_type"`
+	ScopeID        int64              `json:"scope_id"`
+	Score          pgtype.Numeric     `json:"score"`
+	EventCount     int64              `json:"event_count"`
+	LastSelectedAt pgtype.Timestamptz `json:"last_selected_at"`
+	ComputedAt     time.Time          `json:"computed_at"`
+}
+
 type AnalyticsUserSelectionCount struct {
 	EntityType     string             `json:"entity_type"`
 	EntityID       int64              `json:"entity_id"`
@@ -132,6 +143,8 @@ type GroceryGroceryListItem struct {
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	IngredientID      pgtype.Int8        `json:"ingredient_id"`
 	UnitID            pgtype.Int8        `json:"unit_id"`
+	CheckedAt         pgtype.Timestamptz `json:"checked_at"`
+	CheckedSeq        pgtype.Int4        `json:"checked_seq"`
 }
 
 type HouseholdHousehold struct {

@@ -7071,6 +7071,21 @@ func (mr *MockEventRecorderMockRecorder) ComputeIngredientOverlapSuggestions(ctx
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ComputeIngredientOverlapSuggestions", reflect.TypeOf((*MockEventRecorder)(nil).ComputeIngredientOverlapSuggestions), ctx, newRecipeID)
 }
 
+// EntityEngagementSets mocks base method.
+func (m *MockEventRecorder) EntityEngagementSets(ctx context.Context, userID, householdID int64, entityType string) (analytics.EntityEngagement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EntityEngagementSets", ctx, userID, householdID, entityType)
+	ret0, _ := ret[0].(analytics.EntityEngagement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EntityEngagementSets indicates an expected call of EntityEngagementSets.
+func (mr *MockEventRecorderMockRecorder) EntityEngagementSets(ctx, userID, householdID, entityType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EntityEngagementSets", reflect.TypeOf((*MockEventRecorder)(nil).EntityEngagementSets), ctx, userID, householdID, entityType)
+}
+
 // RecipeEngagementSets mocks base method.
 func (m *MockEventRecorder) RecipeEngagementSets(ctx context.Context, userID, householdID int64) (analytics.RecipeEngagement, error) {
 	m.ctrl.T.Helper()
@@ -7252,6 +7267,21 @@ func (mr *MockAnalyticsServiceMockRecorder) ComputeIngredientOverlapSuggestions(
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ComputeIngredientOverlapSuggestions", reflect.TypeOf((*MockAnalyticsService)(nil).ComputeIngredientOverlapSuggestions), ctx, newRecipeID)
 }
 
+// EntityEngagementSets mocks base method.
+func (m *MockAnalyticsService) EntityEngagementSets(ctx context.Context, userID, householdID int64, entityType string) (analytics.EntityEngagement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EntityEngagementSets", ctx, userID, householdID, entityType)
+	ret0, _ := ret[0].(analytics.EntityEngagement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EntityEngagementSets indicates an expected call of EntityEngagementSets.
+func (mr *MockAnalyticsServiceMockRecorder) EntityEngagementSets(ctx, userID, householdID, entityType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EntityEngagementSets", reflect.TypeOf((*MockAnalyticsService)(nil).EntityEngagementSets), ctx, userID, householdID, entityType)
+}
+
 // GetGlobalSelectionCounts mocks base method.
 func (m *MockAnalyticsService) GetGlobalSelectionCounts(ctx context.Context, entityType string, entityIDs []int64) ([]analytics.SelectionCount, error) {
 	m.ctrl.T.Helper()
@@ -7338,6 +7368,18 @@ func (m *MockAnalyticsService) RecordView(ctx context.Context, e analytics.Event
 func (mr *MockAnalyticsServiceMockRecorder) RecordView(ctx, e, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordView", reflect.TypeOf((*MockAnalyticsService)(nil).RecordView), ctx, e, by)
+}
+
+// Stop mocks base method.
+func (m *MockAnalyticsService) Stop() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Stop")
+}
+
+// Stop indicates an expected call of Stop.
+func (mr *MockAnalyticsServiceMockRecorder) Stop() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockAnalyticsService)(nil).Stop))
 }
 
 // TopGlobalSelections mocks base method.

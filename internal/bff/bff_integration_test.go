@@ -59,7 +59,7 @@ func TestBFF_Integration(t *testing.T) {
 	}, identitySvc, household.NewService(pool))
 
 	resolver := NewResolver(pool, Services{
-		Analytics: analytics.NewService(pool),
+		Analytics: analytics.NewService(pool, analytics.Config{}),
 		Event:     event.NewService(pool),
 		Grocery:   grocery.NewService(pool),
 		Inventory: inventory.NewService(pool),
@@ -1200,7 +1200,7 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 	require.NoError(t, err)
 
 	resolver := NewResolver(pool, Services{
-		Analytics: analytics.NewService(pool),
+		Analytics: analytics.NewService(pool, analytics.Config{}),
 		Grocery:   grocerySvc,
 		Inventory: invSvc,
 		MealPlan:  mealplan.NewService(pool),
@@ -1294,7 +1294,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	require.NoError(t, err)
 
 	resolver := NewResolver(pool, Services{
-		Analytics: analytics.NewService(pool),
+		Analytics: analytics.NewService(pool, analytics.Config{}),
 		Grocery:   grocerySvc,
 		Inventory: invSvc,
 		MealPlan:  mpSvc,

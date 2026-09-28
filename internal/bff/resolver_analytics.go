@@ -63,6 +63,10 @@ func selectionEventType(entityType string) string {
 		return analytics.EventBrandSelected
 	case analytics.EntityRecipe:
 		return analytics.EventRecipeSelected
+	case analytics.EntityBottle:
+		return analytics.EventBottleSelected
+	case analytics.EntityIngredient:
+		return analytics.EventIngredientSelected
 	default:
 		return analytics.EventItemSelected
 	}
@@ -72,6 +76,12 @@ func searchEventType(entityType string) string {
 	switch strings.ToLower(strings.TrimSpace(entityType)) {
 	case analytics.EntityRecipe:
 		return analytics.EventRecipeSearched
+	case analytics.EntityBrand:
+		return analytics.EventBrandSearched
+	case analytics.EntityBottle:
+		return analytics.EventBottleSearched
+	case analytics.EntityIngredient:
+		return analytics.EventIngredientSearched
 	default:
 		return analytics.EventItemSearched
 	}

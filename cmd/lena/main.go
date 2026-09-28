@@ -146,7 +146,10 @@ func run() int {
 func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) (*echo.Echo, *bff.Resolver, error) {
 	identitySvc := identity.NewService(pool).
 		WithProtectedEmails(splitAndTrim(cfg.ProtectedEmails))
-	analyticsSvc := analytics.NewService(pool)
+	analyticsSvc := analytics.NewService(pool, analytics.Config{
+		DecayInterval: cfg.AnalyticsDecayInterval,
+		HalfLifeDays:  cfg.AnalyticsHalfLifeDays,
+	})
 	grocerySvc := grocery.NewService(pool)
 	householdSvc := household.NewService(pool)
 	inventorySvc := inventory.NewService(pool)
@@ -162,6 +165,9 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	householdSvc.WithNotifyGate(notifierSvc)
 	// Reminder sweep runs until Resolver.Shutdown calls Stop.
 	notifierSvc.Start(context.Background())
+	// Decayed-score rebuild feeds analytics-driven search ranking; same
+	// lifecycle as the sweep.
+	analyticsSvc.Start(context.Background())
 	recipeSvc := recipe.NewService(pool)
 	userPrefsSvc := userprefs.NewService(pool)
 	wineSvc := wine.NewService(pool)

@@ -22,7 +22,7 @@ func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpoo
 	pool, cleanup, err := testutil.NewTestDB(t, ctx)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
-	return NewService(pool), pool
+	return NewService(pool, Config{}), pool
 }
 
 func TestIntegrationRecordEventAndCounts(t *testing.T) {
@@ -174,4 +174,85 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	recsA, err = svc.ListRecipeRecommendations(ctx, userA, ReasonIngredientOverlap, 10)
 	require.NoError(t, err)
 	assert.Len(t, recsA, 1)
+}
+
+func TestIntegrationDecayAndEntityEngagement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	// Two members of one household plus a loner in another.
+	hh := testutil.MustHousehold(ctx, t, pool)
+	userA := testutil.MustUser(ctx, t, pool, "decay-a@example.com")
+	testutil.JoinHousehold(ctx, t, pool, userA, hh)
+	userB := testutil.MustUser(ctx, t, pool, "decay-b@example.com")
+	testutil.JoinHousehold(ctx, t, pool, userB, hh)
+	userC := testutil.MustUser(ctx, t, pool, "decay-c@example.com")
+
+	rec := func(userID int64, eventType, entityType string, entityID int64) {
+		require.NoError(t, svc.RecordEvent(ctx, Event{
+			UserID: userID, EventType: eventType, EntityType: entityType, EntityID: entityID,
+		}, itBy))
+	}
+
+	// A: selects item 1 twice, searches "milk", views item 3.
+	rec(userA, EventItemSelected, EntityItem, 1)
+	rec(userA, EventItemSelected, EntityItem, 1)
+	require.NoError(t, svc.RecordEvent(ctx, Event{
+		UserID: userA, EventType: EventItemSearched, EntityType: EntityItem, SearchTerm: "milk",
+	}, itBy))
+	require.NoError(t, svc.RecordView(ctx, Event{
+		UserID: userA, EventType: EventItemViewed, EntityType: EntityItem, EntityID: 3,
+	}, itBy))
+	// B: selects item 2 once — household scope should see items 1 and 2.
+	rec(userB, EventItemSelected, EntityItem, 2)
+	// C: selects item 4 in a different household — visible only globally.
+	rec(userC, EventItemSelected, EntityItem, 4)
+
+	require.NoError(t, svc.DecayScores(ctx))
+
+	// Personal scope: A has item 1 only.
+	personal, err := svc.TopScores(ctx, ScopeUser, userA, EntityItem, 10)
+	require.NoError(t, err)
+	require.Len(t, personal, 1)
+	assert.Equal(t, int64(1), personal[0].EntityID)
+	assert.InDelta(t, 2.0, personal[0].Score, 0.001) // two fresh selections × weight 1
+
+	// Household scope aggregates members; searched/viewed events excluded.
+	house, err := svc.TopScores(ctx, ScopeHousehold, hh, EntityItem, 10)
+	require.NoError(t, err)
+	require.Len(t, house, 2)
+	assert.Equal(t, int64(1), house[0].EntityID) // score 2 beats score 1
+	assert.Equal(t, int64(2), house[1].EntityID)
+
+	// Global scope spans households.
+	global, err := svc.TopScores(ctx, ScopeGlobal, 0, EntityItem, 10)
+	require.NoError(t, err)
+	require.Len(t, global, 3)
+
+	eng, err := svc.EntityEngagementSets(ctx, userA, hh, EntityItem)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1}, eng.PersonalIDs)
+	assert.Equal(t, []int64{1, 2}, eng.HouseholdIDs)
+	assert.Equal(t, []int64{3}, eng.ViewedIDs)
+	assert.Equal(t, []string{"milk"}, eng.SearchTerms)
+
+	// Backdate item 1's events by exactly one half-life: score halves.
+	halfLife := svc.cfg.HalfLifeDays
+	_, err = pool.Exec(ctx,
+		`UPDATE analytics.interaction_event SET created_at = now() - make_interval(days => $1)
+		 WHERE user_id = $2 AND entity_id = 1`, halfLife, userA)
+	require.NoError(t, err)
+	require.NoError(t, svc.DecayScores(ctx))
+	personal, err = svc.TopScores(ctx, ScopeUser, userA, EntityItem, 10)
+	require.NoError(t, err)
+	require.Len(t, personal, 1)
+	assert.InDelta(t, 1.0, personal[0].Score, 0.02) // ~2 × 2^-1
+
+	// A second rebuild is a clean recompute, not an accumulation.
+	global, err = svc.TopScores(ctx, ScopeGlobal, 0, EntityItem, 10)
+	require.NoError(t, err)
+	require.Len(t, global, 3)
 }

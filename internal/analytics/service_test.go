@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -279,4 +280,141 @@ func TestRecipeEngagementSets(t *testing.T) {
 		assert.ErrorIs(t, err, errBoom)
 		assert.ErrorContains(t, err, "engagement used")
 	})
+}
+
+func TestDecayScores(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("rebuilds all three scopes with default half-life", func(t *testing.T) {
+		s, q := newTestService(t)
+		gomock.InOrder(
+			q.EXPECT().ClearSelectionScores(gomock.Any()).Return(nil),
+			q.EXPECT().RebuildUserSelectionScores(gomock.Any(), 90.0).Return(nil),
+			q.EXPECT().RebuildHouseholdSelectionScores(gomock.Any(), 90.0).Return(nil),
+			q.EXPECT().RebuildGlobalSelectionScores(gomock.Any(), 90.0).Return(nil),
+		)
+
+		require.NoError(t, s.DecayScores(ctx))
+	})
+
+	t.Run("honors configured half-life", func(t *testing.T) {
+		s, q := newTestService(t)
+		s.cfg = Config{HalfLifeDays: 30}
+		q.EXPECT().ClearSelectionScores(gomock.Any()).Return(nil)
+		q.EXPECT().RebuildUserSelectionScores(gomock.Any(), 30.0).Return(nil)
+		q.EXPECT().RebuildHouseholdSelectionScores(gomock.Any(), 30.0).Return(nil)
+		q.EXPECT().RebuildGlobalSelectionScores(gomock.Any(), 30.0).Return(nil)
+
+		require.NoError(t, s.DecayScores(ctx))
+	})
+
+	t.Run("clear failure aborts before rebuilds", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().ClearSelectionScores(gomock.Any()).Return(errBoom)
+
+		err := s.DecayScores(ctx)
+		assert.ErrorIs(t, err, errBoom)
+		assert.ErrorContains(t, err, "clear selection scores")
+	})
+
+	t.Run("rebuild failure wraps the scope name", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().ClearSelectionScores(gomock.Any()).Return(nil)
+		q.EXPECT().RebuildUserSelectionScores(gomock.Any(), gomock.Any()).Return(nil)
+		q.EXPECT().RebuildHouseholdSelectionScores(gomock.Any(), gomock.Any()).Return(errBoom)
+
+		err := s.DecayScores(ctx)
+		assert.ErrorIs(t, err, errBoom)
+		assert.ErrorContains(t, err, "household scores")
+	})
+}
+
+func TestTopScores(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+
+	now := time.Now()
+	q.EXPECT().TopSelectionScores(ctx, sqlc.TopSelectionScoresParams{
+		ScopeType: ScopeHousehold, ScopeID: 7, EntityType: EntityItem, Limit: 50,
+	}).Return([]sqlc.TopSelectionScoresRow{
+		{EntityID: 42, Score: 3.5, EventCount: 4, LastSelectedAt: pgtype.Timestamptz{Time: now, Valid: true}},
+	}, nil)
+
+	scores, err := s.TopScores(ctx, ScopeHousehold, 7, EntityItem, 50)
+	require.NoError(t, err)
+	require.Len(t, scores, 1)
+	assert.Equal(t, int64(42), scores[0].EntityID)
+	assert.InDelta(t, 3.5, scores[0].Score, 1e-9)
+	assert.Equal(t, int64(4), scores[0].EventCount)
+}
+
+func TestEntityEngagementSets(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("assembles all five signal sets", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().TopSelectionScores(gomock.Any(), sqlc.TopSelectionScoresParams{
+			ScopeType: ScopeUser, ScopeID: 1, EntityType: EntityItem, Limit: engagementLimit,
+		}).Return([]sqlc.TopSelectionScoresRow{{EntityID: 10, Score: 2.5}}, nil)
+		q.EXPECT().TopSelectionScores(gomock.Any(), sqlc.TopSelectionScoresParams{
+			ScopeType: ScopeHousehold, ScopeID: 7, EntityType: EntityItem, Limit: engagementLimit,
+		}).Return([]sqlc.TopSelectionScoresRow{{EntityID: 20, Score: 8}}, nil)
+		q.EXPECT().TopSelectionScores(gomock.Any(), sqlc.TopSelectionScoresParams{
+			ScopeType: ScopeGlobal, ScopeID: 0, EntityType: EntityItem, Limit: engagementLimit,
+		}).Return([]sqlc.TopSelectionScoresRow{{EntityID: 30, Score: 100}}, nil)
+		q.EXPECT().UserViewedEntityIDs(gomock.Any(), sqlc.UserViewedEntityIDsParams{
+			EntityType: EntityItem, UserID: 1, Limit: engagementLimit,
+		}).Return([]sqlc.UserViewedEntityIDsRow{
+			{EntityID: pgtype.Int8{Int64: 40, Valid: true}, Hits: 2},
+			{EntityID: pgtype.Int8{}},
+		}, nil)
+		q.EXPECT().UserEntitySearchTerms(gomock.Any(), sqlc.UserEntitySearchTermsParams{
+			EntityType: EntityItem, UserID: 1,
+		}).Return([]pgtype.Text{{String: "milk", Valid: true}}, nil)
+
+		eng, err := s.EntityEngagementSets(ctx, 1, 7, EntityItem)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{10}, eng.PersonalIDs)
+		assert.Equal(t, []int64{20}, eng.HouseholdIDs)
+		assert.Equal(t, []int64{30}, eng.GlobalIDs)
+		assert.Equal(t, []int64{40}, eng.ViewedIDs)
+		assert.Equal(t, []string{"milk"}, eng.SearchTerms)
+	})
+
+	t.Run("household scope skipped without household", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().TopSelectionScores(gomock.Any(), gomock.Any()).
+			Return([]sqlc.TopSelectionScoresRow{}, nil).Times(2)
+		q.EXPECT().UserViewedEntityIDs(gomock.Any(), gomock.Any()).
+			Return([]sqlc.UserViewedEntityIDsRow{}, nil)
+		q.EXPECT().UserEntitySearchTerms(gomock.Any(), gomock.Any()).
+			Return([]pgtype.Text{}, nil)
+
+		eng, err := s.EntityEngagementSets(ctx, 1, 0, EntityBottle)
+		require.NoError(t, err)
+		assert.Empty(t, eng.HouseholdIDs)
+	})
+
+	t.Run("error propagates", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().TopSelectionScores(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+
+		_, err := s.EntityEngagementSets(ctx, 1, 7, EntityItem)
+		assert.ErrorIs(t, err, errBoom)
+		assert.ErrorContains(t, err, "engagement personal")
+	})
+}
+
+func TestEventWeights_NewSignals(t *testing.T) {
+	for _, et := range []string{
+		EventBottleSelected, EventBottleViewed, EventBottleSearched, EventBottleCreated,
+		EventIngredientSelected, EventIngredientSearched, EventIngredientViewed,
+		EventPantryItemAdded, EventPantryItemAdjusted,
+		EventGroceryItemAdded, EventGroceryItemChecked,
+		EventBrandSearched, EventItemViewed, EventBrandViewed,
+	} {
+		assert.NotZero(t, eventWeight(et), "event %s has no weight", et)
+	}
+	assert.Equal(t, int16(5), eventWeight(EventRatingGiven))
+	assert.Greater(t, eventWeight(EventGroceryItemChecked), eventWeight(EventItemSelected))
 }

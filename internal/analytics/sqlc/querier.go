@@ -11,6 +11,10 @@ import (
 )
 
 type Querier interface {
+	// ---------- decayed selection scores (analytics ranking) ----------
+	// Full rebuild strategy: the decay job clears and repopulates in one tx so
+	// scores always reflect a consistent decay epoch.
+	ClearSelectionScores(ctx context.Context) error
 	GetGlobalSelectionCounts(ctx context.Context, arg GetGlobalSelectionCountsParams) ([]AnalyticsGlobalSelectionCount, error)
 	GetUserSelectionCounts(ctx context.Context, arg GetUserSelectionCountsParams) ([]AnalyticsUserSelectionCount, error)
 	// ---------- engagement ranking inputs (recipe categories feature) ----------
@@ -25,14 +29,31 @@ type Querier interface {
 	IngredientOverlapScores(ctx context.Context, arg IngredientOverlapScoresParams) ([]IngredientOverlapScoresRow, error)
 	InsertInteractionEvent(ctx context.Context, arg InsertInteractionEventParams) error
 	ListRecipeRecommendations(ctx context.Context, arg ListRecipeRecommendationsParams) ([]AnalyticsRecipeRecommendation, error)
+	RebuildGlobalSelectionScores(ctx context.Context, halfLifeDays float64) error
+	// Household scope = aggregate of every member's selection events (ADR-001
+	// read-model join through identity.users).
+	RebuildHouseholdSelectionScores(ctx context.Context, halfLifeDays float64) error
+	// score = SUM(weight * 2^(-age_days/half_life)); selection-intent events
+	// only — *_viewed / *_searched feed their own ranking tiers.
+	RebuildUserSelectionScores(ctx context.Context, halfLifeDays float64) error
 	TopGlobalSelections(ctx context.Context, arg TopGlobalSelectionsParams) ([]AnalyticsGlobalSelectionCount, error)
+	// Highest-scoring entities for one scope — drives the used/household/
+	// popular ranking tiers. scope_id is the user_id or household_id; pass 0
+	// for 'global'.
+	TopSelectionScores(ctx context.Context, arg TopSelectionScoresParams) ([]TopSelectionScoresRow, error)
 	TopUserSelections(ctx context.Context, arg TopUserSelectionsParams) ([]AnalyticsUserSelectionCount, error)
 	UpsertGlobalSelectionCount(ctx context.Context, arg UpsertGlobalSelectionCountParams) error
 	UpsertRecipeRecommendation(ctx context.Context, arg UpsertRecipeRecommendationParams) error
 	UpsertUserSelectionCount(ctx context.Context, arg UpsertUserSelectionCountParams) error
+	// Distinct terms the caller has searched for a given entity type.
+	UserEntitySearchTerms(ctx context.Context, arg UserEntitySearchTermsParams) ([]pgtype.Text, error)
 	// Distinct terms the caller has searched recipes for — recipes whose names
 	// match these terms form the "searched but not viewed" tier.
 	UserRecipeSearchTerms(ctx context.Context, userID int64) ([]pgtype.Text, error)
+	// ---------- generic per-entity engagement inputs ----------
+	// Entities of any type the caller has viewed, most-viewed first.
+	// event_type is derived as '<entity_type>_viewed'.
+	UserViewedEntityIDs(ctx context.Context, arg UserViewedEntityIDsParams) ([]UserViewedEntityIDsRow, error)
 	// Recipes the caller has opened, most-viewed first — the "viewed" tier.
 	UserViewedRecipeIDs(ctx context.Context, userID int64) ([]UserViewedRecipeIDsRow, error)
 }

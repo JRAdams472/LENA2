@@ -42,6 +42,20 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// ClearSelectionScores mocks base method.
+func (m *MockQuerier) ClearSelectionScores(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearSelectionScores", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearSelectionScores indicates an expected call of ClearSelectionScores.
+func (mr *MockQuerierMockRecorder) ClearSelectionScores(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearSelectionScores", reflect.TypeOf((*MockQuerier)(nil).ClearSelectionScores), ctx)
+}
+
 // GetGlobalSelectionCounts mocks base method.
 func (m *MockQuerier) GetGlobalSelectionCounts(ctx context.Context, arg sqlc.GetGlobalSelectionCountsParams) ([]sqlc.AnalyticsGlobalSelectionCount, error) {
 	m.ctrl.T.Helper()
@@ -131,6 +145,48 @@ func (mr *MockQuerierMockRecorder) ListRecipeRecommendations(ctx, arg any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeRecommendations", reflect.TypeOf((*MockQuerier)(nil).ListRecipeRecommendations), ctx, arg)
 }
 
+// RebuildGlobalSelectionScores mocks base method.
+func (m *MockQuerier) RebuildGlobalSelectionScores(ctx context.Context, halfLifeDays float64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RebuildGlobalSelectionScores", ctx, halfLifeDays)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RebuildGlobalSelectionScores indicates an expected call of RebuildGlobalSelectionScores.
+func (mr *MockQuerierMockRecorder) RebuildGlobalSelectionScores(ctx, halfLifeDays any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebuildGlobalSelectionScores", reflect.TypeOf((*MockQuerier)(nil).RebuildGlobalSelectionScores), ctx, halfLifeDays)
+}
+
+// RebuildHouseholdSelectionScores mocks base method.
+func (m *MockQuerier) RebuildHouseholdSelectionScores(ctx context.Context, halfLifeDays float64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RebuildHouseholdSelectionScores", ctx, halfLifeDays)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RebuildHouseholdSelectionScores indicates an expected call of RebuildHouseholdSelectionScores.
+func (mr *MockQuerierMockRecorder) RebuildHouseholdSelectionScores(ctx, halfLifeDays any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebuildHouseholdSelectionScores", reflect.TypeOf((*MockQuerier)(nil).RebuildHouseholdSelectionScores), ctx, halfLifeDays)
+}
+
+// RebuildUserSelectionScores mocks base method.
+func (m *MockQuerier) RebuildUserSelectionScores(ctx context.Context, halfLifeDays float64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RebuildUserSelectionScores", ctx, halfLifeDays)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RebuildUserSelectionScores indicates an expected call of RebuildUserSelectionScores.
+func (mr *MockQuerierMockRecorder) RebuildUserSelectionScores(ctx, halfLifeDays any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebuildUserSelectionScores", reflect.TypeOf((*MockQuerier)(nil).RebuildUserSelectionScores), ctx, halfLifeDays)
+}
+
 // TopGlobalSelections mocks base method.
 func (m *MockQuerier) TopGlobalSelections(ctx context.Context, arg sqlc.TopGlobalSelectionsParams) ([]sqlc.AnalyticsGlobalSelectionCount, error) {
 	m.ctrl.T.Helper()
@@ -144,6 +200,21 @@ func (m *MockQuerier) TopGlobalSelections(ctx context.Context, arg sqlc.TopGloba
 func (mr *MockQuerierMockRecorder) TopGlobalSelections(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TopGlobalSelections", reflect.TypeOf((*MockQuerier)(nil).TopGlobalSelections), ctx, arg)
+}
+
+// TopSelectionScores mocks base method.
+func (m *MockQuerier) TopSelectionScores(ctx context.Context, arg sqlc.TopSelectionScoresParams) ([]sqlc.TopSelectionScoresRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TopSelectionScores", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.TopSelectionScoresRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TopSelectionScores indicates an expected call of TopSelectionScores.
+func (mr *MockQuerierMockRecorder) TopSelectionScores(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TopSelectionScores", reflect.TypeOf((*MockQuerier)(nil).TopSelectionScores), ctx, arg)
 }
 
 // TopUserSelections mocks base method.
@@ -203,6 +274,21 @@ func (mr *MockQuerierMockRecorder) UpsertUserSelectionCount(ctx, arg any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserSelectionCount", reflect.TypeOf((*MockQuerier)(nil).UpsertUserSelectionCount), ctx, arg)
 }
 
+// UserEntitySearchTerms mocks base method.
+func (m *MockQuerier) UserEntitySearchTerms(ctx context.Context, arg sqlc.UserEntitySearchTermsParams) ([]pgtype.Text, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserEntitySearchTerms", ctx, arg)
+	ret0, _ := ret[0].([]pgtype.Text)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserEntitySearchTerms indicates an expected call of UserEntitySearchTerms.
+func (mr *MockQuerierMockRecorder) UserEntitySearchTerms(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserEntitySearchTerms", reflect.TypeOf((*MockQuerier)(nil).UserEntitySearchTerms), ctx, arg)
+}
+
 // UserRecipeSearchTerms mocks base method.
 func (m *MockQuerier) UserRecipeSearchTerms(ctx context.Context, userID int64) ([]pgtype.Text, error) {
 	m.ctrl.T.Helper()
@@ -216,6 +302,21 @@ func (m *MockQuerier) UserRecipeSearchTerms(ctx context.Context, userID int64) (
 func (mr *MockQuerierMockRecorder) UserRecipeSearchTerms(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserRecipeSearchTerms", reflect.TypeOf((*MockQuerier)(nil).UserRecipeSearchTerms), ctx, userID)
+}
+
+// UserViewedEntityIDs mocks base method.
+func (m *MockQuerier) UserViewedEntityIDs(ctx context.Context, arg sqlc.UserViewedEntityIDsParams) ([]sqlc.UserViewedEntityIDsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserViewedEntityIDs", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.UserViewedEntityIDsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserViewedEntityIDs indicates an expected call of UserViewedEntityIDs.
+func (mr *MockQuerierMockRecorder) UserViewedEntityIDs(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserViewedEntityIDs", reflect.TypeOf((*MockQuerier)(nil).UserViewedEntityIDs), ctx, arg)
 }
 
 // UserViewedRecipeIDs mocks base method.
