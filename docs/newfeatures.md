@@ -105,3 +105,11 @@ This can take store input from the user
 It would be great if we could use the users data logs to track as well. 
 Keep track of the order items are checked off the grocery list.
 Make educated guess on what order the list should be in for the future based on past logs.
+
+## Allergy information and risk detection
+Track allergen information for recipes so users can spot risks before cooking.
+Users (or household members) should be able to record their allergies and dietary restrictions, i.e. peanuts, tree nuts, shellfish, dairy, gluten, eggs, soy.
+Recipes and items should surface which allergens they contain or may contain.
+Warn the user when a recipe on their plan, event, or search results conflicts with a recorded allergy.
+Possibly use AI to analyze a recipe's ingredients and flag likely allergy risks automatically, i.e. "may contain traces of nuts" or hidden sources like Worcestershire sauce containing fish.
+AI-detected flags should be reviewable/overridable since allergen detection can be wrong in both directions.
