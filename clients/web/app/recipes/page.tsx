@@ -5,13 +5,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import InputLabel from "@mui/material/InputLabel";
+import ListItemText from "@mui/material/ListItemText";
+import MenuItem from "@mui/material/MenuItem";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import Select from "@mui/material/Select";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Link from "next/link";
@@ -59,6 +66,7 @@ export default function RecipesPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
+  const [categoryIds, setCategoryIds] = useState<number[]>([]);
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -69,20 +77,33 @@ export default function RecipesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      const term = search.trim();
+      if (term) void api.recordSearch("recipe", term);
+    }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
   useEffect(() => {
     // eslint-disable-next-line @eslint-react/set-state-in-effect
     setPageNumber(1);
-  }, [debouncedSearch, isFavorite]);
+  }, [debouncedSearch, isFavorite, categoryIds]);
+
+  const groupsQuery = useQuery({
+    queryKey: ["recipe-category-groups"],
+    queryFn: api.getRecipeCategoryGroups,
+    staleTime: 60_000,
+  });
 
   const listQuery = useQuery({
-    queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite],
-    queryFn: () => api.getRecipesPaged(pageNumber, pageSize, debouncedSearch, isFavorite),
+    queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds],
+    queryFn: () =>
+      api.getRecipesPaged(pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds),
     placeholderData: (prev) => prev,
   });
+
+
 
   const createMutation = useMutation({
     mutationFn: (row: Record<string, unknown>) =>
@@ -211,6 +232,39 @@ export default function RecipesPage() {
           }
           label="Favorites"
         />
+        {(groupsQuery.data ?? []).map((g) => (
+          <FormControl key={g.categoryGroupID} size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>{g.groupName}</InputLabel>
+            <Select
+              multiple
+              value={categoryIds.filter((id) =>
+                g.categories.some((c) => c.categoryID === id)
+              )}
+              onChange={(e) => {
+                const picked = (e.target.value as number[]).map(Number);
+                const groupIds = new Set(g.categories.map((c) => c.categoryID));
+                setCategoryIds((prev) => [
+                  ...prev.filter((id) => !groupIds.has(id)),
+                  ...(g.exclusive ? picked.slice(-1) : picked),
+                ]);
+              }}
+              input={<OutlinedInput label={g.groupName} />}
+              renderValue={(selected) =>
+                selected
+                  .map((id) => g.categories.find((c) => c.categoryID === id)?.categoryName)
+                  .filter(Boolean)
+                  .join(", ")
+              }
+            >
+              {g.categories.map((c) => (
+                <MenuItem key={c.categoryID} value={c.categoryID}>
+                  <Checkbox checked={categoryIds.includes(c.categoryID)} />
+                  <ListItemText primary={c.categoryName} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        ))}
         {isAdmin && (
           <Button variant="outlined" onClick={handleUploadClick}>
             Upload Recipe Scan

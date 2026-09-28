@@ -7,11 +7,14 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import Select from "@mui/material/Select";
 import Divider from "@mui/material/Divider";
 import Paper from "@mui/material/Paper";
@@ -56,6 +59,16 @@ export default function RecipeDetailPage() {
     queryFn: () => api.getRecipe(recipeId),
     enabled: !isNaN(recipeId),
   });
+
+  const groupsQuery = useQuery({
+    queryKey: ["recipe-category-groups"],
+    queryFn: api.getRecipeCategoryGroups,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (!isNaN(recipeId)) void api.recordView("recipe", recipeId);
+  }, [recipeId]);
 
   const brandsQuery = useQuery({
     queryKey: ["item-brands", brandInput],
@@ -166,6 +179,15 @@ export default function RecipeDetailPage() {
     },
   });
 
+  const setCategoriesMutation = useMutation({
+    mutationFn: (categoryIds: number[]) =>
+      api.setRecipeCategories(recipeId, categoryIds),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["recipe", recipeId], updated);
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
+    },
+  });
+
   const resetStepForm = () => {
     setEditingStepId(null);
     setStepNumber("");
@@ -272,12 +294,103 @@ export default function RecipeDetailPage() {
                   : "No ratings yet"}
               </Typography>
             </Box>
+            {(recipeQuery.data.categories ?? []).length > 0 && (
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
+                {(recipeQuery.data.categories ?? []).map((c) => (
+                  <Chip
+                    key={c.categoryID}
+                    size="small"
+                    variant="outlined"
+                    label={`${c.group.groupName}: ${c.categoryName}`}
+                  />
+                ))}
+              </Box>
+            )}
             {rateMutation.error && (
               <Alert severity="error" sx={{ mt: 1 }}>
                 {(rateMutation.error as Error).message}
               </Alert>
             )}
           </>
+        )}
+      </Paper>
+
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h5" gutterBottom>
+          Categories
+        </Typography>
+        {groupsQuery.isLoading && <CircularProgress size={20} />}
+        {setCategoriesMutation.error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {(setCategoriesMutation.error as Error).message}
+          </Alert>
+        )}
+        {recipeQuery.data && (groupsQuery.data ?? []).length > 0 && (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            {(groupsQuery.data ?? []).map((g) => {
+              const selected = new Set(
+                (recipeQuery.data.categories ?? [])
+                  .filter((c) => c.group.categoryGroupID === g.categoryGroupID)
+                  .map((c) => c.categoryID)
+              );
+              const current = () =>
+                (recipeQuery.data.categories ?? []).map((c) => c.categoryID);
+              const pick = (id: number) => {
+                if (g.exclusive) {
+                  const kept = current().filter(
+                    (cid) => !g.categories.some((c) => c.categoryID === cid)
+                  );
+                  setCategoriesMutation.mutate(selected.has(id) ? kept : [...kept, id]);
+                } else {
+                  setCategoriesMutation.mutate(
+                    selected.has(id)
+                      ? current().filter((cid) => cid !== id)
+                      : [...current(), id]
+                  );
+                }
+              };
+              return (
+                <Box key={g.categoryGroupID}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    {g.groupName}
+                    {g.exclusive ? " (pick one)" : ""}
+                  </Typography>
+                  {g.exclusive ? (
+                    <RadioGroup
+                      row
+                      value={g.categories.find((c) => selected.has(c.categoryID))?.categoryID ?? ""}
+                      onChange={(e) => pick(Number(e.target.value))}
+                    >
+                      {g.categories.map((c) => (
+                        <FormControlLabel
+                          key={c.categoryID}
+                          value={c.categoryID}
+                          control={<Radio size="small" />}
+                          label={c.categoryName}
+                        />
+                      ))}
+                    </RadioGroup>
+                  ) : (
+                    <Box sx={{ display: "flex", flexWrap: "wrap" }}>
+                      {g.categories.map((c) => (
+                        <FormControlLabel
+                          key={c.categoryID}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={selected.has(c.categoryID)}
+                              onChange={() => pick(c.categoryID)}
+                            />
+                          }
+                          label={c.categoryName}
+                        />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
         )}
       </Paper>
 

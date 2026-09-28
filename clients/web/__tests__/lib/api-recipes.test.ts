@@ -159,41 +159,85 @@ describe("api client: recipes", () => {
 
     const result = await api.getRecipesPaged(2, 10);
 
-    expect(lastRequestBody().variables).toEqual({ page: 2, pageSize: 10 });
+    expect(lastRequestBody().variables).toEqual({
+      page: 2, pageSize: 10, search: null, categoryIds: null, isFavorite: null,
+    });
     expect(result.totalPages).toBe(3);
     expect(result.items[0].recipeID).toBe(1);
   });
 
-  it("getRecipesPaged filters client-side when search is given", async () => {
+  it("getRecipesPaged sends the search term to the server", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        recipesPage([
-          gqlRecipe({ id: "1", name: "Pancakes" }),
-          gqlRecipe({ id: "2", name: "Soup", isFavorite: true }),
-        ])
-      )
+      mockGraphQL(recipesPage([gqlRecipe({ id: "1", name: "Pancakes" })]))
     );
 
     const result = await api.getRecipesPaged(1, 10, "pan");
 
-    expect(result.items).toHaveLength(1);
+    expect(lastRequestBody().variables).toEqual({
+      page: 1, pageSize: 10, search: "pan", categoryIds: null, isFavorite: null,
+    });
     expect(result.items[0].recipeName).toBe("Pancakes");
   });
 
-  it("getRecipesPaged filters by isFavorite", async () => {
+  it("getRecipesPaged sends isFavorite to the server", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        recipesPage([
-          gqlRecipe({ id: "1", name: "Pancakes" }),
-          gqlRecipe({ id: "2", name: "Soup", isFavorite: true }),
-        ])
-      )
+      mockGraphQL(recipesPage([gqlRecipe({ id: "2", name: "Soup", isFavorite: true })]))
     );
 
     const result = await api.getRecipesPaged(1, 10, undefined, true);
 
-    expect(result.items).toHaveLength(1);
+    expect(lastRequestBody().variables).toEqual({
+      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: true,
+    });
     expect(result.items[0].recipeName).toBe("Soup");
+  });
+
+  it("getRecipesPaged sends categoryIds to the server", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(recipesPage([gqlRecipe({ id: "3", name: "Tacos" })]))
+    );
+
+    const result = await api.getRecipesPaged(1, 10, undefined, undefined, [21, 40]);
+
+    expect(lastRequestBody().variables).toEqual({
+      page: 1, pageSize: 10, search: null, categoryIds: ["21", "40"], isFavorite: null,
+    });
+    expect(result.items[0].recipeName).toBe("Tacos");
+  });
+
+  it("getRecipesPaged omits empty category filters", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL(recipesPage([gqlRecipe()])));
+
+    await api.getRecipesPaged(1, 10, undefined, undefined, []);
+
+    expect(lastRequestBody().variables).toEqual({
+      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: null,
+    });
+  });
+
+  it("getRecipesPaged maps recipe categories", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(
+        recipesPage([
+          gqlRecipe({
+            categories: [
+              {
+                id: "21",
+                name: "Mexican",
+                group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 },
+              },
+            ],
+          }),
+        ])
+      )
+    );
+
+    const result = await api.getRecipesPaged(1, 10);
+
+    expect(result.items[0].categories).toHaveLength(1);
+    expect(result.items[0].categories?.[0].categoryName).toBe("Mexican");
+    expect(result.items[0].categories?.[0].group.groupName).toBe("Cuisine");
+    expect(result.items[0].categories?.[0].group.exclusive).toBe(true);
   });
 
   it("getRecipe fetches a single recipe", async () => {
@@ -266,6 +310,7 @@ describe("api client: recipes", () => {
         servings: 4,
         prepTimeMinutes: 10,
         cookTimeMinutes: 15,
+        categoryIds: null,
         items: [
           {
             itemId: "5",
@@ -514,5 +559,106 @@ describe("api client: recipes", () => {
         appliance: null,
       },
     ]);
+  });
+
+  it("getRecipeCategoryGroups maps groups and categories", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        recipeCategoryGroups: [
+          {
+            id: "3",
+            name: "Cuisine",
+            exclusive: true,
+            displayOrder: 6,
+            categories: [
+              { id: "21", name: "Mexican", group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 } },
+              { id: "22", name: "Italian", group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 } },
+            ],
+          },
+        ],
+      })
+    );
+
+    const groups = await api.getRecipeCategoryGroups();
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].groupName).toBe("Cuisine");
+    expect(groups[0].exclusive).toBe(true);
+    expect(groups[0].categories.map((c) => c.categoryName)).toEqual(["Mexican", "Italian"]);
+  });
+
+  it("setRecipeCategories sends the assignment and maps the recipe", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ setRecipeCategories: gqlRecipe({ name: "Tacos" }) })
+    );
+
+    const recipe = await api.setRecipeCategories(9, [21, 40]);
+
+    expect(lastRequestBody().variables).toEqual({
+      recipeId: "9",
+      categoryIds: ["21", "40"],
+    });
+    expect(recipe.recipeName).toBe("Tacos");
+  });
+
+  it("recordView fires the view mutation", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ recordView: true }));
+
+    await api.recordView("recipe", 9);
+
+    const body = lastRequestBody();
+    expect(body.query).toContain("recordView");
+    expect(body.variables).toEqual({ entityType: "recipe", entityId: "9" });
+  });
+
+  it("createRecipeCategoryGroup sends admin input", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        createRecipeCategoryGroup: { id: "9", name: "Season", exclusive: true, displayOrder: 7 },
+      })
+    );
+
+    const group = await api.createRecipeCategoryGroup({ name: "Season", exclusive: true, displayOrder: 7 });
+
+    expect(lastRequestBody().variables).toEqual({
+      input: { name: "Season", exclusive: true, displayOrder: 7 },
+    });
+    expect(group.groupName).toBe("Season");
+  });
+
+  it("createRecipeCategory targets its group", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        createRecipeCategory: {
+          id: "30", name: "Thai",
+          group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 },
+        },
+      })
+    );
+
+    const cat = await api.createRecipeCategory(3, "Thai");
+
+    expect(lastRequestBody().variables).toEqual({
+      input: { groupId: "3", name: "Thai" },
+    });
+    expect(cat.categoryName).toBe("Thai");
+  });
+
+  it("updateRecipeInput carries categoryIds from the recipe", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQL({
+          recipe: gqlRecipe({
+            categories: [
+              { id: "21", name: "Mexican", group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 } },
+            ],
+          }),
+        })
+      )
+      .mockResolvedValueOnce(mockGraphQL({ updateRecipe: gqlRecipe() }));
+
+    await api.updateRecipe(1, { recipeName: "Renamed" });
+
+    expect(lastRequestBody().variables.input.categoryIds).toEqual(["21"]);
   });
 });

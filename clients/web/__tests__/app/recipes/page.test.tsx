@@ -56,6 +56,37 @@ const recipe = {
   myRating: 4,
   averageRating: 4.25,
   ratingCount: 4,
+  categories: [
+    {
+      id: "22",
+      name: "Italian",
+      group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 },
+    },
+  ],
+};
+
+const categoryGroups = {
+  recipeCategoryGroups: [
+    {
+      id: "3",
+      name: "Cuisine",
+      exclusive: true,
+      displayOrder: 6,
+      categories: [
+        { id: "21", name: "Mexican", group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 } },
+        { id: "22", name: "Italian", group: { id: "3", name: "Cuisine", exclusive: true, displayOrder: 6 } },
+      ],
+    },
+    {
+      id: "2",
+      name: "Dish Type",
+      exclusive: false,
+      displayOrder: 2,
+      categories: [
+        { id: "40", name: "Soup", group: { id: "2", name: "Dish Type", exclusive: false, displayOrder: 2 } },
+      ],
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -80,6 +111,9 @@ describe("recipes page", () => {
       }
       if (body.query.includes("deleteRecipe")) {
         return Promise.resolve(gql({ deleteRecipe: true }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
       }
       if (body.query.includes("recipe(")) {
         return Promise.resolve(gql({ recipe: recipe }));
@@ -154,6 +188,15 @@ describe("recipe detail page", () => {
           gql({ rateRecipe: { ...recipe, myRating: 5, ratingCount: 5 } })
         );
       }
+      if (body.query.includes("recordView")) {
+        return Promise.resolve(gql({ recordView: true }));
+      }
+      if (body.query.includes("setRecipeCategories")) {
+        return Promise.resolve(gql({ setRecipeCategories: recipe }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
       if (body.query.includes("recipe(")) {
         return Promise.resolve(gql({ recipe: recipe }));
       }
@@ -206,6 +249,79 @@ describe("recipe detail page", () => {
     if (deleteButton) fireEvent.click(deleteButton);
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("updateRecipe"))).toBe(true);
+    });
+  });
+});
+
+describe("recipe categories", () => {
+  beforeEach(() => {
+    mockedUseMe.mockReturnValue({ me: { role: "admin" }, isAdmin: true, isLoading: false });
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("recordView")) {
+        return Promise.resolve(gql({ recordView: true }));
+      }
+      if (body.query.includes("setRecipeCategories")) {
+        return Promise.resolve(gql({ setRecipeCategories: recipe }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      if (body.query.includes("recipe(")) {
+        return Promise.resolve(gql({ recipe: recipe }));
+      }
+      return Promise.resolve(
+        gql({
+          recipes: {
+            items: [recipe],
+            pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+          },
+        })
+      );
+    });
+  });
+
+  it("renders the category filter bar on the recipes page", async () => {
+    renderPage(<RecipesPage />);
+    await waitFor(() => expect(screen.getByText("Pasta")).toBeInTheDocument());
+    // One Select per group — outlined MUI labels render in a legend, so query by text.
+    expect(screen.getAllByText("Cuisine").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Dish Type").length).toBeGreaterThan(0);
+  });
+
+  it("renders category chips and the picker on the detail page", async () => {
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => expect(screen.getByText("Cuisine: Italian")).toBeInTheDocument());
+    // Exclusive group renders radios labeled "pick one".
+    expect(screen.getByText(/pick one/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Mexican")).toBeInTheDocument();
+    // Non-exclusive group renders a checkbox.
+    expect(screen.getByLabelText("Soup")).toBeInTheDocument();
+  });
+
+  it("records a view when the detail page opens", async () => {
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => {
+      expect(
+        getBodies().some(
+          (b) => b.query.includes("recordView") && b.variables?.entityType === "recipe"
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("assigns a category via setRecipeCategories", async () => {
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => screen.getByLabelText("Mexican"));
+    fireEvent.click(screen.getByLabelText("Mexican"));
+    await waitFor(() => {
+      expect(
+        getBodies().some(
+          (b) => b.query.includes("setRecipeCategories") &&
+            b.variables?.recipeId === "1" &&
+            b.variables?.categoryIds?.includes("21")
+        )
+      ).toBe(true);
     });
   });
 });

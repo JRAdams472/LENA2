@@ -66,11 +66,18 @@ function SlotDialog({
     queryFn: () => api.getRecipes(),
   });
 
+  const groupsQuery = useQuery({
+    queryKey: ["recipe-category-groups"],
+    queryFn: api.getRecipeCategoryGroups,
+    staleTime: 60_000,
+  });
+
   const itemsQuery = useQuery({
     queryKey: ["items"],
     queryFn: () => api.getItems(),
   });
 
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [newItemId, setNewItemId] = useState<string>("");
   const [newQty, setNewQty] = useState<string>("");
   const [newUnit, setNewUnit] = useState<string>("");
@@ -275,6 +282,28 @@ function SlotDialog({
         )}
 
         <Box sx={{ mb: 2 }}>
+          {(groupsQuery.data ?? []).length > 0 && (
+            <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+              <InputLabel id="category-filter-label">Filter by Category</InputLabel>
+              <Select
+                labelId="category-filter-label"
+                label="Filter by Category"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value as string)}
+              >
+                <MenuItem value="">
+                  <em>All categories</em>
+                </MenuItem>
+                {(groupsQuery.data ?? []).flatMap((g) =>
+                  g.categories.map((c) => (
+                    <MenuItem key={c.categoryID} value={String(c.categoryID)}>
+                      {g.groupName}: {c.categoryName}
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+          )}
           <FormControl fullWidth size="small" sx={{ mb: 1 }}>
             <InputLabel id="recipe-select-label">Recipe</InputLabel>
             <Select
@@ -284,16 +313,26 @@ function SlotDialog({
               onChange={(e) => {
                 setRecipeId(e.target.value as string);
                 setSelectedOptionalIds([]);
+                if (e.target.value !== "")
+                  void api.recordSelection("recipe", Number(e.target.value));
               }}
             >
               <MenuItem value="">
                 <em>Blank</em>
               </MenuItem>
-              {(recipesQuery.data ?? []).map((r) => (
-                <MenuItem key={r.recipeID} value={String(r.recipeID)}>
-                  {r.recipeName}
-                </MenuItem>
-              ))}
+              {(recipesQuery.data ?? [])
+                .filter(
+                  (r) =>
+                    categoryFilter === "" ||
+                    (r.categories ?? []).some(
+                      (c) => String(c.categoryID) === categoryFilter
+                    )
+                )
+                .map((r) => (
+                  <MenuItem key={r.recipeID} value={String(r.recipeID)}>
+                    {r.recipeName}
+                  </MenuItem>
+                ))}
             </Select>
           </FormControl>
           <Button size="small" onClick={() => setRecipeDialogOpen(true)}>
