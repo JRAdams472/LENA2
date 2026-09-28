@@ -25,6 +25,16 @@ const String recipeQuery = r'''
       prepTimeMinutes
       cookTimeMinutes
       isFavorite
+      categories {
+        id
+        name
+        group {
+          id
+          name
+          exclusive
+          displayOrder
+        }
+      }
       items {
         item {
           id
@@ -38,6 +48,35 @@ const String recipeQuery = r'''
         instruction
       }
     }
+  }
+''';
+
+const String recipeCategoryGroupsQuery = r'''
+  query RecipeCategoryGroups {
+    recipeCategoryGroups {
+      id
+      name
+      exclusive
+      displayOrder
+      categories {
+        id
+        name
+      }
+    }
+  }
+''';
+
+const String setRecipeCategoriesMutation = r'''
+  mutation SetRecipeCategories($recipeId: ID!, $categoryIds: [ID!]!) {
+    setRecipeCategories(recipeId: $recipeId, categoryIds: $categoryIds) {
+      id
+    }
+  }
+''';
+
+const String recordViewMutation = r'''
+  mutation RecordView($entityType: EntityType!, $entityId: ID!) {
+    recordView(entityType: $entityType, entityId: $entityId)
   }
 ''';
 
@@ -87,7 +126,10 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   bool _isSaving = false;
   bool _isFavorite = false;
   bool _isTogglingFavorite = false;
+  bool _isSavingCategories = false;
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _categoryGroups = [];
+  final Set<String> _selectedCategoryIds = {};
 
   @override
   void didChangeDependencies() {
@@ -107,6 +149,19 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     });
 
     if (widget.recipeId != null) {
+      client.mutate(MutationOptions(
+        document: gql(recordViewMutation),
+        variables: {'entityType': 'recipe', 'entityId': widget.recipeId},
+      ));
+
+      final groupsResult = await client
+          .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
+      setState(() {
+        _categoryGroups =
+            (groupsResult.data?['recipeCategoryGroups'] as List? ?? [])
+                .cast<Map<String, dynamic>>();
+      });
+
       final recipeResult = await client.query(
         QueryOptions(
           document: gql(recipeQuery),
@@ -128,8 +183,33 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           _unitCtrl.text = (item?['unit'] as String?) ?? '';
           _stepCtrl.text = (step?['instruction'] as String?) ?? '';
           _isFavorite = (recipe['isFavorite'] as bool?) ?? false;
+          _selectedCategoryIds
+            ..clear()
+            ..addAll((recipe['categories'] as List? ?? [])
+                .map((c) => c['id'] as String));
         });
       }
+    }
+  }
+
+  Future<void> _setCategories(Set<String> next) async {
+    if (widget.recipeId == null) return;
+    setState(() {
+      _selectedCategoryIds
+        ..clear()
+        ..addAll(next);
+      _isSavingCategories = true;
+    });
+    try {
+      await GraphQLProvider.of(context).value.mutate(MutationOptions(
+        document: gql(setRecipeCategoriesMutation),
+        variables: {
+          'recipeId': widget.recipeId,
+          'categoryIds': _selectedCategoryIds.toList(),
+        },
+      ));
+    } finally {
+      if (mounted) setState(() => _isSavingCategories = false);
     }
   }
 
@@ -283,6 +363,64 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               controller: _stepCtrl,
               decoration: const InputDecoration(labelText: 'Instruction'),
             ),
+            if (widget.recipeId != null && _categoryGroups.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Categories',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  if (_isSavingCategories)
+                    const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
+              for (final group in _categoryGroups) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${group['name']}'
+                  '${group['exclusive'] == true ? ' (pick one)' : ''}',
+                  style: const TextStyle(fontStyle: FontStyle.italic),
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final cat in (group['categories'] as List? ?? []))
+                      if (group['exclusive'] == true)
+                        ChoiceChip(
+                          label: Text(cat['name'] as String),
+                          selected: _selectedCategoryIds.contains(cat['id']),
+                          onSelected: (sel) {
+                            final ids = (group['categories'] as List? ?? [])
+                                .map((c) => c['id'] as String)
+                                .toSet();
+                            final next = _selectedCategoryIds.difference(ids);
+                            if (sel) next.add(cat['id'] as String);
+                            _setCategories(next);
+                          },
+                        )
+                      else
+                        FilterChip(
+                          label: Text(cat['name'] as String),
+                          selected: _selectedCategoryIds.contains(cat['id']),
+                          onSelected: (sel) {
+                            final next = {..._selectedCategoryIds};
+                            if (sel) {
+                              next.add(cat['id'] as String);
+                            } else {
+                              next.remove(cat['id']);
+                            }
+                            _setCategories(next);
+                          },
+                        ),
+                  ],
+                ),
+              ],
+            ],
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isSaving ? null : () => _save(context),

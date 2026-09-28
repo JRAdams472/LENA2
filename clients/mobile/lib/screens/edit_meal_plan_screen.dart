@@ -39,8 +39,34 @@ const String recipesQuery = r'''
       items {
         id
         name
+        categories {
+          id
+          name
+          group {
+            name
+          }
+        }
       }
     }
+  }
+''';
+
+const String recipeCategoryGroupsQuery = r'''
+  query RecipeCategoryGroups {
+    recipeCategoryGroups {
+      id
+      name
+      categories {
+        id
+        name
+      }
+    }
+  }
+''';
+
+const String recordSelectionMutation = r'''
+  mutation RecordSelection($entityType: EntityType!, $entityId: ID!) {
+    recordSelection(entityType: $entityType, entityId: $entityId)
   }
 ''';
 
@@ -122,6 +148,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   bool _loaded = false;
   List<Map<String, dynamic>> _recipes = [];
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _categoryGroups = [];
+  String? _categoryFilter;
   Map<String, dynamic>? _plan;
 
   Map<String, TextEditingController> _itemQtyCtrls = {};
@@ -141,11 +169,16 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     final client = GraphQLProvider.of(context).value;
     final recipesResult = await client.query(QueryOptions(document: gql(recipesQuery)));
     final itemsResult = await client.query(QueryOptions(document: gql(itemsQuery)));
+    final groupsResult =
+        await client.query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
     setState(() {
       _recipes = (recipesResult.data?['recipes']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
       _items = (itemsResult.data?['items']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
+      _categoryGroups =
+          (groupsResult.data?['recipeCategoryGroups'] as List? ?? [])
+              .cast<Map<String, dynamic>>();
     });
 
     if (widget.mealPlanId != null) {
@@ -212,6 +245,12 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
           }
         },
       ));
+      if (recipeId != null) {
+        client.mutate(MutationOptions(
+          document: gql(recordSelectionMutation),
+          variables: {'entityType': 'recipe', 'entityId': recipeId},
+        ));
+      }
       _mealTypeCtrl.clear();
       _servingsCtrl.clear();
       _noteCtrl.clear();
@@ -406,15 +445,38 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                 controller: _mealTypeCtrl,
                 decoration: const InputDecoration(labelText: 'Meal type'),
               ),
+              if (_categoryGroups.isNotEmpty)
+                DropdownButtonFormField<String?>(
+                  value: _categoryFilter,
+                  decoration: const InputDecoration(
+                      labelText: 'Filter recipes by category'),
+                  items: [
+                    const DropdownMenuItem(
+                        value: null, child: Text('All categories')),
+                    for (final group in _categoryGroups)
+                      for (final cat in (group['categories'] as List? ?? []))
+                        DropdownMenuItem(
+                          value: cat['id'] as String,
+                          child: Text(
+                              '${group['name']}: ${cat['name']}'),
+                        ),
+                  ],
+                  onChanged: (v) => setState(() => _categoryFilter = v),
+                ),
               DropdownButtonFormField<String?>(
                 value: _recipeSelection,
                 decoration: const InputDecoration(labelText: 'Recipe (optional)'),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('None')),
-                  ..._recipes.map((r) => DropdownMenuItem(
-                        value: r['id'] as String,
-                        child: Text(r['name'] as String),
-                      ))
+                  ..._recipes
+                      .where((r) =>
+                          _categoryFilter == null ||
+                          (r['categories'] as List? ?? [])
+                              .any((c) => c['id'] == _categoryFilter))
+                      .map((r) => DropdownMenuItem(
+                            value: r['id'] as String,
+                            child: Text(r['name'] as String),
+                          ))
                 ],
                 onChanged: (v) => setState(() => _recipeSelection = v),
               ),
