@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -71,8 +72,15 @@ type Notification struct {
 	// FoodEventID deep-links event notifications to the event; null for
 	// non-event kinds or after the event row is deleted (SET NULL).
 	FoodEventID *int64
-	ReadAt      *time.Time
-	CreatedAt   time.Time
+	// Title/Body carry server-rendered feed text for scheduled reminders;
+	// event-driven rows leave them null and clients render from kind.
+	Title *string
+	Body  *string
+	// RecipeID/ItemID deep-link reminder notifications to their subject.
+	RecipeID  *int64
+	ItemID    *int64
+	ReadAt    *time.Time
+	CreatedAt time.Time
 }
 
 // Invite is a pending or concluded household invitation.
@@ -88,15 +96,31 @@ type Invite struct {
 	UpdatedAt   *time.Time
 }
 
+// NotifyGate decides at write time whether a notification of a given kind
+// may be delivered to a user — the notifier service implements it so
+// per-category opt-outs and mute windows apply to event-driven writes too.
+type NotifyGate interface {
+	Allowed(ctx context.Context, userID int64, kind string) (bool, error)
+}
+
 // Service provides household and invite operations backed by Postgres.
 type Service struct {
 	q    sqlc.Querier
 	pool dbtx.Pool
 	tx   pgx.Tx
+	// gate suppresses notifications the recipient opted out of; nil means
+	// deliver everything (tests, pre-wiring startup paths).
+	gate NotifyGate
 	// newQ builds the querier bound to a transaction. Tests inject a
 	// factory returning their mock so InTx still exercises the real
 	// Begin/Commit flow while statements land on the mock.
 	newQ func(pgx.Tx) sqlc.Querier
+}
+
+// WithNotifyGate installs the write-time suppression gate.
+func (s *Service) WithNotifyGate(g NotifyGate) *Service {
+	s.gate = g
+	return s
 }
 
 // NewService creates a household Service using the given connection pool.
@@ -261,6 +285,14 @@ func (s *Service) LockHousehold(ctx context.Context, householdID int64) (Househo
 // their read backlog; call it inside the producing operation's
 // transaction so the notification can never outlive a rolled-back change.
 func (s *Service) CreateNotification(ctx context.Context, userID int64, kind NotificationKind, householdID *int64, actorUserID *int64, inviteID *int64, foodEventID *int64) error {
+	if s.gate != nil {
+		ok, err := s.gate.Allowed(ctx, userID, string(kind))
+		if err != nil {
+			slog.Warn("notification suppression check failed, delivering anyway", "user", userID, "kind", kind, "error", err)
+		} else if !ok {
+			return nil
+		}
+	}
 	hh := pgtype.Int8{}
 	if householdID != nil {
 		hh = pgtype.Int8{Int64: *householdID, Valid: true}
@@ -360,6 +392,20 @@ func toNotification(row sqlc.HouseholdNotification) Notification {
 	if row.FoodEventID.Valid {
 		id := row.FoodEventID.Int64
 		n.FoodEventID = &id
+	}
+	if row.Title.Valid {
+		n.Title = &row.Title.String
+	}
+	if row.Body.Valid {
+		n.Body = &row.Body.String
+	}
+	if row.RecipeID.Valid {
+		id := row.RecipeID.Int64
+		n.RecipeID = &id
+	}
+	if row.ItemID.Valid {
+		id := row.ItemID.Int64
+		n.ItemID = &id
 	}
 	if row.ReadAt.Valid {
 		t := row.ReadAt.Time

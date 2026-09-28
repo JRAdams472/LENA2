@@ -371,11 +371,11 @@ func TestResolver_Inventory_DeleteBrand(t *testing.T) {
 
 func TestResolver_Inventory_CreateCategory(t *testing.T) {
 	inv := newInvMock(t)
-	inv.EXPECT().CreateCategory(gomock.Any(), "Produce", "Fresh", invTestEmail).
-		Return(inventory.Category{CategoryID: 2, Name: "Produce", Description: "Fresh"}, nil)
+	inv.EXPECT().CreateCategory(gomock.Any(), "Produce", "Fresh", true, invTestEmail).
+		Return(inventory.Category{CategoryID: 2, Name: "Produce", Description: "Fresh", IsProtein: true}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.CreateCategory(invCtx(), struct{ Input createCategoryInput }{
-		Input: createCategoryInput{Name: "Produce", Description: invStrPtr("Fresh")},
+		Input: createCategoryInput{Name: "Produce", Description: invStrPtr("Fresh"), IsProtein: invBoolPtr(true)},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("2"), res.ID())
@@ -395,12 +395,12 @@ func TestResolver_Inventory_UpdateCategory(t *testing.T) {
 	inv := newInvMock(t)
 	inv.EXPECT().GetCategoryByID(gomock.Any(), int64(2)).
 		Return(inventory.Category{CategoryID: 2, Name: "Old", Description: "Desc", IsActive: true}, nil)
-	inv.EXPECT().UpdateCategory(gomock.Any(), int64(2), "New", "Desc", false, invTestEmail).
-		Return(inventory.Category{CategoryID: 2, Name: "New", Description: "Desc"}, nil)
+	inv.EXPECT().UpdateCategory(gomock.Any(), int64(2), "New", "Desc", false, true, invTestEmail).
+		Return(inventory.Category{CategoryID: 2, Name: "New", Description: "Desc", IsProtein: true}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.UpdateCategory(invCtx(), args{
 		ID:    "2",
-		Input: updateCategoryInput{Name: invStrPtr("New"), IsActive: invBoolPtr(false)},
+		Input: updateCategoryInput{Name: invStrPtr("New"), IsActive: invBoolPtr(false), IsProtein: invBoolPtr(true)},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "New", res.Name())

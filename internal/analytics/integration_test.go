@@ -94,7 +94,7 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	recSvc := recipe.NewService(pool)
 	mpSvc := mealplan.NewService(pool)
 
-	cat, err := invSvc.CreateCategory(ctx, "IT Overlap Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Overlap Category", "", false, itBy)
 	require.NoError(t, err)
 	gID, err := invSvc.GetUnitByName(ctx, "g")
 	require.NoError(t, err)

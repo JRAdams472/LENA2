@@ -319,7 +319,7 @@ func TestIntegrationEventRecipeItems(t *testing.T) {
 
 	invSvc := inventory.NewService(pool)
 	recipeSvc := recipe.NewService(pool)
-	cat, err := invSvc.CreateCategory(ctx, "IT Event Item Cat", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Event Item Cat", "", false, itBy)
 	require.NoError(t, err)
 	unit, err := invSvc.GetUnitByName(ctx, "cup")
 	require.NoError(t, err)

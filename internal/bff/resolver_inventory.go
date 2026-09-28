@@ -473,7 +473,7 @@ func (r *Resolver) CreateCategory(ctx context.Context, args struct{ Input create
 	if err != nil {
 		return nil, err
 	}
-	c, err := r.InventoryService.CreateCategory(ctx, args.Input.Name, derefString(args.Input.Description), u.Email)
+	c, err := r.InventoryService.CreateCategory(ctx, args.Input.Name, derefString(args.Input.Description), derefBool(args.Input.IsProtein), u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -1394,6 +1394,10 @@ func (r *categoryResolver) Description() *string { return nilIfEmpty(r.c.Descrip
 
 func (r *categoryResolver) IsActive() bool { return r.c.IsActive }
 
+// IsProtein reports whether items in this category count as protein for
+// the defrost-reminder sweep.
+func (r *categoryResolver) IsProtein() bool { return r.c.IsProtein }
+
 // flavorProfileResolver resolves an inventory flavor profile.
 type flavorProfileResolver struct{ f inventory.FlavorProfile }
 
@@ -1494,6 +1498,7 @@ type createBrandInput struct {
 type createCategoryInput struct {
 	Name        string
 	Description *string
+	IsProtein   *bool
 }
 
 type createFlavorProfileInput struct {
@@ -1607,7 +1612,11 @@ func (r *Resolver) UpdateCategory(ctx context.Context, args struct {
 	if args.Input.IsActive != nil {
 		isActive = *args.Input.IsActive
 	}
-	c, err := r.InventoryService.UpdateCategory(ctx, id, name, description, isActive, u.Email)
+	isProtein := existing.IsProtein
+	if args.Input.IsProtein != nil {
+		isProtein = *args.Input.IsProtein
+	}
+	c, err := r.InventoryService.UpdateCategory(ctx, id, name, description, isActive, isProtein, u.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -1730,6 +1739,7 @@ type updateCategoryInput struct {
 	Name        *string
 	Description *string
 	IsActive    *bool
+	IsProtein   *bool
 }
 
 type updateFlavorProfileInput struct {

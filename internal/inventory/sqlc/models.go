@@ -165,6 +165,19 @@ type HouseholdNotification struct {
 	ReadAt         pgtype.Timestamptz `json:"read_at"`
 	CreatedAt      time.Time          `json:"created_at"`
 	FoodEventID    pgtype.Int8        `json:"food_event_id"`
+	Title          pgtype.Text        `json:"title"`
+	Body           pgtype.Text        `json:"body"`
+	RecipeID       pgtype.Int8        `json:"recipe_id"`
+	ItemID         pgtype.Int8        `json:"item_id"`
+	DedupKey       pgtype.Text        `json:"dedup_key"`
+}
+
+type HouseholdNotificationType struct {
+	Kind        string      `json:"kind"`
+	Category    string      `json:"category"`
+	Label       string      `json:"label"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
 }
 
 type IdentityUser struct {
@@ -211,6 +224,7 @@ type InventoryCategory struct {
 	CreatedAt   time.Time          `json:"created_at"`
 	UpdatedBy   pgtype.Text        `json:"updated_by"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	IsProtein   bool               `json:"is_protein"`
 }
 
 type InventoryFlavorProfile struct {
@@ -480,6 +494,15 @@ type UserprefsHouseholdItem struct {
 	UpdatedBy       pgtype.Text        `json:"updated_by"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	HouseholdID     int64              `json:"household_id"`
+}
+
+type UserprefsNotificationPref struct {
+	UserID     int64              `json:"user_id"`
+	Category   string             `json:"category"`
+	Enabled    bool               `json:"enabled"`
+	MutedUntil pgtype.Timestamptz `json:"muted_until"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type UserprefsUserBottleFavorite struct {

@@ -139,6 +139,16 @@ type Config struct {
 	// IdempotencyWaitTimeout bounds how long a duplicate waits on an
 	// in-flight twin before returning IDEMPOTENCY_IN_FLIGHT.
 	IdempotencyWaitTimeout time.Duration `envconfig:"IDEMPOTENCY_WAIT_TIMEOUT" default:"30s"`
+	// NotificationSweepInterval is how often the reminder sweep runs; the
+	// sweep itself is cheap (three indexed queries) so an hourly cadence
+	// keeps reminders timely without waking the DB constantly.
+	NotificationSweepInterval time.Duration `envconfig:"NOTIFY_SWEEP_INTERVAL" default:"1h"`
+	// NotificationHour is the server-local hour reminders become due; meals
+	// are date-granular so "N days before" pins to this hour.
+	NotificationHour int `envconfig:"NOTIFY_HOUR" default:"8"`
+	// NotificationExpiryDays is how far ahead of userprefs.household_item
+	// expires_at the expiry reminder fires.
+	NotificationExpiryDays int `envconfig:"NOTIFY_EXPIRY_DAYS" default:"3"`
 }
 
 // Load reads configuration from environment variables.

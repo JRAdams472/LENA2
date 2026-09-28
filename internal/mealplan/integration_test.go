@@ -46,7 +46,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	invSvc := inventory.NewService(pool)
 	brand, err := invSvc.CreateBrand(ctx, "IT Meal Brand", itBy)
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT Meal Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Meal Category", "", false, itBy)
 	require.NoError(t, err)
 	netWeight := 100.0
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
@@ -241,7 +241,7 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	invSvc := inventory.NewService(pool)
 	brand, err := invSvc.CreateBrand(ctx, "IT XU Brand", itBy)
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT XU Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT XU Category", "", false, itBy)
 	require.NoError(t, err)
 	netWeight := 200.0
 	item, err := invSvc.CreateItem(ctx, inventory.Item{

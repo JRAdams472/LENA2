@@ -98,7 +98,7 @@ func TestIntegrationCategoryCRUD(t *testing.T) {
 	ctx := context.Background()
 	svc := newIntegrationService(t, ctx)
 
-	cat, err := svc.CreateCategory(ctx, "IT Category Alpha", "test category", itBy)
+	cat, err := svc.CreateCategory(ctx, "IT Category Alpha", "test category", false, itBy)
 	require.NoError(t, err)
 	require.NotZero(t, cat.CategoryID)
 	assert.Equal(t, "IT Category Alpha", cat.Name)
@@ -119,7 +119,7 @@ func TestIntegrationCategoryCRUD(t *testing.T) {
 	}
 	assert.True(t, found)
 
-	updated, err := svc.UpdateCategory(ctx, cat.CategoryID, "IT Category Beta", "updated", false, itBy)
+	updated, err := svc.UpdateCategory(ctx, cat.CategoryID, "IT Category Beta", "updated", false, false, itBy)
 	require.NoError(t, err)
 	assert.Equal(t, "IT Category Beta", updated.Name)
 	assert.Equal(t, "updated", updated.Description)
@@ -137,7 +137,7 @@ func TestIntegrationItemCRUD(t *testing.T) {
 	ctx := context.Background()
 	svc := newIntegrationService(t, ctx)
 
-	cat, err := svc.CreateCategory(ctx, "IT Item Category", "", itBy)
+	cat, err := svc.CreateCategory(ctx, "IT Item Category", "", false, itBy)
 	require.NoError(t, err)
 	brand, err := svc.CreateBrand(ctx, "IT Item Brand", itBy)
 	require.NoError(t, err)
@@ -274,7 +274,7 @@ func TestIntegrationFoodJunctions(t *testing.T) {
 	ctx := context.Background()
 	svc := newIntegrationService(t, ctx)
 
-	cat, err := svc.CreateCategory(ctx, "IT Junction Category", "", itBy)
+	cat, err := svc.CreateCategory(ctx, "IT Junction Category", "", false, itBy)
 	require.NoError(t, err)
 	junctionWeight := 50.0
 	item, err := svc.CreateItem(ctx, Item{
@@ -335,7 +335,7 @@ func TestIntegrationIngredientCRUD(t *testing.T) {
 	ctx := context.Background()
 	svc := newIntegrationService(t, ctx)
 
-	cat, err := svc.CreateCategory(ctx, "IT Ingredient Category", "", itBy)
+	cat, err := svc.CreateCategory(ctx, "IT Ingredient Category", "", false, itBy)
 	require.NoError(t, err)
 
 	gID := unitID(t, ctx, svc, "g")

@@ -157,6 +157,7 @@ func TestCreateCategory(t *testing.T) {
 		Name:        "Produce",
 		Description: pgtype.Text{String: "fresh", Valid: true},
 		IsActive:    true,
+		IsProtein:   true,
 		CreatedBy:   "alice",
 		UpdatedBy:   pgtype.Text{String: "alice", Valid: true},
 	}).Return(sqlc.InventoryCategory{
@@ -166,7 +167,7 @@ func TestCreateCategory(t *testing.T) {
 		IsActive:    true,
 	}, nil)
 
-	c, err := s.CreateCategory(ctx, "Produce", "fresh", "alice")
+	c, err := s.CreateCategory(ctx, "Produce", "fresh", true, "alice")
 	require.NoError(t, err)
 	assert.Equal(t, Category{CategoryID: 3, Name: "Produce", Description: "fresh", IsActive: true}, c)
 }
@@ -179,7 +180,7 @@ func TestCreateCategory_EmptyDescription(t *testing.T) {
 			arg.UpdatedBy.Valid && arg.UpdatedBy.String == "alice"
 	})).Return(sqlc.InventoryCategory{CategoryID: 4, Name: "X", IsActive: true}, nil)
 
-	c, err := s.CreateCategory(ctx, "X", "", "alice")
+	c, err := s.CreateCategory(ctx, "X", "", false, "alice")
 	require.NoError(t, err)
 	assert.Equal(t, "", c.Description)
 }
@@ -189,7 +190,7 @@ func TestCreateCategory_Error(t *testing.T) {
 	s, q := newTestService(t)
 	q.EXPECT().CreateCategory(ctx, gomock.Any()).Return(sqlc.InventoryCategory{}, errBoom)
 
-	_, err := s.CreateCategory(ctx, "X", "", "alice")
+	_, err := s.CreateCategory(ctx, "X", "", false, "alice")
 	assert.ErrorIs(t, err, errBoom)
 	assert.ErrorContains(t, err, "create category:")
 }
@@ -251,6 +252,7 @@ func TestUpdateCategory(t *testing.T) {
 		Name:        "Produce",
 		Description: pgtype.Text{String: "ripe", Valid: true},
 		IsActive:    false,
+		IsProtein:   true,
 		UpdatedBy:   pgtype.Text{String: "bob", Valid: true},
 	}).Return(sqlc.InventoryCategory{
 		CategoryID:  3,
@@ -259,7 +261,7 @@ func TestUpdateCategory(t *testing.T) {
 		IsActive:    false,
 	}, nil)
 
-	c, err := s.UpdateCategory(ctx, 3, "Produce", "ripe", false, "bob")
+	c, err := s.UpdateCategory(ctx, 3, "Produce", "ripe", false, true, "bob")
 	require.NoError(t, err)
 	assert.Equal(t, "ripe", c.Description)
 	assert.False(t, c.IsActive)
@@ -270,7 +272,7 @@ func TestUpdateCategory_Error(t *testing.T) {
 	s, q := newTestService(t)
 	q.EXPECT().UpdateCategory(ctx, gomock.Any()).Return(sqlc.InventoryCategory{}, errBoom)
 
-	_, err := s.UpdateCategory(ctx, 3, "Produce", "ripe", false, "bob")
+	_, err := s.UpdateCategory(ctx, 3, "Produce", "ripe", false, true, "bob")
 	assert.ErrorIs(t, err, errBoom)
 	assert.ErrorContains(t, err, "update category:")
 }

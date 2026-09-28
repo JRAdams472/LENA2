@@ -41,7 +41,7 @@ func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpoo
 // real FK-valid rows, and returns the item id and the seeded "cup" unit id.
 func mustImportItem(t *testing.T, ctx context.Context, svc *inventory.Service, name string) (itemID, unitID int64) {
 	t.Helper()
-	cat, err := svc.CreateCategory(ctx, name+" Category", "", itBy)
+	cat, err := svc.CreateCategory(ctx, name+" Category", "", false, itBy)
 	require.NoError(t, err)
 	unit, err := svc.GetUnitByName(ctx, "cup")
 	require.NoError(t, err, "unit cup should be seeded by migration 0012")

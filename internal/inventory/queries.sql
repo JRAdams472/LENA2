@@ -81,8 +81,8 @@ SET status              = $2,
 WHERE brand_id = $1;
 
 -- name: CreateCategory :one
-INSERT INTO inventory.category (name, description, is_active, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO inventory.category (name, description, is_active, is_protein, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetCategoryByID :one
@@ -296,7 +296,8 @@ UPDATE inventory.category
 SET name        = $2,
     description = $3,
     is_active   = $4,
-    updated_by  = $5,
+    is_protein  = $5,
+    updated_by  = $6,
     updated_at  = now()
 WHERE category_id = $1
 RETURNING *;
