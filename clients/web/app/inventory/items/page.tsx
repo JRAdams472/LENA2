@@ -134,6 +134,20 @@ export default function ItemsPage() {
       createMutation.mutate(values);
     } else {
       updateMutation.mutate(values);
+      // Expiry lives on the pantry holding, not the catalog item — route
+      // it through adjustUserItem (passing current qty/purchase date so
+      // they're unchanged).
+      const expiry = (values.expiryDate as string) || undefined;
+      if (expiry !== ((dialogData.expiryDate as string) || undefined)) {
+        void api
+          .adjustItemQuantity(
+            values.itemID as number,
+            Number(values.currentQuantity ?? 0),
+            (dialogData.purchaseDate as string) || undefined,
+            expiry
+          )
+          .then(() => queryClient.invalidateQueries({ queryKey: ["items"] }));
+      }
     }
     setDialogOpen(false);
   };

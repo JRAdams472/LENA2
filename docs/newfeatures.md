@@ -1,16 +1,17 @@
 # MVP
 ## Notification manager
 ### Manage notifications
-Opt out of notifications by category
-Opt out of notifications for a time period
-add new notification types
-Add a protien notification based on weekly meal plan
-48 hours before any protien is called for, the notification should be sent to remind the user to remove it from the freezer if needed
-If the amount of protien is more than 8 lbs, move the notification. It should estimate 24 hours per 4 lbs, rounded up. So if it is 10 lbs, send 3 days early. 20 lbs should be 5 days early, etc.
-prep notifications on recipes with multi day steps
-Notifications when things are about to expire 
-this particular notification should allow you to add a replacement item onto your weekly grocery list.
+~~Opt out of notifications by category~~ ✅ Done — per-category switches on `/notifications` (web) and the mobile settings screen (PRs #181–#183).
+~~Opt out of notifications for a time period~~ ✅ Done — preset mute windows per category plus a global mute.
+~~add new notification types~~ ✅ Done — `household.notification_type` registry; new kinds are seed rows, not schema changes.
+~~Add a protien notification based on weekly meal plan~~ ✅ Done — `protein_defrost` reminders from meal-plan slots; item categories flagged `is_protein`.
+~~48 hours before any protien is called for, the notification should be sent to remind the user to remove it from the freezer if needed~~ ✅ Done — hourly sweep, dedup-keyed per household member.
+~~If the amount of protien is more than 8 lbs, move the notification. It should estimate 24 hours per 4 lbs, rounded up. So if it is 10 lbs, send 3 days early. 20 lbs should be 5 days early, etc.~~ ✅ Done — `ceil(lbs/4)` days once over 8 lbs.
+~~prep notifications on recipes with multi day steps~~ ✅ Done — `meal_prep_advance` fires for recipe steps with duration ≥ 24h.
+~~Notifications when things are about to expire~~ ✅ Done — `item_expiring` reminders from pantry `expires_at` within a configurable window (`NOTIFY_EXPIRY_DAYS`, default 3).
+~~this particular notification should allow you to add a replacement item onto your weekly grocery list.~~ ✅ Done — `addItemToCurrentGroceryList` adds the item to the latest list as a manual entry.
 
+Mobile push notifications are deferred; delivery is in-app feed only for now.
 ## Full AI Integration
 ### Integrate AI into the meal planner
 AI should evaluate what is in stock, what types of preferences not only the user but the whole household has

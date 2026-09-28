@@ -71,10 +71,50 @@ async function shot(name, path, waitFor) {
   console.log("shot:", name);
 }
 
+// Seed an expiring pantry item and fire the notification sweep so the
+// bell shot shows a real reminder.
+async function gql(query, variables = {}) {
+  const r = await ctx.post(`${BASE}/graphql`, {
+    headers: { Authorization: `Bearer ${id_token}` },
+    data: { query, variables },
+  });
+  const body = await r.json();
+  if (body.errors) throw new Error(JSON.stringify(body.errors));
+  return body.data;
+}
+const expiringItem = await gql(
+  `query { items(page: 1, pageSize: 25) { items { id name } } }`
+).then(
+  (d) =>
+    d.items.items.find((i) => /milk/i.test(i.name)) ?? d.items.items[0]
+);
+await gql(
+  `mutation ($itemId: ID!, $expiresAt: Time) {
+    adjustUserItem(itemId: $itemId, quantity: 3, expiresAt: $expiresAt) { id }
+  }`,
+  {
+    itemId: expiringItem.id,
+    expiresAt: new Date(Date.now() + 2 * 86400_000).toISOString(),
+  }
+);
+await gql(`mutation { triggerNotificationSweep }`);
+
 await shot("dashboard", "/", "Garlic Butter Pasta");
 await shot("recipes", "/recipes", "Herb Roast Chicken");
 await shot("recipe-detail", `/recipes/${roastId}`, "Herb Roast Chicken");
 await shot("recipe-categories-admin", "/recipes/categories", "Cuisine");
+await shot("notification-settings", "/notifications", "Expiring pantry items");
+await shot("inventory-categories", "/inventory/categories", "Meat");
+
+// Notification bell open with the seeded expiry reminder.
+await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+await page.getByText("Garlic Butter Pasta").first().waitFor({ timeout: 20000 });
+await page.getByLabel("notifications").click();
+await page.getByText("expires soon", { exact: false }).first().waitFor({ timeout: 10000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/notification-bell.png` });
+await page.keyboard.press("Escape");
+console.log("shot: notification-bell");
 
 // Category filter in action — open the Cuisine dropdown on the recipes list.
 await page.goto(`${BASE}/recipes`, { waitUntil: "domcontentloaded" });

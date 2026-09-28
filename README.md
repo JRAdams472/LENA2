@@ -89,7 +89,9 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 - `/household` — household members, roles, and invites.
 - `/profile` — current-user profile (name, backup email, discoverability).
 
-The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item.
+The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item. An hourly sweep also produces reminders: protein defrosting (scaled by weight — 48 hours up to 8 lbs, then 24 hours per additional 4 lbs), multi-day recipe prep (steps of 24h+), and pantry items nearing their expiry date. Expiry reminders include an **Add to list** action that drops a replacement onto the current grocery list.
+
+`/notifications` manages delivery per user: each category (household, events, meal reminders, expiry) can be toggled off entirely or muted for a preset window, and a global mute pauses everything.
 
 Most catalog pages require an **admin** role; day-to-day pantry and planning features are available to all authenticated users.
 

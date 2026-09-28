@@ -766,11 +766,12 @@ describe("api client: favorites and inventory adjustments", () => {
       mockGraphQL({ adjustUserItem: { id: "9" } })
     );
 
-    await api.adjustItemQuantity(4, 2.5, "2026-09-05");
+    await api.adjustItemQuantity(4, 2.5, "2026-09-05", "2026-10-01T00:00:00Z");
     expect(lastRequestBody().variables).toEqual({
       itemId: "4",
       quantity: 2.5,
       purchaseAt: "2026-09-05",
+      expiresAt: "2026-10-01T00:00:00Z",
     });
   });
 
@@ -784,6 +785,7 @@ describe("api client: favorites and inventory adjustments", () => {
       itemId: "4",
       quantity: 1,
       purchaseAt: null,
+      expiresAt: null,
     });
   });
 });
