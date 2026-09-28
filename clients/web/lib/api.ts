@@ -2021,12 +2021,22 @@ export const api = {
   setItemUPC14: (id: number, upc14: string): Promise<void> =>
     api.updateItem(id, { upc14 }).then(() => undefined),
 
-  adjustItemQuantity: async (id: number, quantity: number, purchaseDate?: string): Promise<void> => {
+  adjustItemQuantity: async (
+    id: number,
+    quantity: number,
+    purchaseDate?: string,
+    expiryDate?: string
+  ): Promise<void> => {
     await request<{ adjustUserItem: unknown }>(
-      `mutation ($itemId: ID!, $quantity: Float!, $purchaseAt: Time) {
-        adjustUserItem(itemId: $itemId, quantity: $quantity, purchaseAt: $purchaseAt) { id }
+      `mutation ($itemId: ID!, $quantity: Float!, $purchaseAt: Time, $expiresAt: Time) {
+        adjustUserItem(itemId: $itemId, quantity: $quantity, purchaseAt: $purchaseAt, expiresAt: $expiresAt) { id }
       }`,
-      { itemId: String(id), quantity, purchaseAt: purchaseDate ?? null }
+      {
+        itemId: String(id),
+        quantity,
+        purchaseAt: purchaseDate ?? null,
+        expiresAt: expiryDate ?? null,
+      }
     );
   },
 

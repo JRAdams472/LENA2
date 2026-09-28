@@ -87,6 +87,9 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	ItemID     graphql.ID
 	Quantity   float64
 	PurchaseAt *graphql.Time
+	// ExpiresAt is set-only: omitted preserves the current expiry, so a
+	// plain quantity adjustment never wipes it.
+	ExpiresAt *graphql.Time
 }) (*userItemResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -107,6 +110,9 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 		minQty = existing.MinQty
 		expiresAt = existing.ExpiresAt
 		notes = existing.Notes
+	}
+	if args.ExpiresAt != nil {
+		expiresAt = &args.ExpiresAt.Time
 	}
 	var purchaseAt *time.Time
 	if args.PurchaseAt != nil {

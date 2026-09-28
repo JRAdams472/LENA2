@@ -205,7 +205,7 @@ type Mutation {
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient! @admin
   deleteIngredient(id: ID!): Boolean! @admin
 
-  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!
+  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time): UserItem!
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
   deleteUserItem(itemId: ID!): Boolean!
   incrementUserItem(itemId: ID!, delta: Float!): UserItem
