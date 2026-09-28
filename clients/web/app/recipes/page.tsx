@@ -234,8 +234,9 @@ export default function RecipesPage() {
         />
         {(groupsQuery.data ?? []).map((g) => (
           <FormControl key={g.categoryGroupID} size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>{g.groupName}</InputLabel>
+            <InputLabel id={`cat-group-${g.categoryGroupID}`}>{g.groupName}</InputLabel>
             <Select
+              labelId={`cat-group-${g.categoryGroupID}`}
               multiple
               value={categoryIds.filter((id) =>
                 g.categories.some((c) => c.categoryID === id)

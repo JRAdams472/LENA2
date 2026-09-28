@@ -205,6 +205,28 @@ soup = get_or_create_recipe(
         }
 )
 
+# Categories — look up IDs by name and assign (idempotent: set replaces).
+cat_by_name = {
+    c["name"]: c["id"]
+    for g in gql(ADMIN, "{ recipeCategoryGroups { categories { id name } } }")["recipeCategoryGroups"]
+    for c in g["categories"]
+}
+
+
+def categorize(recipe, names):
+    ids = [cat_by_name[n] for n in names if n in cat_by_name]
+    gql(
+        ADMIN,
+        "mutation($r: ID!, $c: [ID!]!) { setRecipeCategories(recipeId: $r, categoryIds: $c) { id } }",
+        {"r": recipe["id"], "c": ids},
+    )
+    print("categorized:", recipe["name"], "->", names)
+
+
+categorize(roast, ["Dinner", "Chicken", "Medium", "American", "Casserole"])
+categorize(pasta, ["Dinner", "Easy", "Italian", "Vegetarian"])
+categorize(soup, ["Lunch", "Soup", "Easy", "Vegetarian", "Low Calorie"])
+
 # Meal plan starting today — day 0 is today so the dashboard shows a meal.
 existing_plans = gql(ADMIN, "{ mealPlans(page:1,pageSize:50){ items { id name } } }")["mealPlans"]["items"]
 plan = next((p for p in existing_plans if p["name"] == WEEK_NAME), None)
