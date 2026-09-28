@@ -255,6 +255,19 @@ func parseID(s string) (int64, error) {
 	return v, nil
 }
 
+// parseIDs converts a GraphQL ID list; any malformed entry fails the call.
+func parseIDs(ids []graphql.ID) ([]int64, error) {
+	out := make([]int64, len(ids))
+	for i, id := range ids {
+		v, err := parseID(string(id))
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
 // recordEventAsync emits an analytics event on the bounded background
 // worker so that tracking never blocks or breaks the caller.
 func (r *Resolver) recordEventAsync(userID int64, by string, e analytics.Event) {
@@ -743,6 +756,7 @@ type recipeChildren struct {
 	recipes      map[int64]recipe.Recipe
 	itemsBy      map[int64][]recipe.RecipeItem
 	stepsBy      map[int64][]recipe.RecipeStep
+	categoriesBy map[int64][]recipe.Category
 	favorites    map[int64]bool
 	items        map[int64]inventory.Item
 	ingredients  map[int64]inventory.Ingredient
@@ -791,6 +805,11 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		for _, s := range steps {
 			rc.stepsBy[s.RecipeID] = append(rc.stepsBy[s.RecipeID], s)
 		}
+		cats, err := rec.ListCategoriesForRecipes(ctx, recipeIDs)
+		if err != nil {
+			return nil, err
+		}
+		rc.categoriesBy = cats
 		if up != nil {
 			favs, err := up.ListRecipeFavorites(ctx, userID, recipeIDs)
 			if err != nil {

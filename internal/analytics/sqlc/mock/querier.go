@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	sqlc "github.com/JRAdams472/LENA2/internal/analytics/sqlc"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -69,6 +70,21 @@ func (m *MockQuerier) GetUserSelectionCounts(ctx context.Context, arg sqlc.GetUs
 func (mr *MockQuerierMockRecorder) GetUserSelectionCounts(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockQuerier)(nil).GetUserSelectionCounts), ctx, arg)
+}
+
+// HouseholdUsedRecipeIDs mocks base method.
+func (m *MockQuerier) HouseholdUsedRecipeIDs(ctx context.Context, householdID int64) ([]sqlc.HouseholdUsedRecipeIDsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdUsedRecipeIDs", ctx, householdID)
+	ret0, _ := ret[0].([]sqlc.HouseholdUsedRecipeIDsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdUsedRecipeIDs indicates an expected call of HouseholdUsedRecipeIDs.
+func (mr *MockQuerierMockRecorder) HouseholdUsedRecipeIDs(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdUsedRecipeIDs", reflect.TypeOf((*MockQuerier)(nil).HouseholdUsedRecipeIDs), ctx, householdID)
 }
 
 // IngredientOverlapScores mocks base method.
@@ -185,4 +201,34 @@ func (m *MockQuerier) UpsertUserSelectionCount(ctx context.Context, arg sqlc.Ups
 func (mr *MockQuerierMockRecorder) UpsertUserSelectionCount(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserSelectionCount", reflect.TypeOf((*MockQuerier)(nil).UpsertUserSelectionCount), ctx, arg)
+}
+
+// UserRecipeSearchTerms mocks base method.
+func (m *MockQuerier) UserRecipeSearchTerms(ctx context.Context, userID int64) ([]pgtype.Text, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserRecipeSearchTerms", ctx, userID)
+	ret0, _ := ret[0].([]pgtype.Text)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserRecipeSearchTerms indicates an expected call of UserRecipeSearchTerms.
+func (mr *MockQuerierMockRecorder) UserRecipeSearchTerms(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserRecipeSearchTerms", reflect.TypeOf((*MockQuerier)(nil).UserRecipeSearchTerms), ctx, userID)
+}
+
+// UserViewedRecipeIDs mocks base method.
+func (m *MockQuerier) UserViewedRecipeIDs(ctx context.Context, userID int64) ([]sqlc.UserViewedRecipeIDsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserViewedRecipeIDs", ctx, userID)
+	ret0, _ := ret[0].([]sqlc.UserViewedRecipeIDsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserViewedRecipeIDs indicates an expected call of UserViewedRecipeIDs.
+func (mr *MockQuerierMockRecorder) UserViewedRecipeIDs(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserViewedRecipeIDs", reflect.TypeOf((*MockQuerier)(nil).UserViewedRecipeIDs), ctx, userID)
 }

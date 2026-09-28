@@ -236,6 +236,11 @@ type RecipeReader interface {
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]recipe.RecipeItem, error)
 	ListRecipeSteps(ctx context.Context, recipeID int64) ([]recipe.RecipeStep, error)
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int64) ([]recipe.RecipeStep, error)
+	SearchRecipes(ctx context.Context, arg recipe.RecipeSearch) ([]recipe.Recipe, error)
+	CountSearchRecipes(ctx context.Context, arg recipe.RecipeSearch) (int64, error)
+	ListCategoryGroups(ctx context.Context) ([]recipe.CategoryGroup, error)
+	ListCategoriesByGroup(ctx context.Context, groupID int64) ([]recipe.Category, error)
+	ListCategoriesForRecipes(ctx context.Context, recipeIDs []int64) (map[int64][]recipe.Category, error)
 }
 
 // RecipeWriter is the write side of the recipe domain.
@@ -249,6 +254,13 @@ type RecipeWriter interface {
 	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipe(ctx context.Context, recipeID int64) error
+	SetRecipeCategories(ctx context.Context, recipeID int64, categoryIDs []int64, by string) error
+	CreateCategoryGroup(ctx context.Context, arg recipe.CategoryGroup, by string) (recipe.CategoryGroup, error)
+	UpdateCategoryGroup(ctx context.Context, groupID int64, arg recipe.CategoryGroup, by string) (recipe.CategoryGroup, error)
+	DeleteCategoryGroup(ctx context.Context, groupID int64) error
+	CreateCategory(ctx context.Context, arg recipe.Category, by string) (recipe.Category, error)
+	UpdateCategory(ctx context.Context, categoryID int64, arg recipe.Category, by string) (recipe.Category, error)
+	DeleteCategory(ctx context.Context, categoryID int64) error
 }
 
 // RecipeRater is the rating surface of the recipe domain.
@@ -324,6 +336,7 @@ type FavoriteStore interface {
 	SetRecipeFavorite(ctx context.Context, userID, recipeID int64, isFavorite bool, by string) (userprefs.RecipeFavorite, error)
 	GetRecipeFavorite(ctx context.Context, userID, recipeID int64) (userprefs.RecipeFavorite, error)
 	ListRecipeFavorites(ctx context.Context, userID int64, recipeIDs []int64) ([]userprefs.RecipeFavorite, error)
+	ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error)
 	SetItemFavorite(ctx context.Context, userID, itemID int64, isFavorite bool, by string) (userprefs.ItemFavorite, error)
 	GetItemFavorite(ctx context.Context, userID, itemID int64) (bool, error)
 	ListItemFavorites(ctx context.Context, userID int64, itemIDs []int64) (map[int64]bool, error)
@@ -418,6 +431,8 @@ type HouseholdMigration interface {
 // EventRecorder is the event-ingest surface of analytics.
 type EventRecorder interface {
 	RecordEvent(ctx context.Context, e analytics.Event, by string) error
+	RecordView(ctx context.Context, e analytics.Event, by string) error
+	RecipeEngagementSets(ctx context.Context, userID, householdID int64) (analytics.RecipeEngagement, error)
 	ComputeIngredientOverlapSuggestions(ctx context.Context, newRecipeID int64) (int, error)
 }
 

@@ -244,3 +244,11 @@ WHERE user_id = $1 AND recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[]);
 -- name: DeleteRecipeFavorite :exec
 DELETE FROM userprefs.user_recipe_preference
 WHERE user_id = $1 AND recipe_id = $2;
+
+-- name: ListFavoriteRecipeIDs :many
+-- Every recipe the user has favorited — feeds the search ranking boost and
+-- the isFavorite filter (kept in userprefs; SQL never crosses schemas, so
+-- the BFF passes these IDs into the recipe query).
+SELECT recipe_id
+FROM userprefs.user_recipe_preference
+WHERE user_id = $1 AND is_favorite = TRUE;

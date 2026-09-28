@@ -134,3 +134,158 @@ GROUP BY recipe_id;
 SELECT recipe_id, rating
 FROM recipe.recipe_rating
 WHERE user_id = $1 AND rating >= $2;
+
+-- ---------- recipe categories (0035) ----------
+
+-- name: CreateCategoryGroup :one
+INSERT INTO recipe.category_group (name, exclusive, display_order, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: UpdateCategoryGroup :one
+UPDATE recipe.category_group
+SET name          = $2,
+    exclusive     = $3,
+    display_order = $4,
+    updated_by    = $5,
+    updated_at    = now()
+WHERE category_group_id = $1
+RETURNING *;
+
+-- name: DeleteCategoryGroup :exec
+DELETE FROM recipe.category_group
+WHERE category_group_id = $1;
+
+-- name: GetCategoryGroupByID :one
+SELECT *
+FROM recipe.category_group
+WHERE category_group_id = $1;
+
+-- name: ListCategoryGroups :many
+SELECT *
+FROM recipe.category_group
+ORDER BY display_order, name;
+
+-- name: CountCategoriesInGroup :one
+SELECT COUNT(*)
+FROM recipe.category
+WHERE category_group_id = $1;
+
+-- name: CreateCategory :one
+INSERT INTO recipe.category (category_group_id, name, created_by, updated_by)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: UpdateCategory :one
+UPDATE recipe.category
+SET name       = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE category_id = $1
+RETURNING *;
+
+-- name: DeleteCategory :exec
+DELETE FROM recipe.category
+WHERE category_id = $1;
+
+-- name: GetCategoryByID :one
+SELECT *
+FROM recipe.category
+WHERE category_id = $1;
+
+-- name: ListCategoriesByGroup :many
+SELECT *
+FROM recipe.category
+WHERE category_group_id = $1
+ORDER BY name;
+
+-- name: ListCategoriesByIDs :many
+-- Categories with their group's exclusivity/name, for assignment-time
+-- validation (a recipe may hold at most one category per exclusive group).
+SELECT c.*, g.name AS group_name, g.exclusive AS group_exclusive, g.display_order AS group_display_order
+FROM recipe.category c
+JOIN recipe.category_group g ON g.category_group_id = c.category_group_id
+WHERE c.category_id = ANY(sqlc.arg(category_ids)::bigint[]);
+
+-- name: ClearRecipeCategories :exec
+DELETE FROM recipe.recipe_category
+WHERE recipe_id = $1;
+
+-- name: AddRecipeCategories :exec
+INSERT INTO recipe.recipe_category (recipe_id, category_id, assigned_by)
+SELECT $1, unnest($2::bigint[]), $3
+ON CONFLICT DO NOTHING;
+
+-- name: ListCategoriesForRecipes :many
+-- Batch child preload: every category each recipe carries, with group
+-- metadata so resolvers never query per-row.
+SELECT rc.recipe_id, c.category_id, c.name, c.category_group_id,
+       g.name AS group_name, g.exclusive AS group_exclusive, g.display_order AS group_display_order
+FROM recipe.recipe_category rc
+JOIN recipe.category c ON c.category_id = rc.category_id
+JOIN recipe.category_group g ON g.category_group_id = c.category_group_id
+WHERE rc.recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
+ORDER BY g.display_order, c.name;
+
+-- name: SearchRecipes :many
+-- Filtered + engagement-ranked recipe listing. Ranking tiers come from
+-- engagement ID arrays computed by the BFF (analytics/userprefs live in
+-- other schemas — SQL never crosses schemas):
+--   0 favorite, 1 used (household menus), 2 viewed, 3 searched, 4 rest.
+-- The used/viewed arrays arrive pre-sorted by signal strength so
+-- array_position doubles as the in-tier tiebreaker.
+SELECT r.*
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND (sqlc.arg(search)::text IS NULL OR lower(r.name) LIKE '%' || lower(sqlc.arg(search)) || '%')
+  AND (
+    sqlc.arg(category_ids)::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    )
+  )
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
+  AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])))
+ORDER BY
+  CASE
+    WHEN sqlc.arg(favorite_ids)::bigint[] IS NOT NULL AND r.recipe_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
+    WHEN r.recipe_id = ANY(sqlc.arg(used_ids)::bigint[]) THEN 1
+    WHEN r.recipe_id = ANY(sqlc.arg(viewed_ids)::bigint[]) THEN 2
+    WHEN EXISTS (
+      SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
+      WHERE position(lower(t) in lower(r.name)) > 0
+    ) THEN 3
+    ELSE 4
+  END,
+  array_position(sqlc.arg(used_ids)::bigint[], r.recipe_id),
+  array_position(sqlc.arg(viewed_ids)::bigint[], r.recipe_id),
+  r.name
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchRecipes :one
+SELECT COUNT(*)
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND (sqlc.arg(search)::text IS NULL OR lower(r.name) LIKE '%' || lower(sqlc.arg(search)) || '%')
+  AND (
+    sqlc.arg(category_ids)::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    )
+  )
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
+  AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])));

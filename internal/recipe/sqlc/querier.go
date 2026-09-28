@@ -9,17 +9,36 @@ import (
 )
 
 type Querier interface {
+	AddRecipeCategories(ctx context.Context, arg AddRecipeCategoriesParams) error
 	AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) error
 	AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (RecipeRecipeStep, error)
+	ClearRecipeCategories(ctx context.Context, recipeID int64) error
+	CountCategoriesInGroup(ctx context.Context, categoryGroupID int64) (int64, error)
 	CountRecipes(ctx context.Context, isActive bool) (int64, error)
+	CountSearchRecipes(ctx context.Context, arg CountSearchRecipesParams) (int64, error)
+	CreateCategory(ctx context.Context, arg CreateCategoryParams) (RecipeCategory, error)
+	// ---------- recipe categories (0035) ----------
+	CreateCategoryGroup(ctx context.Context, arg CreateCategoryGroupParams) (RecipeCategoryGroup, error)
 	CreateRecipe(ctx context.Context, arg CreateRecipeParams) (RecipeRecipe, error)
+	DeleteCategory(ctx context.Context, categoryID int64) error
+	DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) error
 	DeleteRecipe(ctx context.Context, recipeID int64) error
 	DeleteRecipeItems(ctx context.Context, recipeID int64) error
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipeSteps(ctx context.Context, recipeID int64) error
+	GetCategoryByID(ctx context.Context, categoryID int64) (RecipeCategory, error)
+	GetCategoryGroupByID(ctx context.Context, categoryGroupID int64) (RecipeCategoryGroup, error)
 	GetRecipeByID(ctx context.Context, recipeID int64) (RecipeRecipe, error)
 	GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error)
 	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
+	ListCategoriesByGroup(ctx context.Context, categoryGroupID int64) ([]RecipeCategory, error)
+	// Categories with their group's exclusivity/name, for assignment-time
+	// validation (a recipe may hold at most one category per exclusive group).
+	ListCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]ListCategoriesByIDsRow, error)
+	// Batch child preload: every category each recipe carries, with group
+	// metadata so resolvers never query per-row.
+	ListCategoriesForRecipes(ctx context.Context, recipeIds []int64) ([]ListCategoriesForRecipesRow, error)
+	ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
 	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
 	ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error)
@@ -31,6 +50,15 @@ type Querier interface {
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeStep, error)
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)
 	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
+	// Filtered + engagement-ranked recipe listing. Ranking tiers come from
+	// engagement ID arrays computed by the BFF (analytics/userprefs live in
+	// other schemas — SQL never crosses schemas):
+	//   0 favorite, 1 used (household menus), 2 viewed, 3 searched, 4 rest.
+	// The used/viewed arrays arrive pre-sorted by signal strength so
+	// array_position doubles as the in-tier tiebreaker.
+	SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([]RecipeRecipe, error)
+	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (RecipeCategory, error)
+	UpdateCategoryGroup(ctx context.Context, arg UpdateCategoryGroupParams) (RecipeCategoryGroup, error)
 	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) error
 	// Timing columns are written only by the create/replace-children path
 	// (AddRecipeStep); this partial update preserves them.

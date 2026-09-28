@@ -628,3 +628,278 @@ func numericFromFloat64(f float64) (pgtype.Numeric, error) {
 	n.Valid = true
 	return n, nil
 }
+
+// ---------- recipe categories (0035) ----------
+
+// CategoryGroup is a typed bucket of recipe categories (Course, Cuisine,
+// ...). Exclusive groups allow at most one category per recipe.
+type CategoryGroup struct {
+	CategoryGroupID int64
+	Name            string
+	Exclusive       bool
+	DisplayOrder    int32
+}
+
+// Category is a single label inside a group, with the group's fields
+// denormalized for callers that need exclusivity or display order.
+type Category struct {
+	CategoryID        int64
+	CategoryGroupID   int64
+	Name              string
+	GroupName         string
+	GroupExclusive    bool
+	GroupDisplayOrder int32
+}
+
+func toCategoryGroup(row sqlc.RecipeCategoryGroup) CategoryGroup {
+	return CategoryGroup{
+		CategoryGroupID: row.CategoryGroupID,
+		Name:            row.Name,
+		Exclusive:       row.Exclusive,
+		DisplayOrder:    row.DisplayOrder,
+	}
+}
+
+func toCategory(row sqlc.RecipeCategory) Category {
+	return Category{CategoryID: row.CategoryID, CategoryGroupID: row.CategoryGroupID, Name: row.Name}
+}
+
+// CreateCategoryGroup adds a category group (admin-curated taxonomy).
+func (s *Service) CreateCategoryGroup(ctx context.Context, arg CategoryGroup, by string) (CategoryGroup, error) {
+	row, err := s.q.CreateCategoryGroup(ctx, sqlc.CreateCategoryGroupParams{
+		Name: arg.Name, Exclusive: arg.Exclusive, DisplayOrder: arg.DisplayOrder,
+		CreatedBy: by, UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return CategoryGroup{}, fmt.Errorf("create category group: %w", domainerr.FromStorage(err))
+	}
+	return toCategoryGroup(row), nil
+}
+
+// UpdateCategoryGroup edits a group's name/exclusivity/order.
+func (s *Service) UpdateCategoryGroup(ctx context.Context, groupID int64, arg CategoryGroup, by string) (CategoryGroup, error) {
+	row, err := s.q.UpdateCategoryGroup(ctx, sqlc.UpdateCategoryGroupParams{
+		CategoryGroupID: groupID, Name: arg.Name, Exclusive: arg.Exclusive,
+		DisplayOrder: arg.DisplayOrder, UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return CategoryGroup{}, fmt.Errorf("update category group: %w", domainerr.FromStorage(err))
+	}
+	return toCategoryGroup(row), nil
+}
+
+// DeleteCategoryGroup removes a group; a group that still has categories
+// cannot be deleted (RESTRICT) — the caller gets a friendly validation error.
+func (s *Service) DeleteCategoryGroup(ctx context.Context, groupID int64) error {
+	n, err := s.q.CountCategoriesInGroup(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("delete category group: %w", domainerr.FromStorage(err))
+	}
+	if n > 0 {
+		return &domainerr.ValidationError{Field: "id", Msg: "group still has categories — delete or reassign them first"}
+	}
+	if err := s.q.DeleteCategoryGroup(ctx, groupID); err != nil {
+		return fmt.Errorf("delete category group: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// ListCategoryGroups returns all groups in display order.
+func (s *Service) ListCategoryGroups(ctx context.Context) ([]CategoryGroup, error) {
+	rows, err := s.q.ListCategoryGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list category groups: %w", err)
+	}
+	out := make([]CategoryGroup, len(rows))
+	for i, r := range rows {
+		out[i] = toCategoryGroup(r)
+	}
+	return out, nil
+}
+
+// CreateCategory adds a category to a group.
+func (s *Service) CreateCategory(ctx context.Context, arg Category, by string) (Category, error) {
+	row, err := s.q.CreateCategory(ctx, sqlc.CreateCategoryParams{
+		CategoryGroupID: arg.CategoryGroupID, Name: arg.Name,
+		CreatedBy: by, UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return Category{}, fmt.Errorf("create category: %w", domainerr.FromStorage(err))
+	}
+	return toCategory(row), nil
+}
+
+// UpdateCategory renames a category (the group is fixed).
+func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, arg Category, by string) (Category, error) {
+	row, err := s.q.UpdateCategory(ctx, sqlc.UpdateCategoryParams{
+		CategoryID: categoryID, Name: arg.Name, UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return Category{}, fmt.Errorf("update category: %w", domainerr.FromStorage(err))
+	}
+	return toCategory(row), nil
+}
+
+// DeleteCategory removes a category; recipe assignments cascade away.
+func (s *Service) DeleteCategory(ctx context.Context, categoryID int64) error {
+	if err := s.q.DeleteCategory(ctx, categoryID); err != nil {
+		return fmt.Errorf("delete category: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// ListCategoriesByGroup returns a group's categories alphabetically.
+func (s *Service) ListCategoriesByGroup(ctx context.Context, groupID int64) ([]Category, error) {
+	rows, err := s.q.ListCategoriesByGroup(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
+	}
+	out := make([]Category, len(rows))
+	for i, r := range rows {
+		out[i] = toCategory(r)
+	}
+	return out, nil
+}
+
+// ListCategoriesByIDs returns the categories for a set of IDs with their
+// groups' exclusivity — the input to assignment validation.
+func (s *Service) ListCategoriesByIDs(ctx context.Context, categoryIDs []int64) ([]Category, error) {
+	rows, err := s.q.ListCategoriesByIDs(ctx, categoryIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list categories by ids: %w", err)
+	}
+	out := make([]Category, len(rows))
+	for i, r := range rows {
+		out[i] = Category{
+			CategoryID: r.CategoryID, CategoryGroupID: r.CategoryGroupID, Name: r.Name,
+			GroupName: r.GroupName, GroupExclusive: r.GroupExclusive, GroupDisplayOrder: r.GroupDisplayOrder,
+		}
+	}
+	return out, nil
+}
+
+// ListCategoriesForRecipes batch-loads every recipe's categories (with group
+// metadata) for resolver preloads — returns a map keyed by recipe ID.
+func (s *Service) ListCategoriesForRecipes(ctx context.Context, recipeIDs []int64) (map[int64][]Category, error) {
+	rows, err := s.q.ListCategoriesForRecipes(ctx, recipeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list categories for recipes: %w", err)
+	}
+	out := make(map[int64][]Category, len(recipeIDs))
+	for _, r := range rows {
+		out[r.RecipeID] = append(out[r.RecipeID], Category{
+			CategoryID: r.CategoryID, CategoryGroupID: r.CategoryGroupID, Name: r.Name,
+			GroupName: r.GroupName, GroupExclusive: r.GroupExclusive, GroupDisplayOrder: r.GroupDisplayOrder,
+		})
+	}
+	return out, nil
+}
+
+// SetRecipeCategories replaces a recipe's category assignments atomically.
+// A recipe may hold at most one category per exclusive group — picking two
+// from the same exclusive group is a validation error.
+func (s *Service) SetRecipeCategories(ctx context.Context, recipeID int64, categoryIDs []int64, by string) error {
+	if _, err := s.q.GetRecipeByID(ctx, recipeID); err != nil {
+		return fmt.Errorf("set recipe categories: %w", domainerr.FromStorage(err))
+	}
+	if err := s.validateCategorySet(ctx, categoryIDs); err != nil {
+		return err
+	}
+	return s.withTx(ctx, func(q sqlc.Querier) error {
+		if err := q.ClearRecipeCategories(ctx, recipeID); err != nil {
+			return fmt.Errorf("set recipe categories: %w", err)
+		}
+		if len(categoryIDs) == 0 {
+			return nil
+		}
+		if err := q.AddRecipeCategories(ctx, sqlc.AddRecipeCategoriesParams{
+			Column2: categoryIDs, RecipeID: recipeID, AssignedBy: by,
+		}); err != nil {
+			return fmt.Errorf("set recipe categories: %w", domainerr.FromStorage(err))
+		}
+		return nil
+	})
+}
+
+// validateCategorySet enforces per-exclusive-group uniqueness.
+func (s *Service) validateCategorySet(ctx context.Context, categoryIDs []int64) error {
+	if len(categoryIDs) == 0 {
+		return nil
+	}
+	cats, err := s.ListCategoriesByIDs(ctx, categoryIDs)
+	if err != nil {
+		return err
+	}
+	if len(cats) != len(categoryIDs) {
+		return &domainerr.ValidationError{Field: "categoryIds", Msg: "one or more categories do not exist"}
+	}
+	seen := make(map[int64]string, len(cats))
+	for _, c := range cats {
+		if !c.GroupExclusive {
+			continue
+		}
+		if prev, dup := seen[c.CategoryGroupID]; dup {
+			return &domainerr.ValidationError{
+				Field: "categoryIds",
+				Msg:   fmt.Sprintf("a recipe can't be both %q and %q (%s)", prev, c.Name, c.GroupName),
+			}
+		}
+		seen[c.CategoryGroupID] = c.Name
+	}
+	return nil
+}
+
+// ---------- filtered, engagement-ranked search ----------
+
+// RecipeSearch carries the filter and ranking inputs for SearchRecipes. All
+// sets are optional; nil/empty disables them. Include/Exclude filter the
+// result set (favorites); Favorite/Used/Viewed/SearchTerms drive the tiered
+// ordering. Used/Viewed should arrive pre-sorted by signal strength.
+type RecipeSearch struct {
+	Active      bool
+	Search      string
+	CategoryIDs []int64
+	IncludeIDs  []int64
+	ExcludeIDs  []int64
+	FavoriteIDs []int64
+	UsedIDs     []int64
+	ViewedIDs   []int64
+	SearchTerms []string
+	Limit       int32
+	Offset      int32
+}
+
+func (rs RecipeSearch) params() sqlc.SearchRecipesParams {
+	return sqlc.SearchRecipesParams{
+		IsActive: rs.Active, Search: rs.Search,
+		CategoryIds: rs.CategoryIDs, IncludeIds: rs.IncludeIDs, ExcludeIds: rs.ExcludeIDs,
+		FavoriteIds: rs.FavoriteIDs, UsedIds: rs.UsedIDs, ViewedIds: rs.ViewedIDs,
+		SearchTerms: rs.SearchTerms, Limit: rs.Limit, Offset: rs.Offset,
+	}
+}
+
+// SearchRecipes returns one page of recipes matching the filters, ordered by
+// engagement tier then name.
+func (s *Service) SearchRecipes(ctx context.Context, arg RecipeSearch) ([]Recipe, error) {
+	rows, err := s.q.SearchRecipes(ctx, arg.params())
+	if err != nil {
+		return nil, fmt.Errorf("search recipes: %w", err)
+	}
+	out := make([]Recipe, len(rows))
+	for i, r := range rows {
+		out[i] = toRecipe(r)
+	}
+	return out, nil
+}
+
+// CountSearchRecipes returns the un-paged match count for the same filters.
+func (s *Service) CountSearchRecipes(ctx context.Context, arg RecipeSearch) (int64, error) {
+	n, err := s.q.CountSearchRecipes(ctx, sqlc.CountSearchRecipesParams{
+		IsActive: arg.Active, Search: arg.Search,
+		CategoryIds: arg.CategoryIDs, IncludeIds: arg.IncludeIDs, ExcludeIds: arg.ExcludeIDs,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count search recipes: %w", err)
+	}
+	return n, nil
+}

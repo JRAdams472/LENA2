@@ -85,6 +85,46 @@ func (q *Queries) GetUserSelectionCounts(ctx context.Context, arg GetUserSelecti
 	return items, nil
 }
 
+const householdUsedRecipeIDs = `-- name: HouseholdUsedRecipeIDs :many
+
+SELECT entity_id AS recipe_id, COUNT(*) AS hits
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.event_type IN ('menu_add', 'recipe_selected')
+  AND e.entity_type = 'recipe'
+  AND u.household_id = $1::bigint
+GROUP BY entity_id
+ORDER BY hits DESC, MAX(e.created_at) DESC
+`
+
+type HouseholdUsedRecipeIDsRow struct {
+	RecipeID pgtype.Int8 `json:"recipe_id"`
+	Hits     int64       `json:"hits"`
+}
+
+// ---------- engagement ranking inputs (recipe categories feature) ----------
+// Recipes household members have put on a menu (meal-plan slot or event),
+// most-used first — drives the "used" tier of recipe search ranking.
+func (q *Queries) HouseholdUsedRecipeIDs(ctx context.Context, householdID int64) ([]HouseholdUsedRecipeIDsRow, error) {
+	rows, err := q.db.Query(ctx, householdUsedRecipeIDs, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdUsedRecipeIDsRow{}
+	for rows.Next() {
+		var i HouseholdUsedRecipeIDsRow
+		if err := rows.Scan(&i.RecipeID, &i.Hits); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ingredientOverlapScores = `-- name: IngredientOverlapScores :many
 WITH new_items AS (
     SELECT item_id
@@ -371,4 +411,71 @@ type UpsertUserSelectionCountParams struct {
 func (q *Queries) UpsertUserSelectionCount(ctx context.Context, arg UpsertUserSelectionCountParams) error {
 	_, err := q.db.Exec(ctx, upsertUserSelectionCount, arg.EntityType, arg.EntityID, arg.UserID)
 	return err
+}
+
+const userRecipeSearchTerms = `-- name: UserRecipeSearchTerms :many
+SELECT DISTINCT search_term
+FROM analytics.interaction_event
+WHERE event_type = 'recipe_searched'
+  AND user_id = $1::bigint
+  AND search_term IS NOT NULL
+  AND search_term <> ''
+`
+
+// Distinct terms the caller has searched recipes for — recipes whose names
+// match these terms form the "searched but not viewed" tier.
+func (q *Queries) UserRecipeSearchTerms(ctx context.Context, userID int64) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, userRecipeSearchTerms, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Text{}
+	for rows.Next() {
+		var search_term pgtype.Text
+		if err := rows.Scan(&search_term); err != nil {
+			return nil, err
+		}
+		items = append(items, search_term)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const userViewedRecipeIDs = `-- name: UserViewedRecipeIDs :many
+SELECT entity_id AS recipe_id, COUNT(*) AS hits
+FROM analytics.interaction_event
+WHERE event_type = 'recipe_viewed'
+  AND entity_type = 'recipe'
+  AND user_id = $1::bigint
+GROUP BY entity_id
+ORDER BY hits DESC, MAX(created_at) DESC
+`
+
+type UserViewedRecipeIDsRow struct {
+	RecipeID pgtype.Int8 `json:"recipe_id"`
+	Hits     int64       `json:"hits"`
+}
+
+// Recipes the caller has opened, most-viewed first — the "viewed" tier.
+func (q *Queries) UserViewedRecipeIDs(ctx context.Context, userID int64) ([]UserViewedRecipeIDsRow, error) {
+	rows, err := q.db.Query(ctx, userViewedRecipeIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserViewedRecipeIDsRow{}
+	for rows.Next() {
+		var i UserViewedRecipeIDsRow
+		if err := rows.Scan(&i.RecipeID, &i.Hits); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -361,6 +361,35 @@ func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoritePa
 	return i, err
 }
 
+const listFavoriteRecipeIDs = `-- name: ListFavoriteRecipeIDs :many
+SELECT recipe_id
+FROM userprefs.user_recipe_preference
+WHERE user_id = $1 AND is_favorite = TRUE
+`
+
+// Every recipe the user has favorited — feeds the search ranking boost and
+// the isFavorite filter (kept in userprefs; SQL never crosses schemas, so
+// the BFF passes these IDs into the recipe query).
+func (q *Queries) ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listFavoriteRecipeIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var recipe_id int64
+		if err := rows.Scan(&recipe_id); err != nil {
+			return nil, err
+		}
+		items = append(items, recipe_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHouseholdBottles = `-- name: ListHouseholdBottles :many
 SELECT household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
 FROM userprefs.household_bottle

@@ -346,6 +346,27 @@ type PlatformIdempotencyKey struct {
 	ExpiresAt      time.Time          `json:"expires_at"`
 }
 
+type RecipeCategory struct {
+	CategoryID      int64              `json:"category_id"`
+	CategoryGroupID int64              `json:"category_group_id"`
+	Name            string             `json:"name"`
+	CreatedBy       string             `json:"created_by"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedBy       pgtype.Text        `json:"updated_by"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RecipeCategoryGroup struct {
+	CategoryGroupID int64              `json:"category_group_id"`
+	Name            string             `json:"name"`
+	Exclusive       bool               `json:"exclusive"`
+	DisplayOrder    int32              `json:"display_order"`
+	CreatedBy       string             `json:"created_by"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedBy       pgtype.Text        `json:"updated_by"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RecipeRecipe struct {
 	RecipeID        int64              `json:"recipe_id"`
 	Name            string             `json:"name"`
@@ -358,6 +379,13 @@ type RecipeRecipe struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedBy       pgtype.Text        `json:"updated_by"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RecipeRecipeCategory struct {
+	RecipeID   int64     `json:"recipe_id"`
+	CategoryID int64     `json:"category_id"`
+	AssignedBy string    `json:"assigned_by"`
+	AssignedAt time.Time `json:"assigned_at"`
 }
 
 type RecipeRecipeImport struct {

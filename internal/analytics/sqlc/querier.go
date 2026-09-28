@@ -6,11 +6,17 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	GetGlobalSelectionCounts(ctx context.Context, arg GetGlobalSelectionCountsParams) ([]AnalyticsGlobalSelectionCount, error)
 	GetUserSelectionCounts(ctx context.Context, arg GetUserSelectionCountsParams) ([]AnalyticsUserSelectionCount, error)
+	// ---------- engagement ranking inputs (recipe categories feature) ----------
+	// Recipes household members have put on a menu (meal-plan slot or event),
+	// most-used first — drives the "used" tier of recipe search ranking.
+	HouseholdUsedRecipeIDs(ctx context.Context, householdID int64) ([]HouseholdUsedRecipeIDsRow, error)
 	// For a newly created recipe ($1), compute each user's best Jaccard
 	// similarity between the new recipe's item set and the item sets of the
 	// recipes in that user's meal-plan history (|intersection| / |union|).
@@ -24,6 +30,11 @@ type Querier interface {
 	UpsertGlobalSelectionCount(ctx context.Context, arg UpsertGlobalSelectionCountParams) error
 	UpsertRecipeRecommendation(ctx context.Context, arg UpsertRecipeRecommendationParams) error
 	UpsertUserSelectionCount(ctx context.Context, arg UpsertUserSelectionCountParams) error
+	// Distinct terms the caller has searched recipes for — recipes whose names
+	// match these terms form the "searched but not viewed" tier.
+	UserRecipeSearchTerms(ctx context.Context, userID int64) ([]pgtype.Text, error)
+	// Recipes the caller has opened, most-viewed first — the "viewed" tier.
+	UserViewedRecipeIDs(ctx context.Context, userID int64) ([]UserViewedRecipeIDsRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

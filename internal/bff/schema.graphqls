@@ -79,7 +79,8 @@ type Query {
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
-  recipes(page: Int = 1, pageSize: Int = 25): RecipePage!
+  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean): RecipePage!
+  recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
   userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
   userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
@@ -216,6 +217,13 @@ type Mutation {
   deleteRecipe(id: ID!): Boolean! @admin
   setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
   rateRecipe(recipeId: ID!, rating: Int!): Recipe!
+  setRecipeCategories(recipeId: ID!, categoryIds: [ID!]!): Recipe!
+  createRecipeCategoryGroup(input: CreateRecipeCategoryGroupInput!): RecipeCategoryGroup! @admin
+  updateRecipeCategoryGroup(id: ID!, input: UpdateRecipeCategoryGroupInput!): RecipeCategoryGroup! @admin
+  deleteRecipeCategoryGroup(id: ID!): Boolean! @admin
+  createRecipeCategory(input: CreateRecipeCategoryInput!): RecipeCategory! @admin
+  updateRecipeCategory(id: ID!, input: UpdateRecipeCategoryInput!): RecipeCategory! @admin
+  deleteRecipeCategory(id: ID!): Boolean! @admin
 
   createMealPlan(input: CreateMealPlanInput!): MealPlan!
   updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!
@@ -227,6 +235,7 @@ type Mutation {
 
   generateGroceryList(mealPlanId: ID!): GroceryList!
   recordSelection(entityType: EntityType!, entityId: ID!): Boolean!
+  recordView(entityType: EntityType!, entityId: ID!): Boolean!
   recordSearch(entityType: EntityType!, term: String!): Boolean!
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
   addGroceryItem(input: AddGroceryItemInput!): GroceryListItem!
@@ -534,6 +543,23 @@ type Recipe {
   myRating: Int
   averageRating: Float
   ratingCount: Int!
+  categories: [RecipeCategory!]!
+}
+
+# RecipeCategoryGroup is a typed bucket of categories (Course, Cuisine,
+# ...). An exclusive group allows at most one of its categories per recipe.
+type RecipeCategoryGroup {
+  id: ID!
+  name: String!
+  exclusive: Boolean!
+  displayOrder: Int!
+  categories: [RecipeCategory!]!
+}
+
+type RecipeCategory {
+  id: ID!
+  name: String!
+  group: RecipeCategoryGroup!
 }
 
 type RecipeRecommendation {
@@ -1013,8 +1039,30 @@ input CreateRecipeInput {
   servings: Int
   prepTimeMinutes: Int
   cookTimeMinutes: Int
+  categoryIds: [ID!]
   items: [RecipeItemInput!]!
   steps: [RecipeStepInput!]!
+}
+
+input CreateRecipeCategoryGroupInput {
+  name: String!
+  exclusive: Boolean
+  displayOrder: Int
+}
+
+input UpdateRecipeCategoryGroupInput {
+  name: String
+  exclusive: Boolean
+  displayOrder: Int
+}
+
+input CreateRecipeCategoryInput {
+  groupId: ID!
+  name: String!
+}
+
+input UpdateRecipeCategoryInput {
+  name: String
 }
 
 input RecipeItemInput {
