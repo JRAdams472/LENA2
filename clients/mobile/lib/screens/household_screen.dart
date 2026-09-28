@@ -3,6 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
+import 'edit_recipe_screen.dart';
+import 'event_detail_screen.dart';
+import 'grocery_lists_screen.dart';
+import 'notification_settings_screen.dart';
+import 'pantry_screen.dart';
+
 const int maxHouseholdMembers = 10;
 
 const String householdQuery = r'''
@@ -47,6 +53,10 @@ const String householdQuery = r'''
       id
       kind
       foodEventId
+      title
+      body
+      recipeId
+      itemId
       createdAt
       actor {
         id
@@ -131,6 +141,12 @@ const String markAllReadMutation = r'''
   }
 ''';
 
+const String addToGroceryMutation = r'''
+  mutation AddToGrocery($itemId: ID!) {
+    addItemToCurrentGroceryList(itemId: $itemId) { id }
+  }
+''';
+
 String _notificationText(Map<String, dynamic> n) {
   final actor = n['actor'] as Map<String, dynamic>?;
   final who =
@@ -160,6 +176,12 @@ String _notificationText(Map<String, dynamic> n) {
       return '$who updated an event';
     case 'EVENT_DELETED':
       return '$who deleted an event';
+    case 'PROTEIN_DEFROST':
+      return 'Protein defrost reminder';
+    case 'MEAL_PREP_ADVANCE':
+      return 'Meal prep reminder';
+    case 'ITEM_EXPIRING':
+      return 'Pantry item expiring soon';
     default:
       return 'Household update';
   }
@@ -262,6 +284,61 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
       setState(() => _error = null);
       _refetch?.call();
     }
+  }
+
+  // Deep link for a notification row: recipe reminders open the recipe,
+  // expiry rows open the pantry, event kinds open the event detail.
+  void Function()? _notificationLink(Map<String, dynamic> n) {
+    final recipeId = n['recipeId'] as String?;
+    if (recipeId != null) {
+      return () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EditRecipeScreen(recipeId: recipeId),
+            ),
+          );
+    }
+    final itemId = n['itemId'] as String?;
+    if (itemId != null) {
+      return () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PantryScreen()),
+          );
+    }
+    final eventId = n['foodEventId'] as String?;
+    if (eventId != null) {
+      return () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EventDetailScreen(foodEventId: eventId),
+            ),
+          );
+    }
+    return null;
+  }
+
+  Future<void> _addReplacement(String itemId) async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.mutate(
+      MutationOptions(
+        document: gql(addToGroceryMutation),
+        variables: {'itemId': itemId},
+      ),
+    );
+    if (!mounted) return;
+    if (result.hasException) {
+      setState(() {
+        _error = result.exception?.graphqlErrors.isNotEmpty == true
+            ? result.exception!.graphqlErrors.first.message
+            : 'Request failed';
+      });
+      return;
+    }
+    setState(() => _error = null);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const GroceryListsScreen()),
+    );
   }
 
   // Mirrors the backend matrix: owner acts on admins/members, admin acts
@@ -455,15 +532,44 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                   label: Text('$unread'),
                   child: const Icon(Icons.notifications),
                 ),
+                IconButton(
+                  tooltip: 'Notification settings',
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationSettingsScreen(),
+                    ),
+                  ),
+                ),
               ],
             ),
             ...notifications.map((n) {
               final ago = _timeAgo(n['createdAt'] as String?);
+              // Scheduled reminders carry server-rendered text; event
+              // kinds fall back to client-side strings.
+              final title = n['title'] as String? ?? _notificationText(n);
+              final body = n['body'] as String? ?? '';
+              final itemId = n['itemId'] as String?;
               return ListTile(
                 dense: true,
                 leading: const Icon(Icons.notifications_outlined),
-                title: Text(_notificationText(n)),
-                subtitle: ago.isEmpty ? null : Text(ago),
+                title: Text(title),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (body.isNotEmpty) Text(body),
+                    if (ago.isNotEmpty) Text(ago),
+                  ],
+                ),
+                trailing:
+                    n['kind'] == 'ITEM_EXPIRING' && itemId != null
+                        ? TextButton(
+                            onPressed: () => _addReplacement(itemId),
+                            child: const Text('Add to list'),
+                          )
+                        : null,
+                onTap: _notificationLink(n),
               );
             }),
             const SizedBox(height: 8),
