@@ -840,3 +840,259 @@ func TestRecipeStepTimingFields(t *testing.T) {
 		assert.Empty(t, got.Appliance)
 	})
 }
+
+func categoryGroupRow() sqlc.RecipeCategoryGroup {
+	return sqlc.RecipeCategoryGroup{
+		CategoryGroupID: 3, Name: "Cuisine", Exclusive: true, DisplayOrder: 6,
+		CreatedBy: "seed", CreatedAt: time.Now(),
+	}
+}
+
+func categoryRow() sqlc.RecipeCategory {
+	return sqlc.RecipeCategory{
+		CategoryID: 21, CategoryGroupID: 3, Name: "Mexican",
+		CreatedBy: "seed", CreatedAt: time.Now(),
+	}
+}
+
+func TestCategoryGroupCRUD(t *testing.T) {
+	t.Run("create maps fields and audit", func(t *testing.T) {
+		svc, mq := newService(t)
+		want := sqlc.CreateCategoryGroupParams{
+			Name: "Cuisine", Exclusive: true, DisplayOrder: 6,
+			CreatedBy: "alice", UpdatedBy: textOrNull("alice"),
+		}
+		mq.EXPECT().CreateCategoryGroup(gomock.Any(), want).Return(categoryGroupRow(), nil)
+
+		got, err := svc.CreateCategoryGroup(context.Background(), CategoryGroup{
+			Name: "Cuisine", Exclusive: true, DisplayOrder: 6,
+		}, "alice")
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), got.CategoryGroupID)
+		assert.Equal(t, "Cuisine", got.Name)
+		assert.True(t, got.Exclusive)
+	})
+
+	t.Run("update", func(t *testing.T) {
+		svc, mq := newService(t)
+		want := sqlc.UpdateCategoryGroupParams{
+			CategoryGroupID: 3, Name: "Region", Exclusive: false, DisplayOrder: 2,
+			UpdatedBy: textOrNull("bob"),
+		}
+		mq.EXPECT().UpdateCategoryGroup(gomock.Any(), want).
+			Return(sqlc.RecipeCategoryGroup{CategoryGroupID: 3, Name: "Region", DisplayOrder: 2}, nil)
+
+		got, err := svc.UpdateCategoryGroup(context.Background(), 3, CategoryGroup{
+			Name: "Region", DisplayOrder: 2,
+		}, "bob")
+		require.NoError(t, err)
+		assert.Equal(t, "Region", got.Name)
+		assert.False(t, got.Exclusive)
+	})
+
+	t.Run("delete blocks group that still has categories", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountCategoriesInGroup(gomock.Any(), int64(3)).Return(int64(2), nil)
+
+		err := svc.DeleteCategoryGroup(context.Background(), 3)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "still has categories")
+	})
+
+	t.Run("delete empty group", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountCategoriesInGroup(gomock.Any(), int64(3)).Return(int64(0), nil)
+		mq.EXPECT().DeleteCategoryGroup(gomock.Any(), int64(3)).Return(nil)
+
+		require.NoError(t, svc.DeleteCategoryGroup(context.Background(), 3))
+	})
+
+	t.Run("list orders by display order", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListCategoryGroups(gomock.Any()).Return([]sqlc.RecipeCategoryGroup{
+			categoryGroupRow(),
+		}, nil)
+
+		got, err := svc.ListCategoryGroups(context.Background())
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "Cuisine", got[0].Name)
+	})
+}
+
+func TestCategoryCRUD(t *testing.T) {
+	t.Run("create maps fields", func(t *testing.T) {
+		svc, mq := newService(t)
+		want := sqlc.CreateCategoryParams{
+			CategoryGroupID: 3, Name: "Mexican",
+			CreatedBy: "alice", UpdatedBy: textOrNull("alice"),
+		}
+		mq.EXPECT().CreateCategory(gomock.Any(), want).Return(categoryRow(), nil)
+
+		got, err := svc.CreateCategory(context.Background(), Category{
+			CategoryGroupID: 3, Name: "Mexican",
+		}, "alice")
+		require.NoError(t, err)
+		assert.Equal(t, int64(21), got.CategoryID)
+		assert.Equal(t, "Mexican", got.Name)
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteCategory(gomock.Any(), int64(21)).Return(nil)
+		require.NoError(t, svc.DeleteCategory(context.Background(), 21))
+	})
+
+	t.Run("list by group", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListCategoriesByGroup(gomock.Any(), int64(3)).
+			Return([]sqlc.RecipeCategory{categoryRow()}, nil)
+
+		got, err := svc.ListCategoriesByGroup(context.Background(), 3)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "Mexican", got[0].Name)
+	})
+
+	t.Run("list for recipes groups rows by recipe", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{7, 9}).
+			Return([]sqlc.ListCategoriesForRecipesRow{
+				{RecipeID: 7, CategoryID: 21, CategoryGroupID: 3, Name: "Mexican",
+					GroupName: "Cuisine", GroupExclusive: true, GroupDisplayOrder: 6},
+				{RecipeID: 9, CategoryID: 40, CategoryGroupID: 1, Name: "Dinner",
+					GroupName: "Course", GroupExclusive: true, GroupDisplayOrder: 1},
+				{RecipeID: 9, CategoryID: 21, CategoryGroupID: 3, Name: "Mexican",
+					GroupName: "Cuisine", GroupExclusive: true, GroupDisplayOrder: 6},
+			}, nil)
+
+		got, err := svc.ListCategoriesForRecipes(context.Background(), []int64{7, 9})
+		require.NoError(t, err)
+		require.Len(t, got[7], 1)
+		require.Len(t, got[9], 2)
+		assert.Equal(t, "Cuisine", got[7][0].GroupName)
+		assert.True(t, got[7][0].GroupExclusive)
+	})
+}
+
+func TestSetRecipeCategories(t *testing.T) {
+	lookup := func(ids ...int64) []sqlc.ListCategoriesByIDsRow {
+		rows := make([]sqlc.ListCategoriesByIDsRow, len(ids))
+		for i, id := range ids {
+			rows[i] = sqlc.ListCategoriesByIDsRow{CategoryID: id}
+		}
+		return rows
+	}
+	cuisine := func(id int64, name string) sqlc.ListCategoriesByIDsRow {
+		return sqlc.ListCategoriesByIDsRow{
+			CategoryID: id, CategoryGroupID: 3, Name: name,
+			GroupName: "Cuisine", GroupExclusive: true,
+		}
+	}
+	dishType := func(id int64, name string) sqlc.ListCategoriesByIDsRow {
+		return sqlc.ListCategoriesByIDsRow{
+			CategoryID: id, CategoryGroupID: 2, Name: name,
+			GroupName: "Dish Type", GroupExclusive: false,
+		}
+	}
+
+	t.Run("replaces assignments atomically", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+		mq.EXPECT().ListCategoriesByIDs(gomock.Any(), []int64{21, 40}).
+			Return([]sqlc.ListCategoriesByIDsRow{cuisine(21, "Mexican"), dishType(40, "Soup")}, nil)
+		mq.EXPECT().ClearRecipeCategories(gomock.Any(), int64(7)).Return(nil)
+		mq.EXPECT().AddRecipeCategories(gomock.Any(), sqlc.AddRecipeCategoriesParams{
+			RecipeID: 7, Column2: []int64{21, 40}, AssignedBy: "alice",
+		}).Return(nil)
+
+		require.NoError(t, svc.SetRecipeCategories(context.Background(), 7, []int64{21, 40}, "alice"))
+	})
+
+	t.Run("empty set clears all", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+		mq.EXPECT().ClearRecipeCategories(gomock.Any(), int64(7)).Return(nil)
+
+		require.NoError(t, svc.SetRecipeCategories(context.Background(), 7, nil, "alice"))
+	})
+
+	t.Run("two categories from one exclusive group is rejected", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+		mq.EXPECT().ListCategoriesByIDs(gomock.Any(), []int64{21, 22}).
+			Return([]sqlc.ListCategoriesByIDsRow{cuisine(21, "Mexican"), cuisine(22, "Italian")}, nil)
+
+		err := svc.SetRecipeCategories(context.Background(), 7, []int64{21, 22}, "alice")
+		require.Error(t, err)
+		var ve *domainerr.ValidationError
+		require.ErrorAs(t, err, &ve)
+		assert.ErrorContains(t, err, "Mexican")
+		assert.ErrorContains(t, err, "Italian")
+	})
+
+	t.Run("two categories from a non-exclusive group is fine", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+		mq.EXPECT().ListCategoriesByIDs(gomock.Any(), []int64{40, 41}).
+			Return([]sqlc.ListCategoriesByIDsRow{dishType(40, "Soup"), dishType(41, "Casserole")}, nil)
+		mq.EXPECT().ClearRecipeCategories(gomock.Any(), int64(7)).Return(nil)
+		mq.EXPECT().AddRecipeCategories(gomock.Any(), gomock.Any()).Return(nil)
+
+		require.NoError(t, svc.SetRecipeCategories(context.Background(), 7, []int64{40, 41}, "alice"))
+	})
+
+	t.Run("unknown category id is rejected", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+		mq.EXPECT().ListCategoriesByIDs(gomock.Any(), []int64{21, 99}).Return(lookup(21), nil)
+
+		err := svc.SetRecipeCategories(context.Background(), 7, []int64{21, 99}, "alice")
+		require.Error(t, err)
+		var ve *domainerr.ValidationError
+		require.ErrorAs(t, err, &ve)
+	})
+
+	t.Run("missing recipe propagates not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).
+			Return(sqlc.RecipeRecipe{}, pgx.ErrNoRows)
+
+		err := svc.SetRecipeCategories(context.Background(), 7, []int64{21}, "alice")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
+	})
+}
+
+func TestSearchRecipes(t *testing.T) {
+	t.Run("filters and ranking sets map to params", func(t *testing.T) {
+		svc, mq := newService(t)
+		arg := RecipeSearch{
+			Active: true, Search: "soup", CategoryIDs: []int64{21},
+			IncludeIDs: []int64{7}, FavoriteIDs: []int64{7},
+			UsedIDs: []int64{9}, ViewedIDs: []int64{8},
+			SearchTerms: []string{"taco"}, Limit: 10, Offset: 20,
+		}
+		mq.EXPECT().SearchRecipes(gomock.Any(), arg.params()).Return([]sqlc.RecipeRecipe{recipeRow()}, nil)
+
+		got, err := svc.SearchRecipes(context.Background(), arg)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "Pancakes", got[0].Name)
+	})
+
+	t.Run("count uses same filters without ranking", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountSearchRecipes(gomock.Any(), sqlc.CountSearchRecipesParams{
+			IsActive: true, Search: "soup", CategoryIds: []int64{21},
+			IncludeIds: []int64{7}, ExcludeIds: []int64{3},
+		}).Return(int64(4), nil)
+
+		n, err := svc.CountSearchRecipes(context.Background(), RecipeSearch{
+			Active: true, Search: "soup", CategoryIDs: []int64{21},
+			IncludeIDs: []int64{7}, ExcludeIDs: []int64{3},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int64(4), n)
+	})
+}

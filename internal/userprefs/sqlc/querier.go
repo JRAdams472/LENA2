@@ -28,6 +28,10 @@ type Querier interface {
 	GetHouseholdItemByID(ctx context.Context, arg GetHouseholdItemByIDParams) (UserprefsHouseholdItem, error)
 	GetHouseholdItemByItem(ctx context.Context, arg GetHouseholdItemByItemParams) (UserprefsHouseholdItem, error)
 	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
+	// Every recipe the user has favorited — feeds the search ranking boost and
+	// the isFavorite filter (kept in userprefs; SQL never crosses schemas, so
+	// the BFF passes these IDs into the recipe query).
+	ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error)
 	ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error)
 	ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error)

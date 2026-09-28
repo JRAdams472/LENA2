@@ -218,3 +218,65 @@ func TestListRecipeRecommendations(t *testing.T) {
 		assert.ErrorContains(t, err, "list recipe recommendations")
 	})
 }
+
+func TestRecordView(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("inserts event without selection count upserts", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().InsertInteractionEvent(gomock.Any(), gomock.Any()).Return(nil)
+		// RecordView must NOT call UpsertUserSelectionCount or
+		// UpsertGlobalSelectionCount — views are not picks.
+
+		err := s.RecordView(ctx, Event{
+			UserID: 1, EventType: "recipe_viewed", EntityType: "recipe", EntityID: 7,
+		}, "viewer")
+		require.NoError(t, err)
+	})
+
+	t.Run("validation", func(t *testing.T) {
+		s, _ := newTestService(t)
+		err := s.RecordView(ctx, Event{EventType: "recipe_viewed"}, "test")
+		assert.ErrorContains(t, err, "user_id is required")
+		err = s.RecordView(ctx, Event{UserID: 1}, "test")
+		assert.ErrorContains(t, err, "event_type is required")
+	})
+}
+
+func TestRecipeEngagementSets(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("maps rows into engagement sets", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().HouseholdUsedRecipeIDs(gomock.Any(), int64(7)).
+			Return([]sqlc.HouseholdUsedRecipeIDsRow{
+				{RecipeID: pgtype.Int8{Int64: 9, Valid: true}, Hits: 5},
+				{RecipeID: pgtype.Int8{Int64: 3, Valid: true}, Hits: 2},
+				{RecipeID: pgtype.Int8{}},
+			}, nil)
+		q.EXPECT().UserViewedRecipeIDs(gomock.Any(), int64(1)).
+			Return([]sqlc.UserViewedRecipeIDsRow{
+				{RecipeID: pgtype.Int8{Int64: 4, Valid: true}, Hits: 3},
+			}, nil)
+		q.EXPECT().UserRecipeSearchTerms(gomock.Any(), int64(1)).
+			Return([]pgtype.Text{
+				{String: "taco", Valid: true},
+				{String: "", Valid: false},
+			}, nil)
+
+		eng, err := s.RecipeEngagementSets(ctx, 1, 7)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{9, 3}, eng.UsedIDs)
+		assert.Equal(t, []int64{4}, eng.ViewedIDs)
+		assert.Equal(t, []string{"taco"}, eng.SearchTerms)
+	})
+
+	t.Run("query error propagates", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().HouseholdUsedRecipeIDs(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+
+		_, err := s.RecipeEngagementSets(ctx, 1, 7)
+		assert.ErrorIs(t, err, errBoom)
+		assert.ErrorContains(t, err, "engagement used")
+	})
+}

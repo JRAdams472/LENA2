@@ -7,9 +7,27 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const addRecipeCategories = `-- name: AddRecipeCategories :exec
+INSERT INTO recipe.recipe_category (recipe_id, category_id, assigned_by)
+SELECT $1, unnest($2::bigint[]), $3
+ON CONFLICT DO NOTHING
+`
+
+type AddRecipeCategoriesParams struct {
+	RecipeID   int64   `json:"recipe_id"`
+	Column2    []int64 `json:"column_2"`
+	AssignedBy string  `json:"assigned_by"`
+}
+
+func (q *Queries) AddRecipeCategories(ctx context.Context, arg AddRecipeCategoriesParams) error {
+	_, err := q.db.Exec(ctx, addRecipeCategories, arg.RecipeID, arg.Column2, arg.AssignedBy)
+	return err
+}
 
 const addRecipeItem = `-- name: AddRecipeItem :exec
 INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit_id, section_name, display_order, notes, is_optional)
@@ -94,6 +112,29 @@ func (q *Queries) AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (R
 	return i, err
 }
 
+const clearRecipeCategories = `-- name: ClearRecipeCategories :exec
+DELETE FROM recipe.recipe_category
+WHERE recipe_id = $1
+`
+
+func (q *Queries) ClearRecipeCategories(ctx context.Context, recipeID int64) error {
+	_, err := q.db.Exec(ctx, clearRecipeCategories, recipeID)
+	return err
+}
+
+const countCategoriesInGroup = `-- name: CountCategoriesInGroup :one
+SELECT COUNT(*)
+FROM recipe.category
+WHERE category_group_id = $1
+`
+
+func (q *Queries) CountCategoriesInGroup(ctx context.Context, categoryGroupID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countCategoriesInGroup, categoryGroupID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRecipes = `-- name: CountRecipes :one
 SELECT COUNT(*)
 FROM recipe.recipe
@@ -105,6 +146,120 @@ func (q *Queries) CountRecipes(ctx context.Context, isActive bool) (int64, error
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const countSearchRecipes = `-- name: CountSearchRecipes :one
+SELECT COUNT(*)
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND ($2::text IS NULL OR lower(r.name) LIKE '%' || lower($2) || '%')
+  AND (
+    $3::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY($3::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY($3::bigint[])
+    )
+  )
+  AND ($4::bigint[] IS NULL OR r.recipe_id = ANY($4::bigint[]))
+  AND ($5::bigint[] IS NULL OR NOT (r.recipe_id = ANY($5::bigint[])))
+`
+
+type CountSearchRecipesParams struct {
+	IsActive    bool    `json:"is_active"`
+	Search      string  `json:"search"`
+	CategoryIds []int64 `json:"category_ids"`
+	IncludeIds  []int64 `json:"include_ids"`
+	ExcludeIds  []int64 `json:"exclude_ids"`
+}
+
+func (q *Queries) CountSearchRecipes(ctx context.Context, arg CountSearchRecipesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchRecipes,
+		arg.IsActive,
+		arg.Search,
+		arg.CategoryIds,
+		arg.IncludeIds,
+		arg.ExcludeIds,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createCategory = `-- name: CreateCategory :one
+INSERT INTO recipe.category (category_group_id, name, created_by, updated_by)
+VALUES ($1, $2, $3, $4)
+RETURNING category_id, category_group_id, name, created_by, created_at, updated_by, updated_at
+`
+
+type CreateCategoryParams struct {
+	CategoryGroupID int64       `json:"category_group_id"`
+	Name            string      `json:"name"`
+	CreatedBy       string      `json:"created_by"`
+	UpdatedBy       pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (RecipeCategory, error) {
+	row := q.db.QueryRow(ctx, createCategory,
+		arg.CategoryGroupID,
+		arg.Name,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i RecipeCategory
+	err := row.Scan(
+		&i.CategoryID,
+		&i.CategoryGroupID,
+		&i.Name,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createCategoryGroup = `-- name: CreateCategoryGroup :one
+
+INSERT INTO recipe.category_group (name, exclusive, display_order, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING category_group_id, name, exclusive, display_order, created_by, created_at, updated_by, updated_at
+`
+
+type CreateCategoryGroupParams struct {
+	Name         string      `json:"name"`
+	Exclusive    bool        `json:"exclusive"`
+	DisplayOrder int32       `json:"display_order"`
+	CreatedBy    string      `json:"created_by"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+// ---------- recipe categories (0035) ----------
+func (q *Queries) CreateCategoryGroup(ctx context.Context, arg CreateCategoryGroupParams) (RecipeCategoryGroup, error) {
+	row := q.db.QueryRow(ctx, createCategoryGroup,
+		arg.Name,
+		arg.Exclusive,
+		arg.DisplayOrder,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i RecipeCategoryGroup
+	err := row.Scan(
+		&i.CategoryGroupID,
+		&i.Name,
+		&i.Exclusive,
+		&i.DisplayOrder,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const createRecipe = `-- name: CreateRecipe :one
@@ -152,6 +307,26 @@ func (q *Queries) CreateRecipe(ctx context.Context, arg CreateRecipeParams) (Rec
 	return i, err
 }
 
+const deleteCategory = `-- name: DeleteCategory :exec
+DELETE FROM recipe.category
+WHERE category_id = $1
+`
+
+func (q *Queries) DeleteCategory(ctx context.Context, categoryID int64) error {
+	_, err := q.db.Exec(ctx, deleteCategory, categoryID)
+	return err
+}
+
+const deleteCategoryGroup = `-- name: DeleteCategoryGroup :exec
+DELETE FROM recipe.category_group
+WHERE category_group_id = $1
+`
+
+func (q *Queries) DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) error {
+	_, err := q.db.Exec(ctx, deleteCategoryGroup, categoryGroupID)
+	return err
+}
+
 const deleteRecipe = `-- name: DeleteRecipe :exec
 DELETE FROM recipe.recipe
 WHERE recipe_id = $1
@@ -190,6 +365,49 @@ WHERE recipe_id = $1
 func (q *Queries) DeleteRecipeSteps(ctx context.Context, recipeID int64) error {
 	_, err := q.db.Exec(ctx, deleteRecipeSteps, recipeID)
 	return err
+}
+
+const getCategoryByID = `-- name: GetCategoryByID :one
+SELECT category_id, category_group_id, name, created_by, created_at, updated_by, updated_at
+FROM recipe.category
+WHERE category_id = $1
+`
+
+func (q *Queries) GetCategoryByID(ctx context.Context, categoryID int64) (RecipeCategory, error) {
+	row := q.db.QueryRow(ctx, getCategoryByID, categoryID)
+	var i RecipeCategory
+	err := row.Scan(
+		&i.CategoryID,
+		&i.CategoryGroupID,
+		&i.Name,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCategoryGroupByID = `-- name: GetCategoryGroupByID :one
+SELECT category_group_id, name, exclusive, display_order, created_by, created_at, updated_by, updated_at
+FROM recipe.category_group
+WHERE category_group_id = $1
+`
+
+func (q *Queries) GetCategoryGroupByID(ctx context.Context, categoryGroupID int64) (RecipeCategoryGroup, error) {
+	row := q.db.QueryRow(ctx, getCategoryGroupByID, categoryGroupID)
+	var i RecipeCategoryGroup
+	err := row.Scan(
+		&i.CategoryGroupID,
+		&i.Name,
+		&i.Exclusive,
+		&i.DisplayOrder,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getRecipeByID = `-- name: GetRecipeByID :one
@@ -266,6 +484,179 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 			&i.PrepTimeMinutes,
 			&i.CookTimeMinutes,
 			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoriesByGroup = `-- name: ListCategoriesByGroup :many
+SELECT category_id, category_group_id, name, created_by, created_at, updated_by, updated_at
+FROM recipe.category
+WHERE category_group_id = $1
+ORDER BY name
+`
+
+func (q *Queries) ListCategoriesByGroup(ctx context.Context, categoryGroupID int64) ([]RecipeCategory, error) {
+	rows, err := q.db.Query(ctx, listCategoriesByGroup, categoryGroupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeCategory{}
+	for rows.Next() {
+		var i RecipeCategory
+		if err := rows.Scan(
+			&i.CategoryID,
+			&i.CategoryGroupID,
+			&i.Name,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoriesByIDs = `-- name: ListCategoriesByIDs :many
+SELECT c.category_id, c.category_group_id, c.name, c.created_by, c.created_at, c.updated_by, c.updated_at, g.name AS group_name, g.exclusive AS group_exclusive, g.display_order AS group_display_order
+FROM recipe.category c
+JOIN recipe.category_group g ON g.category_group_id = c.category_group_id
+WHERE c.category_id = ANY($1::bigint[])
+`
+
+type ListCategoriesByIDsRow struct {
+	CategoryID        int64              `json:"category_id"`
+	CategoryGroupID   int64              `json:"category_group_id"`
+	Name              string             `json:"name"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	GroupName         string             `json:"group_name"`
+	GroupExclusive    bool               `json:"group_exclusive"`
+	GroupDisplayOrder int32              `json:"group_display_order"`
+}
+
+// Categories with their group's exclusivity/name, for assignment-time
+// validation (a recipe may hold at most one category per exclusive group).
+func (q *Queries) ListCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]ListCategoriesByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listCategoriesByIDs, categoryIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCategoriesByIDsRow{}
+	for rows.Next() {
+		var i ListCategoriesByIDsRow
+		if err := rows.Scan(
+			&i.CategoryID,
+			&i.CategoryGroupID,
+			&i.Name,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.GroupName,
+			&i.GroupExclusive,
+			&i.GroupDisplayOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoriesForRecipes = `-- name: ListCategoriesForRecipes :many
+SELECT rc.recipe_id, c.category_id, c.name, c.category_group_id,
+       g.name AS group_name, g.exclusive AS group_exclusive, g.display_order AS group_display_order
+FROM recipe.recipe_category rc
+JOIN recipe.category c ON c.category_id = rc.category_id
+JOIN recipe.category_group g ON g.category_group_id = c.category_group_id
+WHERE rc.recipe_id = ANY($1::bigint[])
+ORDER BY g.display_order, c.name
+`
+
+type ListCategoriesForRecipesRow struct {
+	RecipeID          int64  `json:"recipe_id"`
+	CategoryID        int64  `json:"category_id"`
+	Name              string `json:"name"`
+	CategoryGroupID   int64  `json:"category_group_id"`
+	GroupName         string `json:"group_name"`
+	GroupExclusive    bool   `json:"group_exclusive"`
+	GroupDisplayOrder int32  `json:"group_display_order"`
+}
+
+// Batch child preload: every category each recipe carries, with group
+// metadata so resolvers never query per-row.
+func (q *Queries) ListCategoriesForRecipes(ctx context.Context, recipeIds []int64) ([]ListCategoriesForRecipesRow, error) {
+	rows, err := q.db.Query(ctx, listCategoriesForRecipes, recipeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCategoriesForRecipesRow{}
+	for rows.Next() {
+		var i ListCategoriesForRecipesRow
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.CategoryID,
+			&i.Name,
+			&i.CategoryGroupID,
+			&i.GroupName,
+			&i.GroupExclusive,
+			&i.GroupDisplayOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoryGroups = `-- name: ListCategoryGroups :many
+SELECT category_group_id, name, exclusive, display_order, created_by, created_at, updated_by, updated_at
+FROM recipe.category_group
+ORDER BY display_order, name
+`
+
+func (q *Queries) ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup, error) {
+	rows, err := q.db.Query(ctx, listCategoryGroups)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeCategoryGroup{}
+	for rows.Next() {
+		var i RecipeCategoryGroup
+		if err := rows.Scan(
+			&i.CategoryGroupID,
+			&i.Name,
+			&i.Exclusive,
+			&i.DisplayOrder,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
@@ -605,6 +996,180 @@ WHERE recipe_item_id = $1
 func (q *Queries) RemoveRecipeItem(ctx context.Context, recipeItemID int64) error {
 	_, err := q.db.Exec(ctx, removeRecipeItem, recipeItemID)
 	return err
+}
+
+const searchRecipes = `-- name: SearchRecipes :many
+SELECT r.recipe_id, r.name, r.description, r.servings, r.prep_time_minutes, r.cook_time_minutes, r.is_active, r.created_by, r.created_at, r.updated_by, r.updated_at
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND ($2::text IS NULL OR lower(r.name) LIKE '%' || lower($2) || '%')
+  AND (
+    $3::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY($3::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY($3::bigint[])
+    )
+  )
+  AND ($4::bigint[] IS NULL OR r.recipe_id = ANY($4::bigint[]))
+  AND ($5::bigint[] IS NULL OR NOT (r.recipe_id = ANY($5::bigint[])))
+ORDER BY
+  CASE
+    WHEN $6::bigint[] IS NOT NULL AND r.recipe_id = ANY($6::bigint[]) THEN 0
+    WHEN r.recipe_id = ANY($7::bigint[]) THEN 1
+    WHEN r.recipe_id = ANY($8::bigint[]) THEN 2
+    WHEN EXISTS (
+      SELECT 1 FROM unnest($9::text[]) t
+      WHERE position(lower(t) in lower(r.name)) > 0
+    ) THEN 3
+    ELSE 4
+  END,
+  array_position($7::bigint[], r.recipe_id),
+  array_position($8::bigint[], r.recipe_id),
+  r.name
+LIMIT $11::int OFFSET $10::int
+`
+
+type SearchRecipesParams struct {
+	IsActive    bool     `json:"is_active"`
+	Search      string   `json:"search"`
+	CategoryIds []int64  `json:"category_ids"`
+	IncludeIds  []int64  `json:"include_ids"`
+	ExcludeIds  []int64  `json:"exclude_ids"`
+	FavoriteIds []int64  `json:"favorite_ids"`
+	UsedIds     []int64  `json:"used_ids"`
+	ViewedIds   []int64  `json:"viewed_ids"`
+	SearchTerms []string `json:"search_terms"`
+	Offset      int32    `json:"offset"`
+	Limit       int32    `json:"limit"`
+}
+
+// Filtered + engagement-ranked recipe listing. Ranking tiers come from
+// engagement ID arrays computed by the BFF (analytics/userprefs live in
+// other schemas — SQL never crosses schemas):
+//
+//	0 favorite, 1 used (household menus), 2 viewed, 3 searched, 4 rest.
+//
+// The used/viewed arrays arrive pre-sorted by signal strength so
+// array_position doubles as the in-tier tiebreaker.
+func (q *Queries) SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([]RecipeRecipe, error) {
+	rows, err := q.db.Query(ctx, searchRecipes,
+		arg.IsActive,
+		arg.Search,
+		arg.CategoryIds,
+		arg.IncludeIds,
+		arg.ExcludeIds,
+		arg.FavoriteIds,
+		arg.UsedIds,
+		arg.ViewedIds,
+		arg.SearchTerms,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipe{}
+	for rows.Next() {
+		var i RecipeRecipe
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.Name,
+			&i.Description,
+			&i.Servings,
+			&i.PrepTimeMinutes,
+			&i.CookTimeMinutes,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateCategory = `-- name: UpdateCategory :one
+UPDATE recipe.category
+SET name       = $2,
+    updated_by = $3,
+    updated_at = now()
+WHERE category_id = $1
+RETURNING category_id, category_group_id, name, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateCategoryParams struct {
+	CategoryID int64       `json:"category_id"`
+	Name       string      `json:"name"`
+	UpdatedBy  pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (RecipeCategory, error) {
+	row := q.db.QueryRow(ctx, updateCategory, arg.CategoryID, arg.Name, arg.UpdatedBy)
+	var i RecipeCategory
+	err := row.Scan(
+		&i.CategoryID,
+		&i.CategoryGroupID,
+		&i.Name,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateCategoryGroup = `-- name: UpdateCategoryGroup :one
+UPDATE recipe.category_group
+SET name          = $2,
+    exclusive     = $3,
+    display_order = $4,
+    updated_by    = $5,
+    updated_at    = now()
+WHERE category_group_id = $1
+RETURNING category_group_id, name, exclusive, display_order, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateCategoryGroupParams struct {
+	CategoryGroupID int64       `json:"category_group_id"`
+	Name            string      `json:"name"`
+	Exclusive       bool        `json:"exclusive"`
+	DisplayOrder    int32       `json:"display_order"`
+	UpdatedBy       pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateCategoryGroup(ctx context.Context, arg UpdateCategoryGroupParams) (RecipeCategoryGroup, error) {
+	row := q.db.QueryRow(ctx, updateCategoryGroup,
+		arg.CategoryGroupID,
+		arg.Name,
+		arg.Exclusive,
+		arg.DisplayOrder,
+		arg.UpdatedBy,
+	)
+	var i RecipeCategoryGroup
+	err := row.Scan(
+		&i.CategoryGroupID,
+		&i.Name,
+		&i.Exclusive,
+		&i.DisplayOrder,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateRecipe = `-- name: UpdateRecipe :exec

@@ -462,3 +462,132 @@ func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
 	require.Len(t, steps, 1)
 	assert.Equal(t, "First", steps[0].Instruction)
 }
+
+// findCategory returns the seeded category ID by group and name.
+func itCategoryID(t *testing.T, svc *Service, ctx context.Context, group, name string) int64 {
+	t.Helper()
+	groups, err := svc.ListCategoryGroups(ctx)
+	require.NoError(t, err)
+	for _, g := range groups {
+		if g.Name != group {
+			continue
+		}
+		cats, err := svc.ListCategoriesByGroup(ctx, g.CategoryGroupID)
+		require.NoError(t, err)
+		for _, c := range cats {
+			if c.Name == name {
+				return c.CategoryID
+			}
+		}
+		t.Fatalf("category %q not seeded in group %q", name, group)
+	}
+	t.Fatalf("category group %q not seeded", group)
+	return 0
+}
+
+func TestIntegrationRecipeCategories(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	// Seed taxonomy from migration 0035.
+	groups, err := svc.ListCategoryGroups(ctx)
+	require.NoError(t, err)
+	require.Len(t, groups, 6)
+	byName := make(map[string]CategoryGroup, len(groups))
+	for _, g := range groups {
+		byName[g.Name] = g
+	}
+	assert.True(t, byName["Cuisine"].Exclusive)
+	assert.False(t, byName["Dish Type"].Exclusive)
+
+	dinnerID := itCategoryID(t, svc, ctx, "Course", "Dinner")
+	mexicanID := itCategoryID(t, svc, ctx, "Cuisine", "Mexican")
+	italianID := itCategoryID(t, svc, ctx, "Cuisine", "Italian")
+	beefID := itCategoryID(t, svc, ctx, "Main Ingredient", "Beef")
+	soupID := itCategoryID(t, svc, ctx, "Dish Type", "Soup")
+	casseroleID := itCategoryID(t, svc, ctx, "Dish Type", "Casserole")
+
+	tacos, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Tacos", IsActive: true}, itBy)
+	require.NoError(t, err)
+	spaghetti, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Spaghetti", IsActive: true}, itBy)
+	require.NoError(t, err)
+	plain, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Plain", IsActive: true}, itBy)
+	require.NoError(t, err)
+
+	// Assign across groups: Mexican + Beef + Dinner.
+	require.NoError(t, svc.SetRecipeCategories(ctx, tacos.RecipeID,
+		[]int64{mexicanID, beefID, dinnerID}, itBy))
+	require.NoError(t, svc.SetRecipeCategories(ctx, spaghetti.RecipeID,
+		[]int64{italianID, dinnerID}, itBy))
+
+	// Round-trip via the batch preload.
+	catsBy, err := svc.ListCategoriesForRecipes(ctx, []int64{tacos.RecipeID, spaghetti.RecipeID})
+	require.NoError(t, err)
+	require.Len(t, catsBy[tacos.RecipeID], 3)
+	require.Len(t, catsBy[spaghetti.RecipeID], 2)
+	assert.Equal(t, "Cuisine", catsBy[tacos.RecipeID][2].GroupName)
+
+	// Exclusivity: two Cuisines on one recipe is rejected.
+	err = svc.SetRecipeCategories(ctx, tacos.RecipeID, []int64{mexicanID, italianID}, itBy)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "Mexican")
+	assert.ErrorContains(t, err, "Italian")
+
+	// Non-exclusive groups allow multiples: Soup + Casserole is fine.
+	require.NoError(t, svc.SetRecipeCategories(ctx, plain.RecipeID,
+		[]int64{soupID, casseroleID}, itBy))
+
+	// Faceted filter: Mexican AND Dinner -> tacos only.
+	got, err := svc.SearchRecipes(ctx, RecipeSearch{
+		Active: true, CategoryIDs: []int64{mexicanID, dinnerID}, Limit: 50,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, tacos.RecipeID, got[0].RecipeID)
+
+	// OR within a group: Mexican OR Italian + Dinner -> both.
+	got, err = svc.SearchRecipes(ctx, RecipeSearch{
+		Active: true, CategoryIDs: []int64{mexicanID, italianID, dinnerID}, Limit: 50,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// Count agrees with the list.
+	n, err := svc.CountSearchRecipes(ctx, RecipeSearch{
+		Active: true, CategoryIDs: []int64{dinnerID},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	// Name filter composes with category filter.
+	got, err = svc.SearchRecipes(ctx, RecipeSearch{
+		Active: true, Search: "tacos", CategoryIDs: []int64{dinnerID}, Limit: 50,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, tacos.RecipeID, got[0].RecipeID)
+
+	// Engagement ranking: used beats viewed beats searched beats rest.
+	got, err = svc.SearchRecipes(ctx, RecipeSearch{
+		Active: true, Limit: 50,
+		UsedIDs: []int64{plain.RecipeID}, ViewedIDs: []int64{tacos.RecipeID},
+		FavoriteIDs: []int64{spaghetti.RecipeID},
+	})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(got), 3)
+	assert.Equal(t, spaghetti.RecipeID, got[0].RecipeID) // favorite first
+	assert.Equal(t, plain.RecipeID, got[1].RecipeID)     // then used
+	assert.Equal(t, tacos.RecipeID, got[2].RecipeID)     // then viewed
+
+	// Clearing removes all assignments.
+	require.NoError(t, svc.SetRecipeCategories(ctx, tacos.RecipeID, nil, itBy))
+	catsBy, err = svc.ListCategoriesForRecipes(ctx, []int64{tacos.RecipeID})
+	require.NoError(t, err)
+	assert.Empty(t, catsBy[tacos.RecipeID])
+}

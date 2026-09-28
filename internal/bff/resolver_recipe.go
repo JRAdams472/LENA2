@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
@@ -107,21 +108,69 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 	}, nil
 }
 
-// Recipes resolves a paginated list of active recipes.
+// Recipes resolves a paginated list of active recipes. Optional filters
+// (search text, faceted category IDs, favorites) narrow the set; results are
+// engagement-ranked — favorites, then household-used, then personally
+// viewed, then searched — with in-tier order following signal strength.
 func (r *Resolver) Recipes(ctx context.Context, args struct {
-	Page     int32
-	PageSize int32
+	Page        int32
+	PageSize    int32
+	Search      *string
+	CategoryIDs *[]graphql.ID
+	IsFavorite  *bool
 }) (*recipePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	recipes, err := r.RecipeService.ListRecipes(ctx, true, pageSize, (page-1)*pageSize)
+
+	search := recipe.RecipeSearch{
+		Active: true,
+		Limit:  pageSize,
+		Offset: (page - 1) * pageSize,
+	}
+	if args.Search != nil {
+		search.Search = strings.TrimSpace(*args.Search)
+	}
+	if args.CategoryIDs != nil {
+		ids, err := parseIDs(*args.CategoryIDs)
+		if err != nil {
+			return nil, err
+		}
+		search.CategoryIDs = ids
+	}
+
+	// Engagement ranking inputs — analytics IDs arrive pre-sorted by signal
+	// strength so array_position doubles as the in-tier tiebreaker. Failures
+	// degrade to name order rather than failing the listing.
+	if r.AnalyticsService != nil {
+		if eng, err := r.AnalyticsService.RecipeEngagementSets(ctx, u.UserID, u.HouseholdID); err == nil {
+			search.UsedIDs = eng.UsedIDs
+			search.ViewedIDs = eng.ViewedIDs
+			search.SearchTerms = eng.SearchTerms
+		}
+	}
+	var favoriteIDs []int64
+	if r.UserPrefsService != nil {
+		if ids, err := r.UserPrefsService.ListFavoriteRecipeIDs(ctx, u.UserID); err == nil {
+			favoriteIDs = ids
+		}
+	}
+	search.FavoriteIDs = favoriteIDs
+	if args.IsFavorite != nil {
+		if *args.IsFavorite {
+			search.IncludeIDs = favoriteIDs
+		} else {
+			search.ExcludeIDs = favoriteIDs
+		}
+	}
+
+	recipes, err := r.RecipeService.SearchRecipes(ctx, search)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.RecipeService.CountRecipes(ctx, true)
+	total, err := r.RecipeService.CountSearchRecipes(ctx, search)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +236,14 @@ func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItem
 	return outItems, outSteps, nil
 }
 
+// parseCategoryIDs converts the optional input ID list; nil in → nil out.
+func parseCategoryIDs(ids *[]graphql.ID) ([]int64, error) {
+	if ids == nil {
+		return nil, nil
+	}
+	return parseIDs(*ids)
+}
+
 // CreateRecipe creates a new recipe and its items/steps atomically.
 func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRecipeInput }) (*recipeResolver, error) {
 	u, err := requireAdmin(ctx)
@@ -200,14 +257,29 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	if err != nil {
 		return nil, err
 	}
-	rec, err := r.RecipeService.CreateRecipeWithChildren(ctx, recipe.Recipe{
-		Name:            args.Input.Name,
-		Description:     derefString(args.Input.Description),
-		Servings:        args.Input.Servings,
-		PrepTimeMinutes: args.Input.PrepTimeMinutes,
-		CookTimeMinutes: args.Input.CookTimeMinutes,
-		IsActive:        true,
-	}, items, steps, u.Email)
+	categoryIDs, err := parseCategoryIDs(args.Input.CategoryIDs)
+	if err != nil {
+		return nil, err
+	}
+	var rec recipe.Recipe
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var err error
+		rec, err = r.RecipeService.CreateRecipeWithChildren(ctx, recipe.Recipe{
+			Name:            args.Input.Name,
+			Description:     derefString(args.Input.Description),
+			Servings:        args.Input.Servings,
+			PrepTimeMinutes: args.Input.PrepTimeMinutes,
+			CookTimeMinutes: args.Input.CookTimeMinutes,
+			IsActive:        true,
+		}, items, steps, u.Email)
+		if err != nil {
+			return err
+		}
+		if len(categoryIDs) > 0 {
+			return r.RecipeService.SetRecipeCategories(ctx, rec.RecipeID, categoryIDs, u.Email)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, recipeWriteError(err)
 	}
@@ -246,7 +318,20 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := r.RecipeService.UpdateRecipeWithChildren(ctx, id, patch, items, steps, u.Email); err != nil {
+	categoryIDs, err := parseCategoryIDs(args.Input.CategoryIDs)
+	if err != nil {
+		return nil, err
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.RecipeService.UpdateRecipeWithChildren(ctx, id, patch, items, steps, u.Email); err != nil {
+			return err
+		}
+		if categoryIDs != nil {
+			return r.RecipeService.SetRecipeCategories(ctx, id, categoryIDs, u.Email)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, recipeWriteError(err)
 	}
 	updated, err := r.RecipeService.GetRecipeByID(ctx, id)
@@ -828,6 +913,7 @@ type createRecipeInput struct {
 	Servings        *int32
 	PrepTimeMinutes *int32
 	CookTimeMinutes *int32
+	CategoryIDs     *[]graphql.ID
 	Items           []recipeItemInput
 	Steps           []recipeStepInput
 }
@@ -851,4 +937,298 @@ type recipeStepInput struct {
 	IsPassive           *bool
 	DependsOnStepNumber *int32
 	Appliance           *string
+}
+
+// ---------- recipe categories ----------
+
+type recipeCategoryGroupResolver struct {
+	g          recipe.CategoryGroup
+	categories []recipe.Category
+	rec        RecipeService
+}
+
+func (r *recipeCategoryGroupResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.g.CategoryGroupID, 10))
+}
+func (r *recipeCategoryGroupResolver) Name() string        { return r.g.Name }
+func (r *recipeCategoryGroupResolver) Exclusive() bool     { return r.g.Exclusive }
+func (r *recipeCategoryGroupResolver) DisplayOrder() int32 { return r.g.DisplayOrder }
+func (r *recipeCategoryGroupResolver) Categories() []*recipeCategoryResolver {
+	out := make([]*recipeCategoryResolver, len(r.categories))
+	for i, c := range r.categories {
+		out[i] = &recipeCategoryResolver{c: c}
+	}
+	return out
+}
+
+type recipeCategoryResolver struct {
+	c recipe.Category
+}
+
+func (r *recipeCategoryResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.c.CategoryID, 10))
+}
+func (r *recipeCategoryResolver) Name() string { return r.c.Name }
+func (r *recipeCategoryResolver) Group() *recipeCategoryGroupResolver {
+	return &recipeCategoryGroupResolver{g: recipe.CategoryGroup{
+		CategoryGroupID: r.c.CategoryGroupID,
+		Name:            r.c.GroupName,
+		Exclusive:       r.c.GroupExclusive,
+		DisplayOrder:    r.c.GroupDisplayOrder,
+	}}
+}
+
+// RecipeCategoryGroups returns the full taxonomy — groups in display order,
+// each with its categories preloaded.
+func (r *Resolver) RecipeCategoryGroups(ctx context.Context) ([]*recipeCategoryGroupResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	groups, err := r.RecipeService.ListCategoryGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*recipeCategoryGroupResolver, len(groups))
+	for i, g := range groups {
+		cats, err := r.RecipeService.ListCategoriesByGroup(ctx, g.CategoryGroupID)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = &recipeCategoryGroupResolver{g: g, categories: cats, rec: r.RecipeService}
+	}
+	return out, nil
+}
+
+// Categories resolves a recipe's assigned categories via the preload map.
+func (r *recipeResolver) Categories() []*recipeCategoryResolver {
+	if r.rc == nil {
+		return nil
+	}
+	cats := r.rc.categoriesBy[r.recipe.RecipeID]
+	out := make([]*recipeCategoryResolver, len(cats))
+	for i, c := range cats {
+		out[i] = &recipeCategoryResolver{c: c}
+	}
+	return out
+}
+
+// SetRecipeCategories replaces a recipe's category set; any authenticated
+// household member may categorize recipes (admins curate the taxonomy).
+func (r *Resolver) SetRecipeCategories(ctx context.Context, args struct {
+	RecipeID    graphql.ID
+	CategoryIDs []graphql.ID
+}) (*recipeResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	recipeID, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return nil, err
+	}
+	ids, err := parseIDs(args.CategoryIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.RecipeService.SetRecipeCategories(ctx, recipeID, ids, u.Email); err != nil {
+		return nil, err
+	}
+	rcp, err := r.RecipeService.GetRecipeByID(ctx, recipeID)
+	if err != nil {
+		return nil, err
+	}
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, []int64{recipeID}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rcp, rc: rc}, nil
+}
+
+// CreateRecipeCategoryGroup adds a taxonomy group; admins only.
+func (r *Resolver) CreateRecipeCategoryGroup(ctx context.Context, args struct {
+	Input struct {
+		Name         string
+		Exclusive    *bool
+		DisplayOrder *int32
+	}
+}) (*recipeCategoryGroupResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	exclusive := true
+	if args.Input.Exclusive != nil {
+		exclusive = *args.Input.Exclusive
+	}
+	g, err := r.RecipeService.CreateCategoryGroup(ctx, recipe.CategoryGroup{
+		Name: args.Input.Name, Exclusive: exclusive, DisplayOrder: int32Value(args.Input.DisplayOrder),
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeCategoryGroupResolver{g: g, rec: r.RecipeService}, nil
+}
+
+// UpdateRecipeCategoryGroup renames a group or flips its exclusivity;
+// omitted fields keep their current values.
+func (r *Resolver) UpdateRecipeCategoryGroup(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input struct {
+		Name         *string
+		Exclusive    *bool
+		DisplayOrder *int32
+	}
+}) (*recipeCategoryGroupResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	groups, err := r.RecipeService.ListCategoryGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var existing *recipe.CategoryGroup
+	for i := range groups {
+		if groups[i].CategoryGroupID == id {
+			existing = &groups[i]
+			break
+		}
+	}
+	if existing == nil {
+		return nil, domainerr.ErrNotFound
+	}
+	patch := *existing
+	if args.Input.Name != nil {
+		patch.Name = *args.Input.Name
+	}
+	if args.Input.Exclusive != nil {
+		patch.Exclusive = *args.Input.Exclusive
+	}
+	if args.Input.DisplayOrder != nil {
+		patch.DisplayOrder = *args.Input.DisplayOrder
+	}
+	g, err := r.RecipeService.UpdateCategoryGroup(ctx, id, patch, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeCategoryGroupResolver{g: g, rec: r.RecipeService}, nil
+}
+
+// DeleteRecipeCategoryGroup removes an empty group; the service rejects
+// deletion while the group still holds categories.
+func (r *Resolver) DeleteRecipeCategoryGroup(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.RecipeService.DeleteCategoryGroup(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// CreateRecipeCategory adds a category inside a group; admins only.
+func (r *Resolver) CreateRecipeCategory(ctx context.Context, args struct {
+	Input struct {
+		GroupID graphql.ID
+		Name    string
+	}
+}) (*recipeCategoryResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	groupID, err := parseID(string(args.Input.GroupID))
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.RecipeService.CreateCategory(ctx, recipe.Category{
+		CategoryGroupID: groupID, Name: args.Input.Name,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeCategoryResolver{c: c}, nil
+}
+
+// UpdateRecipeCategory renames a category.
+func (r *Resolver) UpdateRecipeCategory(ctx context.Context, args struct {
+	ID    graphql.ID
+	Input struct {
+		Name *string
+	}
+}) (*recipeCategoryResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if args.Input.Name == nil {
+		return nil, badInputf("nothing to update")
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.RecipeService.UpdateCategory(ctx, id, recipe.Category{Name: *args.Input.Name}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeCategoryResolver{c: c}, nil
+}
+
+// DeleteRecipeCategory removes a category; assignments cascade away.
+func (r *Resolver) DeleteRecipeCategory(ctx context.Context, args struct{ ID graphql.ID }) (bool, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.ID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.RecipeService.DeleteCategory(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// RecordView logs a "looked at this entity" interaction — fire-and-forget,
+// and it deliberately does not bump selection counts (a view is weaker
+// than a pick).
+func (r *Resolver) RecordView(ctx context.Context, args struct {
+	EntityType string
+	EntityID   graphql.ID
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	entityID, err := parseID(string(args.EntityID))
+	if err != nil {
+		return false, err
+	}
+	r.runAsync("record view", 5*time.Second, func(ctx context.Context) error {
+		return r.AnalyticsService.RecordView(ctx, analytics.Event{
+			UserID:     u.UserID,
+			EventType:  viewEventType(args.EntityType),
+			EntityType: strings.TrimSpace(args.EntityType),
+			EntityID:   entityID,
+		}, u.Email)
+	})
+	return true, nil
+}
+
+func viewEventType(entityType string) string {
+	switch strings.ToLower(strings.TrimSpace(entityType)) {
+	case analytics.EntityRecipe:
+		return analytics.EventRecipeViewed
+	default:
+		return "viewed"
+	}
 }

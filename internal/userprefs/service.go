@@ -615,3 +615,12 @@ func optTimestamptz(t *time.Time) pgtype.Timestamptz {
 	}
 	return pgtype.Timestamptz{Time: *t, Valid: true}
 }
+
+// ListFavoriteRecipeIDs returns every recipe ID the user has favorited.
+func (s *Service) ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error) {
+	ids, err := s.q.ListFavoriteRecipeIDs(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list favorite recipe ids: %w", err)
+	}
+	return ids, nil
+}

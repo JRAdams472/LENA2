@@ -86,6 +86,7 @@ const (
 	EventRecipeSelected = "recipe_selected"
 	EventItemSearched   = "item_searched"
 	EventRecipeSearched = "recipe_searched"
+	EventRecipeViewed   = "recipe_viewed"
 	EventRecipeCreated  = "recipe_created"
 	EventMenuAdd        = "menu_add"
 	EventRatingGiven    = "rating_given"
@@ -98,6 +99,7 @@ var eventWeights = map[string]int16{
 	EventRecipeSelected: 1,
 	EventItemSearched:   2,
 	EventRecipeSearched: 2,
+	EventRecipeViewed:   1,
 	EventRecipeCreated:  4,
 	EventMenuAdd:        4,
 	EventRatingGiven:    5,
@@ -135,6 +137,27 @@ func (s *Service) RecordEvent(ctx context.Context, e Event, by string) error {
 		return fmt.Errorf("record event: %w", err)
 	}
 
+	return s.recordEvent(ctx, e, metadata, true)
+}
+
+// RecordView logs a "looked at this" interaction without touching the
+// selection counts — a view is a weaker signal than a pick, and inflating
+// select_count with page opens would skew the ranking tiebreakers.
+func (s *Service) RecordView(ctx context.Context, e Event, by string) error {
+	if e.UserID == 0 {
+		return fmt.Errorf("record view: user_id is required")
+	}
+	if e.EventType == "" {
+		return fmt.Errorf("record view: event_type is required")
+	}
+	metadata, err := metadataJSON(by)
+	if err != nil {
+		return fmt.Errorf("record view: %w", err)
+	}
+	return s.recordEvent(ctx, e, metadata, false)
+}
+
+func (s *Service) recordEvent(ctx context.Context, e Event, metadata []byte, countSelection bool) error {
 	return s.InTx(ctx, func(tx *Service) error {
 		if err := tx.q.InsertInteractionEvent(ctx, sqlc.InsertInteractionEventParams{
 			UserID:     pgtype.Int8{Int64: e.UserID, Valid: true},
@@ -148,7 +171,7 @@ func (s *Service) RecordEvent(ctx context.Context, e Event, by string) error {
 			return fmt.Errorf("insert interaction event: %w", err)
 		}
 
-		if e.EntityType == "" || e.EntityID == 0 {
+		if !countSelection || e.EntityType == "" || e.EntityID == 0 {
 			return nil
 		}
 
@@ -370,6 +393,55 @@ func (s *Service) TopGlobalSelections(ctx context.Context, entityType string, li
 			EntityType:  r.EntityType,
 			EntityID:    r.EntityID,
 			SelectCount: r.SelectCount,
+		}
+	}
+	return out, nil
+}
+
+// RecipeEngagement holds the per-user ranking inputs for recipe search:
+// which recipes the household has cooked/selected, which the caller has
+// viewed, and which search terms the caller has used. ID slices are ordered
+// by signal strength (hit count, then recency) so callers can use
+// array_position as an in-tier tiebreaker.
+type RecipeEngagement struct {
+	UsedIDs     []int64
+	ViewedIDs   []int64
+	SearchTerms []string
+}
+
+// RecipeEngagementSets loads the three engagement sets in one call. "Used"
+// is household-scoped (menus are shared); viewed/searched are personal.
+func (s *Service) RecipeEngagementSets(ctx context.Context, userID, householdID int64) (RecipeEngagement, error) {
+	used, err := s.q.HouseholdUsedRecipeIDs(ctx, householdID)
+	if err != nil {
+		return RecipeEngagement{}, fmt.Errorf("engagement used: %w", err)
+	}
+	viewed, err := s.q.UserViewedRecipeIDs(ctx, userID)
+	if err != nil {
+		return RecipeEngagement{}, fmt.Errorf("engagement viewed: %w", err)
+	}
+	terms, err := s.q.UserRecipeSearchTerms(ctx, userID)
+	if err != nil {
+		return RecipeEngagement{}, fmt.Errorf("engagement search terms: %w", err)
+	}
+	out := RecipeEngagement{
+		UsedIDs:     make([]int64, 0, len(used)),
+		ViewedIDs:   make([]int64, 0, len(viewed)),
+		SearchTerms: make([]string, 0, len(terms)),
+	}
+	for _, r := range used {
+		if r.RecipeID.Valid {
+			out.UsedIDs = append(out.UsedIDs, r.RecipeID.Int64)
+		}
+	}
+	for _, r := range viewed {
+		if r.RecipeID.Valid {
+			out.ViewedIDs = append(out.ViewedIDs, r.RecipeID.Int64)
+		}
+	}
+	for _, t := range terms {
+		if t.Valid {
+			out.SearchTerms = append(out.SearchTerms, t.String)
 		}
 	}
 	return out, nil

@@ -54,6 +54,7 @@ func TestResolver_FoodEvent(t *testing.T) {
 	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{11}).Return([]recipe.Recipe{{RecipeID: 11, Name: "Casserole"}}, nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeItem{}, nil)
 	rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeStep{}, nil)
+	rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{11}).Return(nil, nil)
 	rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(7), []int64{11}).Return([]recipe.RecipeRating{}, nil)
 	rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{11}).Return([]recipe.RatingSummary{}, nil)
 	ev.EXPECT().ListEventRecipeStepsForEvents(gomock.Any(), []int64{3}, int64(7)).Return([]event.EventRecipeStep{

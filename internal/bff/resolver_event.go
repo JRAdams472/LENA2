@@ -7,6 +7,7 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/event"
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -371,6 +372,15 @@ func (r *Resolver) AddEventRecipe(ctx context.Context, args struct{ Input addEve
 	er, err = r.EventService.GetEventRecipeByID(ctx, er.EventRecipeID, u.HouseholdID)
 	if err != nil {
 		return nil, err
+	}
+	if recipeID != nil {
+		// Putting a recipe on an event menu is the same "used" signal as
+		// adding it to a weekly plan.
+		r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+			EventType:  analytics.EventMenuAdd,
+			EntityType: analytics.EntityRecipe,
+			EntityID:   *recipeID,
+		})
 	}
 	return &eventRecipeResolver{ev: r.EventService, rec: r.RecipeService, up: r.UserPrefsService, inv: r.InventoryService, user: u, er: er}, nil
 }

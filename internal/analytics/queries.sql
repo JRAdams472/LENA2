@@ -101,3 +101,37 @@ scored AS (
 SELECT user_id, score::float8 AS score
 FROM scored
 WHERE score >= sqlc.arg(min_score)::numeric;
+
+-- ---------- engagement ranking inputs (recipe categories feature) ----------
+
+-- name: HouseholdUsedRecipeIDs :many
+-- Recipes household members have put on a menu (meal-plan slot or event),
+-- most-used first — drives the "used" tier of recipe search ranking.
+SELECT entity_id AS recipe_id, COUNT(*) AS hits
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.event_type IN ('menu_add', 'recipe_selected')
+  AND e.entity_type = 'recipe'
+  AND u.household_id = sqlc.arg(household_id)::bigint
+GROUP BY entity_id
+ORDER BY hits DESC, MAX(e.created_at) DESC;
+
+-- name: UserViewedRecipeIDs :many
+-- Recipes the caller has opened, most-viewed first — the "viewed" tier.
+SELECT entity_id AS recipe_id, COUNT(*) AS hits
+FROM analytics.interaction_event
+WHERE event_type = 'recipe_viewed'
+  AND entity_type = 'recipe'
+  AND user_id = sqlc.arg(user_id)::bigint
+GROUP BY entity_id
+ORDER BY hits DESC, MAX(created_at) DESC;
+
+-- name: UserRecipeSearchTerms :many
+-- Distinct terms the caller has searched recipes for — recipes whose names
+-- match these terms form the "searched but not viewed" tier.
+SELECT DISTINCT search_term
+FROM analytics.interaction_event
+WHERE event_type = 'recipe_searched'
+  AND user_id = sqlc.arg(user_id)::bigint
+  AND search_term IS NOT NULL
+  AND search_term <> '';
