@@ -31,6 +31,7 @@ const category = {
   categoryName: "Dairy",
   description: null,
   isActive: true,
+  isProtein: false,
   createdBy: "system",
   createDate: "2025-01-01T00:00:00Z",
   lastUpdatedBy: null,
