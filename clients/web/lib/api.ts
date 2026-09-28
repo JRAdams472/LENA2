@@ -21,6 +21,8 @@ import {
   RecipeItem,
   RecipeStep,
   RecipeRecommendation,
+  RecipeCategory,
+  RecipeCategoryGroup,
   MealPlan,
   MealSlot,
   MealSlotItem,
@@ -297,6 +299,20 @@ interface GqlRecipeStep {
   appliance: string | null;
 }
 
+interface GqlRecipeCategory {
+  id: string;
+  name: string;
+  group: GqlRecipeCategoryGroup;
+}
+
+interface GqlRecipeCategoryGroup {
+  id: string;
+  name: string;
+  exclusive: boolean;
+  displayOrder: number;
+  categories?: GqlRecipeCategory[];
+}
+
 interface GqlRecipe {
   id: string;
   name: string;
@@ -312,6 +328,7 @@ interface GqlRecipe {
   myRating: number | null;
   averageRating: number | null;
   ratingCount: number;
+  categories: GqlRecipeCategory[] | null;
 }
 
 interface GqlRecipePage {
@@ -916,6 +933,25 @@ function toRecipe(r: GqlRecipe): Recipe {
     myRating: r.myRating ?? null,
     averageRating: r.averageRating ?? null,
     ratingCount: r.ratingCount ?? 0,
+    categories: (r.categories ?? []).map(toRecipeCategory),
+  };
+}
+
+function toRecipeCategory(c: GqlRecipeCategory): RecipeCategory {
+  return {
+    categoryID: num(c.id),
+    categoryName: c.name,
+    group: toRecipeCategoryGroup(c.group),
+  };
+}
+
+function toRecipeCategoryGroup(g: GqlRecipeCategoryGroup): RecipeCategoryGroup {
+  return {
+    categoryGroupID: num(g.id),
+    groupName: g.name,
+    exclusive: g.exclusive,
+    displayOrder: g.displayOrder,
+    categories: (g.categories ?? []).map(toRecipeCategory),
   };
 }
 
@@ -1389,10 +1425,15 @@ const ITEM_FIELDS = `
   flavors { intensity flavor { id name isActive } }
 `;
 
+const RECIPE_CATEGORY_FIELDS = `
+  id name group { id name exclusive displayOrder }
+`;
+
 const RECIPE_FIELDS = `
   id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount myRating averageRating ratingCount
   items { quantity unit notes isOptional item { ${ITEM_FIELDS} } }
   steps { stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance }
+  categories { ${RECIPE_CATEGORY_FIELDS} }
 `;
 
 const RECIPE_IMPORT_FIELDS = `
@@ -1789,6 +1830,13 @@ export const api = {
     await request<{ recordSearch: boolean }>(
       `mutation ($entityType: EntityType!, $term: String!) { recordSearch(entityType: $entityType, term: $term) }`,
       { entityType, term }
+    );
+  },
+
+  recordView: async (entityType: string, entityId: number): Promise<void> => {
+    await request<{ recordView: boolean }>(
+      `mutation ($entityType: EntityType!, $entityId: ID!) { recordView(entityType: $entityType, entityId: $entityId) }`,
+      { entityType, entityId: String(entityId) }
     );
   },
 
@@ -2604,21 +2652,29 @@ export const api = {
     return out.sort(sortByFrequency);
   },
 
-  getRecipesPaged: async (pageNumber: number, pageSize: number, search?: string, isFavorite?: boolean): Promise<PagedResult<Recipe>> => {
-    if (!search && isFavorite === undefined) {
-      const data = await request<{ recipes: GqlRecipePage }>(
-        `query ($page: Int, $pageSize: Int) { recipes(page: $page, pageSize: $pageSize) { items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-        { page: pageNumber, pageSize }
-      );
-      const items = data.recipes.items.map(toRecipe).sort(sortByFrequency);
-      return toPaged(items, data.recipes.pageInfo);
-    }
-    let all = await api.getRecipes();
-    const s = (search ?? "").trim().toLowerCase();
-    if (s) all = all.filter((r) => r.recipeName.toLowerCase().includes(s));
-    if (isFavorite !== undefined) all = all.filter((r) => r.isFavorite === isFavorite);
-    all.sort(sortByFrequency);
-    return pagedSlice(all, pageNumber, pageSize);
+  getRecipesPaged: async (
+    pageNumber: number,
+    pageSize: number,
+    search?: string,
+    isFavorite?: boolean,
+    categoryIds?: number[]
+  ): Promise<PagedResult<Recipe>> => {
+    const data = await request<{ recipes: GqlRecipePage }>(
+      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean) {
+        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite) {
+          items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount }
+        }
+      }`,
+      {
+        page: pageNumber,
+        pageSize,
+        search: search?.trim() || null,
+        categoryIds: categoryIds?.length ? categoryIds.map(String) : null,
+        isFavorite: isFavorite ?? null,
+      }
+    );
+    const items = data.recipes.items.map(toRecipe);
+    return toPaged(items, data.recipes.pageInfo);
   },
 
   getRecipe: async (id: number): Promise<Recipe> => {
@@ -2646,6 +2702,69 @@ export const api = {
       { id: String(id), input: toRecipeInput(merged) }
     );
     return toRecipe(data.updateRecipe);
+  },
+
+  // ---------- recipe categories ----------
+
+  getRecipeCategoryGroups: async (): Promise<RecipeCategoryGroup[]> => {
+    const data = await request<{ recipeCategoryGroups: GqlRecipeCategoryGroup[] }>(
+      `query { recipeCategoryGroups { id name exclusive displayOrder categories { ${RECIPE_CATEGORY_FIELDS} } } }`
+    );
+    return data.recipeCategoryGroups.map(toRecipeCategoryGroup);
+  },
+
+  setRecipeCategories: async (recipeId: number, categoryIds: number[]): Promise<Recipe> => {
+    const data = await request<{ setRecipeCategories: GqlRecipe }>(
+      `mutation ($recipeId: ID!, $categoryIds: [ID!]!) { setRecipeCategories(recipeId: $recipeId, categoryIds: $categoryIds) { ${RECIPE_FIELDS} } }`,
+      { recipeId: String(recipeId), categoryIds: categoryIds.map(String) }
+    );
+    return toRecipe(data.setRecipeCategories);
+  },
+
+  createRecipeCategoryGroup: async (group: { name: string; exclusive?: boolean; displayOrder?: number }): Promise<RecipeCategoryGroup> => {
+    const data = await request<{ createRecipeCategoryGroup: GqlRecipeCategoryGroup }>(
+      `mutation ($input: CreateRecipeCategoryGroupInput!) { createRecipeCategoryGroup(input: $input) { id name exclusive displayOrder } }`,
+      { input: group }
+    );
+    return toRecipeCategoryGroup(data.createRecipeCategoryGroup);
+  },
+
+  updateRecipeCategoryGroup: async (id: number, group: { name?: string; exclusive?: boolean; displayOrder?: number }): Promise<RecipeCategoryGroup> => {
+    const data = await request<{ updateRecipeCategoryGroup: GqlRecipeCategoryGroup }>(
+      `mutation ($id: ID!, $input: UpdateRecipeCategoryGroupInput!) { updateRecipeCategoryGroup(id: $id, input: $input) { id name exclusive displayOrder } }`,
+      { id: String(id), input: group }
+    );
+    return toRecipeCategoryGroup(data.updateRecipeCategoryGroup);
+  },
+
+  deleteRecipeCategoryGroup: async (id: number): Promise<void> => {
+    await request<{ deleteRecipeCategoryGroup: boolean }>(
+      `mutation ($id: ID!) { deleteRecipeCategoryGroup(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  createRecipeCategory: async (groupId: number, name: string): Promise<RecipeCategory> => {
+    const data = await request<{ createRecipeCategory: GqlRecipeCategory }>(
+      `mutation ($input: CreateRecipeCategoryInput!) { createRecipeCategory(input: $input) { ${RECIPE_CATEGORY_FIELDS} } }`,
+      { input: { groupId: String(groupId), name } }
+    );
+    return toRecipeCategory(data.createRecipeCategory);
+  },
+
+  updateRecipeCategory: async (id: number, name: string): Promise<RecipeCategory> => {
+    const data = await request<{ updateRecipeCategory: GqlRecipeCategory }>(
+      `mutation ($id: ID!, $input: UpdateRecipeCategoryInput!) { updateRecipeCategory(id: $id, input: $input) { ${RECIPE_CATEGORY_FIELDS} } }`,
+      { id: String(id), input: { name } }
+    );
+    return toRecipeCategory(data.updateRecipeCategory);
+  },
+
+  deleteRecipeCategory: async (id: number): Promise<void> => {
+    await request<{ deleteRecipeCategory: boolean }>(
+      `mutation ($id: ID!) { deleteRecipeCategory(id: $id) }`,
+      { id: String(id) }
+    );
   },
 
   deleteRecipe: async (id: number): Promise<Recipe | null> => {
@@ -3290,6 +3409,7 @@ interface RecipeInputShape {
   servings: number | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;
+  categoryIds: string[] | null;
   items: {
     itemId: string;
     quantity: number;
@@ -3330,6 +3450,9 @@ function toRecipeInput(recipe: Partial<Recipe>): RecipeInputShape {
     servings: recipe.servings ?? null,
     prepTimeMinutes: recipe.prepTimeMinutes ?? null,
     cookTimeMinutes: recipe.cookTimeMinutes ?? null,
+    categoryIds: recipe.categories
+      ? recipe.categories.map((c) => String(c.categoryID))
+      : null,
     items: (recipe.recipeItems ?? []).map((i) => ({
       itemId: String(i.itemID),
       quantity: i.quantity,

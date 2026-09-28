@@ -269,12 +269,27 @@ export interface Recipe extends AuditableEntity {
   myRating: number | null;
   averageRating: number | null;
   ratingCount: number;
+  categories?: RecipeCategory[];
 }
 
 export interface RecipeRecommendation {
   recipe: Recipe;
   reason: string;
   score: number;
+}
+
+export interface RecipeCategory {
+  categoryID: number;
+  categoryName: string;
+  group: RecipeCategoryGroup;
+}
+
+export interface RecipeCategoryGroup {
+  categoryGroupID: number;
+  groupName: string;
+  exclusive: boolean;
+  displayOrder: number;
+  categories: RecipeCategory[];
 }
 
 export interface RecipeItem {

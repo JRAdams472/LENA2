@@ -98,6 +98,7 @@ const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?
     label: "Recipes",
     children: [
       { label: "Recipes", href: "/recipes" },
+      { label: "Categories", href: "/recipes/categories", adminOnly: true },
       { label: "Pending Reviews", href: "/recipes/pending", adminOnly: true },
     ],
   },
