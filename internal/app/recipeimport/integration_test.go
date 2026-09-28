@@ -228,7 +228,7 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 
 	brand, err := invSvc.CreateBrand(ctx, "IT Import Brand", itBy)
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT Import Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Import Category", "", false, itBy)
 	require.NoError(t, err)
 	unit, err := invSvc.GetUnitByName(ctx, "each")
 	require.NoError(t, err)

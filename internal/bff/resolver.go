@@ -55,6 +55,7 @@ type Resolver struct {
 	IdentityService        IdentityService
 	RecipeImportService    RecipeImportService
 	HouseholdService       HouseholdService
+	NotifierService        NotifierService
 	AuthInvalidator        AuthInvalidator
 	OCRClient              OCRClient
 	IdemStore              IdempotencyStore
@@ -96,6 +97,7 @@ type Services struct {
 	Identity     IdentityService
 	RecipeImport RecipeImportService
 	Household    HouseholdService
+	Notifier     NotifierService
 	Auth         AuthInvalidator
 	OCR          OCRClient
 }
@@ -131,6 +133,7 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		IdentityService:        svc.Identity,
 		RecipeImportService:    svc.RecipeImport,
 		HouseholdService:       svc.Household,
+		NotifierService:        svc.Notifier,
 		AuthInvalidator:        svc.Auth,
 		OCRClient:              svc.OCR,
 		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
@@ -209,6 +212,9 @@ func (r *Resolver) Shutdown(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		err := r.bgRunner.Shutdown(ctx)
+		if r.NotifierService != nil {
+			r.NotifierService.Stop()
+		}
 		if err == nil && r.RecipeImportService != nil {
 			err = r.RecipeImportService.Shutdown(ctx)
 		}

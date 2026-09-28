@@ -890,3 +890,29 @@ func (r *householdNotificationResolver) FoodEventID() *graphql.ID {
 func (r *householdNotificationResolver) CreatedAt() graphql.Time {
 	return graphql.Time{Time: r.n.CreatedAt}
 }
+
+// Title is the server-rendered heading for scheduled reminders; null on
+// event-driven rows.
+func (r *householdNotificationResolver) Title() *string { return r.n.Title }
+
+// Body is the server-rendered detail text for scheduled reminders.
+func (r *householdNotificationResolver) Body() *string { return r.n.Body }
+
+// RecipeID deep-links meal-reminder notifications to the recipe page.
+func (r *householdNotificationResolver) RecipeID() *graphql.ID {
+	if r.n.RecipeID == nil {
+		return nil
+	}
+	id := graphql.ID(strconv.FormatInt(*r.n.RecipeID, 10))
+	return &id
+}
+
+// ItemID deep-links expiry notifications to the pantry item and keys the
+// "add to grocery list" action.
+func (r *householdNotificationResolver) ItemID() *graphql.ID {
+	if r.n.ItemID == nil {
+		return nil
+	}
+	id := graphql.ID(strconv.FormatInt(*r.n.ItemID, 10))
+	return &id
+}

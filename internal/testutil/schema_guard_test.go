@@ -30,9 +30,12 @@ var allowedSchemas = map[string][]string{
 	"identity":         {"identity"},
 	"inventory":        {"inventory"},
 	"mealplan":         {"mealplan"},
-	"recipe":           {"recipe"},
-	"userprefs":        {"userprefs"},
-	"wine":             {"wine"},
+	// notifier is the cross-domain scheduler: it writes household
+	// notifications and reads plan/recipe/pantry/identity inputs.
+	"notifier":  {"household", "userprefs", "mealplan", "recipe", "inventory", "identity"},
+	"recipe":    {"recipe"},
+	"userprefs": {"userprefs"},
+	"wine":      {"wine"},
 }
 
 var schemaRef = regexp.MustCompile(`(?i)\b(?:FROM|JOIN|INTO|UPDATE)\s+([a-z_]+)\.`)

@@ -13,6 +13,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -117,8 +118,8 @@ type CatalogAdmin interface {
 	CreateBrand(ctx context.Context, name, by string) (inventory.Brand, error)
 	UpdateBrand(ctx context.Context, brandID int64, name string) (inventory.Brand, error)
 	DeleteBrand(ctx context.Context, brandID int64) error
-	CreateCategory(ctx context.Context, name, description, by string) (inventory.Category, error)
-	UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive bool, by string) (inventory.Category, error)
+	CreateCategory(ctx context.Context, name, description string, isProtein bool, by string) (inventory.Category, error)
+	UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive, isProtein bool, by string) (inventory.Category, error)
 	DeleteCategory(ctx context.Context, categoryID int64) error
 	CreateFlavorProfile(ctx context.Context, name, by string) (inventory.FlavorProfile, error)
 	UpdateFlavorProfile(ctx context.Context, flavorProfileID int64, name string, isActive bool, by string) (inventory.FlavorProfile, error)
@@ -413,6 +414,20 @@ type HouseholdService interface {
 }
 
 var _ HouseholdService = (*household.Service)(nil)
+
+// NotifierService is the Notification Manager surface: per-user opt-out
+// preferences plus the reminder sweep (run by the scheduler and by the
+// admin test trigger) and its Stop hook for Resolver.Shutdown.
+type NotifierService interface {
+	ListCategoryPreferences(ctx context.Context, userID int64) ([]notifier.CategoryPreference, error)
+	SetCategoryEnabled(ctx context.Context, userID int64, category string, enabled bool) error
+	MuteCategory(ctx context.Context, userID int64, category string, until time.Time) error
+	ClearMute(ctx context.Context, userID int64, category string) error
+	Sweep(ctx context.Context, now time.Time) (int, error)
+	Stop()
+}
+
+var _ NotifierService = (*notifier.Service)(nil)
 
 // AuthInvalidator evicts cached identity resolutions after household
 // membership or searchability changes so the next request re-reads them.

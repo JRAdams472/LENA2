@@ -134,7 +134,7 @@ const createNotification = `-- name: CreateNotification :one
 INSERT INTO household.notifications
     (user_id, household_id, kind, actor_user_id, invite_id, food_event_id)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at, food_event_id
+RETURNING notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at, food_event_id, title, body, recipe_id, item_id, dedup_key
 `
 
 type CreateNotificationParams struct {
@@ -166,6 +166,11 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		&i.ReadAt,
 		&i.CreatedAt,
 		&i.FoodEventID,
+		&i.Title,
+		&i.Body,
+		&i.RecipeID,
+		&i.ItemID,
+		&i.DedupKey,
 	)
 	return i, err
 }
@@ -237,7 +242,7 @@ func (q *Queries) GetInviteByID(ctx context.Context, inviteID int64) (HouseholdI
 }
 
 const listNotificationsForUser = `-- name: ListNotificationsForUser :many
-SELECT notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at, food_event_id
+SELECT notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at, food_event_id, title, body, recipe_id, item_id, dedup_key
 FROM household.notifications
 WHERE user_id = $1
 ORDER BY created_at DESC
@@ -268,6 +273,11 @@ func (q *Queries) ListNotificationsForUser(ctx context.Context, arg ListNotifica
 			&i.ReadAt,
 			&i.CreatedAt,
 			&i.FoodEventID,
+			&i.Title,
+			&i.Body,
+			&i.RecipeID,
+			&i.ItemID,
+			&i.DedupKey,
 		); err != nil {
 			return nil, err
 		}

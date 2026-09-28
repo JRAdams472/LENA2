@@ -124,7 +124,7 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 
 	// Create an inventory item for recipe_item FK.
 	invSvc := inventory.NewService(pool)
-	cat, err := invSvc.CreateCategory(ctx, "IT Recipe Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Recipe Category", "", false, itBy)
 	require.NoError(t, err)
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
 		Name:       "IT Recipe Item",
@@ -225,7 +225,7 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 	svc := NewService(pool)
 
 	invSvc := inventory.NewService(pool)
-	cat, err := invSvc.CreateCategory(ctx, "IT Children Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Children Category", "", false, itBy)
 	require.NoError(t, err)
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
 		Name:       "IT Children Item",
@@ -429,7 +429,7 @@ func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
 	svc := NewService(pool)
 
 	invSvc := inventory.NewService(pool)
-	cat, err := invSvc.CreateCategory(ctx, "IT Update Children Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Update Children Category", "", false, itBy)
 	require.NoError(t, err)
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
 		Name:       "IT Update Children Item",

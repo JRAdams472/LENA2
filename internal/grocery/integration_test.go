@@ -46,7 +46,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	invSvc := inventory.NewService(pool)
 	brand, err := invSvc.CreateBrand(ctx, "IT Grocery Brand", itBy)
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT Grocery Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Grocery Category", "", false, itBy)
 	require.NoError(t, err)
 	netWeight := 1.0
 	item, err := invSvc.CreateItem(ctx, inventory.Item{
@@ -255,7 +255,7 @@ func TestIntegrationGroceryToggle(t *testing.T) {
 	userA := testutil.MustUser(ctx, t, pool, "grocery-pantry-a@example.com")
 	brand, err := invSvc.CreateBrand(ctx, "IT Pantry Brand", itBy)
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT Pantry Category", "", itBy)
+	cat, err := invSvc.CreateCategory(ctx, "IT Pantry Category", "", false, itBy)
 	require.NoError(t, err)
 	netWeight := 1.0
 	item, err := invSvc.CreateItem(ctx, inventory.Item{

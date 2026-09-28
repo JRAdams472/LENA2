@@ -119,6 +119,9 @@ type Query {
   searchHouseholdUsers(term: String!, limit: Int = 20): [HouseholdUser!]!
   # The caller's household notifications, newest first.
   myNotifications(limit: Int = 20): [HouseholdNotification!]!
+  # Per-category notification preferences for the caller, including the
+  # "_all" global-mute bucket. Missing pref rows report defaults.
+  myNotificationPreferences: [NotificationCategoryPreference!]!
   # Unread notification count — backs the nav badge; clients poll it.
   unreadNotificationCount: Int!
   # The household's food events, newest event date first.
@@ -276,6 +279,20 @@ type Mutation {
   transferHouseholdOwnership(userId: ID!): Household!
   # Marks every unread notification read; returns whether any changed.
   markAllNotificationsRead: Boolean!
+  # Turns a notification category on/off ("_all" toggles nothing extra --
+  # global muting goes through muteNotifications instead).
+  setNotificationCategoryEnabled(category: String!, enabled: Boolean!): Boolean!
+  # Mutes one category -- or every kind when category is null/"_all" --
+  # until the given time.
+  muteNotifications(category: String, until: Time!): Boolean!
+  # Clears a mute window early; null/"_all" clears the global mute.
+  clearNotificationMute(category: String): Boolean!
+  # Adds an expiring pantry item as a replacement on the household's
+  # current grocery list (most recently generated).
+  addItemToCurrentGroceryList(itemId: ID!): GroceryListItem!
+  # Runs the reminder sweep immediately; returns notifications created.
+  # Admin/test hook -- the scheduler also sweeps hourly.
+  triggerNotificationSweep: Int! @admin
 
   # Food events: household-scoped gatherings grouping recipes by serve
   # time. All members may create and edit.
@@ -361,6 +378,9 @@ enum NotificationKind {
   EVENT_CREATED
   EVENT_UPDATED
   EVENT_DELETED
+  PROTEIN_DEFROST
+  MEAL_PREP_ADVANCE
+  ITEM_EXPIRING
 }
 
 # Restricted user projection for household flows — intentionally omits
@@ -399,7 +419,25 @@ type HouseholdNotification {
   # Deep-link target for event_* kinds; null otherwise or once the event
   # row is deleted (FK is ON DELETE SET NULL).
   foodEventId: ID
+  # Server-rendered feed text for scheduled reminders; null on
+  # event-driven rows, which clients render from kind.
+  title: String
+  body: String
+  # Deep-link target for protein_defrost/meal_prep_advance reminders.
+  recipeId: ID
+  # Deep-link + action target for item_expiring reminders.
+  itemId: ID
   createdAt: Time!
+}
+
+# One notification opt-out bucket as seen by the current user: a registry
+# category (plus the synthetic "_all" global mute) with effective state.
+type NotificationCategoryPreference {
+  # "_all" is the global mute; every other value is a notification_type category.
+  category: String!
+  label: String!
+  enabled: Boolean!
+  mutedUntil: Time
 }
 
 type HouseholdInvite {
@@ -415,6 +453,8 @@ type Category {
   name: String!
   description: String
   isActive: Boolean!
+  # Whether items in this category count as protein for defrost reminders.
+  isProtein: Boolean!
 }
 
 type Brand {
@@ -909,6 +949,7 @@ input CreateBrandInput {
 input CreateCategoryInput {
   name: String!
   description: String
+  isProtein: Boolean
 }
 
 input CreateFlavorProfileInput {
@@ -938,6 +979,7 @@ input UpdateCategoryInput {
   name: String
   description: String
   isActive: Boolean
+  isProtein: Boolean
 }
 
 input UpdateFlavorProfileInput {

@@ -140,15 +140,16 @@ func (q *Queries) CreateBrandPending(ctx context.Context, arg CreateBrandPending
 }
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO inventory.category (name, description, is_active, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+INSERT INTO inventory.category (name, description, is_active, is_protein, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING category_id, name, description, is_active, created_by, created_at, updated_by, updated_at, is_protein
 `
 
 type CreateCategoryParams struct {
 	Name        string      `json:"name"`
 	Description pgtype.Text `json:"description"`
 	IsActive    bool        `json:"is_active"`
+	IsProtein   bool        `json:"is_protein"`
 	CreatedBy   string      `json:"created_by"`
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
@@ -158,6 +159,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		arg.Name,
 		arg.Description,
 		arg.IsActive,
+		arg.IsProtein,
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
@@ -171,6 +173,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.IsProtein,
 	)
 	return i, err
 }
@@ -664,7 +667,7 @@ func (q *Queries) GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]Inven
 }
 
 const getCategoriesByIDs = `-- name: GetCategoriesByIDs :many
-SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at, is_protein
 FROM inventory.category
 WHERE category_id = ANY($1::bigint[])
 `
@@ -687,6 +690,7 @@ func (q *Queries) GetCategoriesByIDs(ctx context.Context, categoryIds []int64) (
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IsProtein,
 		); err != nil {
 			return nil, err
 		}
@@ -699,7 +703,7 @@ func (q *Queries) GetCategoriesByIDs(ctx context.Context, categoryIds []int64) (
 }
 
 const getCategoryByID = `-- name: GetCategoryByID :one
-SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at, is_protein
 FROM inventory.category
 WHERE category_id = $1
 `
@@ -716,6 +720,7 @@ func (q *Queries) GetCategoryByID(ctx context.Context, categoryID int64) (Invent
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.IsProtein,
 	)
 	return i, err
 }
@@ -1121,7 +1126,7 @@ func (q *Queries) ListBrandsVisible(ctx context.Context, arg ListBrandsVisiblePa
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+SELECT category_id, name, description, is_active, created_by, created_at, updated_by, updated_at, is_protein
 FROM inventory.category
 ORDER BY name
 `
@@ -1144,6 +1149,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]InventoryCategory, erro
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.IsProtein,
 		); err != nil {
 			return nil, err
 		}
@@ -1753,10 +1759,11 @@ UPDATE inventory.category
 SET name        = $2,
     description = $3,
     is_active   = $4,
-    updated_by  = $5,
+    is_protein  = $5,
+    updated_by  = $6,
     updated_at  = now()
 WHERE category_id = $1
-RETURNING category_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+RETURNING category_id, name, description, is_active, created_by, created_at, updated_by, updated_at, is_protein
 `
 
 type UpdateCategoryParams struct {
@@ -1764,6 +1771,7 @@ type UpdateCategoryParams struct {
 	Name        string      `json:"name"`
 	Description pgtype.Text `json:"description"`
 	IsActive    bool        `json:"is_active"`
+	IsProtein   bool        `json:"is_protein"`
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
@@ -1773,6 +1781,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		arg.Name,
 		arg.Description,
 		arg.IsActive,
+		arg.IsProtein,
 		arg.UpdatedBy,
 	)
 	var i InventoryCategory
@@ -1785,6 +1794,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.IsProtein,
 	)
 	return i, err
 }

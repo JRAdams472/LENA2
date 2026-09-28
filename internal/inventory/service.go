@@ -278,14 +278,18 @@ type Category struct {
 	Name        string
 	Description string
 	IsActive    bool
+	// IsProtein flags categories whose items count as protein for the
+	// defrost-reminder sweep.
+	IsProtein bool
 }
 
 // CreateCategory adds a new category.
-func (s *Service) CreateCategory(ctx context.Context, name, description, by string) (Category, error) {
+func (s *Service) CreateCategory(ctx context.Context, name, description string, isProtein bool, by string) (Category, error) {
 	row, err := s.q.CreateCategory(ctx, sqlc.CreateCategoryParams{
 		Name:        name,
 		Description: textOrNull(description),
 		IsActive:    true,
+		IsProtein:   isProtein,
 		CreatedBy:   by,
 		UpdatedBy:   textOrNull(by),
 	})
@@ -331,12 +335,13 @@ func (s *Service) GetCategoriesByIDs(ctx context.Context, categoryIDs []int64) (
 }
 
 // UpdateCategory modifies an existing category.
-func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive bool, by string) (Category, error) {
+func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive, isProtein bool, by string) (Category, error) {
 	row, err := s.q.UpdateCategory(ctx, sqlc.UpdateCategoryParams{
 		CategoryID:  categoryID,
 		Name:        name,
 		Description: textOrNull(description),
 		IsActive:    isActive,
+		IsProtein:   isProtein,
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
@@ -1123,6 +1128,7 @@ func toCategory(row sqlc.InventoryCategory) Category {
 		Name:        row.Name,
 		Description: row.Description.String,
 		IsActive:    row.IsActive,
+		IsProtein:   row.IsProtein,
 	}
 }
 

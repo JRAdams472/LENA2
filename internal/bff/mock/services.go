@@ -23,6 +23,7 @@ import (
 	inventory "github.com/JRAdams472/LENA2/internal/inventory"
 	nutritionparse "github.com/JRAdams472/LENA2/internal/inventory/nutritionparse"
 	mealplan "github.com/JRAdams472/LENA2/internal/mealplan"
+	notifier "github.com/JRAdams472/LENA2/internal/notifier"
 	ocrimport "github.com/JRAdams472/LENA2/internal/ocrimport"
 	currentuser "github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	recipe "github.com/JRAdams472/LENA2/internal/recipe"
@@ -1174,18 +1175,18 @@ func (mr *MockCatalogAdminMockRecorder) CreateBrand(ctx, name, by any) *gomock.C
 }
 
 // CreateCategory mocks base method.
-func (m *MockCatalogAdmin) CreateCategory(ctx context.Context, name, description, by string) (inventory.Category, error) {
+func (m *MockCatalogAdmin) CreateCategory(ctx context.Context, name, description string, isProtein bool, by string) (inventory.Category, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateCategory", ctx, name, description, by)
+	ret := m.ctrl.Call(m, "CreateCategory", ctx, name, description, isProtein, by)
 	ret0, _ := ret[0].(inventory.Category)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateCategory indicates an expected call of CreateCategory.
-func (mr *MockCatalogAdminMockRecorder) CreateCategory(ctx, name, description, by any) *gomock.Call {
+func (mr *MockCatalogAdminMockRecorder) CreateCategory(ctx, name, description, isProtein, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCategory", reflect.TypeOf((*MockCatalogAdmin)(nil).CreateCategory), ctx, name, description, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCategory", reflect.TypeOf((*MockCatalogAdmin)(nil).CreateCategory), ctx, name, description, isProtein, by)
 }
 
 // CreateFlavorProfile mocks base method.
@@ -1478,18 +1479,18 @@ func (mr *MockCatalogAdminMockRecorder) UpdateBrand(ctx, brandID, name any) *gom
 }
 
 // UpdateCategory mocks base method.
-func (m *MockCatalogAdmin) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive bool, by string) (inventory.Category, error) {
+func (m *MockCatalogAdmin) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive, isProtein bool, by string) (inventory.Category, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateCategory", ctx, categoryID, name, description, isActive, by)
+	ret := m.ctrl.Call(m, "UpdateCategory", ctx, categoryID, name, description, isActive, isProtein, by)
 	ret0, _ := ret[0].(inventory.Category)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateCategory indicates an expected call of UpdateCategory.
-func (mr *MockCatalogAdminMockRecorder) UpdateCategory(ctx, categoryID, name, description, isActive, by any) *gomock.Call {
+func (mr *MockCatalogAdminMockRecorder) UpdateCategory(ctx, categoryID, name, description, isActive, isProtein, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCategory", reflect.TypeOf((*MockCatalogAdmin)(nil).UpdateCategory), ctx, categoryID, name, description, isActive, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCategory", reflect.TypeOf((*MockCatalogAdmin)(nil).UpdateCategory), ctx, categoryID, name, description, isActive, isProtein, by)
 }
 
 // UpdateFlavorProfile mocks base method.
@@ -1666,18 +1667,18 @@ func (mr *MockInventoryServiceMockRecorder) CreateBrand(ctx, name, by any) *gomo
 }
 
 // CreateCategory mocks base method.
-func (m *MockInventoryService) CreateCategory(ctx context.Context, name, description, by string) (inventory.Category, error) {
+func (m *MockInventoryService) CreateCategory(ctx context.Context, name, description string, isProtein bool, by string) (inventory.Category, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateCategory", ctx, name, description, by)
+	ret := m.ctrl.Call(m, "CreateCategory", ctx, name, description, isProtein, by)
 	ret0, _ := ret[0].(inventory.Category)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateCategory indicates an expected call of CreateCategory.
-func (mr *MockInventoryServiceMockRecorder) CreateCategory(ctx, name, description, by any) *gomock.Call {
+func (mr *MockInventoryServiceMockRecorder) CreateCategory(ctx, name, description, isProtein, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCategory", reflect.TypeOf((*MockInventoryService)(nil).CreateCategory), ctx, name, description, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCategory", reflect.TypeOf((*MockInventoryService)(nil).CreateCategory), ctx, name, description, isProtein, by)
 }
 
 // CreateFlavorProfile mocks base method.
@@ -2420,18 +2421,18 @@ func (mr *MockInventoryServiceMockRecorder) UpdateBrand(ctx, brandID, name any) 
 }
 
 // UpdateCategory mocks base method.
-func (m *MockInventoryService) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive bool, by string) (inventory.Category, error) {
+func (m *MockInventoryService) UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive, isProtein bool, by string) (inventory.Category, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateCategory", ctx, categoryID, name, description, isActive, by)
+	ret := m.ctrl.Call(m, "UpdateCategory", ctx, categoryID, name, description, isActive, isProtein, by)
 	ret0, _ := ret[0].(inventory.Category)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateCategory indicates an expected call of UpdateCategory.
-func (mr *MockInventoryServiceMockRecorder) UpdateCategory(ctx, categoryID, name, description, isActive, by any) *gomock.Call {
+func (mr *MockInventoryServiceMockRecorder) UpdateCategory(ctx, categoryID, name, description, isActive, isProtein, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCategory", reflect.TypeOf((*MockInventoryService)(nil).UpdateCategory), ctx, categoryID, name, description, isActive, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCategory", reflect.TypeOf((*MockInventoryService)(nil).UpdateCategory), ctx, categoryID, name, description, isActive, isProtein, by)
 }
 
 // UpdateFlavorProfile mocks base method.
@@ -6835,6 +6836,114 @@ func (m *MockHouseholdService) TransitionInvite(ctx context.Context, inviteID in
 func (mr *MockHouseholdServiceMockRecorder) TransitionInvite(ctx, inviteID, to, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransitionInvite", reflect.TypeOf((*MockHouseholdService)(nil).TransitionInvite), ctx, inviteID, to, by)
+}
+
+// MockNotifierService is a mock of NotifierService interface.
+type MockNotifierService struct {
+	ctrl     *gomock.Controller
+	recorder *MockNotifierServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockNotifierServiceMockRecorder is the mock recorder for MockNotifierService.
+type MockNotifierServiceMockRecorder struct {
+	mock *MockNotifierService
+}
+
+// NewMockNotifierService creates a new mock instance.
+func NewMockNotifierService(ctrl *gomock.Controller) *MockNotifierService {
+	mock := &MockNotifierService{ctrl: ctrl}
+	mock.recorder = &MockNotifierServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockNotifierService) EXPECT() *MockNotifierServiceMockRecorder {
+	return m.recorder
+}
+
+// ClearMute mocks base method.
+func (m *MockNotifierService) ClearMute(ctx context.Context, userID int64, category string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearMute", ctx, userID, category)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearMute indicates an expected call of ClearMute.
+func (mr *MockNotifierServiceMockRecorder) ClearMute(ctx, userID, category any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearMute", reflect.TypeOf((*MockNotifierService)(nil).ClearMute), ctx, userID, category)
+}
+
+// ListCategoryPreferences mocks base method.
+func (m *MockNotifierService) ListCategoryPreferences(ctx context.Context, userID int64) ([]notifier.CategoryPreference, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListCategoryPreferences", ctx, userID)
+	ret0, _ := ret[0].([]notifier.CategoryPreference)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListCategoryPreferences indicates an expected call of ListCategoryPreferences.
+func (mr *MockNotifierServiceMockRecorder) ListCategoryPreferences(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCategoryPreferences", reflect.TypeOf((*MockNotifierService)(nil).ListCategoryPreferences), ctx, userID)
+}
+
+// MuteCategory mocks base method.
+func (m *MockNotifierService) MuteCategory(ctx context.Context, userID int64, category string, until time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MuteCategory", ctx, userID, category, until)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MuteCategory indicates an expected call of MuteCategory.
+func (mr *MockNotifierServiceMockRecorder) MuteCategory(ctx, userID, category, until any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MuteCategory", reflect.TypeOf((*MockNotifierService)(nil).MuteCategory), ctx, userID, category, until)
+}
+
+// SetCategoryEnabled mocks base method.
+func (m *MockNotifierService) SetCategoryEnabled(ctx context.Context, userID int64, category string, enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetCategoryEnabled", ctx, userID, category, enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetCategoryEnabled indicates an expected call of SetCategoryEnabled.
+func (mr *MockNotifierServiceMockRecorder) SetCategoryEnabled(ctx, userID, category, enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCategoryEnabled", reflect.TypeOf((*MockNotifierService)(nil).SetCategoryEnabled), ctx, userID, category, enabled)
+}
+
+// Stop mocks base method.
+func (m *MockNotifierService) Stop() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Stop")
+}
+
+// Stop indicates an expected call of Stop.
+func (mr *MockNotifierServiceMockRecorder) Stop() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockNotifierService)(nil).Stop))
+}
+
+// Sweep mocks base method.
+func (m *MockNotifierService) Sweep(ctx context.Context, now time.Time) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Sweep", ctx, now)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Sweep indicates an expected call of Sweep.
+func (mr *MockNotifierServiceMockRecorder) Sweep(ctx, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sweep", reflect.TypeOf((*MockNotifierService)(nil).Sweep), ctx, now)
 }
 
 // MockAuthInvalidator is a mock of AuthInvalidator interface.

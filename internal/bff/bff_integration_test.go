@@ -1175,7 +1175,7 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 
 	brand, err := invSvc.CreateBrand(ctx, "IT Toggle Brand", "it")
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT Toggle Category", "", "it")
+	cat, err := invSvc.CreateCategory(ctx, "IT Toggle Category", "", false, "it")
 	require.NoError(t, err)
 	unit, err := invSvc.GetUnitByName(ctx, "each")
 	require.NoError(t, err)
@@ -1255,7 +1255,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 
 	brand, err := invSvc.CreateBrand(ctx, "IT Gen Brand", "it")
 	require.NoError(t, err)
-	cat, err := invSvc.CreateCategory(ctx, "IT Gen Category", "", "it")
+	cat, err := invSvc.CreateCategory(ctx, "IT Gen Category", "", false, "it")
 	require.NoError(t, err)
 	kg, err := invSvc.GetUnitByName(ctx, "kilogram")
 	require.NoError(t, err)

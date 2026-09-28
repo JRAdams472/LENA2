@@ -34,6 +34,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
@@ -151,6 +152,16 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	inventorySvc := inventory.NewService(pool)
 	eventSvc := event.NewService(pool)
 	mealPlanSvc := mealplan.NewService(pool)
+	notifierSvc := notifier.NewService(pool, notifier.Config{
+		SweepInterval: cfg.NotificationSweepInterval,
+		NotifyHour:    cfg.NotificationHour,
+		ExpiryDays:    cfg.NotificationExpiryDays,
+	})
+	// Opt-outs apply to event-driven notifications too, not just sweep
+	// reminders — the gate is checked at write time.
+	householdSvc.WithNotifyGate(notifierSvc)
+	// Reminder sweep runs until Resolver.Shutdown calls Stop.
+	notifierSvc.Start(context.Background())
 	recipeSvc := recipe.NewService(pool)
 	userPrefsSvc := userprefs.NewService(pool)
 	wineSvc := wine.NewService(pool)
@@ -290,6 +301,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 			Identity:     identitySvc,
 			RecipeImport: recipeImportSvc,
 			Household:    householdSvc,
+			Notifier:     notifierSvc,
 			Auth:         authenticator,
 			OCR:          ocrClient,
 		},

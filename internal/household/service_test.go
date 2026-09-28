@@ -216,6 +216,38 @@ func TestCreateNotification(t *testing.T) {
 	require.NoError(t, err)
 }
 
+type stubGate struct {
+	allowed bool
+	err     error
+	called  bool
+}
+
+func (g *stubGate) Allowed(_ context.Context, _ int64, _ string) (bool, error) {
+	g.called = true
+	return g.allowed, g.err
+}
+
+func TestCreateNotification_GateSuppressed(t *testing.T) {
+	svc, _ := newService(t)
+	gate := &stubGate{allowed: false}
+	svc.WithNotifyGate(gate)
+
+	// Suppressed recipients get nothing — no insert, no prune.
+	require.NoError(t, svc.CreateNotification(context.Background(), 3, KindMemberJoined, nil, nil, nil, nil))
+	assert.True(t, gate.called)
+}
+
+func TestCreateNotification_GateErrorDelivers(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	svc.WithNotifyGate(&stubGate{allowed: false, err: errDB})
+	mq.EXPECT().CreateNotification(ctx, gomock.Any()).Return(sqlc.HouseholdNotification{}, nil)
+	mq.EXPECT().PruneReadNotifications(ctx, int64(3)).Return(nil)
+
+	// A gate failure fails open so a prefs outage can't eat notifications.
+	require.NoError(t, svc.CreateNotification(ctx, 3, KindMemberJoined, nil, nil, nil, nil))
+}
+
 func TestListNotificationsForUser(t *testing.T) {
 	ctx := context.Background()
 
