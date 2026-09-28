@@ -12,6 +12,7 @@ LENA2 is a personal, privacy-first household management system. It replaces scat
 - **Plan meals** — build weekly meal plans with servings and generate grocery lists automatically.
 - **Plan food events** — combine recipes into a gathering with absolute serve times, then generate a backwards-scheduled cooking timeline that flags appliance conflicts.
 - **Manage recipes** — store ingredients, steps, and portions, then pull them into meal plans and events. Recipe steps carry timing metadata (duration, type, passive/hands-off, dependencies, appliance) that powers event scheduling.
+- **Categorize and rediscover recipes** — tag recipes with course, cuisine, difficulty, main ingredient, and more; filter by faceted categories (any-of within a group, all-of across groups). Recipe lists are ranked by engagement — favorites first, then recipes your household has cooked, ones you've viewed, and ones matching your past searches.
 - **Shop smarter** — check off grocery items while you shop; checked-off food items can update pantry stock automatically.
 - **Track wine** — maintain a wine cellar with bottles, types, countries, regions, vintages, and grape varieties.
 - **Add items on the go** — use the mobile app to scan a UPC barcode, look up catalog items, and submit missing products for approval.
@@ -70,7 +71,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 ### Recipes & planning
 
-- `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata).
+- `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata). Category filters narrow the list server-side; assignments happen on the detail page. `/recipes/categories` is the admin's taxonomy manager (groups, exclusivity, display order, categories).
 - `/meal-plans` — weekly meal plans with daily slots and per-slot servings.
 - `/events` — food events: dish slots with granularity-snapped serve times, per-slot recipe snapshots (steps + ingredients copied per event so edits never touch the shared recipe), servings scaling, and a generated cooking timeline with conflict warnings.
 - `/grocery-lists` — shopping lists generated from meal plans, with check-off.

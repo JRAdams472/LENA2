@@ -42,3 +42,6 @@ Thumbs.db
 
 # Recipe scan import runtime artifacts
 /import/
+
+# Screenshot capture output (published to LENA2.wiki repo instead)
+/wiki-shots/

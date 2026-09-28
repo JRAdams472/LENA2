@@ -43,6 +43,23 @@ await context.addInitScript(
 );
 const page = await context.newPage();
 
+// Recipe IDs are not stable across fresh volumes — resolve them by name.
+async function recipeId(name) {
+  const r = await ctx.post(`${BASE}/graphql`, {
+    headers: { Authorization: `Bearer ${id_token}` },
+    data: {
+      query: `query ($s: String) { recipes(page: 1, pageSize: 5, search: $s) { items { id name } } }`,
+      variables: { s: name },
+    },
+  });
+  const body = await r.json();
+  const hit = body.data?.recipes?.items?.find((i) => i.name === name);
+  if (!hit) throw new Error(`recipe not found: ${name}`);
+  return hit.id;
+}
+
+const roastId = await recipeId("Herb Roast Chicken with Vegetables");
+
 async function shot(name, path, waitFor) {
   // NOTE: "networkidle" never settles — the app polls notifications.
   await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
@@ -54,9 +71,20 @@ async function shot(name, path, waitFor) {
   console.log("shot:", name);
 }
 
-await shot("dashboard", "/", "Hearty Vegetable Soup");
+await shot("dashboard", "/", "Garlic Butter Pasta");
 await shot("recipes", "/recipes", "Herb Roast Chicken");
-await shot("recipe-detail", "/recipes/1", "Herb Roast Chicken");
+await shot("recipe-detail", `/recipes/${roastId}`, "Herb Roast Chicken");
+await shot("recipe-categories-admin", "/recipes/categories", "Cuisine");
+
+// Category filter in action — open the Cuisine dropdown on the recipes list.
+await page.goto(`${BASE}/recipes`, { waitUntil: "domcontentloaded" });
+await page.getByText("Herb Roast Chicken").first().waitFor({ timeout: 20000 });
+await page.getByRole("combobox", { name: "Cuisine" }).click();
+await page.getByRole("option", { name: "Italian" }).waitFor({ timeout: 10000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/recipe-category-filter.png` });
+await page.keyboard.press("Escape");
+console.log("shot: recipe-category-filter");
 await shot("meal-plans", "/meal-plans", "Week of");
 await shot("meal-plan-week", "/meal-plans/1", "Week of");
 await shot("grocery-lists", "/grocery-lists", "20");

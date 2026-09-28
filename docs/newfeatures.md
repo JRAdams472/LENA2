@@ -37,6 +37,7 @@ Ensure the AI integration is generic enough that Ollama can be swapped out for a
 ~~Make sure the entire interface and api is idempotent.~~ ✅ Done — `Idempotency-Key` transport dedup on all mutations (PRs #159–#162, see `docs/idempotency-plan.md`).
 
 ## Recipe Categories
+~~We need to be able to categorize recipes to make searching easier.~~ ✅ Done — grouped categories with per-group exclusivity, faceted filters, and engagement-ranked search on web + mobile (PRs #164–#166, closeout in p4; see `docs/recipe-categories-plan.md`).
 We need to be able to categorize recipes to make searching easier.
 Categories should include but not be limited to:
 Breakfast
