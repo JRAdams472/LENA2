@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import AdminLayout from "@/app/components/AdminLayout";
 import { AuthProvider } from "@/app/auth/AuthProvider";
 
@@ -14,6 +14,8 @@ jest.mock("@react-oauth/google", () => ({
 }));
 
 const mockedUsePathname = usePathname as jest.Mock;
+const mockedUseRouter = useRouter as jest.Mock;
+const mockPush = jest.fn();
 
 function makeToken(email: string, exp: number) {
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
@@ -75,6 +77,8 @@ describe("AdminLayout", () => {
     localStorage.clear();
     sessionStorage.clear();
     mockedUsePathname.mockReturnValue("/");
+    mockedUseRouter.mockReturnValue({ push: mockPush });
+    mockPush.mockReset();
     mockFetch.mockReset();
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
@@ -94,6 +98,24 @@ describe("AdminLayout", () => {
                   firstName: null,
                   lastName: null,
                 },
+              },
+              {
+                id: "4",
+                kind: "ITEM_EXPIRING",
+                title: "Milk expires soon",
+                body: "Milk expires Oct 2 — use it or add a replacement to your grocery list.",
+                itemId: "9",
+                createdAt: "2026-09-20T10:00:00Z",
+                actor: null,
+              },
+              {
+                id: "5",
+                kind: "PROTEIN_DEFROST",
+                title: "Defrost protein for Oct 3",
+                body: "Roast calls for 10.0 lb of protein.",
+                recipeId: "7",
+                createdAt: "2026-09-20T10:00:00Z",
+                actor: null,
               },
             ],
           })
@@ -164,7 +186,7 @@ describe("AdminLayout", () => {
     expect(
       await screen.findByText("Mate invited you to their household")
     ).toBeInTheDocument();
-    expect(screen.getByText(/ago|just now/)).toBeInTheDocument();
+    expect(screen.getAllByText(/ago|just now/).length).toBeGreaterThan(0);
 
     // Opening the menu marks everything read.
     expect(
@@ -180,6 +202,61 @@ describe("AdminLayout", () => {
         .getByTestId("notification-badge")
         .querySelector(".MuiBadge-badge")
     ).toHaveClass("MuiBadge-invisible");
+  });
+
+  it("renders reminder notifications with server text and actions", async () => {
+    signIn();
+    renderLayout();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    });
+
+    // Server-rendered title/body are used for scheduled reminders.
+    expect(await screen.findByText("Milk expires soon")).toBeInTheDocument();
+    expect(
+      screen.getByText(/use it or add a replacement/)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Defrost protein for Oct 3")).toBeInTheDocument();
+
+    // The expiry row offers the replacement action.
+    mockFetch.mockResolvedValueOnce(
+      gql({ addItemToCurrentGroceryList: { id: "11" } })
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add to list" }));
+    });
+    expect(
+      mockFetch.mock.calls.some(([, init]) =>
+        (init as RequestInit).body
+          ?.toString()
+          .includes("addItemToCurrentGroceryList")
+      )
+    ).toBe(true);
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/grocery-lists"));
+  });
+
+  it("deep-links reminder notifications and exposes settings", async () => {
+    signIn();
+    renderLayout();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    });
+    await screen.findByText("Defrost protein for Oct 3");
+
+    // recipeId deep-links to the recipe page.
+    await act(async () => {
+      fireEvent.click(screen.getByText("Defrost protein for Oct 3"));
+    });
+    expect(mockPush).toHaveBeenCalledWith("/recipes/7");
+
+    // Settings entry navigates to the preferences page.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    });
+    fireEvent.click(await screen.findByText("Notification settings"));
+    expect(mockPush).toHaveBeenCalledWith("/notifications");
   });
 
   it("signs out and returns to the login screen", async () => {

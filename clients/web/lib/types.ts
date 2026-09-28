@@ -55,7 +55,10 @@ export type NotificationKind =
   | "HOUSEHOLD_RENAMED"
   | "EVENT_CREATED"
   | "EVENT_UPDATED"
-  | "EVENT_DELETED";
+  | "EVENT_DELETED"
+  | "PROTEIN_DEFROST"
+  | "MEAL_PREP_ADVANCE"
+  | "ITEM_EXPIRING";
 
 // A member entry pairs the restricted user projection with household
 // role metadata — roles never appear on HouseholdUser itself so invite
@@ -81,7 +84,24 @@ export interface HouseholdNotification {
   // Deep-link target for EVENT_* kinds; null otherwise or once the event
   // row is gone.
   foodEventId: number | null;
+  // Server-rendered feed text for scheduled reminders; null on
+  // event-driven rows (clients render those from kind).
+  title: string | null;
+  body: string | null;
+  // Deep-link target for PROTEIN_DEFROST / MEAL_PREP_ADVANCE reminders.
+  recipeId: number | null;
+  // Deep-link + replacement-action target for ITEM_EXPIRING reminders.
+  itemId: number | null;
   createdAt: string;
+}
+
+// One notification opt-out bucket as seen by the current user: "_all" is
+// the global mute; every other value is a notification_type category.
+export interface NotificationCategoryPreference {
+  category: string;
+  label: string;
+  enabled: boolean;
+  mutedUntil: string | null;
 }
 
 export interface HouseholdInvite {
@@ -97,6 +117,8 @@ export interface Category extends AuditableEntity {
   categoryName: string;
   description: string | null;
   isActive: boolean;
+  // Whether items in this category count as protein for defrost reminders.
+  isProtein: boolean;
 }
 
 export interface FlavorProfile {

@@ -354,9 +354,10 @@ describe("api client: categories", () => {
       categoryName: "Dairy",
       description: "Milk",
       isActive: true,
+      isProtein: false,
     });
     expect(lastRequestBody().variables).toEqual({
-      input: { name: "Dairy", description: "Milk" },
+      input: { name: "Dairy", description: "Milk", isProtein: false },
     });
   });
 
@@ -856,5 +857,111 @@ describe("api client: grocery list items", () => {
     expect(lastRequestBody().variables).toEqual({
       groceryListItemId: "10",
     });
+  });
+});
+
+describe("api client: notifications", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    setAuthTokenGetter(() => null);
+  });
+
+  it("getMyNotifications maps reminder payload fields", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        myNotifications: [
+          {
+            id: "4",
+            kind: "ITEM_EXPIRING",
+            title: "Milk expires soon",
+            body: "Milk expires Oct 2",
+            itemId: "9",
+            recipeId: null,
+            foodEventId: null,
+            createdAt: "2026-09-20T10:00:00Z",
+            actor: null,
+          },
+        ],
+      })
+    );
+
+    const [n] = await api.getMyNotifications(5);
+    expect(n.notificationID).toBe(4);
+    expect(n.kind).toBe("ITEM_EXPIRING");
+    expect(n.title).toBe("Milk expires soon");
+    expect(n.itemId).toBe(9);
+    expect(n.recipeId).toBeNull();
+    expect(lastRequestBody().query).toContain("recipeId");
+  });
+
+  it("getMyNotificationPreferences returns the buckets", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        myNotificationPreferences: [
+          { category: "_all", label: "All notifications", enabled: true, mutedUntil: null },
+          { category: "expiry", label: "Expiring pantry items", enabled: false, mutedUntil: "2026-10-01T00:00:00Z" },
+        ],
+      })
+    );
+
+    const prefs = await api.getMyNotificationPreferences();
+    expect(prefs).toHaveLength(2);
+    expect(prefs[0].category).toBe("_all");
+    expect(prefs[1].mutedUntil).toBe("2026-10-01T00:00:00Z");
+  });
+
+  it("setNotificationCategoryEnabled posts category and flag", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ setNotificationCategoryEnabled: true })
+    );
+
+    await api.setNotificationCategoryEnabled("expiry", false);
+    expect(lastRequestBody().variables).toEqual({
+      category: "expiry",
+      enabled: false,
+    });
+  });
+
+  it("muteNotifications posts category and until; null category is global", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ muteNotifications: true })
+    );
+
+    await api.muteNotifications(null, "2026-10-01T00:00:00Z");
+    expect(lastRequestBody().variables).toEqual({
+      category: null,
+      until: "2026-10-01T00:00:00Z",
+    });
+  });
+
+  it("clearNotificationMute posts the category", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ clearNotificationMute: true })
+    );
+
+    await api.clearNotificationMute("expiry");
+    expect(lastRequestBody().variables).toEqual({ category: "expiry" });
+  });
+
+  it("addItemToCurrentGroceryList posts the item id and maps the row", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        addItemToCurrentGroceryList: {
+          id: "11",
+          item: { id: "9", name: "Milk" },
+          manualItemName: null,
+          quantityNeeded: 1,
+          unitOfMeasure: null,
+          source: "manual",
+          isChecked: false,
+        },
+      })
+    );
+
+    const item = await api.addItemToCurrentGroceryList(9);
+    expect(lastRequestBody().variables).toEqual({ itemId: "9" });
+    expect(item?.groceryListItemID).toBe(11);
+    expect(item?.itemID).toBe(9);
+    expect(item?.source).toBe("manual");
   });
 });

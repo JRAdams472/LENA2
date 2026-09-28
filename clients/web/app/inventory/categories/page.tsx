@@ -14,6 +14,7 @@ export default function CategoriesPage() {
         { key: "categoryName", label: "Name", sortable: true },
         { key: "description", label: "Description" },
         { key: "isActive", label: "Active", type: "boolean", sortable: true },
+        { key: "isProtein", label: "Protein", type: "boolean" },
       ]}
       createFn={(row) => api.createCategory(asEntity(row))}
       updateFn={(row) =>

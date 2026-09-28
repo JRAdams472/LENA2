@@ -27,6 +27,7 @@ import Badge from "@mui/material/Badge";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import NotificationsIcon from "@mui/icons-material/Notifications";
+import SettingsIcon from "@mui/icons-material/Settings";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
@@ -207,27 +208,68 @@ function NotificationBell() {
             key={n.notificationID}
             onClick={() => {
               setAnchor(null);
-              // Event notifications deep-link to the event; household
-              // activity goes to the household page.
+              // Reminders deep-link to their subject; event notifications
+              // to the event; household activity to the household page.
               router.push(
-                n.foodEventId != null
-                  ? `/events/${n.foodEventId}`
-                  : "/household"
+                n.recipeId != null
+                  ? `/recipes/${n.recipeId}`
+                  : n.foodEventId != null
+                    ? `/events/${n.foodEventId}`
+                    : n.itemId != null
+                      ? "/inventory/items"
+                      : "/household"
               );
             }}
           >
             <ListItemText
               primary={notificationText(n)}
-              secondary={timeAgo(n.createdAt)}
+              secondary={
+                <>
+                  {n.body}
+                  {n.body ? <br /> : null}
+                  {timeAgo(n.createdAt)}
+                </>
+              }
             />
+            {n.kind === "ITEM_EXPIRING" && n.itemId != null && (
+              <Button
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  api
+                    .addItemToCurrentGroceryList(n.itemId as number)
+                    .then(() => {
+                      setAnchor(null);
+                      router.push("/grocery-lists");
+                    })
+                    .catch(() => {});
+                }}
+              >
+                Add to list
+              </Button>
+            )}
           </MenuItem>
         ))}
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            router.push("/notifications");
+          }}
+        >
+          <ListItemIcon>
+            <SettingsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Notification settings" />
+        </MenuItem>
       </Menu>
     </>
   );
 }
 
 function notificationText(n: HouseholdNotification): string {
+  // Scheduled reminders carry server-rendered text.
+  if (n.title) return n.title;
   const actor = n.actor?.displayName ?? "Someone";
   switch (n.kind) {
     case "INVITE_RECEIVED":
@@ -254,6 +296,14 @@ function notificationText(n: HouseholdNotification): string {
       return `${actor} updated an event`;
     case "EVENT_DELETED":
       return `${actor} deleted an event`;
+    case "PROTEIN_DEFROST":
+      return "Time to defrost protein for an upcoming meal";
+    case "MEAL_PREP_ADVANCE":
+      return "A recipe on your meal plan needs advance prep";
+    case "ITEM_EXPIRING":
+      return "A pantry item is expiring soon";
+    default:
+      return "Notification";
   }
 }
 

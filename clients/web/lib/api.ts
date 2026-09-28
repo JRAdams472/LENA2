@@ -41,6 +41,7 @@ import {
   EventRecipeStep,
   EventTimeline,
   InviteStatus,
+  NotificationCategoryPreference,
   NotificationKind,
   RecipeImport,
   RecipeImportDraft,
@@ -220,6 +221,7 @@ interface GqlCategory {
   name: string;
   description: string | null;
   isActive: boolean;
+  isProtein: boolean;
 }
 
 interface GqlFlavorProfile {
@@ -704,7 +706,18 @@ interface GqlHouseholdNotification {
   kind: string;
   actor: GqlHouseholdUser | null;
   foodEventId: string | null;
+  title: string | null;
+  body: string | null;
+  recipeId: string | null;
+  itemId: string | null;
   createdAt: string;
+}
+
+interface GqlNotificationCategoryPreference {
+  category: string;
+  label: string;
+  enabled: boolean;
+  mutedUntil: string | null;
 }
 
 interface GqlHouseholdInvite {
@@ -772,6 +785,10 @@ const toHouseholdNotification = (
   kind: n.kind as NotificationKind,
   actor: n.actor ? toHouseholdUser(n.actor) : null,
   foodEventId: n.foodEventId ? num(n.foodEventId) : null,
+  title: n.title,
+  body: n.body,
+  recipeId: n.recipeId ? num(n.recipeId) : null,
+  itemId: n.itemId ? num(n.itemId) : null,
   createdAt: n.createdAt,
 });
 
@@ -874,6 +891,7 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
           categoryName: i.category.name,
           description: i.category.description,
           isActive: true,
+          isProtein: i.category.isProtein === true,
         }
       : null,
     foodNutrients: (i.nutrients ?? []).map((n) => toFoodNutrient(itemID, n)),
@@ -1060,6 +1078,7 @@ function toCategory(c: GqlCategory): Category {
     categoryName: c.name,
     description: c.description,
     isActive: c.isActive,
+    isProtein: c.isProtein === true,
   };
 }
 
@@ -1707,7 +1726,7 @@ export const api = {
     limit = 20
   ): Promise<HouseholdNotification[]> => {
     const data = await request<{ myNotifications: GqlHouseholdNotification[] }>(
-      `query ($limit: Int) { myNotifications(limit: $limit) { id kind foodEventId createdAt actor { id displayName firstName lastName } } }`,
+      `query ($limit: Int) { myNotifications(limit: $limit) { id kind foodEventId title body recipeId itemId createdAt actor { id displayName firstName lastName } } }`,
       { limit }
     );
     return (data.myNotifications ?? []).map(toHouseholdNotification);
@@ -1725,6 +1744,63 @@ export const api = {
       `mutation { markAllNotificationsRead }`
     );
     return data.markAllNotificationsRead;
+  },
+
+  getMyNotificationPreferences: async (): Promise<
+    NotificationCategoryPreference[]
+  > => {
+    const data = await request<{
+      myNotificationPreferences: GqlNotificationCategoryPreference[];
+    }>(
+      `query { myNotificationPreferences { category label enabled mutedUntil } }`
+    );
+    return data.myNotificationPreferences ?? [];
+  },
+
+  setNotificationCategoryEnabled: async (
+    category: string,
+    enabled: boolean
+  ): Promise<boolean> => {
+    const data = await request<{ setNotificationCategoryEnabled: boolean }>(
+      `mutation ($category: String!, $enabled: Boolean!) { setNotificationCategoryEnabled(category: $category, enabled: $enabled) }`,
+      { category, enabled }
+    );
+    return data.setNotificationCategoryEnabled;
+  },
+
+  muteNotifications: async (
+    category: string | null,
+    until: string
+  ): Promise<boolean> => {
+    const data = await request<{ muteNotifications: boolean }>(
+      `mutation ($category: String, $until: Time!) { muteNotifications(category: $category, until: $until) }`,
+      { category, until }
+    );
+    return data.muteNotifications;
+  },
+
+  clearNotificationMute: async (category: string | null): Promise<boolean> => {
+    const data = await request<{ clearNotificationMute: boolean }>(
+      `mutation ($category: String) { clearNotificationMute(category: $category) }`,
+      { category }
+    );
+    return data.clearNotificationMute;
+  },
+
+  addItemToCurrentGroceryList: async (
+    itemID: number
+  ): Promise<GroceryListItem | null> => {
+    const data = await request<{
+      addItemToCurrentGroceryList: GqlGroceryListItem;
+    }>(
+      `mutation ($itemId: ID!) { addItemToCurrentGroceryList(itemId: $itemId) { id item { id name } manualItemName quantityNeeded unitOfMeasure source isChecked } }`,
+      { itemId: String(itemID) }
+    );
+    // The returned row's list id isn't on the GraphQL type; the caller only
+    // needs the created row to confirm the add and name the item.
+    return data.addItemToCurrentGroceryList
+      ? toGroceryListItem(0, data.addItemToCurrentGroceryList)
+      : null;
   },
 
   // Admin user management
@@ -2046,7 +2122,7 @@ export const api = {
 
   getCategories: async (): Promise<Category[]> => {
     const data = await request<{ categories: GqlCategory[] }>(
-      `query { categories { id name description isActive } }`
+      `query { categories { id name description isActive isProtein } }`
     );
     return data.categories.map(toCategory);
   },
@@ -2056,8 +2132,8 @@ export const api = {
 
   createCategory: async (category: Omit<Category, keyof AuditableEntity>): Promise<Category> => {
     const data = await request<{ createCategory: GqlCategory }>(
-      `mutation ($input: CreateCategoryInput!) { createCategory(input: $input) { id name description isActive } }`,
-      { input: { name: category.categoryName, description: category.description } }
+      `mutation ($input: CreateCategoryInput!) { createCategory(input: $input) { id name description isActive isProtein } }`,
+      { input: { name: category.categoryName, description: category.description, isProtein: category.isProtein } }
     );
     return toCategory(data.createCategory);
   },
@@ -2067,8 +2143,9 @@ export const api = {
     if (category.categoryName !== undefined) input.name = category.categoryName;
     if (category.description !== undefined) input.description = category.description;
     if (category.isActive !== undefined) input.isActive = category.isActive;
+    if (category.isProtein !== undefined) input.isProtein = category.isProtein;
     const data = await request<{ updateCategory: GqlCategory }>(
-      `mutation ($id: ID!, $input: UpdateCategoryInput!) { updateCategory(id: $id, input: $input) { id name description isActive } }`,
+      `mutation ($id: ID!, $input: UpdateCategoryInput!) { updateCategory(id: $id, input: $input) { id name description isActive isProtein } }`,
       { id: String(id), input }
     );
     return toCategory(data.updateCategory);
