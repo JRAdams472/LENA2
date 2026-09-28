@@ -39,23 +39,16 @@ Ensure the AI integration is generic enough that Ollama can be swapped out for a
 
 ## Recipe Categories
 ~~We need to be able to categorize recipes to make searching easier.~~ ✅ Done — grouped categories with per-group exclusivity, faceted filters, and engagement-ranked search on web + mobile (PRs #164–#166, closeout in p4; see `docs/recipe-categories-plan.md`).
-We need to be able to categorize recipes to make searching easier.
-Categories should include but not be limited to:
-Breakfast
-Lunch
-Dinner
-Cocktail
-Soup
-Bread
-Casserole
-Single Pan
-Low Calorie
-Difficulty categorization (Easy, Medium, Skilled, Etc)
-Main Ingredient, i.e. Chicken, Beef, Fish, Vegetarian
-Regional origin, i.e. Italian, Spanish, Southwestern US, Mexican, Etc.
-Categories of the same type should be exclusive, i.e. it can not both be Mexican and Italian, but recipes should be allowed to belong to multimple categories, i.e. Mexican, Beef, Dinner
-When searching for recipes, either in meal planning or a general recipe search, the user should have the ablilty to filter by category.
-
+~~We need to be able to categorize recipes to make searching easier.~~
+~~Categories should include but not be limited to:~~ ✅ Done — all seeded in migration 0035:
+~~Breakfast~~, ~~Lunch~~, ~~Dinner~~ — Course group
+~~Cocktail~~, ~~Soup~~, ~~Bread~~, ~~Casserole~~, ~~Single Pan~~ — Dish Type group
+~~Low Calorie~~ — Dietary group
+~~Difficulty categorization (Easy, Medium, Skilled, Etc)~~ — Difficulty group
+~~Main Ingredient, i.e. Chicken, Beef, Fish, Vegetarian~~ — Main Ingredient group (+ Pork)
+~~Regional origin, i.e. Italian, Spanish, Southwestern US, Mexican, Etc.~~ — Cuisine group (+ French, American, Asian)
+~~Categories of the same type should be exclusive, i.e. it can not both be Mexican and Italian, but recipes should be allowed to belong to multimple categories, i.e. Mexican, Beef, Dinner~~ ✅ Done — exclusivity is per group; a recipe holds one value per exclusive group plus any number from non-exclusive groups.
+~~When searching for recipes, either in meal planning or a general recipe search, the user should have the ablilty to filter by category.~~ ✅ Done — filter bar on `/recipes`, category dropdown in the meal-plan slot picker, filter sheet on mobile.
 ## Analytics-driven search ranking
 Use analytics in all searches to provide more targeted results.
 Every search in the app (recipes, items, brands, pantry, wine, etc.) should order results by how likely the user is to actually use them, rather than random, alphabetical, or insertion order.
