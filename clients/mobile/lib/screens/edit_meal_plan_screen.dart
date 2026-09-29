@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 
 const String mealPlanQuery = r'''
   query MealPlan($id: ID!) {
@@ -64,15 +65,9 @@ const String recipeCategoryGroupsQuery = r'''
   }
 ''';
 
-const String recordSelectionMutation = r'''
-  mutation RecordSelection($entityType: EntityType!, $entityId: ID!) {
-    recordSelection(entityType: $entityType, entityId: $entityId)
-  }
-''';
-
 const String itemsQuery = r'''
-  query Items {
-    items(page: 1, pageSize: 100) {
+  query Items($search: String) {
+    items(page: 1, pageSize: 50, search: $search) {
       items {
         id
         name
@@ -154,7 +149,9 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
 
   Map<String, TextEditingController> _itemQtyCtrls = {};
   Map<String, TextEditingController> _itemUnitCtrls = {};
+  Map<String, TextEditingController> _itemSearchCtrls = {};
   Map<String, String?> _itemSelections = {};
+  final _itemSearchDebouncer = Debouncer();
 
   @override
   void didChangeDependencies() {
@@ -165,21 +162,33 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     }
   }
 
+  Future<void> _loadItems() async {
+    final client = GraphQLProvider.of(context).value;
+    final itemsResult = await client.query(QueryOptions(
+      document: gql(itemsQuery),
+      variables: {'search': _itemSearch.isEmpty ? null : _itemSearch},
+    ));
+    if (!mounted) return;
+    setState(() {
+      _mergeItems(itemsResult.data?['items']?['items'] as List? ?? []);
+    });
+  }
+
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    final recipesResult = await client.query(QueryOptions(document: gql(recipesQuery)));
-    final itemsResult = await client.query(QueryOptions(document: gql(itemsQuery)));
-    final groupsResult =
-        await client.query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
+    final recipesResult =
+        await client.query(QueryOptions(document: gql(recipesQuery)));
+    final groupsResult = await client
+        .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
+    if (!mounted) return;
     setState(() {
       _recipes = (recipesResult.data?['recipes']?['items'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-      _items = (itemsResult.data?['items']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
       _categoryGroups =
           (groupsResult.data?['recipeCategoryGroups'] as List? ?? [])
               .cast<Map<String, dynamic>>();
     });
+    await _loadItems();
 
     if (widget.mealPlanId != null) {
       final planResult = await client.query(
@@ -198,6 +207,34 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
         });
       }
     }
+  }
+
+  String _itemSearch = '';
+
+  /// Loads ranked catalog items into `_items`, keeping every currently
+  /// selected slot item in the list — a search result set that omits a
+  /// selected id would trip DropdownButtonFormField's value assertion.
+  void _mergeItems(List<dynamic> loaded) {
+    final merged = loaded.cast<Map<String, dynamic>>();
+    final selectedIds = _itemSelections.values.whereType<String>().toSet();
+    for (final id in selectedIds) {
+      if (!merged.any((i) => i['id'] == id)) {
+        final prev = _items.where((i) => i['id'] == id).toList();
+        if (prev.isNotEmpty) merged.insert(0, prev.first);
+      }
+    }
+    _items = merged;
+  }
+
+  void _onItemSearchChanged(String value) {
+    _itemSearchDebouncer.run(() {
+      final term = value.trim();
+      if (term.isNotEmpty) {
+        recordSearch(GraphQLProvider.of(context).value, 'item', term);
+      }
+      setState(() => _itemSearch = term);
+      _loadItems();
+    });
   }
 
   Future<void> _save(BuildContext context) async {
@@ -231,7 +268,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     setState(() => _isAddingSlot = true);
     try {
       final client = GraphQLProvider.of(context).value;
-      final recipeId = _recipeSelection?.isNotEmpty == true ? _recipeSelection : null;
+      final recipeId =
+          _recipeSelection?.isNotEmpty == true ? _recipeSelection : null;
       await client.mutate(MutationOptions(
         document: gql(addMealSlotMutation),
         variables: {
@@ -240,16 +278,15 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
             'dayOfWeek': int.tryParse(_dayCtrlNew.text) ?? 0,
             'mealType': _mealTypeCtrl.text,
             'recipeId': recipeId,
-            'servings': _servingsCtrl.text.isEmpty ? null : int.tryParse(_servingsCtrl.text),
+            'servings': _servingsCtrl.text.isEmpty
+                ? null
+                : int.tryParse(_servingsCtrl.text),
             'replacementNote': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
           }
         },
       ));
       if (recipeId != null) {
-        client.mutate(MutationOptions(
-          document: gql(recordSelectionMutation),
-          variables: {'entityType': 'recipe', 'entityId': recipeId},
-        ));
+        recordSelection(client, 'recipe', recipeId);
       }
       _mealTypeCtrl.clear();
       _servingsCtrl.clear();
@@ -286,6 +323,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
         }
       },
     ));
+    recordSelection(client, 'item', itemId);
     _itemQtyCtrls[slotId]?.clear();
     _itemUnitCtrls[slotId]?.clear();
     setState(() => _itemSelections[slotId] = null);
@@ -314,6 +352,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     _noteCtrl.dispose();
     _itemQtyCtrls.values.forEach((c) => c.dispose());
     _itemUnitCtrls.values.forEach((c) => c.dispose());
+    _itemSearchCtrls.values.forEach((c) => c.dispose());
+    _itemSearchDebouncer.dispose();
     super.dispose();
   }
 
@@ -321,6 +361,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     final slotId = slot['id'] as String;
     _itemQtyCtrls.putIfAbsent(slotId, () => TextEditingController());
     _itemUnitCtrls.putIfAbsent(slotId, () => TextEditingController());
+    _itemSearchCtrls.putIfAbsent(slotId, () => TextEditingController());
     final items = (slot['items'] as List? ?? []).cast<Map<String, dynamic>>();
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -343,30 +384,44 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                 ),
               ],
             ),
-            if (slot['recipe'] != null) Text('Recipe: ${slot['recipe']['name']}'),
+            if (slot['recipe'] != null)
+              Text('Recipe: ${slot['recipe']['name']}'),
             if (slot['servings'] != null) Text('Servings: ${slot['servings']}'),
-            if (slot['replacementNote'] != null && (slot['replacementNote'] as String).isNotEmpty)
+            if (slot['replacementNote'] != null &&
+                (slot['replacementNote'] as String).isNotEmpty)
               Text('Note: ${slot['replacementNote']}'),
             ...items.map((it) => ListTile(
                   dense: true,
-                  title: Text('${it['item']?['name'] ?? 'From recipe'} ${it['quantity']} ${it['unit']}'),
+                  title: Text(
+                      '${it['item']?['name'] ?? 'From recipe'} ${it['quantity']} ${it['unit']}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete),
                     onPressed: () => _removeSlotItem(it['id'] as String),
                   ),
                 )),
+            TextField(
+              controller: _itemSearchCtrls[slotId],
+              decoration: const InputDecoration(
+                labelText: 'Search items',
+                prefixIcon: Icon(Icons.search),
+                isDense: true,
+              ),
+              onChanged: _onItemSearchChanged,
+            ),
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String?>(
                     value: _itemSelections[slotId],
                     decoration: const InputDecoration(labelText: 'Item'),
-                    items: _items.map((i) => DropdownMenuItem(
-                          value: i['id'] as String,
-                          child: Text(i['name'] as String),
-                        ))
+                    items: _items
+                        .map((i) => DropdownMenuItem(
+                              value: i['id'] as String,
+                              child: Text(i['name'] as String),
+                            ))
                         .toList(),
-                    onChanged: (v) => setState(() => _itemSelections[slotId] = v),
+                    onChanged: (v) =>
+                        setState(() => _itemSelections[slotId] = v),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -375,7 +430,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                   child: TextField(
                     controller: _itemQtyCtrls[slotId],
                     decoration: const InputDecoration(labelText: 'Qty'),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -403,7 +459,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     final slots = (_plan?['slots'] as List? ?? []).cast<Map<String, dynamic>>();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.mealPlanId == null ? 'Create Meal Plan' : 'Edit Meal Plan'),
+        title: Text(
+            widget.mealPlanId == null ? 'Create Meal Plan' : 'Edit Meal Plan'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -415,11 +472,13 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
             ),
             TextField(
               controller: _dateCtrl,
-              decoration: const InputDecoration(labelText: 'Week start date (YYYY-MM-DD)'),
+              decoration: const InputDecoration(
+                  labelText: 'Week start date (YYYY-MM-DD)'),
             ),
             TextField(
               controller: _dayCtrl,
-              decoration: const InputDecoration(labelText: 'Week start day (0-6)'),
+              decoration:
+                  const InputDecoration(labelText: 'Week start day (0-6)'),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),
@@ -435,7 +494,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
             ),
             if (widget.mealPlanId != null) ...[
               const Divider(height: 32),
-              const Text('Add Slot', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Add Slot',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               TextField(
                 controller: _dayCtrlNew,
                 decoration: const InputDecoration(labelText: 'Day (0-6)'),
@@ -457,15 +517,15 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                       for (final cat in (group['categories'] as List? ?? []))
                         DropdownMenuItem(
                           value: cat['id'] as String,
-                          child: Text(
-                              '${group['name']}: ${cat['name']}'),
+                          child: Text('${group['name']}: ${cat['name']}'),
                         ),
                   ],
                   onChanged: (v) => setState(() => _categoryFilter = v),
                 ),
               DropdownButtonFormField<String?>(
                 value: _recipeSelection,
-                decoration: const InputDecoration(labelText: 'Recipe (optional)'),
+                decoration:
+                    const InputDecoration(labelText: 'Recipe (optional)'),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('None')),
                   ..._recipes
@@ -487,7 +547,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               ),
               TextField(
                 controller: _noteCtrl,
-                decoration: const InputDecoration(labelText: 'Replacement note'),
+                decoration:
+                    const InputDecoration(labelText: 'Replacement note'),
               ),
               ElevatedButton(
                 onPressed: _isAddingSlot ? null : _addSlot,
@@ -500,7 +561,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                     : const Text('Add Slot'),
               ),
               const Divider(height: 32),
-              const Text('Slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Slots',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               ...slots.map((s) => _slotCard(s)),
             ],
           ],

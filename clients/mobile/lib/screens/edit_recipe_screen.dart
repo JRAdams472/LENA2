@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 
 const String itemsQuery = r'''
-  query Items {
-    items(page: 1, pageSize: 100) {
+  query Items($search: String) {
+    items(page: 1, pageSize: 50, search: $search) {
       items {
         id
         name
@@ -74,12 +75,6 @@ const String setRecipeCategoriesMutation = r'''
   }
 ''';
 
-const String recordViewMutation = r'''
-  mutation RecordView($entityType: EntityType!, $entityId: ID!) {
-    recordView(entityType: $entityType, entityId: $entityId)
-  }
-''';
-
 const String createRecipeMutation = r'''
   mutation CreateRecipe($input: CreateRecipeInput!) {
     createRecipe(input: $input) {
@@ -120,6 +115,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   final _qtyCtrl = TextEditingController();
   final _unitCtrl = TextEditingController();
   final _stepCtrl = TextEditingController();
+  final _itemSearchCtrl = TextEditingController();
+  final _debouncer = Debouncer();
 
   String? _itemId;
   bool _loaded = false;
@@ -140,19 +137,40 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     }
   }
 
+  Future<void> _loadItems(String search) async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.query(QueryOptions(
+      document: gql(itemsQuery),
+      variables: {'search': search.isEmpty ? null : search},
+    ));
+    if (!mounted) return;
+    setState(() {
+      final loaded = (result.data?['items']?['items'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+      if (_itemId != null && !loaded.any((i) => i['id'] == _itemId)) {
+        final prev = _items.where((i) => i['id'] == _itemId).toList();
+        if (prev.isNotEmpty) loaded.insert(0, prev.first);
+      }
+      _items = loaded;
+    });
+  }
+
+  void _onItemSearchChanged(String value) {
+    _debouncer.run(() {
+      final term = value.trim();
+      if (term.isNotEmpty) {
+        recordSearch(GraphQLProvider.of(context).value, 'item', term);
+      }
+      _loadItems(term);
+    });
+  }
+
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(document: gql(itemsQuery)));
-    setState(() {
-      _items = (result.data?['items']?['items'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-    });
+    await _loadItems('');
 
     if (widget.recipeId != null) {
-      client.mutate(MutationOptions(
-        document: gql(recordViewMutation),
-        variables: {'entityType': 'recipe', 'entityId': widget.recipeId},
-      ));
+      recordView(client, 'recipe', widget.recipeId!);
 
       final groupsResult = await client
           .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
@@ -179,6 +197,10 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           _prepCtrl.text = recipe['prepTimeMinutes']?.toString() ?? '';
           _cookCtrl.text = recipe['cookTimeMinutes']?.toString() ?? '';
           _itemId = item?['item']?['id'] as String?;
+          final recipeItem = item?['item'] as Map<String, dynamic>?;
+          if (recipeItem != null && !_items.any((i) => i['id'] == _itemId)) {
+            _items = [recipeItem, ..._items];
+          }
           _qtyCtrl.text = item?['quantity']?.toString() ?? '';
           _unitCtrl.text = (item?['unit'] as String?) ?? '';
           _stepCtrl.text = (step?['instruction'] as String?) ?? '';
@@ -202,12 +224,12 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     });
     try {
       await GraphQLProvider.of(context).value.mutate(MutationOptions(
-        document: gql(setRecipeCategoriesMutation),
-        variables: {
-          'recipeId': widget.recipeId,
-          'categoryIds': _selectedCategoryIds.toList(),
-        },
-      ));
+            document: gql(setRecipeCategoriesMutation),
+            variables: {
+              'recipeId': widget.recipeId,
+              'categoryIds': _selectedCategoryIds.toList(),
+            },
+          ));
     } finally {
       if (mounted) setState(() => _isSavingCategories = false);
     }
@@ -239,6 +261,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     _qtyCtrl.dispose();
     _unitCtrl.dispose();
     _stepCtrl.dispose();
+    _itemSearchCtrl.dispose();
+    _debouncer.dispose();
     super.dispose();
   }
 
@@ -249,9 +273,13 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       final input = <String, dynamic>{
         'name': _nameCtrl.text,
         'description': _descCtrl.text.isEmpty ? null : _descCtrl.text,
-        'servings': _servingsCtrl.text.isEmpty ? null : int.tryParse(_servingsCtrl.text),
-        'prepTimeMinutes': _prepCtrl.text.isEmpty ? null : int.tryParse(_prepCtrl.text),
-        'cookTimeMinutes': _cookCtrl.text.isEmpty ? null : int.tryParse(_cookCtrl.text),
+        'servings': _servingsCtrl.text.isEmpty
+            ? null
+            : int.tryParse(_servingsCtrl.text),
+        'prepTimeMinutes':
+            _prepCtrl.text.isEmpty ? null : int.tryParse(_prepCtrl.text),
+        'cookTimeMinutes':
+            _cookCtrl.text.isEmpty ? null : int.tryParse(_cookCtrl.text),
         'items': [
           {
             'itemId': _itemId,
@@ -290,7 +318,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     if (_items.isEmpty) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe'),
+          title:
+              Text(widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe'),
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -336,7 +365,16 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),
-            const Text('Ingredient', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Ingredient',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            TextField(
+              controller: _itemSearchCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Search items',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: _onItemSearchChanged,
+            ),
             DropdownButtonFormField<String?>(
               value: _itemId,
               decoration: const InputDecoration(labelText: 'Item'),
@@ -346,12 +384,18 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                         child: Text(i['name'] as String),
                       ))
                   .toList(),
-              onChanged: (v) => setState(() => _itemId = v),
+              onChanged: (v) => setState(() {
+                _itemId = v;
+                if (v != null) {
+                  recordSelection(GraphQLProvider.of(context).value, 'item', v);
+                }
+              }),
             ),
             TextField(
               controller: _qtyCtrl,
               decoration: const InputDecoration(labelText: 'Quantity'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
             TextField(
               controller: _unitCtrl,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 import 'edit_event_screen.dart';
 import 'event_timeline_screen.dart';
 
@@ -417,6 +418,9 @@ class _SlotDialogState extends State<_SlotDialog> {
           },
         ));
         if (result.hasException) throw result.exception!;
+        if (_recipeId != null) {
+          recordSelection(client, 'recipe', _recipeId!);
+        }
       } else {
         final result = await client.mutate(MutationOptions(
           document: gql(updateEventRecipeMutation),

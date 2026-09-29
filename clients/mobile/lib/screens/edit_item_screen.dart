@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 
 const String itemQuery = r'''
   query Item($id: ID!) {
@@ -30,9 +31,9 @@ const String categoriesQuery = r'''
   }
 ''';
 
-const String brandsQuery = r'''
-  query Brands {
-    brands {
+const String searchBrandsQuery = r'''
+  query SearchBrands($term: String!, $limit: Int) {
+    searchBrands(term: $term, limit: $limit) {
       id
       name
     }
@@ -71,32 +72,97 @@ class _EditItemScreenState extends State<EditItemScreen> {
   final _unitController = TextEditingController();
   final _upc12Controller = TextEditingController();
   final _upc14Controller = TextEditingController();
+  final _brandSearchCtrl = TextEditingController();
+  final _debouncer = Debouncer();
   String? _categoryId;
   String? _brandId;
   bool _isSaving = false;
+  bool _loaded = false;
+  List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _brands = [];
 
-  Future<List<QueryResult>> _fetchData(BuildContext context) {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loaded) {
+      _loaded = true;
+      _loadData();
+    }
+  }
+
+  Future<void> _loadBrands(String term) async {
     final client = GraphQLProvider.of(context).value;
-    final futures = <Future<QueryResult<Object?>>>[];
-    futures.add(client.query(QueryOptions(document: gql(categoriesQuery))));
-    futures.add(client.query(QueryOptions(document: gql(brandsQuery))));
+    final result = await client.query(QueryOptions(
+      document: gql(searchBrandsQuery),
+      variables: {'term': term, 'limit': 20},
+    ));
+    if (!mounted) return;
+    setState(() {
+      final loaded = (result.data?['searchBrands'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+      if (_brandId != null && !loaded.any((b) => b['id'] == _brandId)) {
+        final prev = _brands.where((b) => b['id'] == _brandId).toList();
+        if (prev.isNotEmpty) loaded.insert(0, prev.first);
+      }
+      _brands = loaded;
+    });
+  }
+
+  void _onBrandSearchChanged(String value) {
+    _debouncer.run(() {
+      final term = value.trim();
+      if (term.isNotEmpty) {
+        recordSearch(GraphQLProvider.of(context).value, 'brand', term);
+      }
+      _loadBrands(term);
+    });
+  }
+
+  Future<void> _loadData() async {
+    final client = GraphQLProvider.of(context).value;
+    final categoriesResult =
+        await client.query(QueryOptions(document: gql(categoriesQuery)));
+    if (!mounted) return;
+    setState(() {
+      _categories = (categoriesResult.data?['categories'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+    });
+    await _loadBrands('');
+
     if (widget.itemId != null) {
-      futures.add(client.query(
+      recordView(client, 'item', widget.itemId!);
+      final itemResult = await client.query(
         QueryOptions(
           document: gql(itemQuery),
           variables: {'id': widget.itemId},
         ),
-      ));
+      );
+      final item = itemResult.data?['item'] as Map<String, dynamic>?;
+      if (item != null && mounted) {
+        setState(() {
+          _nameController.text = item['name'] as String;
+          _unitController.text = item['unit'] as String;
+          _upc12Controller.text = (item['upc12'] as String?) ?? '';
+          _upc14Controller.text = (item['upc14'] as String?) ?? '';
+          _categoryId = (item['category']?['id'] as String?);
+          _brandId = (item['brand']?['id'] as String?);
+          final brand = item['brand'] as Map<String, dynamic>?;
+          if (brand != null && !_brands.any((b) => b['id'] == _brandId)) {
+            _brands = [brand, ..._brands];
+          }
+        });
+      }
     }
-    return Future.wait(futures);
   }
 
   @override
   void dispose() {
+    _debouncer.dispose();
     _nameController.dispose();
     _unitController.dispose();
     _upc12Controller.dispose();
     _upc14Controller.dispose();
+    _brandSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -135,90 +201,76 @@ class _EditItemScreenState extends State<EditItemScreen> {
       appBar: AppBar(
         title: Text(widget.itemId == null ? 'Create Item' : 'Edit Item'),
       ),
-      body: FutureBuilder<List<QueryResult>>(
-        future: _fetchData(context),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-
-          final results = snapshot.data ?? [];
-          final categories = (results[0].data?['categories'] as List? ?? [])
-              .cast<Map<String, dynamic>>();
-          final brands = (results[1].data?['brands'] as List? ?? [])
-              .cast<Map<String, dynamic>>();
-
-          if (results.length > 2 && results[2].data?['item'] != null) {
-            final item = results[2].data!['item'] as Map<String, dynamic>;
-            _nameController.text = item['name'] as String;
-            _unitController.text = item['unit'] as String;
-            _upc12Controller.text = (item['upc12'] as String?) ?? '';
-            _upc14Controller.text = (item['upc14'] as String?) ?? '';
-            _categoryId = (item['category']?['id'] as String?);
-            _brandId = (item['brand']?['id'] as String?);
-          }
-
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ListView(
-              children: [
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                ),
-                TextField(
-                  controller: _unitController,
-                  decoration: const InputDecoration(labelText: 'Unit'),
-                ),
-                DropdownButtonFormField<String?>(
-                  value: _categoryId,
-                  decoration: const InputDecoration(labelText: 'Category'),
-                  items: categories
-                      .map((c) => DropdownMenuItem(
-                            value: c['id'] as String,
-                            child: Text(c['name'] as String),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setState(() => _categoryId = v),
-                ),
-                DropdownButtonFormField<String?>(
-                  value: _brandId,
-                  decoration: const InputDecoration(labelText: 'Brand (optional)'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('None')),
-                    ...brands.map((b) => DropdownMenuItem(
-                          value: b['id'] as String,
-                          child: Text(b['name'] as String),
-                        )),
-                  ],
-                  onChanged: (v) => setState(() => _brandId = v),
-                ),
-                TextField(
-                  controller: _upc12Controller,
-                  decoration: const InputDecoration(labelText: 'UPC-12 (optional)'),
-                ),
-                TextField(
-                  controller: _upc14Controller,
-                  decoration: const InputDecoration(labelText: 'UPC-14 (optional)'),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _isSaving ? null : () => _save(context),
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ListView(
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Name'),
             ),
-          );
-        },
+            TextField(
+              controller: _unitController,
+              decoration: const InputDecoration(labelText: 'Unit'),
+            ),
+            DropdownButtonFormField<String?>(
+              value: _categoryId,
+              decoration: const InputDecoration(labelText: 'Category'),
+              items: _categories
+                  .map((c) => DropdownMenuItem(
+                        value: c['id'] as String,
+                        child: Text(c['name'] as String),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _categoryId = v),
+            ),
+            TextField(
+              controller: _brandSearchCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Search brands',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: _onBrandSearchChanged,
+            ),
+            DropdownButtonFormField<String?>(
+              value: _brandId,
+              decoration: const InputDecoration(labelText: 'Brand (optional)'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('None')),
+                ..._brands.map((b) => DropdownMenuItem(
+                      value: b['id'] as String,
+                      child: Text(b['name'] as String),
+                    )),
+              ],
+              onChanged: (v) => setState(() {
+                _brandId = v;
+                if (v != null) {
+                  recordSelection(
+                      GraphQLProvider.of(context).value, 'brand', v);
+                }
+              }),
+            ),
+            TextField(
+              controller: _upc12Controller,
+              decoration: const InputDecoration(labelText: 'UPC-12 (optional)'),
+            ),
+            TextField(
+              controller: _upc14Controller,
+              decoration: const InputDecoration(labelText: 'UPC-14 (optional)'),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _isSaving ? null : () => _save(context),
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }
