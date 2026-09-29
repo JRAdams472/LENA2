@@ -34,8 +34,8 @@ const theme = createTheme({
       styleOverrides: {
         root: ({ theme }) => ({
           borderRadius: theme.shape.borderRadius,
-          marginLeft: theme.spacing(1),
-          marginRight: theme.spacing(1),
+          marginLeft: theme.spacing(1.5),
+          marginRight: theme.spacing(1.5),
           padding: "10px 16px",
           "&.Mui-selected": {
             backgroundColor: alpha(theme.palette.primary.main, 0.1),
