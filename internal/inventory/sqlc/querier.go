@@ -85,6 +85,15 @@ type Querier interface {
 	// IDs of visible items whose name matches the term — feeds include_ids on
 	// household-scoped queries that cannot join this schema (pantry search).
 	MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]int64, error)
+	// Items matching any of the user's prior search terms — the "searched"
+	// engagement tier resolved to IDs so it can join the ranked set. One
+	// per-page scan, only run when the user has recorded terms.
+	MatchItemIDsByTerms(ctx context.Context, arg MatchItemIDsByTermsParams) ([]int64, error)
+	// The engaged slice of an item search: every catalog row matching the
+	// visibility/term filters whose ID is in the caller's engagement set. At
+	// most a few thousand rows — fetched whole and tier-sorted in Go, which is
+	// far cheaper than ORDER BY CASE over the full ~110k-row catalog.
+	RankedItems(ctx context.Context, arg RankedItemsParams) ([]InventoryItem, error)
 	// Engagement-ranked brand picker search. Tiers come from ID arrays the BFF
 	// computes from analytics/userprefs (other schemas — SQL never crosses them):
 	//   0 personal-used, 1 household-used, 2 prior-search-term match,
@@ -94,12 +103,10 @@ type Querier interface {
 	// Engagement-ranked ingredient browse/search — same tier pattern as
 	// SearchItems minus favorites (ingredients have no favorite store).
 	SearchIngredients(ctx context.Context, arg SearchIngredientsParams) ([]InventoryIngredient, error)
-	// Engagement-ranked item browse/search. Tiers from BFF-computed ID arrays:
-	//   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
-	//   match, 4 global-popular, 5 rest. Ranking applies before LIMIT so the
-	//   window contains the most relevant results; (name, item_id) makes the
-	//   order deterministic for pagination.
-	SearchItems(ctx context.Context, arg SearchItemsParams) ([]InventoryItem, error)
+	// The non-engaged slice, served in (name, item_id) index order with a
+	// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
+	// large catalog.
+	SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error)
 	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) error
 	SetItemStatus(ctx context.Context, arg SetItemStatusParams) error
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)

@@ -155,34 +155,27 @@ SELECT COUNT(*)
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1;
 
--- name: SearchItems :many
--- Engagement-ranked item browse/search. Tiers from BFF-computed ID arrays:
---   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
---   match, 4 global-popular, 5 rest. Ranking applies before LIMIT so the
---   window contains the most relevant results; (name, item_id) makes the
---   order deterministic for pagination.
+-- name: RankedItems :many
+-- The engaged slice of an item search: every catalog row matching the
+-- visibility/term filters whose ID is in the caller's engagement set. At
+-- most a few thousand rows — fetched whole and tier-sorted in Go, which is
+-- far cheaper than ORDER BY CASE over the full ~110k-row catalog.
 SELECT *
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
-ORDER BY
-  CASE
-    WHEN item_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
-    WHEN item_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 1
-    WHEN item_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 2
-    WHEN EXISTS (
-      SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
-      WHERE position(lower(t) in lower(name)) > 0
-    ) THEN 3
-    WHEN item_id = ANY(sqlc.arg(global_ids)::bigint[]) THEN 4
-    ELSE 5
-  END,
-  array_position(sqlc.arg(favorite_ids)::bigint[], item_id),
-  array_position(sqlc.arg(personal_ids)::bigint[], item_id),
-  array_position(sqlc.arg(household_ids)::bigint[], item_id),
-  array_position(sqlc.arg(global_ids)::bigint[], item_id),
-  name,
-  item_id
+  AND item_id IN (SELECT unnest(sqlc.arg(engaged_ids)::bigint[]));
+
+-- name: SearchItemsRemainder :many
+-- The non-engaged slice, served in (name, item_id) index order with a
+-- hashed NOT IN probe — no sort, so deep pagination stays cheap on the
+-- large catalog.
+SELECT *
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+  AND item_id NOT IN (SELECT unnest(sqlc.arg(engaged_ids)::bigint[]))
+ORDER BY name, item_id
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 
 -- name: CountSearchItems :one
@@ -190,6 +183,20 @@ SELECT COUNT(*)
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%');
+
+-- name: MatchItemIDsByTerms :many
+-- Items matching any of the user's prior search terms — the "searched"
+-- engagement tier resolved to IDs so it can join the ranked set. One
+-- per-page scan, only run when the user has recorded terms.
+SELECT DISTINCT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+  AND EXISTS (
+    SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
+    WHERE position(lower(t) in lower(name)) > 0
+  )
+LIMIT 500;
 
 -- name: GetItemByUpc :one
 -- Barcode lookup: the caller passes the normalized code plus their user id

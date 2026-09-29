@@ -74,12 +74,21 @@ export default function CrudPage<T extends object>({
     enabled: !!filterBy,
   });
 
+  // If the list is mid-fetch, an invalidation refetch dedupes to that
+  // request and its pre-mutation result lands as the "fresh" data — the
+  // row never updates (create/delete races while the page is loading).
+  // Cancel first so the invalidation starts a genuinely new fetch.
+  const refreshList = async () => {
+    await queryClient.cancelQueries({ queryKey });
+    await queryClient.invalidateQueries({ queryKey });
+  };
+
   const createMutation = useMutation({
     mutationFn: createFn,
     onSuccess: () => {
       setDialogError(null);
       setDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey });
+      void refreshList();
     },
     onError: (err: unknown) => setDialogError(err as Error),
   });
@@ -89,7 +98,7 @@ export default function CrudPage<T extends object>({
     onSuccess: () => {
       setDialogError(null);
       setDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey });
+      void refreshList();
     },
     onError: (err: unknown) => setDialogError(err as Error),
   });
@@ -98,7 +107,7 @@ export default function CrudPage<T extends object>({
     mutationFn: deleteFn,
     onSuccess: () => {
       setTableError(null);
-      queryClient.invalidateQueries({ queryKey });
+      void refreshList();
     },
     onError: (err: unknown) => setTableError(err as Error),
   });

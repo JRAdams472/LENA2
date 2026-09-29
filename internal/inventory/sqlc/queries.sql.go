@@ -1689,6 +1689,103 @@ func (q *Queries) MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]i
 	return items, nil
 }
 
+const matchItemIDsByTerms = `-- name: MatchItemIDsByTerms :many
+SELECT DISTINCT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+  AND EXISTS (
+    SELECT 1 FROM unnest($3::text[]) t
+    WHERE position(lower(t) in lower(name)) > 0
+  )
+LIMIT 500
+`
+
+type MatchItemIDsByTermsParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Search            pgtype.Text `json:"search"`
+	SearchTerms       []string    `json:"search_terms"`
+}
+
+// Items matching any of the user's prior search terms — the "searched"
+// engagement tier resolved to IDs so it can join the ranked set. One
+// per-page scan, only run when the user has recorded terms.
+func (q *Queries) MatchItemIDsByTerms(ctx context.Context, arg MatchItemIDsByTermsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, matchItemIDsByTerms, arg.SubmittedByUserID, arg.Search, arg.SearchTerms)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var item_id int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rankedItems = `-- name: RankedItems :many
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+  AND item_id IN (SELECT unnest($3::bigint[]))
+`
+
+type RankedItemsParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Search            pgtype.Text `json:"search"`
+	EngagedIds        []int64     `json:"engaged_ids"`
+}
+
+// The engaged slice of an item search: every catalog row matching the
+// visibility/term filters whose ID is in the caller's engagement set. At
+// most a few thousand rows — fetched whole and tier-sorted in Go, which is
+// far cheaper than ORDER BY CASE over the full ~110k-row catalog.
+func (q *Queries) RankedItems(ctx context.Context, arg RankedItemsParams) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, rankedItems, arg.SubmittedByUserID, arg.Search, arg.EngagedIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.Name,
+			&i.BrandID,
+			&i.Upc12,
+			&i.Upc14,
+			&i.CategoryID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchBrands = `-- name: SearchBrands :many
 SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
@@ -1842,59 +1939,32 @@ func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsPa
 	return items, nil
 }
 
-const searchItems = `-- name: SearchItems :many
+const searchItemsRemainder = `-- name: SearchItemsRemainder :many
 SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
-ORDER BY
-  CASE
-    WHEN item_id = ANY($3::bigint[]) THEN 0
-    WHEN item_id = ANY($4::bigint[]) THEN 1
-    WHEN item_id = ANY($5::bigint[]) THEN 2
-    WHEN EXISTS (
-      SELECT 1 FROM unnest($6::text[]) t
-      WHERE position(lower(t) in lower(name)) > 0
-    ) THEN 3
-    WHEN item_id = ANY($7::bigint[]) THEN 4
-    ELSE 5
-  END,
-  array_position($3::bigint[], item_id),
-  array_position($4::bigint[], item_id),
-  array_position($5::bigint[], item_id),
-  array_position($7::bigint[], item_id),
-  name,
-  item_id
-LIMIT $9::int OFFSET $8::int
+  AND item_id NOT IN (SELECT unnest($3::bigint[]))
+ORDER BY name, item_id
+LIMIT $5::int OFFSET $4::int
 `
 
-type SearchItemsParams struct {
+type SearchItemsRemainderParams struct {
 	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
 	Search            pgtype.Text `json:"search"`
-	FavoriteIds       []int64     `json:"favorite_ids"`
-	PersonalIds       []int64     `json:"personal_ids"`
-	HouseholdIds      []int64     `json:"household_ids"`
-	SearchTerms       []string    `json:"search_terms"`
-	GlobalIds         []int64     `json:"global_ids"`
+	EngagedIds        []int64     `json:"engaged_ids"`
 	Offset            int32       `json:"offset"`
 	Limit             int32       `json:"limit"`
 }
 
-// Engagement-ranked item browse/search. Tiers from BFF-computed ID arrays:
-//
-//	0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
-//	match, 4 global-popular, 5 rest. Ranking applies before LIMIT so the
-//	window contains the most relevant results; (name, item_id) makes the
-//	order deterministic for pagination.
-func (q *Queries) SearchItems(ctx context.Context, arg SearchItemsParams) ([]InventoryItem, error) {
-	rows, err := q.db.Query(ctx, searchItems,
+// The non-engaged slice, served in (name, item_id) index order with a
+// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
+// large catalog.
+func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, searchItemsRemainder,
 		arg.SubmittedByUserID,
 		arg.Search,
-		arg.FavoriteIds,
-		arg.PersonalIds,
-		arg.HouseholdIds,
-		arg.SearchTerms,
-		arg.GlobalIds,
+		arg.EngagedIds,
 		arg.Offset,
 		arg.Limit,
 	)
