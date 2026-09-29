@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 import 'generate_grocery_dialog.dart';
 
 const String groceryListQuery = r'''
@@ -23,8 +24,8 @@ const String groceryListQuery = r'''
 ''';
 
 const String itemsQuery = r'''
-  query Items {
-    items(page: 1, pageSize: 100) {
+  query Items($search: String) {
+    items(page: 1, pageSize: 50, search: $search) {
       items {
         id
         name
@@ -67,6 +68,8 @@ class _GroceryScreenState extends State<GroceryScreen> {
   final _manualCtrl = TextEditingController();
   final _qtyCtrl = TextEditingController();
   final _unitCtrl = TextEditingController();
+  final _itemSearchCtrl = TextEditingController();
+  final _debouncer = Debouncer();
   String? _selectedItemId;
   List<Map<String, dynamic>> _items = [];
 
@@ -114,6 +117,9 @@ class _GroceryScreenState extends State<GroceryScreen> {
       document: gql(addGroceryItemMutation),
       variables: {'input': input},
     ));
+    if (_selectedItemId != null) {
+      recordSelection(client, 'item', _selectedItemId!);
+    }
     _manualCtrl.clear();
     _qtyCtrl.clear();
     _unitCtrl.clear();
@@ -121,12 +127,34 @@ class _GroceryScreenState extends State<GroceryScreen> {
     refetch?.call();
   }
 
-  Future<void> _loadItems(BuildContext context) async {
+  Future<void> _loadItems(BuildContext context, [String search = '']) async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(document: gql(itemsQuery)));
+    final result = await client.query(QueryOptions(
+      document: gql(itemsQuery),
+      variables: {'search': search.isEmpty ? null : search},
+    ));
+    if (!mounted) return;
     setState(() {
-      _items = (result.data?['items']?['items'] as List? ?? [])
+      final loaded = (result.data?['items']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
+      // Keep the current selection in the dropdown's item list even when a
+      // search excludes it — DropdownButtonFormField asserts otherwise.
+      if (_selectedItemId != null &&
+          !loaded.any((i) => i['id'] == _selectedItemId)) {
+        final prev = _items.where((i) => i['id'] == _selectedItemId).toList();
+        if (prev.isNotEmpty) loaded.insert(0, prev.first);
+      }
+      _items = loaded;
+    });
+  }
+
+  void _onItemSearchChanged(BuildContext context, String value) {
+    _debouncer.run(() {
+      final term = value.trim();
+      if (term.isNotEmpty) {
+        recordSearch(GraphQLProvider.of(context).value, 'item', term);
+      }
+      _loadItems(context, term);
     });
   }
 
@@ -138,9 +166,11 @@ class _GroceryScreenState extends State<GroceryScreen> {
 
   @override
   void dispose() {
+    _debouncer.dispose();
     _manualCtrl.dispose();
     _qtyCtrl.dispose();
     _unitCtrl.dispose();
+    _itemSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -148,7 +178,8 @@ class _GroceryScreenState extends State<GroceryScreen> {
   Widget build(BuildContext context) {
     return Query(
       options: QueryOptions(document: gql(groceryListQuery)),
-      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+      builder: (QueryResult result,
+          {VoidCallback? refetch, FetchMore? fetchMore}) {
         Widget body;
         if (result.isLoading) {
           body = const Center(child: CircularProgressIndicator());
@@ -187,7 +218,16 @@ class _GroceryScreenState extends State<GroceryScreen> {
                   );
                 }).toList(),
                 const Divider(),
-                const Text('Add item', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Add item',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                TextField(
+                  controller: _itemSearchCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Search catalog',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (v) => _onItemSearchChanged(context, v),
+                ),
                 DropdownButtonFormField<String?>(
                   value: _selectedItemId,
                   decoration: const InputDecoration(labelText: 'Catalog item'),
@@ -202,12 +242,14 @@ class _GroceryScreenState extends State<GroceryScreen> {
                 ),
                 TextField(
                   controller: _manualCtrl,
-                  decoration: const InputDecoration(labelText: 'or manual name'),
+                  decoration:
+                      const InputDecoration(labelText: 'or manual name'),
                 ),
                 TextField(
                   controller: _qtyCtrl,
                   decoration: const InputDecoration(labelText: 'Quantity'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                 ),
                 TextField(
                   controller: _unitCtrl,

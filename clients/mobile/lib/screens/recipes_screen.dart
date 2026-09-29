@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 import 'edit_recipe_screen.dart';
 
 const String recipesQuery = r'''
@@ -44,12 +43,6 @@ const String setRecipeFavorite = r'''
   }
 ''';
 
-const String recordSearchMutation = r'''
-  mutation RecordSearch($entityType: EntityType!, $term: String!) {
-    recordSearch(entityType: $entityType, term: $term)
-  }
-''';
-
 class RecipesScreen extends StatefulWidget {
   const RecipesScreen({super.key});
 
@@ -59,30 +52,24 @@ class RecipesScreen extends StatefulWidget {
 
 class _RecipesScreenState extends State<RecipesScreen> {
   final _searchCtrl = TextEditingController();
-  Timer? _debounce;
+  final _debouncer = Debouncer();
   String _search = '';
   bool _favoritesOnly = false;
   final Set<String> _selectedCategoryIds = {};
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    _debouncer.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
 
   void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
+    _debouncer.run(() {
       final term = value.trim();
       setState(() => _search = term);
       if (term.isNotEmpty) {
-        GraphQLProvider.of(context).value.mutate(
-              MutationOptions(
-                document: gql(recordSearchMutation),
-                variables: {'entityType': 'recipe', 'term': term},
-              ),
-            );
+        recordSearch(GraphQLProvider.of(context).value, 'recipe', term);
       }
     });
   }
@@ -153,8 +140,8 @@ class _RecipesScreenState extends State<RecipesScreen> {
                               Text(
                                 '${group['name']}'
                                 '${group['exclusive'] == true ? ' (pick one)' : ''}',
-                                style:
-                                    const TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
                               ),
                               Wrap(
                                 spacing: 8,

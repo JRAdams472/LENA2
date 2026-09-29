@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../analytics/analytics.dart';
 
 const String typesQuery = r'''
   query Types {
@@ -104,8 +105,10 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
 
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    final typesResult = await client.query(QueryOptions(document: gql(typesQuery)));
-    final countriesResult = await client.query(QueryOptions(document: gql(countriesQuery)));
+    final typesResult =
+        await client.query(QueryOptions(document: gql(typesQuery)));
+    final countriesResult =
+        await client.query(QueryOptions(document: gql(countriesQuery)));
 
     setState(() {
       _types = (typesResult.data?['types'] as List? ?? [])
@@ -115,6 +118,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
     });
 
     if (widget.bottleId != null) {
+      recordView(client, 'bottle', widget.bottleId!);
       final bottleResult = await client.query(
         QueryOptions(
           document: gql(bottleQuery),
@@ -155,8 +159,8 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
       ),
     );
     setState(() {
-      _regions = (result.data?['regions'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
+      _regions =
+          (result.data?['regions'] as List? ?? []).cast<Map<String, dynamic>>();
     });
   }
 
@@ -185,10 +189,14 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
         'bottleSize': _bottleSizeCtrl.text,
         'vineyard': _vineyardCtrl.text.isEmpty ? null : _vineyardCtrl.text,
         'abv': _abvCtrl.text.isEmpty ? null : double.tryParse(_abvCtrl.text),
-        'acidity': _acidityCtrl.text.isEmpty ? null : int.tryParse(_acidityCtrl.text),
-        'tanninLevel': _tanninCtrl.text.isEmpty ? null : int.tryParse(_tanninCtrl.text),
+        'acidity':
+            _acidityCtrl.text.isEmpty ? null : int.tryParse(_acidityCtrl.text),
+        'tanninLevel':
+            _tanninCtrl.text.isEmpty ? null : int.tryParse(_tanninCtrl.text),
         'body': _bodyCtrl.text.isEmpty ? null : int.tryParse(_bodyCtrl.text),
-        'sweetness': _sweetnessCtrl.text.isEmpty ? null : int.tryParse(_sweetnessCtrl.text),
+        'sweetness': _sweetnessCtrl.text.isEmpty
+            ? null
+            : int.tryParse(_sweetnessCtrl.text),
         'oakIntegration': _oakIntegration,
       };
       if (widget.bottleId == null) {
@@ -213,7 +221,8 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
     if (_types.isEmpty || _countries.isEmpty) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(widget.bottleId == null ? 'Create Bottle' : 'Edit Bottle'),
+          title:
+              Text(widget.bottleId == null ? 'Create Bottle' : 'Edit Bottle'),
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -282,7 +291,8 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
             TextField(
               controller: _abvCtrl,
               decoration: const InputDecoration(labelText: 'ABV'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
             TextField(
               controller: _acidityCtrl,
