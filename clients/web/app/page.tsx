@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Fragment } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -8,11 +8,22 @@ import { useMe } from "@/app/auth/useMe";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
+import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
+import LunchDiningIcon from "@mui/icons-material/LunchDining";
+import DinnerDiningIcon from "@mui/icons-material/DinnerDining";
+import { alpha, useTheme } from "@mui/material/styles";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
+
+const MEAL_ICONS = [
+  <FreeBreakfastIcon key="breakfast" fontSize="small" />,
+  <LunchDiningIcon key="lunch" fontSize="small" />,
+  <DinnerDiningIcon key="dinner" fontSize="small" />,
+];
 
 const REASON_LABELS: Record<string, string> = {
   ingredient_overlap: "Similar to your menu",
@@ -24,6 +35,15 @@ const REASON_LABELS: Record<string, string> = {
 
 function reasonLabel(reason: string) {
   return REASON_LABELS[reason] ?? "Recommended for you";
+}
+
+const SIZE_RE =
+  /\b(\d+(?:\.\d+)?\s?(?:pk|ct|count|pack|oz|fl\.?\s?oz|lb|g|kg|ml|l))\b/i;
+
+function sizeBadge(name: string, unit: string): string | null {
+  const m = name.match(SIZE_RE);
+  if (m) return m[1];
+  return unit && unit !== "each" ? unit : null;
 }
 
 function isDateInRange(date: Date, weekStartDate: string) {
@@ -38,6 +58,7 @@ function isDateInRange(date: Date, weekStartDate: string) {
 }
 
 export default function Dashboard() {
+  const theme = useTheme();
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -185,25 +206,54 @@ export default function Dashboard() {
         </Paper>
       )}
       <Paper sx={{ p: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Today's meals
+        </Typography>
         {activePlanId === null ? (
           <Typography color="text.secondary">
-            No meal plan for this week.
+            No meal plan for this week.{" "}
+            <Link href="/meal-plans">+ Plan a meal</Link>
           </Typography>
-        ) : todaySlots.length === 0 ? (
-          <Typography color="text.secondary">No meals planned for today.</Typography>
         ) : (
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 2 }}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" },
+              gap: 2,
+            }}
+          >
             {MEAL_TYPES.map((meal, mt) => {
               const slot = todaySlots.find((s) => s.mealType === mt);
               return (
-                <Fragment key={meal}>
-                  <Box sx={{ fontWeight: 700 }}>{meal}</Box>
-                  <Box>
-                    {slot
-                      ? slot.recipe?.recipeName ?? recipeName(slot.recipeID)
-                      : "Nothing planned"}
+                <Box
+                  key={meal}
+                  sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: 2 }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.75,
+                      color: "text.secondary",
+                      mb: 0.5,
+                    }}
+                  >
+                    {MEAL_ICONS[mt]}
+                    <Typography variant="subtitle2">{meal}</Typography>
                   </Box>
-                </Fragment>
+                  {slot ? (
+                    <Typography variant="body2">
+                      {slot.recipe?.recipeName ?? recipeName(slot.recipeID)}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{ fontStyle: "italic", color: "text.secondary" }}
+                    >
+                      <Link href="/meal-plans">+ Plan a meal</Link>
+                    </Typography>
+                  )}
+                </Box>
               );
             })}
           </Box>
@@ -228,16 +278,30 @@ export default function Dashboard() {
             </Typography>
           )}
         {(suggestionsQuery.data ?? []).length > 0 && (
-          <Box component="ul" sx={{ m: 0, pl: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {(suggestionsQuery.data ?? []).map((s) => (
-              <li key={`${s.recipe.recipeID}-${s.reason}`}>
+              <Box
+                key={`${s.recipe.recipeID}-${s.reason}`}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.5,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Link href={`/recipes/${s.recipe.recipeID}`}>
                   {s.recipe.recipeName}
-                </Link>{" "}
-                <Typography component="span" variant="body2" color="text.secondary">
-                  — {reasonLabel(s.reason)}
-                </Typography>
-              </li>
+                </Link>
+                <Chip
+                  size="small"
+                  label={reasonLabel(s.reason)}
+                  sx={{
+                    bgcolor: alpha(theme.palette.success.main, 0.12),
+                    color: "success.dark",
+                    fontWeight: 500,
+                  }}
+                />
+              </Box>
             ))}
           </Box>
         )}
@@ -248,11 +312,43 @@ export default function Dashboard() {
           <Typography variant="h6" gutterBottom>
             Running low
           </Typography>
-          <Box component="ul" sx={{ m: 0, pl: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {(restockQuery.data ?? []).map((it) => (
-              <li key={it.itemID}>
-                {it.brand ? `${it.brand} — ${it.name}` : it.name}
-              </li>
+              <Box
+                key={it.itemID}
+                sx={{ display: "flex", alignItems: "center", gap: 1.25 }}
+              >
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    bgcolor: "warning.main",
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography variant="body2">
+                  {it.name}
+                  {it.brand && (
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      {" "}
+                      — {it.brand}
+                    </Typography>
+                  )}
+                </Typography>
+                {sizeBadge(it.name, it.unit) && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={sizeBadge(it.name, it.unit)}
+                    sx={{ color: "text.secondary", borderColor: "divider" }}
+                  />
+                )}
+              </Box>
             ))}
           </Box>
           <Typography variant="body2" sx={{ mt: 1 }}>

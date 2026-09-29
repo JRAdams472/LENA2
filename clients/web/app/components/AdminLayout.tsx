@@ -28,6 +28,8 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import SettingsIcon from "@mui/icons-material/Settings";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import LogoutIcon from "@mui/icons-material/Logout";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
@@ -36,21 +38,9 @@ import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
 import LoginScreen from "@/app/components/LoginScreen";
+import LenaLogo from "@/app/components/LenaLogo";
 
 const DRAWER_WIDTH = 260;
-
-const Logo = styled("div")(({ theme }) => ({
-  width: 36,
-  height: 36,
-  borderRadius: theme.shape.borderRadius,
-  backgroundColor: theme.palette.primary.contrastText,
-  color: theme.palette.primary.main,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-  marginRight: theme.spacing(2),
-}));
 
 const Main = styled("main")(({ theme }) => ({
   flexGrow: 1,
@@ -349,9 +339,7 @@ export default function AdminLayout({
           borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Typography variant="h6" noWrap>
-          LENA
-        </Typography>
+        <LenaLogo size={24} />
       </Box>
       <List component="nav" aria-label="main navigation">
         {NAVIGATION.filter((item) => !item.adminOnly || isAdmin).map((group) => {
@@ -433,8 +421,7 @@ export default function AdminLayout({
       <AppBar
         position="fixed"
         sx={{
-          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-          ml: { md: `${DRAWER_WIDTH}px` },
+          width: "100%",
           zIndex: theme.zIndex.drawer + 1,
         }}
       >
@@ -447,19 +434,39 @@ export default function AdminLayout({
           >
             <MenuIcon />
           </IconButton>
-          <Logo>L</Logo>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            LENA
-          </Typography>
+          <Box sx={{ flexGrow: 1 }}>
+            <LenaLogo size={26} iconColor="inherit" textColor="inherit" />
+          </Box>
           {user && (
             <>
               <NotificationBell />
-              <Typography variant="body2" sx={{ mr: 2 }}>
-                {user.email}
-              </Typography>
-              <Button color="inherit" onClick={signOut}>
-                Sign out
-              </Button>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  borderRadius: 999,
+                  px: 1.5,
+                  py: 0.5,
+                  mr: 1,
+                  bgcolor: "rgba(255,255,255,0.12)",
+                }}
+              >
+                <AccountCircleIcon fontSize="small" />
+                <Typography
+                  variant="body2"
+                  sx={{ display: { xs: "none", sm: "block" } }}
+                >
+                  {user.email}
+                </Typography>
+              </Box>
+              <IconButton
+                color="inherit"
+                aria-label="Sign out"
+                onClick={signOut}
+              >
+                <LogoutIcon />
+              </IconButton>
             </>
           )}
         </Toolbar>
@@ -498,16 +505,9 @@ export default function AdminLayout({
           <Box
             sx={{
               height: 64,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
               borderBottom: `1px solid ${theme.palette.divider}`,
             }}
-          >
-            <Typography variant="h6" noWrap>
-              LENA
-            </Typography>
-          </Box>
+          />
           {drawerContent}
         </Drawer>
       </Box>

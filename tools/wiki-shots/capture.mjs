@@ -164,7 +164,7 @@ await shot("grocery-list", `/grocery-lists/${listId}`, "Suggested Restock");
 await shot("events", "/events", "Autumn Dinner Party");
 await shot("event-detail", "/events/1", "Autumn Dinner Party");
 await shot("wine-bottles", "/wine/bottles", "Silver Oak");
-await shot("household", "/household", "E2E Other");
+await shot("household", "/household", "E2E Member");
 // The items page pages the whole catalog client-side — give it time.
 await page.goto(`${BASE}/inventory/items`, { waitUntil: "domcontentloaded" });
 await page.getByText("Potato Chips", { exact: false }).first().waitFor({ timeout: 180000 });

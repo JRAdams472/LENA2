@@ -7,6 +7,7 @@ import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/app/auth/AuthProvider";
+import LenaLogo from "@/app/components/LenaLogo";
 
 export default function LoginScreen() {
   const { signIn, isAuthenticated } = useAuth();
@@ -43,7 +44,7 @@ export default function LoginScreen() {
         }}
       >
         <Typography variant="h4" component="h1">
-          LENA
+          <LenaLogo size={36} />
         </Typography>
         <Typography color="text.secondary">
           Sign in to manage inventory, recipes, and meal plans.
