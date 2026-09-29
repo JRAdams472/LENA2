@@ -1,6 +1,6 @@
 "use client";
 
-import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { ThemeProvider, alpha, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
@@ -19,7 +19,44 @@ if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === CLIENT_ID_PLACEHOLDER) {
   );
 }
 
-const theme = createTheme();
+const theme = createTheme({
+  palette: {
+    background: { default: "#f8fafc" },
+  },
+  shape: { borderRadius: 10 },
+  components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: { boxShadow: "0 4px 12px rgba(0,0,0,0.05)" },
+      },
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: ({ theme }) => ({
+          borderRadius: theme.shape.borderRadius,
+          marginLeft: theme.spacing(1),
+          marginRight: theme.spacing(1),
+          padding: "10px 16px",
+          "&.Mui-selected": {
+            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+            color: theme.palette.primary.main,
+            "& .MuiListItemIcon-root": {
+              color: theme.palette.primary.main,
+            },
+            "&:hover": {
+              backgroundColor: alpha(theme.palette.primary.main, 0.14),
+            },
+          },
+        }),
+      },
+    },
+    MuiListItemIcon: {
+      styleOverrides: {
+        root: { color: "#4b5563", minWidth: 40 },
+      },
+    },
+  },
+});
 
 function makeQueryClient() {
   return new QueryClient({
