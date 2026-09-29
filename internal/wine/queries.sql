@@ -146,7 +146,7 @@ WHERE position(lower($1) in lower(
   )) > 0
 LIMIT 1000;
 
--- name: UpdateBottle :exec
+-- name: UpdateBottle :execrows
 UPDATE wine.bottle
 SET type_id         = $2,
     country_id      = $3,

@@ -388,7 +388,7 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Ide
 	return items, nil
 }
 
-const setUserActive = `-- name: SetUserActive :exec
+const setUserActive = `-- name: SetUserActive :execrows
 UPDATE identity.users
 SET is_active  = $2,
     updated_by = $3,
@@ -402,9 +402,12 @@ type SetUserActiveParams struct {
 	UpdatedBy pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) error {
-	_, err := q.db.Exec(ctx, setUserActive, arg.UserID, arg.IsActive, arg.UpdatedBy)
-	return err
+func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserActive, arg.UserID, arg.IsActive, arg.UpdatedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setUserHousehold = `-- name: SetUserHousehold :execrows
@@ -471,7 +474,7 @@ func (q *Queries) SetUserHouseholdRole(ctx context.Context, arg SetUserHousehold
 	return result.RowsAffected(), nil
 }
 
-const setUserRole = `-- name: SetUserRole :exec
+const setUserRole = `-- name: SetUserRole :execrows
 UPDATE identity.users
 SET role       = $2,
     updated_at = now()
@@ -483,9 +486,12 @@ type SetUserRoleParams struct {
 	Role   string `json:"role"`
 }
 
-func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) error {
-	_, err := q.db.Exec(ctx, setUserRole, arg.UserID, arg.Role)
-	return err
+func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserRole, arg.UserID, arg.Role)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setUserSearchable = `-- name: SetUserSearchable :execrows
@@ -510,7 +516,7 @@ func (q *Queries) SetUserSearchable(ctx context.Context, arg SetUserSearchablePa
 	return result.RowsAffected(), nil
 }
 
-const updateUser = `-- name: UpdateUser :exec
+const updateUser = `-- name: UpdateUser :execrows
 UPDATE identity.users
 SET email        = $2,
     display_name = $3,
@@ -528,18 +534,21 @@ type UpdateUserParams struct {
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
-	_, err := q.db.Exec(ctx, updateUser,
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUser,
 		arg.UserID,
 		arg.Email,
 		arg.DisplayName,
 		arg.IsActive,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateUserProfile = `-- name: UpdateUserProfile :exec
+const updateUserProfile = `-- name: UpdateUserProfile :execrows
 UPDATE identity.users
 SET first_name   = $2,
     last_name    = $3,
@@ -557,15 +566,18 @@ type UpdateUserProfileParams struct {
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error {
-	_, err := q.db.Exec(ctx, updateUserProfile,
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserProfile,
 		arg.UserID,
 		arg.FirstName,
 		arg.LastName,
 		arg.BackupEmail,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertUser = `-- name: UpsertUser :one

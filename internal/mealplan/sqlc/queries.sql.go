@@ -598,7 +598,7 @@ func (q *Queries) ReassignMealPlansToHousehold(ctx context.Context, arg Reassign
 	return err
 }
 
-const updateMealPlan = `-- name: UpdateMealPlan :exec
+const updateMealPlan = `-- name: UpdateMealPlan :execrows
 UPDATE mealplan.meal_plan
 SET name                = $3,
     week_start_date     = $4,
@@ -619,8 +619,8 @@ type UpdateMealPlanParams struct {
 	UpdatedBy          pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) error {
-	_, err := q.db.Exec(ctx, updateMealPlan,
+func (q *Queries) UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateMealPlan,
 		arg.MealPlanID,
 		arg.HouseholdID,
 		arg.Name,
@@ -629,10 +629,13 @@ func (q *Queries) UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) 
 		arg.IsActive,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateMealSlot = `-- name: UpdateMealSlot :exec
+const updateMealSlot = `-- name: UpdateMealSlot :execrows
 UPDATE mealplan.meal_slot ms
 SET day_of_week      = $3,
     meal_type        = $4,
@@ -656,8 +659,8 @@ type UpdateMealSlotParams struct {
 	UpdatedBy       pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error {
-	_, err := q.db.Exec(ctx, updateMealSlot,
+func (q *Queries) UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateMealSlot,
 		arg.SlotID,
 		arg.HouseholdID,
 		arg.DayOfWeek,
@@ -667,5 +670,8 @@ func (q *Queries) UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) 
 		arg.ReplacementNote,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

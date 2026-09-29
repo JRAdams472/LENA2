@@ -241,13 +241,20 @@ func (s *Service) SetBrandStatus(ctx context.Context, brandID int64, status stri
 		approvedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 		approver = pgtype.Int8{Int64: approverUserID, Valid: true}
 	}
-	return s.q.SetBrandStatus(ctx, sqlc.SetBrandStatusParams{
+	n, err := s.q.SetBrandStatus(ctx, sqlc.SetBrandStatusParams{
 		BrandID:          brandID,
 		Status:           status,
 		ApprovedByUserID: approver,
 		ApprovedAt:       approvedAt,
 		UpdatedBy:        textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("set brand status: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set brand status: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // GetBrandsByIDs returns a set of brands in a single query.
@@ -485,13 +492,20 @@ func (s *Service) SetItemStatus(ctx context.Context, itemID int64, status string
 		approvedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 		approver = pgtype.Int8{Int64: approverUserID, Valid: true}
 	}
-	return s.q.SetItemStatus(ctx, sqlc.SetItemStatusParams{
+	n, err := s.q.SetItemStatus(ctx, sqlc.SetItemStatusParams{
 		ItemID:           itemID,
 		Status:           status,
 		ApprovedByUserID: approver,
 		ApprovedAt:       approvedAt,
 		UpdatedBy:        textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("set item status: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set item status: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // GetItemByID returns an item by its primary key.
@@ -742,7 +756,7 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 	if err != nil {
 		return fmt.Errorf("update item: %w", err)
 	}
-	return s.q.UpdateItem(ctx, sqlc.UpdateItemParams{
+	n, err := s.q.UpdateItem(ctx, sqlc.UpdateItemParams{
 		ItemID:     itemID,
 		Name:       arg.Name,
 		BrandID:    optInt64(arg.BrandID),
@@ -754,6 +768,13 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 		NetWeight:  netWeight,
 		IsMetric:   arg.IsMetric,
 	})
+	if err != nil {
+		return fmt.Errorf("update item: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update item: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteItem removes an item from the catalog. Dependent rows — pantry

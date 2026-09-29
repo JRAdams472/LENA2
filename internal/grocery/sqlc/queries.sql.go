@@ -491,7 +491,7 @@ func (q *Queries) TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroc
 	return i, err
 }
 
-const updateGroceryListItem = `-- name: UpdateGroceryListItem :exec
+const updateGroceryListItem = `-- name: UpdateGroceryListItem :execrows
 UPDATE grocery.grocery_list_item gli
 SET item_id          = $3,
     ingredient_id    = $4,
@@ -520,8 +520,8 @@ type UpdateGroceryListItemParams struct {
 	UpdatedBy         pgtype.Text    `json:"updated_by"`
 }
 
-func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error {
-	_, err := q.db.Exec(ctx, updateGroceryListItem,
+func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateGroceryListItem,
 		arg.GroceryListItemID,
 		arg.HouseholdID,
 		arg.ItemID,
@@ -533,5 +533,8 @@ func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryLi
 		arg.IsChecked,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

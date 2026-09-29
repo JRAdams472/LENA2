@@ -796,7 +796,7 @@ func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, 
 	if err != nil {
 		return fmt.Errorf("update bottle: %w", err)
 	}
-	return s.q.UpdateBottle(ctx, sqlc.UpdateBottleParams{
+	n, err := s.q.UpdateBottle(ctx, sqlc.UpdateBottleParams{
 		BottleID:       bottleID,
 		TypeID:         arg.TypeID,
 		CountryID:      arg.CountryID,
@@ -812,6 +812,13 @@ func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, 
 		BottleSize:     arg.BottleSize,
 		UpdatedBy:      textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update bottle: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update bottle: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteBottle removes a bottle from the catalog.

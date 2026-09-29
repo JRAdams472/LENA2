@@ -2016,7 +2016,7 @@ func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemai
 	return items, nil
 }
 
-const setBrandStatus = `-- name: SetBrandStatus :exec
+const setBrandStatus = `-- name: SetBrandStatus :execrows
 UPDATE inventory.brand
 SET status              = $2,
     approved_by_user_id = $3,
@@ -2034,18 +2034,21 @@ type SetBrandStatusParams struct {
 	UpdatedBy        pgtype.Text        `json:"updated_by"`
 }
 
-func (q *Queries) SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) error {
-	_, err := q.db.Exec(ctx, setBrandStatus,
+func (q *Queries) SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setBrandStatus,
 		arg.BrandID,
 		arg.Status,
 		arg.ApprovedByUserID,
 		arg.ApprovedAt,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const setItemStatus = `-- name: SetItemStatus :exec
+const setItemStatus = `-- name: SetItemStatus :execrows
 UPDATE inventory.item
 SET status              = $2,
     approved_by_user_id = $3,
@@ -2063,15 +2066,18 @@ type SetItemStatusParams struct {
 	UpdatedBy        pgtype.Text        `json:"updated_by"`
 }
 
-func (q *Queries) SetItemStatus(ctx context.Context, arg SetItemStatusParams) error {
-	_, err := q.db.Exec(ctx, setItemStatus,
+func (q *Queries) SetItemStatus(ctx context.Context, arg SetItemStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setItemStatus,
 		arg.ItemID,
 		arg.Status,
 		arg.ApprovedByUserID,
 		arg.ApprovedAt,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateBrand = `-- name: UpdateBrand :one
@@ -2232,7 +2238,7 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 	return i, err
 }
 
-const updateItem = `-- name: UpdateItem :exec
+const updateItem = `-- name: UpdateItem :execrows
 UPDATE inventory.item
 SET name        = $2,
     brand_id    = $3,
@@ -2260,8 +2266,8 @@ type UpdateItemParams struct {
 	IsMetric   bool           `json:"is_metric"`
 }
 
-func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
-	_, err := q.db.Exec(ctx, updateItem,
+func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateItem,
 		arg.ItemID,
 		arg.Name,
 		arg.BrandID,
@@ -2273,7 +2279,10 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 		arg.NetWeight,
 		arg.IsMetric,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateNutrientType = `-- name: UpdateNutrientType :one

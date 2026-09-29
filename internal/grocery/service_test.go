@@ -275,7 +275,7 @@ func TestUpdateGroceryListItem(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().UpdateGroceryListItem(ctx, gomock.Any()).
-			DoAndReturn(func(_ context.Context, arg sqlc.UpdateGroceryListItemParams) error {
+			DoAndReturn(func(_ context.Context, arg sqlc.UpdateGroceryListItemParams) (int64, error) {
 				assert.Equal(t, int64(900), arg.GroceryListItemID)
 				assert.Equal(t, pgtype.Int8{Int64: 123, Valid: true}, arg.ItemID)
 				assert.Equal(t, pgtype.Text{String: "eggs", Valid: true}, arg.ManualItemName)
@@ -284,7 +284,7 @@ func TestUpdateGroceryListItem(t *testing.T) {
 				assert.InDelta(t, 12.0, f8.Float64, 1e-9)
 				assert.True(t, arg.IsChecked)
 				assert.Equal(t, pgtype.Text{String: "tester", Valid: true}, arg.UpdatedBy)
-				return nil
+				return 1, nil
 			})
 
 		require.NoError(t, s.UpdateGroceryListItem(ctx, 900, 42, in, "tester"))
@@ -292,7 +292,7 @@ func TestUpdateGroceryListItem(t *testing.T) {
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().UpdateGroceryListItem(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().UpdateGroceryListItem(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.UpdateGroceryListItem(ctx, 900, 42, in, "tester"), errDB)
 	})
 }

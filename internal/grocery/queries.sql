@@ -79,7 +79,7 @@ FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
 WHERE gli.grocery_list_item_id = $1 AND gl.household_id = $2;
 
--- name: UpdateGroceryListItem :exec
+-- name: UpdateGroceryListItem :execrows
 UPDATE grocery.grocery_list_item gli
 SET item_id          = $3,
     ingredient_id    = $4,

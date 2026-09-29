@@ -282,7 +282,7 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, 
 	if err != nil {
 		return fmt.Errorf("update grocery list item: %w", err)
 	}
-	return s.q.UpdateGroceryListItem(ctx, sqlc.UpdateGroceryListItemParams{
+	n, err := s.q.UpdateGroceryListItem(ctx, sqlc.UpdateGroceryListItemParams{
 		GroceryListItemID: groceryListItemID,
 		HouseholdID:       householdID,
 		ItemID:            optInt8(arg.ItemID),
@@ -294,6 +294,13 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, 
 		IsChecked:         arg.IsChecked,
 		UpdatedBy:         textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update grocery list item: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update grocery list item: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteGroceryListItem removes an item from a list owned by the household.

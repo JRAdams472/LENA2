@@ -136,15 +136,21 @@ func TestUpdateMealPlan(t *testing.T) {
 			IsActive:           false,
 			UpdatedBy:          pgtype.Text{String: "tester", Valid: true},
 		}
-		mq.EXPECT().UpdateMealPlan(ctx, want).Return(nil)
+		mq.EXPECT().UpdateMealPlan(ctx, want).Return(int64(1), nil)
 
 		require.NoError(t, s.UpdateMealPlan(ctx, 7, 42, in, "tester"))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().UpdateMealPlan(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().UpdateMealPlan(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.UpdateMealPlan(ctx, 7, 42, in, "tester"), errDB)
+	})
+
+	t.Run("zero rows is not found", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().UpdateMealPlan(ctx, gomock.Any()).Return(int64(0), nil)
+		assert.ErrorIs(t, s.UpdateMealPlan(ctx, 7, 42, in, "tester"), domainerr.ErrNotFound)
 	})
 }
 
@@ -310,14 +316,14 @@ func TestUpdateMealSlot(t *testing.T) {
 			ReplacementNote: pgtype.Text{String: "spicy", Valid: true},
 			UpdatedBy:       pgtype.Text{String: "tester", Valid: true},
 		}
-		mq.EXPECT().UpdateMealSlot(ctx, want).Return(nil)
+		mq.EXPECT().UpdateMealSlot(ctx, want).Return(int64(1), nil)
 
 		require.NoError(t, s.UpdateMealSlot(ctx, 55, 42, in, "tester"))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().UpdateMealSlot(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().UpdateMealSlot(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.UpdateMealSlot(ctx, 55, 42, in, "tester"), errDB)
 	})
 }

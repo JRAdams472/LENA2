@@ -454,7 +454,7 @@ func TestSetItemStatus_Approve(t *testing.T) {
 			arg.Status == ItemStatusApproved &&
 			arg.ApprovedByUserID.Valid && arg.ApprovedByUserID.Int64 == 9 &&
 			arg.ApprovedAt.Valid
-	})).Return(nil)
+	})).Return(int64(1), nil)
 
 	require.NoError(t, s.SetItemStatus(ctx, 11, ItemStatusApproved, 9, "admin@example.com"))
 }
@@ -467,7 +467,7 @@ func TestSetItemStatus_Reject(t *testing.T) {
 			arg.Status == ItemStatusRejected &&
 			!arg.ApprovedByUserID.Valid &&
 			!arg.ApprovedAt.Valid
-	})).Return(nil)
+	})).Return(int64(1), nil)
 
 	require.NoError(t, s.SetItemStatus(ctx, 11, ItemStatusRejected, 9, "admin@example.com"))
 }
@@ -659,7 +659,7 @@ func TestUpdateItem(t *testing.T) {
 		UpdatedBy:  pgtype.Text{String: "bob", Valid: true},
 		NetWeight:  pgtype.Numeric{},
 		IsMetric:   false,
-	}).Return(nil)
+	}).Return(int64(1), nil)
 
 	err := s.UpdateItem(ctx, 11, Item{Name: "Pear", CategoryID: 3, UnitID: 11}, "bob")
 	assert.NoError(t, err)
@@ -668,9 +668,17 @@ func TestUpdateItem(t *testing.T) {
 func TestUpdateItem_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().UpdateItem(ctx, gomock.Any()).Return(errBoom)
+	q.EXPECT().UpdateItem(ctx, gomock.Any()).Return(int64(0), errBoom)
 
 	assert.ErrorIs(t, s.UpdateItem(ctx, 11, Item{}, "bob"), errBoom)
+}
+
+func TestUpdateItem_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().UpdateItem(ctx, gomock.Any()).Return(int64(0), nil)
+
+	assert.ErrorIs(t, s.UpdateItem(ctx, 11, Item{}, "bob"), domainerr.ErrNotFound)
 }
 
 func TestDeleteItem(t *testing.T) {

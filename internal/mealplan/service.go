@@ -133,7 +133,7 @@ func (s *Service) CountMealPlans(ctx context.Context, householdID int64) (int64,
 
 // UpdateMealPlan modifies a household's plan.
 func (s *Service) UpdateMealPlan(ctx context.Context, mealPlanID, householdID int64, arg MealPlan, by string) error {
-	return s.q.UpdateMealPlan(ctx, sqlc.UpdateMealPlanParams{
+	n, err := s.q.UpdateMealPlan(ctx, sqlc.UpdateMealPlanParams{
 		MealPlanID:         mealPlanID,
 		HouseholdID:        householdID,
 		Name:               arg.Name,
@@ -142,6 +142,13 @@ func (s *Service) UpdateMealPlan(ctx context.Context, mealPlanID, householdID in
 		IsActive:           arg.IsActive,
 		UpdatedBy:          textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update meal plan: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update meal plan: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteMealPlan removes a plan owned by the household.
@@ -240,7 +247,7 @@ func (s *Service) ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64,
 // UpdateMealSlot updates a slot's recipe, servings or note on a plan
 // owned by the household.
 func (s *Service) UpdateMealSlot(ctx context.Context, slotID, householdID int64, arg MealSlot, by string) error {
-	return s.q.UpdateMealSlot(ctx, sqlc.UpdateMealSlotParams{
+	n, err := s.q.UpdateMealSlot(ctx, sqlc.UpdateMealSlotParams{
 		SlotID:          slotID,
 		HouseholdID:     householdID,
 		DayOfWeek:       arg.DayOfWeek,
@@ -250,6 +257,13 @@ func (s *Service) UpdateMealSlot(ctx context.Context, slotID, householdID int64,
 		ReplacementNote: textOrNull(arg.ReplacementNote),
 		UpdatedBy:       textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update meal slot: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update meal slot: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteMealSlot removes a slot from a plan owned by the household.

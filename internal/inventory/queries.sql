@@ -91,7 +91,7 @@ SELECT COUNT(*)
 FROM inventory.brand
 WHERE status = 'pending';
 
--- name: SetBrandStatus :exec
+-- name: SetBrandStatus :execrows
 UPDATE inventory.brand
 SET status              = $2,
     approved_by_user_id = $3,
@@ -221,7 +221,7 @@ SELECT COUNT(*)
 FROM inventory.item
 WHERE status = 'pending';
 
--- name: SetItemStatus :exec
+-- name: SetItemStatus :execrows
 UPDATE inventory.item
 SET status              = $2,
     approved_by_user_id = $3,
@@ -230,7 +230,7 @@ SET status              = $2,
     updated_at          = now()
 WHERE item_id = $1;
 
--- name: UpdateItem :exec
+-- name: UpdateItem :execrows
 UPDATE inventory.item
 SET name        = $2,
     brand_id    = $3,

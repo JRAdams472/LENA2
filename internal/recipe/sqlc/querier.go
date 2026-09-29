@@ -60,10 +60,10 @@ type Querier interface {
 	SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([]RecipeRecipe, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (RecipeCategory, error)
 	UpdateCategoryGroup(ctx context.Context, arg UpdateCategoryGroupParams) (RecipeCategoryGroup, error)
-	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) error
+	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) (int64, error)
 	// Timing columns are written only by the create/replace-children path
 	// (AddRecipeStep); this partial update preserves them.
-	UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) error
+	UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) (int64, error)
 	UpsertRecipeRating(ctx context.Context, arg UpsertRecipeRatingParams) (RecipeRecipeRating, error)
 }
 

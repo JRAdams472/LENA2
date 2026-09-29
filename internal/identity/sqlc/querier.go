@@ -25,7 +25,7 @@ type Querier interface {
 	// the caller's household members excluded. pattern is a pre-escaped LIKE
 	// pattern built by the service.
 	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]IdentityUser, error)
-	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
+	SetUserActive(ctx context.Context, arg SetUserActiveParams) (int64, error)
 	// Conditional update: the expected-household guard turns a concurrent
 	// accept/leave race into a zero-row conflict instead of a lost update.
 	// household_role is set atomically with the move: 'owner' for fresh
@@ -34,10 +34,10 @@ type Querier interface {
 	// Role change within the same household; the expected-household guard
 	// keeps a stale actor from re-adding a role after the user moved.
 	SetUserHouseholdRole(ctx context.Context, arg SetUserHouseholdRoleParams) (int64, error)
-	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
+	SetUserRole(ctx context.Context, arg SetUserRoleParams) (int64, error)
 	SetUserSearchable(ctx context.Context, arg SetUserSearchableParams) (int64, error)
-	UpdateUser(ctx context.Context, arg UpdateUserParams) error
-	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
+	UpdateUser(ctx context.Context, arg UpdateUserParams) (int64, error)
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (int64, error)
 	UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error)
 }
 

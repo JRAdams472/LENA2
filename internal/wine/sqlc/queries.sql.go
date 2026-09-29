@@ -1243,7 +1243,7 @@ func (q *Queries) SearchBottles(ctx context.Context, arg SearchBottlesParams) ([
 	return items, nil
 }
 
-const updateBottle = `-- name: UpdateBottle :exec
+const updateBottle = `-- name: UpdateBottle :execrows
 UPDATE wine.bottle
 SET type_id         = $2,
     country_id      = $3,
@@ -1279,8 +1279,8 @@ type UpdateBottleParams struct {
 	UpdatedBy      pgtype.Text    `json:"updated_by"`
 }
 
-func (q *Queries) UpdateBottle(ctx context.Context, arg UpdateBottleParams) error {
-	_, err := q.db.Exec(ctx, updateBottle,
+func (q *Queries) UpdateBottle(ctx context.Context, arg UpdateBottleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateBottle,
 		arg.BottleID,
 		arg.TypeID,
 		arg.CountryID,
@@ -1296,7 +1296,10 @@ func (q *Queries) UpdateBottle(ctx context.Context, arg UpdateBottleParams) erro
 		arg.BottleSize,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateCountry = `-- name: UpdateCountry :one

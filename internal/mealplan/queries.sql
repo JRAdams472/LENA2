@@ -20,7 +20,7 @@ SELECT COUNT(*)
 FROM mealplan.meal_plan
 WHERE household_id = $1;
 
--- name: UpdateMealPlan :exec
+-- name: UpdateMealPlan :execrows
 UPDATE mealplan.meal_plan
 SET name                = $3,
     week_start_date     = $4,
@@ -68,7 +68,7 @@ JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
 WHERE ms.meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[]) AND mp.household_id = sqlc.arg(household_id)
 ORDER BY ms.day_of_week, ms.meal_type;
 
--- name: UpdateMealSlot :exec
+-- name: UpdateMealSlot :execrows
 UPDATE mealplan.meal_slot ms
 SET day_of_week      = $3,
     meal_type        = $4,

@@ -1180,7 +1180,7 @@ func (q *Queries) UpdateCategoryGroup(ctx context.Context, arg UpdateCategoryGro
 	return i, err
 }
 
-const updateRecipe = `-- name: UpdateRecipe :exec
+const updateRecipe = `-- name: UpdateRecipe :execrows
 UPDATE recipe.recipe
 SET name              = $2,
     description       = $3,
@@ -1204,8 +1204,8 @@ type UpdateRecipeParams struct {
 	UpdatedBy       pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) error {
-	_, err := q.db.Exec(ctx, updateRecipe,
+func (q *Queries) UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRecipe,
 		arg.RecipeID,
 		arg.Name,
 		arg.Description,
@@ -1215,10 +1215,13 @@ func (q *Queries) UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) erro
 		arg.IsActive,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateRecipeStep = `-- name: UpdateRecipeStep :exec
+const updateRecipeStep = `-- name: UpdateRecipeStep :execrows
 UPDATE recipe.recipe_step
 SET step_number = $2,
     instruction = $3,
@@ -1236,14 +1239,17 @@ type UpdateRecipeStepParams struct {
 
 // Timing columns are written only by the create/replace-children path
 // (AddRecipeStep); this partial update preserves them.
-func (q *Queries) UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) error {
-	_, err := q.db.Exec(ctx, updateRecipeStep,
+func (q *Queries) UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRecipeStep,
 		arg.StepID,
 		arg.StepNumber,
 		arg.Instruction,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertRecipeRating = `-- name: UpsertRecipeRating :one
