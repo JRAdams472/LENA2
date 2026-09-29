@@ -62,6 +62,13 @@ Signals to rank by should include but not be limited to:
 ~~Household usage where the catalog is shared~~ ✅ — personal > household > global weighting on shared catalogs
 ~~Ranking should degrade gracefully to a sensible default order when a user has little or no analytics history.~~ ✅ — engagement failures and empty history fall back to alphabetical/name order.
 
+## Web UI/UX polish
+✅ Done — not a planned feature; a shipped visual refresh of the web client (PRs #192–#193):
+- Card-based layouts on a light gray canvas (`#f8fafc`) with soft shadows and rounded corners, applied app-wide via the MUI theme.
+- Full-width top bar with the new cloche + `LENA` logo (also the login screen and favicon); user email in a profile pill; icon-button sign-out.
+- Sidebar navigation with pill-style active states, softened icon tint, and increased padding.
+- Dashboard "Today's meals" as a 3-column icon grid with dashed-pill "+ Plan a meal" actions; "Suggested for You" recipe reasons as soft-green chips; "Running low" rows with amber status dots and package-size badges (size deduplicated out of item names); suggested/restock cards in a bento grid on wide screens.
+
 # Version 2
 ## TokTok Integration 
 Give the app the ability to link a TikToc cooking video.
