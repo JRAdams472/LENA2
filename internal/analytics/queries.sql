@@ -135,3 +135,91 @@ WHERE event_type = 'recipe_searched'
   AND user_id = sqlc.arg(user_id)::bigint
   AND search_term IS NOT NULL
   AND search_term <> '';
+
+-- ---------- decayed selection scores (analytics ranking) ----------
+
+-- name: ClearSelectionScores :exec
+-- Full rebuild strategy: the decay job clears and repopulates in one tx so
+-- scores always reflect a consistent decay epoch.
+DELETE FROM analytics.selection_score;
+
+-- name: RebuildUserSelectionScores :exec
+-- score = SUM(weight * 2^(-age_days/half_life)); selection-intent events
+-- only — *_viewed / *_searched feed their own ranking tiers.
+INSERT INTO analytics.selection_score (
+    entity_type, entity_id, scope_type, scope_id, score, event_count, last_selected_at
+)
+SELECT entity_type, entity_id, 'user', user_id,
+       SUM(weight * exp(-ln(2) * EXTRACT(EPOCH FROM (now() - created_at)) / 86400.0
+           / sqlc.arg(half_life_days)::float8)),
+       COUNT(*), MAX(created_at)
+FROM analytics.interaction_event
+WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL AND user_id IS NOT NULL
+  AND event_type NOT LIKE '%\_viewed' ESCAPE '\'
+  AND event_type NOT LIKE '%\_searched' ESCAPE '\'
+GROUP BY entity_type, entity_id, user_id;
+
+-- name: RebuildHouseholdSelectionScores :exec
+-- Household scope = aggregate of every member's selection events (ADR-001
+-- read-model join through identity.users).
+INSERT INTO analytics.selection_score (
+    entity_type, entity_id, scope_type, scope_id, score, event_count, last_selected_at
+)
+SELECT e.entity_type, e.entity_id, 'household', u.household_id,
+       SUM(e.weight * exp(-ln(2) * EXTRACT(EPOCH FROM (now() - e.created_at)) / 86400.0
+           / sqlc.arg(half_life_days)::float8)),
+       COUNT(*), MAX(e.created_at)
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.entity_type IS NOT NULL AND e.entity_id IS NOT NULL
+  AND u.household_id IS NOT NULL
+  AND e.event_type NOT LIKE '%\_viewed' ESCAPE '\'
+  AND e.event_type NOT LIKE '%\_searched' ESCAPE '\'
+GROUP BY e.entity_type, e.entity_id, u.household_id;
+
+-- name: RebuildGlobalSelectionScores :exec
+INSERT INTO analytics.selection_score (
+    entity_type, entity_id, scope_type, scope_id, score, event_count, last_selected_at
+)
+SELECT entity_type, entity_id, 'global', 0,
+       SUM(weight * exp(-ln(2) * EXTRACT(EPOCH FROM (now() - created_at)) / 86400.0
+           / sqlc.arg(half_life_days)::float8)),
+       COUNT(*), MAX(created_at)
+FROM analytics.interaction_event
+WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL
+  AND event_type NOT LIKE '%\_viewed' ESCAPE '\'
+  AND event_type NOT LIKE '%\_searched' ESCAPE '\'
+GROUP BY entity_type, entity_id;
+
+-- name: TopSelectionScores :many
+-- Highest-scoring entities for one scope — drives the used/household/
+-- popular ranking tiers. scope_id is the user_id or household_id; pass 0
+-- for 'global'.
+SELECT entity_id, score::float8 AS score, event_count, last_selected_at
+FROM analytics.selection_score
+WHERE scope_type = $1 AND scope_id = $2 AND entity_type = $3
+ORDER BY score DESC, last_selected_at DESC NULLS LAST
+LIMIT $4;
+
+-- ---------- generic per-entity engagement inputs ----------
+
+-- name: UserViewedEntityIDs :many
+-- Entities of any type the caller has viewed, most-viewed first.
+-- event_type is derived as '<entity_type>_viewed'.
+SELECT entity_id, COUNT(*) AS hits
+FROM analytics.interaction_event
+WHERE event_type = sqlc.arg(entity_type)::text || '_viewed'
+  AND entity_type = sqlc.arg(entity_type)::text
+  AND user_id = sqlc.arg(user_id)::bigint
+GROUP BY entity_id
+ORDER BY hits DESC, MAX(created_at) DESC
+LIMIT sqlc.arg('limit')::int;
+
+-- name: UserEntitySearchTerms :many
+-- Distinct terms the caller has searched for a given entity type.
+SELECT DISTINCT search_term
+FROM analytics.interaction_event
+WHERE event_type = sqlc.arg(entity_type)::text || '_searched'
+  AND user_id = sqlc.arg(user_id)::bigint
+  AND search_term IS NOT NULL
+  AND search_term <> '';

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/testutil"
@@ -177,7 +178,6 @@ func TestResolver_UserBottles_ServiceError(t *testing.T) {
 func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
-	r := &Resolver{UserPrefsService: up}
 
 	minQty := 1.0
 	expiresAt := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
@@ -192,6 +192,15 @@ func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 	}
 	updated := wantArg
 	updated.HouseholdItemID = 5
+
+	an := newAnalyticsMock(t)
+	r := &Resolver{UserPrefsService: up, AnalyticsService: an}
+	an.EXPECT().RecordEvent(gomock.Any(), analytics.Event{
+		UserID:     upUserID,
+		EventType:  analytics.EventPantryItemAdjusted,
+		EntityType: analytics.EntityItem,
+		EntityID:   42,
+	}, upEmail).Return(nil)
 
 	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
 	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(wantArg), upEmail).Return(updated, nil)
@@ -208,12 +217,22 @@ func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 	assert.Equal(t, graphql.ID("5"), res.ID())
 	assert.Equal(t, 4.5, res.CurrentQty())
 	assert.True(t, res.IsFavorite())
+	// Drain the async event worker so the mock expectation is verified.
+	require.NoError(t, r.Shutdown(context.Background()))
 }
 
 func TestResolver_AdjustUserItem_NoExisting(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
-	r := &Resolver{UserPrefsService: up}
+	an := newAnalyticsMock(t)
+	r := &Resolver{UserPrefsService: up, AnalyticsService: an}
+	// First-time pantry adds emit pantry_item_added, not _adjusted.
+	an.EXPECT().RecordEvent(gomock.Any(), analytics.Event{
+		UserID:     upUserID,
+		EventType:  analytics.EventPantryItemAdded,
+		EntityType: analytics.EntityItem,
+		EntityID:   42,
+	}, upEmail).Return(nil)
 
 	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
 	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(userprefs.HouseholdItem{
@@ -230,6 +249,7 @@ func TestResolver_AdjustUserItem_NoExisting(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("7"), res.ID())
 	assert.False(t, res.IsFavorite())
+	require.NoError(t, r.Shutdown(context.Background()))
 }
 
 func TestResolver_AdjustUserItem_Unauthorized(t *testing.T) {

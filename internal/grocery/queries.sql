@@ -101,8 +101,19 @@ WHERE gli.grocery_list_id = gl.grocery_list_id
   AND gli.grocery_list_item_id = $1 AND gl.household_id = $2;
 
 -- name: ToggleGroceryListItemChecked :one
+-- Checking stamps checked_at and assigns the next per-list checked_seq so
+-- the order items were checked off survives for store-routing analytics;
+-- unchecking clears both.
 UPDATE grocery.grocery_list_item gli
 SET is_checked = NOT gli.is_checked,
+    checked_at = CASE WHEN NOT gli.is_checked THEN now() ELSE NULL END,
+    checked_seq = CASE WHEN NOT gli.is_checked
+        THEN COALESCE((
+            SELECT MAX(i2.checked_seq)
+            FROM grocery.grocery_list_item i2
+            WHERE i2.grocery_list_id = gli.grocery_list_id
+        ), 0) + 1
+        ELSE NULL END,
     updated_by = $3,
     updated_at = now()
 FROM grocery.grocery_list gl

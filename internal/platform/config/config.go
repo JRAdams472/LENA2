@@ -149,6 +149,12 @@ type Config struct {
 	// NotificationExpiryDays is how far ahead of userprefs.household_item
 	// expires_at the expiry reminder fires.
 	NotificationExpiryDays int `envconfig:"NOTIFY_EXPIRY_DAYS" default:"3"`
+	// AnalyticsDecayInterval is how often analytics.selection_score is
+	// rebuilt from the interaction-event log.
+	AnalyticsDecayInterval time.Duration `envconfig:"ANALYTICS_DECAY_INTERVAL" default:"6h"`
+	// AnalyticsHalfLifeDays is the engagement half-life in days — an event
+	// contributes half its weight after this long.
+	AnalyticsHalfLifeDays float64 `envconfig:"ANALYTICS_HALF_LIFE_DAYS" default:"90"`
 }
 
 // Load reads configuration from environment variables.

@@ -22,7 +22,10 @@ func analyticsCtx() context.Context {
 
 func newAnalyticsMock(t *testing.T) *mock.MockAnalyticsService {
 	t.Helper()
-	return mock.NewMockAnalyticsService(gomock.NewController(t))
+	an := mock.NewMockAnalyticsService(gomock.NewController(t))
+	// Resolver.Shutdown calls Stop; tolerate it anywhere the mock is used.
+	an.EXPECT().Stop().AnyTimes()
+	return an
 }
 
 func TestResolver_RecordSelection(t *testing.T) {
@@ -79,6 +82,42 @@ func TestResolver_RecordSelection(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, ok)
 	})
+
+	t.Run("bottle selection", func(t *testing.T) {
+		an := newAnalyticsMock(t)
+		an.EXPECT().RecordEvent(gomock.Any(), analytics.Event{
+			UserID:     7,
+			EventType:  analytics.EventBottleSelected,
+			EntityType: analytics.EntityBottle,
+			EntityID:   8,
+		}, analyticsTestEmail).Return(nil)
+
+		r := &Resolver{AnalyticsService: an}
+		ok, err := r.RecordSelection(analyticsCtx(), struct {
+			EntityType string
+			EntityID   graphql.ID
+		}{EntityType: analytics.EntityBottle, EntityID: "8"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("ingredient selection", func(t *testing.T) {
+		an := newAnalyticsMock(t)
+		an.EXPECT().RecordEvent(gomock.Any(), analytics.Event{
+			UserID:     7,
+			EventType:  analytics.EventIngredientSelected,
+			EntityType: analytics.EntityIngredient,
+			EntityID:   4,
+		}, analyticsTestEmail).Return(nil)
+
+		r := &Resolver{AnalyticsService: an}
+		ok, err := r.RecordSelection(analyticsCtx(), struct {
+			EntityType string
+			EntityID   graphql.ID
+		}{EntityType: analytics.EntityIngredient, EntityID: "4"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
 }
 
 func TestResolver_RecordSearch(t *testing.T) {
@@ -96,6 +135,24 @@ func TestResolver_RecordSearch(t *testing.T) {
 			EntityType string
 			Term       string
 		}{EntityType: analytics.EntityItem, Term: "milk"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("bottle search", func(t *testing.T) {
+		an := newAnalyticsMock(t)
+		an.EXPECT().RecordEvent(gomock.Any(), analytics.Event{
+			UserID:     7,
+			EventType:  analytics.EventBottleSearched,
+			EntityType: analytics.EntityBottle,
+			SearchTerm: "malbec",
+		}, analyticsTestEmail).Return(nil)
+
+		r := &Resolver{AnalyticsService: an}
+		ok, err := r.RecordSearch(analyticsCtx(), struct {
+			EntityType string
+			Term       string
+		}{EntityType: analytics.EntityBottle, Term: "malbec"})
 		require.NoError(t, err)
 		assert.True(t, ok)
 	})

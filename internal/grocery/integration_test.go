@@ -284,7 +284,41 @@ func TestIntegrationGroceryToggle(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, checked.IsChecked)
 
+	// Check-off stamps a per-list sequence position and timestamp.
+	var seq *int
+	var checkedAt *time.Time
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT checked_seq, checked_at FROM grocery.grocery_list_item WHERE grocery_list_item_id = $1`,
+		gli.GroceryListItemID).Scan(&seq, &checkedAt))
+	require.NotNil(t, seq)
+	assert.Equal(t, 1, *seq)
+	require.NotNil(t, checkedAt)
+
+	// A second checked item takes the next sequence position.
+	gli2, err := svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID:  list.GroceryListID,
+		ManualItemName: "IT Manual Item",
+		QuantityNeeded: 1.0,
+		IsChecked:      false,
+	}, userA, itBy)
+	require.NoError(t, err)
+	checked2, err := svc.ToggleGroceryListItemChecked(ctx, gli2.GroceryListItemID, userA, itBy)
+	require.NoError(t, err)
+	assert.True(t, checked2.IsChecked)
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT checked_seq FROM grocery.grocery_list_item WHERE grocery_list_item_id = $1`,
+		gli2.GroceryListItemID).Scan(&seq))
+	require.NotNil(t, seq)
+	assert.Equal(t, 2, *seq)
+
 	unchecked, err := svc.ToggleGroceryListItemChecked(ctx, gli.GroceryListItemID, userA, itBy)
 	require.NoError(t, err)
 	assert.False(t, unchecked.IsChecked)
+
+	// Unchecking clears the ordering markers.
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT checked_seq, checked_at FROM grocery.grocery_list_item WHERE grocery_list_item_id = $1`,
+		gli.GroceryListItemID).Scan(&seq, &checkedAt))
+	assert.Nil(t, seq)
+	assert.Nil(t, checkedAt)
 }

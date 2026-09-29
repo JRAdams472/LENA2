@@ -448,6 +448,7 @@ type EventRecorder interface {
 	RecordEvent(ctx context.Context, e analytics.Event, by string) error
 	RecordView(ctx context.Context, e analytics.Event, by string) error
 	RecipeEngagementSets(ctx context.Context, userID, householdID int64) (analytics.RecipeEngagement, error)
+	EntityEngagementSets(ctx context.Context, userID, householdID int64, entityType string) (analytics.EntityEngagement, error)
 	ComputeIngredientOverlapSuggestions(ctx context.Context, newRecipeID int64) (int, error)
 }
 
@@ -460,10 +461,12 @@ type RecommendationReader interface {
 	ListRecipeRecommendations(ctx context.Context, userID int64, reason string, limit int32) ([]analytics.Recommendation, error)
 }
 
-// AnalyticsService is the subset of *analytics.Service used by the resolver.
+// AnalyticsService is the subset of *analytics.Service used by the
+// resolver, including the Stop hook for the decay scheduler.
 type AnalyticsService interface {
 	EventRecorder
 	RecommendationReader
+	Stop()
 }
 
 var _ AnalyticsService = (*analytics.Service)(nil)

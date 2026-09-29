@@ -14,7 +14,7 @@ import (
 const addGroceryListItem = `-- name: AddGroceryListItem :one
 INSERT INTO grocery.grocery_list_item (grocery_list_id, item_id, ingredient_id, manual_item_name, quantity_needed, unit_id, source, is_checked, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id
+RETURNING grocery_list_item_id, grocery_list_id, item_id, manual_item_name, quantity_needed, source, is_checked, created_by, created_at, updated_by, updated_at, ingredient_id, unit_id, checked_at, checked_seq
 `
 
 type AddGroceryListItemParams struct {
@@ -58,6 +58,8 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 		&i.UpdatedAt,
 		&i.IngredientID,
 		&i.UnitID,
+		&i.CheckedAt,
+		&i.CheckedSeq,
 	)
 	return i, err
 }
@@ -181,7 +183,7 @@ func (q *Queries) GetGroceryListByID(ctx context.Context, arg GetGroceryListByID
 }
 
 const getGroceryListItemByID = `-- name: GetGroceryListItemByID :one
-SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
+SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id, gli.checked_at, gli.checked_seq
 FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
 WHERE gli.grocery_list_item_id = $1 AND gl.household_id = $2
@@ -209,6 +211,8 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, arg GetGroceryList
 		&i.UpdatedAt,
 		&i.IngredientID,
 		&i.UnitID,
+		&i.CheckedAt,
+		&i.CheckedSeq,
 	)
 	return i, err
 }
@@ -243,7 +247,7 @@ func (q *Queries) GetLatestGroceryListByPlan(ctx context.Context, arg GetLatestG
 }
 
 const listGroceryListItems = `-- name: ListGroceryListItems :many
-SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
+SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id, gli.checked_at, gli.checked_seq
 FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
 WHERE gli.grocery_list_id = $1 AND gl.household_id = $2
@@ -278,6 +282,8 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, arg ListGroceryListI
 			&i.UpdatedAt,
 			&i.IngredientID,
 			&i.UnitID,
+			&i.CheckedAt,
+			&i.CheckedSeq,
 		); err != nil {
 			return nil, err
 		}
@@ -290,7 +296,7 @@ func (q *Queries) ListGroceryListItems(ctx context.Context, arg ListGroceryListI
 }
 
 const listGroceryListItemsByLists = `-- name: ListGroceryListItemsByLists :many
-SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
+SELECT gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id, gli.checked_at, gli.checked_seq
 FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
 WHERE gli.grocery_list_id = ANY($1::bigint[]) AND gl.household_id = $2
@@ -325,6 +331,8 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, arg ListGroce
 			&i.UpdatedAt,
 			&i.IngredientID,
 			&i.UnitID,
+			&i.CheckedAt,
+			&i.CheckedSeq,
 		); err != nil {
 			return nil, err
 		}
@@ -403,13 +411,21 @@ func (q *Queries) ReassignGroceryListsToHousehold(ctx context.Context, arg Reass
 const toggleGroceryListItemChecked = `-- name: ToggleGroceryListItemChecked :one
 UPDATE grocery.grocery_list_item gli
 SET is_checked = NOT gli.is_checked,
+    checked_at = CASE WHEN NOT gli.is_checked THEN now() ELSE NULL END,
+    checked_seq = CASE WHEN NOT gli.is_checked
+        THEN COALESCE((
+            SELECT MAX(i2.checked_seq)
+            FROM grocery.grocery_list_item i2
+            WHERE i2.grocery_list_id = gli.grocery_list_id
+        ), 0) + 1
+        ELSE NULL END,
     updated_by = $3,
     updated_at = now()
 FROM grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
   AND gli.grocery_list_item_id = $1
   AND gl.household_id = $2
-RETURNING gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id
+RETURNING gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id, gli.checked_at, gli.checked_seq
 `
 
 type ToggleGroceryListItemCheckedParams struct {
@@ -418,6 +434,9 @@ type ToggleGroceryListItemCheckedParams struct {
 	UpdatedBy         pgtype.Text `json:"updated_by"`
 }
 
+// Checking stamps checked_at and assigns the next per-list checked_seq so
+// the order items were checked off survives for store-routing analytics;
+// unchecking clears both.
 func (q *Queries) ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error) {
 	row := q.db.QueryRow(ctx, toggleGroceryListItemChecked, arg.GroceryListItemID, arg.HouseholdID, arg.UpdatedBy)
 	var i GroceryGroceryListItem
@@ -435,6 +454,8 @@ func (q *Queries) ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGr
 		&i.UpdatedAt,
 		&i.IngredientID,
 		&i.UnitID,
+		&i.CheckedAt,
+		&i.CheckedSeq,
 	)
 	return i, err
 }

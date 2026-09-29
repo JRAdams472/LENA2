@@ -16,6 +16,8 @@ enum EntityType {
   item
   brand
   recipe
+  bottle
+  ingredient
 }
 
 # Where a recipe import sits in the staged pipeline
@@ -664,6 +666,8 @@ type Bottle {
   bottleSize: String!
   grapeVarieties: [BottleGrapeVariety!]!
   flavorProfiles: [BottleFlavorProfile!]!
+  selectionCount: Int!
+  personalSelectionCount: Int!
 }
 
 type BottleGrapeVariety {

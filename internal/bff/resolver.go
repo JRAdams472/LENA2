@@ -215,6 +215,9 @@ func (r *Resolver) Shutdown(ctx context.Context) error {
 		if r.NotifierService != nil {
 			r.NotifierService.Stop()
 		}
+		if r.AnalyticsService != nil {
+			r.AnalyticsService.Stop()
+		}
 		if err == nil && r.RecipeImportService != nil {
 			err = r.RecipeImportService.Shutdown(ctx)
 		}
@@ -277,6 +280,9 @@ func parseIDs(ids []graphql.ID) ([]int64, error) {
 // recordEventAsync emits an analytics event on the bounded background
 // worker so that tracking never blocks or breaks the caller.
 func (r *Resolver) recordEventAsync(userID int64, by string, e analytics.Event) {
+	if r.AnalyticsService == nil {
+		return
+	}
 	e.UserID = userID
 	r.runAsync("record analytics event", 5*time.Second, func(ctx context.Context) error {
 		return r.AnalyticsService.RecordEvent(ctx, e, by)
@@ -1058,6 +1064,34 @@ func loadBottleChildren(ctx context.Context, wineSvc BottleReader, bottleIDs []i
 		bc.favorsBy[f.BottleID] = append(bc.favorsBy[f.BottleID], f)
 	}
 	return bc, nil
+}
+
+// loadBottleSelectionCounts fetches the per-user and global selection
+// counts for the given bottle IDs.
+func loadBottleSelectionCounts(ctx context.Context, an AnalyticsService, userID int64, bottleIDs []int64) (map[int64]countPair, error) {
+	out := make(map[int64]countPair, len(bottleIDs))
+	if an == nil || len(bottleIDs) == 0 {
+		return out, nil
+	}
+	userCounts, err := an.GetUserSelectionCounts(ctx, userID, analytics.EntityBottle, bottleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load bottle selection counts: %w", err)
+	}
+	globalCounts, err := an.GetGlobalSelectionCounts(ctx, analytics.EntityBottle, bottleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load bottle selection counts: %w", err)
+	}
+	for _, c := range userCounts {
+		p := out[c.EntityID]
+		p.personal = c.SelectCount
+		out[c.EntityID] = p
+	}
+	for _, c := range globalCounts {
+		p := out[c.EntityID]
+		p.global = c.SelectCount
+		out[c.EntityID] = p
+	}
+	return out, nil
 }
 
 // errQueryTimeout marks requests cancelled by the handler's deadline; the

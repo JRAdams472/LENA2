@@ -238,6 +238,25 @@ func TestResolver_RecordView(t *testing.T) {
 		require.NoError(t, r.Shutdown(context.Background()))
 	})
 
+	t.Run("derives event name for any entity type", func(t *testing.T) {
+		an := newAnalyticsMock(t)
+		an.EXPECT().RecordView(gomock.Any(), analytics.Event{
+			UserID:     7,
+			EventType:  analytics.EventBottleViewed,
+			EntityType: analytics.EntityBottle,
+			EntityID:   12,
+		}, analyticsTestEmail).Return(nil)
+
+		r := &Resolver{AnalyticsService: an}
+		ok, err := r.RecordView(analyticsCtx(), struct {
+			EntityType string
+			EntityID   graphql.ID
+		}{EntityType: analytics.EntityBottle, EntityID: "12"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+		require.NoError(t, r.Shutdown(context.Background()))
+	})
+
 	t.Run("requires auth", func(t *testing.T) {
 		r := &Resolver{}
 		_, err := r.RecordView(context.Background(), struct {
