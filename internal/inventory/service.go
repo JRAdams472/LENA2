@@ -564,9 +564,13 @@ type RankParams struct {
 // Instead the engaged rows are fetched by ID (a few thousand at most) and
 // tier-sorted here, while the remaining catalog is served in (name, id)
 // index order behind a hashed NOT IN probe.
-func (s *Service) SearchItems(ctx context.Context, userID int64, term string, rank RankParams, limit, offset int32) ([]Item, error) {
+func (s *Service) SearchItems(ctx context.Context, userID int64, term string, brandID *int64, rank RankParams, limit, offset int32) ([]Item, error) {
 	user := pgtype.Int8{Int64: userID, Valid: true}
 	search := textOrNull(term)
+	brand := pgtype.Int8{Valid: brandID != nil}
+	if brandID != nil {
+		brand.Int64 = *brandID
+	}
 
 	// Resolve the prior-search-term tier to IDs only when the user has
 	// recorded terms — it costs a catalog scan otherwise.
@@ -592,6 +596,7 @@ func (s *Service) SearchItems(ctx context.Context, userID int64, term string, ra
 		rows, err := s.q.RankedItems(ctx, sqlc.RankedItemsParams{
 			SubmittedByUserID: user,
 			Search:            search,
+			BrandID:           brand,
 			EngagedIds:        engagedIDs,
 		})
 		if err != nil {
@@ -621,6 +626,7 @@ func (s *Service) SearchItems(ctx context.Context, userID int64, term string, ra
 		rows, err := s.q.SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
 			SubmittedByUserID: user,
 			Search:            search,
+			BrandID:           brand,
 			EngagedIds:        engagedIDs,
 			Limit:             limit - intToInt32(len(out)),
 			Offset:            remOffset,
@@ -697,12 +703,17 @@ func orderRankedItems(rows []sqlc.InventoryItem, rank RankParams, searchedIDs []
 	return rows
 }
 
-// CountSearchItems returns the un-paged match count for the same visibility
-// and term filters as SearchItems.
-func (s *Service) CountSearchItems(ctx context.Context, userID int64, term string) (int64, error) {
+// CountSearchItems returns the un-paged match count for the same visibility,
+// term, and brand filters as SearchItems.
+func (s *Service) CountSearchItems(ctx context.Context, userID int64, term string, brandID *int64) (int64, error) {
+	brand := pgtype.Int8{Valid: brandID != nil}
+	if brandID != nil {
+		brand.Int64 = *brandID
+	}
 	n, err := s.q.CountSearchItems(ctx, sqlc.CountSearchItemsParams{
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 		Search:            textOrNull(term),
+		BrandID:           brand,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("count search items: %w", err)

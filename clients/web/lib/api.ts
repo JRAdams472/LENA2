@@ -1532,34 +1532,26 @@ async function fetchAllItems(): Promise<GqlItem[]> {
   return out;
 }
 
-async function fetchAllUserItems(): Promise<GqlUserItem[]> {
+async function fetchAllUserItems(search?: string): Promise<GqlUserItem[]> {
   const pageSize = 200;
   let page = 1;
+  const term = (search ?? "").trim();
   const out: GqlUserItem[] = [];
   for (;;) {
     const data = await request<{ userItems: GqlUserItemPage }>(
-      `query ($page: Int, $pageSize: Int) {
-        userItems(page: $page, pageSize: $pageSize) {
-          items { id currentQty minQty purchaseAt expiresAt notes isFavorite item { id } }
+      `query ($page: Int, $pageSize: Int, $search: String) {
+        userItems(page: $page, pageSize: $pageSize, search: $search) {
+          items { id currentQty minQty purchaseAt expiresAt notes isFavorite item { ${ITEM_FIELDS} } }
           pageInfo { pageNumber pageSize totalCount }
         }
       }`,
-      { page, pageSize }
+      { page, pageSize, search: term || null }
     );
     out.push(...data.userItems.items);
     if (out.length >= data.userItems.pageInfo.totalCount || data.userItems.items.length === 0) break;
     page += 1;
   }
   return out;
-}
-
-async function fetchItemsWithPrefs(): Promise<Item[]> {
-  const [items, userItems] = await Promise.all([
-    fetchAllItems(),
-    fetchAllUserItems(),
-  ]);
-  const prefs = new Map(userItems.map((ui) => [num(ui.item.id), ui]));
-  return items.map((i) => toItem(i, prefs.get(num(i.id))));
 }
 
 async function fetchAllBottles(): Promise<GqlBottle[]> {
@@ -1834,33 +1826,61 @@ export const api = {
   },
 
   // Items
-  getItems: async (): Promise<Item[]> => fetchItemsWithPrefs(),
+  getItemsByIds: async (ids: number[]): Promise<Item[]> =>
+    (
+      await Promise.all(
+        [...new Set(ids)].map((id) => api.getItem(id).catch(() => null))
+      )
+    ).filter((i): i is Item => i !== null),
 
   getItemsPaged: async (
     pageNumber: number,
     pageSize: number,
     search?: string,
-    brand?: string,
+    brandId?: number,
     inStock?: boolean,
     isFavorite?: boolean
   ): Promise<PagedResult<Item>> => {
-    let all = await fetchItemsWithPrefs();
-    const s = (search ?? "").trim().toLowerCase();
-    if (s) all = all.filter((i) => i.name.toLowerCase().includes(s));
-    const b = (brand ?? "").trim().toLowerCase();
-    if (b) all = all.filter((i) => (i.brand ?? "").toLowerCase() === b);
-    if (inStock) all = all.filter((i) => i.currentQuantity > 0);
-    if (isFavorite) all = all.filter((i) => i.isFavorite);
-    return pagedSlice(all, pageNumber, pageSize);
+    const term = (search ?? "").trim();
+    if (inStock || isFavorite) {
+      // Pantry-scoped filters drive from userItems — ranked server-side, and a
+      // household pantry is small enough to filter and page client-side.
+      const userItems = await fetchAllUserItems(term);
+      let rows = userItems.map((ui) => ({ ui, item: toItem(ui.item, ui) }));
+      if (brandId) rows = rows.filter((r) => num(r.ui.item.brand?.id) === brandId);
+      if (inStock) rows = rows.filter((r) => r.item.currentQuantity > 0);
+      if (isFavorite) rows = rows.filter((r) => r.item.isFavorite);
+      return pagedSlice(rows.map((r) => r.item), pageNumber, pageSize);
+    }
+    const [data, userItems] = await Promise.all([
+      request<{ items: GqlItemPage }>(
+        `query ($page: Int, $pageSize: Int, $search: String, $brandId: ID) {
+          items(page: $page, pageSize: $pageSize, search: $search, brandId: $brandId) {
+            items { ${ITEM_FIELDS} }
+            pageInfo { pageNumber pageSize totalCount }
+          }
+        }`,
+        { page: pageNumber, pageSize, search: term || null, brandId: brandId ? String(brandId) : null }
+      ),
+      fetchAllUserItems(),
+    ]);
+    const prefs = new Map(userItems.map((ui) => [num(ui.item.id), ui]));
+    return toPaged(
+      data.items.items.map((i) => toItem(i, prefs.get(num(i.id)))),
+      data.items.pageInfo
+    );
   },
 
-  searchItems: async (search: string, brand?: string, limit: number = 50): Promise<Item[]> => {
-    const s = search.trim().toLowerCase();
-    const b = (brand ?? "").trim().toLowerCase();
-    return (await fetchItemsWithPrefs())
-      .filter((i) => i.name.toLowerCase().includes(s))
-      .filter((i) => !b || (i.brand ?? "").toLowerCase() === b)
-      .slice(0, limit);
+  searchItems: async (search: string, brandId?: number, limit: number = 50): Promise<Item[]> => {
+    const data = await request<{ items: GqlItemPage }>(
+      `query ($search: String, $brandId: ID, $limit: Int) {
+        items(page: 1, pageSize: $limit, search: $search, brandId: $brandId) {
+          items { ${ITEM_FIELDS} }
+        }
+      }`,
+      { search: search.trim() || null, brandId: brandId ? String(brandId) : null, limit }
+    );
+    return (data.items.items ?? []).map((i) => toItem(i));
   },
 
   getBrands: async (search?: string): Promise<Brand[]> => {
@@ -2425,10 +2445,11 @@ export const api = {
   },
 
   searchBottles: async (searchTerm: string): Promise<Bottle[]> => {
-    const s = searchTerm.trim().toLowerCase();
-    return (await fetchAllBottles())
-      .filter((b) => (b.vineyard ?? "").toLowerCase().includes(s))
-      .map((b) => toBottle(b));
+    const data = await request<{ bottles: GqlBottlePage }>(
+      `query ($search: String) { bottles(page: 1, pageSize: 50, search: $search) { items { ${BOTTLE_FIELDS} } } }`,
+      { search: searchTerm.trim() || null }
+    );
+    return (data.bottles.items ?? []).map((b) => toBottle(b));
   },
 
   getBottleCount: async (): Promise<number> => {

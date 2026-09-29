@@ -63,9 +63,36 @@ function gqlItem(over: Record<string, unknown> = {}) {
   };
 }
 
-function itemsPage(items: object[], totalCount = items.length) {
+function itemsPage(
+  items: object[],
+  totalCount = items.length,
+  pageInfo: { pageNumber: number; pageSize: number } = { pageNumber: 1, pageSize: 200 }
+) {
   return {
     items: {
+      items,
+      pageInfo: { ...pageInfo, totalCount },
+    },
+  };
+}
+
+function gqlUserItem(itemId: string, over: Record<string, unknown> = {}) {
+  return {
+    id: "9",
+    item: gqlItem({ id: itemId }),
+    currentQty: 4,
+    minQty: 1,
+    purchaseAt: "2026-09-01",
+    expiresAt: "2026-10-01",
+    notes: "keep cold",
+    isFavorite: true,
+    ...over,
+  };
+}
+
+function userItemsPage(items: object[], totalCount = items.length) {
+  return {
+    userItems: {
       items,
       pageInfo: { pageNumber: 1, pageSize: 200, totalCount },
     },
@@ -78,33 +105,28 @@ describe("api client: items", () => {
     setAuthTokenGetter(() => null);
   });
 
-  it("getItems merges user item prefs into items", async () => {
+  it("getItemsPaged requests a server-side page and merges user prefs", async () => {
     mockFetch
-      .mockResolvedValueOnce(mockGraphQL(itemsPage([gqlItem()])))
       .mockResolvedValueOnce(
-        mockGraphQL({
-          userItems: {
-            items: [
-              {
-                id: "9",
-                item: { id: "1" },
-                currentQty: 4,
-                minQty: 1,
-                purchaseAt: "2026-09-01",
-                expiresAt: "2026-10-01",
-                notes: "keep cold",
-                isFavorite: true,
-              },
-            ],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 },
-          },
-        })
+        mockGraphQL(itemsPage([gqlItem()], 57, { pageNumber: 2, pageSize: 10 }))
+      )
+      .mockResolvedValueOnce(
+        mockGraphQL(userItemsPage([gqlUserItem("1")]))
       );
 
-    const items = await api.getItems();
+    const result = await api.getItemsPaged(2, 10, "milk", 3);
 
-    expect(items).toHaveLength(1);
-    const item = items[0];
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const body = lastRequestBody(-2);
+    expect(body.query).toContain("items(page: $page");
+    expect(body.query).toContain("brandId: $brandId");
+    expect(body.variables).toEqual({
+      page: 2,
+      pageSize: 10,
+      search: "milk",
+      brandId: "3",
+    });
+    const item = result.items[0];
     expect(item.itemID).toBe(1);
     expect(item.brand).toBe("Acme");
     expect(item.currentQuantity).toBe(4);
@@ -114,43 +136,43 @@ describe("api client: items", () => {
     expect(item.notes).toBe("keep cold");
     expect(item.isFavorite).toBe(true);
     expect(item.category?.categoryName).toBe("Dairy");
-    expect(item.foodNutrients?.[0].nutrientType?.nutrientName).toBe(
-      "Calories"
-    );
-    expect(item.foodNutrients?.[0].amountPerServing).toBe(120);
-    expect(item.foodFlavors?.[0].intensityScore).toBe(3);
-    expect(item.foodFlavors?.[0].flavorProfile?.flavorName).toBe("Creamy");
+    expect(result.totalCount).toBe(57);
+    expect(result.totalPages).toBe(6);
+    expect(result.pageNumber).toBe(2);
   });
 
-  it("getItems paginates through all item pages", async () => {
-    mockFetch
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          items: {
-            items: [gqlItem({ id: "1", name: "Milk" })],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 2 },
-          },
-        })
-      )
-      .mockResolvedValueOnce(mockGraphQL(emptyUserItemsPage))
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          items: {
-            items: [gqlItem({ id: "2", name: "Bread" })],
-            pageInfo: { pageNumber: 2, pageSize: 200, totalCount: 2 },
-          },
-        })
-      );
+  it("getItemsPaged filters the pantry path via userItems", async () => {
+    const userItems = [
+      gqlUserItem("1", {
+        item: gqlItem({ id: "1", name: "Whole Milk", brand: { id: "1", name: "Acme" } }),
+        currentQty: 2,
+        isFavorite: true,
+      }),
+      gqlUserItem("2", {
+        item: gqlItem({ id: "2", name: "Skim Milk", brand: { id: "2", name: "Beta" } }),
+        currentQty: 0,
+        isFavorite: false,
+      }),
+      gqlUserItem("3", {
+        item: gqlItem({ id: "3", name: "Bread", brand: null }),
+        currentQty: 5,
+        isFavorite: false,
+      }),
+    ];
+    mockFetch.mockResolvedValueOnce(mockGraphQL(userItemsPage(userItems)));
 
-    const items = await api.getItems();
+    const result = await api.getItemsPaged(1, 10, "milk", 1, true, true);
 
-    expect(mockFetch).toHaveBeenCalledTimes(3);
-    expect(items.map((i) => i.name)).toEqual(["Milk", "Bread"]);
-    expect(items[1].isFavorite).toBe(false);
-    expect(items[1].currentQuantity).toBe(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = lastRequestBody();
+    expect(body.query).toContain("userItems(page: $page");
+    expect(body.variables.search).toBe("milk");
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].name).toBe("Whole Milk");
+    expect(result.totalCount).toBe(1);
   });
 
-  it("getItems handles an item with null brand and category", async () => {
+  it("getItemsPaged handles an item with null brand and category", async () => {
     mockFetch
       .mockResolvedValueOnce(
         mockGraphQL(
@@ -161,106 +183,75 @@ describe("api client: items", () => {
       )
       .mockResolvedValueOnce(mockGraphQL(emptyUserItemsPage));
 
-    const items = await api.getItems();
+    const result = await api.getItemsPaged(1, 25);
 
-    expect(items[0].brand).toBeNull();
-    expect(items[0].category).toBeNull();
-    expect(items[0].categoryID).toBe(0);
-    expect(items[0].foodNutrients).toEqual([]);
+    expect(result.items[0].brand).toBeNull();
+    expect(result.items[0].category).toBeNull();
+    expect(result.items[0].categoryID).toBe(0);
+    expect(result.items[0].foodNutrients).toEqual([]);
   });
 
-  it("getItems maps non-numeric ids to 0", async () => {
+  it("getItemsPaged maps non-numeric ids to 0", async () => {
     mockFetch
       .mockResolvedValueOnce(
         mockGraphQL(itemsPage([gqlItem({ id: "abc" })]))
       )
       .mockResolvedValueOnce(mockGraphQL(emptyUserItemsPage));
 
-    const items = await api.getItems();
-    expect(items[0].itemID).toBe(0);
+    const result = await api.getItemsPaged(1, 25);
+    expect(result.items[0].itemID).toBe(0);
   });
 
-  it("getItemsPaged applies search, brand, inStock and favorite filters", async () => {
-    const rows = [
-      gqlItem({ id: "1", name: "Whole Milk", brand: { id: "1", name: "Acme" } }),
-      gqlItem({ id: "2", name: "Skim Milk", brand: { id: "2", name: "Beta" } }),
-      gqlItem({ id: "3", name: "Bread", brand: null }),
-    ];
-    mockFetch
-      .mockResolvedValueOnce(mockGraphQL(itemsPage(rows)))
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          userItems: {
-            items: [
-              {
-                id: "9",
-                item: { id: "1" },
-                currentQty: 2,
-                minQty: null,
-                purchaseAt: null,
-                expiresAt: null,
-                notes: null,
-                isFavorite: true,
-              },
-            ],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 },
-          },
-        })
-      );
+  it("searchItems issues a ranked server-side query", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(itemsPage([gqlItem({ id: "1", name: "Milk" })]))
+    );
 
-    const result = await api.getItemsPaged(1, 10, "milk", "acme", true, true);
+    const result = await api.searchItems("  milk  ", 7, 25);
 
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].name).toBe("Whole Milk");
-    expect(result.totalCount).toBe(1);
-    expect(result.totalPages).toBe(1);
-  });
-
-  it("getItemsPaged slices pages with pagedSlice math", async () => {
-    const rows = [
-      gqlItem({ id: "1", name: "A" }),
-      gqlItem({ id: "2", name: "B" }),
-      gqlItem({ id: "3", name: "C" }),
-    ];
-    mockFetch
-      .mockResolvedValueOnce(mockGraphQL(itemsPage(rows)))
-      .mockResolvedValueOnce(mockGraphQL(emptyUserItemsPage));
-
-    const result = await api.getItemsPaged(2, 2);
-
-    expect(result.items.map((i) => i.name)).toEqual(["C"]);
-    expect(result.pageNumber).toBe(2);
-    expect(result.pageSize).toBe(2);
-    expect(result.totalCount).toBe(3);
-    expect(result.totalPages).toBe(2);
-  });
-
-  it("searchItems filters by term and brand and respects the limit", async () => {
-    const rows = [
-      gqlItem({ id: "1", name: "Milk", brand: { id: "1", name: "Acme" } }),
-      gqlItem({ id: "2", name: "Milk", brand: { id: "2", name: "Beta" } }),
-      gqlItem({ id: "3", name: "Bread", brand: null }),
-    ];
-    mockFetch
-      .mockResolvedValueOnce(mockGraphQL(itemsPage(rows)))
-      .mockResolvedValueOnce(mockGraphQL(emptyUserItemsPage));
-
-    const result = await api.searchItems("milk", "acme", 5);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = lastRequestBody();
+    expect(body.query).toContain("items(page: 1");
+    expect(body.variables).toEqual({ search: "milk", brandId: "7", limit: 25 });
     expect(result).toHaveLength(1);
-    expect(result[0].brand).toBe("Acme");
+    expect(result[0].name).toBe("Milk");
   });
 
-  it("searchItems with no brand filter returns matches up to the limit", async () => {
-    const rows = [
-      gqlItem({ id: "1", name: "Milk 1" }),
-      gqlItem({ id: "2", name: "Milk 2" }),
-    ];
-    mockFetch
-      .mockResolvedValueOnce(mockGraphQL(itemsPage(rows)))
-      .mockResolvedValueOnce(mockGraphQL(emptyUserItemsPage));
+  it("searchItems omits null filters", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(itemsPage([gqlItem({ id: "1" })]))
+    );
 
-    const result = await api.searchItems("milk", undefined, 1);
+    const result = await api.searchItems("", undefined, 10);
+
+    expect(lastRequestBody().variables).toEqual({
+      search: null,
+      brandId: null,
+      limit: 10,
+    });
     expect(result).toHaveLength(1);
+  });
+
+  it("getItemsByIds fetches each item and dedupes ids", async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL({ item: gqlItem({ id: "1", name: "Milk" }) }))
+      .mockResolvedValueOnce(mockGraphQL({ item: gqlItem({ id: "2", name: "Bread" }) }));
+
+    const items = await api.getItemsByIds([1, 2, 1]);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(items.map((i) => i.name)).toEqual(["Milk", "Bread"]);
+  });
+
+  it("getItemsByIds skips items that fail to load", async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL({ item: null }))
+      .mockResolvedValueOnce(mockGraphQL({ item: gqlItem({ id: "2", name: "Bread" }) }));
+
+    const items = await api.getItemsByIds([99, 2]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("Bread");
   });
 
   it("getItem fetches a single item and maps it", async () => {

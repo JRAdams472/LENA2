@@ -164,6 +164,7 @@ SELECT *
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+  AND (sqlc.narg('brand_id')::bigint IS NULL OR brand_id = sqlc.narg('brand_id'))
   AND item_id IN (SELECT unnest(sqlc.arg(engaged_ids)::bigint[]));
 
 -- name: SearchItemsRemainder :many
@@ -174,6 +175,7 @@ SELECT *
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+  AND (sqlc.narg('brand_id')::bigint IS NULL OR brand_id = sqlc.narg('brand_id'))
   AND item_id NOT IN (SELECT unnest(sqlc.arg(engaged_ids)::bigint[]))
 ORDER BY name, item_id
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
@@ -182,7 +184,8 @@ LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 SELECT COUNT(*)
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
-  AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%');
+  AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+  AND (sqlc.narg('brand_id')::bigint IS NULL OR brand_id = sqlc.narg('brand_id'));
 
 -- name: MatchItemIDsByTerms :many
 -- Items matching any of the user's prior search terms — the "searched"

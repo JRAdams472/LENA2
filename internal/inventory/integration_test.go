@@ -602,7 +602,7 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 		GlobalIDs:    []int64{globalID},
 		SearchTerms:  []string{"qz9 ccc"},
 	}
-	got, err := svc.SearchItems(ctx, uid, "qz9", rank, 20, 0)
+	got, err := svc.SearchItems(ctx, uid, "qz9", nil, rank, 20, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 6)
 	order := []int64{favID, personalID, householdItemID, searchedID, globalID, alphaID}
@@ -610,12 +610,12 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 		assert.Equal(t, order[i], it.ItemID, "position %d", i)
 	}
 
-	total, err := svc.CountSearchItems(ctx, uid, "qz9")
+	total, err := svc.CountSearchItems(ctx, uid, "qz9", nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(6), total)
 
 	t.Run("cold start falls back to alphabetical", func(t *testing.T) {
-		got, err := svc.SearchItems(ctx, uid, "qz9", RankParams{}, 20, 0)
+		got, err := svc.SearchItems(ctx, uid, "qz9", nil, RankParams{}, 20, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 6)
 		for i, it := range got {
@@ -624,7 +624,7 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 	})
 
 	t.Run("term scopes the ranked window", func(t *testing.T) {
-		got, err := svc.SearchItems(ctx, uid, "qz9 eee", rank, 20, 0)
+		got, err := svc.SearchItems(ctx, uid, "qz9 eee", nil, rank, 20, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		assert.Equal(t, personalID, got[0].ItemID)
@@ -634,5 +634,22 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 		ids, err := svc.MatchItemIDs(ctx, "qz9 bbb", uid)
 		require.NoError(t, err)
 		assert.Equal(t, []int64{globalID}, ids)
+	})
+
+	t.Run("brand filter scopes ranked and remainder", func(t *testing.T) {
+		brand, err := svc.CreateBrand(ctx, "IT Rank Brand", itBy)
+		require.NoError(t, err)
+		brandedID := func() int64 {
+			it, err := svc.CreateItem(ctx, Item{Name: "QZ9 GGG Branded", BrandID: &brand.BrandID, CategoryID: cat.CategoryID, UnitID: g}, itBy)
+			require.NoError(t, err)
+			return it.ItemID
+		}()
+		got, err := svc.SearchItems(ctx, uid, "qz9", &brand.BrandID, rank, 20, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, brandedID, got[0].ItemID)
+		total, err := svc.CountSearchItems(ctx, uid, "qz9", &brand.BrandID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
 	})
 }

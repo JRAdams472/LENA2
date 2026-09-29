@@ -60,7 +60,7 @@ describe("api client", () => {
     );
   });
 
-  it("getItems calls the GraphQL endpoint and returns data", async () => {
+  it("searchItems calls the GraphQL endpoint and returns data", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({
         items: {
@@ -82,7 +82,7 @@ describe("api client", () => {
       })
     );
 
-    const result = await api.getItems();
+    const result = await api.searchItems("milk");
 
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:5059/graphql",
@@ -144,7 +144,7 @@ describe("api client", () => {
       text: async () => "Bad Request",
     });
 
-    const error = await api.getItems().catch((e) => e);
+    const error = await api.searchItems("x").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(400);
     expect((error as ApiError).message).toContain("Bad Request");
@@ -160,7 +160,7 @@ describe("api client", () => {
       })
     );
 
-    await api.getItems();
+    await api.searchItems("x");
 
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:5059/graphql",
@@ -183,7 +183,7 @@ describe("api client", () => {
       })
     );
 
-    await api.getItems();
+    await api.searchItems("x");
 
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:5059/graphql",

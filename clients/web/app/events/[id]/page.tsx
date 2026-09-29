@@ -133,6 +133,12 @@ export default function EventDetailPage({
     return () => clearTimeout(t);
   }, [itemSearch]);
 
+  useEffect(() => {
+    if (debouncedItemSearch.trim()) {
+      void api.recordSearch("item", debouncedItemSearch);
+    }
+  }, [debouncedItemSearch]);
+
   const itemSearchQuery = useQuery({
     queryKey: ["items-search", debouncedItemSearch],
     queryFn: () => api.searchItems(debouncedItemSearch),
