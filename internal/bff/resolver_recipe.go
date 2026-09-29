@@ -118,6 +118,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	Search      *string
 	CategoryIDs *[]graphql.ID
 	IsFavorite  *bool
+	MealType    *string
 }) (*recipePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -158,6 +159,11 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		}
 	}
 	search.FavoriteIDs = favoriteIDs
+	if args.MealType != nil {
+		if id, err := r.courseCategoryID(ctx, *args.MealType); err == nil && id != nil {
+			search.CourseBoostID = id
+		}
+	}
 	if args.IsFavorite != nil {
 		if *args.IsFavorite {
 			search.IncludeIDs = favoriteIDs
@@ -448,13 +454,49 @@ func (r *Resolver) RateRecipe(ctx context.Context, args struct {
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc}, nil
 }
 
+// courseCategoryName is the category group whose members double as meal
+// types (Breakfast, Lunch, Dinner, ...).
+const courseCategoryName = "Course"
+
+// courseCategoryID resolves a meal_type string to its Course category id
+// (case-insensitive name match). Unknown meal types yield nil, nil — the
+// caller then simply skips the boost.
+func (r *Resolver) courseCategoryID(ctx context.Context, mealType string) (*int64, error) {
+	want := strings.ToLower(strings.TrimSpace(mealType))
+	if want == "" {
+		return nil, nil
+	}
+	groups, err := r.RecipeService.ListCategoryGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		if !strings.EqualFold(g.Name, courseCategoryName) {
+			continue
+		}
+		cats, err := r.RecipeService.ListCategoriesByGroup(ctx, g.CategoryGroupID)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range cats {
+			if strings.EqualFold(c.Name, want) {
+				id := c.CategoryID
+				return &id, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
 // ratingRecencyMinRating is the minimum star rating for a recipe to be
 // suggested under the rating_recency reason.
 const ratingRecencyMinRating = 4
 
 // RecommendedRecipes merges cached ingredient-overlap recommendations with
-// live rating-recency suggestions, deduplicates by recipe keeping the
-// highest score, and returns up to limit results sorted by score.
+// live rating-recency, category-affinity, and household-trending
+// suggestions. Each source is normalized to its own max so scores compare
+// across reasons; dedupe keeps the best score per recipe and the result is
+// sorted by score capped at limit.
 func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit int32 }) ([]*recipeRecommendationResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -462,15 +504,34 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	}
 	limit := clamp(args.Limit, 1, 50)
 
+	var sources []recommendationSource
 	overlap, err := r.AnalyticsService.ListRecipeRecommendations(ctx, u.UserID, analytics.ReasonIngredientOverlap, limit)
 	if err != nil {
 		return nil, err
 	}
+	overlapScores := make(map[int64]float64, len(overlap))
+	for _, o := range overlap {
+		overlapScores[o.RecipeID] = o.Score
+	}
+	sources = append(sources, recommendationSource{reason: analytics.ReasonIngredientOverlap, scores: overlapScores})
 	recency, err := r.ratingRecencyScores(ctx, u.UserID, u.HouseholdID, limit)
 	if err != nil {
 		return nil, err
 	}
-	recipeIDs, best := mergeRecommendations(overlap, recency, limit)
+	sources = append(sources, recommendationSource{reason: analytics.ReasonRatingRecency, scores: recency})
+	if r.AnalyticsService != nil {
+		affinity, err := r.categoryAffinityScores(ctx, u.HouseholdID, limit)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, recommendationSource{reason: analytics.ReasonCategoryAffinity, scores: affinity})
+		trending, err := r.householdTrendingScores(ctx, u.HouseholdID, limit)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, recommendationSource{reason: analytics.ReasonHouseholdTrending, scores: trending})
+	}
+	recipeIDs, best := mergeRecommendations(sources, limit)
 
 	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
 	if err != nil {
@@ -545,23 +606,152 @@ func (r *Resolver) ratingRecencyScores(ctx context.Context, userID, householdID 
 	return kept, nil
 }
 
+// householdTrendingDays is the recent window for velocity comparisons, and
+// householdTrendingMinRecent is the minimum events inside that window
+// before a recipe counts as trending — one recent hit isn't a trend.
+const (
+	householdTrendingDays      = 30
+	householdTrendingMinRecent = 2
+)
+
+// categoryAffinityScores converts the household's recipe usage into
+// per-category affinity, then scores each active recipe by the affinity of
+// its categories. Recipes share categories with what the household already
+// cooks, so the reason reads as "matches your household's tastes".
+func (r *Resolver) categoryAffinityScores(ctx context.Context, householdID int64, limit int32) (map[int64]float64, error) {
+	usage, err := r.AnalyticsService.HouseholdRecipeUsage(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	if len(usage) == 0 {
+		return map[int64]float64{}, nil
+	}
+	recipes, err := r.RecipeService.ListRecipes(ctx, true, 5000, 0)
+	if err != nil {
+		return nil, err
+	}
+	idSet := make(map[int64]bool, len(recipes)+len(usage))
+	for _, rp := range recipes {
+		idSet[rp.RecipeID] = true
+	}
+	for id := range usage {
+		idSet[id] = true
+	}
+	ids := make([]int64, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	cats, err := r.RecipeService.ListCategoriesForRecipes(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	catHits := make(map[int64]int64)
+	for recipeID, hits := range usage {
+		for _, c := range cats[recipeID] {
+			catHits[c.CategoryID] += hits
+		}
+	}
+	scores := make(map[int64]float64)
+	for _, rp := range recipes {
+		var s float64
+		for _, c := range cats[rp.RecipeID] {
+			s += float64(catHits[c.CategoryID])
+		}
+		if s > 0 {
+			scores[rp.RecipeID] = s
+		}
+	}
+	return normalizeScores(topScoredIDs(scores, limit)), nil
+}
+
+// householdTrendingScores finds recipes whose recent event velocity
+// outpaces their own lifetime rate for the household — a rising signal,
+// not just a popular one.
+func (r *Resolver) householdTrendingScores(ctx context.Context, householdID int64, limit int32) (map[int64]float64, error) {
+	velocities, err := r.AnalyticsService.HouseholdRecipeVelocities(ctx, householdID, householdTrendingDays)
+	if err != nil {
+		return nil, err
+	}
+	scores := make(map[int64]float64)
+	for _, v := range velocities {
+		if v.RecentCount < householdTrendingMinRecent || v.AgeDays <= householdTrendingDays {
+			continue
+		}
+		recentRate := float64(v.RecentCount) / householdTrendingDays
+		lifeRate := float64(v.TotalCount) / v.AgeDays
+		if recentRate > lifeRate {
+			scores[v.RecipeID] = recentRate / lifeRate
+		}
+	}
+	return normalizeScores(topScoredIDs(scores, limit)), nil
+}
+
+// normalizeScores rescales a score map to [0,1] by its max so unbounded
+// signals merge comparably against the [0,1] overlap/recency sources.
+func normalizeScores(scores map[int64]float64) map[int64]float64 {
+	var peak float64
+	for _, s := range scores {
+		if s > peak {
+			peak = s
+		}
+	}
+	if peak <= 0 {
+		return scores
+	}
+	for id, s := range scores {
+		scores[id] = s / peak
+	}
+	return scores
+}
+
+// topScoredIDs trims a score map to its top `limit` entries (score desc,
+// id asc) so downstream merge work stays bounded.
+func topScoredIDs(scores map[int64]float64, limit int32) map[int64]float64 {
+	if len(scores) <= int(limit) {
+		return scores
+	}
+	ids := make([]int64, 0, len(scores))
+	for id := range scores {
+		ids = append(ids, id)
+	}
+	slices.SortFunc(ids, func(a, b int64) int {
+		if scores[a] != scores[b] {
+			return cmp.Compare(scores[b], scores[a])
+		}
+		return cmp.Compare(a, b)
+	})
+	out := make(map[int64]float64, int(limit))
+	for _, id := range ids[:int(limit)] {
+		out[id] = scores[id]
+	}
+	return out
+}
+
 // scoredRec pairs a recommendation reason with its score.
 type scoredRec struct {
 	reason string
 	score  float64
 }
 
-// mergeRecommendations deduplicates overlap and rating-recency candidates
-// keeping the best score per recipe, and returns recipe IDs sorted by
-// score (ties by id) capped at limit.
-func mergeRecommendations(overlap []analytics.Recommendation, recency map[int64]float64, limit int32) ([]int64, map[int64]scoredRec) {
-	best := make(map[int64]scoredRec, len(overlap)+len(recency))
-	for _, o := range overlap {
-		best[o.RecipeID] = scoredRec{reason: analytics.ReasonIngredientOverlap, score: o.Score}
-	}
-	for recipeID, score := range recency {
-		if cur, ok := best[recipeID]; !ok || score > cur.score {
-			best[recipeID] = scoredRec{reason: analytics.ReasonRatingRecency, score: score}
+// recommendationSource is one scored candidate set: a reason plus scores
+// keyed by recipe. Every source reports on a [0,1] scale — unbounded
+// signals (hit sums, velocity ratios) are max-normalized by their scorer
+// before they reach this merge.
+type recommendationSource struct {
+	reason string
+	scores map[int64]float64
+}
+
+// mergeRecommendations keeps the best score (and its reason) per recipe —
+// earlier sources win ties — and returns recipe IDs sorted by score
+// (ties by id) capped at limit.
+func mergeRecommendations(sources []recommendationSource, limit int32) ([]int64, map[int64]scoredRec) {
+	best := make(map[int64]scoredRec)
+	for _, src := range sources {
+		for recipeID, score := range src.scores {
+			if cur, ok := best[recipeID]; !ok || score > cur.score {
+				best[recipeID] = scoredRec{reason: src.reason, score: score}
+			}
 		}
 	}
 	recipeIDs := make([]int64, 0, len(best))

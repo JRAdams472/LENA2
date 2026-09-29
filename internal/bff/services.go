@@ -466,6 +466,9 @@ type RecommendationReader interface {
 	TopUserSelections(ctx context.Context, userID int64, entityType string, limit int32) ([]analytics.SelectionCount, error)
 	TopGlobalSelections(ctx context.Context, entityType string, limit int32) ([]analytics.SelectionCount, error)
 	ListRecipeRecommendations(ctx context.Context, userID int64, reason string, limit int32) ([]analytics.Recommendation, error)
+	HouseholdSelectionCounts(ctx context.Context, householdID int64, entityType string, entityIDs []int64) (map[int64]int64, error)
+	HouseholdRecipeVelocities(ctx context.Context, householdID int64, recentDays int32) ([]analytics.RecipeVelocity, error)
+	HouseholdRecipeUsage(ctx context.Context, householdID int64) (map[int64]int64, error)
 }
 
 // AnalyticsService is the subset of *analytics.Service used by the

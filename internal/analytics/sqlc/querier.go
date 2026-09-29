@@ -17,6 +17,19 @@ type Querier interface {
 	ClearSelectionScores(ctx context.Context) error
 	GetGlobalSelectionCounts(ctx context.Context, arg GetGlobalSelectionCountsParams) ([]AnalyticsGlobalSelectionCount, error)
 	GetUserSelectionCounts(ctx context.Context, arg GetUserSelectionCountsParams) ([]AnalyticsUserSelectionCount, error)
+	// Household-scoped engagement counts for a set of entities. Counts
+	// interaction events directly (synchronous — fresh at request time,
+	// unlike the decayed selection_score rollup) aggregated across members
+	// via identity.users — the ADR-001 read-model join. Stocking events are
+	// excluded: adding or adjusting pantry quantity is bookkeeping, not
+	// evidence the household uses the item, and every pantry row carries at
+	// least one of those events so including them would make the engagement
+	// test vacuous.
+	HouseholdEntitySelectionCounts(ctx context.Context, arg HouseholdEntitySelectionCountsParams) ([]HouseholdEntitySelectionCountsRow, error)
+	// Recent-window vs lifetime event counts per recipe for one household —
+	// input to the household_trending recommendation reason. age_days is the
+	// span since the recipe's first event (min 1 to avoid div-by-zero).
+	HouseholdRecipeVelocity(ctx context.Context, arg HouseholdRecipeVelocityParams) ([]HouseholdRecipeVelocityRow, error)
 	// ---------- engagement ranking inputs (recipe categories feature) ----------
 	// Recipes household members have put on a menu (meal-plan slot or event),
 	// most-used first — drives the "used" tier of recipe search ranking.

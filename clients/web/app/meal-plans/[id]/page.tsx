@@ -62,8 +62,8 @@ function SlotDialog({
   const { slot, day, mealType } = state;
 
   const recipesQuery = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => api.getRecipes(),
+    queryKey: ["recipes", "meal-slot", mealType],
+    queryFn: () => api.getRecipes(MEAL_TYPES[mealType]),
   });
 
   const groupsQuery = useQuery({

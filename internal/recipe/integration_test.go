@@ -591,3 +591,53 @@ func TestIntegrationRecipeCategories(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, catsBy[tacos.RecipeID])
 }
+
+func TestIntegrationRecipeSearchCourseBoost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	dinnerID := itCategoryID(t, svc, ctx, "Course", "Dinner")
+	breakfastID := itCategoryID(t, svc, ctx, "Course", "Breakfast")
+
+	// Names chosen so alphabetical order differs from boost order.
+	plain, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Boost Aardvark", IsActive: true}, itBy)
+	require.NoError(t, err)
+	dinner, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Boost Zucchini", IsActive: true}, itBy)
+	require.NoError(t, err)
+	breakfast, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Boost Mango", IsActive: true}, itBy)
+	require.NoError(t, err)
+	require.NoError(t, svc.SetRecipeCategories(ctx, dinner.RecipeID, []int64{dinnerID}, itBy))
+	require.NoError(t, svc.SetRecipeCategories(ctx, breakfast.RecipeID, []int64{breakfastID}, itBy))
+
+	// No boost: plain alphabetical.
+	got, err := svc.SearchRecipes(ctx, RecipeSearch{Active: true, Search: "IT Boost", Limit: 50})
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, plain.RecipeID, got[0].RecipeID)
+	assert.Equal(t, breakfast.RecipeID, got[1].RecipeID)
+	assert.Equal(t, dinner.RecipeID, got[2].RecipeID)
+
+	// Dinner boost: dinner recipe jumps tier 1, rest stay alphabetical.
+	got, err = svc.SearchRecipes(ctx, RecipeSearch{Active: true, Search: "IT Boost", Limit: 50, CourseBoostID: &dinnerID})
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, dinner.RecipeID, got[0].RecipeID)
+	assert.Equal(t, plain.RecipeID, got[1].RecipeID)
+	assert.Equal(t, breakfast.RecipeID, got[2].RecipeID)
+
+	// Favorites still outrank the course boost (tier 0).
+	got, err = svc.SearchRecipes(ctx, RecipeSearch{
+		Active: true, Search: "IT Boost", Limit: 50,
+		CourseBoostID: &dinnerID, FavoriteIDs: []int64{plain.RecipeID},
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, plain.RecipeID, got[0].RecipeID)
+	assert.Equal(t, dinner.RecipeID, got[1].RecipeID)
+}

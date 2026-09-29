@@ -269,6 +269,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			Search      *string
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
+			MealType    *string
 		}{Page: 2, PageSize: 10})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 2)
@@ -290,12 +291,76 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			Search      *string
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
+			MealType    *string
 		}{Page: -3, PageSize: 500})
 		require.NoError(t, err)
 		pi := res.PageInfo()
 		assert.Equal(t, int32(1), pi.PageNumber())
 		assert.Equal(t, int32(100), pi.PageSize())
 		assert.Equal(t, int32(0), pi.TotalCount())
+	})
+
+	t.Run("meal type boosts the matching Course category", func(t *testing.T) {
+		rec, inv, up := newRecMocks(t)
+		rec.EXPECT().ListCategoryGroups(gomock.Any()).Return([]recipe.CategoryGroup{
+			{CategoryGroupID: 5, Name: "Course"},
+			{CategoryGroupID: 6, Name: "Cuisine"},
+		}, nil)
+		rec.EXPECT().ListCategoriesByGroup(gomock.Any(), int64(5)).Return([]recipe.Category{
+			{CategoryID: 42, CategoryGroupID: 5, Name: "Dinner"},
+			{CategoryID: 43, CategoryGroupID: 5, Name: "Lunch"},
+		}, nil)
+		rec.EXPECT().SearchRecipes(gomock.Any(), gomock.Cond(func(s recipe.RecipeSearch) bool {
+			return s.CourseBoostID != nil && *s.CourseBoostID == 42
+		})).Return([]recipe.Recipe{{RecipeID: 1, Name: "Soup"}}, nil)
+		rec.EXPECT().CountSearchRecipes(gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{1}).Return([]recipe.Recipe{{RecipeID: 1, Name: "Soup"}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{1}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{1}).Return(nil, nil)
+		rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{1}).Return(nil, nil)
+		up.EXPECT().ListFavoriteRecipeIDs(gomock.Any(), int64(11)).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{1}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{1}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{1}).Return(nil, nil)
+		mt := "dinner"
+		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
+		res, err := r.Recipes(recCtx(), struct {
+			Page        int32
+			PageSize    int32
+			Search      *string
+			CategoryIDs *[]graphql.ID
+			IsFavorite  *bool
+			MealType    *string
+		}{Page: 1, PageSize: 10, MealType: &mt})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 1)
+	})
+
+	t.Run("unknown meal type skips the boost", func(t *testing.T) {
+		rec, _, up := newRecMocks(t)
+		rec.EXPECT().ListCategoryGroups(gomock.Any()).Return([]recipe.CategoryGroup{
+			{CategoryGroupID: 5, Name: "Course"},
+		}, nil)
+		rec.EXPECT().ListCategoriesByGroup(gomock.Any(), int64(5)).Return([]recipe.Category{
+			{CategoryID: 42, CategoryGroupID: 5, Name: "Dinner"},
+		}, nil)
+		rec.EXPECT().SearchRecipes(gomock.Any(), gomock.Cond(func(s recipe.RecipeSearch) bool {
+			return s.CourseBoostID == nil
+		})).Return([]recipe.Recipe{}, nil)
+		rec.EXPECT().CountSearchRecipes(gomock.Any(), gomock.Any()).Return(int64(0), nil)
+		up.EXPECT().ListFavoriteRecipeIDs(gomock.Any(), int64(11)).Return(nil, nil)
+		mt := "brunch"
+		r := &Resolver{RecipeService: rec, UserPrefsService: up}
+		res, err := r.Recipes(recCtx(), struct {
+			Page        int32
+			PageSize    int32
+			Search      *string
+			CategoryIDs *[]graphql.ID
+			IsFavorite  *bool
+			MealType    *string
+		}{Page: 1, PageSize: 10, MealType: &mt})
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
 	})
 
 	t.Run("unauthorized", func(t *testing.T) {
@@ -307,6 +372,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			Search      *string
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
+			MealType    *string
 		}{Page: 1, PageSize: 10})
 		require.ErrorContains(t, err, "unauthorized")
 	})
@@ -321,6 +387,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			Search      *string
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
+			MealType    *string
 		}{Page: 1, PageSize: 10})
 		require.ErrorIs(t, err, errRecBoom)
 	})
@@ -424,6 +491,8 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		// (score ~0.5, below its overlap 0.9).
 		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).
 			Return(map[int64]time.Time{7: time.Now().AddDate(0, 0, -90)}, nil)
+		an.EXPECT().HouseholdRecipeUsage(gomock.Any(), gomock.Any()).Return(map[int64]int64{}, nil)
+		an.EXPECT().HouseholdRecipeVelocities(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 		// Score order: 8 (1.0) before 7 (0.9); 7 keeps its overlap reason.
 		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{8, 7}).Return([]recipe.Recipe{
 			{RecipeID: 7, Name: "A"},
@@ -463,6 +532,8 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		// Last planned ~90 days ago: recency score ~0.5 beats overlap 0.4.
 		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).
 			Return(map[int64]time.Time{7: time.Now().AddDate(0, 0, -90)}, nil)
+		an.EXPECT().HouseholdRecipeUsage(gomock.Any(), gomock.Any()).Return(map[int64]int64{}, nil)
+		an.EXPECT().HouseholdRecipeVelocities(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{7}).Return([]recipe.Recipe{{RecipeID: 7, Name: "A"}}, nil)
 		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
 		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
@@ -488,6 +559,8 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		an.EXPECT().ListRecipeRecommendations(gomock.Any(), int64(11), gomock.Any(), int32(10)).Return(nil, nil)
 		rec.EXPECT().ListRatedAtLeast(gomock.Any(), int64(11), int16(ratingRecencyMinRating)).Return(nil, nil)
 		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).Return(map[int64]time.Time{}, nil)
+		an.EXPECT().HouseholdRecipeUsage(gomock.Any(), gomock.Any()).Return(map[int64]int64{}, nil)
+		an.EXPECT().HouseholdRecipeVelocities(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
 		r := &Resolver{RecipeService: rec, MealPlanService: mp, AnalyticsService: an}
 		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
@@ -617,6 +690,7 @@ func TestResolver_Recipe_RatingFields(t *testing.T) {
 			Search      *string
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
+			MealType    *string
 		}{Page: 1, PageSize: 25})
 		require.NoError(t, err)
 		items := res.Items()

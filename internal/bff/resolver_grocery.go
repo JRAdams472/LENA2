@@ -507,6 +507,14 @@ func (r *Resolver) parseGroceryItemInput(ctx context.Context, in addGroceryItemI
 		}
 		unitID = &id
 	}
+	source := strings.ToLower(strings.TrimSpace(derefString(in.Source)))
+	switch source {
+	case "":
+		source = "manual"
+	case "mealplan", "recipe", "pantry", "manual":
+	default:
+		return grocery.GroceryListItem{}, badInputf("unknown grocery item source %q", derefString(in.Source))
+	}
 	return grocery.GroceryListItem{
 		GroceryListID:  groceryListID,
 		ItemID:         itemID,
@@ -514,7 +522,7 @@ func (r *Resolver) parseGroceryItemInput(ctx context.Context, in addGroceryItemI
 		ManualItemName: manualName,
 		QuantityNeeded: in.Quantity,
 		UnitID:         unitID,
-		Source:         "manual",
+		Source:         source,
 	}, nil
 }
 
@@ -654,6 +662,8 @@ func (r *groceryListPageResolver) PageInfo() *pageInfoResolver {
 	return &pageInfoResolver{page: r.page, pageSize: r.pageSize, total: r.total}
 }
 
+// addGroceryItemInput mirrors AddGroceryItemInput. Source is optional
+// provenance (defaults to "manual"); the UI tags restock adds as "pantry".
 type addGroceryItemInput struct {
 	GroceryListID  graphql.ID
 	ItemID         *graphql.ID
@@ -661,4 +671,106 @@ type addGroceryItemInput struct {
 	ManualItemName *string
 	Quantity       float64
 	Unit           string
+	Source         *string
+}
+
+// SuggestedRestockItems surfaces pantry items that have fallen to or below
+// their minimum quantity, ranked by household engagement and excluding
+// anything already on the latest grocery list. Engagement comes from the
+// synchronous household selection counts so an item added moments ago can
+// appear immediately (the decayed rollup only refreshes on the decay job).
+func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
+	Limit int32
+}) ([]*itemResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	limit := clamp(args.Limit, 1, 50)
+
+	pantry, err := r.UserPrefsService.ListHouseholdItems(ctx, u.HouseholdID, 5000, 0)
+	if err != nil {
+		return nil, err
+	}
+	var lowIDs []int64
+	for _, hi := range pantry {
+		if hi.MinQty != nil && hi.CurrentQty <= *hi.MinQty {
+			lowIDs = append(lowIDs, hi.ItemID)
+		}
+	}
+	if len(lowIDs) == 0 {
+		return []*itemResolver{}, nil
+	}
+
+	// The latest list is "active" — anything already on it is being
+	// shopped for, so it isn't a suggestion.
+	onList := map[int64]bool{}
+	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, 1, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(lists) > 0 {
+		listItems, err := r.GroceryService.ListGroceryListItems(ctx, lists[0].GroceryListID, u.HouseholdID)
+		if err != nil {
+			return nil, err
+		}
+		for _, li := range listItems {
+			if li.ItemID != nil {
+				onList[*li.ItemID] = true
+			}
+		}
+	}
+
+	var candidateIDs []int64
+	for _, id := range lowIDs {
+		if !onList[id] {
+			candidateIDs = append(candidateIDs, id)
+		}
+	}
+	if len(candidateIDs) == 0 {
+		return []*itemResolver{}, nil
+	}
+
+	counts := map[int64]int64{}
+	if r.AnalyticsService != nil {
+		if c, err := r.AnalyticsService.HouseholdSelectionCounts(ctx, u.HouseholdID, analytics.EntityItem, candidateIDs); err == nil {
+			counts = c
+		}
+	}
+	engaged := candidateIDs[:0]
+	for _, id := range candidateIDs {
+		if counts[id] > 0 {
+			engaged = append(engaged, id)
+		}
+	}
+	sort.Slice(engaged, func(i, j int) bool {
+		if counts[engaged[i]] != counts[engaged[j]] {
+			return counts[engaged[i]] > counts[engaged[j]]
+		}
+		return engaged[i] < engaged[j]
+	})
+	if int(limit) < len(engaged) {
+		engaged = engaged[:int(limit)]
+	}
+	if len(engaged) == 0 {
+		return []*itemResolver{}, nil
+	}
+
+	items, err := r.InventoryService.GetItemsByIDs(ctx, engaged)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]inventory.Item, len(items))
+	for _, it := range items {
+		byID[it.ItemID] = it
+	}
+	out := make([]*itemResolver, 0, len(engaged))
+	for _, id := range engaged {
+		// Only approved catalog items — pending/rejected submissions
+		// shouldn't be restock suggestions.
+		if it, ok := byID[id]; ok && it.Status == inventory.ItemStatusApproved {
+			out = append(out, &itemResolver{inv: r.InventoryService, it: it})
+		}
+	}
+	return out, nil
 }

@@ -40,6 +40,8 @@ enum RecommendationReason {
   ingredient_overlap
   rating_recency
   collaborative_filtering
+  category_affinity
+  household_trending
 }
 
 # Moderation state shared by catalog items and brands.
@@ -81,7 +83,7 @@ type Query {
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
-  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean): RecipePage!
+  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String): RecipePage!
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
   userItems(page: Int = 1, pageSize: Int = 25, search: String): UserItemPage!
@@ -104,6 +106,9 @@ type Query {
   nutrition(mealPlanId: ID!): MealPlanNutrition!
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
+  # Pantry items at or below min_qty, ranked by household engagement and
+  # excluding anything already on the latest grocery list.
+  suggestedRestockItems(limit: Int = 10): [Item!]!
   # Admin-only: paged list of all registered users.
   users(page: Int = 1, pageSize: Int = 25): UserPage! @admin
   # Admin-only: a single recipe import job.
@@ -207,7 +212,7 @@ type Mutation {
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient! @admin
   deleteIngredient(id: ID!): Boolean! @admin
 
-  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time): UserItem!
+  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time, minQty: Float): UserItem!
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
   deleteUserItem(itemId: ID!): Boolean!
   incrementUserItem(itemId: ID!, delta: Float!): UserItem
@@ -939,6 +944,7 @@ input AddGroceryItemInput {
   manualItemName: String
   quantity: Float!
   unit: String!
+  source: String
 }
 
 type GroceryListPage {

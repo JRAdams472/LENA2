@@ -18,6 +18,8 @@ const REASON_LABELS: Record<string, string> = {
   ingredient_overlap: "Similar to your menu",
   rating_recency: "Due for a revisit",
   collaborative_filtering: "Recommended for you",
+  category_affinity: "Matches your household's tastes",
+  household_trending: "Trending in your household",
 };
 
 function reasonLabel(reason: string) {
@@ -71,6 +73,11 @@ export default function Dashboard() {
   const suggestionsQuery = useQuery({
     queryKey: ["recommendedRecipes"],
     queryFn: () => api.getRecommendedRecipes(10),
+  });
+
+  const restockQuery = useQuery({
+    queryKey: ["suggestedRestock"],
+    queryFn: () => api.getSuggestedRestockItems(5),
   });
 
   const queryClient = useQueryClient();
@@ -235,6 +242,24 @@ export default function Dashboard() {
           </Box>
         )}
       </Paper>
+
+      {(restockQuery.data ?? []).length > 0 && (
+        <Paper sx={{ p: 2, mt: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Running low
+          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2 }}>
+            {(restockQuery.data ?? []).map((it) => (
+              <li key={it.itemID}>
+                {it.brand ? `${it.brand} — ${it.name}` : it.name}
+              </li>
+            ))}
+          </Box>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            <Link href="/grocery-lists">Open grocery lists</Link>
+          </Typography>
+        </Paper>
+      )}
     </Box>
   );
 }

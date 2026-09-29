@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gql/ast.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:lena_mobile/screens/bottles_screen.dart';
+import 'package:lena_mobile/screens/edit_meal_plan_screen.dart';
 import 'package:lena_mobile/screens/items_screen.dart';
 import 'package:lena_mobile/screens/pantry_screen.dart';
 
@@ -171,6 +172,43 @@ void main() {
     expect(searches, hasLength(1));
     expect(searches.single.variables['entityType'], 'bottle');
     expect(searches.single.variables['term'], 'merlot');
+  });
+
+  testWidgets('EditMealPlanScreen meal type re-queries recipes with mealType',
+      (tester) async {
+    final link = _CaptureLink({
+      'MealPlan': {
+        'mealPlan': {
+          '__typename': 'MealPlan',
+          'id': '1',
+          'name': 'Week',
+          'weekStartDate': '2026-09-28',
+          'isActive': true,
+          'slots': <dynamic>[],
+        },
+      },
+      'Recipes': {
+        'recipes': {'__typename': 'RecipePage', 'items': <dynamic>[]},
+      },
+      'RecipeCategoryGroups': {
+        'recipeCategoryGroups': <dynamic>[],
+      },
+      'Items': {
+        'items': {'__typename': 'ItemPage', 'items': <dynamic>[]},
+      },
+    });
+    await tester.pumpWidget(_app(link, const EditMealPlanScreen(mealPlanId: '1')));
+    await tester.pump();
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Meal type'), 'Dinner');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+
+    final recipes = link.byName('Recipes');
+    expect(recipes, isNotEmpty);
+    expect(recipes.first.variables['mealType'], isNull);
+    expect(recipes.any((r) => r.variables['mealType'] == 'Dinner'), isTrue);
   });
 
   testWidgets('debounce collapses rapid input into one RecordSearch',

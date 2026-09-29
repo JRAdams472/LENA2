@@ -118,6 +118,27 @@ export default function GroceryListDetailPage({
     queryFn: () => api.getGroceryList(listId),
   });
 
+  const restockQuery = useQuery({
+    queryKey: ["suggestedRestock"],
+    queryFn: () => api.getSuggestedRestockItems(10),
+  });
+
+  const addSuggestedMutation = useMutation({
+    mutationFn: (itemId: number) =>
+      api.addGroceryListItem(listId, {
+        itemID: itemId,
+        manualItemName: "",
+        quantityNeeded: 1,
+        unitOfMeasure: "",
+        source: "pantry",
+        isChecked: false,
+      } as Omit<GroceryListItem, "groceryListItemID" | "groceryListID" | "groceryList">),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
+      queryClient.invalidateQueries({ queryKey: ["suggestedRestock"] });
+    },
+  });
+
   const [manual, setManual] = useState<ManualForm>({
     manualItemName: "",
     quantityNeeded: "",
@@ -222,6 +243,41 @@ export default function GroceryListDetailPage({
           </Alert>
         )}
       </Paper>
+
+      {(restockQuery.data ?? []).length > 0 && (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h5" gutterBottom>
+            Suggested Restock
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Pantry items at or below their minimum, ranked by how often your
+            household uses them.
+          </Typography>
+          {(restockQuery.data ?? []).map((it) => (
+            <Box
+              key={it.itemID}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                py: 0.5,
+              }}
+            >
+              <Typography sx={{ flexGrow: 1 }}>
+                {it.brand ? `${it.brand} — ${it.name}` : it.name}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={addSuggestedMutation.isPending}
+                onClick={() => addSuggestedMutation.mutate(it.itemID)}
+              >
+                Add
+              </Button>
+            </Box>
+          ))}
+        </Paper>
+      )}
 
       {SOURCE_ORDER.map((source) => {
         const items = grouped[source] ?? [];

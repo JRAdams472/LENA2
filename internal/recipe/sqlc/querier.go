@@ -53,7 +53,8 @@ type Querier interface {
 	// Filtered + engagement-ranked recipe listing. Ranking tiers come from
 	// engagement ID arrays computed by the BFF (analytics/userprefs live in
 	// other schemas — SQL never crosses schemas):
-	//   0 favorite, 1 used (household menus), 2 viewed, 3 searched, 4 rest.
+	//   0 favorite, 1 course-boost (meal-type match), 2 used (household
+	//   menus), 3 viewed, 4 searched, 5 rest.
 	// The used/viewed arrays arrive pre-sorted by signal strength so
 	// array_position doubles as the in-tier tiebreaker.
 	SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([]RecipeRecipe, error)

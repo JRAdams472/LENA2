@@ -50,16 +50,17 @@ Ensure the AI integration is generic enough that Ollama can be swapped out for a
 ~~Categories of the same type should be exclusive, i.e. it can not both be Mexican and Italian, but recipes should be allowed to belong to multimple categories, i.e. Mexican, Beef, Dinner~~ ✅ Done — exclusivity is per group; a recipe holds one value per exclusive group plus any number from non-exclusive groups.
 ~~When searching for recipes, either in meal planning or a general recipe search, the user should have the ablilty to filter by category.~~ ✅ Done — filter bar on `/recipes`, category dropdown in the meal-plan slot picker, filter sheet on mobile.
 ## Analytics-driven search ranking
-Use analytics in all searches to provide more targeted results.
-Every search in the app (recipes, items, brands, pantry, wine, etc.) should order results by how likely the user is to actually use them, rather than random, alphabetical, or insertion order.
+✅ Done — engagement-ranked search on every catalog and picker surface on web and mobile, analytics-weighted recipe recommendations, meal-type-aware recipe pickers, and engagement-ranked grocery restock suggestions (PRs #186–#190).
+~~Use analytics in all searches to provide more targeted results.~~
+~~Every search in the app (recipes, items, brands, pantry, wine, etc.) should order results by how likely the user is to actually use them, rather than random, alphabetical, or insertion order.~~ ✅ Done — all list queries rank before pagination: favorites → course boost (recipe pickers) → household/personal usage → viewed → prior search terms → name. The 110k-item catalog is served by a two-phase query (ranked engaged set + index-ordered remainder) so deep pages stay cheap.
 Signals to rank by should include but not be limited to:
-Favorites
-Past usage in menus, plans, events, and grocery lists
-Items the user has viewed or selected before
-Items matching terms the user has searched for previously
-Ratings and recommendation scores where they exist
-Household usage where the catalog is shared
-Ranking should degrade gracefully to a sensible default order when a user has little or no analytics history.
+~~Favorites~~ ✅
+~~Past usage in menus, plans, events, and grocery lists~~ ✅ — synchronous interaction events plus a time-decayed score rollup rebuilt by a periodic decay job
+~~Items the user has viewed or selected before~~ ✅
+~~Items matching terms the user has searched for previously~~ ✅
+~~Ratings and recommendation scores where they exist~~ ✅ — `recommendedRecipes` merges ingredient overlap, rating recency, category affinity, and household trending; `suggestedRestockItems` ranks depleted pantry stock by household engagement
+~~Household usage where the catalog is shared~~ ✅ — personal > household > global weighting on shared catalogs
+~~Ranking should degrade gracefully to a sensible default order when a user has little or no analytics history.~~ ✅ — engagement failures and empty history fall back to alphabetical/name order.
 
 # Version 2
 ## TokTok Integration 

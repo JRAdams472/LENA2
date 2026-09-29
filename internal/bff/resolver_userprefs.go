@@ -149,6 +149,10 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	// ExpiresAt is set-only: omitted preserves the current expiry, so a
 	// plain quantity adjustment never wipes it.
 	ExpiresAt *graphql.Time
+	// MinQty is set-only like ExpiresAt: omitted preserves the stored
+	// minimum. A null in the schema isn't distinguishable from "not
+	// provided" here, so clearing a minimum isn't supported.
+	MinQty *float64
 }) (*userItemResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -172,6 +176,9 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	}
 	if args.ExpiresAt != nil {
 		expiresAt = &args.ExpiresAt.Time
+	}
+	if args.MinQty != nil {
+		minQty = args.MinQty
 	}
 	var purchaseAt *time.Time
 	if args.PurchaseAt != nil {
