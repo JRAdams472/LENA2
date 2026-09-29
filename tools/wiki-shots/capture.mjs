@@ -64,7 +64,13 @@ async function shot(name, path, waitFor) {
   // NOTE: "networkidle" never settles — the app polls notifications.
   await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
   if (waitFor) {
-    await page.getByText(waitFor, { exact: false }).first().waitFor({ timeout: 20000 });
+    try {
+      await page.getByText(waitFor, { exact: false }).first().waitFor({ timeout: 60000 });
+    } catch (e) {
+      console.log("shot failed:", name, "url:", page.url());
+      console.log((await page.locator("body").innerText()).slice(0, 800));
+      throw e;
+    }
   }
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
@@ -99,7 +105,27 @@ await gql(
 );
 await gql(`mutation { triggerNotificationSweep }`);
 
-await shot("dashboard", "/", "Garlic Butter Pasta");
+// Restock suggestions: drop a few stocked items below a minimum and give
+// them real selection engagement so suggestedRestockItems is non-empty.
+for (const kw of ["milk", "flour", "butter"]) {
+  const hit = await gql(
+    `query ($s: String) { items(page: 1, pageSize: 5, search: $s) { items { id name } } }`,
+    { s: kw }
+  ).then((d) => d.items.items.find((i) => new RegExp(kw, "i").test(i.name)));
+  if (!hit) continue;
+  await gql(
+    `mutation ($itemId: ID!, $minQty: Float) {
+      adjustUserItem(itemId: $itemId, quantity: 0, minQty: $minQty) { id }
+    }`,
+    { itemId: hit.id, minQty: 2 }
+  );
+  await gql(
+    `mutation ($id: ID!) { recordSelection(entityType: item, entityId: $id) }`,
+    { id: hit.id }
+  );
+}
+
+await shot("dashboard", "/", "Running low");
 await shot("recipes", "/recipes", "Herb Roast Chicken");
 await shot("recipe-detail", `/recipes/${roastId}`, "Herb Roast Chicken");
 await shot("recipe-categories-admin", "/recipes/categories", "Cuisine");
@@ -126,9 +152,15 @@ await page.screenshot({ path: `${OUT}/recipe-category-filter.png` });
 await page.keyboard.press("Escape");
 console.log("shot: recipe-category-filter");
 await shot("meal-plans", "/meal-plans", "Week of");
-await shot("meal-plan-week", "/meal-plans/1", "Week of");
+const planId = await gql(
+  `query { mealPlans(page: 1, pageSize: 1) { items { id } } }`
+).then((d) => d.mealPlans.items[0].id);
+await shot("meal-plan-week", `/meal-plans/${planId}`, "Week of");
 await shot("grocery-lists", "/grocery-lists", "20");
-await shot("grocery-list", "/grocery-lists/1", "Beef Broth");
+const listId = await gql(
+  `query { groceryLists(page: 1, pageSize: 1) { items { id } } }`
+).then((d) => d.groceryLists.items[0].id);
+await shot("grocery-list", `/grocery-lists/${listId}`, "Suggested Restock");
 await shot("events", "/events", "Autumn Dinner Party");
 await shot("event-detail", "/events/1", "Autumn Dinner Party");
 await shot("wine-bottles", "/wine/bottles", "Silver Oak");

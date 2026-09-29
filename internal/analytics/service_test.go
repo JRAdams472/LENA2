@@ -405,6 +405,49 @@ func TestEntityEngagementSets(t *testing.T) {
 	})
 }
 
+func TestHouseholdSelectionCounts(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+
+	q.EXPECT().HouseholdEntitySelectionCounts(ctx, sqlc.HouseholdEntitySelectionCountsParams{
+		EntityType:  EntityItem,
+		HouseholdID: 7,
+		EntityIds:   []int64{10, 20},
+	}).Return([]sqlc.HouseholdEntitySelectionCountsRow{
+		{EntityID: pgtype.Int8{Int64: 10, Valid: true}, SelectCount: 5},
+		{EntityID: pgtype.Int8{Int64: 20, Valid: true}, SelectCount: 2},
+	}, nil)
+
+	counts, err := s.HouseholdSelectionCounts(ctx, 7, EntityItem, []int64{10, 20})
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]int64{10: 5, 20: 2}, counts)
+
+	q.EXPECT().HouseholdEntitySelectionCounts(ctx, gomock.Any()).Return(nil, errBoom)
+	_, err = s.HouseholdSelectionCounts(ctx, 7, EntityItem, []int64{10})
+	assert.ErrorContains(t, err, "household selection counts")
+}
+
+func TestHouseholdRecipeVelocities(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+
+	q.EXPECT().HouseholdRecipeVelocity(ctx, sqlc.HouseholdRecipeVelocityParams{
+		RecentDays:  30,
+		HouseholdID: 7,
+	}).Return([]sqlc.HouseholdRecipeVelocityRow{
+		{RecipeID: pgtype.Int8{Int64: 9, Valid: true}, RecentCount: 3, TotalCount: 4, AgeDays: 45},
+		{RecipeID: pgtype.Int8{Valid: false}, RecentCount: 1, TotalCount: 1, AgeDays: 1},
+	}, nil)
+
+	velocities, err := s.HouseholdRecipeVelocities(ctx, 7, 30)
+	require.NoError(t, err)
+	require.Len(t, velocities, 1)
+	assert.Equal(t, int64(9), velocities[0].RecipeID)
+	assert.Equal(t, int64(3), velocities[0].RecentCount)
+	assert.Equal(t, int64(4), velocities[0].TotalCount)
+	assert.Equal(t, 45.0, velocities[0].AgeDays)
+}
+
 func TestEventWeights_NewSignals(t *testing.T) {
 	for _, et := range []string{
 		EventBottleSelected, EventBottleViewed, EventBottleSearched, EventBottleCreated,

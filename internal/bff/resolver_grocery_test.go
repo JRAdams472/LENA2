@@ -573,3 +573,82 @@ func TestResolver_DeleteGroceryItem_ServiceError(t *testing.T) {
 
 func ptrToGrocInt64(v int64) *int64    { return &v }
 func ptrToGrocString(v string) *string { return &v }
+
+func TestResolver_SuggestedRestockItems(t *testing.T) {
+	t.Run("ranks engaged low-pantry items, excludes on-list and unengaged", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		g := mock.NewMockGroceryService(ctrl)
+		up := mock.NewMockUserPrefsService(ctrl)
+		inv := mock.NewMockInventoryService(ctrl)
+		an := mock.NewMockAnalyticsService(ctrl)
+		r := &Resolver{GroceryService: g, UserPrefsService: up, InventoryService: inv, AnalyticsService: an}
+
+		minQ := 1.0
+		up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(5000), int32(0)).Return([]userprefs.HouseholdItem{
+			{ItemID: 10, CurrentQty: 0, MinQty: &minQ}, // low, engaged
+			{ItemID: 20, CurrentQty: 5, MinQty: &minQ}, // above min
+			{ItemID: 30, CurrentQty: 0, MinQty: &minQ}, // low but already on list
+			{ItemID: 40, CurrentQty: 0},                // no minimum set
+			{ItemID: 50, CurrentQty: 0, MinQty: &minQ}, // low, less engagement
+			{ItemID: 60, CurrentQty: 0, MinQty: &minQ}, // low, no engagement at all
+		}, nil)
+		g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(1), int32(0)).Return([]grocery.GroceryList{
+			{GroceryListID: 7, HouseholdID: grocUserID},
+		}, nil)
+		g.EXPECT().ListGroceryListItems(gomock.Any(), int64(7), grocUserID).Return([]grocery.GroceryListItem{
+			{ItemID: ptrToGrocInt64(30)},
+		}, nil)
+		an.EXPECT().HouseholdSelectionCounts(gomock.Any(), grocUserID, analytics.EntityItem, []int64{10, 50, 60}).
+			Return(map[int64]int64{10: 5, 50: 2}, nil)
+		inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10, 50}).Return([]inventory.Item{
+			{ItemID: 10, Name: "Flour", Status: inventory.ItemStatusApproved},
+			{ItemID: 50, Name: "Sugar", Status: inventory.ItemStatusRejected},
+		}, nil)
+
+		res, err := r.SuggestedRestockItems(grocCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		assert.Equal(t, graphql.ID("10"), res[0].ID())
+	})
+
+	t.Run("empty when nothing is low", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		up := mock.NewMockUserPrefsService(ctrl)
+		r := &Resolver{UserPrefsService: up}
+
+		minQ := 1.0
+		up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(5000), int32(0)).Return([]userprefs.HouseholdItem{
+			{ItemID: 10, CurrentQty: 5, MinQty: &minQ},
+		}, nil)
+
+		res, err := r.SuggestedRestockItems(grocCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		assert.Empty(t, res)
+	})
+
+	t.Run("empty when no engagement", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		g := mock.NewMockGroceryService(ctrl)
+		up := mock.NewMockUserPrefsService(ctrl)
+		an := mock.NewMockAnalyticsService(ctrl)
+		r := &Resolver{GroceryService: g, UserPrefsService: up, AnalyticsService: an}
+
+		minQ := 1.0
+		up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(5000), int32(0)).Return([]userprefs.HouseholdItem{
+			{ItemID: 10, CurrentQty: 0, MinQty: &minQ},
+		}, nil)
+		g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(1), int32(0)).Return(nil, nil)
+		an.EXPECT().HouseholdSelectionCounts(gomock.Any(), grocUserID, analytics.EntityItem, []int64{10}).Return(map[int64]int64{}, nil)
+
+		res, err := r.SuggestedRestockItems(grocCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		assert.Empty(t, res)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := &Resolver{}
+		res, err := r.SuggestedRestockItems(context.Background(), struct{ Limit int32 }{Limit: 10})
+		assert.Nil(t, res)
+		assert.EqualError(t, err, "unauthorized")
+	})
+}

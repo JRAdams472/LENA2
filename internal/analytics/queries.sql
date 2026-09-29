@@ -223,3 +223,41 @@ WHERE event_type = sqlc.arg(entity_type)::text || '_searched'
   AND user_id = sqlc.arg(user_id)::bigint
   AND search_term IS NOT NULL
   AND search_term <> '';
+
+-- name: HouseholdEntitySelectionCounts :many
+-- Household-scoped engagement counts for a set of entities. Counts
+-- interaction events directly (synchronous — fresh at request time,
+-- unlike the decayed selection_score rollup) aggregated across members
+-- via identity.users — the ADR-001 read-model join. Stocking events are
+-- excluded: adding or adjusting pantry quantity is bookkeeping, not
+-- evidence the household uses the item, and every pantry row carries at
+-- least one of those events so including them would make the engagement
+-- test vacuous.
+SELECT e.entity_id, COUNT(*)::bigint AS select_count
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.entity_type = sqlc.arg(entity_type)::text
+  AND u.household_id = sqlc.arg(household_id)::bigint
+  AND e.entity_id = ANY(sqlc.arg(entity_ids)::bigint[])
+  AND e.event_type NOT IN ('pantry_item_added', 'pantry_item_adjusted')
+GROUP BY e.entity_id;
+
+-- name: HouseholdRecipeVelocity :many
+-- Recent-window vs lifetime event counts per recipe for one household —
+-- input to the household_trending recommendation reason. age_days is the
+-- span since the recipe's first event (min 1 to avoid div-by-zero).
+SELECT e.entity_id AS recipe_id,
+       COUNT(*) FILTER (
+           WHERE e.created_at >= now() - make_interval(days => sqlc.arg(recent_days)::int)
+       ) AS recent_count,
+       COUNT(*) AS total_count,
+       GREATEST(
+           EXTRACT(EPOCH FROM (now() - MIN(e.created_at))) / 86400.0,
+           1.0
+       )::float8 AS age_days
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.entity_type = 'recipe'
+  AND e.entity_id IS NOT NULL
+  AND u.household_id = sqlc.arg(household_id)::bigint
+GROUP BY e.entity_id;

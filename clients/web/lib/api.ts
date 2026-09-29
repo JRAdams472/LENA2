@@ -2039,17 +2039,19 @@ export const api = {
     id: number,
     quantity: number,
     purchaseDate?: string,
-    expiryDate?: string
+    expiryDate?: string,
+    minQuantity?: number
   ): Promise<void> => {
     await request<{ adjustUserItem: unknown }>(
-      `mutation ($itemId: ID!, $quantity: Float!, $purchaseAt: Time, $expiresAt: Time) {
-        adjustUserItem(itemId: $itemId, quantity: $quantity, purchaseAt: $purchaseAt, expiresAt: $expiresAt) { id }
+      `mutation ($itemId: ID!, $quantity: Float!, $purchaseAt: Time, $expiresAt: Time, $minQty: Float) {
+        adjustUserItem(itemId: $itemId, quantity: $quantity, purchaseAt: $purchaseAt, expiresAt: $expiresAt, minQty: $minQty) { id }
       }`,
       {
         itemId: String(id),
         quantity,
         purchaseAt: purchaseDate ?? null,
         expiresAt: expiryDate ?? null,
+        minQty: minQuantity ?? null,
       }
     );
   },
@@ -2734,14 +2736,14 @@ export const api = {
   },
 
   // Recipes
-  getRecipes: async (): Promise<Recipe[]> => {
+  getRecipes: async (mealType?: string): Promise<Recipe[]> => {
     const pageSize = 200;
     let page = 1;
     const out: Recipe[] = [];
     for (;;) {
       const data = await request<{ recipes: GqlRecipePage }>(
-        `query ($page: Int, $pageSize: Int) { recipes(page: $page, pageSize: $pageSize) { items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-        { page, pageSize }
+        `query ($page: Int, $pageSize: Int, $mealType: String) { recipes(page: $page, pageSize: $pageSize, mealType: $mealType) { items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+        { page, pageSize, mealType: mealType ?? null }
       );
       out.push(...data.recipes.items.map(toRecipe));
       if (
@@ -2954,6 +2956,14 @@ export const api = {
       reason: r.reason,
       score: r.score,
     }));
+  },
+
+  getSuggestedRestockItems: async (limit = 10): Promise<Item[]> => {
+    const data = await request<{ suggestedRestockItems: GqlItem[] }>(
+      `query ($limit: Int) { suggestedRestockItems(limit: $limit) { ${ITEM_FIELDS} } }`,
+      { limit }
+    );
+    return (data.suggestedRestockItems ?? []).map((i) => toItem(i));
   },
 
   rateRecipe: async (id: number, rating: number): Promise<Recipe> => {
@@ -3474,6 +3484,7 @@ export const api = {
           manualItemName: item.manualItemName,
           quantity: item.quantityNeeded,
           unit: item.unitOfMeasure ?? "",
+          source: item.source || null,
         },
       }
     );

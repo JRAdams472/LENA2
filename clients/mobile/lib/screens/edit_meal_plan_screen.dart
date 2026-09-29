@@ -35,8 +35,8 @@ const String mealPlanQuery = r'''
 ''';
 
 const String recipesQuery = r'''
-  query Recipes {
-    recipes(page: 1, pageSize: 100) {
+  query Recipes($mealType: String) {
+    recipes(page: 1, pageSize: 100, mealType: $mealType) {
       items {
         id
         name
@@ -152,6 +152,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   Map<String, TextEditingController> _itemSearchCtrls = {};
   Map<String, String?> _itemSelections = {};
   final _itemSearchDebouncer = Debouncer();
+  final _recipeSearchDebouncer = Debouncer();
 
   @override
   void didChangeDependencies() {
@@ -174,16 +175,33 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     });
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadRecipes(String? mealType) async {
     final client = GraphQLProvider.of(context).value;
-    final recipesResult =
-        await client.query(QueryOptions(document: gql(recipesQuery)));
-    final groupsResult = await client
-        .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
+    final recipesResult = await client.query(
+      QueryOptions(
+        document: gql(recipesQuery),
+        variables: {
+          'mealType': (mealType != null && mealType.trim().isNotEmpty)
+              ? mealType.trim()
+              : null,
+        },
+        fetchPolicy: FetchPolicy.noCache,
+      ),
+    );
     if (!mounted) return;
     setState(() {
       _recipes = (recipesResult.data?['recipes']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
+    });
+  }
+
+  Future<void> _loadData() async {
+    final client = GraphQLProvider.of(context).value;
+    await _loadRecipes(_mealTypeCtrl.text);
+    final groupsResult = await client
+        .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
+    if (!mounted) return;
+    setState(() {
       _categoryGroups =
           (groupsResult.data?['recipeCategoryGroups'] as List? ?? [])
               .cast<Map<String, dynamic>>();
@@ -354,6 +372,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     _itemUnitCtrls.values.forEach((c) => c.dispose());
     _itemSearchCtrls.values.forEach((c) => c.dispose());
     _itemSearchDebouncer.dispose();
+    _recipeSearchDebouncer.dispose();
     super.dispose();
   }
 
@@ -504,6 +523,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               TextField(
                 controller: _mealTypeCtrl,
                 decoration: const InputDecoration(labelText: 'Meal type'),
+                onChanged: (_) => _recipeSearchDebouncer
+                    .run(() => _loadRecipes(_mealTypeCtrl.text)),
               ),
               if (_categoryGroups.isNotEmpty)
                 DropdownButtonFormField<String?>(

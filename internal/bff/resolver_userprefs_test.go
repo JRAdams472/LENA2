@@ -225,6 +225,7 @@ func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 		Quantity   float64
 		PurchaseAt *graphql.Time
 		ExpiresAt  *graphql.Time
+		MinQty     *float64
 	}{ItemID: "42", Quantity: 4.5, PurchaseAt: &graphql.Time{Time: purchaseAt}})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -259,6 +260,7 @@ func TestResolver_AdjustUserItem_NoExisting(t *testing.T) {
 		Quantity   float64
 		PurchaseAt *graphql.Time
 		ExpiresAt  *graphql.Time
+		MinQty     *float64
 	}{ItemID: "42", Quantity: 2})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("7"), res.ID())
@@ -273,6 +275,7 @@ func TestResolver_AdjustUserItem_Unauthorized(t *testing.T) {
 		Quantity   float64
 		PurchaseAt *graphql.Time
 		ExpiresAt  *graphql.Time
+		MinQty     *float64
 	}{ItemID: "42", Quantity: 1})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -291,6 +294,7 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 		Quantity   float64
 		PurchaseAt *graphql.Time
 		ExpiresAt  *graphql.Time
+		MinQty     *float64
 	}{ItemID: "42", Quantity: 1})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)

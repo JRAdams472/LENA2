@@ -1021,39 +1021,46 @@ WHERE r.is_active = $1
 ORDER BY
   CASE
     WHEN $6::bigint[] IS NOT NULL AND r.recipe_id = ANY($6::bigint[]) THEN 0
-    WHEN r.recipe_id = ANY($7::bigint[]) THEN 1
+    WHEN $7::bigint IS NOT NULL AND EXISTS (
+      SELECT 1 FROM recipe.recipe_category rc
+      WHERE rc.recipe_id = r.recipe_id
+        AND rc.category_id = $7::bigint
+    ) THEN 1
     WHEN r.recipe_id = ANY($8::bigint[]) THEN 2
+    WHEN r.recipe_id = ANY($9::bigint[]) THEN 3
     WHEN EXISTS (
-      SELECT 1 FROM unnest($9::text[]) t
+      SELECT 1 FROM unnest($10::text[]) t
       WHERE position(lower(t) in lower(r.name)) > 0
-    ) THEN 3
-    ELSE 4
+    ) THEN 4
+    ELSE 5
   END,
-  array_position($7::bigint[], r.recipe_id),
   array_position($8::bigint[], r.recipe_id),
+  array_position($9::bigint[], r.recipe_id),
   r.name
-LIMIT $11::int OFFSET $10::int
+LIMIT $12::int OFFSET $11::int
 `
 
 type SearchRecipesParams struct {
-	IsActive    bool     `json:"is_active"`
-	Search      string   `json:"search"`
-	CategoryIds []int64  `json:"category_ids"`
-	IncludeIds  []int64  `json:"include_ids"`
-	ExcludeIds  []int64  `json:"exclude_ids"`
-	FavoriteIds []int64  `json:"favorite_ids"`
-	UsedIds     []int64  `json:"used_ids"`
-	ViewedIds   []int64  `json:"viewed_ids"`
-	SearchTerms []string `json:"search_terms"`
-	Offset      int32    `json:"offset"`
-	Limit       int32    `json:"limit"`
+	IsActive        bool        `json:"is_active"`
+	Search          string      `json:"search"`
+	CategoryIds     []int64     `json:"category_ids"`
+	IncludeIds      []int64     `json:"include_ids"`
+	ExcludeIds      []int64     `json:"exclude_ids"`
+	FavoriteIds     []int64     `json:"favorite_ids"`
+	BoostCategoryID pgtype.Int8 `json:"boost_category_id"`
+	UsedIds         []int64     `json:"used_ids"`
+	ViewedIds       []int64     `json:"viewed_ids"`
+	SearchTerms     []string    `json:"search_terms"`
+	Offset          int32       `json:"offset"`
+	Limit           int32       `json:"limit"`
 }
 
 // Filtered + engagement-ranked recipe listing. Ranking tiers come from
 // engagement ID arrays computed by the BFF (analytics/userprefs live in
 // other schemas — SQL never crosses schemas):
 //
-//	0 favorite, 1 used (household menus), 2 viewed, 3 searched, 4 rest.
+//	0 favorite, 1 course-boost (meal-type match), 2 used (household
+//	menus), 3 viewed, 4 searched, 5 rest.
 //
 // The used/viewed arrays arrive pre-sorted by signal strength so
 // array_position doubles as the in-tier tiebreaker.
@@ -1065,6 +1072,7 @@ func (q *Queries) SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([
 		arg.IncludeIds,
 		arg.ExcludeIds,
 		arg.FavoriteIds,
+		arg.BoostCategoryID,
 		arg.UsedIds,
 		arg.ViewedIds,
 		arg.SearchTerms,

@@ -42,11 +42,18 @@ test.describe("meal plans", () => {
         page.getByRole("heading", { name: "Grocery List" })
       ).toBeVisible();
 
-      // Add a manual item, check it off, then remove it.
+      // Add a manual item, check it off, then remove it. The "Add" button
+      // must be scoped to the manual-item box — Suggested Restock rows have
+      // their own Add buttons.
+      const manualBox = page
+        .locator("div")
+        .filter({ has: page.getByLabel("Item Name") })
+        .filter({ has: page.getByRole("button", { name: "Add" }) })
+        .last();
       await page.getByLabel("Item Name").fill("E2E Eggs");
       await page.getByLabel("Qty").fill("2");
       await page.getByLabel("Unit").fill("ea");
-      await page.getByRole("button", { name: "Add" }).click();
+      await manualBox.getByRole("button", { name: "Add" }).click();
       await expect(page.getByText("E2E Eggs")).toBeVisible();
 
       const itemRow = page

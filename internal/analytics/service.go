@@ -268,6 +268,8 @@ const (
 	ReasonIngredientOverlap      = "ingredient_overlap"
 	ReasonRatingRecency          = "rating_recency"
 	ReasonCollaborativeFiltering = "collaborative_filtering"
+	ReasonCategoryAffinity       = "category_affinity"
+	ReasonHouseholdTrending      = "household_trending"
 )
 
 // OverlapMinScore is the minimum Jaccard similarity required to store an
@@ -456,6 +458,78 @@ func (s *Service) TopGlobalSelections(ctx context.Context, entityType string, li
 			EntityType:  r.EntityType,
 			EntityID:    r.EntityID,
 			SelectCount: r.SelectCount,
+		}
+	}
+	return out, nil
+}
+
+// HouseholdSelectionCounts aggregates every household member's
+// synchronous selection counts for a set of entities — fresher than the
+// decayed selection_score rollup, so callers that react to just-recorded
+// events (e.g. restock suggestions) see them immediately.
+func (s *Service) HouseholdSelectionCounts(ctx context.Context, householdID int64, entityType string, entityIDs []int64) (map[int64]int64, error) {
+	rows, err := s.q.HouseholdEntitySelectionCounts(ctx, sqlc.HouseholdEntitySelectionCountsParams{
+		EntityType:  entityType,
+		HouseholdID: householdID,
+		EntityIds:   entityIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("household selection counts: %w", err)
+	}
+	out := make(map[int64]int64, len(rows))
+	for _, r := range rows {
+		if r.EntityID.Valid {
+			out[r.EntityID.Int64] = r.SelectCount
+		}
+	}
+	return out, nil
+}
+
+// RecipeVelocity captures one recipe's recent-window and lifetime event
+// counts for a household — the input to household_trending scoring.
+type RecipeVelocity struct {
+	RecipeID    int64
+	RecentCount int64
+	TotalCount  int64
+	AgeDays     float64
+}
+
+// HouseholdRecipeVelocities returns per-recipe event velocity for a
+// household: events inside the recent window vs the recipe's lifetime.
+func (s *Service) HouseholdRecipeVelocities(ctx context.Context, householdID int64, recentDays int32) ([]RecipeVelocity, error) {
+	rows, err := s.q.HouseholdRecipeVelocity(ctx, sqlc.HouseholdRecipeVelocityParams{
+		RecentDays:  recentDays,
+		HouseholdID: householdID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("household recipe velocity: %w", err)
+	}
+	out := make([]RecipeVelocity, 0, len(rows))
+	for _, r := range rows {
+		if !r.RecipeID.Valid {
+			continue
+		}
+		out = append(out, RecipeVelocity{
+			RecipeID:    r.RecipeID.Int64,
+			RecentCount: r.RecentCount,
+			TotalCount:  r.TotalCount,
+			AgeDays:     r.AgeDays,
+		})
+	}
+	return out, nil
+}
+
+// HouseholdRecipeUsage returns menu/selection hit counts per recipe for a
+// household — the per-category affinity input.
+func (s *Service) HouseholdRecipeUsage(ctx context.Context, householdID int64) (map[int64]int64, error) {
+	rows, err := s.q.HouseholdUsedRecipeIDs(ctx, householdID)
+	if err != nil {
+		return nil, fmt.Errorf("household recipe usage: %w", err)
+	}
+	out := make(map[int64]int64, len(rows))
+	for _, r := range rows {
+		if r.RecipeID.Valid {
+			out[r.RecipeID.Int64] = r.Hits
 		}
 	}
 	return out, nil

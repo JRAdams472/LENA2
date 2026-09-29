@@ -86,6 +86,36 @@ func (mr *MockQuerierMockRecorder) GetUserSelectionCounts(ctx, arg any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockQuerier)(nil).GetUserSelectionCounts), ctx, arg)
 }
 
+// HouseholdEntitySelectionCounts mocks base method.
+func (m *MockQuerier) HouseholdEntitySelectionCounts(ctx context.Context, arg sqlc.HouseholdEntitySelectionCountsParams) ([]sqlc.HouseholdEntitySelectionCountsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdEntitySelectionCounts", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.HouseholdEntitySelectionCountsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdEntitySelectionCounts indicates an expected call of HouseholdEntitySelectionCounts.
+func (mr *MockQuerierMockRecorder) HouseholdEntitySelectionCounts(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdEntitySelectionCounts", reflect.TypeOf((*MockQuerier)(nil).HouseholdEntitySelectionCounts), ctx, arg)
+}
+
+// HouseholdRecipeVelocity mocks base method.
+func (m *MockQuerier) HouseholdRecipeVelocity(ctx context.Context, arg sqlc.HouseholdRecipeVelocityParams) ([]sqlc.HouseholdRecipeVelocityRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdRecipeVelocity", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.HouseholdRecipeVelocityRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdRecipeVelocity indicates an expected call of HouseholdRecipeVelocity.
+func (mr *MockQuerierMockRecorder) HouseholdRecipeVelocity(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdRecipeVelocity", reflect.TypeOf((*MockQuerier)(nil).HouseholdRecipeVelocity), ctx, arg)
+}
+
 // HouseholdUsedRecipeIDs mocks base method.
 func (m *MockQuerier) HouseholdUsedRecipeIDs(ctx context.Context, householdID int64) ([]sqlc.HouseholdUsedRecipeIDsRow, error) {
 	m.ctrl.T.Helper()

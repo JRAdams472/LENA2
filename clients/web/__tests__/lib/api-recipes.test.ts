@@ -147,6 +147,25 @@ describe("api client: recipes", () => {
     expect(ri?.isOptional).toBe(true);
   });
 
+  it("getRecipes sends mealType to the recipes query", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL(recipesPage([gqlRecipe()])));
+
+    const recipes = await api.getRecipes("Dinner");
+
+    const body = lastRequestBody();
+    expect(body.query).toContain("mealType: $mealType");
+    expect(body.variables.mealType).toBe("Dinner");
+    expect(recipes).toHaveLength(1);
+  });
+
+  it("getRecipes defaults mealType to null", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL(recipesPage([])));
+
+    await api.getRecipes();
+
+    expect(lastRequestBody().variables.mealType).toBeNull();
+  });
+
   it("getRecipesPaged hits the server when no filters are given", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({

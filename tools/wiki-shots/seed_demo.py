@@ -61,8 +61,9 @@ def find_items(tok, keywords, page_size=2000):
 
 ADMIN = token("e2e-user-1", "e2e@example.com", "E2E User")
 
-# Second member joins the household (creates their user row first).
-MEMBER = token("e2e-user-2", "e2e-other@example.com", "E2E Other")
+# Second member joins the household (creates their user row first). Uses a
+# dedicated demo user — e2e specs rely on e2e-user-2 staying unaffiliated.
+MEMBER = token("e2e-user-3", "e2e-member@example.com", "E2E Member")
 gql(MEMBER, "{ me { id } }")
 me2 = gql(MEMBER, "{ me { id } }")["me"]["id"]
 try:

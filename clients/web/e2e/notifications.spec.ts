@@ -85,8 +85,12 @@ test.describe("notification manager", () => {
       ).toBeVisible();
 
       // The expiry action adds the item to the current grocery list and
-      // navigates there.
-      await page.getByRole("button", { name: "Add to list" }).click();
+      // navigates there. Scope to this item's menuitem — other expiring
+      // items may render their own "Add to list" buttons.
+      await page
+        .getByRole("menuitem", { name: `${itemName} expires` })
+        .getByRole("button", { name: "Add to list" })
+        .click();
       await expect(page).toHaveURL(/\/grocery-lists/);
       // Lists sort newest-first; the just-generated list is row 1 (row 0
       // is the header).

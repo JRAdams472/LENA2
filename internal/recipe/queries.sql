@@ -231,7 +231,8 @@ ORDER BY g.display_order, c.name;
 -- Filtered + engagement-ranked recipe listing. Ranking tiers come from
 -- engagement ID arrays computed by the BFF (analytics/userprefs live in
 -- other schemas — SQL never crosses schemas):
---   0 favorite, 1 used (household menus), 2 viewed, 3 searched, 4 rest.
+--   0 favorite, 1 course-boost (meal-type match), 2 used (household
+--   menus), 3 viewed, 4 searched, 5 rest.
 -- The used/viewed arrays arrive pre-sorted by signal strength so
 -- array_position doubles as the in-tier tiebreaker.
 SELECT r.*
@@ -256,13 +257,18 @@ WHERE r.is_active = $1
 ORDER BY
   CASE
     WHEN sqlc.arg(favorite_ids)::bigint[] IS NOT NULL AND r.recipe_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
-    WHEN r.recipe_id = ANY(sqlc.arg(used_ids)::bigint[]) THEN 1
-    WHEN r.recipe_id = ANY(sqlc.arg(viewed_ids)::bigint[]) THEN 2
+    WHEN sqlc.narg(boost_category_id)::bigint IS NOT NULL AND EXISTS (
+      SELECT 1 FROM recipe.recipe_category rc
+      WHERE rc.recipe_id = r.recipe_id
+        AND rc.category_id = sqlc.narg(boost_category_id)::bigint
+    ) THEN 1
+    WHEN r.recipe_id = ANY(sqlc.arg(used_ids)::bigint[]) THEN 2
+    WHEN r.recipe_id = ANY(sqlc.arg(viewed_ids)::bigint[]) THEN 3
     WHEN EXISTS (
       SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
       WHERE position(lower(t) in lower(r.name)) > 0
-    ) THEN 3
-    ELSE 4
+    ) THEN 4
+    ELSE 5
   END,
   array_position(sqlc.arg(used_ids)::bigint[], r.recipe_id),
   array_position(sqlc.arg(viewed_ids)::bigint[], r.recipe_id),

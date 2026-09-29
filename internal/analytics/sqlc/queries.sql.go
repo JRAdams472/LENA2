@@ -98,6 +98,114 @@ func (q *Queries) GetUserSelectionCounts(ctx context.Context, arg GetUserSelecti
 	return items, nil
 }
 
+const householdEntitySelectionCounts = `-- name: HouseholdEntitySelectionCounts :many
+SELECT e.entity_id, COUNT(*)::bigint AS select_count
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.entity_type = $1::text
+  AND u.household_id = $2::bigint
+  AND e.entity_id = ANY($3::bigint[])
+  AND e.event_type NOT IN ('pantry_item_added', 'pantry_item_adjusted')
+GROUP BY e.entity_id
+`
+
+type HouseholdEntitySelectionCountsParams struct {
+	EntityType  string  `json:"entity_type"`
+	HouseholdID int64   `json:"household_id"`
+	EntityIds   []int64 `json:"entity_ids"`
+}
+
+type HouseholdEntitySelectionCountsRow struct {
+	EntityID    pgtype.Int8 `json:"entity_id"`
+	SelectCount int64       `json:"select_count"`
+}
+
+// Household-scoped engagement counts for a set of entities. Counts
+// interaction events directly (synchronous — fresh at request time,
+// unlike the decayed selection_score rollup) aggregated across members
+// via identity.users — the ADR-001 read-model join. Stocking events are
+// excluded: adding or adjusting pantry quantity is bookkeeping, not
+// evidence the household uses the item, and every pantry row carries at
+// least one of those events so including them would make the engagement
+// test vacuous.
+func (q *Queries) HouseholdEntitySelectionCounts(ctx context.Context, arg HouseholdEntitySelectionCountsParams) ([]HouseholdEntitySelectionCountsRow, error) {
+	rows, err := q.db.Query(ctx, householdEntitySelectionCounts, arg.EntityType, arg.HouseholdID, arg.EntityIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdEntitySelectionCountsRow{}
+	for rows.Next() {
+		var i HouseholdEntitySelectionCountsRow
+		if err := rows.Scan(&i.EntityID, &i.SelectCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const householdRecipeVelocity = `-- name: HouseholdRecipeVelocity :many
+SELECT e.entity_id AS recipe_id,
+       COUNT(*) FILTER (
+           WHERE e.created_at >= now() - make_interval(days => $1::int)
+       ) AS recent_count,
+       COUNT(*) AS total_count,
+       GREATEST(
+           EXTRACT(EPOCH FROM (now() - MIN(e.created_at))) / 86400.0,
+           1.0
+       )::float8 AS age_days
+FROM analytics.interaction_event e
+JOIN identity.users u ON u.user_id = e.user_id
+WHERE e.entity_type = 'recipe'
+  AND e.entity_id IS NOT NULL
+  AND u.household_id = $2::bigint
+GROUP BY e.entity_id
+`
+
+type HouseholdRecipeVelocityParams struct {
+	RecentDays  int32 `json:"recent_days"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+type HouseholdRecipeVelocityRow struct {
+	RecipeID    pgtype.Int8 `json:"recipe_id"`
+	RecentCount int64       `json:"recent_count"`
+	TotalCount  int64       `json:"total_count"`
+	AgeDays     float64     `json:"age_days"`
+}
+
+// Recent-window vs lifetime event counts per recipe for one household —
+// input to the household_trending recommendation reason. age_days is the
+// span since the recipe's first event (min 1 to avoid div-by-zero).
+func (q *Queries) HouseholdRecipeVelocity(ctx context.Context, arg HouseholdRecipeVelocityParams) ([]HouseholdRecipeVelocityRow, error) {
+	rows, err := q.db.Query(ctx, householdRecipeVelocity, arg.RecentDays, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdRecipeVelocityRow{}
+	for rows.Next() {
+		var i HouseholdRecipeVelocityRow
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.RecentCount,
+			&i.TotalCount,
+			&i.AgeDays,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const householdUsedRecipeIDs = `-- name: HouseholdUsedRecipeIDs :many
 
 SELECT entity_id AS recipe_id, COUNT(*) AS hits

@@ -865,8 +865,12 @@ type RecipeSearch struct {
 	UsedIDs     []int64
 	ViewedIDs   []int64
 	SearchTerms []string
-	Limit       int32
-	Offset      int32
+	// CourseBoostID, when set, ranks recipes tagged with that category
+	// directly below favorites — the meal-plan slot picker passes the
+	// Course category matching the slot's meal_type.
+	CourseBoostID *int64
+	Limit         int32
+	Offset        int32
 }
 
 func (rs RecipeSearch) params() sqlc.SearchRecipesParams {
@@ -875,6 +879,7 @@ func (rs RecipeSearch) params() sqlc.SearchRecipesParams {
 		CategoryIds: rs.CategoryIDs, IncludeIds: rs.IncludeIDs, ExcludeIds: rs.ExcludeIDs,
 		FavoriteIds: rs.FavoriteIDs, UsedIds: rs.UsedIDs, ViewedIds: rs.ViewedIDs,
 		SearchTerms: rs.SearchTerms, Limit: rs.Limit, Offset: rs.Offset,
+		BoostCategoryID: optInt8(rs.CourseBoostID),
 	}
 }
 

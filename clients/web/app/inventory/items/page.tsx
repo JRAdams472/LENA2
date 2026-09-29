@@ -155,17 +155,29 @@ export default function ItemsPage() {
       createMutation.mutate(values);
     } else {
       updateMutation.mutate(values);
-      // Expiry lives on the pantry holding, not the catalog item — route
-      // it through adjustUserItem (passing current qty/purchase date so
-      // they're unchanged).
+      // Expiry and min-quantity live on the pantry holding, not the
+      // catalog item — route them through adjustUserItem (passing current
+      // qty/purchase date so they're unchanged).
       const expiry = (values.expiryDate as string) || undefined;
-      if (expiry !== ((dialogData.expiryDate as string) || undefined)) {
+      const minRaw = values.minQuantity;
+      const minQty =
+        minRaw === undefined || minRaw === null || minRaw === ""
+          ? undefined
+          : Number(minRaw);
+      const prevMin = dialogData.minQuantity;
+      const minChanged =
+        minQty !== (prevMin === null || prevMin === undefined ? undefined : Number(prevMin));
+      if (
+        expiry !== ((dialogData.expiryDate as string) || undefined) ||
+        minChanged
+      ) {
         void api
           .adjustItemQuantity(
             values.itemID as number,
             Number(values.currentQuantity ?? 0),
             (dialogData.purchaseDate as string) || undefined,
-            expiry
+            expiry,
+            minQty
           )
           .then(() => queryClient.invalidateQueries({ queryKey: ["items"] }));
       }

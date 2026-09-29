@@ -256,3 +256,66 @@ func TestIntegrationDecayAndEntityEngagement(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, global, 3)
 }
+
+func TestIntegrationHouseholdCountsAndVelocity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	hh := testutil.MustHousehold(ctx, t, pool)
+	userA := testutil.MustUser(ctx, t, pool, "hh-a@example.com")
+	testutil.JoinHousehold(ctx, t, pool, userA, hh)
+	userB := testutil.MustUser(ctx, t, pool, "hh-b@example.com")
+	testutil.JoinHousehold(ctx, t, pool, userB, hh)
+	other := testutil.MustUser(ctx, t, pool, "hh-other@example.com") // not in hh
+
+	// Selection counts aggregate across household members only.
+	for i := 0; i < 2; i++ {
+		require.NoError(t, svc.RecordEvent(ctx, Event{
+			UserID: userA, EventType: EventItemSelected, EntityType: EntityItem, EntityID: 10,
+		}, itBy))
+	}
+	require.NoError(t, svc.RecordEvent(ctx, Event{
+		UserID: userB, EventType: EventItemSelected, EntityType: EntityItem, EntityID: 10,
+	}, itBy))
+	require.NoError(t, svc.RecordEvent(ctx, Event{
+		UserID: userB, EventType: EventItemSelected, EntityType: EntityItem, EntityID: 20,
+	}, itBy))
+	require.NoError(t, svc.RecordEvent(ctx, Event{
+		UserID: other, EventType: EventItemSelected, EntityType: EntityItem, EntityID: 10,
+	}, itBy))
+
+	counts, err := svc.HouseholdSelectionCounts(ctx, hh, EntityItem, []int64{10, 20, 99})
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), counts[10])
+	assert.Equal(t, int64(1), counts[20])
+	_, ok := counts[99]
+	assert.False(t, ok)
+
+	// Velocity: one backdated event leaves recent_count inside the window.
+	require.NoError(t, svc.RecordEvent(ctx, Event{
+		UserID: userA, EventType: EventRecipeSelected, EntityType: EntityRecipe, EntityID: 7,
+	}, itBy))
+	require.NoError(t, svc.RecordEvent(ctx, Event{
+		UserID: userB, EventType: EventRecipeSelected, EntityType: EntityRecipe, EntityID: 7,
+	}, itBy))
+	_, err = pool.Exec(ctx,
+		`UPDATE analytics.interaction_event SET created_at = now() - interval '60 days'
+		 WHERE user_id = $1 AND entity_id = 7 AND entity_type = 'recipe'`, userA)
+	require.NoError(t, err)
+
+	velocities, err := svc.HouseholdRecipeVelocities(ctx, hh, 30)
+	require.NoError(t, err)
+	require.Len(t, velocities, 1)
+	assert.Equal(t, int64(7), velocities[0].RecipeID)
+	assert.Equal(t, int64(1), velocities[0].RecentCount)
+	assert.Equal(t, int64(2), velocities[0].TotalCount)
+	assert.GreaterOrEqual(t, velocities[0].AgeDays, 60.0)
+
+	// A different household sees nothing.
+	velocities, err = svc.HouseholdRecipeVelocities(ctx, 99999, 30)
+	require.NoError(t, err)
+	assert.Empty(t, velocities)
+}

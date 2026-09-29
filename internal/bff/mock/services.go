@@ -7393,6 +7393,51 @@ func (mr *MockRecommendationReaderMockRecorder) GetUserSelectionCounts(ctx, user
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockRecommendationReader)(nil).GetUserSelectionCounts), ctx, userID, entityType, entityIDs)
 }
 
+// HouseholdRecipeUsage mocks base method.
+func (m *MockRecommendationReader) HouseholdRecipeUsage(ctx context.Context, householdID int64) (map[int64]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdRecipeUsage", ctx, householdID)
+	ret0, _ := ret[0].(map[int64]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdRecipeUsage indicates an expected call of HouseholdRecipeUsage.
+func (mr *MockRecommendationReaderMockRecorder) HouseholdRecipeUsage(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdRecipeUsage", reflect.TypeOf((*MockRecommendationReader)(nil).HouseholdRecipeUsage), ctx, householdID)
+}
+
+// HouseholdRecipeVelocities mocks base method.
+func (m *MockRecommendationReader) HouseholdRecipeVelocities(ctx context.Context, householdID int64, recentDays int32) ([]analytics.RecipeVelocity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdRecipeVelocities", ctx, householdID, recentDays)
+	ret0, _ := ret[0].([]analytics.RecipeVelocity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdRecipeVelocities indicates an expected call of HouseholdRecipeVelocities.
+func (mr *MockRecommendationReaderMockRecorder) HouseholdRecipeVelocities(ctx, householdID, recentDays any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdRecipeVelocities", reflect.TypeOf((*MockRecommendationReader)(nil).HouseholdRecipeVelocities), ctx, householdID, recentDays)
+}
+
+// HouseholdSelectionCounts mocks base method.
+func (m *MockRecommendationReader) HouseholdSelectionCounts(ctx context.Context, householdID int64, entityType string, entityIDs []int64) (map[int64]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdSelectionCounts", ctx, householdID, entityType, entityIDs)
+	ret0, _ := ret[0].(map[int64]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdSelectionCounts indicates an expected call of HouseholdSelectionCounts.
+func (mr *MockRecommendationReaderMockRecorder) HouseholdSelectionCounts(ctx, householdID, entityType, entityIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdSelectionCounts", reflect.TypeOf((*MockRecommendationReader)(nil).HouseholdSelectionCounts), ctx, householdID, entityType, entityIDs)
+}
+
 // ListRecipeRecommendations mocks base method.
 func (m *MockRecommendationReader) ListRecipeRecommendations(ctx context.Context, userID int64, reason string, limit int32) ([]analytics.Recommendation, error) {
 	m.ctrl.T.Helper()
@@ -7520,6 +7565,51 @@ func (m *MockAnalyticsService) GetUserSelectionCounts(ctx context.Context, userI
 func (mr *MockAnalyticsServiceMockRecorder) GetUserSelectionCounts(ctx, userID, entityType, entityIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserSelectionCounts", reflect.TypeOf((*MockAnalyticsService)(nil).GetUserSelectionCounts), ctx, userID, entityType, entityIDs)
+}
+
+// HouseholdRecipeUsage mocks base method.
+func (m *MockAnalyticsService) HouseholdRecipeUsage(ctx context.Context, householdID int64) (map[int64]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdRecipeUsage", ctx, householdID)
+	ret0, _ := ret[0].(map[int64]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdRecipeUsage indicates an expected call of HouseholdRecipeUsage.
+func (mr *MockAnalyticsServiceMockRecorder) HouseholdRecipeUsage(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdRecipeUsage", reflect.TypeOf((*MockAnalyticsService)(nil).HouseholdRecipeUsage), ctx, householdID)
+}
+
+// HouseholdRecipeVelocities mocks base method.
+func (m *MockAnalyticsService) HouseholdRecipeVelocities(ctx context.Context, householdID int64, recentDays int32) ([]analytics.RecipeVelocity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdRecipeVelocities", ctx, householdID, recentDays)
+	ret0, _ := ret[0].([]analytics.RecipeVelocity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdRecipeVelocities indicates an expected call of HouseholdRecipeVelocities.
+func (mr *MockAnalyticsServiceMockRecorder) HouseholdRecipeVelocities(ctx, householdID, recentDays any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdRecipeVelocities", reflect.TypeOf((*MockAnalyticsService)(nil).HouseholdRecipeVelocities), ctx, householdID, recentDays)
+}
+
+// HouseholdSelectionCounts mocks base method.
+func (m *MockAnalyticsService) HouseholdSelectionCounts(ctx context.Context, householdID int64, entityType string, entityIDs []int64) (map[int64]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HouseholdSelectionCounts", ctx, householdID, entityType, entityIDs)
+	ret0, _ := ret[0].(map[int64]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HouseholdSelectionCounts indicates an expected call of HouseholdSelectionCounts.
+func (mr *MockAnalyticsServiceMockRecorder) HouseholdSelectionCounts(ctx, householdID, entityType, entityIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HouseholdSelectionCounts", reflect.TypeOf((*MockAnalyticsService)(nil).HouseholdSelectionCounts), ctx, householdID, entityType, entityIDs)
 }
 
 // ListRecipeRecommendations mocks base method.
