@@ -370,3 +370,88 @@ func TestIntegrationBottleCRUDAndJunctions(t *testing.T) {
 	_, err = svc.GetBottleByID(ctx, bottle.BottleID)
 	assert.Error(t, err)
 }
+
+func TestIntegrationSearchBottlesRanking(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	uid := testutil.MustUser(ctx, t, pool, "rank-bottles@example.com")
+
+	country, err := svc.CreateCountry(ctx, "IT Rank Country", "ITR", "", itBy)
+	require.NoError(t, err)
+	region, err := svc.CreateRegion(ctx, Region{CountryID: country.CountryID, Name: "IT Rank Region"}, itBy)
+	require.NoError(t, err)
+	wtype, err := svc.CreateType(ctx, "IT Rank Type", "", itBy)
+	require.NoError(t, err)
+
+	mkBottle := func(vineyard string, year int32) int64 {
+		b, err := svc.CreateBottle(ctx, Bottle{
+			TypeID: wtype.TypeID, CountryID: country.CountryID, RegionID: region.RegionID,
+			VintageYear: year, Vineyard: vineyard, BottleSize: "750ml",
+		}, itBy)
+		require.NoError(t, err)
+		return b.BottleID
+	}
+	// Vineyard names invert engagement order alphabetically.
+	globalID := mkBottle("QZ8 AAA Global", 2018)
+	searchedID := mkBottle("QZ8 BBB Searched", 2019)
+	householdID2 := mkBottle("QZ8 CCC Household", 2020)
+	personalID := mkBottle("QZ8 DDD Personal", 2021)
+	favID := mkBottle("QZ8 EEE Favorite", 2022)
+
+	_, err = pool.Exec(ctx,
+		`INSERT INTO userprefs.user_bottle_favorite (user_id, bottle_id, is_favorite, created_by, updated_by)
+		 VALUES ($1, $2, TRUE, 'it', 'it')`, uid, favID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO analytics.selection_score (entity_type, entity_id, scope_type, scope_id, score, event_count)
+		 VALUES ('bottle', $1, 'user', $2, 10, 3), ('bottle', $3, 'household', $4, 8, 2), ('bottle', $5, 'global', 0, 5, 9)`,
+		personalID, uid, householdID2, uid, globalID)
+	require.NoError(t, err)
+
+	rank := RankParams{
+		FavoriteIDs:  []int64{favID},
+		PersonalIDs:  []int64{personalID},
+		HouseholdIDs: []int64{householdID2},
+		GlobalIDs:    []int64{globalID},
+		SearchTerms:  []string{"qz8 bbb"},
+	}
+	got, err := svc.SearchBottles(ctx, "qz8", rank, 20, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 5)
+	want := []int64{favID, personalID, householdID2, searchedID, globalID}
+	for i, b := range got {
+		assert.Equal(t, want[i], b.BottleID, "position %d", i)
+	}
+
+	total, err := svc.CountSearchBottles(ctx, "qz8")
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+
+	t.Run("cold start orders by vineyard", func(t *testing.T) {
+		got, err := svc.SearchBottles(ctx, "qz8", RankParams{}, 20, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 5)
+		for i, b := range got {
+			assert.Equal(t, []int64{globalID, searchedID, householdID2, personalID, favID}[i], b.BottleID)
+		}
+	})
+
+	t.Run("term matches type and region names", func(t *testing.T) {
+		got, err := svc.SearchBottles(ctx, "rank type", RankParams{}, 20, 0)
+		require.NoError(t, err)
+		assert.Len(t, got, 5)
+		got, err = svc.SearchBottles(ctx, "rank region", RankParams{}, 20, 0)
+		require.NoError(t, err)
+		assert.Len(t, got, 5)
+	})
+
+	t.Run("MatchBottleIDs feeds include_ids", func(t *testing.T) {
+		ids, err := svc.MatchBottleIDs(ctx, "qz8 eee")
+		require.NoError(t, err)
+		assert.Equal(t, []int64{favID}, ids)
+	})
+}

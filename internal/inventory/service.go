@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"time"
 
@@ -188,12 +189,16 @@ func (s *Service) CountBrandsVisible(ctx context.Context, userID int64) (int64, 
 }
 
 // SearchBrands returns brands visible to the given user whose normalized name
-// contains the normalized search term.
-func (s *Service) SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]Brand, error) {
+// contains the normalized search term, ordered by engagement tier.
+func (s *Service) SearchBrands(ctx context.Context, term string, userID int64, rank RankParams, limit int32) ([]Brand, error) {
 	rows, err := s.q.SearchBrands(ctx, sqlc.SearchBrandsParams{
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 		RegexpReplace:     term,
 		Limit:             limit,
+		PersonalIds:       rank.PersonalIDs,
+		HouseholdIds:      rank.HouseholdIDs,
+		SearchTerms:       rank.SearchTerms,
+		GlobalIds:         rank.GlobalIDs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search brands: %w", err)
@@ -536,6 +541,187 @@ func (s *Service) CountItems(ctx context.Context, userID int64) (int64, error) {
 		return 0, fmt.Errorf("count items: %w", err)
 	}
 	return n, nil
+}
+
+// RankParams carries BFF-computed engagement ranking inputs for catalog
+// search/list queries. All slices are optional — nil/empty disables that
+// tier — and must arrive pre-sorted by signal strength so position within
+// each list doubles as the in-tier tiebreaker.
+type RankParams struct {
+	FavoriteIDs  []int64
+	PersonalIDs  []int64
+	HouseholdIDs []int64
+	GlobalIDs    []int64
+	SearchTerms  []string
+}
+
+// SearchItems returns one page of items visible to the given user, filtered
+// by an optional name term and ordered by engagement tier before paging.
+// Pass an empty term to rank the full catalog.
+//
+// The item catalog is large (~110k seeded rows), so ranking can't run as
+// ORDER BY CASE over the whole table — every page would pay a full sort.
+// Instead the engaged rows are fetched by ID (a few thousand at most) and
+// tier-sorted here, while the remaining catalog is served in (name, id)
+// index order behind a hashed NOT IN probe.
+func (s *Service) SearchItems(ctx context.Context, userID int64, term string, rank RankParams, limit, offset int32) ([]Item, error) {
+	user := pgtype.Int8{Int64: userID, Valid: true}
+	search := textOrNull(term)
+
+	// Resolve the prior-search-term tier to IDs only when the user has
+	// recorded terms — it costs a catalog scan otherwise.
+	var searchedIDs []int64
+	if len(rank.SearchTerms) > 0 {
+		ids, err := s.q.MatchItemIDsByTerms(ctx, sqlc.MatchItemIDsByTermsParams{
+			SubmittedByUserID: user,
+			Search:            search,
+			SearchTerms:       rank.SearchTerms,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("match searched item ids: %w", err)
+		}
+		searchedIDs = ids
+	}
+
+	// Union of every engaged ID — the ranked fetch set and the remainder's
+	// exclusion set.
+	engagedIDs := dedupeIDs(rank.FavoriteIDs, rank.PersonalIDs, rank.HouseholdIDs, searchedIDs, rank.GlobalIDs)
+
+	var ranked []sqlc.InventoryItem
+	if len(engagedIDs) > 0 {
+		rows, err := s.q.RankedItems(ctx, sqlc.RankedItemsParams{
+			SubmittedByUserID: user,
+			Search:            search,
+			EngagedIds:        engagedIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("ranked items: %w", err)
+		}
+		ranked = orderRankedItems(rows, rank, searchedIDs)
+	}
+
+	// Serve the front of the page from the ranked prefix.
+	out := make([]Item, 0, limit)
+	if int(offset) < len(ranked) {
+		end := int(offset) + int(limit)
+		if end > len(ranked) {
+			end = len(ranked)
+		}
+		for _, row := range ranked[offset:end] {
+			out = append(out, toItem(row))
+		}
+	}
+
+	// Fill the rest of the page from the index-ordered remainder.
+	if intToInt32(len(out)) < limit {
+		remOffset := offset - intToInt32(len(ranked))
+		if remOffset < 0 {
+			remOffset = 0
+		}
+		rows, err := s.q.SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
+			SubmittedByUserID: user,
+			Search:            search,
+			EngagedIds:        engagedIDs,
+			Limit:             limit - intToInt32(len(out)),
+			Offset:            remOffset,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("search items: %w", err)
+		}
+		for i := range rows {
+			out = append(out, toItem(rows[i]))
+		}
+	}
+	return out, nil
+}
+
+// intToInt32 saturates an in-memory count at MaxInt32 — engagement sets are
+// bounded well below that, so saturation is unreachable in practice.
+func intToInt32(n int) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	//nolint:gosec // n is saturated at MaxInt32 immediately above.
+	return int32(n)
+}
+
+// dedupeIDs unions ID lists preserving first-seen order — later lists only
+// contribute IDs not already claimed by a higher tier.
+func dedupeIDs(lists ...[]int64) []int64 {
+	seen := make(map[int64]struct{})
+	var out []int64
+	for _, ids := range lists {
+		for _, id := range ids {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// orderRankedItems sorts the engaged rows by the engagement tiers SearchItems
+// used to express in SQL: favorite, personal, household, searched, global —
+// in-tier by position within the tier's own pre-sorted list (searched-tier
+// rows are unordered, so they fall to the name tiebreak), then (name, id).
+func orderRankedItems(rows []sqlc.InventoryItem, rank RankParams, searchedIDs []int64) []sqlc.InventoryItem {
+	key := make(map[int64][2]int64, len(rows))
+	put := func(ids []int64, tier int64) {
+		for i, id := range ids {
+			if _, ok := key[id]; !ok {
+				key[id] = [2]int64{tier, int64(i)}
+			}
+		}
+	}
+	put(rank.FavoriteIDs, 0)
+	put(rank.PersonalIDs, 1)
+	put(rank.HouseholdIDs, 2)
+	for _, id := range searchedIDs {
+		if _, ok := key[id]; !ok {
+			key[id] = [2]int64{3, 0}
+		}
+	}
+	put(rank.GlobalIDs, 4)
+	sort.Slice(rows, func(i, j int) bool {
+		ki, kj := key[rows[i].ItemID], key[rows[j].ItemID]
+		if ki != kj {
+			return ki[0] < kj[0] || (ki[0] == kj[0] && ki[1] < kj[1])
+		}
+		if rows[i].Name != rows[j].Name {
+			return rows[i].Name < rows[j].Name
+		}
+		return rows[i].ItemID < rows[j].ItemID
+	})
+	return rows
+}
+
+// CountSearchItems returns the un-paged match count for the same visibility
+// and term filters as SearchItems.
+func (s *Service) CountSearchItems(ctx context.Context, userID int64, term string) (int64, error) {
+	n, err := s.q.CountSearchItems(ctx, sqlc.CountSearchItemsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Search:            textOrNull(term),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count search items: %w", err)
+	}
+	return n, nil
+}
+
+// MatchItemIDs returns IDs of items visible to the given user whose name
+// contains the term — used to scope household-level listings that cannot
+// join this schema.
+func (s *Service) MatchItemIDs(ctx context.Context, term string, userID int64) ([]int64, error) {
+	ids, err := s.q.MatchItemIDs(ctx, sqlc.MatchItemIDsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Lower:             term,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("match item ids: %w", err)
+	}
+	return ids, nil
 }
 
 // UpdateItem modifies an existing item. All business logic about who can
@@ -987,6 +1173,38 @@ func (s *Service) CountIngredients(ctx context.Context) (int64, error) {
 	n, err := s.q.CountIngredients(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("count ingredients: %w", err)
+	}
+	return n, nil
+}
+
+// SearchIngredients returns one page of ingredients filtered by an optional
+// name term and ordered by engagement tier before paging.
+func (s *Service) SearchIngredients(ctx context.Context, term string, rank RankParams, limit, offset int32) ([]Ingredient, error) {
+	rows, err := s.q.SearchIngredients(ctx, sqlc.SearchIngredientsParams{
+		Search:       textOrNull(term),
+		PersonalIds:  rank.PersonalIDs,
+		HouseholdIds: rank.HouseholdIDs,
+		SearchTerms:  rank.SearchTerms,
+		GlobalIds:    rank.GlobalIDs,
+		Limit:        limit,
+		Offset:       offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search ingredients: %w", err)
+	}
+	out := make([]Ingredient, len(rows))
+	for i := range rows {
+		out[i] = toIngredient(rows[i])
+	}
+	return out, nil
+}
+
+// CountSearchIngredients returns the un-paged match count for the same term
+// filter as SearchIngredients.
+func (s *Service) CountSearchIngredients(ctx context.Context, term string) (int64, error) {
+	n, err := s.q.CountSearchIngredients(ctx, textOrNull(term))
+	if err != nil {
+		return 0, fmt.Errorf("count search ingredients: %w", err)
 	}
 	return n, nil
 }

@@ -1513,12 +1513,8 @@ const GROCERY_LIST_FIELDS = `
 /* Helpers to page through the API for client-side filtering           */
 /* ------------------------------------------------------------------ */
 
-function sortByFrequency(a: { personalSelectionCount: number; selectionCount: number }, b: { personalSelectionCount: number; selectionCount: number }): number {
-  const pa = a.personalSelectionCount;
-  const pb = b.personalSelectionCount;
-  if (pa !== pb) return pb - pa;
-  return b.selectionCount - a.selectionCount;
-}
+// Catalog order is engagement-ranked by the server (favorites → personal →
+// household → global → name); preserve it — never re-sort fetched pages.
 
 async function fetchAllItems(): Promise<GqlItem[]> {
   const pageSize = 200;
@@ -1533,7 +1529,7 @@ async function fetchAllItems(): Promise<GqlItem[]> {
     if (out.length >= data.items.pageInfo.totalCount || data.items.items.length === 0) break;
     page += 1;
   }
-  return out.sort(sortByFrequency);
+  return out;
 }
 
 async function fetchAllUserItems(): Promise<GqlUserItem[]> {
@@ -1855,7 +1851,6 @@ export const api = {
     if (b) all = all.filter((i) => (i.brand ?? "").toLowerCase() === b);
     if (inStock) all = all.filter((i) => i.currentQuantity > 0);
     if (isFavorite) all = all.filter((i) => i.isFavorite);
-    all.sort(sortByFrequency);
     return pagedSlice(all, pageNumber, pageSize);
   },
 
@@ -1865,7 +1860,6 @@ export const api = {
     return (await fetchItemsWithPrefs())
       .filter((i) => i.name.toLowerCase().includes(s))
       .filter((i) => !b || (i.brand ?? "").toLowerCase() === b)
-      .sort(sortByFrequency)
       .slice(0, limit);
   },
 
@@ -1876,7 +1870,7 @@ export const api = {
       `query ($term: String!, $limit: Int) { searchBrands(term: $term, limit: $limit) { ${BRAND_FIELDS} } }`,
       { term: s, limit: 50 }
     );
-    return (data.searchBrands ?? []).sort(sortByFrequency).map(toBrand);
+    return (data.searchBrands ?? []).map(toBrand);
   },
 
   getFrequentBrands: async (limit = 10): Promise<Brand[]> => {
@@ -2736,7 +2730,7 @@ export const api = {
         break;
       page += 1;
     }
-    return out.sort(sortByFrequency);
+    return out;
   },
 
   getRecipesPaged: async (

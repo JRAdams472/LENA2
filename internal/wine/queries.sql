@@ -69,6 +69,8 @@ FROM wine.bottle
 WHERE bottle_id = $1;
 
 -- name: ListBottles :many
+-- Plain insertion-order paging for internal consumers; ranked listing goes
+-- through SearchBottles.
 SELECT *
 FROM wine.bottle
 ORDER BY bottle_id DESC
@@ -77,6 +79,72 @@ LIMIT $1 OFFSET $2;
 -- name: CountBottles :one
 SELECT COUNT(*)
 FROM wine.bottle;
+
+-- name: SearchBottles :many
+-- Engagement-ranked bottle browse/search. The term and prior-search-term
+-- tiers match a haystack of vineyard + type/country/region names (all
+-- same-schema joins). Tiers from BFF-computed ID arrays:
+--   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
+--   match, 4 global-popular, 5 rest.
+SELECT b.*
+FROM wine.bottle b
+JOIN wine.type t ON t.type_id = b.type_id
+JOIN wine.country c ON c.country_id = b.country_id
+JOIN wine.region rg ON rg.region_id = b.region_id
+WHERE (
+    sqlc.narg('search')::text IS NULL
+    OR position(lower(sqlc.narg('search')) in lower(
+      coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+    )) > 0
+  )
+ORDER BY
+  CASE
+    WHEN b.bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
+    WHEN b.bottle_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 1
+    WHEN b.bottle_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 2
+    WHEN EXISTS (
+      SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) term
+      WHERE position(lower(term) in lower(
+        coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+      )) > 0
+    ) THEN 3
+    WHEN b.bottle_id = ANY(sqlc.arg(global_ids)::bigint[]) THEN 4
+    ELSE 5
+  END,
+  array_position(sqlc.arg(favorite_ids)::bigint[], b.bottle_id),
+  array_position(sqlc.arg(personal_ids)::bigint[], b.bottle_id),
+  array_position(sqlc.arg(household_ids)::bigint[], b.bottle_id),
+  array_position(sqlc.arg(global_ids)::bigint[], b.bottle_id),
+  lower(coalesce(b.vineyard, '')),
+  b.vintage_year,
+  b.bottle_id
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchBottles :one
+SELECT COUNT(*)
+FROM wine.bottle b
+JOIN wine.type t ON t.type_id = b.type_id
+JOIN wine.country c ON c.country_id = b.country_id
+JOIN wine.region rg ON rg.region_id = b.region_id
+WHERE (
+    sqlc.narg('search')::text IS NULL
+    OR position(lower(sqlc.narg('search')) in lower(
+      coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+    )) > 0
+  );
+
+-- name: MatchBottleIDs :many
+-- IDs of bottles matching the term — feeds include_ids on household-scoped
+-- queries that cannot join this schema (cellar search).
+SELECT b.bottle_id
+FROM wine.bottle b
+JOIN wine.type t ON t.type_id = b.type_id
+JOIN wine.country c ON c.country_id = b.country_id
+JOIN wine.region rg ON rg.region_id = b.region_id
+WHERE position(lower($1) in lower(
+    coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+  )) > 0
+LIMIT 1000;
 
 -- name: UpdateBottle :exec
 UPDATE wine.bottle

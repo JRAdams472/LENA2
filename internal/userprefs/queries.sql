@@ -40,6 +40,8 @@ FROM userprefs.household_item
 WHERE household_id = $1 AND item_id = $2;
 
 -- name: ListHouseholdItems :many
+-- Plain recency paging for internal consumers (pantry stock scans); ranked
+-- listing goes through SearchHouseholdItems.
 SELECT *
 FROM userprefs.household_item
 WHERE household_id = $1
@@ -50,6 +52,37 @@ LIMIT $2 OFFSET $3;
 SELECT COUNT(*)
 FROM userprefs.household_item
 WHERE household_id = $1;
+
+-- name: SearchHouseholdItems :many
+-- Ranked pantry listing. Tiers: 0 expiring within 7 days (smallest
+-- expires_at first — urgency over habit), 1 the caller's favorite catalog
+-- items, 2 personally-used, 3 household-used, 4 rest by recency.
+-- include_ids scopes by catalog item (the BFF resolves a name term to item
+-- IDs because this schema cannot join inventory). NULL means no filter.
+SELECT *
+FROM userprefs.household_item
+WHERE household_id = $1
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR item_id = ANY(sqlc.arg(include_ids)::bigint[]))
+ORDER BY
+  CASE
+    WHEN expires_at IS NOT NULL AND expires_at <= now() + interval '7 days' THEN 0
+    WHEN item_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 1
+    WHEN item_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 2
+    WHEN item_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 3
+    ELSE 4
+  END,
+  expires_at ASC NULLS LAST,
+  array_position(sqlc.arg(personal_ids)::bigint[], item_id),
+  array_position(sqlc.arg(household_ids)::bigint[], item_id),
+  updated_at DESC NULLS LAST,
+  household_item_id
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchHouseholdItems :one
+SELECT COUNT(*)
+FROM userprefs.household_item
+WHERE household_id = $1
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR item_id = ANY(sqlc.arg(include_ids)::bigint[]));
 
 -- name: DeleteHouseholdItem :execrows
 DELETE FROM userprefs.household_item
@@ -85,6 +118,8 @@ FROM userprefs.household_bottle
 WHERE household_id = $1 AND bottle_id = $2;
 
 -- name: ListHouseholdBottles :many
+-- Plain recency paging for internal consumers; ranked listing goes through
+-- SearchHouseholdBottles.
 SELECT *
 FROM userprefs.household_bottle
 WHERE household_id = $1
@@ -95,6 +130,35 @@ LIMIT $2 OFFSET $3;
 SELECT COUNT(*)
 FROM userprefs.household_bottle
 WHERE household_id = $1;
+
+-- name: SearchHouseholdBottles :many
+-- Ranked cellar listing. Tiers: 0 the caller's favorite bottles,
+-- 1 personally-used, 2 household-used, 3 rest by recency. include_ids
+-- scopes by catalog bottle (the BFF resolves a name term to bottle IDs
+-- because this schema cannot join wine). NULL means no filter.
+SELECT *
+FROM userprefs.household_bottle
+WHERE household_id = $1
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR bottle_id = ANY(sqlc.arg(include_ids)::bigint[]))
+ORDER BY
+  CASE
+    WHEN bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
+    WHEN bottle_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 1
+    WHEN bottle_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 2
+    ELSE 3
+  END,
+  array_position(sqlc.arg(favorite_ids)::bigint[], bottle_id),
+  array_position(sqlc.arg(personal_ids)::bigint[], bottle_id),
+  array_position(sqlc.arg(household_ids)::bigint[], bottle_id),
+  updated_at DESC NULLS LAST,
+  household_bottle_id
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchHouseholdBottles :one
+SELECT COUNT(*)
+FROM userprefs.household_bottle
+WHERE household_id = $1
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR bottle_id = ANY(sqlc.arg(include_ids)::bigint[]));
 
 -- name: DeleteHouseholdBottle :execrows
 DELETE FROM userprefs.household_bottle
@@ -117,6 +181,13 @@ SELECT *
 FROM userprefs.user_item_favorite
 WHERE user_id = $1 AND item_id = ANY(sqlc.arg(item_ids)::bigint[]);
 
+-- name: ListFavoriteItemIDs :many
+-- Every item the user has favorited — feeds the ranking tier on catalog
+-- and pantry listings.
+SELECT item_id
+FROM userprefs.user_item_favorite
+WHERE user_id = $1 AND is_favorite = TRUE;
+
 -- name: DeleteUserItemFavorite :exec
 DELETE FROM userprefs.user_item_favorite
 WHERE user_id = $1 AND item_id = $2;
@@ -135,6 +206,13 @@ RETURNING *;
 SELECT *
 FROM userprefs.user_bottle_favorite
 WHERE user_id = $1 AND bottle_id = ANY(sqlc.arg(bottle_ids)::bigint[]);
+
+-- name: ListFavoriteBottleIDs :many
+-- Every bottle the user has favorited — feeds the ranking tier on catalog
+-- and cellar listings.
+SELECT bottle_id
+FROM userprefs.user_bottle_favorite
+WHERE user_id = $1 AND is_favorite = TRUE;
 
 -- name: DeleteUserBottleFavorite :exec
 DELETE FROM userprefs.user_bottle_favorite

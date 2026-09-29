@@ -508,7 +508,7 @@ func TestIntegrationBrandModeration(t *testing.T) {
 		_, err = svc.CreateBrand(ctx, "Searchable Public", itBy)
 		require.NoError(t, err)
 
-		mine, err := svc.SearchBrands(ctx, "searchable", userA, 50)
+		mine, err := svc.SearchBrands(ctx, "searchable", userA, RankParams{}, 50)
 		require.NoError(t, err)
 		names := map[string]string{}
 		for _, b := range mine {
@@ -566,5 +566,73 @@ func TestIntegrationBrandModeration(t *testing.T) {
 		again, err := svc.SubmitBrand(ctx, "MOD TWICE", userB, itBy)
 		require.NoError(t, err)
 		assert.Equal(t, b.BrandID, again.BrandID)
+	})
+}
+
+func TestIntegrationSearchItemsRanking(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationServiceWithPool(t, ctx)
+
+	uid := testutil.MustUser(ctx, t, pool, "rank-items@example.com")
+	cat, err := svc.CreateCategory(ctx, "IT Rank Category", "", false, itBy)
+	require.NoError(t, err)
+	g := unitID(t, ctx, svc, "g")
+
+	mkItem := func(name string) int64 {
+		it, err := svc.CreateItem(ctx, Item{Name: name, CategoryID: cat.CategoryID, UnitID: g}, itBy)
+		require.NoError(t, err)
+		return it.ItemID
+	}
+	// Alphabetical order is the reverse of engagement order — proves ranking
+	// happens in SQL before LIMIT, not client-side after the window.
+	alphaID := mkItem("QZ9 AAA Plain")
+	globalID := mkItem("QZ9 BBB Global")
+	searchedID := mkItem("QZ9 CCC Searched")
+	householdItemID := mkItem("QZ9 DDD Household")
+	personalID := mkItem("QZ9 EEE Personal")
+	favID := mkItem("QZ9 FFF Favorite")
+
+	rank := RankParams{
+		FavoriteIDs:  []int64{favID},
+		PersonalIDs:  []int64{personalID},
+		HouseholdIDs: []int64{householdItemID},
+		GlobalIDs:    []int64{globalID},
+		SearchTerms:  []string{"qz9 ccc"},
+	}
+	got, err := svc.SearchItems(ctx, uid, "qz9", rank, 20, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 6)
+	order := []int64{favID, personalID, householdItemID, searchedID, globalID, alphaID}
+	for i, it := range got {
+		assert.Equal(t, order[i], it.ItemID, "position %d", i)
+	}
+
+	total, err := svc.CountSearchItems(ctx, uid, "qz9")
+	require.NoError(t, err)
+	assert.Equal(t, int64(6), total)
+
+	t.Run("cold start falls back to alphabetical", func(t *testing.T) {
+		got, err := svc.SearchItems(ctx, uid, "qz9", RankParams{}, 20, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 6)
+		for i, it := range got {
+			assert.Equal(t, []int64{alphaID, globalID, searchedID, householdItemID, personalID, favID}[i], it.ItemID)
+		}
+	})
+
+	t.Run("term scopes the ranked window", func(t *testing.T) {
+		got, err := svc.SearchItems(ctx, uid, "qz9 eee", rank, 20, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, personalID, got[0].ItemID)
+	})
+
+	t.Run("MatchItemIDs feeds include_ids", func(t *testing.T) {
+		ids, err := svc.MatchItemIDs(ctx, "qz9 bbb", uid)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{globalID}, ids)
 	})
 }

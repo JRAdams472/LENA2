@@ -445,3 +445,122 @@ func TestIntegrationMergeHouseholdStock(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, bottlesB)
 }
+
+func TestIntegrationSearchHouseholdItemsRanking(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	uid := testutil.MustUser(ctx, t, pool, "rank-pantry@example.com")
+	var householdID int64
+	require.NoError(t, pool.QueryRow(ctx, `SELECT household_id FROM identity.users WHERE user_id = $1`, uid).Scan(&householdID))
+
+	// One pantry row per tier, alphabetically named to invert engagement.
+	expiringID := createTestItem(ctx, t, pool)        // expires tomorrow → tier 0
+	favID := createTestItem(ctx, t, pool)             // favorite → tier 1
+	personalID := createTestItem(ctx, t, pool)        // personal score → tier 2
+	householdScoredID := createTestItem(ctx, t, pool) // household score → tier 3
+	plainID := createTestItem(ctx, t, pool)           // rest → updated_at DESC
+
+	soon := time.Now().Add(24 * time.Hour)
+	addItem := func(itemID int64, expires *time.Time) {
+		_, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+			HouseholdID: householdID, ItemID: itemID, CurrentQty: 1, ExpiresAt: expires,
+		}, itBy)
+		require.NoError(t, err)
+	}
+	addItem(plainID, nil)
+	addItem(householdScoredID, nil)
+	addItem(personalID, nil)
+	addItem(favID, nil)
+	addItem(expiringID, &soon) // added last — recency alone would rank it first anyway, expiry keeps tier distinct
+
+	_, err := svc.SetItemFavorite(ctx, uid, favID, true, itBy)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO analytics.selection_score (entity_type, entity_id, scope_type, scope_id, score, event_count)
+		 VALUES ('item', $1, 'user', $2, 5, 2), ('item', $3, 'household', $4, 5, 2)`,
+		personalID, uid, householdScoredID, householdID)
+	require.NoError(t, err)
+
+	got, err := svc.SearchHouseholdItems(ctx, PantrySearch{
+		HouseholdID:  householdID,
+		FavoriteIDs:  []int64{favID},
+		PersonalIDs:  []int64{personalID},
+		HouseholdIDs: []int64{householdScoredID},
+		Limit:        20,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 5)
+	want := []int64{expiringID, favID, personalID, householdScoredID, plainID}
+	for i, hi := range got {
+		assert.Equal(t, want[i], hi.ItemID, "position %d", i)
+	}
+
+	total, err := svc.CountSearchHouseholdItems(ctx, householdID, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+
+	t.Run("include_ids scopes by catalog item", func(t *testing.T) {
+		got, err := svc.SearchHouseholdItems(ctx, PantrySearch{
+			HouseholdID: householdID, IncludeIDs: []int64{plainID, favID}, Limit: 20,
+		})
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		n, err := svc.CountSearchHouseholdItems(ctx, householdID, []int64{plainID, favID})
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), n)
+	})
+}
+
+func TestIntegrationSearchHouseholdBottlesRanking(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	uid := testutil.MustUser(ctx, t, pool, "rank-cellar@example.com")
+	var householdID int64
+	require.NoError(t, pool.QueryRow(ctx, `SELECT household_id FROM identity.users WHERE user_id = $1`, uid).Scan(&householdID))
+
+	favID := createTestBottle(ctx, t, pool)
+	personalID := createTestBottle(ctx, t, pool)
+	householdScoredID := createTestBottle(ctx, t, pool)
+	plainID := createTestBottle(ctx, t, pool)
+
+	addBottle := func(bottleID int64) {
+		_, err := svc.UpsertHouseholdBottle(ctx, HouseholdBottle{
+			HouseholdID: householdID, BottleID: bottleID, Quantity: 1,
+		}, itBy)
+		require.NoError(t, err)
+	}
+	addBottle(plainID)
+	addBottle(householdScoredID)
+	addBottle(personalID)
+	addBottle(favID)
+
+	_, err := svc.SetBottleFavorite(ctx, uid, favID, true, itBy)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO analytics.selection_score (entity_type, entity_id, scope_type, scope_id, score, event_count)
+		 VALUES ('bottle', $1, 'user', $2, 5, 2), ('bottle', $3, 'household', $4, 5, 2)`,
+		personalID, uid, householdScoredID, householdID)
+	require.NoError(t, err)
+
+	got, err := svc.SearchHouseholdBottles(ctx, CellarSearch{
+		HouseholdID:  householdID,
+		FavoriteIDs:  []int64{favID},
+		PersonalIDs:  []int64{personalID},
+		HouseholdIDs: []int64{householdScoredID},
+		Limit:        20,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	want := []int64{favID, personalID, householdScoredID, plainID}
+	for i, hb := range got {
+		assert.Equal(t, want[i], hb.BottleID, "position %d", i)
+	}
+}

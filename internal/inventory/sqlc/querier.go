@@ -16,6 +16,8 @@ type Querier interface {
 	CountItems(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error)
 	CountPendingBrands(ctx context.Context) (int64, error)
 	CountPendingItems(ctx context.Context) (int64, error)
+	CountSearchIngredients(ctx context.Context, search pgtype.Text) (int64, error)
+	CountSearchItems(ctx context.Context, arg CountSearchItemsParams) (int64, error)
 	// Admin-only fast path: brand is immediately approved.
 	CreateBrand(ctx context.Context, arg CreateBrandParams) (InventoryBrand, error)
 	// User-submitted brand: starts pending, visible only to the submitter
@@ -69,14 +71,42 @@ type Querier interface {
 	ListFoodFlavorsByItems(ctx context.Context, itemIds []int64) ([]ListFoodFlavorsByItemsRow, error)
 	ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error)
 	ListFoodNutrientsByItems(ctx context.Context, itemIds []int64) ([]ListFoodNutrientsByItemsRow, error)
+	// Plain alphabetical paging for internal consumers (recipe import); ranked
+	// listing goes through SearchIngredients.
 	ListIngredients(ctx context.Context, arg ListIngredientsParams) ([]InventoryIngredient, error)
 	// Items are visible when approved, or when the caller submitted them.
+	// Plain alphabetical paging for internal consumers (recipe import); ranked
+	// listing goes through SearchItems.
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
 	ListPendingBrands(ctx context.Context, arg ListPendingBrandsParams) ([]InventoryBrand, error)
 	ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error)
 	ListUnits(ctx context.Context) ([]InventoryUnit, error)
+	// IDs of visible items whose name matches the term — feeds include_ids on
+	// household-scoped queries that cannot join this schema (pantry search).
+	MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]int64, error)
+	// Items matching any of the user's prior search terms — the "searched"
+	// engagement tier resolved to IDs so it can join the ranked set. One
+	// per-page scan, only run when the user has recorded terms.
+	MatchItemIDsByTerms(ctx context.Context, arg MatchItemIDsByTermsParams) ([]int64, error)
+	// The engaged slice of an item search: every catalog row matching the
+	// visibility/term filters whose ID is in the caller's engagement set. At
+	// most a few thousand rows — fetched whole and tier-sorted in Go, which is
+	// far cheaper than ORDER BY CASE over the full ~110k-row catalog.
+	RankedItems(ctx context.Context, arg RankedItemsParams) ([]InventoryItem, error)
+	// Engagement-ranked brand picker search. Tiers come from ID arrays the BFF
+	// computes from analytics/userprefs (other schemas — SQL never crosses them):
+	//   0 personal-used, 1 household-used, 2 prior-search-term match,
+	//   3 global-popular, 4 rest. The score arrays arrive pre-sorted so
+	//   array_position doubles as the in-tier tiebreaker.
 	SearchBrands(ctx context.Context, arg SearchBrandsParams) ([]InventoryBrand, error)
+	// Engagement-ranked ingredient browse/search — same tier pattern as
+	// SearchItems minus favorites (ingredients have no favorite store).
+	SearchIngredients(ctx context.Context, arg SearchIngredientsParams) ([]InventoryIngredient, error)
+	// The non-engaged slice, served in (name, item_id) index order with a
+	// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
+	// large catalog.
+	SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error)
 	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) error
 	SetItemStatus(ctx context.Context, arg SetItemStatusParams) error
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)

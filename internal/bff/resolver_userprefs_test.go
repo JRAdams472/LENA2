@@ -40,11 +40,14 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 
 	minQty := 1.5
 	purchaseAt := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
-	up.EXPECT().ListHouseholdItems(gomock.Any(), upUserID, int32(20), int32(40)).Return([]userprefs.HouseholdItem{
+	up.EXPECT().ListFavoriteItemIDs(gomock.Any(), upUserID).Return([]int64{42}, nil)
+	up.EXPECT().SearchHouseholdItems(gomock.Any(), userprefs.PantrySearch{
+		HouseholdID: upUserID, FavoriteIDs: []int64{42}, Limit: 20, Offset: 40,
+	}).Return([]userprefs.HouseholdItem{
 		{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 3, MinQty: &minQty, PurchaseAt: &purchaseAt, Notes: "restock"},
 		{HouseholdItemID: 6, HouseholdID: upUserID, ItemID: 43, CurrentQty: 0.5},
 	}, nil)
-	up.EXPECT().CountHouseholdItems(gomock.Any(), upUserID).Return(int64(5), nil)
+	up.EXPECT().CountSearchHouseholdItems(gomock.Any(), upUserID, []int64(nil)).Return(int64(5), nil)
 	up.EXPECT().ListItemFavorites(gomock.Any(), upUserID, []int64{42, 43}).Return(map[int64]bool{42: true}, nil)
 	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{42, 43}).Return([]inventory.Item{
 		{ItemID: 42, Name: "Flour", CategoryID: 1},
@@ -57,6 +60,7 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 3, PageSize: 20})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -87,6 +91,7 @@ func TestResolver_UserItems_Unauthorized(t *testing.T) {
 	res, err := r.UserItems(context.Background(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -97,11 +102,13 @@ func TestResolver_UserItems_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListHouseholdItems(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
+	up.EXPECT().ListFavoriteItemIDs(gomock.Any(), upUserID).Return(nil, nil)
+	up.EXPECT().SearchHouseholdItems(gomock.Any(), gomock.Any()).Return(nil, errUpBoom)
 
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)
@@ -116,10 +123,13 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 	bottleNum := int32(2)
 	price := 24.99
 	temp := 55.0
-	up.EXPECT().ListHouseholdBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return([]userprefs.HouseholdBottle{
+	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), upUserID).Return([]int64{88}, nil)
+	up.EXPECT().SearchHouseholdBottles(gomock.Any(), userprefs.CellarSearch{
+		HouseholdID: upUserID, FavoriteIDs: []int64{88}, Limit: 10, Offset: 0,
+	}).Return([]userprefs.HouseholdBottle{
 		{HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88, BottleNumber: &bottleNum, Quantity: 6, PurchasePrice: &price, StorageTemp: &temp, Location: "cellar"},
 	}, nil)
-	up.EXPECT().CountHouseholdBottles(gomock.Any(), upUserID).Return(int64(5), nil)
+	up.EXPECT().CountSearchHouseholdBottles(gomock.Any(), upUserID, []int64(nil)).Return(int64(5), nil)
 	up.EXPECT().ListBottleFavorites(gomock.Any(), upUserID, []int64{88}).Return(map[int64]bool{88: true}, nil)
 	w.EXPECT().GetBottlesByIDs(gomock.Any(), []int64{88}).Return([]wine.Bottle{{BottleID: 88, BottleSize: "750ml"}}, nil)
 	w.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
@@ -128,6 +138,7 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 	res, err := r.UserBottles(upCtx(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -155,6 +166,7 @@ func TestResolver_UserBottles_Unauthorized(t *testing.T) {
 	res, err := r.UserBottles(context.Background(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -165,11 +177,13 @@ func TestResolver_UserBottles_ServiceError(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{UserPrefsService: up}
 
-	up.EXPECT().ListHouseholdBottles(gomock.Any(), upUserID, int32(10), int32(0)).Return(nil, errUpBoom)
+	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), upUserID).Return(nil, nil)
+	up.EXPECT().SearchHouseholdBottles(gomock.Any(), gomock.Any()).Return(nil, errUpBoom)
 
 	res, err := r.UserBottles(upCtx(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)

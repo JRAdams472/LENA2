@@ -97,6 +97,19 @@ async function deleteRow(page: Page, text: string) {
   await row.getByRole("button", { name: "Delete" }).click();
 }
 
+// Refetch-dependent assertions: a row appears/disappears only once the
+// mutation resolves and the list refetches — large catalogs (Brands walks
+// ~91 pages then re-renders ~9k rows) make the default 5s poll racy.
+const REFETCH_TIMEOUT = { timeout: 20000 };
+
+async function expectRowVisible(page: Page, text: string) {
+  await expect(page.getByText(text).first()).toBeVisible(REFETCH_TIMEOUT);
+}
+
+async function expectRowGone(page: Page, text: string) {
+  await expect(page.getByText(text)).toHaveCount(0, REFETCH_TIMEOUT);
+}
+
 for (const catalog of catalogs) {
   test(`catalog CRUD: ${catalog.name}`, async ({ page }) => {
     const expected = catalog.rowText || catalog.fields[0].value;
@@ -107,10 +120,10 @@ for (const catalog of catalogs) {
     ).toBeVisible();
 
     await createViaDialog(page, catalog.fields);
-    await expect(page.getByText(expected).first()).toBeVisible();
+    await expectRowVisible(page, expected);
 
     await deleteRow(page, expected);
-    await expect(page.getByText(expected)).toHaveCount(0);
+    await expectRowGone(page, expected);
   });
 }
 
@@ -137,10 +150,10 @@ test("catalog CRUD: Regions (needs a country)", async ({
       { label: "Region Name", value: regionName },
       { label: "Country ID", value: countryId },
     ]);
-    await expect(page.getByText(regionName).first()).toBeVisible();
+    await expectRowVisible(page, regionName);
 
     await deleteRow(page, regionName);
-    await expect(page.getByText(regionName)).toHaveCount(0);
+    await expectRowGone(page, regionName);
   } finally {
     // Clean up the region before deleting its country.
     const regions = await graphql<{

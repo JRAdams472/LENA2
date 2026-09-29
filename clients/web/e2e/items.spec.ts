@@ -13,28 +13,21 @@ async function findItemByName(
   token: string,
   itemName: string
 ): Promise<ItemNode | undefined> {
-  let page = 1;
-  for (;;) {
-    const data = await graphql<{
-      items: { items: ItemNode[]; pageInfo: { totalCount: number } };
-    }>(
-      request,
-      token,
-      `query ($page: Int!, $pageSize: Int!) {
-        items(page: $page, pageSize: $pageSize) {
-          items { id name }
-          pageInfo { totalCount }
-        }
-      }`,
-      { page, pageSize: 100 }
-    );
-    const found = data.items.items.find((it) => it.name === itemName);
-    if (found) return found;
-    const seen = page * 100;
-    if (seen >= data.items.pageInfo.totalCount || data.items.items.length === 0) break;
-    page++;
-  }
-  return undefined;
+  // Server-side search keeps this O(1) regardless of catalog size — walking
+  // all ~110k seeded items 100/page blew the 120s test budget.
+  const data = await graphql<{
+    items: { items: ItemNode[] };
+  }>(
+    request,
+    token,
+    `query ($page: Int!, $pageSize: Int!, $search: String) {
+      items(page: $page, pageSize: $pageSize, search: $search) {
+        items { id name }
+      }
+    }`,
+    { page: 1, pageSize: 100, search: itemName }
+  );
+  return data.items.items.find((it) => it.name === itemName);
 }
 
 test.describe("items", () => {

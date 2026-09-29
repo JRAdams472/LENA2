@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	sqlc "github.com/JRAdams472/LENA2/internal/wine/sqlc"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -54,6 +55,21 @@ func (m *MockQuerier) CountBottles(ctx context.Context) (int64, error) {
 func (mr *MockQuerierMockRecorder) CountBottles(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBottles", reflect.TypeOf((*MockQuerier)(nil).CountBottles), ctx)
+}
+
+// CountSearchBottles mocks base method.
+func (m *MockQuerier) CountSearchBottles(ctx context.Context, search pgtype.Text) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, search)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchBottles indicates an expected call of CountSearchBottles.
+func (mr *MockQuerierMockRecorder) CountSearchBottles(ctx, search any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockQuerier)(nil).CountSearchBottles), ctx, search)
 }
 
 // CreateBottle mocks base method.
@@ -600,6 +616,36 @@ func (m *MockQuerier) ListWineFlavorProfiles(ctx context.Context) ([]sqlc.WineFl
 func (mr *MockQuerierMockRecorder) ListWineFlavorProfiles(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWineFlavorProfiles", reflect.TypeOf((*MockQuerier)(nil).ListWineFlavorProfiles), ctx)
+}
+
+// MatchBottleIDs mocks base method.
+func (m *MockQuerier) MatchBottleIDs(ctx context.Context, lower string) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MatchBottleIDs", ctx, lower)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchBottleIDs indicates an expected call of MatchBottleIDs.
+func (mr *MockQuerierMockRecorder) MatchBottleIDs(ctx, lower any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchBottleIDs", reflect.TypeOf((*MockQuerier)(nil).MatchBottleIDs), ctx, lower)
+}
+
+// SearchBottles mocks base method.
+func (m *MockQuerier) SearchBottles(ctx context.Context, arg sqlc.SearchBottlesParams) ([]sqlc.WineBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBottles", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.WineBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchBottles indicates an expected call of SearchBottles.
+func (mr *MockQuerierMockRecorder) SearchBottles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockQuerier)(nil).SearchBottles), ctx, arg)
 }
 
 // UpdateBottle mocks base method.

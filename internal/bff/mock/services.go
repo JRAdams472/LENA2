@@ -573,34 +573,34 @@ func (mr *MockItemReaderMockRecorder) CountBrandsVisible(ctx, userID any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBrandsVisible", reflect.TypeOf((*MockItemReader)(nil).CountBrandsVisible), ctx, userID)
 }
 
-// CountIngredients mocks base method.
-func (m *MockItemReader) CountIngredients(ctx context.Context) (int64, error) {
+// CountSearchIngredients mocks base method.
+func (m *MockItemReader) CountSearchIngredients(ctx context.Context, term string) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountIngredients", ctx)
+	ret := m.ctrl.Call(m, "CountSearchIngredients", ctx, term)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountIngredients indicates an expected call of CountIngredients.
-func (mr *MockItemReaderMockRecorder) CountIngredients(ctx any) *gomock.Call {
+// CountSearchIngredients indicates an expected call of CountSearchIngredients.
+func (mr *MockItemReaderMockRecorder) CountSearchIngredients(ctx, term any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountIngredients", reflect.TypeOf((*MockItemReader)(nil).CountIngredients), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchIngredients", reflect.TypeOf((*MockItemReader)(nil).CountSearchIngredients), ctx, term)
 }
 
-// CountItems mocks base method.
-func (m *MockItemReader) CountItems(ctx context.Context, userID int64) (int64, error) {
+// CountSearchItems mocks base method.
+func (m *MockItemReader) CountSearchItems(ctx context.Context, userID int64, term string) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountItems", ctx, userID)
+	ret := m.ctrl.Call(m, "CountSearchItems", ctx, userID, term)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountItems indicates an expected call of CountItems.
-func (mr *MockItemReaderMockRecorder) CountItems(ctx, userID any) *gomock.Call {
+// CountSearchItems indicates an expected call of CountSearchItems.
+func (mr *MockItemReaderMockRecorder) CountSearchItems(ctx, userID, term any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountItems", reflect.TypeOf((*MockItemReader)(nil).CountItems), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchItems", reflect.TypeOf((*MockItemReader)(nil).CountSearchItems), ctx, userID, term)
 }
 
 // GetBrandByID mocks base method.
@@ -948,36 +948,6 @@ func (mr *MockItemReaderMockRecorder) ListFoodNutrientsByItems(ctx, itemIDs any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFoodNutrientsByItems", reflect.TypeOf((*MockItemReader)(nil).ListFoodNutrientsByItems), ctx, itemIDs)
 }
 
-// ListIngredients mocks base method.
-func (m *MockItemReader) ListIngredients(ctx context.Context, limit, offset int32) ([]inventory.Ingredient, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListIngredients", ctx, limit, offset)
-	ret0, _ := ret[0].([]inventory.Ingredient)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListIngredients indicates an expected call of ListIngredients.
-func (mr *MockItemReaderMockRecorder) ListIngredients(ctx, limit, offset any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIngredients", reflect.TypeOf((*MockItemReader)(nil).ListIngredients), ctx, limit, offset)
-}
-
-// ListItems mocks base method.
-func (m *MockItemReader) ListItems(ctx context.Context, userID int64, limit, offset int32) ([]inventory.Item, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListItems", ctx, userID, limit, offset)
-	ret0, _ := ret[0].([]inventory.Item)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListItems indicates an expected call of ListItems.
-func (mr *MockItemReaderMockRecorder) ListItems(ctx, userID, limit, offset any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItems", reflect.TypeOf((*MockItemReader)(nil).ListItems), ctx, userID, limit, offset)
-}
-
 // ListNutrientTypes mocks base method.
 func (m *MockItemReader) ListNutrientTypes(ctx context.Context) ([]inventory.NutrientType, error) {
 	m.ctrl.T.Helper()
@@ -1008,19 +978,64 @@ func (mr *MockItemReaderMockRecorder) ListUnits(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockItemReader)(nil).ListUnits), ctx)
 }
 
-// SearchBrands mocks base method.
-func (m *MockItemReader) SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]inventory.Brand, error) {
+// MatchItemIDs mocks base method.
+func (m *MockItemReader) MatchItemIDs(ctx context.Context, term string, userID int64) ([]int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchBrands", ctx, term, userID, limit)
+	ret := m.ctrl.Call(m, "MatchItemIDs", ctx, term, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchItemIDs indicates an expected call of MatchItemIDs.
+func (mr *MockItemReaderMockRecorder) MatchItemIDs(ctx, term, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDs", reflect.TypeOf((*MockItemReader)(nil).MatchItemIDs), ctx, term, userID)
+}
+
+// SearchBrands mocks base method.
+func (m *MockItemReader) SearchBrands(ctx context.Context, term string, userID int64, rank inventory.RankParams, limit int32) ([]inventory.Brand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBrands", ctx, term, userID, rank, limit)
 	ret0, _ := ret[0].([]inventory.Brand)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SearchBrands indicates an expected call of SearchBrands.
-func (mr *MockItemReaderMockRecorder) SearchBrands(ctx, term, userID, limit any) *gomock.Call {
+func (mr *MockItemReaderMockRecorder) SearchBrands(ctx, term, userID, rank, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBrands", reflect.TypeOf((*MockItemReader)(nil).SearchBrands), ctx, term, userID, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBrands", reflect.TypeOf((*MockItemReader)(nil).SearchBrands), ctx, term, userID, rank, limit)
+}
+
+// SearchIngredients mocks base method.
+func (m *MockItemReader) SearchIngredients(ctx context.Context, term string, rank inventory.RankParams, limit, offset int32) ([]inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchIngredients", ctx, term, rank, limit, offset)
+	ret0, _ := ret[0].([]inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchIngredients indicates an expected call of SearchIngredients.
+func (mr *MockItemReaderMockRecorder) SearchIngredients(ctx, term, rank, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchIngredients", reflect.TypeOf((*MockItemReader)(nil).SearchIngredients), ctx, term, rank, limit, offset)
+}
+
+// SearchItems mocks base method.
+func (m *MockItemReader) SearchItems(ctx context.Context, userID int64, term string, rank inventory.RankParams, limit, offset int32) ([]inventory.Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchItems", ctx, userID, term, rank, limit, offset)
+	ret0, _ := ret[0].([]inventory.Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchItems indicates an expected call of SearchItems.
+func (mr *MockItemReaderMockRecorder) SearchItems(ctx, userID, term, rank, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchItems", reflect.TypeOf((*MockItemReader)(nil).SearchItems), ctx, userID, term, rank, limit, offset)
 }
 
 // MockItemWriter is a mock of ItemWriter interface.
@@ -1591,36 +1606,6 @@ func (mr *MockInventoryServiceMockRecorder) CountBrandsVisible(ctx, userID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBrandsVisible", reflect.TypeOf((*MockInventoryService)(nil).CountBrandsVisible), ctx, userID)
 }
 
-// CountIngredients mocks base method.
-func (m *MockInventoryService) CountIngredients(ctx context.Context) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountIngredients", ctx)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CountIngredients indicates an expected call of CountIngredients.
-func (mr *MockInventoryServiceMockRecorder) CountIngredients(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountIngredients", reflect.TypeOf((*MockInventoryService)(nil).CountIngredients), ctx)
-}
-
-// CountItems mocks base method.
-func (m *MockInventoryService) CountItems(ctx context.Context, userID int64) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountItems", ctx, userID)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CountItems indicates an expected call of CountItems.
-func (mr *MockInventoryServiceMockRecorder) CountItems(ctx, userID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountItems", reflect.TypeOf((*MockInventoryService)(nil).CountItems), ctx, userID)
-}
-
 // CountPendingBrands mocks base method.
 func (m *MockInventoryService) CountPendingBrands(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -1649,6 +1634,36 @@ func (m *MockInventoryService) CountPendingItems(ctx context.Context) (int64, er
 func (mr *MockInventoryServiceMockRecorder) CountPendingItems(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPendingItems", reflect.TypeOf((*MockInventoryService)(nil).CountPendingItems), ctx)
+}
+
+// CountSearchIngredients mocks base method.
+func (m *MockInventoryService) CountSearchIngredients(ctx context.Context, term string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchIngredients", ctx, term)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchIngredients indicates an expected call of CountSearchIngredients.
+func (mr *MockInventoryServiceMockRecorder) CountSearchIngredients(ctx, term any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchIngredients", reflect.TypeOf((*MockInventoryService)(nil).CountSearchIngredients), ctx, term)
+}
+
+// CountSearchItems mocks base method.
+func (m *MockInventoryService) CountSearchItems(ctx context.Context, userID int64, term string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchItems", ctx, userID, term)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchItems indicates an expected call of CountSearchItems.
+func (mr *MockInventoryServiceMockRecorder) CountSearchItems(ctx, userID, term any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchItems", reflect.TypeOf((*MockInventoryService)(nil).CountSearchItems), ctx, userID, term)
 }
 
 // CreateBrand mocks base method.
@@ -2228,36 +2243,6 @@ func (mr *MockInventoryServiceMockRecorder) ListFoodNutrientsByItems(ctx, itemID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFoodNutrientsByItems", reflect.TypeOf((*MockInventoryService)(nil).ListFoodNutrientsByItems), ctx, itemIDs)
 }
 
-// ListIngredients mocks base method.
-func (m *MockInventoryService) ListIngredients(ctx context.Context, limit, offset int32) ([]inventory.Ingredient, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListIngredients", ctx, limit, offset)
-	ret0, _ := ret[0].([]inventory.Ingredient)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListIngredients indicates an expected call of ListIngredients.
-func (mr *MockInventoryServiceMockRecorder) ListIngredients(ctx, limit, offset any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIngredients", reflect.TypeOf((*MockInventoryService)(nil).ListIngredients), ctx, limit, offset)
-}
-
-// ListItems mocks base method.
-func (m *MockInventoryService) ListItems(ctx context.Context, userID int64, limit, offset int32) ([]inventory.Item, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListItems", ctx, userID, limit, offset)
-	ret0, _ := ret[0].([]inventory.Item)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListItems indicates an expected call of ListItems.
-func (mr *MockInventoryServiceMockRecorder) ListItems(ctx, userID, limit, offset any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItems", reflect.TypeOf((*MockInventoryService)(nil).ListItems), ctx, userID, limit, offset)
-}
-
 // ListNutrientTypes mocks base method.
 func (m *MockInventoryService) ListNutrientTypes(ctx context.Context) ([]inventory.NutrientType, error) {
 	m.ctrl.T.Helper()
@@ -2318,19 +2303,64 @@ func (mr *MockInventoryServiceMockRecorder) ListUnits(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockInventoryService)(nil).ListUnits), ctx)
 }
 
-// SearchBrands mocks base method.
-func (m *MockInventoryService) SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]inventory.Brand, error) {
+// MatchItemIDs mocks base method.
+func (m *MockInventoryService) MatchItemIDs(ctx context.Context, term string, userID int64) ([]int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchBrands", ctx, term, userID, limit)
+	ret := m.ctrl.Call(m, "MatchItemIDs", ctx, term, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchItemIDs indicates an expected call of MatchItemIDs.
+func (mr *MockInventoryServiceMockRecorder) MatchItemIDs(ctx, term, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDs", reflect.TypeOf((*MockInventoryService)(nil).MatchItemIDs), ctx, term, userID)
+}
+
+// SearchBrands mocks base method.
+func (m *MockInventoryService) SearchBrands(ctx context.Context, term string, userID int64, rank inventory.RankParams, limit int32) ([]inventory.Brand, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBrands", ctx, term, userID, rank, limit)
 	ret0, _ := ret[0].([]inventory.Brand)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SearchBrands indicates an expected call of SearchBrands.
-func (mr *MockInventoryServiceMockRecorder) SearchBrands(ctx, term, userID, limit any) *gomock.Call {
+func (mr *MockInventoryServiceMockRecorder) SearchBrands(ctx, term, userID, rank, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBrands", reflect.TypeOf((*MockInventoryService)(nil).SearchBrands), ctx, term, userID, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBrands", reflect.TypeOf((*MockInventoryService)(nil).SearchBrands), ctx, term, userID, rank, limit)
+}
+
+// SearchIngredients mocks base method.
+func (m *MockInventoryService) SearchIngredients(ctx context.Context, term string, rank inventory.RankParams, limit, offset int32) ([]inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchIngredients", ctx, term, rank, limit, offset)
+	ret0, _ := ret[0].([]inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchIngredients indicates an expected call of SearchIngredients.
+func (mr *MockInventoryServiceMockRecorder) SearchIngredients(ctx, term, rank, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchIngredients", reflect.TypeOf((*MockInventoryService)(nil).SearchIngredients), ctx, term, rank, limit, offset)
+}
+
+// SearchItems mocks base method.
+func (m *MockInventoryService) SearchItems(ctx context.Context, userID int64, term string, rank inventory.RankParams, limit, offset int32) ([]inventory.Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchItems", ctx, userID, term, rank, limit, offset)
+	ret0, _ := ret[0].([]inventory.Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchItems indicates an expected call of SearchItems.
+func (mr *MockInventoryServiceMockRecorder) SearchItems(ctx, userID, term, rank, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchItems", reflect.TypeOf((*MockInventoryService)(nil).SearchItems), ctx, userID, term, rank, limit, offset)
 }
 
 // SetBrandStatus mocks base method.
@@ -5464,6 +5494,21 @@ func (mr *MockPantryStoreMockRecorder) CountHouseholdItems(ctx, householdID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdItems", reflect.TypeOf((*MockPantryStore)(nil).CountHouseholdItems), ctx, householdID)
 }
 
+// CountSearchHouseholdItems mocks base method.
+func (m *MockPantryStore) CountSearchHouseholdItems(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchHouseholdItems", ctx, householdID, includeIDs)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchHouseholdItems indicates an expected call of CountSearchHouseholdItems.
+func (mr *MockPantryStoreMockRecorder) CountSearchHouseholdItems(ctx, householdID, includeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchHouseholdItems", reflect.TypeOf((*MockPantryStore)(nil).CountSearchHouseholdItems), ctx, householdID, includeIDs)
+}
+
 // DeleteHouseholdItem mocks base method.
 func (m *MockPantryStore) DeleteHouseholdItem(ctx context.Context, householdItemID, householdID int64) error {
 	m.ctrl.T.Helper()
@@ -5506,6 +5551,21 @@ func (m *MockPantryStore) ListHouseholdItems(ctx context.Context, householdID in
 func (mr *MockPantryStoreMockRecorder) ListHouseholdItems(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdItems", reflect.TypeOf((*MockPantryStore)(nil).ListHouseholdItems), ctx, householdID, limit, offset)
+}
+
+// SearchHouseholdItems mocks base method.
+func (m *MockPantryStore) SearchHouseholdItems(ctx context.Context, arg userprefs.PantrySearch) ([]userprefs.HouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchHouseholdItems", ctx, arg)
+	ret0, _ := ret[0].([]userprefs.HouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchHouseholdItems indicates an expected call of SearchHouseholdItems.
+func (mr *MockPantryStoreMockRecorder) SearchHouseholdItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchHouseholdItems", reflect.TypeOf((*MockPantryStore)(nil).SearchHouseholdItems), ctx, arg)
 }
 
 // UpsertHouseholdItem mocks base method.
@@ -5562,6 +5622,21 @@ func (mr *MockCellarStoreMockRecorder) CountHouseholdBottles(ctx, householdID an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdBottles", reflect.TypeOf((*MockCellarStore)(nil).CountHouseholdBottles), ctx, householdID)
 }
 
+// CountSearchHouseholdBottles mocks base method.
+func (m *MockCellarStore) CountSearchHouseholdBottles(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchHouseholdBottles", ctx, householdID, includeIDs)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchHouseholdBottles indicates an expected call of CountSearchHouseholdBottles.
+func (mr *MockCellarStoreMockRecorder) CountSearchHouseholdBottles(ctx, householdID, includeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchHouseholdBottles", reflect.TypeOf((*MockCellarStore)(nil).CountSearchHouseholdBottles), ctx, householdID, includeIDs)
+}
+
 // GetHouseholdBottleByBottle mocks base method.
 func (m *MockCellarStore) GetHouseholdBottleByBottle(ctx context.Context, householdID, bottleID int64) (*userprefs.HouseholdBottle, error) {
 	m.ctrl.T.Helper()
@@ -5590,6 +5665,21 @@ func (m *MockCellarStore) ListHouseholdBottles(ctx context.Context, householdID 
 func (mr *MockCellarStoreMockRecorder) ListHouseholdBottles(ctx, householdID, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHouseholdBottles", reflect.TypeOf((*MockCellarStore)(nil).ListHouseholdBottles), ctx, householdID, limit, offset)
+}
+
+// SearchHouseholdBottles mocks base method.
+func (m *MockCellarStore) SearchHouseholdBottles(ctx context.Context, arg userprefs.CellarSearch) ([]userprefs.HouseholdBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchHouseholdBottles", ctx, arg)
+	ret0, _ := ret[0].([]userprefs.HouseholdBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchHouseholdBottles indicates an expected call of SearchHouseholdBottles.
+func (mr *MockCellarStoreMockRecorder) SearchHouseholdBottles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchHouseholdBottles", reflect.TypeOf((*MockCellarStore)(nil).SearchHouseholdBottles), ctx, arg)
 }
 
 // UpsertHouseholdBottle mocks base method.
@@ -5689,6 +5779,36 @@ func (m *MockFavoriteStore) ListBottleFavorites(ctx context.Context, userID int6
 func (mr *MockFavoriteStoreMockRecorder) ListBottleFavorites(ctx, userID, bottleIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleFavorites", reflect.TypeOf((*MockFavoriteStore)(nil).ListBottleFavorites), ctx, userID, bottleIDs)
+}
+
+// ListFavoriteBottleIDs mocks base method.
+func (m *MockFavoriteStore) ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFavoriteBottleIDs", ctx, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFavoriteBottleIDs indicates an expected call of ListFavoriteBottleIDs.
+func (mr *MockFavoriteStoreMockRecorder) ListFavoriteBottleIDs(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFavoriteBottleIDs", reflect.TypeOf((*MockFavoriteStore)(nil).ListFavoriteBottleIDs), ctx, userID)
+}
+
+// ListFavoriteItemIDs mocks base method.
+func (m *MockFavoriteStore) ListFavoriteItemIDs(ctx context.Context, userID int64) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFavoriteItemIDs", ctx, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFavoriteItemIDs indicates an expected call of ListFavoriteItemIDs.
+func (mr *MockFavoriteStoreMockRecorder) ListFavoriteItemIDs(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFavoriteItemIDs", reflect.TypeOf((*MockFavoriteStore)(nil).ListFavoriteItemIDs), ctx, userID)
 }
 
 // ListFavoriteRecipeIDs mocks base method.
@@ -5850,6 +5970,36 @@ func (mr *MockUserPrefsServiceMockRecorder) CountHouseholdItems(ctx, householdID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountHouseholdItems", reflect.TypeOf((*MockUserPrefsService)(nil).CountHouseholdItems), ctx, householdID)
 }
 
+// CountSearchHouseholdBottles mocks base method.
+func (m *MockUserPrefsService) CountSearchHouseholdBottles(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchHouseholdBottles", ctx, householdID, includeIDs)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchHouseholdBottles indicates an expected call of CountSearchHouseholdBottles.
+func (mr *MockUserPrefsServiceMockRecorder) CountSearchHouseholdBottles(ctx, householdID, includeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchHouseholdBottles", reflect.TypeOf((*MockUserPrefsService)(nil).CountSearchHouseholdBottles), ctx, householdID, includeIDs)
+}
+
+// CountSearchHouseholdItems mocks base method.
+func (m *MockUserPrefsService) CountSearchHouseholdItems(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchHouseholdItems", ctx, householdID, includeIDs)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchHouseholdItems indicates an expected call of CountSearchHouseholdItems.
+func (mr *MockUserPrefsServiceMockRecorder) CountSearchHouseholdItems(ctx, householdID, includeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchHouseholdItems", reflect.TypeOf((*MockUserPrefsService)(nil).CountSearchHouseholdItems), ctx, householdID, includeIDs)
+}
+
 // DeleteHouseholdItem mocks base method.
 func (m *MockUserPrefsService) DeleteHouseholdItem(ctx context.Context, householdItemID, householdID int64) error {
 	m.ctrl.T.Helper()
@@ -5954,6 +6104,36 @@ func (mr *MockUserPrefsServiceMockRecorder) ListBottleFavorites(ctx, userID, bot
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBottleFavorites", reflect.TypeOf((*MockUserPrefsService)(nil).ListBottleFavorites), ctx, userID, bottleIDs)
 }
 
+// ListFavoriteBottleIDs mocks base method.
+func (m *MockUserPrefsService) ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFavoriteBottleIDs", ctx, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFavoriteBottleIDs indicates an expected call of ListFavoriteBottleIDs.
+func (mr *MockUserPrefsServiceMockRecorder) ListFavoriteBottleIDs(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFavoriteBottleIDs", reflect.TypeOf((*MockUserPrefsService)(nil).ListFavoriteBottleIDs), ctx, userID)
+}
+
+// ListFavoriteItemIDs mocks base method.
+func (m *MockUserPrefsService) ListFavoriteItemIDs(ctx context.Context, userID int64) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFavoriteItemIDs", ctx, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFavoriteItemIDs indicates an expected call of ListFavoriteItemIDs.
+func (mr *MockUserPrefsServiceMockRecorder) ListFavoriteItemIDs(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFavoriteItemIDs", reflect.TypeOf((*MockUserPrefsService)(nil).ListFavoriteItemIDs), ctx, userID)
+}
+
 // ListFavoriteRecipeIDs mocks base method.
 func (m *MockUserPrefsService) ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error) {
 	m.ctrl.T.Helper()
@@ -6041,6 +6221,36 @@ func (m *MockUserPrefsService) MergeHouseholdStock(ctx context.Context, fromHous
 func (mr *MockUserPrefsServiceMockRecorder) MergeHouseholdStock(ctx, fromHouseholdID, toHouseholdID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeHouseholdStock", reflect.TypeOf((*MockUserPrefsService)(nil).MergeHouseholdStock), ctx, fromHouseholdID, toHouseholdID, by)
+}
+
+// SearchHouseholdBottles mocks base method.
+func (m *MockUserPrefsService) SearchHouseholdBottles(ctx context.Context, arg userprefs.CellarSearch) ([]userprefs.HouseholdBottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchHouseholdBottles", ctx, arg)
+	ret0, _ := ret[0].([]userprefs.HouseholdBottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchHouseholdBottles indicates an expected call of SearchHouseholdBottles.
+func (mr *MockUserPrefsServiceMockRecorder) SearchHouseholdBottles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchHouseholdBottles", reflect.TypeOf((*MockUserPrefsService)(nil).SearchHouseholdBottles), ctx, arg)
+}
+
+// SearchHouseholdItems mocks base method.
+func (m *MockUserPrefsService) SearchHouseholdItems(ctx context.Context, arg userprefs.PantrySearch) ([]userprefs.HouseholdItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchHouseholdItems", ctx, arg)
+	ret0, _ := ret[0].([]userprefs.HouseholdItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchHouseholdItems indicates an expected call of SearchHouseholdItems.
+func (mr *MockUserPrefsServiceMockRecorder) SearchHouseholdItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchHouseholdItems", reflect.TypeOf((*MockUserPrefsService)(nil).SearchHouseholdItems), ctx, arg)
 }
 
 // SetBottleFavorite mocks base method.
@@ -7451,6 +7661,21 @@ func (mr *MockBottleReaderMockRecorder) CountBottles(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBottles", reflect.TypeOf((*MockBottleReader)(nil).CountBottles), ctx)
 }
 
+// CountSearchBottles mocks base method.
+func (m *MockBottleReader) CountSearchBottles(ctx context.Context, term string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, term)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchBottles indicates an expected call of CountSearchBottles.
+func (mr *MockBottleReaderMockRecorder) CountSearchBottles(ctx, term any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockBottleReader)(nil).CountSearchBottles), ctx, term)
+}
+
 // GetBottleByID mocks base method.
 func (m *MockBottleReader) GetBottleByID(ctx context.Context, bottleID int64) (wine.Bottle, error) {
 	m.ctrl.T.Helper()
@@ -7734,6 +7959,36 @@ func (m *MockBottleReader) ListWineFlavorProfiles(ctx context.Context) ([]wine.W
 func (mr *MockBottleReaderMockRecorder) ListWineFlavorProfiles(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWineFlavorProfiles", reflect.TypeOf((*MockBottleReader)(nil).ListWineFlavorProfiles), ctx)
+}
+
+// MatchBottleIDs mocks base method.
+func (m *MockBottleReader) MatchBottleIDs(ctx context.Context, term string) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MatchBottleIDs", ctx, term)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchBottleIDs indicates an expected call of MatchBottleIDs.
+func (mr *MockBottleReaderMockRecorder) MatchBottleIDs(ctx, term any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchBottleIDs", reflect.TypeOf((*MockBottleReader)(nil).MatchBottleIDs), ctx, term)
+}
+
+// SearchBottles mocks base method.
+func (m *MockBottleReader) SearchBottles(ctx context.Context, term string, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBottles", ctx, term, rank, limit, offset)
+	ret0, _ := ret[0].([]wine.Bottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchBottles indicates an expected call of SearchBottles.
+func (mr *MockBottleReaderMockRecorder) SearchBottles(ctx, term, rank, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockBottleReader)(nil).SearchBottles), ctx, term, rank, limit, offset)
 }
 
 // MockBottleWriter is a mock of BottleWriter interface.
@@ -8216,6 +8471,21 @@ func (m *MockWineService) CountBottles(ctx context.Context) (int64, error) {
 func (mr *MockWineServiceMockRecorder) CountBottles(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBottles", reflect.TypeOf((*MockWineService)(nil).CountBottles), ctx)
+}
+
+// CountSearchBottles mocks base method.
+func (m *MockWineService) CountSearchBottles(ctx context.Context, term string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, term)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchBottles indicates an expected call of CountSearchBottles.
+func (mr *MockWineServiceMockRecorder) CountSearchBottles(ctx, term any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockWineService)(nil).CountSearchBottles), ctx, term)
 }
 
 // CreateBottle mocks base method.
@@ -8706,6 +8976,21 @@ func (mr *MockWineServiceMockRecorder) ListWineFlavorProfiles(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWineFlavorProfiles", reflect.TypeOf((*MockWineService)(nil).ListWineFlavorProfiles), ctx)
 }
 
+// MatchBottleIDs mocks base method.
+func (m *MockWineService) MatchBottleIDs(ctx context.Context, term string) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MatchBottleIDs", ctx, term)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchBottleIDs indicates an expected call of MatchBottleIDs.
+func (mr *MockWineServiceMockRecorder) MatchBottleIDs(ctx, term any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchBottleIDs", reflect.TypeOf((*MockWineService)(nil).MatchBottleIDs), ctx, term)
+}
+
 // RemoveBottleFlavorProfile mocks base method.
 func (m *MockWineService) RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64) error {
 	m.ctrl.T.Helper()
@@ -8732,6 +9017,21 @@ func (m *MockWineService) RemoveBottleGrapeVariety(ctx context.Context, bottleID
 func (mr *MockWineServiceMockRecorder) RemoveBottleGrapeVariety(ctx, bottleID, grapeVarietyID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveBottleGrapeVariety", reflect.TypeOf((*MockWineService)(nil).RemoveBottleGrapeVariety), ctx, bottleID, grapeVarietyID)
+}
+
+// SearchBottles mocks base method.
+func (m *MockWineService) SearchBottles(ctx context.Context, term string, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBottles", ctx, term, rank, limit, offset)
+	ret0, _ := ret[0].([]wine.Bottle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchBottles indicates an expected call of SearchBottles.
+func (mr *MockWineServiceMockRecorder) SearchBottles(ctx, term, rank, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockWineService)(nil).SearchBottles), ctx, term, rank, limit, offset)
 }
 
 // UpdateBottle mocks base method.

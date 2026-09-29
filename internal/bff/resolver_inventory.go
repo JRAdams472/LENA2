@@ -89,7 +89,16 @@ func (r *Resolver) SearchBrands(ctx context.Context, args struct {
 	if term == "" {
 		return nil, nil
 	}
-	brands, err := r.InventoryService.SearchBrands(ctx, term, u.UserID, limit)
+	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityBrand)
+	if err != nil {
+		return nil, err
+	}
+	brands, err := r.InventoryService.SearchBrands(ctx, term, u.UserID, inventory.RankParams{
+		PersonalIDs:  eng.PersonalIDs,
+		HouseholdIDs: eng.HouseholdIDs,
+		GlobalIDs:    eng.GlobalIDs,
+		SearchTerms:  eng.SearchTerms,
+	}, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -414,17 +423,34 @@ func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*ite
 func (r *Resolver) Items(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Search   *string
 }) (*itemPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	items, err := r.InventoryService.ListItems(ctx, u.UserID, pageSize, (page-1)*pageSize)
+	term := strings.TrimSpace(derefString(args.Search))
+	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityItem)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.InventoryService.CountItems(ctx, u.UserID)
+	favIDs, err := r.UserPrefsService.ListFavoriteItemIDs(ctx, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	rank := inventory.RankParams{
+		FavoriteIDs:  favIDs,
+		PersonalIDs:  eng.PersonalIDs,
+		HouseholdIDs: eng.HouseholdIDs,
+		GlobalIDs:    eng.GlobalIDs,
+		SearchTerms:  eng.SearchTerms,
+	}
+	items, err := r.InventoryService.SearchItems(ctx, u.UserID, term, rank, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.InventoryService.CountSearchItems(ctx, u.UserID, term)
 	if err != nil {
 		return nil, err
 	}
@@ -522,20 +548,33 @@ func (r *Resolver) Ingredient(ctx context.Context, args struct{ ID graphql.ID })
 	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
 }
 
-// Ingredients resolves a paginated list of generic ingredients.
+// Ingredients resolves a paginated list of generic ingredients, ordered by
+// engagement tier and optionally filtered by a name term.
 func (r *Resolver) Ingredients(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Search   *string
 }) (*ingredientPageResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
-		return nil, err
-	}
-	page, pageSize := pageArgs(args.Page, args.PageSize)
-	ingredients, err := r.InventoryService.ListIngredients(ctx, pageSize, (page-1)*pageSize)
+	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.InventoryService.CountIngredients(ctx)
+	page, pageSize := pageArgs(args.Page, args.PageSize)
+	term := strings.TrimSpace(derefString(args.Search))
+	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityIngredient)
+	if err != nil {
+		return nil, err
+	}
+	ingredients, err := r.InventoryService.SearchIngredients(ctx, term, inventory.RankParams{
+		PersonalIDs:  eng.PersonalIDs,
+		HouseholdIDs: eng.HouseholdIDs,
+		GlobalIDs:    eng.GlobalIDs,
+		SearchTerms:  eng.SearchTerms,
+	}, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.InventoryService.CountSearchIngredients(ctx, term)
 	if err != nil {
 		return nil, err
 	}

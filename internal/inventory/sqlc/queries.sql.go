@@ -75,6 +75,38 @@ func (q *Queries) CountPendingItems(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countSearchIngredients = `-- name: CountSearchIngredients :one
+SELECT COUNT(*)
+FROM inventory.ingredient
+WHERE ($1::text IS NULL OR lower(name) LIKE '%' || lower($1) || '%')
+`
+
+func (q *Queries) CountSearchIngredients(ctx context.Context, search pgtype.Text) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchIngredients, search)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSearchItems = `-- name: CountSearchItems :one
+SELECT COUNT(*)
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+`
+
+type CountSearchItemsParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Search            pgtype.Text `json:"search"`
+}
+
+func (q *Queries) CountSearchItems(ctx context.Context, arg CountSearchItemsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchItems, arg.SubmittedByUserID, arg.Search)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBrand = `-- name: CreateBrand :one
 INSERT INTO inventory.brand (name, status, created_by, updated_by)
 VALUES ($1, 'approved', $2, $2)
@@ -1371,6 +1403,8 @@ type ListIngredientsParams struct {
 	Offset int32 `json:"offset"`
 }
 
+// Plain alphabetical paging for internal consumers (recipe import); ranked
+// listing goes through SearchIngredients.
 func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams) ([]InventoryIngredient, error) {
 	rows, err := q.db.Query(ctx, listIngredients, arg.Limit, arg.Offset)
 	if err != nil {
@@ -1416,6 +1450,8 @@ type ListItemsParams struct {
 }
 
 // Items are visible when approved, or when the caller submitted them.
+// Plain alphabetical paging for internal consumers (recipe import); ranked
+// listing goes through SearchItems.
 func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error) {
 	rows, err := q.db.Query(ctx, listItems, arg.SubmittedByUserID, arg.Limit, arg.Offset)
 	if err != nil {
@@ -1618,12 +1654,159 @@ func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
 	return items, nil
 }
 
+const matchItemIDs = `-- name: MatchItemIDs :many
+SELECT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND lower(name) LIKE '%' || lower($2) || '%'
+LIMIT 1000
+`
+
+type MatchItemIDsParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Lower             string      `json:"lower"`
+}
+
+// IDs of visible items whose name matches the term — feeds include_ids on
+// household-scoped queries that cannot join this schema (pantry search).
+func (q *Queries) MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, matchItemIDs, arg.SubmittedByUserID, arg.Lower)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var item_id int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const matchItemIDsByTerms = `-- name: MatchItemIDsByTerms :many
+SELECT DISTINCT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+  AND EXISTS (
+    SELECT 1 FROM unnest($3::text[]) t
+    WHERE position(lower(t) in lower(name)) > 0
+  )
+LIMIT 500
+`
+
+type MatchItemIDsByTermsParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Search            pgtype.Text `json:"search"`
+	SearchTerms       []string    `json:"search_terms"`
+}
+
+// Items matching any of the user's prior search terms — the "searched"
+// engagement tier resolved to IDs so it can join the ranked set. One
+// per-page scan, only run when the user has recorded terms.
+func (q *Queries) MatchItemIDsByTerms(ctx context.Context, arg MatchItemIDsByTermsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, matchItemIDsByTerms, arg.SubmittedByUserID, arg.Search, arg.SearchTerms)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var item_id int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rankedItems = `-- name: RankedItems :many
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+  AND item_id IN (SELECT unnest($3::bigint[]))
+`
+
+type RankedItemsParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Search            pgtype.Text `json:"search"`
+	EngagedIds        []int64     `json:"engaged_ids"`
+}
+
+// The engaged slice of an item search: every catalog row matching the
+// visibility/term filters whose ID is in the caller's engagement set. At
+// most a few thousand rows — fetched whole and tier-sorted in Go, which is
+// far cheaper than ORDER BY CASE over the full ~110k-row catalog.
+func (q *Queries) RankedItems(ctx context.Context, arg RankedItemsParams) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, rankedItems, arg.SubmittedByUserID, arg.Search, arg.EngagedIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.Name,
+			&i.BrandID,
+			&i.Upc12,
+			&i.Upc14,
+			&i.CategoryID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchBrands = `-- name: SearchBrands :many
 SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND name_normalized LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
-ORDER BY name
+ORDER BY
+  CASE
+    WHEN brand_id = ANY($4::bigint[]) THEN 0
+    WHEN brand_id = ANY($5::bigint[]) THEN 1
+    WHEN EXISTS (
+      SELECT 1 FROM unnest($6::text[]) t
+      WHERE position(lower(t) in lower(name)) > 0
+    ) THEN 2
+    WHEN brand_id = ANY($7::bigint[]) THEN 3
+    ELSE 4
+  END,
+  array_position($4::bigint[], brand_id),
+  array_position($5::bigint[], brand_id),
+  array_position($7::bigint[], brand_id),
+  name,
+  brand_id
 LIMIT $3
 `
 
@@ -1631,10 +1814,28 @@ type SearchBrandsParams struct {
 	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
 	RegexpReplace     string      `json:"regexp_replace"`
 	Limit             int32       `json:"limit"`
+	PersonalIds       []int64     `json:"personal_ids"`
+	HouseholdIds      []int64     `json:"household_ids"`
+	SearchTerms       []string    `json:"search_terms"`
+	GlobalIds         []int64     `json:"global_ids"`
 }
 
+// Engagement-ranked brand picker search. Tiers come from ID arrays the BFF
+// computes from analytics/userprefs (other schemas — SQL never crosses them):
+//
+//	0 personal-used, 1 household-used, 2 prior-search-term match,
+//	3 global-popular, 4 rest. The score arrays arrive pre-sorted so
+//	array_position doubles as the in-tier tiebreaker.
 func (q *Queries) SearchBrands(ctx context.Context, arg SearchBrandsParams) ([]InventoryBrand, error) {
-	rows, err := q.db.Query(ctx, searchBrands, arg.SubmittedByUserID, arg.RegexpReplace, arg.Limit)
+	rows, err := q.db.Query(ctx, searchBrands,
+		arg.SubmittedByUserID,
+		arg.RegexpReplace,
+		arg.Limit,
+		arg.PersonalIds,
+		arg.HouseholdIds,
+		arg.SearchTerms,
+		arg.GlobalIds,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1654,6 +1855,144 @@ func (q *Queries) SearchBrands(ctx context.Context, arg SearchBrandsParams) ([]I
 			&i.ApprovedByUserID,
 			&i.ApprovedAt,
 			&i.NameNormalized,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchIngredients = `-- name: SearchIngredients :many
+SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
+FROM inventory.ingredient
+WHERE ($1::text IS NULL OR lower(name) LIKE '%' || lower($1) || '%')
+ORDER BY
+  CASE
+    WHEN ingredient_id = ANY($2::bigint[]) THEN 0
+    WHEN ingredient_id = ANY($3::bigint[]) THEN 1
+    WHEN EXISTS (
+      SELECT 1 FROM unnest($4::text[]) t
+      WHERE position(lower(t) in lower(name)) > 0
+    ) THEN 2
+    WHEN ingredient_id = ANY($5::bigint[]) THEN 3
+    ELSE 4
+  END,
+  array_position($2::bigint[], ingredient_id),
+  array_position($3::bigint[], ingredient_id),
+  array_position($5::bigint[], ingredient_id),
+  name,
+  ingredient_id
+LIMIT $7::int OFFSET $6::int
+`
+
+type SearchIngredientsParams struct {
+	Search       pgtype.Text `json:"search"`
+	PersonalIds  []int64     `json:"personal_ids"`
+	HouseholdIds []int64     `json:"household_ids"`
+	SearchTerms  []string    `json:"search_terms"`
+	GlobalIds    []int64     `json:"global_ids"`
+	Offset       int32       `json:"offset"`
+	Limit        int32       `json:"limit"`
+}
+
+// Engagement-ranked ingredient browse/search — same tier pattern as
+// SearchItems minus favorites (ingredients have no favorite store).
+func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsParams) ([]InventoryIngredient, error) {
+	rows, err := q.db.Query(ctx, searchIngredients,
+		arg.Search,
+		arg.PersonalIds,
+		arg.HouseholdIds,
+		arg.SearchTerms,
+		arg.GlobalIds,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryIngredient{}
+	for rows.Next() {
+		var i InventoryIngredient
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.Name,
+			&i.CategoryID,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.DefaultUnitID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchItemsRemainder = `-- name: SearchItemsRemainder :many
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+  AND item_id NOT IN (SELECT unnest($3::bigint[]))
+ORDER BY name, item_id
+LIMIT $5::int OFFSET $4::int
+`
+
+type SearchItemsRemainderParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Search            pgtype.Text `json:"search"`
+	EngagedIds        []int64     `json:"engaged_ids"`
+	Offset            int32       `json:"offset"`
+	Limit             int32       `json:"limit"`
+}
+
+// The non-engaged slice, served in (name, item_id) index order with a
+// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
+// large catalog.
+func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, searchItemsRemainder,
+		arg.SubmittedByUserID,
+		arg.Search,
+		arg.EngagedIds,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.Name,
+			&i.BrandID,
+			&i.Upc12,
+			&i.Upc14,
+			&i.CategoryID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
 		); err != nil {
 			return nil, err
 		}

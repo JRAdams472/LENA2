@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/wine"
@@ -30,21 +31,39 @@ func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*b
 	return &bottleResolver{wine: r.WineService, b: b, counts: counts[id]}, nil
 }
 
-// Bottles resolves a paginated list of wine bottles.
+// Bottles resolves a paginated list of wine bottles, ordered by engagement
+// tier and optionally filtered by a term matched against vineyard and
+// type/country/region names.
 func (r *Resolver) Bottles(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Search   *string
 }) (*bottlePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	bottles, err := r.WineService.ListBottles(ctx, pageSize, (page-1)*pageSize)
+	term := strings.TrimSpace(derefString(args.Search))
+	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityBottle)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.WineService.CountBottles(ctx)
+	favIDs, err := r.UserPrefsService.ListFavoriteBottleIDs(ctx, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	bottles, err := r.WineService.SearchBottles(ctx, term, wine.RankParams{
+		FavoriteIDs:  favIDs,
+		PersonalIDs:  eng.PersonalIDs,
+		HouseholdIDs: eng.HouseholdIDs,
+		GlobalIDs:    eng.GlobalIDs,
+		SearchTerms:  eng.SearchTerms,
+	}, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.WineService.CountSearchBottles(ctx, term)
 	if err != nil {
 		return nil, err
 	}

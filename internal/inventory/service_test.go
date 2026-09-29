@@ -1307,3 +1307,148 @@ func TestDeleteIngredient_Error(t *testing.T) {
 
 	assert.ErrorIs(t, s.DeleteIngredient(ctx, 9), errBoom)
 }
+
+func TestSearchItems_MapsRankParams(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{
+		FavoriteIDs:  []int64{1},
+		PersonalIDs:  []int64{2, 3},
+		HouseholdIDs: []int64{4},
+		GlobalIDs:    []int64{5},
+		SearchTerms:  []string{"milk"},
+	}
+	user := pgtype.Int8{Int64: 7, Valid: true}
+	search := pgtype.Text{String: "milk", Valid: true}
+	// Searched tier resolves to IDs; 3 is already engaged personally so the
+	// union dedupes it.
+	q.EXPECT().MatchItemIDsByTerms(ctx, sqlc.MatchItemIDsByTermsParams{
+		SubmittedByUserID: user,
+		Search:            search,
+		SearchTerms:       rank.SearchTerms,
+	}).Return([]int64{3, 6}, nil)
+	engaged := []int64{1, 2, 3, 4, 6, 5}
+	// RankedItems returns the engaged rows unordered — the service applies
+	// the tier sort (deliberately reversed here).
+	q.EXPECT().RankedItems(ctx, sqlc.RankedItemsParams{
+		SubmittedByUserID: user,
+		Search:            search,
+		EngagedIds:        engaged,
+	}).Return([]sqlc.InventoryItem{
+		{ItemID: 5, Name: "Global Milk"},
+		{ItemID: 6, Name: "Searched Milk"},
+		{ItemID: 4, Name: "Household Milk"},
+		{ItemID: 3, Name: "Personal Milk"},
+		{ItemID: 2, Name: "Other Milk"},
+		{ItemID: 1, Name: "Fav Milk"},
+	}, nil)
+	// Page of 7 takes all six ranked rows then fills from the remainder at
+	// remainder-offset 0.
+	q.EXPECT().SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
+		SubmittedByUserID: user,
+		Search:            search,
+		EngagedIds:        engaged,
+		Limit:             1,
+		Offset:            0,
+	}).Return([]sqlc.InventoryItem{{ItemID: 42, Name: "Plain Milk"}}, nil)
+
+	got, err := s.SearchItems(ctx, 7, "milk", rank, 7, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 7)
+	// Tier order: favorite 1, personal 2 then 3, household 4, searched 6,
+	// global 5, then the index-ordered remainder.
+	ids := make([]int64, len(got))
+	for i := range got {
+		ids[i] = got[i].ItemID
+	}
+	assert.Equal(t, []int64{1, 2, 3, 4, 6, 5, 42}, ids)
+}
+
+func TestSearchItems_PageIntoRemainder(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{PersonalIDs: []int64{9}}
+	user := pgtype.Int8{Int64: 7, Valid: true}
+	engaged := []int64{9}
+	q.EXPECT().RankedItems(ctx, sqlc.RankedItemsParams{
+		SubmittedByUserID: user,
+		Search:            pgtype.Text{Valid: false},
+		EngagedIds:        engaged,
+	}).Return([]sqlc.InventoryItem{{ItemID: 9, Name: "Used"}}, nil)
+	// Offset 2 is past the single ranked row, so the remainder serves the
+	// whole page at remainder-offset 1.
+	q.EXPECT().SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
+		SubmittedByUserID: user,
+		Search:            pgtype.Text{Valid: false},
+		EngagedIds:        engaged,
+		Limit:             3,
+		Offset:            1,
+	}).Return([]sqlc.InventoryItem{
+		{ItemID: 10, Name: "B"},
+		{ItemID: 11, Name: "C"},
+		{ItemID: 12, Name: "D"},
+	}, nil)
+
+	got, err := s.SearchItems(ctx, 7, "", rank, 3, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, int64(10), got[0].ItemID)
+}
+
+func TestSearchItems_NoEngagement(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	// No engagement signals: no RankedItems/term-match calls at all — the
+	// remainder serves the page directly (cold start).
+	q.EXPECT().SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
+		SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+		Search:            pgtype.Text{Valid: false},
+		EngagedIds:        nil,
+		Limit:             2,
+		Offset:            0,
+	}).Return([]sqlc.InventoryItem{{ItemID: 1, Name: "A"}, {ItemID: 2, Name: "B"}}, nil)
+
+	got, err := s.SearchItems(ctx, 7, "", RankParams{}, 2, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+}
+
+func TestSearchBrands_MapsRankParams(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{PersonalIDs: []int64{9}, GlobalIDs: []int64{8}, SearchTerms: []string{"acme"}}
+	q.EXPECT().SearchBrands(ctx, sqlc.SearchBrandsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+		RegexpReplace:     "acme",
+		Limit:             5,
+		PersonalIds:       rank.PersonalIDs,
+		HouseholdIds:      rank.HouseholdIDs,
+		SearchTerms:       rank.SearchTerms,
+		GlobalIds:         rank.GlobalIDs,
+	}).Return([]sqlc.InventoryBrand{{BrandID: 9, Name: "Acme"}}, nil)
+
+	got, err := s.SearchBrands(ctx, "acme", 7, rank, 5)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(9), got[0].BrandID)
+}
+
+func TestSearchIngredients_MapsRankParams(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{PersonalIDs: []int64{4}}
+	q.EXPECT().SearchIngredients(ctx, sqlc.SearchIngredientsParams{
+		Search:       pgtype.Text{String: "flour", Valid: true},
+		PersonalIds:  rank.PersonalIDs,
+		HouseholdIds: rank.HouseholdIDs,
+		SearchTerms:  rank.SearchTerms,
+		GlobalIds:    rank.GlobalIDs,
+		Limit:        10,
+		Offset:       0,
+	}).Return([]sqlc.InventoryIngredient{{IngredientID: 4, Name: "Flour"}}, nil)
+
+	got, err := s.SearchIngredients(ctx, "flour", rank, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(4), got[0].IngredientID)
+}

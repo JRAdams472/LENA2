@@ -68,7 +68,7 @@ type Query {
   flavorProfiles: [FlavorProfile!]!
   nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
-  items(page: Int = 1, pageSize: Int = 25): ItemPage!
+  items(page: Int = 1, pageSize: Int = 25, search: String): ItemPage!
   # Barcode lookup: matches upc12 for 12-digit codes and upc14 for
   # 13/14-digit codes (13-digit EAN is left-padded to GTIN-14). Returns
   # null when nothing visible to the caller matches.
@@ -77,17 +77,17 @@ type Query {
   pendingItems(page: Int = 1, pageSize: Int = 25): ItemPage! @admin
   frequentItems(limit: Int = 10): [Item!]!
   ingredient(id: ID!): Ingredient
-  ingredients(page: Int = 1, pageSize: Int = 25): IngredientPage!
+  ingredients(page: Int = 1, pageSize: Int = 25, search: String): IngredientPage!
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
   recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean): RecipePage!
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
-  userItems(page: Int = 1, pageSize: Int = 25): UserItemPage!
-  userBottles(page: Int = 1, pageSize: Int = 25): UserBottlePage!
+  userItems(page: Int = 1, pageSize: Int = 25, search: String): UserItemPage!
+  userBottles(page: Int = 1, pageSize: Int = 25, search: String): UserBottlePage!
   bottle(id: ID!): Bottle
-  bottles(page: Int = 1, pageSize: Int = 25): BottlePage!
+  bottles(page: Int = 1, pageSize: Int = 25, search: String): BottlePage!
   types: [WineType!]!
   countries: [Country!]!
   regions(countryId: ID!): [Region!]!
