@@ -49,8 +49,9 @@ export default function RecipeDetailPage() {
   const [stepDependsOn, setStepDependsOn] = useState("");
   const [stepAppliance, setStepAppliance] = useState("");
   const [editingStepId, setEditingStepId] = useState<number | null>(null);
-  const [brand, setBrand] = useState<string | "">("");
+  const [brandId, setBrandId] = useState<number | null>(null);
   const [brandInput, setBrandInput] = useState("");
+  const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
 
@@ -80,7 +81,9 @@ export default function RecipeDetailPage() {
 
   const brandOptions = brandsQuery.data ?? [];
   const selectedBrand =
-    brand === "" ? null : brandOptions.find((b) => b.brandName === brand) ?? null;
+    brandId === null
+      ? null
+      : brandOptions.find((b) => b.brandID === brandId) ?? null;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedItemSearch(itemSearch), 300);
@@ -88,20 +91,31 @@ export default function RecipeDetailPage() {
   }, [itemSearch]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedBrandInput(brandInput), 300);
+    return () => clearTimeout(timer);
+  }, [brandInput]);
+
+  useEffect(() => {
     if (debouncedItemSearch.trim()) {
       void api.recordSearch("item", debouncedItemSearch);
     }
   }, [debouncedItemSearch]);
 
+  useEffect(() => {
+    if (debouncedBrandInput.trim()) {
+      void api.recordSearch("brand", debouncedBrandInput);
+    }
+  }, [debouncedBrandInput]);
+
   const searchQuery = useQuery({
-    queryKey: ["items-search", debouncedItemSearch, brand],
+    queryKey: ["items-search", debouncedItemSearch, brandId],
     queryFn: () =>
       api.searchItems(
         debouncedItemSearch,
-        brand,
-        brand !== "" && debouncedItemSearch.length === 0 ? 1000 : 50
+        brandId ?? undefined,
+        brandId !== null && debouncedItemSearch.length === 0 ? 100 : 50
       ),
-    enabled: brand !== "" || debouncedItemSearch.length >= 2,
+    enabled: brandId !== null || debouncedItemSearch.length >= 2,
   });
 
   const recipeItemsQuery = useQuery({
@@ -412,7 +426,7 @@ export default function RecipeDetailPage() {
             value={selectedBrand}
             onChange={(_, value) => {
               const b = value as Brand | null;
-              setBrand(b?.brandName ?? "");
+              setBrandId(b?.brandID ?? null);
               setBrandInput(b?.brandName ?? "");
               setItemId("");
               setItemSearch("");
@@ -446,9 +460,9 @@ export default function RecipeDetailPage() {
             filterOptions={(options) => options}
             loading={searchQuery.isLoading}
             noOptionsText={
-              brand === "" && debouncedItemSearch.length < 2
+              brandId === null && debouncedItemSearch.length < 2
                 ? "Type at least 2 characters"
-                : brand !== "" && debouncedItemSearch.length === 0
+                : brandId !== null && debouncedItemSearch.length === 0
                 ? "No items for this brand"
                 : "No items found"
             }

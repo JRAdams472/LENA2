@@ -93,15 +93,17 @@ SELECT COUNT(*)
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
+  AND ($3::bigint IS NULL OR brand_id = $3)
 `
 
 type CountSearchItemsParams struct {
 	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
 	Search            pgtype.Text `json:"search"`
+	BrandID           pgtype.Int8 `json:"brand_id"`
 }
 
 func (q *Queries) CountSearchItems(ctx context.Context, arg CountSearchItemsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countSearchItems, arg.SubmittedByUserID, arg.Search)
+	row := q.db.QueryRow(ctx, countSearchItems, arg.SubmittedByUserID, arg.Search, arg.BrandID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -1735,12 +1737,14 @@ SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_a
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
-  AND item_id IN (SELECT unnest($3::bigint[]))
+  AND ($3::bigint IS NULL OR brand_id = $3)
+  AND item_id IN (SELECT unnest($4::bigint[]))
 `
 
 type RankedItemsParams struct {
 	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
 	Search            pgtype.Text `json:"search"`
+	BrandID           pgtype.Int8 `json:"brand_id"`
 	EngagedIds        []int64     `json:"engaged_ids"`
 }
 
@@ -1749,7 +1753,12 @@ type RankedItemsParams struct {
 // most a few thousand rows — fetched whole and tier-sorted in Go, which is
 // far cheaper than ORDER BY CASE over the full ~110k-row catalog.
 func (q *Queries) RankedItems(ctx context.Context, arg RankedItemsParams) ([]InventoryItem, error) {
-	rows, err := q.db.Query(ctx, rankedItems, arg.SubmittedByUserID, arg.Search, arg.EngagedIds)
+	rows, err := q.db.Query(ctx, rankedItems,
+		arg.SubmittedByUserID,
+		arg.Search,
+		arg.BrandID,
+		arg.EngagedIds,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1944,14 +1953,16 @@ SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_a
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
-  AND item_id NOT IN (SELECT unnest($3::bigint[]))
+  AND ($3::bigint IS NULL OR brand_id = $3)
+  AND item_id NOT IN (SELECT unnest($4::bigint[]))
 ORDER BY name, item_id
-LIMIT $5::int OFFSET $4::int
+LIMIT $6::int OFFSET $5::int
 `
 
 type SearchItemsRemainderParams struct {
 	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
 	Search            pgtype.Text `json:"search"`
+	BrandID           pgtype.Int8 `json:"brand_id"`
 	EngagedIds        []int64     `json:"engaged_ids"`
 	Offset            int32       `json:"offset"`
 	Limit             int32       `json:"limit"`
@@ -1964,6 +1975,7 @@ func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemai
 	rows, err := q.db.Query(ctx, searchItemsRemainder,
 		arg.SubmittedByUserID,
 		arg.Search,
+		arg.BrandID,
 		arg.EngagedIds,
 		arg.Offset,
 		arg.Limit,

@@ -68,7 +68,7 @@ type Query {
   flavorProfiles: [FlavorProfile!]!
   nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
-  items(page: Int = 1, pageSize: Int = 25, search: String): ItemPage!
+  items(page: Int = 1, pageSize: Int = 25, search: String, brandId: ID): ItemPage!
   # Barcode lookup: matches upc12 for 12-digit codes and upc14 for
   # 13/14-digit codes (13-digit EAN is left-padded to GTIN-14). Returns
   # null when nothing visible to the caller matches.

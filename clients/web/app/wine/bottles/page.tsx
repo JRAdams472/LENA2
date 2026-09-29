@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -52,8 +52,20 @@ export default function BottlesPage() {
   const [vintageYear, setVintageYear] = useState<string>("");
   const [favorites, setFavorites] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (debouncedSearch.trim()) {
+      void api.recordSearch("bottle", debouncedSearch);
+    }
+  }, [debouncedSearch]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogData, setDialogData] = useState<Record<string, unknown>>({});
@@ -84,13 +96,13 @@ export default function BottlesPage() {
       typeId,
       vintageYear,
       favorites,
-      searchTerm,
+      debouncedSearch,
       pageNumber,
       pageSize,
     ],
     queryFn: () => {
       if (favorites) return api.getFavoriteBottles();
-      if (searchTerm.trim()) return api.searchBottles(searchTerm.trim());
+      if (debouncedSearch.trim()) return api.searchBottles(debouncedSearch.trim());
       if (countryId) return api.getBottlesByCountryId(Number(countryId));
       if (regionId) return api.getBottlesByRegionId(Number(regionId));
       if (typeId) return api.getBottlesByTypeId(Number(typeId));
@@ -132,6 +144,7 @@ export default function BottlesPage() {
   };
 
   const handleEdit = (row: Bottle) => {
+    void api.recordView("bottle", row.bottleID);
     setIsCreate(false);
     setDialogData({ ...row });
     setDialogOpen(true);
@@ -162,7 +175,7 @@ export default function BottlesPage() {
   const rows = pagedData?.items ?? (listData as Bottle[] | undefined) ?? [];
   const isDefaultList =
     !favorites &&
-    !searchTerm.trim() &&
+    !debouncedSearch.trim() &&
     !countryId &&
     !regionId &&
     !typeId &&

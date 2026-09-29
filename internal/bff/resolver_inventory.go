@@ -424,6 +424,7 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
 	Search   *string
+	BrandID  *graphql.ID
 }) (*itemPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -431,6 +432,14 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
 	term := strings.TrimSpace(derefString(args.Search))
+	var brandID *int64
+	if args.BrandID != nil {
+		b, err := parseID(string(*args.BrandID))
+		if err != nil {
+			return nil, err
+		}
+		brandID = &b
+	}
 	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityItem)
 	if err != nil {
 		return nil, err
@@ -446,11 +455,11 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 		GlobalIDs:    eng.GlobalIDs,
 		SearchTerms:  eng.SearchTerms,
 	}
-	items, err := r.InventoryService.SearchItems(ctx, u.UserID, term, rank, pageSize, (page-1)*pageSize)
+	items, err := r.InventoryService.SearchItems(ctx, u.UserID, term, brandID, rank, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.InventoryService.CountSearchItems(ctx, u.UserID, term)
+	total, err := r.InventoryService.CountSearchItems(ctx, u.UserID, term, brandID)
 	if err != nil {
 		return nil, err
 	}

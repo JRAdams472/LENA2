@@ -37,8 +37,9 @@ export default function ItemsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [brand, setBrand] = useState<string | "">("");
+  const [brandId, setBrandId] = useState<number | null>(null);
   const [brandInput, setBrandInput] = useState("");
+  const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
   const [inStock, setInStock] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
 
@@ -48,9 +49,26 @@ export default function ItemsPage() {
   }, [search]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedBrandInput(brandInput), 300);
+    return () => clearTimeout(timer);
+  }, [brandInput]);
+
+  useEffect(() => {
+    if (debouncedSearch.trim()) {
+      void api.recordSearch("item", debouncedSearch);
+    }
+  }, [debouncedSearch]);
+
+  useEffect(() => {
+    if (debouncedBrandInput.trim()) {
+      void api.recordSearch("brand", debouncedBrandInput);
+    }
+  }, [debouncedBrandInput]);
+
+  useEffect(() => {
     // eslint-disable-next-line @eslint-react/set-state-in-effect
     setPageNumber(1);
-  }, [debouncedSearch, brand, inStock, isFavorite]);
+  }, [debouncedSearch, brandId, inStock, isFavorite]);
 
   const brandsQuery = useQuery({
     queryKey: ["item-brands", brandInput],
@@ -62,11 +80,13 @@ export default function ItemsPage() {
 
   const brandOptions = brandsQuery.data ?? [];
   const selectedBrand =
-    brand === "" ? null : brandOptions.find((b) => b.brandName === brand) ?? null;
+    brandId === null
+      ? null
+      : brandOptions.find((b) => b.brandID === brandId) ?? null;
 
   const listQuery = useQuery({
-    queryKey: ["items", pageNumber, pageSize, debouncedSearch, brand, inStock, isFavorite],
-    queryFn: () => api.getItemsPaged(pageNumber, pageSize, debouncedSearch, brand, inStock, isFavorite),
+    queryKey: ["items", pageNumber, pageSize, debouncedSearch, brandId, inStock, isFavorite],
+    queryFn: () => api.getItemsPaged(pageNumber, pageSize, debouncedSearch, brandId ?? undefined, inStock, isFavorite),
     placeholderData: (prev) => prev,
   });
 
@@ -118,6 +138,7 @@ export default function ItemsPage() {
   };
 
   const handleEdit = (row: Item) => {
+    void api.recordView("item", row.itemID);
     setIsCreate(false);
     setDialogData({ ...row });
     setDialogOpen(true);
@@ -239,7 +260,7 @@ export default function ItemsPage() {
           value={selectedBrand}
           onChange={(_, value) => {
             const b = value as Brand | null;
-            setBrand(b?.brandName ?? "");
+            setBrandId(b?.brandID ?? null);
             setBrandInput(b?.brandName ?? "");
             if (b) void api.recordSelection("brand", b.brandID);
           }}

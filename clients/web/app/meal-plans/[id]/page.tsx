@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, Fragment } from "react";
+import { use, useMemo, useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
@@ -72,17 +72,13 @@ function SlotDialog({
     staleTime: 60_000,
   });
 
-  const itemsQuery = useQuery({
-    queryKey: ["items"],
-    queryFn: () => api.getItems(),
-  });
-
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [newItemId, setNewItemId] = useState<string>("");
   const [newQty, setNewQty] = useState<string>("");
   const [newUnit, setNewUnit] = useState<string>("");
-  const [brand, setBrand] = useState<string | "">("");
+  const [brandId, setBrandId] = useState<number | null>(null);
   const [brandInput, setBrandInput] = useState("");
+  const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
 
@@ -96,17 +92,19 @@ function SlotDialog({
 
   const brandOptions = brandsQuery.data ?? [];
   const selectedBrand =
-    brand === "" ? null : brandOptions.find((b) => b.brandName === brand) ?? null;
+    brandId === null
+      ? null
+      : brandOptions.find((b) => b.brandID === brandId) ?? null;
 
   const searchQuery = useQuery({
-    queryKey: ["items-search", debouncedItemSearch, brand],
+    queryKey: ["items-search", debouncedItemSearch, brandId],
     queryFn: () =>
       api.searchItems(
         debouncedItemSearch,
-        brand,
-        brand !== "" && debouncedItemSearch.length === 0 ? 1000 : 50
+        brandId ?? undefined,
+        brandId !== null && debouncedItemSearch.length === 0 ? 100 : 50
       ),
-    enabled: brand !== "" || debouncedItemSearch.length >= 2,
+    enabled: brandId !== null || debouncedItemSearch.length >= 2,
   });
 
   useEffect(() => {
@@ -115,10 +113,21 @@ function SlotDialog({
   }, [itemSearch]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedBrandInput(brandInput), 300);
+    return () => clearTimeout(timer);
+  }, [brandInput]);
+
+  useEffect(() => {
     if (debouncedItemSearch.trim()) {
       void api.recordSearch("item", debouncedItemSearch);
     }
   }, [debouncedItemSearch]);
+
+  useEffect(() => {
+    if (debouncedBrandInput.trim()) {
+      void api.recordSearch("brand", debouncedBrandInput);
+    }
+  }, [debouncedBrandInput]);
 
   const [recipeId, setRecipeId] = useState<string>(
     slot?.recipeID ? String(slot.recipeID) : ""
@@ -246,8 +255,24 @@ function SlotDialog({
     },
   });
 
-  const optionalItems =
-    selectedRecipe?.recipeItems?.filter((ri) => ri.isOptional) ?? [];
+  const optionalItems = useMemo(
+    () => selectedRecipe?.recipeItems?.filter((ri) => ri.isOptional) ?? [],
+    [selectedRecipe]
+  );
+
+  const neededItemIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const oi of optionalItems) ids.add(oi.itemID);
+    for (const a of adhoc) ids.add(a.itemID);
+    for (const oid of selectedOptionalIds) ids.add(Number(oid));
+    return [...ids].sort((a, b) => a - b);
+  }, [optionalItems, adhoc, selectedOptionalIds]);
+
+  const itemsQuery = useQuery({
+    queryKey: ["items-by-ids", neededItemIds],
+    queryFn: () => api.getItemsByIds(neededItemIds),
+    enabled: neededItemIds.length > 0,
+  });
 
   const handleAddAdhoc = () => {
     if (newItemId !== "" && newQty !== "") {
@@ -258,7 +283,7 @@ function SlotDialog({
       setNewItemId("");
       setNewQty("");
       setNewUnit("");
-      setBrand("");
+      setBrandId(null);
       setItemSearch("");
       setDebouncedItemSearch("");
     }
@@ -420,7 +445,7 @@ function SlotDialog({
             value={selectedBrand}
             onChange={(_, value) => {
               const b = value as Brand | null;
-              setBrand(b?.brandName ?? "");
+              setBrandId(b?.brandID ?? null);
               setBrandInput(b?.brandName ?? "");
               setNewItemId("");
               setNewUnit("");
@@ -458,9 +483,9 @@ function SlotDialog({
             filterOptions={(options) => options}
             loading={searchQuery.isLoading}
             noOptionsText={
-              brand === "" && debouncedItemSearch.length < 2
+              brandId === null && debouncedItemSearch.length < 2
                 ? "Type at least 2 characters"
-                : brand !== "" && debouncedItemSearch.length === 0
+                : brandId !== null && debouncedItemSearch.length === 0
                 ? "No items for this brand"
                 : "No items found"
             }
@@ -616,9 +641,18 @@ export default function MealPlanDetailPage({
     },
   });
 
+  const planItemIds = useMemo(() => {
+    const ids = new Set<number>();
+    planQuery.data?.mealSlots?.forEach((s) =>
+      s.mealSlotItems?.forEach((i) => ids.add(i.itemID))
+    );
+    return [...ids].sort((a, b) => a - b);
+  }, [planQuery.data]);
+
   const itemsQuery = useQuery({
-    queryKey: ["items"],
-    queryFn: () => api.getItems(),
+    queryKey: ["items-by-ids", planItemIds],
+    queryFn: () => api.getItemsByIds(planItemIds),
+    enabled: planItemIds.length > 0,
   });
 
   const findSlot = (day: number, mealType: number) =>

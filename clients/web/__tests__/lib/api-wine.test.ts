@@ -269,17 +269,19 @@ describe("api client: bottles", () => {
     expect(bottles[0].vintageYear).toBe(2020);
   });
 
-  it("searchBottles matches on vineyard and tolerates null vineyards", async () => {
+  it("searchBottles issues a ranked server-side query", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL(
-        bottlesPage([
-          gqlBottle({ id: "1", vineyard: "Napa Valley" }),
-          gqlBottle({ id: "2", vineyard: null }),
-        ])
+        bottlesPage([gqlBottle({ id: "1", vineyard: "Napa Valley" })])
       )
     );
 
     const bottles = await api.searchBottles("napa");
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.query).toContain("bottles(page: 1");
+    expect(body.query).toContain("search: $search");
+    expect(body.variables).toEqual({ search: "napa" });
     expect(bottles).toHaveLength(1);
     expect(bottles[0].vineyard).toBe("Napa Valley");
   });
