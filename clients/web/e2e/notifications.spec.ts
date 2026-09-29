@@ -8,6 +8,10 @@ function thisMonday(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Both specs share e2e-user-1's notification prefs — the toggle test can
+// suppress the sweep test's reminder when they run in parallel. Serialize.
+test.describe.configure({ mode: "serial" });
+
 test.describe("notification manager", () => {
   test("expiring item triggers a reminder that can add a grocery replacement", async ({
     page,
@@ -92,13 +96,43 @@ test.describe("notification manager", () => {
         .getByRole("button", { name: "Add to list" })
         .click();
       await expect(page).toHaveURL(/\/grocery-lists/);
-      // Lists sort newest-first; the just-generated list is row 1 (row 0
-      // is the header).
-      await page
-        .getByRole("row")
-        .nth(1)
-        .getByRole("link", { name: "View" })
-        .click();
+      // Row order is unsafe under parallel specs (another test may have
+      // created a newer list) — find the list that actually holds the item.
+      const lists = await graphql<{
+        groceryLists: { items: { id: string }[] };
+      }>(
+        request,
+        token,
+        `query { groceryLists(page: 1, pageSize: 10) { items { id } } }`
+      );
+      let targetList: string | null = null;
+      for (const l of lists.groceryLists.items) {
+        const detail = await graphql<{
+          groceryList: {
+            items: {
+              item: { name: string } | null;
+              manualItemName: string | null;
+            }[];
+          };
+        }>(
+          request,
+          token,
+          `query ($id: ID!) {
+            groceryList(id: $id) { items { item { name } manualItemName } }
+          }`,
+          { id: l.id }
+        );
+        if (
+          detail.groceryList.items.some(
+            (i) => (i.item?.name ?? i.manualItemName) === itemName
+          )
+        ) {
+          targetList = l.id;
+          break;
+        }
+      }
+      expect(targetList).not.toBeNull();
+      await page.goto(`/grocery-lists/${targetList}`);
       await expect(page.getByText(itemName)).toBeVisible();
     } finally {
       // Disable the expiry category so reruns don't pile up reminders

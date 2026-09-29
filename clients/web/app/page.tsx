@@ -15,7 +15,7 @@ import Paper from "@mui/material/Paper";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import LunchDiningIcon from "@mui/icons-material/LunchDining";
 import DinnerDiningIcon from "@mui/icons-material/DinnerDining";
-import { alpha, useTheme } from "@mui/material/styles";
+import { alpha, styled, useTheme } from "@mui/material/styles";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 
@@ -45,6 +45,29 @@ function sizeBadge(name: string, unit: string): string | null {
   if (m) return m[1];
   return unit && unit !== "each" ? unit : null;
 }
+
+function stripSize(name: string, size: string | null): string {
+  if (!size) return name;
+  return name
+    .replace(size, "")
+    .replace(/[\s\-–—,]+$/, "")
+    .trim();
+}
+
+const PlanMealLink = styled(Link)({
+  display: "inline-flex",
+  alignItems: "center",
+  fontSize: "0.75rem",
+  fontWeight: 500,
+  fontStyle: "normal",
+  color: "#475569",
+  backgroundColor: "#ffffff",
+  border: "1px dashed #cbd5e1",
+  borderRadius: 999,
+  padding: "5px 12px",
+  textDecoration: "none",
+  "&:hover": { backgroundColor: "#f1f5f9" },
+});
 
 function isDateInRange(date: Date, weekStartDate: string) {
   const start = new Date(weekStartDate);
@@ -212,7 +235,7 @@ export default function Dashboard() {
         {activePlanId === null ? (
           <Typography color="text.secondary">
             No meal plan for this week.{" "}
-            <Link href="/meal-plans">+ Plan a meal</Link>
+            <PlanMealLink href="/meal-plans">+ Plan a meal</PlanMealLink>
           </Typography>
         ) : (
           <Box
@@ -246,12 +269,9 @@ export default function Dashboard() {
                       {slot.recipe?.recipeName ?? recipeName(slot.recipeID)}
                     </Typography>
                   ) : (
-                    <Typography
-                      variant="body2"
-                      sx={{ fontStyle: "italic", color: "text.secondary" }}
-                    >
-                      <Link href="/meal-plans">+ Plan a meal</Link>
-                    </Typography>
+                    <PlanMealLink href="/meal-plans">
+                      + Plan a meal
+                    </PlanMealLink>
                   )}
                 </Box>
               );
@@ -260,10 +280,27 @@ export default function Dashboard() {
         )}
       </Paper>
 
-      <Paper sx={{ p: 2, mt: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Suggested for You
-        </Typography>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          gap: 3,
+          mt: 3,
+          alignItems: "start",
+        }}
+      >
+        <Paper
+          sx={{
+            p: 2,
+            gridColumn: {
+              md:
+                (restockQuery.data ?? []).length === 0 ? "1 / -1" : "auto",
+            },
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Suggested for You
+          </Typography>
         {suggestionsQuery.isLoading && <CircularProgress />}
         {suggestionsQuery.error && (
           <Alert severity="error">
@@ -277,85 +314,94 @@ export default function Dashboard() {
               No suggestions yet — rate some recipes and plan a few meals.
             </Typography>
           )}
-        {(suggestionsQuery.data ?? []).length > 0 && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {(suggestionsQuery.data ?? []).map((s) => (
-              <Box
-                key={`${s.recipe.recipeID}-${s.reason}`}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1.5,
-                  flexWrap: "wrap",
-                }}
-              >
-                <Link href={`/recipes/${s.recipe.recipeID}`}>
-                  {s.recipe.recipeName}
-                </Link>
-                <Chip
-                  size="small"
-                  label={reasonLabel(s.reason)}
-                  sx={{
-                    bgcolor: alpha(theme.palette.success.main, 0.12),
-                    color: "success.dark",
-                    fontWeight: 500,
-                  }}
-                />
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Paper>
-
-      {(restockQuery.data ?? []).length > 0 && (
-        <Paper sx={{ p: 2, mt: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Running low
-          </Typography>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {(restockQuery.data ?? []).map((it) => (
-              <Box
-                key={it.itemID}
-                sx={{ display: "flex", alignItems: "center", gap: 1.25 }}
-              >
+          {(suggestionsQuery.data ?? []).length > 0 && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {(suggestionsQuery.data ?? []).map((s) => (
                 <Box
+                  key={`${s.recipe.recipeID}-${s.reason}`}
                   sx={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    bgcolor: "warning.main",
-                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                    flexWrap: "wrap",
                   }}
-                />
-                <Typography variant="body2">
-                  {it.name}
-                  {it.brand && (
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      color="text.secondary"
-                    >
-                      {" "}
-                      — {it.brand}
-                    </Typography>
-                  )}
-                </Typography>
-                {sizeBadge(it.name, it.unit) && (
+                >
+                  <Link href={`/recipes/${s.recipe.recipeID}`}>
+                    {s.recipe.recipeName}
+                  </Link>
                   <Chip
                     size="small"
-                    variant="outlined"
-                    label={sizeBadge(it.name, it.unit)}
-                    sx={{ color: "text.secondary", borderColor: "divider" }}
+                    label={reasonLabel(s.reason)}
+                    sx={{
+                      bgcolor: alpha(theme.palette.success.main, 0.12),
+                      color: "success.dark",
+                      fontWeight: 500,
+                      "& .MuiChip-label": { px: 1.25 },
+                    }}
                   />
-                )}
-              </Box>
-            ))}
-          </Box>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            <Link href="/grocery-lists">Open grocery lists</Link>
-          </Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
         </Paper>
-      )}
+
+        {(restockQuery.data ?? []).length > 0 && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Running low
+            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {(restockQuery.data ?? []).map((it) => {
+                const size = sizeBadge(it.name, it.unit);
+                return (
+                  <Box
+                    key={it.itemID}
+                    sx={{ display: "flex", alignItems: "center", gap: 1.25 }}
+                  >
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        bgcolor: "warning.main",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography variant="body2">
+                      {stripSize(it.name, size)}
+                      {it.brand && (
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          color="text.secondary"
+                        >
+                          {" "}
+                          — {it.brand}
+                        </Typography>
+                      )}
+                    </Typography>
+                    {size && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={size}
+                        sx={{
+                          color: "text.secondary",
+                          borderColor: "divider",
+                          "& .MuiChip-label": { px: 1.25 },
+                        }}
+                      />
+                    )}
+                  </Box>
+                );
+              })}
+            </Box>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <Link href="/grocery-lists">Open grocery lists</Link>
+            </Typography>
+          </Paper>
+        )}
+      </Box>
     </Box>
   );
 }
