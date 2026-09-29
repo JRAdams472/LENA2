@@ -20,7 +20,7 @@ SELECT COUNT(*)
 FROM event.food_event
 WHERE household_id = $1;
 
--- name: UpdateFoodEvent :exec
+-- name: UpdateFoodEvent :execrows
 UPDATE event.food_event
 SET name                     = $3,
     event_date               = $4,
@@ -68,7 +68,7 @@ JOIN event.food_event fe ON er.food_event_id = fe.food_event_id
 WHERE er.food_event_id = ANY(sqlc.arg(food_event_ids)::bigint[]) AND fe.household_id = sqlc.arg(household_id)
 ORDER BY er.target_time, er.event_recipe_id;
 
--- name: UpdateEventRecipe :exec
+-- name: UpdateEventRecipe :execrows
 UPDATE event.event_recipe er
 SET recipe_id   = $3,
     meal_type   = $4,
@@ -124,7 +124,7 @@ INSERT INTO event.event_recipe_step
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
--- name: UpdateEventRecipeStep :exec
+-- name: UpdateEventRecipeStep :execrows
 UPDATE event.event_recipe_step ers
 SET instruction            = $3,
     duration_minutes       = $4,
@@ -146,7 +146,7 @@ WHERE ers.event_recipe_id = er.event_recipe_id
   AND er.food_event_id = fe.food_event_id
   AND ers.event_recipe_step_id = $1 AND fe.household_id = $2;
 
--- name: SetEventRecipeBaseServings :exec
+-- name: SetEventRecipeBaseServings :execrows
 -- Freezes the linked recipe's servings as the scaling denominator.
 UPDATE event.event_recipe er
 SET base_servings = $3, updated_by = $4, updated_at = now()
@@ -192,7 +192,7 @@ INSERT INTO event.event_recipe_item
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
--- name: UpdateEventRecipeItem :exec
+-- name: UpdateEventRecipeItem :execrows
 UPDATE event.event_recipe_item eri
 SET item_id       = $3,
     ingredient_id = $4,

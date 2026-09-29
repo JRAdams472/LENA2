@@ -61,7 +61,7 @@ type Querier interface {
 	//   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
 	//   match, 4 global-popular, 5 rest.
 	SearchBottles(ctx context.Context, arg SearchBottlesParams) ([]WineBottle, error)
-	UpdateBottle(ctx context.Context, arg UpdateBottleParams) error
+	UpdateBottle(ctx context.Context, arg UpdateBottleParams) (int64, error)
 	UpdateCountry(ctx context.Context, arg UpdateCountryParams) (WineCountry, error)
 	UpdateGrapeVariety(ctx context.Context, arg UpdateGrapeVarietyParams) (WineGrapeVariety, error)
 	UpdateRegion(ctx context.Context, arg UpdateRegionParams) (WineRegion, error)

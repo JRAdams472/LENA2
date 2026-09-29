@@ -944,7 +944,7 @@ func TestBottle(t *testing.T) {
 			OakIntegration: boolOrNull(true),
 			BottleSize:     `750ml`,
 			UpdatedBy:      textOrNull(`user`),
-		})).Return(nil)
+		})).Return(int64(1), nil)
 
 		err := svc.UpdateBottle(ctx, 1, bottleArg, `user`)
 		require.NoError(t, err)
@@ -952,7 +952,7 @@ func TestBottle(t *testing.T) {
 
 	t.Run(`UpdateBottle error`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpdateBottle(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().UpdateBottle(ctx, gomock.Any()).Return(int64(0), errDB)
 
 		err := svc.UpdateBottle(ctx, 1, bottleArg, `user`)
 		assert.ErrorIs(t, err, errDB)

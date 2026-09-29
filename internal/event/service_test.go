@@ -131,7 +131,7 @@ func TestUpdateFoodEvent(t *testing.T) {
 		IsActive:               false,
 		UpdatedBy:              pgtype.Text{String: "tester", Valid: true},
 	}
-	mq.EXPECT().UpdateFoodEvent(ctx, want).Return(nil)
+	mq.EXPECT().UpdateFoodEvent(ctx, want).Return(int64(1), nil)
 
 	err := s.UpdateFoodEvent(ctx, 7, 42, FoodEvent{Name: "Renamed", EventDate: day, SlotGranularityMinutes: 30}, "tester")
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestUpdateEventRecipe(t *testing.T) {
 		MealType:      "dinner",
 		TargetTime:    target,
 		UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
-	}).Return(nil)
+	}).Return(int64(1), nil)
 
 	err := s.UpdateEventRecipe(ctx, 3, 42, EventRecipe{RecipeID: &recipeID, MealType: "dinner", TargetTime: target}, "tester")
 	require.NoError(t, err)
@@ -310,12 +310,12 @@ func TestUpdateEventRecipeStep(t *testing.T) {
 	dur := int32(45)
 	s, mq := newService(t)
 	mq.EXPECT().UpdateEventRecipeStep(ctx, gomock.Any()).DoAndReturn(
-		func(_ context.Context, p sqlc.UpdateEventRecipeStepParams) error {
+		func(_ context.Context, p sqlc.UpdateEventRecipeStepParams) (int64, error) {
 			assert.Equal(t, int64(60), p.EventRecipeStepID)
 			assert.Equal(t, int64(42), p.HouseholdID)
 			assert.Equal(t, "rest longer", p.Instruction)
 			assert.Equal(t, int32(45), p.DurationMinutes.Int32)
-			return nil
+			return 1, nil
 		})
 
 	err := s.UpdateEventRecipeStep(ctx, 60, 42, EventRecipeStep{Instruction: "rest longer", DurationMinutes: &dur}, "tester")
@@ -359,7 +359,7 @@ func TestReplaceEventRecipeItems(t *testing.T) {
 		EventRecipeID: 9, HouseholdID: 42,
 		BaseServings: pgtype.Int4{Int32: 4, Valid: true},
 		UpdatedBy:    pgtype.Text{String: "tester", Valid: true},
-	}).Return(nil)
+	}).Return(int64(1), nil)
 
 	err = s.ReplaceEventRecipeItems(ctx, 9, 42, []EventRecipeItem{
 		{ItemID: 50, Quantity: 2, UnitID: 3},
@@ -402,11 +402,11 @@ func TestUpdateEventRecipeItem(t *testing.T) {
 	ctx := context.Background()
 	s, mq := newService(t)
 	mq.EXPECT().UpdateEventRecipeItem(ctx, gomock.Any()).DoAndReturn(
-		func(_ context.Context, p sqlc.UpdateEventRecipeItemParams) error {
+		func(_ context.Context, p sqlc.UpdateEventRecipeItemParams) (int64, error) {
 			assert.Equal(t, int64(60), p.EventRecipeItemID)
 			assert.Equal(t, int64(42), p.HouseholdID)
 			assert.Equal(t, int64(50), p.ItemID)
-			return nil
+			return 1, nil
 		})
 
 	err := s.UpdateEventRecipeItem(ctx, 60, 42, EventRecipeItem{ItemID: 50, Quantity: 3, UnitID: 3}, "tester")

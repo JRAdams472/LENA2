@@ -107,13 +107,13 @@ type Querier interface {
 	// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
 	// large catalog.
 	SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error)
-	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) error
-	SetItemStatus(ctx context.Context, arg SetItemStatusParams) error
+	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) (int64, error)
+	SetItemStatus(ctx context.Context, arg SetItemStatusParams) (int64, error)
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)
 	UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfileParams) (InventoryFlavorProfile, error)
 	UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (InventoryIngredient, error)
-	UpdateItem(ctx context.Context, arg UpdateItemParams) error
+	UpdateItem(ctx context.Context, arg UpdateItemParams) (int64, error)
 	UpdateNutrientType(ctx context.Context, arg UpdateNutrientTypeParams) (InventoryNutrientType, error)
 	// Race-free submit: if an approved or own-pending normalized name already
 	// exists, return the existing row; otherwise create a new pending brand.

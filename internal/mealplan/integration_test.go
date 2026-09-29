@@ -289,7 +289,8 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, items)
 
-	require.NoError(t, svc.UpdateMealSlot(ctx, slot.SlotID, userB, MealSlot{DayOfWeek: 6, MealType: "snack"}, itBy))
+	err = svc.UpdateMealSlot(ctx, slot.SlotID, userB, MealSlot{DayOfWeek: 6, MealType: "snack"}, itBy)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	got, err := svc.GetMealSlotByID(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Equal(t, "dinner", got.MealType, "wrong-user update must not mutate the slot")

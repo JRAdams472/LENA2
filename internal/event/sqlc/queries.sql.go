@@ -811,7 +811,7 @@ func (q *Queries) ReassignFoodEventsToHousehold(ctx context.Context, arg Reassig
 	return err
 }
 
-const setEventRecipeBaseServings = `-- name: SetEventRecipeBaseServings :exec
+const setEventRecipeBaseServings = `-- name: SetEventRecipeBaseServings :execrows
 UPDATE event.event_recipe er
 SET base_servings = $3, updated_by = $4, updated_at = now()
 FROM event.food_event fe
@@ -826,17 +826,20 @@ type SetEventRecipeBaseServingsParams struct {
 }
 
 // Freezes the linked recipe's servings as the scaling denominator.
-func (q *Queries) SetEventRecipeBaseServings(ctx context.Context, arg SetEventRecipeBaseServingsParams) error {
-	_, err := q.db.Exec(ctx, setEventRecipeBaseServings,
+func (q *Queries) SetEventRecipeBaseServings(ctx context.Context, arg SetEventRecipeBaseServingsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setEventRecipeBaseServings,
 		arg.EventRecipeID,
 		arg.HouseholdID,
 		arg.BaseServings,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateEventRecipe = `-- name: UpdateEventRecipe :exec
+const updateEventRecipe = `-- name: UpdateEventRecipe :execrows
 UPDATE event.event_recipe er
 SET recipe_id   = $3,
     meal_type   = $4,
@@ -860,8 +863,8 @@ type UpdateEventRecipeParams struct {
 	UpdatedBy     pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipeParams) error {
-	_, err := q.db.Exec(ctx, updateEventRecipe,
+func (q *Queries) UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEventRecipe,
 		arg.EventRecipeID,
 		arg.HouseholdID,
 		arg.RecipeID,
@@ -871,10 +874,13 @@ func (q *Queries) UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipePa
 		arg.Notes,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateEventRecipeItem = `-- name: UpdateEventRecipeItem :exec
+const updateEventRecipeItem = `-- name: UpdateEventRecipeItem :execrows
 UPDATE event.event_recipe_item eri
 SET item_id       = $3,
     ingredient_id = $4,
@@ -906,8 +912,8 @@ type UpdateEventRecipeItemParams struct {
 	UpdatedBy         pgtype.Text    `json:"updated_by"`
 }
 
-func (q *Queries) UpdateEventRecipeItem(ctx context.Context, arg UpdateEventRecipeItemParams) error {
-	_, err := q.db.Exec(ctx, updateEventRecipeItem,
+func (q *Queries) UpdateEventRecipeItem(ctx context.Context, arg UpdateEventRecipeItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEventRecipeItem,
 		arg.EventRecipeItemID,
 		arg.HouseholdID,
 		arg.ItemID,
@@ -920,10 +926,13 @@ func (q *Queries) UpdateEventRecipeItem(ctx context.Context, arg UpdateEventReci
 		arg.IsOptional,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateEventRecipeStep = `-- name: UpdateEventRecipeStep :exec
+const updateEventRecipeStep = `-- name: UpdateEventRecipeStep :execrows
 UPDATE event.event_recipe_step ers
 SET instruction            = $3,
     duration_minutes       = $4,
@@ -951,8 +960,8 @@ type UpdateEventRecipeStepParams struct {
 	UpdatedBy           pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) error {
-	_, err := q.db.Exec(ctx, updateEventRecipeStep,
+func (q *Queries) UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEventRecipeStep,
 		arg.EventRecipeStepID,
 		arg.HouseholdID,
 		arg.Instruction,
@@ -963,10 +972,13 @@ func (q *Queries) UpdateEventRecipeStep(ctx context.Context, arg UpdateEventReci
 		arg.Appliance,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const updateFoodEvent = `-- name: UpdateFoodEvent :exec
+const updateFoodEvent = `-- name: UpdateFoodEvent :execrows
 UPDATE event.food_event
 SET name                     = $3,
     event_date               = $4,
@@ -987,8 +999,8 @@ type UpdateFoodEventParams struct {
 	UpdatedBy              pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams) error {
-	_, err := q.db.Exec(ctx, updateFoodEvent,
+func (q *Queries) UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateFoodEvent,
 		arg.FoodEventID,
 		arg.HouseholdID,
 		arg.Name,
@@ -997,5 +1009,8 @@ func (q *Queries) UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams
 		arg.IsActive,
 		arg.UpdatedBy,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

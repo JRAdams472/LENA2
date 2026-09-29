@@ -42,13 +42,13 @@ WHERE u.user_id = $1
       AND other.user_id <> u.user_id
   ) >= 1);
 
--- name: SetUserRole :exec
+-- name: SetUserRole :execrows
 UPDATE identity.users
 SET role       = $2,
     updated_at = now()
 WHERE user_id = $1;
 
--- name: UpdateUser :exec
+-- name: UpdateUser :execrows
 UPDATE identity.users
 SET email        = $2,
     display_name = $3,
@@ -86,14 +86,14 @@ WHERE u.user_id = $1
       AND other.user_id <> u.user_id
   ) >= 1);
 
--- name: SetUserActive :exec
+-- name: SetUserActive :execrows
 UPDATE identity.users
 SET is_active  = $2,
     updated_by = $3,
     updated_at = now()
 WHERE user_id = $1;
 
--- name: UpdateUserProfile :exec
+-- name: UpdateUserProfile :execrows
 UPDATE identity.users
 SET first_name   = $2,
     last_name    = $3,

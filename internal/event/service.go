@@ -133,7 +133,7 @@ func (s *Service) CountFoodEvents(ctx context.Context, householdID int64) (int64
 
 // UpdateFoodEvent modifies an event owned by the household.
 func (s *Service) UpdateFoodEvent(ctx context.Context, foodEventID, householdID int64, arg FoodEvent, by string) error {
-	return s.q.UpdateFoodEvent(ctx, sqlc.UpdateFoodEventParams{
+	n, err := s.q.UpdateFoodEvent(ctx, sqlc.UpdateFoodEventParams{
 		FoodEventID:            foodEventID,
 		HouseholdID:            householdID,
 		Name:                   arg.Name,
@@ -142,6 +142,13 @@ func (s *Service) UpdateFoodEvent(ctx context.Context, foodEventID, householdID 
 		IsActive:               arg.IsActive,
 		UpdatedBy:              textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update food event: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update food event: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteFoodEvent removes an event owned by the household.
@@ -254,7 +261,7 @@ func (s *Service) ListEventRecipesByEvents(ctx context.Context, foodEventIDs []i
 // UpdateEventRecipe updates a recipe slot on an event owned by the
 // household.
 func (s *Service) UpdateEventRecipe(ctx context.Context, eventRecipeID, householdID int64, arg EventRecipe, by string) error {
-	return s.q.UpdateEventRecipe(ctx, sqlc.UpdateEventRecipeParams{
+	n, err := s.q.UpdateEventRecipe(ctx, sqlc.UpdateEventRecipeParams{
 		EventRecipeID: eventRecipeID,
 		HouseholdID:   householdID,
 		RecipeID:      optInt8(arg.RecipeID),
@@ -264,6 +271,13 @@ func (s *Service) UpdateEventRecipe(ctx context.Context, eventRecipeID, househol
 		Notes:         textOrNull(arg.Notes),
 		UpdatedBy:     textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update event recipe: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update event recipe: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteEventRecipe removes a recipe slot from an event owned by the
@@ -398,7 +412,7 @@ func (s *Service) AddEventRecipeStep(ctx context.Context, arg EventRecipeStep, h
 // UpdateEventRecipeStep edits a snapshot step in place; step_number is
 // the row's identity and does not change.
 func (s *Service) UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64, arg EventRecipeStep, by string) error {
-	return s.q.UpdateEventRecipeStep(ctx, sqlc.UpdateEventRecipeStepParams{
+	n, err := s.q.UpdateEventRecipeStep(ctx, sqlc.UpdateEventRecipeStepParams{
 		EventRecipeStepID:   eventRecipeStepID,
 		HouseholdID:         householdID,
 		Instruction:         arg.Instruction,
@@ -409,6 +423,13 @@ func (s *Service) UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, 
 		Appliance:           textOrNull(arg.Appliance),
 		UpdatedBy:           textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update event recipe step: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update event recipe step: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteEventRecipeStep removes a snapshot step owned by the household.
@@ -511,13 +532,17 @@ func (s *Service) ReplaceEventRecipeItems(ctx context.Context, eventRecipeID, ho
 			return fmt.Errorf("replace event recipe items: %w", err)
 		}
 	}
-	if err := s.q.SetEventRecipeBaseServings(ctx, sqlc.SetEventRecipeBaseServingsParams{
+	n, err := s.q.SetEventRecipeBaseServings(ctx, sqlc.SetEventRecipeBaseServingsParams{
 		EventRecipeID: eventRecipeID,
 		HouseholdID:   householdID,
 		BaseServings:  optInt4(baseServings),
 		UpdatedBy:     textOrNull(by),
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("replace event recipe items: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("replace event recipe items: %w", domainerr.ErrNotFound)
 	}
 	return nil
 }
@@ -556,7 +581,7 @@ func (s *Service) UpdateEventRecipeItem(ctx context.Context, eventRecipeItemID, 
 	if err != nil {
 		return fmt.Errorf("update event recipe item: %w", err)
 	}
-	return s.q.UpdateEventRecipeItem(ctx, sqlc.UpdateEventRecipeItemParams{
+	n, err := s.q.UpdateEventRecipeItem(ctx, sqlc.UpdateEventRecipeItemParams{
 		EventRecipeItemID: eventRecipeItemID,
 		HouseholdID:       householdID,
 		ItemID:            arg.ItemID,
@@ -569,6 +594,13 @@ func (s *Service) UpdateEventRecipeItem(ctx context.Context, eventRecipeItemID, 
 		IsOptional:        arg.IsOptional,
 		UpdatedBy:         textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update event recipe item: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update event recipe item: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteEventRecipeItem removes a snapshot item owned by the household.

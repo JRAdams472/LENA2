@@ -31,7 +31,7 @@ type Querier interface {
 	// unchecking clears both.
 	ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error)
 	TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroceryListGeneratedAtParams) (GroceryGroceryList, error)
-	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) error
+	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

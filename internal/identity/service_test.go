@@ -130,7 +130,7 @@ func TestSetUserRole(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 42, Role: RoleAdmin}).Return(nil)
+		mq.EXPECT().SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: 42, Role: RoleAdmin}).Return(int64(1), nil)
 
 		err := svc.SetUserRole(ctx, 42, RoleAdmin)
 		require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestSetUserRole(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().SetUserRole(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().SetUserRole(ctx, gomock.Any()).Return(int64(0), errDB)
 
 		err := svc.SetUserRole(ctx, 42, RoleAdmin)
 		require.Error(t, err)
@@ -254,13 +254,13 @@ func TestUpdateProfile(t *testing.T) {
 	t.Run("passes profile fields", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpdateUserProfileParams) error {
+			func(_ context.Context, arg sqlc.UpdateUserProfileParams) (int64, error) {
 				assert.Equal(t, int64(7), arg.UserID)
 				assert.Equal(t, pgtype.Text{String: "Ada", Valid: true}, arg.FirstName)
 				assert.Equal(t, pgtype.Text{String: "Lovelace", Valid: true}, arg.LastName)
 				assert.Equal(t, pgtype.Text{String: "alt@b.com", Valid: true}, arg.BackupEmail)
 				assert.Equal(t, pgtype.Text{String: "a@b.com", Valid: true}, arg.UpdatedBy)
-				return nil
+				return 1, nil
 			})
 
 		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "alt@b.com", "a@b.com"))
@@ -269,10 +269,10 @@ func TestUpdateProfile(t *testing.T) {
 	t.Run("empty fields become null", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpdateUserProfileParams) error {
+			func(_ context.Context, arg sqlc.UpdateUserProfileParams) (int64, error) {
 				assert.False(t, arg.FirstName.Valid)
 				assert.False(t, arg.BackupEmail.Valid)
-				return nil
+				return 1, nil
 			})
 
 		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "Lovelace", "", "a@b.com"))

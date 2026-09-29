@@ -204,7 +204,7 @@ func (s *Service) UpdateRecipe(ctx context.Context, recipeID int64, arg Recipe, 
 }
 
 func updateRecipeRow(ctx context.Context, q sqlc.Querier, recipeID int64, arg Recipe, by string) error {
-	return q.UpdateRecipe(ctx, sqlc.UpdateRecipeParams{
+	n, err := q.UpdateRecipe(ctx, sqlc.UpdateRecipeParams{
 		RecipeID:        recipeID,
 		Name:            arg.Name,
 		Description:     textOrNull(arg.Description),
@@ -214,6 +214,13 @@ func updateRecipeRow(ctx context.Context, q sqlc.Querier, recipeID int64, arg Re
 		IsActive:        arg.IsActive,
 		UpdatedBy:       textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update recipe: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update recipe: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteRecipe removes a recipe and its related items/steps.
@@ -425,12 +432,19 @@ func (s *Service) ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int6
 
 // UpdateRecipeStep modifies a step.
 func (s *Service) UpdateRecipeStep(ctx context.Context, stepID int64, stepNumber int32, instruction, by string) error {
-	return s.q.UpdateRecipeStep(ctx, sqlc.UpdateRecipeStepParams{
+	n, err := s.q.UpdateRecipeStep(ctx, sqlc.UpdateRecipeStepParams{
 		StepID:      stepID,
 		StepNumber:  stepNumber,
 		Instruction: instruction,
 		UpdatedBy:   textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update recipe step: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update recipe step: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteRecipeStep removes a step.

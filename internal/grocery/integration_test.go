@@ -227,9 +227,10 @@ func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, items)
 
-	require.NoError(t, svc.UpdateGroceryListItem(ctx, gli.GroceryListItemID, userB, GroceryListItem{
+	err = svc.UpdateGroceryListItem(ctx, gli.GroceryListItemID, userB, GroceryListItem{
 		ManualItemName: "tampered", QuantityNeeded: 99, Source: "manual", IsChecked: true,
-	}, itBy))
+	}, itBy)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	got, err := svc.GetGroceryListItemByID(ctx, gli.GroceryListItemID, userA)
 	require.NoError(t, err)
 	assert.Equal(t, "milk", got.ManualItemName, "wrong-user update must not mutate the item")

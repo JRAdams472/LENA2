@@ -25,7 +25,7 @@ SELECT *
 FROM recipe.recipe
 WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[]);
 
--- name: UpdateRecipe :exec
+-- name: UpdateRecipe :execrows
 UPDATE recipe.recipe
 SET name              = $2,
     description       = $3,
@@ -82,7 +82,7 @@ FROM recipe.recipe_step
 WHERE recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
 ORDER BY step_number;
 
--- name: UpdateRecipeStep :exec
+-- name: UpdateRecipeStep :execrows
 -- Timing columns are written only by the create/replace-children path
 -- (AddRecipeStep); this partial update preserves them.
 UPDATE recipe.recipe_step

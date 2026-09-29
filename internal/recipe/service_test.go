@@ -278,7 +278,7 @@ func TestUpdateRecipe(t *testing.T) {
 			IsActive:        true,
 			UpdatedBy:       textOrNull("carol"),
 		}
-		mq.EXPECT().UpdateRecipe(gomock.Any(), want).Return(nil)
+		mq.EXPECT().UpdateRecipe(gomock.Any(), want).Return(int64(1), nil)
 
 		require.NoError(t, svc.UpdateRecipe(context.Background(), 7, arg, "carol"))
 	})
@@ -295,17 +295,25 @@ func TestUpdateRecipe(t *testing.T) {
 			CookTimeMinutes: pgtype.Int4{},
 			Description:     pgtype.Text{},
 		}
-		mq.EXPECT().UpdateRecipe(gomock.Any(), want).Return(nil)
+		mq.EXPECT().UpdateRecipe(gomock.Any(), want).Return(int64(1), nil)
 
 		require.NoError(t, svc.UpdateRecipe(context.Background(), 7, Recipe{Name: "Waffles"}, "carol"))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpdateRecipe(gomock.Any(), gomock.Any()).Return(errDB)
+		mq.EXPECT().UpdateRecipe(gomock.Any(), gomock.Any()).Return(int64(0), errDB)
 
 		err := svc.UpdateRecipe(context.Background(), 7, Recipe{}, "carol")
 		assert.ErrorIs(t, err, errDB)
+	})
+
+	t.Run("zero rows is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpdateRecipe(gomock.Any(), gomock.Any()).Return(int64(0), nil)
+
+		err := svc.UpdateRecipe(context.Background(), 7, Recipe{}, "carol")
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	})
 }
 
@@ -539,7 +547,7 @@ func TestUpdateRecipeStep(t *testing.T) {
 			Instruction: "Fold gently",
 			UpdatedBy:   textOrNull("bob"),
 		}
-		mq.EXPECT().UpdateRecipeStep(gomock.Any(), want).Return(nil)
+		mq.EXPECT().UpdateRecipeStep(gomock.Any(), want).Return(int64(1), nil)
 
 		require.NoError(t, svc.UpdateRecipeStep(context.Background(), 11, 2, "Fold gently", "bob"))
 	})
@@ -552,14 +560,14 @@ func TestUpdateRecipeStep(t *testing.T) {
 			Instruction: "Serve",
 			UpdatedBy:   textOrNull("bob"),
 		}
-		mq.EXPECT().UpdateRecipeStep(gomock.Any(), want).Return(nil)
+		mq.EXPECT().UpdateRecipeStep(gomock.Any(), want).Return(int64(1), nil)
 
 		require.NoError(t, svc.UpdateRecipeStep(context.Background(), 13, 1, "Serve", "bob"))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().UpdateRecipeStep(gomock.Any(), gomock.Any()).Return(errDB)
+		mq.EXPECT().UpdateRecipeStep(gomock.Any(), gomock.Any()).Return(int64(0), errDB)
 
 		assert.ErrorIs(t, svc.UpdateRecipeStep(context.Background(), 11, 2, "x", "bob"), errDB)
 	})

@@ -964,11 +964,12 @@ func (mr *MockQuerierMockRecorder) SearchItemsRemainder(ctx, arg any) *gomock.Ca
 }
 
 // SetBrandStatus mocks base method.
-func (m *MockQuerier) SetBrandStatus(ctx context.Context, arg sqlc.SetBrandStatusParams) error {
+func (m *MockQuerier) SetBrandStatus(ctx context.Context, arg sqlc.SetBrandStatusParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetBrandStatus", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SetBrandStatus indicates an expected call of SetBrandStatus.
@@ -978,11 +979,12 @@ func (mr *MockQuerierMockRecorder) SetBrandStatus(ctx, arg any) *gomock.Call {
 }
 
 // SetItemStatus mocks base method.
-func (m *MockQuerier) SetItemStatus(ctx context.Context, arg sqlc.SetItemStatusParams) error {
+func (m *MockQuerier) SetItemStatus(ctx context.Context, arg sqlc.SetItemStatusParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetItemStatus", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SetItemStatus indicates an expected call of SetItemStatus.
@@ -1052,11 +1054,12 @@ func (mr *MockQuerierMockRecorder) UpdateIngredient(ctx, arg any) *gomock.Call {
 }
 
 // UpdateItem mocks base method.
-func (m *MockQuerier) UpdateItem(ctx context.Context, arg sqlc.UpdateItemParams) error {
+func (m *MockQuerier) UpdateItem(ctx context.Context, arg sqlc.UpdateItemParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateItem", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // UpdateItem indicates an expected call of UpdateItem.

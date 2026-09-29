@@ -185,7 +185,14 @@ func (s *Service) UpsertUser(ctx context.Context, provider, subject, email, disp
 
 // SetUserRole updates a user's persisted role.
 func (s *Service) SetUserRole(ctx context.Context, userID int64, role string) error {
-	return s.q.SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: userID, Role: role})
+	n, err := s.q.SetUserRole(ctx, sqlc.SetUserRoleParams{UserID: userID, Role: role})
+	if err != nil {
+		return fmt.Errorf("set user role: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set user role: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // GetByID looks up a user by their primary key.
@@ -414,13 +421,20 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 // already validated for length by the caller; backupEmail may be empty to
 // clear the field.
 func (s *Service) UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error {
-	return s.q.UpdateUserProfile(ctx, sqlc.UpdateUserProfileParams{
+	n, err := s.q.UpdateUserProfile(ctx, sqlc.UpdateUserProfileParams{
 		UserID:      userID,
 		FirstName:   textOrNull(firstName),
 		LastName:    textOrNull(lastName),
 		BackupEmail: textOrNull(backupEmail),
 		UpdatedBy:   textOrNull(by),
 	})
+	if err != nil {
+		return fmt.Errorf("update user profile: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("update user profile: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 func toUser(row sqlc.IdentityUser) User {

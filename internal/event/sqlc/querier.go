@@ -39,11 +39,11 @@ type Querier interface {
 	// rows is not an error (the source may have had none).
 	ReassignFoodEventsToHousehold(ctx context.Context, arg ReassignFoodEventsToHouseholdParams) error
 	// Freezes the linked recipe's servings as the scaling denominator.
-	SetEventRecipeBaseServings(ctx context.Context, arg SetEventRecipeBaseServingsParams) error
-	UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipeParams) error
-	UpdateEventRecipeItem(ctx context.Context, arg UpdateEventRecipeItemParams) error
-	UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) error
-	UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams) error
+	SetEventRecipeBaseServings(ctx context.Context, arg SetEventRecipeBaseServingsParams) (int64, error)
+	UpdateEventRecipe(ctx context.Context, arg UpdateEventRecipeParams) (int64, error)
+	UpdateEventRecipeItem(ctx context.Context, arg UpdateEventRecipeItemParams) (int64, error)
+	UpdateEventRecipeStep(ctx context.Context, arg UpdateEventRecipeStepParams) (int64, error)
+	UpdateFoodEvent(ctx context.Context, arg UpdateFoodEventParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

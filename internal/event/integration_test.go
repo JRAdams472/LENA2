@@ -177,7 +177,8 @@ func TestIntegrationFoodEventCrossHouseholdDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, recipes)
 
-	require.NoError(t, svc.UpdateEventRecipe(ctx, er.EventRecipeID, hhB, EventRecipe{MealType: "x", TargetTime: target}, itBy))
+	err = svc.UpdateEventRecipe(ctx, er.EventRecipeID, hhB, EventRecipe{MealType: "x", TargetTime: target}, itBy)
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	got, err := svc.GetEventRecipeByID(ctx, er.EventRecipeID, hhA)
 	require.NoError(t, err)
 	assert.Equal(t, "dinner", got.MealType, "wrong-household update must not mutate the row")

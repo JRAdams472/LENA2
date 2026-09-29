@@ -30,8 +30,8 @@ type Querier interface {
 	// Invite-accept merge: repoint all of the source household's plans. Zero
 	// rows is not an error (the source may have had none).
 	ReassignMealPlansToHousehold(ctx context.Context, arg ReassignMealPlansToHouseholdParams) error
-	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) error
-	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) error
+	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) (int64, error)
+	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)
