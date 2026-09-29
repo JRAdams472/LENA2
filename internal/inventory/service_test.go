@@ -1307,3 +1307,71 @@ func TestDeleteIngredient_Error(t *testing.T) {
 
 	assert.ErrorIs(t, s.DeleteIngredient(ctx, 9), errBoom)
 }
+
+func TestSearchItems_MapsRankParams(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{
+		FavoriteIDs:  []int64{1},
+		PersonalIDs:  []int64{2, 3},
+		HouseholdIDs: []int64{4},
+		GlobalIDs:    []int64{5},
+		SearchTerms:  []string{"milk"},
+	}
+	q.EXPECT().SearchItems(ctx, sqlc.SearchItemsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+		Search:            pgtype.Text{String: "milk", Valid: true},
+		FavoriteIds:       rank.FavoriteIDs,
+		PersonalIds:       rank.PersonalIDs,
+		HouseholdIds:      rank.HouseholdIDs,
+		SearchTerms:       rank.SearchTerms,
+		GlobalIds:         rank.GlobalIDs,
+		Limit:             10,
+		Offset:            20,
+	}).Return([]sqlc.InventoryItem{{ItemID: 2, Name: "Milk"}}, nil)
+
+	got, err := s.SearchItems(ctx, 7, "milk", rank, 10, 20)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(2), got[0].ItemID)
+}
+
+func TestSearchBrands_MapsRankParams(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{PersonalIDs: []int64{9}, GlobalIDs: []int64{8}, SearchTerms: []string{"acme"}}
+	q.EXPECT().SearchBrands(ctx, sqlc.SearchBrandsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+		RegexpReplace:     "acme",
+		Limit:             5,
+		PersonalIds:       rank.PersonalIDs,
+		HouseholdIds:      rank.HouseholdIDs,
+		SearchTerms:       rank.SearchTerms,
+		GlobalIds:         rank.GlobalIDs,
+	}).Return([]sqlc.InventoryBrand{{BrandID: 9, Name: "Acme"}}, nil)
+
+	got, err := s.SearchBrands(ctx, "acme", 7, rank, 5)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(9), got[0].BrandID)
+}
+
+func TestSearchIngredients_MapsRankParams(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	rank := RankParams{PersonalIDs: []int64{4}}
+	q.EXPECT().SearchIngredients(ctx, sqlc.SearchIngredientsParams{
+		Search:       pgtype.Text{String: "flour", Valid: true},
+		PersonalIds:  rank.PersonalIDs,
+		HouseholdIds: rank.HouseholdIDs,
+		SearchTerms:  rank.SearchTerms,
+		GlobalIds:    rank.GlobalIDs,
+		Limit:        10,
+		Offset:       0,
+	}).Return([]sqlc.InventoryIngredient{{IngredientID: 4, Name: "Flour"}}, nil)
+
+	got, err := s.SearchIngredients(ctx, "flour", rank, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(4), got[0].IngredientID)
+}

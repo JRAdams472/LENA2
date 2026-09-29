@@ -34,11 +34,31 @@ WHERE name_normalized = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
   AND status <> 'rejected';
 
 -- name: SearchBrands :many
+-- Engagement-ranked brand picker search. Tiers come from ID arrays the BFF
+-- computes from analytics/userprefs (other schemas — SQL never crosses them):
+--   0 personal-used, 1 household-used, 2 prior-search-term match,
+--   3 global-popular, 4 rest. The score arrays arrive pre-sorted so
+--   array_position doubles as the in-tier tiebreaker.
 SELECT *
 FROM inventory.brand
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND name_normalized LIKE '%' || lower(regexp_replace($2, '[^a-zA-Z0-9]', '', 'g')) || '%'
-ORDER BY name
+ORDER BY
+  CASE
+    WHEN brand_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 0
+    WHEN brand_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 1
+    WHEN EXISTS (
+      SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
+      WHERE position(lower(t) in lower(name)) > 0
+    ) THEN 2
+    WHEN brand_id = ANY(sqlc.arg(global_ids)::bigint[]) THEN 3
+    ELSE 4
+  END,
+  array_position(sqlc.arg(personal_ids)::bigint[], brand_id),
+  array_position(sqlc.arg(household_ids)::bigint[], brand_id),
+  array_position(sqlc.arg(global_ids)::bigint[], brand_id),
+  name,
+  brand_id
 LIMIT $3;
 
 -- name: ListBrands :many
@@ -122,6 +142,8 @@ WHERE item_id = $1;
 
 -- name: ListItems :many
 -- Items are visible when approved, or when the caller submitted them.
+-- Plain alphabetical paging for internal consumers (recipe import); ranked
+-- listing goes through SearchItems.
 SELECT *
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1
@@ -132,6 +154,42 @@ LIMIT $2 OFFSET $3;
 SELECT COUNT(*)
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1;
+
+-- name: SearchItems :many
+-- Engagement-ranked item browse/search. Tiers from BFF-computed ID arrays:
+--   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
+--   match, 4 global-popular, 5 rest. Ranking applies before LIMIT so the
+--   window contains the most relevant results; (name, item_id) makes the
+--   order deterministic for pagination.
+SELECT *
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+ORDER BY
+  CASE
+    WHEN item_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
+    WHEN item_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 1
+    WHEN item_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 2
+    WHEN EXISTS (
+      SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
+      WHERE position(lower(t) in lower(name)) > 0
+    ) THEN 3
+    WHEN item_id = ANY(sqlc.arg(global_ids)::bigint[]) THEN 4
+    ELSE 5
+  END,
+  array_position(sqlc.arg(favorite_ids)::bigint[], item_id),
+  array_position(sqlc.arg(personal_ids)::bigint[], item_id),
+  array_position(sqlc.arg(household_ids)::bigint[], item_id),
+  array_position(sqlc.arg(global_ids)::bigint[], item_id),
+  name,
+  item_id
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchItems :one
+SELECT COUNT(*)
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%');
 
 -- name: GetItemByUpc :one
 -- Barcode lookup: the caller passes the normalized code plus their user id
@@ -346,6 +404,8 @@ FROM inventory.ingredient
 WHERE ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);
 
 -- name: ListIngredients :many
+-- Plain alphabetical paging for internal consumers (recipe import); ranked
+-- listing goes through SearchIngredients.
 SELECT *
 FROM inventory.ingredient
 ORDER BY name
@@ -354,6 +414,44 @@ LIMIT $1 OFFSET $2;
 -- name: CountIngredients :one
 SELECT COUNT(*)
 FROM inventory.ingredient;
+
+-- name: SearchIngredients :many
+-- Engagement-ranked ingredient browse/search — same tier pattern as
+-- SearchItems minus favorites (ingredients have no favorite store).
+SELECT *
+FROM inventory.ingredient
+WHERE (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
+ORDER BY
+  CASE
+    WHEN ingredient_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 0
+    WHEN ingredient_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 1
+    WHEN EXISTS (
+      SELECT 1 FROM unnest(sqlc.arg(search_terms)::text[]) t
+      WHERE position(lower(t) in lower(name)) > 0
+    ) THEN 2
+    WHEN ingredient_id = ANY(sqlc.arg(global_ids)::bigint[]) THEN 3
+    ELSE 4
+  END,
+  array_position(sqlc.arg(personal_ids)::bigint[], ingredient_id),
+  array_position(sqlc.arg(household_ids)::bigint[], ingredient_id),
+  array_position(sqlc.arg(global_ids)::bigint[], ingredient_id),
+  name,
+  ingredient_id
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchIngredients :one
+SELECT COUNT(*)
+FROM inventory.ingredient
+WHERE (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%');
+
+-- name: MatchItemIDs :many
+-- IDs of visible items whose name matches the term — feeds include_ids on
+-- household-scoped queries that cannot join this schema (pantry search).
+SELECT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND lower(name) LIKE '%' || lower($2) || '%'
+LIMIT 1000;
 
 -- name: UpdateIngredient :one
 UPDATE inventory.ingredient

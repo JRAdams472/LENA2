@@ -117,6 +117,36 @@ func (mr *MockQuerierMockRecorder) CountPendingItems(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPendingItems", reflect.TypeOf((*MockQuerier)(nil).CountPendingItems), ctx)
 }
 
+// CountSearchIngredients mocks base method.
+func (m *MockQuerier) CountSearchIngredients(ctx context.Context, search pgtype.Text) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchIngredients", ctx, search)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchIngredients indicates an expected call of CountSearchIngredients.
+func (mr *MockQuerierMockRecorder) CountSearchIngredients(ctx, search any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchIngredients", reflect.TypeOf((*MockQuerier)(nil).CountSearchIngredients), ctx, search)
+}
+
+// CountSearchItems mocks base method.
+func (m *MockQuerier) CountSearchItems(ctx context.Context, arg sqlc.CountSearchItemsParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchItems", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchItems indicates an expected call of CountSearchItems.
+func (mr *MockQuerierMockRecorder) CountSearchItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchItems", reflect.TypeOf((*MockQuerier)(nil).CountSearchItems), ctx, arg)
+}
+
 // CreateBrand mocks base method.
 func (m *MockQuerier) CreateBrand(ctx context.Context, arg sqlc.CreateBrandParams) (sqlc.InventoryBrand, error) {
 	m.ctrl.T.Helper()
@@ -843,6 +873,21 @@ func (mr *MockQuerierMockRecorder) ListUnits(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockQuerier)(nil).ListUnits), ctx)
 }
 
+// MatchItemIDs mocks base method.
+func (m *MockQuerier) MatchItemIDs(ctx context.Context, arg sqlc.MatchItemIDsParams) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MatchItemIDs", ctx, arg)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchItemIDs indicates an expected call of MatchItemIDs.
+func (mr *MockQuerierMockRecorder) MatchItemIDs(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDs", reflect.TypeOf((*MockQuerier)(nil).MatchItemIDs), ctx, arg)
+}
+
 // SearchBrands mocks base method.
 func (m *MockQuerier) SearchBrands(ctx context.Context, arg sqlc.SearchBrandsParams) ([]sqlc.InventoryBrand, error) {
 	m.ctrl.T.Helper()
@@ -856,6 +901,36 @@ func (m *MockQuerier) SearchBrands(ctx context.Context, arg sqlc.SearchBrandsPar
 func (mr *MockQuerierMockRecorder) SearchBrands(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBrands", reflect.TypeOf((*MockQuerier)(nil).SearchBrands), ctx, arg)
+}
+
+// SearchIngredients mocks base method.
+func (m *MockQuerier) SearchIngredients(ctx context.Context, arg sqlc.SearchIngredientsParams) ([]sqlc.InventoryIngredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchIngredients", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.InventoryIngredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchIngredients indicates an expected call of SearchIngredients.
+func (mr *MockQuerierMockRecorder) SearchIngredients(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchIngredients", reflect.TypeOf((*MockQuerier)(nil).SearchIngredients), ctx, arg)
+}
+
+// SearchItems mocks base method.
+func (m *MockQuerier) SearchItems(ctx context.Context, arg sqlc.SearchItemsParams) ([]sqlc.InventoryItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchItems", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.InventoryItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchItems indicates an expected call of SearchItems.
+func (mr *MockQuerierMockRecorder) SearchItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchItems", reflect.TypeOf((*MockQuerier)(nil).SearchItems), ctx, arg)
 }
 
 // SetBrandStatus mocks base method.

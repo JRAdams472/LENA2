@@ -225,18 +225,21 @@ func TestResolver_Wine_Bottle_Happy(t *testing.T) {
 func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mock.NewMockWineService(ctrl)
-	r := newWineTestResolver(m)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{WineService: m, UserPrefsService: up}
 
-	m.EXPECT().ListBottles(gomock.Any(), int32(10), int32(0)).Return([]wine.Bottle{
+	m.EXPECT().SearchBottles(gomock.Any(), "", wine.RankParams{FavoriteIDs: []int64{1}}, int32(10), int32(0)).Return([]wine.Bottle{
 		{BottleID: 1, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020, BottleSize: "750ml"},
 	}, nil)
-	m.EXPECT().CountBottles(gomock.Any()).Return(int64(5), nil)
+	m.EXPECT().CountSearchBottles(gomock.Any(), "").Return(int64(5), nil)
+	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), wineUserID).Return([]int64{1}, nil)
 	m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
 	m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
 
 	res, err := r.Bottles(wineCtx(), struct {
 		Page     int32
 		PageSize int32
+		Search   *string
 	}{Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -723,7 +726,10 @@ func TestResolver_Wine_Unauthorized(t *testing.T) {
 			return (&Resolver{}).Bottle(ctx, struct{ ID graphql.ID }{ID: "101"})
 		}},
 		{"Bottles", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).Bottles(ctx, struct{ Page, PageSize int32 }{Page: 1, PageSize: 10})
+			return (&Resolver{}).Bottles(ctx, struct {
+				Page, PageSize int32
+				Search         *string
+			}{Page: 1, PageSize: 10})
 		}},
 		{"CreateType", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).CreateType(ctx, struct{ Input createTypeInput }{Input: createTypeInput{Name: "Red"}})

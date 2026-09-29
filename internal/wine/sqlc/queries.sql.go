@@ -23,6 +23,27 @@ func (q *Queries) CountBottles(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countSearchBottles = `-- name: CountSearchBottles :one
+SELECT COUNT(*)
+FROM wine.bottle b
+JOIN wine.type t ON t.type_id = b.type_id
+JOIN wine.country c ON c.country_id = b.country_id
+JOIN wine.region rg ON rg.region_id = b.region_id
+WHERE (
+    $1::text IS NULL
+    OR position(lower($1) in lower(
+      coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+    )) > 0
+  )
+`
+
+func (q *Queries) CountSearchBottles(ctx context.Context, search pgtype.Text) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchBottles, search)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBottle = `-- name: CreateBottle :one
 INSERT INTO wine.bottle (
     type_id, country_id, region_id, vintage_year, vineyard, abv,
@@ -835,6 +856,8 @@ type ListBottlesParams struct {
 	Offset int32 `json:"offset"`
 }
 
+// Plain insertion-order paging for internal consumers; ranked listing goes
+// through SearchBottles.
 func (q *Queries) ListBottles(ctx context.Context, arg ListBottlesParams) ([]WineBottle, error) {
 	rows, err := q.db.Query(ctx, listBottles, arg.Limit, arg.Offset)
 	if err != nil {
@@ -1071,6 +1094,140 @@ func (q *Queries) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfi
 			&i.Name,
 			&i.Description,
 			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const matchBottleIDs = `-- name: MatchBottleIDs :many
+SELECT b.bottle_id
+FROM wine.bottle b
+JOIN wine.type t ON t.type_id = b.type_id
+JOIN wine.country c ON c.country_id = b.country_id
+JOIN wine.region rg ON rg.region_id = b.region_id
+WHERE position(lower($1) in lower(
+    coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+  )) > 0
+LIMIT 1000
+`
+
+// IDs of bottles matching the term — feeds include_ids on household-scoped
+// queries that cannot join this schema (cellar search).
+func (q *Queries) MatchBottleIDs(ctx context.Context, lower string) ([]int64, error) {
+	rows, err := q.db.Query(ctx, matchBottleIDs, lower)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var bottle_id int64
+		if err := rows.Scan(&bottle_id); err != nil {
+			return nil, err
+		}
+		items = append(items, bottle_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchBottles = `-- name: SearchBottles :many
+SELECT b.bottle_id, b.type_id, b.country_id, b.region_id, b.vintage_year, b.vineyard, b.abv, b.acidity, b.tannin_level, b.body, b.sweetness, b.oak_integration, b.bottle_size, b.created_by, b.created_at, b.updated_by, b.updated_at
+FROM wine.bottle b
+JOIN wine.type t ON t.type_id = b.type_id
+JOIN wine.country c ON c.country_id = b.country_id
+JOIN wine.region rg ON rg.region_id = b.region_id
+WHERE (
+    $1::text IS NULL
+    OR position(lower($1) in lower(
+      coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+    )) > 0
+  )
+ORDER BY
+  CASE
+    WHEN b.bottle_id = ANY($2::bigint[]) THEN 0
+    WHEN b.bottle_id = ANY($3::bigint[]) THEN 1
+    WHEN b.bottle_id = ANY($4::bigint[]) THEN 2
+    WHEN EXISTS (
+      SELECT 1 FROM unnest($5::text[]) term
+      WHERE position(lower(term) in lower(
+        coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
+      )) > 0
+    ) THEN 3
+    WHEN b.bottle_id = ANY($6::bigint[]) THEN 4
+    ELSE 5
+  END,
+  array_position($2::bigint[], b.bottle_id),
+  array_position($3::bigint[], b.bottle_id),
+  array_position($4::bigint[], b.bottle_id),
+  array_position($6::bigint[], b.bottle_id),
+  lower(coalesce(b.vineyard, '')),
+  b.vintage_year,
+  b.bottle_id
+LIMIT $8::int OFFSET $7::int
+`
+
+type SearchBottlesParams struct {
+	Search       pgtype.Text `json:"search"`
+	FavoriteIds  []int64     `json:"favorite_ids"`
+	PersonalIds  []int64     `json:"personal_ids"`
+	HouseholdIds []int64     `json:"household_ids"`
+	SearchTerms  []string    `json:"search_terms"`
+	GlobalIds    []int64     `json:"global_ids"`
+	Offset       int32       `json:"offset"`
+	Limit        int32       `json:"limit"`
+}
+
+// Engagement-ranked bottle browse/search. The term and prior-search-term
+// tiers match a haystack of vineyard + type/country/region names (all
+// same-schema joins). Tiers from BFF-computed ID arrays:
+//
+//	0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
+//	match, 4 global-popular, 5 rest.
+func (q *Queries) SearchBottles(ctx context.Context, arg SearchBottlesParams) ([]WineBottle, error) {
+	rows, err := q.db.Query(ctx, searchBottles,
+		arg.Search,
+		arg.FavoriteIds,
+		arg.PersonalIds,
+		arg.HouseholdIds,
+		arg.SearchTerms,
+		arg.GlobalIds,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WineBottle{}
+	for rows.Next() {
+		var i WineBottle
+		if err := rows.Scan(
+			&i.BottleID,
+			&i.TypeID,
+			&i.CountryID,
+			&i.RegionID,
+			&i.VintageYear,
+			&i.Vineyard,
+			&i.Abv,
+			&i.Acidity,
+			&i.TanninLevel,
+			&i.Body,
+			&i.Sweetness,
+			&i.OakIntegration,
+			&i.BottleSize,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,

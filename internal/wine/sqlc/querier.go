@@ -6,10 +6,13 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CountBottles(ctx context.Context) (int64, error)
+	CountSearchBottles(ctx context.Context, search pgtype.Text) (int64, error)
 	CreateBottle(ctx context.Context, arg CreateBottleParams) (WineBottle, error)
 	CreateBottleFlavorProfile(ctx context.Context, arg CreateBottleFlavorProfileParams) (WineBottleFlavorProfile, error)
 	CreateBottleGrapeVariety(ctx context.Context, arg CreateBottleGrapeVarietyParams) (WineBottleGrapeVariety, error)
@@ -40,6 +43,8 @@ type Querier interface {
 	ListBottleFlavorProfilesByBottles(ctx context.Context, bottleIds []int64) ([]ListBottleFlavorProfilesByBottlesRow, error)
 	ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]ListBottleGrapeVarietiesRow, error)
 	ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIds []int64) ([]ListBottleGrapeVarietiesByBottlesRow, error)
+	// Plain insertion-order paging for internal consumers; ranked listing goes
+	// through SearchBottles.
 	ListBottles(ctx context.Context, arg ListBottlesParams) ([]WineBottle, error)
 	ListCountries(ctx context.Context) ([]WineCountry, error)
 	ListGrapeVarieties(ctx context.Context) ([]WineGrapeVariety, error)
@@ -47,6 +52,15 @@ type Querier interface {
 	ListTypes(ctx context.Context) ([]WineType, error)
 	ListVintages(ctx context.Context) ([]WineVintage, error)
 	ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error)
+	// IDs of bottles matching the term — feeds include_ids on household-scoped
+	// queries that cannot join this schema (cellar search).
+	MatchBottleIDs(ctx context.Context, lower string) ([]int64, error)
+	// Engagement-ranked bottle browse/search. The term and prior-search-term
+	// tiers match a haystack of vineyard + type/country/region names (all
+	// same-schema joins). Tiers from BFF-computed ID arrays:
+	//   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
+	//   match, 4 global-popular, 5 rest.
+	SearchBottles(ctx context.Context, arg SearchBottlesParams) ([]WineBottle, error)
 	UpdateBottle(ctx context.Context, arg UpdateBottleParams) error
 	UpdateCountry(ctx context.Context, arg UpdateCountryParams) (WineCountry, error)
 	UpdateGrapeVariety(ctx context.Context, arg UpdateGrapeVarietyParams) (WineGrapeVariety, error)

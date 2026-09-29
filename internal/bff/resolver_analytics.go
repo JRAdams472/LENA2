@@ -86,3 +86,14 @@ func searchEventType(entityType string) string {
 		return analytics.EventItemSearched
 	}
 }
+
+// entityEngagement loads the pre-sorted ranking inputs for one entity type
+// for the current user (personal → household → global decayed scores plus
+// viewed IDs and prior search terms). A missing analytics service degrades
+// to empty engagement — cold-start ordering rather than an error.
+func (r *Resolver) entityEngagement(ctx context.Context, userID, householdID int64, entityType string) (analytics.EntityEngagement, error) {
+	if r.AnalyticsService == nil {
+		return analytics.EntityEngagement{}, nil
+	}
+	return r.AnalyticsService.EntityEngagementSets(ctx, userID, householdID, entityType)
+}

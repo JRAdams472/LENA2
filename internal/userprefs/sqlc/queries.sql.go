@@ -85,6 +85,44 @@ func (q *Queries) CountHouseholdItems(ctx context.Context, householdID int64) (i
 	return count, err
 }
 
+const countSearchHouseholdBottles = `-- name: CountSearchHouseholdBottles :one
+SELECT COUNT(*)
+FROM userprefs.household_bottle
+WHERE household_id = $1
+  AND ($2::bigint[] IS NULL OR bottle_id = ANY($2::bigint[]))
+`
+
+type CountSearchHouseholdBottlesParams struct {
+	HouseholdID int64   `json:"household_id"`
+	IncludeIds  []int64 `json:"include_ids"`
+}
+
+func (q *Queries) CountSearchHouseholdBottles(ctx context.Context, arg CountSearchHouseholdBottlesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchHouseholdBottles, arg.HouseholdID, arg.IncludeIds)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSearchHouseholdItems = `-- name: CountSearchHouseholdItems :one
+SELECT COUNT(*)
+FROM userprefs.household_item
+WHERE household_id = $1
+  AND ($2::bigint[] IS NULL OR item_id = ANY($2::bigint[]))
+`
+
+type CountSearchHouseholdItemsParams struct {
+	HouseholdID int64   `json:"household_id"`
+	IncludeIds  []int64 `json:"include_ids"`
+}
+
+func (q *Queries) CountSearchHouseholdItems(ctx context.Context, arg CountSearchHouseholdItemsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchHouseholdItems, arg.HouseholdID, arg.IncludeIds)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteHouseholdBottle = `-- name: DeleteHouseholdBottle :execrows
 DELETE FROM userprefs.household_bottle
 WHERE household_bottle_id = $1 AND household_id = $2
@@ -361,6 +399,62 @@ func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoritePa
 	return i, err
 }
 
+const listFavoriteBottleIDs = `-- name: ListFavoriteBottleIDs :many
+SELECT bottle_id
+FROM userprefs.user_bottle_favorite
+WHERE user_id = $1 AND is_favorite = TRUE
+`
+
+// Every bottle the user has favorited — feeds the ranking tier on catalog
+// and cellar listings.
+func (q *Queries) ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listFavoriteBottleIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var bottle_id int64
+		if err := rows.Scan(&bottle_id); err != nil {
+			return nil, err
+		}
+		items = append(items, bottle_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFavoriteItemIDs = `-- name: ListFavoriteItemIDs :many
+SELECT item_id
+FROM userprefs.user_item_favorite
+WHERE user_id = $1 AND is_favorite = TRUE
+`
+
+// Every item the user has favorited — feeds the ranking tier on catalog
+// and pantry listings.
+func (q *Queries) ListFavoriteItemIDs(ctx context.Context, userID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listFavoriteItemIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var item_id int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFavoriteRecipeIDs = `-- name: ListFavoriteRecipeIDs :many
 SELECT recipe_id
 FROM userprefs.user_recipe_preference
@@ -404,6 +498,8 @@ type ListHouseholdBottlesParams struct {
 	Offset      int32 `json:"offset"`
 }
 
+// Plain recency paging for internal consumers; ranked listing goes through
+// SearchHouseholdBottles.
 func (q *Queries) ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error) {
 	rows, err := q.db.Query(ctx, listHouseholdBottles, arg.HouseholdID, arg.Limit, arg.Offset)
 	if err != nil {
@@ -453,6 +549,8 @@ type ListHouseholdItemsParams struct {
 	Offset      int32 `json:"offset"`
 }
 
+// Plain recency paging for internal consumers (pantry stock scans); ranked
+// listing goes through SearchHouseholdItems.
 func (q *Queries) ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error) {
 	rows, err := q.db.Query(ctx, listHouseholdItems, arg.HouseholdID, arg.Limit, arg.Offset)
 	if err != nil {
@@ -709,6 +807,160 @@ type ReassignHouseholdItemsParams struct {
 func (q *Queries) ReassignHouseholdItems(ctx context.Context, arg ReassignHouseholdItemsParams) error {
 	_, err := q.db.Exec(ctx, reassignHouseholdItems, arg.ToHouseholdID, arg.UpdatedBy, arg.FromHouseholdID)
 	return err
+}
+
+const searchHouseholdBottles = `-- name: SearchHouseholdBottles :many
+SELECT household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_bottle
+WHERE household_id = $1
+  AND ($2::bigint[] IS NULL OR bottle_id = ANY($2::bigint[]))
+ORDER BY
+  CASE
+    WHEN bottle_id = ANY($3::bigint[]) THEN 0
+    WHEN bottle_id = ANY($4::bigint[]) THEN 1
+    WHEN bottle_id = ANY($5::bigint[]) THEN 2
+    ELSE 3
+  END,
+  array_position($3::bigint[], bottle_id),
+  array_position($4::bigint[], bottle_id),
+  array_position($5::bigint[], bottle_id),
+  updated_at DESC NULLS LAST,
+  household_bottle_id
+LIMIT $7::int OFFSET $6::int
+`
+
+type SearchHouseholdBottlesParams struct {
+	HouseholdID  int64   `json:"household_id"`
+	IncludeIds   []int64 `json:"include_ids"`
+	FavoriteIds  []int64 `json:"favorite_ids"`
+	PersonalIds  []int64 `json:"personal_ids"`
+	HouseholdIds []int64 `json:"household_ids"`
+	Offset       int32   `json:"offset"`
+	Limit        int32   `json:"limit"`
+}
+
+// Ranked cellar listing. Tiers: 0 the caller's favorite bottles,
+// 1 personally-used, 2 household-used, 3 rest by recency. include_ids
+// scopes by catalog bottle (the BFF resolves a name term to bottle IDs
+// because this schema cannot join wine). NULL means no filter.
+func (q *Queries) SearchHouseholdBottles(ctx context.Context, arg SearchHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error) {
+	rows, err := q.db.Query(ctx, searchHouseholdBottles,
+		arg.HouseholdID,
+		arg.IncludeIds,
+		arg.FavoriteIds,
+		arg.PersonalIds,
+		arg.HouseholdIds,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsHouseholdBottle{}
+	for rows.Next() {
+		var i UserprefsHouseholdBottle
+		if err := rows.Scan(
+			&i.HouseholdBottleID,
+			&i.BottleID,
+			&i.BottleNumber,
+			&i.Quantity,
+			&i.PurchaseAt,
+			&i.PurchasePrice,
+			&i.StorageTemp,
+			&i.Location,
+			&i.Notes,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.HouseholdID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchHouseholdItems = `-- name: SearchHouseholdItems :many
+SELECT household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
+FROM userprefs.household_item
+WHERE household_id = $1
+  AND ($2::bigint[] IS NULL OR item_id = ANY($2::bigint[]))
+ORDER BY
+  CASE
+    WHEN expires_at IS NOT NULL AND expires_at <= now() + interval '7 days' THEN 0
+    WHEN item_id = ANY($3::bigint[]) THEN 1
+    WHEN item_id = ANY($4::bigint[]) THEN 2
+    WHEN item_id = ANY($5::bigint[]) THEN 3
+    ELSE 4
+  END,
+  expires_at ASC NULLS LAST,
+  array_position($4::bigint[], item_id),
+  array_position($5::bigint[], item_id),
+  updated_at DESC NULLS LAST,
+  household_item_id
+LIMIT $7::int OFFSET $6::int
+`
+
+type SearchHouseholdItemsParams struct {
+	HouseholdID  int64   `json:"household_id"`
+	IncludeIds   []int64 `json:"include_ids"`
+	FavoriteIds  []int64 `json:"favorite_ids"`
+	PersonalIds  []int64 `json:"personal_ids"`
+	HouseholdIds []int64 `json:"household_ids"`
+	Offset       int32   `json:"offset"`
+	Limit        int32   `json:"limit"`
+}
+
+// Ranked pantry listing. Tiers: 0 expiring within 7 days (smallest
+// expires_at first — urgency over habit), 1 the caller's favorite catalog
+// items, 2 personally-used, 3 household-used, 4 rest by recency.
+// include_ids scopes by catalog item (the BFF resolves a name term to item
+// IDs because this schema cannot join inventory). NULL means no filter.
+func (q *Queries) SearchHouseholdItems(ctx context.Context, arg SearchHouseholdItemsParams) ([]UserprefsHouseholdItem, error) {
+	rows, err := q.db.Query(ctx, searchHouseholdItems,
+		arg.HouseholdID,
+		arg.IncludeIds,
+		arg.FavoriteIds,
+		arg.PersonalIds,
+		arg.HouseholdIds,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsHouseholdItem{}
+	for rows.Next() {
+		var i UserprefsHouseholdItem
+		if err := rows.Scan(
+			&i.HouseholdItemID,
+			&i.ItemID,
+			&i.CurrentQty,
+			&i.MinQty,
+			&i.PurchaseAt,
+			&i.ExpiresAt,
+			&i.Notes,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.HouseholdID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setUserBottleFavorite = `-- name: SetUserBottleFavorite :one

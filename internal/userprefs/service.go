@@ -195,6 +195,60 @@ func (s *Service) CountHouseholdItems(ctx context.Context, householdID int64) (i
 	return n, nil
 }
 
+// PantrySearch carries the filter and ranking inputs for
+// SearchHouseholdItems. IncludeIDs scopes by catalog item (nil = no
+// filter); Favorite/Personal/Household IDs are pre-sorted engagement arrays
+// the BFF computes from analytics and favorites.
+type PantrySearch struct {
+	HouseholdID  int64
+	IncludeIDs   []int64
+	FavoriteIDs  []int64
+	PersonalIDs  []int64
+	HouseholdIDs []int64
+	Limit        int32
+	Offset       int32
+}
+
+// SearchHouseholdItems returns one page of the household's pantry rows,
+// ordered expiring-soon → favorite → personal-used → household-used →
+// recency.
+func (s *Service) SearchHouseholdItems(ctx context.Context, arg PantrySearch) ([]HouseholdItem, error) {
+	rows, err := s.q.SearchHouseholdItems(ctx, sqlc.SearchHouseholdItemsParams{
+		HouseholdID:  arg.HouseholdID,
+		IncludeIds:   arg.IncludeIDs,
+		FavoriteIds:  arg.FavoriteIDs,
+		PersonalIds:  arg.PersonalIDs,
+		HouseholdIds: arg.HouseholdIDs,
+		Limit:        arg.Limit,
+		Offset:       arg.Offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search household items: %w", err)
+	}
+	out := make([]HouseholdItem, len(rows))
+	for i := range rows {
+		hi, err := toHouseholdItem(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("search household items: %w", err)
+		}
+		out[i] = hi
+	}
+	return out, nil
+}
+
+// CountSearchHouseholdItems returns the un-paged match count for the same
+// filters as SearchHouseholdItems.
+func (s *Service) CountSearchHouseholdItems(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+	n, err := s.q.CountSearchHouseholdItems(ctx, sqlc.CountSearchHouseholdItemsParams{
+		HouseholdID: householdID,
+		IncludeIds:  includeIDs,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count search household items: %w", err)
+	}
+	return n, nil
+}
+
 // DeleteHouseholdItem removes a pantry row owned by the household. Like the
 // grocery delete paths, a missing or foreign-owned row is a no-op: deletes
 // are idempotent so a stale client cannot distinguish them anyway.
@@ -307,6 +361,57 @@ func (s *Service) CountHouseholdBottles(ctx context.Context, householdID int64) 
 	return n, nil
 }
 
+// CellarSearch carries the filter and ranking inputs for
+// SearchHouseholdBottles — same shape as PantrySearch over bottle IDs.
+type CellarSearch struct {
+	HouseholdID  int64
+	IncludeIDs   []int64
+	FavoriteIDs  []int64
+	PersonalIDs  []int64
+	HouseholdIDs []int64
+	Limit        int32
+	Offset       int32
+}
+
+// SearchHouseholdBottles returns one page of the household's cellar rows,
+// ordered favorite → personal-used → household-used → recency.
+func (s *Service) SearchHouseholdBottles(ctx context.Context, arg CellarSearch) ([]HouseholdBottle, error) {
+	rows, err := s.q.SearchHouseholdBottles(ctx, sqlc.SearchHouseholdBottlesParams{
+		HouseholdID:  arg.HouseholdID,
+		IncludeIds:   arg.IncludeIDs,
+		FavoriteIds:  arg.FavoriteIDs,
+		PersonalIds:  arg.PersonalIDs,
+		HouseholdIds: arg.HouseholdIDs,
+		Limit:        arg.Limit,
+		Offset:       arg.Offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search household bottles: %w", err)
+	}
+	out := make([]HouseholdBottle, len(rows))
+	for i := range rows {
+		hb, err := toHouseholdBottle(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("search household bottles: %w", err)
+		}
+		out[i] = hb
+	}
+	return out, nil
+}
+
+// CountSearchHouseholdBottles returns the un-paged match count for the same
+// filters as SearchHouseholdBottles.
+func (s *Service) CountSearchHouseholdBottles(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+	n, err := s.q.CountSearchHouseholdBottles(ctx, sqlc.CountSearchHouseholdBottlesParams{
+		HouseholdID: householdID,
+		IncludeIds:  includeIDs,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count search household bottles: %w", err)
+	}
+	return n, nil
+}
+
 // DeleteHouseholdBottle removes a cellar holding owned by the household.
 // Missing or foreign-owned rows are a no-op (idempotent delete).
 func (s *Service) DeleteHouseholdBottle(ctx context.Context, householdBottleID, householdID int64) error {
@@ -404,6 +509,16 @@ func (s *Service) DeleteItemFavorite(ctx context.Context, userID, itemID int64) 
 	return s.q.DeleteUserItemFavorite(ctx, sqlc.DeleteUserItemFavoriteParams{UserID: userID, ItemID: itemID})
 }
 
+// ListFavoriteItemIDs returns the IDs of every catalog item the user has
+// favorited — feeds the ranking tier on catalog and pantry listings.
+func (s *Service) ListFavoriteItemIDs(ctx context.Context, userID int64) ([]int64, error) {
+	ids, err := s.q.ListFavoriteItemIDs(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list favorite item ids: %w", err)
+	}
+	return ids, nil
+}
+
 // BottleFavorite is a user's personal favorite flag for a bottle.
 type BottleFavorite struct {
 	UserID     int64
@@ -448,6 +563,16 @@ func (s *Service) ListBottleFavorites(ctx context.Context, userID int64, bottleI
 		out[r.BottleID] = r.IsFavorite
 	}
 	return out, nil
+}
+
+// ListFavoriteBottleIDs returns the IDs of every catalog bottle the user has
+// favorited — feeds the ranking tier on catalog and cellar listings.
+func (s *Service) ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error) {
+	ids, err := s.q.ListFavoriteBottleIDs(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list favorite bottle ids: %w", err)
+	}
+	return ids, nil
 }
 
 // DeleteBottleFavorite removes a user's bottle favorite; a missing row is a

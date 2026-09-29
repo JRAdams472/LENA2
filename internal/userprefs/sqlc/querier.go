@@ -15,6 +15,8 @@ type Querier interface {
 	AdjustHouseholdItemQuantity(ctx context.Context, arg AdjustHouseholdItemQuantityParams) (UserprefsHouseholdItem, error)
 	CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error)
 	CountHouseholdItems(ctx context.Context, householdID int64) (int64, error)
+	CountSearchHouseholdBottles(ctx context.Context, arg CountSearchHouseholdBottlesParams) (int64, error)
+	CountSearchHouseholdItems(ctx context.Context, arg CountSearchHouseholdItemsParams) (int64, error)
 	DeleteHouseholdBottle(ctx context.Context, arg DeleteHouseholdBottleParams) (int64, error)
 	DeleteHouseholdItem(ctx context.Context, arg DeleteHouseholdItemParams) (int64, error)
 	DeleteMergedHouseholdBottles(ctx context.Context, arg DeleteMergedHouseholdBottlesParams) error
@@ -28,11 +30,21 @@ type Querier interface {
 	GetHouseholdItemByID(ctx context.Context, arg GetHouseholdItemByIDParams) (UserprefsHouseholdItem, error)
 	GetHouseholdItemByItem(ctx context.Context, arg GetHouseholdItemByItemParams) (UserprefsHouseholdItem, error)
 	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
+	// Every bottle the user has favorited — feeds the ranking tier on catalog
+	// and cellar listings.
+	ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error)
+	// Every item the user has favorited — feeds the ranking tier on catalog
+	// and pantry listings.
+	ListFavoriteItemIDs(ctx context.Context, userID int64) ([]int64, error)
 	// Every recipe the user has favorited — feeds the search ranking boost and
 	// the isFavorite filter (kept in userprefs; SQL never crosses schemas, so
 	// the BFF passes these IDs into the recipe query).
 	ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error)
+	// Plain recency paging for internal consumers; ranked listing goes through
+	// SearchHouseholdBottles.
 	ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error)
+	// Plain recency paging for internal consumers (pantry stock scans); ranked
+	// listing goes through SearchHouseholdItems.
 	ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error)
 	ListUserBottleFavorites(ctx context.Context, arg ListUserBottleFavoritesParams) ([]UserprefsUserBottleFavorite, error)
@@ -46,6 +58,17 @@ type Querier interface {
 	ReassignHouseholdBottles(ctx context.Context, arg ReassignHouseholdBottlesParams) error
 	// Move every source row not already folded into a target row.
 	ReassignHouseholdItems(ctx context.Context, arg ReassignHouseholdItemsParams) error
+	// Ranked cellar listing. Tiers: 0 the caller's favorite bottles,
+	// 1 personally-used, 2 household-used, 3 rest by recency. include_ids
+	// scopes by catalog bottle (the BFF resolves a name term to bottle IDs
+	// because this schema cannot join wine). NULL means no filter.
+	SearchHouseholdBottles(ctx context.Context, arg SearchHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error)
+	// Ranked pantry listing. Tiers: 0 expiring within 7 days (smallest
+	// expires_at first — urgency over habit), 1 the caller's favorite catalog
+	// items, 2 personally-used, 3 household-used, 4 rest by recency.
+	// include_ids scopes by catalog item (the BFF resolves a name term to item
+	// IDs because this schema cannot join inventory). NULL means no filter.
+	SearchHouseholdItems(ctx context.Context, arg SearchHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	SetUserBottleFavorite(ctx context.Context, arg SetUserBottleFavoriteParams) (UserprefsUserBottleFavorite, error)
 	// ---------- per-user favorites (never household-scoped) ----------
 	SetUserItemFavorite(ctx context.Context, arg SetUserItemFavoriteParams) (UserprefsUserItemFavorite, error)

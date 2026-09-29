@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
@@ -17,17 +18,43 @@ import (
 func (r *Resolver) UserBottles(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Search   *string
 }) (*userBottlePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	bottles, err := r.UserPrefsService.ListHouseholdBottles(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
+	var includeIDs []int64
+	if term := strings.TrimSpace(derefString(args.Search)); term != "" {
+		// The cellar schema cannot join wine — resolve the term to catalog
+		// bottle IDs here and scope the holding query by them.
+		includeIDs, err = r.WineService.MatchBottleIDs(ctx, term)
+		if err != nil {
+			return nil, err
+		}
+	}
+	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityBottle)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.UserPrefsService.CountHouseholdBottles(ctx, u.HouseholdID)
+	favIDs, err := r.UserPrefsService.ListFavoriteBottleIDs(ctx, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	bottles, err := r.UserPrefsService.SearchHouseholdBottles(ctx, userprefs.CellarSearch{
+		HouseholdID:  u.HouseholdID,
+		IncludeIDs:   includeIDs,
+		FavoriteIDs:  favIDs,
+		PersonalIDs:  eng.PersonalIDs,
+		HouseholdIDs: eng.HouseholdIDs,
+		Limit:        pageSize,
+		Offset:       (page - 1) * pageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.UserPrefsService.CountSearchHouseholdBottles(ctx, u.HouseholdID, includeIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -48,21 +75,48 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 }
 
 // UserItems resolves the current household's pantry items with the current
-// user's per-item favorite flags.
+// user's per-item favorite flags, ordered expiring-soon → favorite →
+// engagement tier → recency.
 func (r *Resolver) UserItems(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Search   *string
 }) (*userItemPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	items, err := r.UserPrefsService.ListHouseholdItems(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
+	var includeIDs []int64
+	if term := strings.TrimSpace(derefString(args.Search)); term != "" {
+		// The pantry schema cannot join inventory — resolve the term to
+		// catalog item IDs here and scope the holding query by them.
+		includeIDs, err = r.InventoryService.MatchItemIDs(ctx, term, u.UserID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityItem)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.UserPrefsService.CountHouseholdItems(ctx, u.HouseholdID)
+	favIDs, err := r.UserPrefsService.ListFavoriteItemIDs(ctx, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	items, err := r.UserPrefsService.SearchHouseholdItems(ctx, userprefs.PantrySearch{
+		HouseholdID:  u.HouseholdID,
+		IncludeIDs:   includeIDs,
+		FavoriteIDs:  favIDs,
+		PersonalIDs:  eng.PersonalIDs,
+		HouseholdIDs: eng.HouseholdIDs,
+		Limit:        pageSize,
+		Offset:       (page - 1) * pageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.UserPrefsService.CountSearchHouseholdItems(ctx, u.HouseholdID, includeIDs)
 	if err != nil {
 		return nil, err
 	}

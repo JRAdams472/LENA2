@@ -723,6 +723,65 @@ func (s *Service) CountBottles(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
+// RankParams carries BFF-computed engagement ranking inputs. All slices are
+// optional and must arrive pre-sorted by signal strength so array_position
+// doubles as the in-tier tiebreaker.
+type RankParams struct {
+	FavoriteIDs  []int64
+	PersonalIDs  []int64
+	HouseholdIDs []int64
+	GlobalIDs    []int64
+	SearchTerms  []string
+}
+
+// SearchBottles returns one page of bottles filtered by an optional term —
+// matched against vineyard and type/country/region names — ordered by
+// engagement tier before paging. Pass an empty term to rank the catalog.
+func (s *Service) SearchBottles(ctx context.Context, term string, rank RankParams, limit, offset int32) ([]Bottle, error) {
+	rows, err := s.q.SearchBottles(ctx, sqlc.SearchBottlesParams{
+		Search:       textOrNull(term),
+		FavoriteIds:  rank.FavoriteIDs,
+		PersonalIds:  rank.PersonalIDs,
+		HouseholdIds: rank.HouseholdIDs,
+		SearchTerms:  rank.SearchTerms,
+		GlobalIds:    rank.GlobalIDs,
+		Limit:        limit,
+		Offset:       offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search bottles: %w", err)
+	}
+	out := make([]Bottle, len(rows))
+	for i := range rows {
+		b, err := toBottle(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("search bottles: %w", err)
+		}
+		out[i] = b
+	}
+	return out, nil
+}
+
+// CountSearchBottles returns the un-paged match count for the same term
+// filter as SearchBottles.
+func (s *Service) CountSearchBottles(ctx context.Context, term string) (int64, error) {
+	n, err := s.q.CountSearchBottles(ctx, textOrNull(term))
+	if err != nil {
+		return 0, fmt.Errorf("count search bottles: %w", err)
+	}
+	return n, nil
+}
+
+// MatchBottleIDs returns IDs of bottles matching the term — used to scope
+// household-level listings that cannot join this schema (cellar search).
+func (s *Service) MatchBottleIDs(ctx context.Context, term string) ([]int64, error) {
+	ids, err := s.q.MatchBottleIDs(ctx, term)
+	if err != nil {
+		return nil, fmt.Errorf("match bottle ids: %w", err)
+	}
+	return ids, nil
+}
+
 // UpdateBottle modifies an existing bottle.
 func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, by string) error {
 	for _, f := range []struct {

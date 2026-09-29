@@ -188,12 +188,16 @@ func (s *Service) CountBrandsVisible(ctx context.Context, userID int64) (int64, 
 }
 
 // SearchBrands returns brands visible to the given user whose normalized name
-// contains the normalized search term.
-func (s *Service) SearchBrands(ctx context.Context, term string, userID int64, limit int32) ([]Brand, error) {
+// contains the normalized search term, ordered by engagement tier.
+func (s *Service) SearchBrands(ctx context.Context, term string, userID int64, rank RankParams, limit int32) ([]Brand, error) {
 	rows, err := s.q.SearchBrands(ctx, sqlc.SearchBrandsParams{
 		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
 		RegexpReplace:     term,
 		Limit:             limit,
+		PersonalIds:       rank.PersonalIDs,
+		HouseholdIds:      rank.HouseholdIDs,
+		SearchTerms:       rank.SearchTerms,
+		GlobalIds:         rank.GlobalIDs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search brands: %w", err)
@@ -536,6 +540,70 @@ func (s *Service) CountItems(ctx context.Context, userID int64) (int64, error) {
 		return 0, fmt.Errorf("count items: %w", err)
 	}
 	return n, nil
+}
+
+// RankParams carries BFF-computed engagement ranking inputs for catalog
+// search/list queries. All slices are optional — nil/empty disables that
+// tier — and must arrive pre-sorted by signal strength so the SQL's
+// array_position calls double as in-tier tiebreakers.
+type RankParams struct {
+	FavoriteIDs  []int64
+	PersonalIDs  []int64
+	HouseholdIDs []int64
+	GlobalIDs    []int64
+	SearchTerms  []string
+}
+
+// SearchItems returns one page of items visible to the given user, filtered
+// by an optional name term and ordered by engagement tier before paging.
+// Pass an empty term to rank the full catalog.
+func (s *Service) SearchItems(ctx context.Context, userID int64, term string, rank RankParams, limit, offset int32) ([]Item, error) {
+	rows, err := s.q.SearchItems(ctx, sqlc.SearchItemsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Search:            textOrNull(term),
+		FavoriteIds:       rank.FavoriteIDs,
+		PersonalIds:       rank.PersonalIDs,
+		HouseholdIds:      rank.HouseholdIDs,
+		SearchTerms:       rank.SearchTerms,
+		GlobalIds:         rank.GlobalIDs,
+		Limit:             limit,
+		Offset:            offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search items: %w", err)
+	}
+	out := make([]Item, len(rows))
+	for i := range rows {
+		out[i] = toItem(rows[i])
+	}
+	return out, nil
+}
+
+// CountSearchItems returns the un-paged match count for the same visibility
+// and term filters as SearchItems.
+func (s *Service) CountSearchItems(ctx context.Context, userID int64, term string) (int64, error) {
+	n, err := s.q.CountSearchItems(ctx, sqlc.CountSearchItemsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Search:            textOrNull(term),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count search items: %w", err)
+	}
+	return n, nil
+}
+
+// MatchItemIDs returns IDs of items visible to the given user whose name
+// contains the term — used to scope household-level listings that cannot
+// join this schema.
+func (s *Service) MatchItemIDs(ctx context.Context, term string, userID int64) ([]int64, error) {
+	ids, err := s.q.MatchItemIDs(ctx, sqlc.MatchItemIDsParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Lower:             term,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("match item ids: %w", err)
+	}
+	return ids, nil
 }
 
 // UpdateItem modifies an existing item. All business logic about who can
@@ -987,6 +1055,38 @@ func (s *Service) CountIngredients(ctx context.Context) (int64, error) {
 	n, err := s.q.CountIngredients(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("count ingredients: %w", err)
+	}
+	return n, nil
+}
+
+// SearchIngredients returns one page of ingredients filtered by an optional
+// name term and ordered by engagement tier before paging.
+func (s *Service) SearchIngredients(ctx context.Context, term string, rank RankParams, limit, offset int32) ([]Ingredient, error) {
+	rows, err := s.q.SearchIngredients(ctx, sqlc.SearchIngredientsParams{
+		Search:       textOrNull(term),
+		PersonalIds:  rank.PersonalIDs,
+		HouseholdIds: rank.HouseholdIDs,
+		SearchTerms:  rank.SearchTerms,
+		GlobalIds:    rank.GlobalIDs,
+		Limit:        limit,
+		Offset:       offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search ingredients: %w", err)
+	}
+	out := make([]Ingredient, len(rows))
+	for i := range rows {
+		out[i] = toIngredient(rows[i])
+	}
+	return out, nil
+}
+
+// CountSearchIngredients returns the un-paged match count for the same term
+// filter as SearchIngredients.
+func (s *Service) CountSearchIngredients(ctx context.Context, term string) (int64, error) {
+	n, err := s.q.CountSearchIngredients(ctx, textOrNull(term))
+	if err != nil {
+		return 0, fmt.Errorf("count search ingredients: %w", err)
 	}
 	return n, nil
 }
