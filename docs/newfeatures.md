@@ -72,7 +72,7 @@ Signals to rank by should include but not be limited to:
 
 # Version 2
 ## Session refresh tokens
-Implement refresh tokens — today clients must re-sign in with Google when the ID token expires (see `docs/auth-oidc.md`). Add a server-issued refresh token (rotating, revocable, stored server-side per device) so web and mobile sessions persist without forcing a fresh Google sign-in every hour.
+✅ Done (PRs #205–#208). LENA-issued sessions on top of the Google credential: short-lived signed access token (`iss=lena`, ~15 min) + rotating opaque refresh token (hashed at rest, ~30-day sliding expiry, theft-detection family revocation). Endpoints `POST /auth/session{,/refresh,/revoke}`; web and mobile refresh transparently and fall back to OIDC-only mode when `LENA_SESSION_SECRET` is unset. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
 
 ## Semantic recipe search (RAG)
 Keyword/category search can't answer free-form intent ("something cozy for a rainy night", "like shakshuka but no eggs"). Add vector search over recipes so the assistant and recipe search can bridge it.

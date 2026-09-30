@@ -9,6 +9,9 @@ import (
 )
 
 type Querier interface {
+	// The family root's family_id equals its own session_id, so draw the
+	// sequence value first and insert both columns explicitly. (An
+	// INSERT-then-UPDATE CTE cannot see the row it just inserted.)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (IdentitySession, error)
 	DeleteExpiredSessions(ctx context.Context, arg DeleteExpiredSessionsParams) (int64, error)
 	GetSessionByIDForUpdate(ctx context.Context, sessionID int64) (IdentitySession, error)
