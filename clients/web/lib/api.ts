@@ -79,6 +79,11 @@ let authTokenGetter: (() => string | null) | null = () =>
     : window.sessionStorage.getItem("lena_id_token") ??
       window.localStorage.getItem("lena_id_token");
 let onUnauthorized: (() => void) | null = null;
+// sessionRefresher is registered by AuthProvider: on a 401 it attempts one
+// refresh-token rotation and reports whether a usable access token now
+// exists. Single-flighted below so a burst of 401s shares one rotation.
+let sessionRefresher: (() => Promise<boolean>) | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
 
 export function setAuthTokenGetter(getter: () => string | null) {
   authTokenGetter = getter;
@@ -88,8 +93,84 @@ export function setOnUnauthorized(handler: () => void) {
   onUnauthorized = handler;
 }
 
+export function setSessionRefresher(refresher: (() => Promise<boolean>) | null) {
+  sessionRefresher = refresher;
+}
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (!sessionRefresher) return false;
+  refreshInFlight ??= sessionRefresher().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
 function getAuthToken(): string | null {
   return authTokenGetter ? authTokenGetter() : null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Session endpoints (rt-p2): /auth/session* lives outside GraphQL so   */
+/* refresh works after the access token expires.                        */
+/* ------------------------------------------------------------------ */
+
+export interface SessionBundle {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+}
+
+// API_BASE_URL targets the GraphQL endpoint; session routes share the
+// same origin (Caddy routes /auth/* to the API).
+function sessionUrl(path: string): string {
+  const origin =
+    typeof window === "undefined" ? "http://localhost" : window.location.origin;
+  const u = new URL(API_BASE_URL, origin);
+  u.pathname = path;
+  u.search = "";
+  return u.toString();
+}
+
+// createSession exchanges a provider credential for a LENA session.
+// Returns null on any failure so the caller can fall back to OIDC-only
+// mode (token still works as the bearer for its remaining lifetime).
+export async function createSession(
+  idToken: string,
+  device?: string
+): Promise<SessionBundle | null> {
+  const res = await fetch(sessionUrl("/auth/session"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ device: device ?? "web" }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as SessionBundle;
+}
+
+export async function refreshSessionRequest(
+  refreshToken: string,
+  device?: string
+): Promise<SessionBundle | null> {
+  const res = await fetch(sessionUrl("/auth/session/refresh"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken, device: device ?? "web" }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as SessionBundle;
+}
+
+// revokeSession is best-effort sign-out — the session dies with the
+// refresh token's expiry regardless, so transport errors are ignored.
+export async function revokeSession(refreshToken: string): Promise<void> {
+  await fetch(sessionUrl("/auth/session/revoke"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  }).catch(() => undefined);
 }
 
 interface GraphQLError {
@@ -166,6 +247,19 @@ async function request<T>(
   } catch {
     await sleep(NETWORK_RETRY_DELAY_MS);
     res = await fetch(API_BASE_URL, init);
+  }
+
+  // Expired access token: rotate the refresh token once (single-flight
+  // across concurrent requests) and retry with the new access token.
+  if (res.status === 401 && (await tryRefreshSession())) {
+    const fresh = getAuthToken();
+    res = await fetch(API_BASE_URL, {
+      ...init,
+      headers: {
+        ...init.headers,
+        ...(fresh ? { Authorization: `Bearer ${fresh}` } : {}),
+      },
+    });
   }
 
   if (!res.ok) {
