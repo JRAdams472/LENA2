@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -32,17 +33,41 @@ type linkStore interface {
 	LinkLogin(ctx context.Context, userID int64, provider, subject, email, displayName string) error
 	UnlinkLogin(ctx context.Context, userID int64, provider string) error
 	ListLogins(ctx context.Context, userID int64) ([]identity.Login, error)
+	ResolveLoginUserID(ctx context.Context, provider, subject string) (int64, error)
 }
 
 // LinkHandler serves the linked-identity endpoints.
 type LinkHandler struct {
 	verifier linkVerifier
+	discord  codeVerifier
 	identity linkStore
 }
 
-// NewLinkHandler builds the handler.
-func NewLinkHandler(v linkVerifier, id linkStore) *LinkHandler {
-	return &LinkHandler{verifier: v, identity: id}
+// NewLinkHandler builds the handler. discord may be nil — requests naming
+// that provider then fail verification.
+func NewLinkHandler(v linkVerifier, discord codeVerifier, id linkStore) *LinkHandler {
+	return &LinkHandler{verifier: v, discord: discord, identity: id}
+}
+
+// verifyCredential verifies a provider credential by name: an empty
+// provider means an OIDC ID token; "discord" means an OAuth2
+// authorization code.
+func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential string) (prov, subject, email, name string, err error) {
+	switch provider {
+	case "", "oidc":
+		return h.verifier.VerifyProviderCredential(ctx, credential)
+	case DiscordProvider:
+		if h.discord == nil {
+			return "", "", "", "", errDiscordCredential
+		}
+		me, err := h.discord.verify(ctx, credential)
+		if err != nil {
+			return "", "", "", "", err
+		}
+		return DiscordProvider, me.subject, me.email, me.name, nil
+	default:
+		return "", "", "", "", fmt.Errorf("unknown provider %q", provider)
+	}
 }
 
 // RegisterRoutes mounts the endpoints behind the authenticator
@@ -98,16 +123,22 @@ func (h *LinkHandler) List(c echo.Context) error {
 }
 
 type linkRequest struct {
+	// Provider names the credential type being linked: "" for an OIDC
+	// ID token, "discord" for an OAuth2 authorization code.
+	Provider   string `json:"provider"`
 	Credential string `json:"credential"`
+	// CurrentProvider/CurrentCredential provide step-up authentication
+	// when the bearer is a LENA session token: a fresh provider credential
+	// that must resolve to the caller's own account, so a stolen access
+	// token alone cannot attach an attacker's identity.
+	CurrentProvider   string `json:"currentProvider"`
+	CurrentCredential string `json:"currentCredential"`
 }
 
 // Link verifies the supplied provider credential and binds it to the
-// caller. Session-authenticated requests are rejected — linking is a
-// step-up operation that demands a fresh provider credential.
+// caller. A provider-credential bearer is already fresh proof of the
+// account; a session bearer must be accompanied by currentCredential.
 func (h *LinkHandler) Link(c echo.Context) error {
-	if isSessionAuth(c.Request().Context()) {
-		return echo.NewHTTPError(http.StatusForbidden, "provider credential required to link sign-ins")
-	}
 	u, err := h.currentUser(c)
 	if err != nil {
 		return err
@@ -116,11 +147,25 @@ func (h *LinkHandler) Link(c echo.Context) error {
 	if c.Request().ContentLength == 0 || c.Bind(&req) != nil || req.Credential == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "credential is required")
 	}
-	issuer, subject, email, name, err := h.verifier.VerifyProviderCredential(c.Request().Context(), req.Credential)
+	ctx := c.Request().Context()
+	if isSessionAuth(ctx) {
+		if req.CurrentCredential == "" {
+			return echo.NewHTTPError(http.StatusForbidden, "fresh provider credential required to link sign-ins")
+		}
+		cp, cs, _, _, err := h.verifyCredential(ctx, req.CurrentProvider, req.CurrentCredential)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid current credential")
+		}
+		ownerID, err := h.identity.ResolveLoginUserID(ctx, cp, cs)
+		if err != nil || ownerID != u.UserID {
+			return echo.NewHTTPError(http.StatusForbidden, "current credential does not match this account")
+		}
+	}
+	prov, subject, email, name, err := h.verifyCredential(ctx, req.Provider, req.Credential)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credential")
 	}
-	if err := h.identity.LinkLogin(c.Request().Context(), u.UserID, issuer, subject, email, name); err != nil {
+	if err := h.identity.LinkLogin(ctx, u.UserID, prov, subject, email, name); err != nil {
 		if errors.Is(err, identity.ErrLoginTaken) {
 			return echo.NewHTTPError(http.StatusConflict, "this sign-in is already linked to a different account")
 		}

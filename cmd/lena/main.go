@@ -410,11 +410,18 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 
-	// Account linking: list/link/unlink provider identities. Link rejects
-	// session-authenticated requests — it requires a fresh provider
-	// credential (step-up auth).
-	bff.NewLinkHandler(authenticator, identitySvc).RegisterRoutes(e,
+	// Account linking: list/link/unlink provider identities. Link is a
+	// step-up operation — an OIDC bearer is fresh proof, while a session
+	// bearer must be accompanied by a fresh provider credential.
+	discord := bff.NewDiscordVerifier(cfg.DiscordClientID, cfg.DiscordClientSecret, cfg.DiscordRedirectURI)
+	bff.NewLinkHandler(authenticator, discord, identitySvc).RegisterRoutes(e,
 		authenticator.Middleware(),
+		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
+
+	// Discord sign-in: the authorization code is the credential, exchanged
+	// server-side (client_secret never leaves the server) and turned into
+	// a LENA session.
+	bff.NewDiscordHandler(discord, authenticator, sessionSvc).RegisterRoutes(e,
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 	return e, resolver, nil
 }

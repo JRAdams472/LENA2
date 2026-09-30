@@ -128,6 +128,16 @@ type Config struct {
 	// SessionRefreshTTL is the sliding refresh-token lifetime; each
 	// successful rotation extends it.
 	SessionRefreshTTL time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"720h"`
+	// DiscordClientID/Secret configure Discord OAuth2 sign-in. Empty
+	// disables the provider — /auth/session/discord and discord link
+	// requests return 503. The secret never leaves the server: the
+	// authorization-code exchange happens here, not in clients.
+	DiscordClientID     string `envconfig:"DISCORD_CLIENT_ID" default:""`
+	DiscordClientSecret string `envconfig:"DISCORD_CLIENT_SECRET" default:""`
+	// DiscordRedirectURI must exactly match a redirect registered in the
+	// Discord app (e.g. http://localhost/auth/discord/callback); it is
+	// echoed in the token exchange.
+	DiscordRedirectURI string `envconfig:"DISCORD_REDIRECT_URI" default:""`
 	// ImportInbox is the directory where source images/PDFs are placed before
 	// the importer processes them. The new submitRecipeScan mutation also
 	// writes uploaded admin scans here.

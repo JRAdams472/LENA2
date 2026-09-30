@@ -30,10 +30,12 @@ func (f *fakeLinkVerifier) VerifyProviderCredential(_ context.Context, credentia
 }
 
 type fakeLinkStore struct {
-	linkErr   error
-	unlinkErr error
-	logins    []identity.Login
-	listErr   error
+	linkErr    error
+	unlinkErr  error
+	logins     []identity.Login
+	listErr    error
+	resolveID  int64
+	resolveErr error
 
 	linkUID  int64
 	linkProv string
@@ -56,6 +58,10 @@ func (f *fakeLinkStore) ListLogins(_ context.Context, _ int64) ([]identity.Login
 	return f.logins, f.listErr
 }
 
+func (f *fakeLinkStore) ResolveLoginUserID(_ context.Context, _, _ string) (int64, error) {
+	return f.resolveID, f.resolveErr
+}
+
 func linkCtx(t *testing.T, method, target, body string, session bool) (echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	e := echo.New()
@@ -76,7 +82,7 @@ func TestLinkIdentities_List(t *testing.T) {
 		{Provider: "https://accounts.google.com", Email: "a@b.com", CreatedAt: now},
 		{Provider: "discord", Email: "x@y.com"},
 	}}
-	h := NewLinkHandler(&fakeLinkVerifier{}, store)
+	h := NewLinkHandler(&fakeLinkVerifier{}, nil, store)
 	c, rec := linkCtx(t, http.MethodGet, "/auth/identities", "", false)
 
 	require.NoError(t, h.List(c))
@@ -88,7 +94,7 @@ func TestLinkIdentities_List(t *testing.T) {
 }
 
 func TestLinkIdentities_List_NoUser(t *testing.T) {
-	h := NewLinkHandler(&fakeLinkVerifier{}, &fakeLinkStore{})
+	h := NewLinkHandler(&fakeLinkVerifier{}, nil, &fakeLinkStore{})
 	e := echo.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/identities", nil)
 	c := e.NewContext(req, httptest.NewRecorder())
@@ -101,7 +107,7 @@ func TestLinkIdentities_List_NoUser(t *testing.T) {
 func TestLink_Link(t *testing.T) {
 	store := &fakeLinkStore{}
 	v := &fakeLinkVerifier{issuer: "https://www.facebook.com", subject: "fb-1", email: "f@b.com", name: "FB"}
-	h := NewLinkHandler(v, store)
+	h := NewLinkHandler(v, nil, store)
 	c, rec := linkCtx(t, http.MethodPost, "/auth/link", `{"credential":"tok"}`, false)
 
 	require.NoError(t, h.Link(c))
@@ -112,10 +118,40 @@ func TestLink_Link(t *testing.T) {
 	assert.Equal(t, "fb-1", store.linkSub)
 }
 
-func TestLink_RejectsSessionAuth(t *testing.T) {
+func TestLink_RejectsSessionAuthWithoutStepUp(t *testing.T) {
 	store := &fakeLinkStore{}
-	h := NewLinkHandler(&fakeLinkVerifier{}, store)
+	h := NewLinkHandler(&fakeLinkVerifier{}, nil, store)
 	c, _ := linkCtx(t, http.MethodPost, "/auth/link", `{"credential":"tok"}`, true)
+
+	err := h.Link(c)
+	var he *echo.HTTPError
+	require.ErrorAs(t, err, &he)
+	assert.Equal(t, http.StatusForbidden, he.Code)
+	assert.Zero(t, store.linkUID)
+}
+
+func TestLink_SessionAuthWithStepUp(t *testing.T) {
+	// A session bearer + a fresh provider credential that resolves to the
+	// same account is allowed — that's the step-up proof.
+	store := &fakeLinkStore{resolveID: 42}
+	v := &fakeLinkVerifier{issuer: "google", subject: "sub-42"}
+	h := NewLinkHandler(v, nil, store)
+	c, rec := linkCtx(t, http.MethodPost, "/auth/link",
+		`{"credential":"new-tok","currentCredential":"cur-tok"}`, true)
+
+	require.NoError(t, h.Link(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, int64(42), store.linkUID)
+	assert.Equal(t, "sub-42", store.linkSub)
+}
+
+func TestLink_SessionAuthStepUpWrongAccount(t *testing.T) {
+	// The step-up credential resolving to a different account is rejected.
+	store := &fakeLinkStore{resolveID: 99}
+	v := &fakeLinkVerifier{issuer: "google", subject: "sub-42"}
+	h := NewLinkHandler(v, nil, store)
+	c, _ := linkCtx(t, http.MethodPost, "/auth/link",
+		`{"credential":"new-tok","currentCredential":"cur-tok"}`, true)
 
 	err := h.Link(c)
 	var he *echo.HTTPError
@@ -141,7 +177,7 @@ func TestLink_Errors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeLinkStore{linkErr: tc.linkErr}
 			v := &fakeLinkVerifier{err: tc.verifyErr}
-			h := NewLinkHandler(v, store)
+			h := NewLinkHandler(v, nil, store)
 			c, _ := linkCtx(t, http.MethodPost, "/auth/link", tc.body, false)
 			err := h.Link(c)
 			var he *echo.HTTPError
@@ -153,7 +189,7 @@ func TestLink_Errors(t *testing.T) {
 
 func TestLink_Unlink(t *testing.T) {
 	store := &fakeLinkStore{}
-	h := NewLinkHandler(&fakeLinkVerifier{}, store)
+	h := NewLinkHandler(&fakeLinkVerifier{}, nil, store)
 	c, rec := linkCtx(t, http.MethodDelete, "/auth/link", `{"provider":"discord"}`, false)
 
 	require.NoError(t, h.Unlink(c))
@@ -177,7 +213,7 @@ func TestLink_Unlink_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeLinkStore{unlinkErr: tc.err}
-			h := NewLinkHandler(&fakeLinkVerifier{}, store)
+			h := NewLinkHandler(&fakeLinkVerifier{}, nil, store)
 			c, _ := linkCtx(t, http.MethodDelete, "/auth/link", tc.body, false)
 			err := h.Unlink(c)
 			var he *echo.HTTPError

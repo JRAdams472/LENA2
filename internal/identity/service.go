@@ -341,6 +341,20 @@ func (s *Service) UnlinkLogin(ctx context.Context, userID int64, provider string
 	})
 }
 
+// ResolveLoginUserID returns the user a provider identity is bound to —
+// the account-linking step-up check uses it to prove that a fresh
+// credential belongs to the caller's account.
+func (s *Service) ResolveLoginUserID(ctx context.Context, provider, subject string) (int64, error) {
+	row, err := s.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
+		Provider:        provider,
+		ExternalSubject: subject,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("resolve login: %w", domainerr.FromStorage(err))
+	}
+	return row.UserID, nil
+}
+
 // ListLogins returns the provider identities bound to the user.
 func (s *Service) ListLogins(ctx context.Context, userID int64) ([]Login, error) {
 	rows, err := s.q.ListLoginsByUser(ctx, userID)

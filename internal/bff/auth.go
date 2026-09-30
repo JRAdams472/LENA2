@@ -489,11 +489,33 @@ func (a *Authenticator) VerifyProviderCredential(ctx context.Context, raw string
 	return claims.issuer, claims.subject, claims.email, claims.name, nil
 }
 
+// ProvisionUser resolves a verified non-OIDC provider identity to a LENA
+// user — upsert, household backfill, ban check, and admin bootstrap, the
+// same pipeline the OIDC path runs after token verification. Used by
+// provider sign-in endpoints (e.g. Discord code exchange).
+func (a *Authenticator) ProvisionUser(ctx context.Context, provider, subject, email, name string, emailVerified bool) (currentuser.User, error) {
+	return a.provisionUser(ctx, oidcClaims{
+		issuer:        provider,
+		subject:       subject,
+		email:         email,
+		name:          name,
+		emailVerified: emailVerified,
+	})
+}
+
 func (a *Authenticator) authenticateOIDC(ctx context.Context, raw string) (currentuser.User, error) {
 	claims, err := a.verifyOIDCToken(ctx, raw)
 	if err != nil {
 		return currentuser.User{}, err
 	}
+	return a.provisionUser(ctx, claims)
+}
+
+// provisionUser resolves a verified provider identity to a LENA user:
+// upsert, default-household backfill, ban check, and admin bootstrap —
+// shared by the OIDC middleware path and non-OIDC provider sign-ins
+// (e.g. Discord code exchange).
+func (a *Authenticator) provisionUser(ctx context.Context, claims oidcClaims) (currentuser.User, error) {
 	issuer, subject, email, name := claims.issuer, claims.subject, claims.email, claims.name
 	emailVerified := claims.emailVerified
 

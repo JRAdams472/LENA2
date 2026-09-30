@@ -24,13 +24,17 @@ const googleToken = makeToken({
 const lenaAccess = makeToken({ iss: "lena", sub: "7", exp: future });
 
 function Probe() {
-  const { isAuthenticated, isRestoring, user, signIn, signOut } = useAuth();
+  const { isAuthenticated, isRestoring, user, signIn, signInWithDiscord, signOut } =
+    useAuth();
   return (
     <div>
       <span data-testid="auth">{String(isAuthenticated)}</span>
       <span data-testid="restoring">{String(isRestoring)}</span>
       <span data-testid="email">{user?.email ?? ""}</span>
       <button onClick={() => signIn(googleToken)}>in</button>
+      <button onClick={() => signInWithDiscord("code-1").catch(() => undefined)}>
+        discord
+      </button>
       <button onClick={signOut}>out</button>
     </div>
   );
@@ -95,6 +99,57 @@ describe("AuthProvider sessions", () => {
     expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
     expect(localStorage.getItem("lena_refresh_token")).toBe("rt-1");
     expect(screen.getByTestId("email").textContent).toBe("test@example.com");
+  });
+
+  it("exchanges a Discord code and hydrates identity via me", async () => {
+    mockFetch
+      .mockResolvedValueOnce(sessionOk("rt-discord"))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { me: meData } }),
+      });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    fireEvent.click(screen.getByText("discord"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth").textContent).toBe("true");
+    });
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("http://localhost:5059/auth/session/discord");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual(
+      expect.objectContaining({ code: "code-1" })
+    );
+    expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
+    expect(localStorage.getItem("lena_refresh_token")).toBe("rt-discord");
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe(
+        "restored@example.com"
+      );
+    });
+  });
+
+  it("rejects when the Discord exchange fails", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    fireEvent.click(screen.getByText("discord"));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled();
+    });
+    expect(screen.getByTestId("auth").textContent).toBe("false");
+    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
   });
 
   it("falls back to the provider credential when sessions are disabled", async () => {

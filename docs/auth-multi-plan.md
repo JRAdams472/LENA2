@@ -82,16 +82,25 @@ the per-request hot path never talks to Discord.
   sign-in buttons (web + mobile), "linked sign-ins" section on web
   Profile, handle missing/unverified email claims.
 - **`auth-multi-p3`** — Discord: server-side code exchange,
-  `/users/@me` verification, client OAuth redirect flow (web +
-  `flutter_web_auth`), link UX.
+  `/users/@me` verification, web OAuth redirect flow, link support.
   - Registered redirect URI (dev): `http://localhost/auth/discord/callback`
     — a small Next.js route reads `code`/`state` and posts to
-    `/auth/session` or `/auth/link`; production adds the domain variant.
-  - Env: `LENA_DISCORD_CLIENT_ID`, `LENA_DISCORD_CLIENT_SECRET`
-    (server-side only — the code exchange holds the secret).
+    `/auth/session/discord`; production adds the domain variant.
+  - Env: `LENA_DISCORD_CLIENT_ID`, `LENA_DISCORD_CLIENT_SECRET`,
+    `LENA_DISCORD_REDIRECT_URI` (server-side only — the code exchange
+    holds the secret); web build args `NEXT_PUBLIC_DISCORD_CLIENT_ID`,
+    `NEXT_PUBLIC_DISCORD_REDIRECT_URI`.
   - Scopes: `identify` + `email` (email treated as optional/unverified).
-  - Mobile uses the same HTTPS callback bounced into a `lena://` deep
-    link (app-link config) — Discord's portal rejects custom schemes.
+  - `POST /auth/session/discord` is unauthenticated — the code is the
+    credential — and requires sessions to be enabled (a Discord code
+    cannot be a bearer token).
+  - Linking while session-authenticated requires `currentCredential`: a
+    fresh provider credential resolving to the same account.
+  - **Mobile deferred**: Discord's portal rejects custom-scheme redirects,
+    so mobile needs the HTTPS callback → `lena://` app-link bounce (or a
+    webview intercept). Web sign-in + link ships in p3; a Discord-linked
+    user on mobile can meanwhile sign in via any linked OIDC provider —
+    a Discord-only user on mobile is the gap to close in a follow-up.
 
 ## Non-goals
 

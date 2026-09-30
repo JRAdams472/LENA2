@@ -115,6 +115,9 @@ services:
       # Session signing key for refresh-token access tokens. Empty keeps
       # OIDC-only auth (clients re-sign in when the ID token expires).
       LENA_SESSION_SECRET: ${LENA_SESSION_SECRET:-}
+      LENA_DISCORD_CLIENT_ID: ${LENA_DISCORD_CLIENT_ID:-}
+      LENA_DISCORD_CLIENT_SECRET: ${LENA_DISCORD_CLIENT_SECRET:-}
+      LENA_DISCORD_REDIRECT_URI: ${LENA_DISCORD_REDIRECT_URI:-http://localhost/auth/discord/callback}
       # Writable import inbox (named volume so the container's chown applies).
       LENA_IMPORT_INBOX: ${LENA_IMPORT_INBOX:-/data/import/inbox}
     volumes:
@@ -139,6 +142,8 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:?NEXT_PUBLIC_GOOGLE_CLIENT_ID must be set}
+        NEXT_PUBLIC_DISCORD_CLIENT_ID: ${NEXT_PUBLIC_DISCORD_CLIENT_ID:-}
+        NEXT_PUBLIC_DISCORD_REDIRECT_URI: ${NEXT_PUBLIC_DISCORD_REDIRECT_URI:-http://localhost/auth/discord/callback}
     environment:
       PORT: 3000
     depends_on:
