@@ -101,6 +101,23 @@ type Config struct {
 	// of the OCR + extraction pipeline. Empty means the vision path is not
 	// used.
 	OllamaVisionModel string `envconfig:"OLLAMA_VISION_MODEL" default:""`
+	// AIProvider selects the assistant LLM backend: "ollama" or "mock".
+	// Empty disables all AI assistant features.
+	AIProvider string `envconfig:"AI_PROVIDER" default:""`
+	// AIModel overrides the model used for assistant calls; empty falls
+	// back to OllamaModel.
+	AIModel string `envconfig:"AI_MODEL" default:""`
+	// AITemperature is the sampling temperature for assistant generation.
+	// Slightly higher than extraction because suggestions benefit from a
+	// little creativity.
+	AITemperature float64 `envconfig:"AI_TEMPERATURE" default:"0.2"`
+	// AINumCtx is the assistant context window in tokens.
+	AINumCtx int `envconfig:"AI_NUM_CTX" default:"8192"`
+	// AITimeout caps a single assistant provider call.
+	AITimeout time.Duration `envconfig:"AI_TIMEOUT" default:"60s"`
+	// AIMaxToolRounds bounds how many tool-call round trips one assistant
+	// request may take before the loop gives up.
+	AIMaxToolRounds int `envconfig:"AI_MAX_TOOL_ROUNDS" default:"5"`
 	// ImportInbox is the directory where source images/PDFs are placed before
 	// the importer processes them. The new submitRecipeScan mutation also
 	// writes uploaded admin scans here.

@@ -1,10 +1,13 @@
-# Optional compose overlay for the recipe OCR import pipeline.
+# Optional compose overlay for the recipe OCR import pipeline and AI
+# assistant. The `import` profile starts OCR + Ollama; the `ai` profile
+# starts just Ollama for the assistant features.
 # Start with:
 #   docker compose -f docker-compose.yml -f docker-compose.import.yml --profile import up -d
+#   docker compose -f docker-compose.yml -f docker-compose.import.yml --profile ai up -d
 services:
   ollama:
     image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
-    profiles: ["import"]
+    profiles: ["import", "ai"]
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -27,7 +30,7 @@ services:
 
   ollama-pull:
     image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
-    profiles: ["import"]
+    profiles: ["import", "ai"]
     entrypoint: ["/bin/sh", "-c"]
     command: ollama pull ${LENA_OLLAMA_MODEL:-qwen2.5:7b-instruct}
     environment:

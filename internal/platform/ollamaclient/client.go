@@ -50,13 +50,43 @@ func NewWithTimeout(baseURL, model string, temp float64, numCtx int, timeout tim
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// ToolCalls is populated on assistant messages when the model requests
+	// tool execution. Tool-result turns carry Name and use Content for the
+	// tool's output.
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Name      string     `json:"name,omitempty"`
+}
+
+// ToolCall is a model-requested function invocation on an assistant message.
+type ToolCall struct {
+	Function ToolCallFunction `json:"function"`
+}
+
+// ToolCallFunction carries the invoked tool's name and parsed arguments.
+type ToolCallFunction struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+// ToolSpec describes a tool the model may call.
+type ToolSpec struct {
+	Type     string       `json:"type"` // always "function"
+	Function ToolFunction `json:"function"`
+}
+
+// ToolFunction holds the tool name, description, and JSON Schema params.
+type ToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
 // ChatRequest is the payload for POST /api/chat.
 type ChatRequest struct {
 	Model    string                 `json:"model"`
 	Messages []Message              `json:"messages"`
-	Format   string                 `json:"format"`
+	Format   string                 `json:"format,omitempty"`
+	Tools    []ToolSpec             `json:"tools,omitempty"`
 	Options  map[string]interface{} `json:"options,omitempty"`
 	Stream   bool                   `json:"stream"`
 }
@@ -70,44 +100,58 @@ type ChatResponse struct {
 
 // Chat sends a single-turn chat and returns the assistant's content.
 func (c *Client) Chat(ctx context.Context, system, user string) (string, error) {
-	reqBody := ChatRequest{
-		Model:  c.model,
+	resp, err := c.ChatRaw(ctx, ChatRequest{
 		Format: "json",
 		Messages: []Message{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
-		Options: map[string]interface{}{
-			"temperature": c.temp,
-			"num_ctx":     c.numCtx,
-		},
-		Stream: false,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Message.Content, nil
+}
+
+// ChatRaw sends a fully-specified chat request (multi-turn, tools, optional
+// JSON mode) and returns the raw response so callers can inspect tool calls.
+func (c *Client) ChatRaw(ctx context.Context, reqBody ChatRequest) (ChatResponse, error) {
+	reqBody.Model = c.model
+	reqBody.Stream = false
+	if reqBody.Options == nil {
+		reqBody.Options = map[string]interface{}{}
+	}
+	if _, ok := reqBody.Options["temperature"]; !ok {
+		reqBody.Options["temperature"] = c.temp
+	}
+	if _, ok := reqBody.Options["num_ctx"]; !ok {
+		reqBody.Options["num_ctx"] = c.numCtx
 	}
 	data, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("marshal ollama request: %w", err)
+		return ChatResponse{}, fmt.Errorf("marshal ollama request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("create ollama request: %w", err)
+		return ChatResponse{}, fmt.Errorf("create ollama request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ollama request: %w", err)
+		return ChatResponse{}, fmt.Errorf("ollama request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
+		return ChatResponse{}, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return "", fmt.Errorf("decode ollama response: %w", err)
+		return ChatResponse{}, fmt.Errorf("decode ollama response: %w", err)
 	}
-	return chatResp.Message.Content, nil
+	return chatResp, nil
 }

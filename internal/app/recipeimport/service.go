@@ -17,6 +17,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
+	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -52,7 +53,7 @@ func ConfigFromPlatform(cfg *config.Config) Config {
 	return c
 }
 
-//go:generate go run go.uber.org/mock/mockgen -source=service.go -package=mock -destination=mock/service.go Store,RecipeWriter
+//go:generate go run go.uber.org/mock/mockgen -source=service.go -package=mock -destination=mock/service.go Store,RecipeWriter,LLMClient
 
 // RecipeWriter is the subset of recipe.Service needed by the importer.
 type RecipeWriter interface {
@@ -64,9 +65,9 @@ type OCRClient interface {
 	ExtractTextResult(ctx context.Context, data []byte, filename string) (*ocrclient.Result, error)
 }
 
-// LLMClient is the subset of *ollamaclient.Client used by the pipeline.
+// LLMClient is the subset of llm.Provider used by the pipeline.
 type LLMClient interface {
-	Chat(ctx context.Context, system, user string) (string, error)
+	Chat(ctx context.Context, req llm.Request) (llm.Response, error)
 }
 
 // jobQueueDepth bounds the buffered job channel. Jobs also persist in the
@@ -612,10 +613,17 @@ func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimpo
 
 	userPrompt := "OCR text:\n" + ocrTextBegin + "\n" + ocrText + "\n" + ocrTextEnd
 
-	content, err := s.ollama.Chat(ctx, systemPrompt, userPrompt)
+	resp, err := s.ollama.Chat(ctx, llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: systemPrompt},
+			{Role: llm.RoleUser, Content: userPrompt},
+		},
+		JSONMode: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("ollama: %w", err)
 	}
+	content := resp.Message.Content
 
 	var draft ocrimport.RecipeDraft
 	if err := json.Unmarshal([]byte(content), &draft); err != nil {

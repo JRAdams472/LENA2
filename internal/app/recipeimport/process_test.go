@@ -14,6 +14,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
+	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 )
@@ -33,9 +34,11 @@ type fakeLLM struct {
 	gotUser string
 }
 
-func (f *fakeLLM) Chat(_ context.Context, _, user string) (string, error) {
-	f.gotUser = user
-	return f.content, f.err
+func (f *fakeLLM) Chat(_ context.Context, req llm.Request) (llm.Response, error) {
+	if len(req.Messages) > 0 {
+		f.gotUser = req.Messages[len(req.Messages)-1].Content
+	}
+	return llm.Response{Message: llm.Message{Role: llm.RoleAssistant, Content: f.content}}, f.err
 }
 
 // newProcessTestService builds a Service on the memoryStore with a real
