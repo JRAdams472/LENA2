@@ -138,6 +138,13 @@ type Query {
   # from their serve times, with missing-duration estimates and appliance
   # contention warnings. Computed on read.
   eventTimeline(foodEventId: ID!): EventTimeline
+  # Whether the AI assistant is configured on this deployment — clients
+  # hide AI entry points when false.
+  aiAvailable: Boolean!
+  # Ask the household assistant a question. The model may read household
+  # data through its tools but can never write; errors UNAVAILABLE when no
+  # provider is configured.
+  askAssistant(question: String!): AssistantAnswer!
 }
 
 type Mutation {
@@ -1374,4 +1381,16 @@ input RecipeImportReviewItemInput {
 input RecipeImportReviewStepInput {
   stepNumber: Int!
   instruction: String!
+}
+
+# One assistant reply: the final text plus the household-data lookups it
+# made (the "checked your pantry" trace).
+type AssistantAnswer {
+  answer: String!
+  toolCalls: [AssistantToolCall!]!
+}
+
+# One tool invocation the assistant made while answering.
+type AssistantToolCall {
+  name: String!
 }

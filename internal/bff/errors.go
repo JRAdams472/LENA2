@@ -24,6 +24,7 @@ const (
 	codeIdemKeyReused   = "IDEMPOTENCY_KEY_REUSED"
 	codeIdemInFlight    = "IDEMPOTENCY_IN_FLIGHT"
 	codeIdemKeyInvalid  = "IDEMPOTENCY_KEY_INVALID"
+	codeUnavailable     = "UNAVAILABLE"
 )
 
 // clientError is a resolver error whose message is safe to return to the
@@ -45,6 +46,12 @@ func errForbidden() error {
 // badInputf returns a client-safe validation error (BAD_USER_INPUT).
 func badInputf(format string, a ...any) error {
 	return &clientError{msg: fmt.Sprintf(format, a...), code: codeBadUserInput}
+}
+
+// errUnavailablef returns a client-safe feature-disabled error
+// (UNAVAILABLE) — e.g. the AI assistant with no provider configured.
+func errUnavailablef(format string, a ...any) error {
+	return &clientError{msg: fmt.Sprintf(format, a...), code: codeUnavailable}
 }
 
 // sanitizeQueryErrors rewrites resolver errors in a GraphQL response so
