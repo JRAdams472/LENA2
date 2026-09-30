@@ -84,6 +84,14 @@ the per-request hot path never talks to Discord.
 - **`auth-multi-p3`** — Discord: server-side code exchange,
   `/users/@me` verification, client OAuth redirect flow (web +
   `flutter_web_auth`), link UX.
+  - Registered redirect URI (dev): `http://localhost/auth/discord/callback`
+    — a small Next.js route reads `code`/`state` and posts to
+    `/auth/session` or `/auth/link`; production adds the domain variant.
+  - Env: `LENA_DISCORD_CLIENT_ID`, `LENA_DISCORD_CLIENT_SECRET`
+    (server-side only — the code exchange holds the secret).
+  - Scopes: `identify` + `email` (email treated as optional/unverified).
+  - Mobile uses the same HTTPS callback bounced into a `lena://` deep
+    link (app-link config) — Discord's portal rejects custom schemes.
 
 ## Non-goals
 
