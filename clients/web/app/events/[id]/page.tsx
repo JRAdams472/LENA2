@@ -33,7 +33,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
 import { fmtQty } from "@/lib/format";
-import { EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
+import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
 const STEP_TYPES = ["prep", "cook", "rest", "wait", "serve", "other"];
@@ -58,6 +58,21 @@ function toTargetTime(eventDate: string, hhmm: string): string {
 function hhmmOf(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+// One-line description of what an EventFixSuggestion will change.
+function fixLabel(f: EventFixSuggestion): string {
+  const where = f.stepNumber != null ? `, step ${f.stepNumber}` : "";
+  switch (f.action) {
+    case "shift_serve":
+      return `${f.recipeName}: serve ${f.minutes != null && f.minutes > 0 ? "+" : ""}${f.minutes}m`;
+    case "set_appliance":
+      return `${f.recipeName}${where}: use ${f.appliance}`;
+    case "set_duration":
+      return `${f.recipeName}${where}: ${f.durationMinutes} min`;
+    case "set_dependency":
+      return `${f.recipeName}${where}: depends on step ${f.dependsOnStepNumber}`;
+  }
 }
 
 interface SlotForm {
@@ -111,6 +126,7 @@ export default function EventDetailPage({
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [fixes, setFixes] = useState<EventFixSuggestion[] | null>(null);
 
   const eventQuery = useQuery({
     queryKey: ["foodEvent", eventId],
@@ -122,6 +138,12 @@ export default function EventDetailPage({
     queryKey: ["eventTimeline", eventId],
     queryFn: () => api.getEventTimeline(eventId),
     enabled: !isNaN(eventId) && showTimeline,
+  });
+
+  const aiQuery = useQuery({
+    queryKey: ["aiAvailable"],
+    queryFn: () => api.getAIAvailable(),
+    staleTime: 5 * 60 * 1000,
   });
 
   const recipesQuery = useQuery({
@@ -235,6 +257,44 @@ export default function EventDetailPage({
   const syncStepsMutation = useMutation({
     mutationFn: (eventRecipeId: number) => api.syncEventRecipe(eventRecipeId),
     onSuccess: invalidate,
+  });
+
+  const suggestFixesMutation = useMutation({
+    mutationFn: () => api.suggestEventFixes(eventId),
+    onSuccess: (data) => setFixes(data),
+  });
+
+  // Applies one suggestion through the existing mutations — the fix never
+  // writes directly; it maps to updateEventRecipe / updateEventRecipeStep.
+  const applyFixMutation = useMutation({
+    mutationFn: async (f: EventFixSuggestion) => {
+      const er = event?.eventRecipes?.find((r) => r.eventRecipeID === f.eventRecipeId);
+      if (!er) throw new Error("event recipe not found — refresh the page");
+      if (f.action === "shift_serve") {
+        if (f.minutes == null) throw new Error("fix is missing minutes");
+        const target = new Date(new Date(er.targetTime).getTime() + f.minutes * 60000);
+        await api.updateEventRecipe(er.eventRecipeID, { targetTime: target.toISOString() });
+        return;
+      }
+      const step = er.steps?.find((s) => s.stepNumber === f.stepNumber);
+      if (!step) throw new Error("step not found — refresh the page");
+      const payload: EventRecipeStepInput = {
+        instruction: step.instruction,
+        durationMinutes: step.durationMinutes,
+        stepType: step.stepType,
+        isPassive: step.isPassive,
+        dependsOnStepNumber: step.dependsOnStepNumber,
+        appliance: step.appliance,
+      };
+      if (f.action === "set_appliance") payload.appliance = f.appliance;
+      if (f.action === "set_duration") payload.durationMinutes = f.durationMinutes;
+      if (f.action === "set_dependency") payload.dependsOnStepNumber = f.dependsOnStepNumber;
+      await api.updateEventRecipeStep(step.eventRecipeStepID, payload);
+    },
+    onSuccess: (_data, f) => {
+      invalidate();
+      setFixes((cur) => cur?.filter((x) => x !== f) ?? null);
+    },
   });
 
   const openCreate = () => {
@@ -485,13 +545,80 @@ export default function EventDetailPage({
       <Paper sx={{ p: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
           <Typography variant="h5">Timeline</Typography>
-          <Button
-            variant="outlined"
-            onClick={() => setShowTimeline((v) => !v)}
-          >
-            {showTimeline ? "Hide Timeline" : "Generate Timeline"}
-          </Button>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            {aiQuery.data === true && showTimeline && timelineQuery.data && (
+              <Button
+                variant="outlined"
+                onClick={() => suggestFixesMutation.mutate()}
+                disabled={suggestFixesMutation.isPending}
+              >
+                {suggestFixesMutation.isPending ? "Thinking…" : "Suggest Fixes"}
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              onClick={() => setShowTimeline((v) => !v)}
+            >
+              {showTimeline ? "Hide Timeline" : "Generate Timeline"}
+            </Button>
+          </Box>
         </Box>
+        {suggestFixesMutation.error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {(suggestFixesMutation.error as Error).message}
+          </Alert>
+        )}
+        {applyFixMutation.error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {(applyFixMutation.error as Error).message}
+          </Alert>
+        )}
+        {fixes !== null && fixes.length === 0 && (
+          <Alert severity="info" sx={{ mb: 1 }}>
+            No scheduling conflicts to fix.
+          </Alert>
+        )}
+        {fixes?.map((f, i) => (
+          <Paper
+            key={`${f.eventRecipeId}-${f.action}-${f.stepNumber ?? i}`}
+            variant="outlined"
+            sx={{
+              p: 1.5,
+              mb: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {fixLabel(f)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {f.reason}
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => applyFixMutation.mutate(f)}
+                disabled={applyFixMutation.isPending}
+              >
+                Apply
+              </Button>
+              <Button
+                size="small"
+                onClick={() =>
+                  setFixes((cur) => cur?.filter((x) => x !== f) ?? null)
+                }
+              >
+                Dismiss
+              </Button>
+            </Box>
+          </Paper>
+        ))}
         {showTimeline && (
           <>
             {timelineQuery.isLoading && <CircularProgress size={24} />}

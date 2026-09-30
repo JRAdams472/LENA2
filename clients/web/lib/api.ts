@@ -41,6 +41,7 @@ import {
   EventRecipeItem,
   EventRecipeStep,
   EventTimeline,
+  EventFixSuggestion,
   InviteStatus,
   NotificationCategoryPreference,
   NotificationKind,
@@ -558,6 +559,18 @@ interface GqlMealPlanSuggestion {
   mealType: string;
   reason: string;
   usesExpiringItems: string[];
+}
+
+interface GqlEventFixSuggestion {
+  eventRecipeId: string;
+  recipeName: string;
+  stepNumber: number | null;
+  action: EventFixSuggestion["action"];
+  minutes: number | null;
+  appliance: string | null;
+  durationMinutes: number | null;
+  dependsOnStepNumber: number | null;
+  reason: string;
 }
 
 interface GqlEventRecipeStep {
@@ -3543,6 +3556,29 @@ export const api = {
       mealType: mealTypeToNumber(s.mealType),
       reason: s.reason,
       usesExpiringItems: s.usesExpiringItems ?? [],
+    }));
+  },
+
+  suggestEventFixes: async (foodEventId: number, maxSuggestions = 6): Promise<EventFixSuggestion[]> => {
+    const data = await request<{ suggestEventFixes: GqlEventFixSuggestion[] }>(
+      `query ($foodEventId: ID!, $maxSuggestions: Int) {
+        suggestEventFixes(foodEventId: $foodEventId, maxSuggestions: $maxSuggestions) {
+          eventRecipeId recipeName stepNumber action minutes appliance
+          durationMinutes dependsOnStepNumber reason
+        }
+      }`,
+      { foodEventId: String(foodEventId), maxSuggestions }
+    );
+    return data.suggestEventFixes.map((f) => ({
+      eventRecipeId: Number(f.eventRecipeId),
+      recipeName: f.recipeName,
+      stepNumber: f.stepNumber ?? null,
+      action: f.action,
+      minutes: f.minutes ?? null,
+      appliance: f.appliance ?? null,
+      durationMinutes: f.durationMinutes ?? null,
+      dependsOnStepNumber: f.dependsOnStepNumber ?? null,
+      reason: f.reason,
     }));
   },
 };

@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -88,6 +89,44 @@ func (r *Resolver) SuggestMeals(ctx context.Context, args struct {
 	return out, nil
 }
 
+// SuggestEventFixes returns AI fixes for an event timeline's conflicts —
+// reviewable cards the client applies through the existing mutations.
+func (r *Resolver) SuggestEventFixes(ctx context.Context, args struct {
+	FoodEventID    graphql.ID
+	MaxSuggestions int32
+}) ([]*eventFixResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.AIService == nil || !r.AIService.Available() {
+		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+	}
+	if !r.aiLimiter().allow(u.UserID) {
+		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+	}
+	foodEventID, err := parseID(string(args.FoodEventID))
+	if err != nil {
+		return nil, err
+	}
+	limit := int(args.MaxSuggestions)
+	if limit < 1 || limit > 10 {
+		return nil, badInputf("maxSuggestions must be 1-10")
+	}
+	fixes, err := r.AIService.SuggestEventFixes(ctx, u.UserID, u.HouseholdID, foodEventID, limit)
+	if err != nil {
+		if errors.Is(err, ai.ErrUnavailable) {
+			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		}
+		return nil, err
+	}
+	out := make([]*eventFixResolver, len(fixes))
+	for i, f := range fixes {
+		out[i] = &eventFixResolver{fix: f}
+	}
+	return out, nil
+}
+
 // aiLimiter returns the per-user assistant rate limiter, lazily built so
 // Resolver literals in tests still work. LLM calls are expensive, so the
 // burst is tighter than the upload limiter.
@@ -150,3 +189,28 @@ func (s *mealSuggestionResolver) UsesExpiringItems() []string {
 	}
 	return s.sugg.Expiring
 }
+
+// eventFixResolver resolves EventFixSuggestion fields.
+type eventFixResolver struct {
+	fix ai.EventFix
+}
+
+func (f *eventFixResolver) EventRecipeID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(f.fix.EventRecipeID, 10))
+}
+
+func (f *eventFixResolver) RecipeName() string { return f.fix.RecipeName }
+
+func (f *eventFixResolver) StepNumber() *int32 { return f.fix.StepNumber }
+
+func (f *eventFixResolver) Action() string { return f.fix.Action }
+
+func (f *eventFixResolver) Minutes() *int32 { return f.fix.Minutes }
+
+func (f *eventFixResolver) Appliance() *string { return f.fix.Appliance }
+
+func (f *eventFixResolver) DurationMinutes() *int32 { return f.fix.DurationMin }
+
+func (f *eventFixResolver) DependsOnStepNumber() *int32 { return f.fix.DependsOn }
+
+func (f *eventFixResolver) Reason() string { return f.fix.Reason }

@@ -149,6 +149,10 @@ type Query {
   # and household tastes inform the picks. Advisory only: apply with
   # addMealSlot. Errors UNAVAILABLE when no provider is configured.
   suggestMeals(mealPlanId: ID!, maxSuggestions: Int = 6): [MealPlanSuggestion!]!
+  # AI fixes for an event timeline's appliance conflicts and unschedulable
+  # dishes. Advisory only: apply via updateEventRecipe/updateEventRecipeStep.
+  # Errors UNAVAILABLE when no provider is configured.
+  suggestEventFixes(foodEventId: ID!, maxSuggestions: Int = 6): [EventFixSuggestion!]!
 }
 
 type Mutation {
@@ -1409,4 +1413,23 @@ type MealPlanSuggestion {
   reason: String!
   # Expiring pantry items the recipe would consume.
   usesExpiringItems: [String!]!
+}
+
+# One AI schedule fix for an event timeline problem. The action field
+# selects which payload fields are meaningful:
+#   shift_serve     → minutes (signed, multiple of the event granularity)
+#   set_appliance   → stepNumber + appliance
+#   set_duration    → stepNumber + durationMinutes
+#   set_dependency  → stepNumber + dependsOnStepNumber
+# Applied via updateEventRecipe / updateEventRecipeStep.
+type EventFixSuggestion {
+  eventRecipeId: ID!
+  recipeName: String!
+  stepNumber: Int
+  action: String!
+  minutes: Int
+  appliance: String
+  durationMinutes: Int
+  dependsOnStepNumber: Int
+  reason: String!
 }

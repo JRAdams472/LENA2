@@ -553,12 +553,13 @@ type WineService interface {
 var _ WineService = (*wine.Service)(nil)
 
 // AIService is the subset of *ai.Service used by the resolver. Ask and
-// SuggestMeals are scoped by the caller's identity — tools see only that
-// user's household.
+// the suggesters are scoped by the caller's identity — tools see only
+// that user's household.
 type AIService interface {
 	Available() bool
 	Ask(ctx context.Context, userID, householdID int64, question string) (ai.Answer, error)
 	SuggestMeals(ctx context.Context, userID, householdID, mealPlanID int64, maxSuggestions int) ([]ai.MealSuggestion, error)
+	SuggestEventFixes(ctx context.Context, userID, householdID, foodEventID int64, maxSuggestions int) ([]ai.EventFix, error)
 }
 
 var _ AIService = (*ai.Service)(nil)

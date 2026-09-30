@@ -244,6 +244,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	tools.RegisterMealPlanTools(aiTools, mealPlanSvc, recipeSvc)
 	tools.RegisterRecipeTools(aiTools, recipeSvc, inventorySvc)
 	tools.RegisterTasteTools(aiTools, analyticsSvc, recipeSvc)
+	tools.RegisterEventTools(aiTools, eventSvc, recipeSvc)
 	aiSvc := ai.NewService(aiProvider, aiTools, ai.Config{
 		MaxToolRounds: cfg.AIMaxToolRounds,
 	})
