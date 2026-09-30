@@ -2,7 +2,7 @@
 
 import {
   createContext,
-  useContext,
+  use,
   useEffect,
   useSyncExternalStore,
   useCallback,
@@ -268,13 +268,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
   };
 
-  return (
-    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext value={value}>{children}</AuthContext>;
 }
 
 export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
+  const context = use(AuthContext);
   if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
