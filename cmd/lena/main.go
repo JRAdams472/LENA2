@@ -46,6 +46,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/platform/telemetry"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/JRAdams472/LENA2/internal/session"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -258,6 +259,14 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		MaxToolRounds: cfg.AIMaxToolRounds,
 	})
 
+	// Refresh-token sessions: an empty secret leaves the service disabled
+	// (Enabled() == false), preserving OIDC-only auth.
+	sessionSvc := session.NewService(pool, session.Config{
+		Secret:     cfg.SessionSecret,
+		AccessTTL:  cfg.SessionAccessTTL,
+		RefreshTTL: cfg.SessionRefreshTTL,
+	})
+
 	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
 		Audiences:   splitAndTrim(cfg.AuthAudiences),
@@ -266,6 +275,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	if err != nil {
 		return nil, nil, fmt.Errorf("auth config: %w", err)
 	}
+	authenticator.SetSessions(sessionSvc)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -391,6 +401,14 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		graphqlMW = append([]echo.MiddlewareFunc{middleware.BodyLimit(cfg.GraphQLBodyLimit)}, graphqlMW...)
 	}
 	e.POST("/graphql", handler, graphqlMW...)
+
+	// Session endpoints sit outside GraphQL: refresh must work when the
+	// access token is already expired, which the /graphql auth middleware
+	// would reject. Refresh/revoke are unauthenticated (the refresh token
+	// is the credential) and IP-rate-limited; create runs behind auth.
+	bff.NewSessionHandler(sessionSvc).RegisterRoutes(e,
+		authenticator.Middleware(),
+		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 	return e, resolver, nil
 }
 

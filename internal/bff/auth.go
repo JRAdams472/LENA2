@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,37 @@ type identityStore interface {
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error
 }
 
+// sessionValidator is the subset of *session.Service the authenticator
+// needs to accept LENA-issued access tokens (iss=lena).
+type sessionValidator interface {
+	Enabled() bool
+	ValidateAccess(token string) (int64, error)
+}
+
+// lenaIssuer is the issuer claim on LENA-signed session access tokens.
+// It can never collide with a real OIDC issuer (those are URLs), so a
+// token bearing it is routed to the session path instead of JWKS.
+const lenaIssuer = "lena"
+
+// sessionAuthKey marks a request authenticated by a LENA session access
+// token rather than a provider credential. The session-issuing endpoint
+// refuses it: a short-lived access token must not be able to mint fresh
+// refresh tokens, or stealing one would grant permanent access.
+type sessionAuthKey struct{}
+
+// withSessionAuth records that the request was authenticated by a LENA
+// access token.
+func withSessionAuth(ctx context.Context) context.Context {
+	return context.WithValue(ctx, sessionAuthKey{}, true)
+}
+
+// isSessionAuth reports whether the request's credential was a LENA
+// session access token.
+func isSessionAuth(ctx context.Context) bool {
+	v, _ := ctx.Value(sessionAuthKey{}).(bool)
+	return v
+}
+
 // householdStore is the subset of household.Service the authenticator needs
 // to ensure every resolved user has a default household.
 type householdStore interface {
@@ -62,6 +94,7 @@ type householdStore interface {
 type Authenticator struct {
 	identity            identityStore
 	households          householdStore
+	sessions            sessionValidator
 	audiencesByIssuer   map[string][]string
 	adminEmailsByIssuer map[string][]string
 	httpc               *http.Client
@@ -164,6 +197,12 @@ func NewAuthenticator(cfg AuthConfig, identitySvc identityStore, householdSvc ho
 	}, nil
 }
 
+// SetSessions attaches the session service used to validate LENA-issued
+// access tokens (iss=lena). Nil/absent keeps OIDC-only authentication.
+func (a *Authenticator) SetSessions(v sessionValidator) {
+	a.sessions = v
+}
+
 // zipIssuersAndAudiences pairs the ith issuer with the ith audience. This
 // prevents a token from issuer A being accepted solely because it carries
 // an audience belonging to issuer B.
@@ -236,7 +275,7 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 			}
 
 			ctx := c.Request().Context()
-			user, err := a.authenticate(ctx, raw)
+			user, viaSession, err := a.authenticate(ctx, raw)
 			if err != nil {
 				a.logAuthError(c, err)
 				if errors.Is(err, errKeyDiscovery) || errors.Is(err, errIdentityStore) {
@@ -246,6 +285,9 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 			}
 
+			if viaSession {
+				ctx = withSessionAuth(ctx)
+			}
 			c.SetRequest(c.Request().WithContext(currentuser.WithUser(ctx, user)))
 			return next(c)
 		}
@@ -289,16 +331,68 @@ func hashSubject(subject string) string {
 	return subject[:limit]
 }
 
-func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentuser.User, error) {
+// authenticate routes on the token's issuer claim: LENA-issued session
+// tokens go to the session validator, everything else to the OIDC/JWKS
+// path. The bool result reports whether a session credential was used.
+func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentuser.User, bool, error) {
 	unverified, err := jwt.ParseInsecure([]byte(raw))
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("%w: parse token: %w", errTokenInvalid, err)
+		return currentuser.User{}, false, fmt.Errorf("%w: parse token: %w", errTokenInvalid, err)
 	}
 
 	issuer, ok := unverified.Issuer()
 	if !ok {
-		return currentuser.User{}, fmt.Errorf("%w: token has no issuer", errTokenInvalid)
+		return currentuser.User{}, false, fmt.Errorf("%w: token has no issuer", errTokenInvalid)
 	}
+	if issuer == lenaIssuer {
+		u, err := a.authenticateSession(ctx, raw, unverified)
+		return u, err == nil, err
+	}
+	u, err := a.authenticateOIDC(ctx, raw, issuer)
+	return u, false, err
+}
+
+// authenticateSession validates a LENA-signed access token and resolves
+// the user by its sub claim. No upsert runs here — sessions are only
+// issued after a provider credential already created the identity row.
+func (a *Authenticator) authenticateSession(ctx context.Context, raw string, unverified jwt.Token) (currentuser.User, error) {
+	if a.sessions == nil || !a.sessions.Enabled() {
+		return currentuser.User{}, fmt.Errorf("%w: session issuer not configured", errTokenInvalid)
+	}
+	userID, err := a.sessions.ValidateAccess(raw)
+	if err != nil {
+		return currentuser.User{}, fmt.Errorf("%w: verify session token: %w", errTokenInvalid, err)
+	}
+	subject := strconv.FormatInt(userID, 10)
+	if cu, ok := a.cachedUser(lenaIssuer, subject); ok {
+		return cu, nil
+	}
+
+	u, err := a.identity.GetByID(ctx, userID)
+	if err != nil {
+		return currentuser.User{}, fmt.Errorf("%w: load session user: %w", errIdentityStore, err)
+	}
+	if u.HouseholdID == nil {
+		if err := a.ensureDefaultHousehold(ctx, &u); err != nil {
+			return currentuser.User{}, fmt.Errorf("%w: ensure household: %w", errIdentityStore, err)
+		}
+	}
+	if !u.IsActive {
+		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
+	}
+
+	cu := toCurrentUser(u)
+	ttl := userCacheTTL
+	if exp, ok := unverified.Expiration(); ok {
+		if rem := time.Until(exp); rem < ttl {
+			ttl = rem
+		}
+	}
+	a.cacheUser(lenaIssuer, subject, cu, ttl)
+	return cu, nil
+}
+
+func (a *Authenticator) authenticateOIDC(ctx context.Context, raw, issuer string) (currentuser.User, error) {
 	if _, ok := a.audiencesByIssuer[issuer]; !ok {
 		return currentuser.User{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
 	}
@@ -394,6 +488,21 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		)
 	}
 
+	cu := toCurrentUser(u)
+	// Cap the cache entry by the token's own expiry so a cached resolution
+	// never outlives the credential it was minted for.
+	ttl := userCacheTTL
+	if exp, ok := token.Expiration(); ok {
+		if rem := time.Until(exp); rem < ttl {
+			ttl = rem
+		}
+	}
+	a.cacheUser(issuer, subject, cu, ttl)
+	return cu, nil
+}
+
+// toCurrentUser projects the identity row into the request-scoped user.
+func toCurrentUser(u identity.User) currentuser.User {
 	cu := currentuser.User{
 		UserID:          u.UserID,
 		Provider:        u.Provider,
@@ -407,16 +516,7 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 	if u.HouseholdID != nil {
 		cu.HouseholdID = *u.HouseholdID
 	}
-	// Cap the cache entry by the token's own expiry so a cached resolution
-	// never outlives the credential it was minted for.
-	ttl := userCacheTTL
-	if exp, ok := token.Expiration(); ok {
-		if rem := time.Until(exp); rem < ttl {
-			ttl = rem
-		}
-	}
-	a.cacheUser(issuer, subject, cu, ttl)
-	return cu, nil
+	return cu
 }
 
 // ensureDefaultHousehold creates a household for a user who has none and

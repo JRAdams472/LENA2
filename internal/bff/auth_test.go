@@ -180,7 +180,7 @@ func TestAuthenticateValidToken(t *testing.T) {
 	}, store)
 
 	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-1", "user@example.com", nil)
-	u, err := a.authenticate(context.Background(), raw)
+	u, _, err := a.authenticate(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestAuthenticateKeyRotation(t *testing.T) {
 
 	// Warm the cache with key set A.
 	rawA := signToken(t, privA, "key-a", iss.server.URL, "lena-client", "sub-1", "u@example.com", nil)
-	if _, err := a.authenticate(context.Background(), rawA); err != nil {
+	if _, _, err := a.authenticate(context.Background(), rawA); err != nil {
 		t.Fatalf("warm-up authenticate: %v", err)
 	}
 
@@ -214,7 +214,7 @@ func TestAuthenticateKeyRotation(t *testing.T) {
 	a.mu.Unlock()
 	iss.set.Store(setB)
 	rawB := signToken(t, privB, "key-b", iss.server.URL, "lena-client", "sub-1", "u@example.com", nil)
-	u, err := a.authenticate(context.Background(), rawB)
+	u, _, err := a.authenticate(context.Background(), rawB)
 	if err != nil {
 		t.Fatalf("authenticate after rotation: %v", err)
 	}
@@ -233,19 +233,19 @@ func TestAuthenticateRejects(t *testing.T) {
 	}, store)
 
 	t.Run("malformed token", func(t *testing.T) {
-		if _, err := a.authenticate(context.Background(), "not-a-jwt"); err == nil {
+		if _, _, err := a.authenticate(context.Background(), "not-a-jwt"); err == nil {
 			t.Fatal("expected error")
 		}
 	})
 	t.Run("disallowed issuer", func(t *testing.T) {
 		raw := signToken(t, priv, "key-a", "https://evil.example.com", "lena-client", "s", "e@x.com", nil)
-		if _, err := a.authenticate(context.Background(), raw); err == nil {
+		if _, _, err := a.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
 	})
 	t.Run("wrong audience", func(t *testing.T) {
 		raw := signToken(t, priv, "key-a", iss.server.URL, "other-client", "s", "e@x.com", nil)
-		if _, err := a.authenticate(context.Background(), raw); err == nil {
+		if _, _, err := a.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -256,7 +256,7 @@ func TestAuthenticateRejects(t *testing.T) {
 			Audiences: []string{"lena-client"},
 		}, bad)
 		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com", nil)
-		if _, err := a2.authenticate(context.Background(), raw); err == nil {
+		if _, _, err := a2.authenticate(context.Background(), raw); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -267,7 +267,7 @@ func TestAuthenticateRejects(t *testing.T) {
 			Audiences: []string{"lena-client"},
 		}, banned)
 		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com", nil)
-		_, err := a2.authenticate(context.Background(), raw)
+		_, _, err := a2.authenticate(context.Background(), raw)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "disabled")
 	})
@@ -280,7 +280,7 @@ func TestAuthenticateRejects(t *testing.T) {
 		}, banned)
 		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "s", "e@x.com",
 			map[string]any{"email_verified": true})
-		_, err := a2.authenticate(context.Background(), raw)
+		_, _, err := a2.authenticate(context.Background(), raw)
 		require.Error(t, err)
 		assert.Zero(t, atomic.LoadInt32(&banned.roleCalls))
 	})
@@ -298,7 +298,7 @@ func TestAuthenticateAdminPromotion(t *testing.T) {
 
 	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-9", "admin@example.com",
 		map[string]any{"email_verified": true})
-	u, err := a.authenticate(context.Background(), raw)
+	u, _, err := a.authenticate(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestAuthenticateAdminPromotionRequiresVerifiedEmail(t *testing.T) {
 			}, store)
 
 			raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-9", "admin@example.com", tc.extra)
-			u, err := a.authenticate(context.Background(), raw)
+			u, _, err := a.authenticate(context.Background(), raw)
 			if err != nil {
 				t.Fatalf("authenticate: %v", err)
 			}
@@ -466,7 +466,7 @@ func TestAuthenticateCachesResolvedUser(t *testing.T) {
 
 	raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-1", "u@example.com", nil)
 	for i := 0; i < 10; i++ {
-		if _, err := a.authenticate(context.Background(), raw); err != nil {
+		if _, _, err := a.authenticate(context.Background(), raw); err != nil {
 			t.Fatalf("authenticate %d: %v", i, err)
 		}
 	}
@@ -552,7 +552,7 @@ func TestKeySetSlowIssuerDoesNotBlockOthers(t *testing.T) {
 	slowDone := make(chan error, 1)
 	go func() {
 		raw := signToken(t, privA, "key-a", slow.URL, "lena-client", "sub-slow", "s@example.com", nil)
-		_, err := a.authenticate(context.Background(), raw)
+		_, _, err := a.authenticate(context.Background(), raw)
 		slowDone <- err
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -561,7 +561,7 @@ func TestKeySetSlowIssuerDoesNotBlockOthers(t *testing.T) {
 	raw := signToken(t, privB, "key-b", issB.server.URL, "lena-client", "sub-fast", "f@example.com", nil)
 	done := make(chan error, 1)
 	go func() {
-		_, err := a.authenticate(context.Background(), raw)
+		_, _, err := a.authenticate(context.Background(), raw)
 		done <- err
 	}()
 	select {
@@ -572,4 +572,128 @@ func TestKeySetSlowIssuerDoesNotBlockOthers(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("fast issuer auth stalled behind slow issuer")
 	}
+}
+
+// fakeSessionValidator stubs the session service for the iss=lena path.
+type fakeSessionValidator struct {
+	enabled bool
+	userID  int64
+	err     error
+	calls   int32
+}
+
+func (f *fakeSessionValidator) Enabled() bool { return f.enabled }
+
+func (f *fakeSessionValidator) ValidateAccess(string) (int64, error) {
+	atomic.AddInt32(&f.calls, 1)
+	return f.userID, f.err
+}
+
+// signLenaToken mints an iss=lena JWT; the fake validator never checks
+// the signature, so a throwaway HS256 key suffices.
+func signLenaToken(t *testing.T, subject string) string {
+	t.Helper()
+	tok, err := jwt.NewBuilder().
+		Issuer(lenaIssuer).
+		Subject(subject).
+		IssuedAt(time.Now()).
+		Expiration(time.Now().Add(15 * time.Minute)).
+		Build()
+	require.NoError(t, err)
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.HS256(), []byte("test-secret")))
+	require.NoError(t, err)
+	return string(signed)
+}
+
+func TestAuthenticateSessionToken(t *testing.T) {
+	hhID := int64(9)
+	store := &fakeIdentityStore{user: identity.User{
+		UserID:      7,
+		Provider:    "https://accounts.google.com",
+		Email:       "user@example.com",
+		IsActive:    true,
+		Role:        identity.RoleMember,
+		HouseholdID: &hhID,
+	}}
+	a := mustNewAuthenticator(t, AuthConfig{
+		Issuers:   []string{"https://accounts.google.com"},
+		Audiences: []string{"lena-client"},
+	}, store)
+	sv := &fakeSessionValidator{enabled: true, userID: 7}
+	a.SetSessions(sv)
+
+	u, viaSession, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+	require.NoError(t, err)
+	assert.True(t, viaSession)
+	assert.Equal(t, int64(7), u.UserID)
+	assert.Equal(t, int64(9), u.HouseholdID)
+	// The session path must never upsert — the identity row already exists.
+	assert.Zero(t, atomic.LoadInt32(&store.upsertCalls))
+}
+
+func TestAuthenticateSessionToken_Rejects(t *testing.T) {
+	hhID := int64(9)
+	active := &fakeIdentityStore{user: identity.User{UserID: 7, IsActive: true, HouseholdID: &hhID}}
+	cfg := AuthConfig{
+		Issuers:   []string{"https://accounts.google.com"},
+		Audiences: []string{"lena-client"},
+	}
+
+	t.Run("no session service", func(t *testing.T) {
+		a := mustNewAuthenticator(t, cfg, active)
+		_, _, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+		require.ErrorIs(t, err, errTokenInvalid)
+	})
+	t.Run("sessions disabled", func(t *testing.T) {
+		a := mustNewAuthenticator(t, cfg, active)
+		a.SetSessions(&fakeSessionValidator{enabled: false})
+		_, _, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+		require.ErrorIs(t, err, errTokenInvalid)
+	})
+	t.Run("invalid session token", func(t *testing.T) {
+		a := mustNewAuthenticator(t, cfg, active)
+		a.SetSessions(&fakeSessionValidator{enabled: true, err: errors.New("bad sig")})
+		_, _, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+		require.ErrorIs(t, err, errTokenInvalid)
+	})
+	t.Run("store failure", func(t *testing.T) {
+		bad := &fakeIdentityStore{getByIDErr: errors.New("db down")}
+		a := mustNewAuthenticator(t, cfg, bad)
+		a.SetSessions(&fakeSessionValidator{enabled: true, userID: 7})
+		_, _, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+		require.ErrorIs(t, err, errIdentityStore)
+	})
+	t.Run("banned user", func(t *testing.T) {
+		banned := &fakeIdentityStore{user: identity.User{UserID: 7, IsActive: false, HouseholdID: &hhID}}
+		a := mustNewAuthenticator(t, cfg, banned)
+		a.SetSessions(&fakeSessionValidator{enabled: true, userID: 7})
+		_, _, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+		require.ErrorIs(t, err, errAccountBanned)
+	})
+}
+
+func TestMiddleware_SessionAuthMarked(t *testing.T) {
+	hhID := int64(9)
+	store := &fakeIdentityStore{user: identity.User{UserID: 7, IsActive: true, HouseholdID: &hhID}}
+	a := mustNewAuthenticator(t, AuthConfig{
+		Issuers:   []string{"https://accounts.google.com"},
+		Audiences: []string{"lena-client"},
+	}, store)
+	a.SetSessions(&fakeSessionValidator{enabled: true, userID: 7})
+
+	e := echo.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/graphql", nil)
+	req.Header.Set(echo.HeaderAuthorization, "Bearer "+signLenaToken(t, "7"))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var sawSession bool
+	h := a.Middleware()(func(c echo.Context) error {
+		sawSession = isSessionAuth(c.Request().Context())
+		_, ok := currentuser.FromContext(c.Request().Context())
+		assert.True(t, ok)
+		return c.NoContent(http.StatusOK)
+	})
+	require.NoError(t, h(c))
+	assert.True(t, sawSession, "session-authenticated request must carry the marker")
 }

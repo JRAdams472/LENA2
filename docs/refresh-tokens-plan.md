@@ -21,10 +21,20 @@ revocation.
   OIDC ID tokens: `iss=="lena"` → session path; anything else → existing
   JWKS path. OIDC path stays live for `createSession`, the e2e issuer, and
   tools.
-- **Mutations** — `createSession(idToken!, device)` → validates the Google
-  token via the existing authenticator, upserts the user, returns
-  `{accessToken, refreshToken, expiresAt}`; `refreshSession(refreshToken!)`
-  → rotate + new access token; `revokeSession(refreshToken)` → sign out.
+- **Endpoints** — implemented as HTTP routes, not GraphQL mutations:
+  `refreshSession` must be callable *after* the access token expires, and
+  the `/graphql` middleware rejects unauthenticated requests. Punching an
+  operation-name exemption through that middleware would make every
+  resolver's ctx-check a load-bearing security control — a dedicated
+  endpoint avoids that entirely.
+  - `POST /auth/session` — behind auth middleware; exchanges the provider
+    credential for `{accessToken, refreshToken, expiresAt}`. Requests
+    authenticated by a LENA access token are rejected (403): a stolen
+    short-lived token must not mint fresh refresh tokens.
+  - `POST /auth/session/refresh` — `{refreshToken, device}` → rotated
+    pair. Unauthenticated (the refresh token is the credential) and
+    IP-rate-limited.
+  - `POST /auth/session/revoke` — `{refreshToken}` → 204; sign-out.
 - **Clients** — refresh token persisted (web `localStorage`, mobile secure
   storage); access token stays in `sessionStorage`/memory. On 401 or
   expired access token → `refreshSession` once → retry; on refresh failure
@@ -44,11 +54,11 @@ incl. reuse-detected family revocation and expiry edges.
 → PR, verify, merge.
 
 ### `rt-p2` — BFF wiring
-`createSession`/`refreshSession`/`revokeSession` mutations; middleware
-accepts `iss=lena` tokens and loads `currentuser` by `sub` (no provider
-upsert); rate-limit `createSession`/`refreshSession` per IP; resolver +
-integration tests (rotate happy path, reuse → family revoked, expired →
-rejected, disabled → UNAVAILABLE).
+`POST /auth/session`, `/auth/session/refresh`, `/auth/session/revoke`
+endpoints; middleware accepts `iss=lena` tokens and loads `currentuser` by
+`sub` (no provider upsert); IP-rate-limit the unauthenticated endpoints;
+handler + auth-path tests (rotate happy path, reuse → family revoked,
+expired → rejected, disabled → 503, session token can't mint sessions).
 → PR, verify, merge.
 
 ### `rt-p3` — web client
