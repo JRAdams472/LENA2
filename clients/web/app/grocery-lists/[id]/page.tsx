@@ -15,6 +15,7 @@ import TablePagination from "@mui/material/TablePagination";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import { api } from "@/lib/api";
+import { fmtQty } from "@/lib/format";
 import { GroceryListItem } from "@/lib/types";
 
 interface ManualForm {
@@ -87,7 +88,7 @@ export function ItemRow({
               {itemName}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {Number(item.quantityNeeded).toFixed(2)} {item.unitOfMeasure}
+              {fmtQty(Number(item.quantityNeeded))} {item.unitOfMeasure}
             </Typography>
           </Box>
         }

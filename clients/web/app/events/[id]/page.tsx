@@ -32,6 +32,7 @@ import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
+import { fmtQty } from "@/lib/format";
 import { EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
@@ -427,7 +428,7 @@ export default function EventDetailPage({
                             color="text.secondary"
                             sx={{ display: "block" }}
                           >
-                            ×{r.scalingFactor} of {r.baseServings}
+                            ×{fmtQty(r.scalingFactor)} of {r.baseServings}
                           </Typography>
                         )}
                       </TableCell>
@@ -904,7 +905,7 @@ function SlotItems({
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  {i.quantity}
+                  {fmtQty(i.quantity)}
                   {i.quantity !== i.baseQuantity && (
                     <Typography
                       component="span"
@@ -912,7 +913,7 @@ function SlotItems({
                       color="text.secondary"
                       sx={{ display: "block" }}
                     >
-                      {i.baseQuantity} base
+                      {fmtQty(i.baseQuantity)} base
                     </Typography>
                   )}
                 </TableCell>
