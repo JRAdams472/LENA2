@@ -17,10 +17,12 @@ import { useAuth } from "@/app/auth/AuthProvider";
  * AuthProvider (useAuth).
  */
 export default function SilentReAuth() {
-  const { isAuthenticated, signIn } = useAuth();
+  const { isAuthenticated, isRestoring, signIn } = useAuth();
 
   useGoogleOneTapLogin({
-    disabled: isAuthenticated,
+    // Stay quiet while a stored refresh token is being exchanged — the
+    // session may restore without needing Google at all.
+    disabled: isAuthenticated || isRestoring,
     auto_select: true,
     cancel_on_tap_outside: true,
     onSuccess: (response) => {

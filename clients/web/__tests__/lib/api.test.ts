@@ -3,6 +3,7 @@ import {
   ApiError,
   setAuthTokenGetter,
   setOnUnauthorized,
+  setSessionRefresher,
 } from "@/lib/api";
 
 const mockFetch = global.fetch as jest.Mock;
@@ -48,6 +49,7 @@ describe("api client", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     setAuthTokenGetter(() => null);
+    setSessionRefresher(null);
     // Default response for the userItems prefs fetch that item-list calls
     // issue in parallel with the items query.
     mockFetch.mockResolvedValue(
@@ -235,6 +237,90 @@ describe("api client", () => {
 
     const error = await api.getBrandList().catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the session once and retries on HTTP 401", async () => {
+    let token: string | null = "expired-access";
+    setAuthTokenGetter(() => token);
+    const refresher = jest.fn(async () => {
+      token = "fresh-access";
+      return true;
+    });
+    setSessionRefresher(refresher);
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: { get: () => null },
+        text: async () => "Unauthorized",
+      })
+      .mockResolvedValueOnce(
+        mockGraphQL({
+          brands: {
+            items: [{ id: "7", name: "Acme" }],
+            pageInfo: { totalCount: 1 },
+          },
+        })
+      );
+
+    const result = await api.getBrandList();
+    expect(refresher).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const [, retryInit] = mockFetch.mock.calls[1];
+    expect((retryInit as RequestInit).headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer fresh-access" })
+    );
+    expect(result[0].brandName).toBe("Acme");
+  });
+
+  it("single-flights concurrent refreshes", async () => {
+    let token: string | null = "expired-access";
+    setAuthTokenGetter(() => token);
+    const refresher = jest.fn(async () => {
+      token = "fresh-access";
+      return true;
+    });
+    setSessionRefresher(refresher);
+    const meData = {
+      id: "7",
+      email: "u@example.com",
+      displayName: null,
+      firstName: null,
+      lastName: null,
+      backupEmail: null,
+      birthdate: null,
+      role: "member",
+      isActive: true,
+      isProtected: false,
+      lastLoginAt: null,
+      isSearchable: false,
+      household: null,
+    };
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => "x" })
+      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => "x" })
+      .mockResolvedValue(mockGraphQL({ me: meData }));
+
+    const [a, b] = await Promise.all([api.getMe(), api.getMe()]);
+    expect(refresher).toHaveBeenCalledTimes(1);
+    expect(a.email).toBe("u@example.com");
+    expect(b.email).toBe("u@example.com");
+  });
+
+  it("signs out when the refresh attempt fails", async () => {
+    const onUnauthorized = jest.fn();
+    setOnUnauthorized(onUnauthorized);
+    setSessionRefresher(jest.fn(async () => false));
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      headers: { get: () => null },
+      text: async () => "Unauthorized",
+    });
+
+    const error = await api.getBrandList().catch((e) => e);
+    expect((error as ApiError).status).toBe(401);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
