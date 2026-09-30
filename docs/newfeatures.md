@@ -116,3 +116,61 @@ Recipes and items should surface which allergens they contain or may contain.
 Warn the user when a recipe on their plan, event, or search results conflicts with a recorded allergy.
 Possibly use AI to analyze a recipe's ingredients and flag likely allergy risks automatically, i.e. "may contain traces of nuts" or hidden sources like Worcestershire sauce containing fish.
 AI-detected flags should be reviewable/overridable since allergen detection can be wrong in both directions.
+
+## Local AI Assistant
+Don’t sweat the Dart setup—you do not need to rewrite your mobile app in Kotlin or Swift, and yes, your web app can absolutely use local desktop GPUs!
+The modern ecosystem has evolved rapidly to support cross-platform local AI. You can keep your Dart codebase intact and run models entirely inside the client’s browser tab using WebGPU.
+Here is how you can pull off both feats without starting your code from scratch.
+------------------------------
+You do not need to abandon Dart. To run local Small Language Models (SLMs) right on the user's phone, you can bypass the native Swift/Kotlin requirement entirely using cross-platform tools: [1] 
+
+* 
+* Google MediaPipe LLM Inference API: Google officially supports a MediaPipe Flutter plugin. It acts as a Dart wrapper that targets the device's native hardware under the hood (CoreML on iOS or AICore/NPU on Android). You feed it a highly compact model like Gemma 2B or Llama 3.2 1B/3B, and Dart executes it completely on-device. [1, 2, 3] 
+* The Ollama-Style Sidecar: Alternatively, you can use packages like flutter_llama (which wraps llama.cpp in a clean Dart FFI package). It compiles straight down to ARM64, turning your Flutter app into its own self-contained local AI client. [4] 
+* 
+
+------------------------------
+This is one of the coolest frontend paradigms available. Your web app can leverage the user’s dedicated graphics card (like an Nvidia RTX or Apple M-Series chip) straight inside a standard browser tab with zero extensions or installations required. [5, 6] 
+## Option A: WebLLM & WebGPU (The High-Performance Path)
+You can integrate an open-source library called [WebLLM](https://webllm.mlc.ai/) into your frontend Javascript/Typescript bundle. [7, 8] 
+
+* 
+* How it works: When a user opens the LENA web dashboard, WebLLM pulls an optimized, highly compressed model (like a quantized Llama 3.2 3B or Qwen 2.5) straight from a CDN and caches it natively in the browser. [7, 9] 
+* Hardware Acceleration: It connects straight to the client's graphics card via the native WebGPU API. Benchmarks show it runs incredibly fast—delivering around 30 to 50 tokens per second purely inside a browser tab while your server costs stay exactly at $0! [2, 6, 7] 
+* 
+
+## Option B: Google Chrome’s Built-In Gemini Nano (The Zero-Download Path)
+Instead of forcing your web app to stream a 1.5GB model file into the browser cache, you can tap into the actual browser engine. [10] 
+
+* 
+* How it works: Desktop versions of Google Chrome ship with a built-in instance of Gemini Nano.
+* The Code: You can access it directly via a native JavaScript API window prompt:
+
+// Call Chrome's local NPU engine nativelyconst session = await window.ai.createTextSession();const result = await session.prompt("Suggest a wine pairing for Salmon...");
+console.log(result);
+
+* Why it fits LENA: It runs locally, keeping your user's meal history completely private, and offloads all computation away from your hosting environment. [10, 11] 
+* 
+
+------------------------------
+Because your backend architecture relies on the Model Context Protocol (MCP), setting this up is clean and modular.
+When your application initiates an AI task (like resolving a kitchen appliance conflict), your client-side gateway router can execute a quick three-step capability check:
+
+   1. Check Browser: Is window.ai available or does the desktop support WebGPU? If yes, execute the prompt locally using the client's desktop GPU.
+   2. Check Mobile: Is the app running on mobile via MediaPipe? If yes, execute using the phone’s on-board NPU.
+   3. Cloud Fallback: If the client is using a weak, older device with no local GPU acceleration, only then do you route the request out to your Serverless Ollama cloud node.
+
+This layout keeps your project beautifully scalable, lightning fast for modern devices, and ensures your infrastructure bills stay close to a net-zero baseline.
+Would you like to explore a code snippet for implementing WebLLM into your web dashboard layout, or should we look at how to structure the MediaPipe Flutter bridge inside your active Dart app?
+
+[1] [https://www.aimagicx.com](https://www.aimagicx.com/blog/on-device-ai-models-local-llm-guide-2026)
+[2] [https://www.youtube.com](https://www.youtube.com/watch?v=1mix7WnuEK0&t=36)
+[3] [https://ai-tldr.dev](https://ai-tldr.dev/learn/local-open-models/running-models-locally/run-llms-on-a-phone/)
+[4] [https://dev.to](https://dev.to/alichherawalla/how-to-run-local-ai-on-your-android-phone-in-2026-no-cloud-no-account-5cbp)
+[5] [https://www.youtube.com](https://www.youtube.com/watch?v=CmXHTo5vmmE&t=775)
+[6] [https://medium.com](https://medium.com/codetodeploy/javascript-for-real-time-ai-on-device-llms-with-webgpu-webnn-0daaaea2a2fb)
+[7] https://webllm.mlc.ai
+[8] [https://github.com](https://github.com/mlc-ai/web-llm)
+[9] [https://www.youtube.com](https://www.youtube.com/watch?v=AWylz6JtT5M&t=62)
+[10] [https://www.youtube.com](https://www.youtube.com/watch?v=CjpZCWYrSxM&t=6)
+[11] [https://medium.com](https://medium.com/google-cloud/get-started-with-chrome-built-in-ai-access-gemini-nano-model-locally-11bacf235514)
