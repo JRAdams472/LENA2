@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/event"
@@ -550,3 +551,12 @@ type WineService interface {
 }
 
 var _ WineService = (*wine.Service)(nil)
+
+// AIService is the subset of *ai.Service used by the resolver. Ask is
+// scoped by the caller's identity — tools see only that user's household.
+type AIService interface {
+	Available() bool
+	Ask(ctx context.Context, userID, householdID int64, question string) (ai.Answer, error)
+}
+
+var _ AIService = (*ai.Service)(nil)

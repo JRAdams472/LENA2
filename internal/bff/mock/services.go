@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	ai "github.com/JRAdams472/LENA2/internal/ai"
 	analytics "github.com/JRAdams472/LENA2/internal/analytics"
 	recipeimport "github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	event "github.com/JRAdams472/LENA2/internal/event"
@@ -9226,4 +9227,57 @@ func (m *MockWineService) UpdateWineFlavorProfile(ctx context.Context, flavorPro
 func (mr *MockWineServiceMockRecorder) UpdateWineFlavorProfile(ctx, flavorProfileID, name, description, isActive, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateWineFlavorProfile", reflect.TypeOf((*MockWineService)(nil).UpdateWineFlavorProfile), ctx, flavorProfileID, name, description, isActive, by)
+}
+
+// MockAIService is a mock of AIService interface.
+type MockAIService struct {
+	ctrl     *gomock.Controller
+	recorder *MockAIServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockAIServiceMockRecorder is the mock recorder for MockAIService.
+type MockAIServiceMockRecorder struct {
+	mock *MockAIService
+}
+
+// NewMockAIService creates a new mock instance.
+func NewMockAIService(ctrl *gomock.Controller) *MockAIService {
+	mock := &MockAIService{ctrl: ctrl}
+	mock.recorder = &MockAIServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAIService) EXPECT() *MockAIServiceMockRecorder {
+	return m.recorder
+}
+
+// Ask mocks base method.
+func (m *MockAIService) Ask(ctx context.Context, userID, householdID int64, question string) (ai.Answer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Ask", ctx, userID, householdID, question)
+	ret0, _ := ret[0].(ai.Answer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Ask indicates an expected call of Ask.
+func (mr *MockAIServiceMockRecorder) Ask(ctx, userID, householdID, question any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ask", reflect.TypeOf((*MockAIService)(nil).Ask), ctx, userID, householdID, question)
+}
+
+// Available mocks base method.
+func (m *MockAIService) Available() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Available")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Available indicates an expected call of Available.
+func (mr *MockAIServiceMockRecorder) Available() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Available", reflect.TypeOf((*MockAIService)(nil).Available))
 }

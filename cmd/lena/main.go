@@ -24,6 +24,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho" //nolint:staticcheck
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/JRAdams472/LENA2/internal/ai"
+	"github.com/JRAdams472/LENA2/internal/ai/tools"
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff"
@@ -218,6 +220,31 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		log.Warn("recipe import recovery failed", "error", err)
 	}
 
+	// AI assistant: a nil provider keeps the service constructed but
+	// disabled — aiAvailable reports false and askAssistant returns
+	// UNAVAILABLE.
+	aiModel := cfg.AIModel
+	if aiModel == "" {
+		aiModel = cfg.OllamaModel
+	}
+	aiProvider, err := llm.NewProvider(llm.Params{
+		Provider:    cfg.AIProvider,
+		URL:         cfg.OllamaURL,
+		Model:       aiModel,
+		Temperature: cfg.AITemperature,
+		NumCtx:      cfg.AINumCtx,
+		Timeout:     cfg.AITimeout,
+	})
+	if err != nil {
+		log.Error("failed to configure AI provider", "error", err)
+		os.Exit(1)
+	}
+	aiTools := tools.New()
+	tools.RegisterPantryTools(aiTools, userPrefsSvc, inventorySvc)
+	aiSvc := ai.NewService(aiProvider, aiTools, ai.Config{
+		MaxToolRounds: cfg.AIMaxToolRounds,
+	})
+
 	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:     splitAndTrim(cfg.AuthIssuers),
 		Audiences:   splitAndTrim(cfg.AuthAudiences),
@@ -320,6 +347,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 			Household:    householdSvc,
 			Notifier:     notifierSvc,
 			Auth:         authenticator,
+			AI:           aiSvc,
 			OCR:          ocrClient,
 		},
 		bff.Options{

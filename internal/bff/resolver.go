@@ -57,6 +57,7 @@ type Resolver struct {
 	HouseholdService       HouseholdService
 	NotifierService        NotifierService
 	AuthInvalidator        AuthInvalidator
+	AIService              AIService
 	OCRClient              OCRClient
 	IdemStore              IdempotencyStore
 	NutritionPhotoMaxBytes int
@@ -74,6 +75,7 @@ type Resolver struct {
 	ocrMu       sync.Mutex
 	ocrInFlight map[int64]int
 	uploads     *userRateLimiter
+	aiCalls     *userRateLimiter
 }
 
 // asyncWorkerCap bounds the number of in-flight background tasks.
@@ -99,6 +101,7 @@ type Services struct {
 	Household    HouseholdService
 	Notifier     NotifierService
 	Auth         AuthInvalidator
+	AI           AIService
 	OCR          OCRClient
 }
 
@@ -135,6 +138,7 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		HouseholdService:       svc.Household,
 		NotifierService:        svc.Notifier,
 		AuthInvalidator:        svc.Auth,
+		AIService:              svc.AI,
 		OCRClient:              svc.OCR,
 		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
 		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
