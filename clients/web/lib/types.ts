@@ -512,6 +512,18 @@ export interface EventFixSuggestion {
   reason: string;
 }
 
+// One household-data lookup the assistant made while answering — the
+// "checked your pantry" trace shown under each reply.
+export interface AssistantToolCall {
+  name: string;
+}
+
+// The assistant's reply plus the tools it used.
+export interface AssistantAnswer {
+  answer: string;
+  toolCalls: AssistantToolCall[];
+}
+
 export interface NutrientAmount {
   nutrientId: number;
   nutrientName: string;

@@ -44,6 +44,7 @@ import {
   EventRecipeStep,
   EventTimeline,
   EventFixSuggestion,
+  AssistantAnswer,
   InviteStatus,
   NotificationCategoryPreference,
   NotificationKind,
@@ -574,6 +575,11 @@ interface GqlCocktailSuggestion {
   recipe: GqlRecipe;
   reason: string;
   missingIngredients: string[];
+}
+
+interface GqlAssistantAnswer {
+  answer: string;
+  toolCalls: { name: string }[] | null;
 }
 
 interface GqlEventFixSuggestion {
@@ -3632,6 +3638,19 @@ export const api = {
       reason: c.reason,
       missingIngredients: c.missingIngredients ?? [],
     }));
+  },
+
+  askAssistant: async (question: string): Promise<AssistantAnswer> => {
+    const data = await request<{ askAssistant: GqlAssistantAnswer }>(
+      `query ($question: String!) {
+        askAssistant(question: $question) { answer toolCalls { name } }
+      }`,
+      { question }
+    );
+    return {
+      answer: data.askAssistant.answer,
+      toolCalls: data.askAssistant.toolCalls ?? [],
+    };
   },
 };
 

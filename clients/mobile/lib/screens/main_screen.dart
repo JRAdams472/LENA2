@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'assistant_screen.dart';
 import 'dashboard_screen.dart';
 import 'events_screen.dart';
 import 'grocery_lists_screen.dart';
@@ -35,6 +36,7 @@ class _MainScreenState extends State<MainScreen> {
     ScanScreen(),
     PantryScreen(),
     HouseholdScreen(),
+    AssistantScreen(),
   ];
 
   @override
@@ -108,6 +110,10 @@ class _MainScreenState extends State<MainScreen> {
               child: const Icon(Icons.group),
             ),
             label: 'Household',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.smart_toy),
+            label: 'Assistant',
           ),
         ],
       ),
