@@ -16,6 +16,7 @@ dependencies:
   provider: ^6.1.2
   uuid: ^4.6.0
   gql: ^1.0.1
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
