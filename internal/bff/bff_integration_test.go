@@ -178,14 +178,14 @@ func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssue
 
 	t.Run("admin email promotes user to admin", func(t *testing.T) {
 		tok := issuer.Token(t, "admin-user", "auth@example.com", "Admin User")
-		u, err := authenticator.authenticate(context.Background(), tok)
+		u, _, err := authenticator.authenticate(context.Background(), tok)
 		require.NoError(t, err)
 		assert.True(t, u.IsAdmin)
 	})
 
 	t.Run("jwks rotation is handled with forced refetch", func(t *testing.T) {
 		tok1 := issuer.Token(t, "rot-user", "user-a@example.com", "Rot User")
-		_, err := authenticator.authenticate(context.Background(), tok1)
+		_, _, err := authenticator.authenticate(context.Background(), tok1)
 		require.NoError(t, err)
 
 		issuer.RotateKey(t)
@@ -197,7 +197,7 @@ func runAuthTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssue
 		authenticator.mu.Unlock()
 
 		tok2 := issuer.Token(t, "rot-user", "user-a@example.com", "Rot User")
-		_, err = authenticator.authenticate(context.Background(), tok2)
+		_, _, err = authenticator.authenticate(context.Background(), tok2)
 		require.NoError(t, err)
 	})
 }
