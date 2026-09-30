@@ -4,12 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -81,6 +83,55 @@ func TestResolver_AskAssistant_InvalidQuestion(t *testing.T) {
 	_, err := r.AskAssistant(aiCtx(), struct{ Question string }{Question: "  "})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "1-2000")
+}
+
+func TestResolver_SuggestMeals_Happy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	recipes := mock.NewMockRecipeService(ctrl)
+	aiSvc.EXPECT().Available().Return(true)
+	aiSvc.EXPECT().SuggestMeals(gomock.Any(), int64(7), int64(7), int64(10), 4).
+		Return([]ai.MealSuggestion{{RecipeID: 20, DayOfWeek: 3, MealType: "Dinner", Reason: "uses milk", Expiring: []string{"milk"}}}, nil)
+	recipes.EXPECT().GetRecipeByID(gomock.Any(), int64(20)).
+		Return(recipe.Recipe{RecipeID: 20, Name: "Pasta"}, nil)
+
+	r := &Resolver{AIService: aiSvc, RecipeService: recipes}
+	res, err := r.SuggestMeals(aiCtx(), struct {
+		MealPlanID     graphql.ID
+		MaxSuggestions int32
+	}{MealPlanID: "10", MaxSuggestions: 4})
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, int32(3), res[0].DayOfWeek())
+	assert.Equal(t, "Dinner", res[0].MealType())
+	assert.Equal(t, "uses milk", res[0].Reason())
+	assert.Equal(t, []string{"milk"}, res[0].UsesExpiringItems())
+	rec, err := res[0].Recipe(aiCtx())
+	require.NoError(t, err)
+	assert.NotNil(t, rec)
+}
+
+func TestResolver_SuggestMeals_Disabled(t *testing.T) {
+	r := &Resolver{}
+	_, err := r.SuggestMeals(aiCtx(), struct {
+		MealPlanID     graphql.ID
+		MaxSuggestions int32
+	}{MealPlanID: "10"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
+func TestResolver_SuggestMeals_BadMax(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	aiSvc.EXPECT().Available().Return(true)
+	r := &Resolver{AIService: aiSvc}
+	_, err := r.SuggestMeals(aiCtx(), struct {
+		MealPlanID     graphql.ID
+		MaxSuggestions int32
+	}{MealPlanID: "10", MaxSuggestions: 99})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "1-10")
 }
 
 func TestResolver_AskAssistant_RateLimited(t *testing.T) {

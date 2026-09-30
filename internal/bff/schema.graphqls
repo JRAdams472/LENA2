@@ -145,6 +145,10 @@ type Query {
   # data through its tools but can never write; errors UNAVAILABLE when no
   # provider is configured.
   askAssistant(question: String!): AssistantAnswer!
+  # AI meal suggestions for a plan's open cells — stock, expiring items,
+  # and household tastes inform the picks. Advisory only: apply with
+  # addMealSlot. Errors UNAVAILABLE when no provider is configured.
+  suggestMeals(mealPlanId: ID!, maxSuggestions: Int = 6): [MealPlanSuggestion!]!
 }
 
 type Mutation {
@@ -1393,4 +1397,16 @@ type AssistantAnswer {
 # One tool invocation the assistant made while answering.
 type AssistantToolCall {
   name: String!
+}
+
+# One AI meal suggestion for an open dayOfWeek/mealType cell — reviewable
+# before applying via addMealSlot.
+type MealPlanSuggestion {
+  recipe: Recipe!
+  dayOfWeek: Int!
+  mealType: String!
+  # Why the model picked it ("uses expiring milk", "household favorite").
+  reason: String!
+  # Expiring pantry items the recipe would consume.
+  usesExpiringItems: [String!]!
 }

@@ -470,6 +470,14 @@ export interface MealSlotItem extends AuditableEntity {
   item?: Item | null;
 }
 
+export interface MealPlanSuggestion {
+  recipe: Recipe;
+  dayOfWeek: number;
+  mealType: number;
+  reason: string;
+  usesExpiringItems: string[];
+}
+
 export interface NutrientAmount {
   nutrientId: number;
   nutrientName: string;
