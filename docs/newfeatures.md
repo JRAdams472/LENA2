@@ -71,6 +71,9 @@ Signals to rank by should include but not be limited to:
 - Dashboard "Today's meals" as a 3-column icon grid with dashed-pill "+ Plan a meal" actions; "Suggested for You" recipe reasons as soft-green chips; "Running low" rows with amber status dots and package-size badges (size deduplicated out of item names); suggested/restock cards in a bento grid on wide screens.
 
 # Version 2
+## Multi-provider sign-in & account linking
+✅ Done (PRs #210, #211). A LENA user can carry multiple provider logins (`identity.user_login` maps `(provider, external_subject)` → user). **Discord OAuth2** ships on web — server-side code exchange (`client_secret` never leaves the server), `state` CSRF check, subject = stable snowflake ID. `GET /auth/identities`, `POST /auth/link`, `DELETE /auth/link` manage logins; linking requires step-up auth and **never auto-merges by email**. Facebook OIDC and mobile Discord (needs the app-link deep-link bounce) are planned. See `docs/auth-multi-plan.md`.
+
 ## Session refresh tokens
 ✅ Done (PRs #205–#208). LENA-issued sessions on top of the Google credential: short-lived signed access token (`iss=lena`, ~15 min) + rotating opaque refresh token (hashed at rest, ~30-day sliding expiry, theft-detection family revocation). Endpoints `POST /auth/session{,/refresh,/revoke}`; web and mobile refresh transparently and fall back to OIDC-only mode when `LENA_SESSION_SECRET` is unset. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
 
