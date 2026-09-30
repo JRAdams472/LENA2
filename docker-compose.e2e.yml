@@ -38,6 +38,9 @@ services:
       # All e2e traffic arrives through Caddy from one runner IP, so the
       # pre-auth IP limiter would 429 mid-run for the same reason.
       LENA_IP_RATE_LIMIT_PER_MINUTE: "0"
+      # AI assistant runs on the scripted provider — e2e never needs a
+      # real LLM.
+      LENA_AI_PROVIDER: mock
     depends_on:
       db-seed:
         condition: service_completed_successfully

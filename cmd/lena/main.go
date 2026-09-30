@@ -36,9 +36,9 @@ import (
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
+	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
-	"github.com/JRAdams472/LENA2/internal/platform/ollamaclient"
 	"github.com/JRAdams472/LENA2/internal/platform/postgres"
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/platform/telemetry"
@@ -190,7 +190,18 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	// recipeimport checks `ollama == nil` to disable the draft stage.
 	var ollamaClient recipeimport.LLMClient
 	if cfg.OllamaURL != "" {
-		ollamaClient = ollamaclient.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaTemperature, cfg.OllamaNumCtx)
+		p, err := llm.NewProvider(llm.Params{
+			Provider:    "ollama",
+			URL:         cfg.OllamaURL,
+			Model:       cfg.OllamaModel,
+			Temperature: cfg.OllamaTemperature,
+			NumCtx:      cfg.OllamaNumCtx,
+		})
+		if err != nil {
+			log.Error("failed to configure ollama provider", "error", err)
+			os.Exit(1)
+		}
+		ollamaClient = p
 	}
 	profanityDetector := profanity.New(cfg.ProfanityExtraTerms)
 	recipeImportSvc := recipeimport.NewService(
