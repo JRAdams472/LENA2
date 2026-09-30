@@ -118,6 +118,16 @@ type Config struct {
 	// AIMaxToolRounds bounds how many tool-call round trips one assistant
 	// request may take before the loop gives up.
 	AIMaxToolRounds int `envconfig:"AI_MAX_TOOL_ROUNDS" default:"5"`
+	// SessionSecret signs LENA-issued access tokens (HS256) for the
+	// refresh-token session flow. Empty disables session issuing — OIDC-only
+	// mode, matching the pre-session behaviour.
+	SessionSecret string `envconfig:"SESSION_SECRET" default:""`
+	// SessionAccessTTL is the access-token lifetime; clients refresh on
+	// expiry rather than re-signing in.
+	SessionAccessTTL time.Duration `envconfig:"SESSION_ACCESS_TTL" default:"15m"`
+	// SessionRefreshTTL is the sliding refresh-token lifetime; each
+	// successful rotation extends it.
+	SessionRefreshTTL time.Duration `envconfig:"SESSION_REFRESH_TTL" default:"720h"`
 	// ImportInbox is the directory where source images/PDFs are placed before
 	// the importer processes them. The new submitRecipeScan mutation also
 	// writes uploaded admin scans here.
