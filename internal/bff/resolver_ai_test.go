@@ -134,6 +134,64 @@ func TestResolver_SuggestMeals_BadMax(t *testing.T) {
 	assert.Contains(t, err.Error(), "1-10")
 }
 
+func TestResolver_SuggestEventFixes_Happy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	mins := int32(30)
+	aiSvc.EXPECT().Available().Return(true)
+	aiSvc.EXPECT().SuggestEventFixes(gomock.Any(), int64(7), int64(7), int64(20), 6).
+		Return([]ai.EventFix{{EventRecipeID: 101, RecipeName: "Sides", Action: ai.EventFixShiftServe, Minutes: &mins, Reason: "frees the oven"}}, nil)
+
+	r := &Resolver{AIService: aiSvc}
+	res, err := r.SuggestEventFixes(aiCtx(), struct {
+		FoodEventID    graphql.ID
+		MaxSuggestions int32
+	}{FoodEventID: "20", MaxSuggestions: 6})
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "101", string(res[0].EventRecipeID()))
+	assert.Equal(t, "Sides", res[0].RecipeName())
+	assert.Equal(t, "shift_serve", res[0].Action())
+	assert.Equal(t, int32(30), *res[0].Minutes())
+	assert.Nil(t, res[0].Appliance())
+	assert.Equal(t, "frees the oven", res[0].Reason())
+}
+
+func TestResolver_SuggestEventFixes_Disabled(t *testing.T) {
+	r := &Resolver{}
+	_, err := r.SuggestEventFixes(aiCtx(), struct {
+		FoodEventID    graphql.ID
+		MaxSuggestions int32
+	}{FoodEventID: "20"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
+func TestResolver_SuggestEventFixes_BadMax(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	aiSvc.EXPECT().Available().Return(true)
+	r := &Resolver{AIService: aiSvc}
+	_, err := r.SuggestEventFixes(aiCtx(), struct {
+		FoodEventID    graphql.ID
+		MaxSuggestions int32
+	}{FoodEventID: "20", MaxSuggestions: 99})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "1-10")
+}
+
+func TestResolver_SuggestEventFixes_BadID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	aiSvc.EXPECT().Available().Return(true)
+	r := &Resolver{AIService: aiSvc}
+	_, err := r.SuggestEventFixes(aiCtx(), struct {
+		FoodEventID    graphql.ID
+		MaxSuggestions int32
+	}{FoodEventID: "abc", MaxSuggestions: 6})
+	require.Error(t, err)
+}
+
 func TestResolver_AskAssistant_RateLimited(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	svc := mock.NewMockAIService(ctrl)

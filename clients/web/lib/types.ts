@@ -478,6 +478,21 @@ export interface MealPlanSuggestion {
   usesExpiringItems: string[];
 }
 
+// One AI schedule fix for an event timeline problem. `action` selects
+// which payload fields are meaningful; applied via the existing event
+// recipe / recipe-step mutations.
+export interface EventFixSuggestion {
+  eventRecipeId: number;
+  recipeName: string;
+  stepNumber: number | null;
+  action: "shift_serve" | "set_appliance" | "set_duration" | "set_dependency";
+  minutes: number | null;
+  appliance: string | null;
+  durationMinutes: number | null;
+  dependsOnStepNumber: number | null;
+  reason: string;
+}
+
 export interface NutrientAmount {
   nutrientId: number;
   nutrientName: string;
