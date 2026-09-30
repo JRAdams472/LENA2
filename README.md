@@ -196,6 +196,8 @@ LENA2 uses Google OIDC ID tokens:
 3. The backend validates the token against the configured issuer and audience.
 4. The user record is upserted in the `identity.users` table and a `user_id` is placed in the request context.
 
+**Sessions.** Set `LENA_SESSION_SECRET` and sign-in exchanges the Google credential for a LENA session: a short-lived signed access token (`iss=lena`, ~15 min) plus a rotating refresh token (~30 days, stored only as a hash). Clients refresh instead of re-signing in with Google; replaying a rotated token revokes the whole session family. Unset keeps OIDC-only mode. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
+
 Initial admins are promoted by adding their email to `LENA_ADMIN_EMAILS`. Protected admins can be listed in `LENA_PROTECTED_EMAILS` so they cannot be banned or demoted.
 
 ## API idempotency

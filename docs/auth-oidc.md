@@ -87,8 +87,51 @@ If missing, the request is rejected. No resolver accepts `userId` from the clien
 - `created_by` / `updated_by` columns are the user's `email` (human-readable).
 - `user_id` is the scoping/ownership key for per-user data.
 
-## 8. Security Notes
+## 8. Sessions (refresh tokens)
 
-- ID tokens are short-lived. LENA does **not** implement refresh tokens; the client must re-sign in with Google.
+Google ID tokens expire in ~1 hour. To keep users signed in, LENA issues
+its own session on top of the provider credential:
+
+- `POST /auth/session` — authenticated by the provider token (middleware);
+  returns `{accessToken, refreshToken, expiresAt}`.
+- `POST /auth/session/refresh` — `{refreshToken, device}` → rotated pair.
+  Unauthenticated by design: this is called *after* the access token
+  expires. IP-rate-limited.
+- `POST /auth/session/revoke` — `{refreshToken}` → sign out.
+
+**Access token** — HS256 JWT signed with `LENA_SESSION_SECRET`,
+`iss=lena`, `sub=<user_id>`, ~15 min TTL (`LENA_SESSION_ACCESS_TTL`).
+The auth middleware routes on `iss`: `lena` → session validation → load
+the identity row by `sub` (no upsert); anything else → the JWKS path in
+§3–4. Session-authenticated requests cannot call `/auth/session` — a
+stolen short-lived token must not mint refresh tokens.
+
+**Refresh token** — opaque (32 random bytes, base64url), stored only as a
+SHA-256 hash in `identity.session`. Each refresh rotates into a new row in
+the same `family_id` and marks the old row `replaced_by`/`revoked_at`.
+Replaying a rotated or revoked token is treated as theft: the whole family
+is revoked (`ErrSessionReuse`). Expiry slides on each rotation, bounded by
+`LENA_SESSION_REFRESH_TTL` (default 720 h / 30 d).
+
+**Clients** — web: refresh token in `localStorage`, access token in
+`sessionStorage`, single-flight refresh + one retry on 401
+(`lib/api.ts`), fresh-tab restore via rotation + `me`. Mobile: refresh
+token in `flutter_secure_storage`, proactive refresh in the auth link, one
+retry on 401 (`lib/graphql_config.dart`).
+
+**Disabled mode** — empty `LENA_SESSION_SECRET` leaves the service
+unconfigured: session endpoints return 503, `iss=lena` tokens are
+rejected, and clients fall back to passing the provider token as the
+bearer (OIDC-only mode, the pre-session behavior).
+
+Known limit: an in-flight access token stays valid until its ~15-minute
+expiry even after the family is revoked — revocation bounds the refresh
+channel, which is where persistence lives.
+
+## 9. Security Notes
+
+- Provider ID tokens are short-lived; sessions ride on the rotating
+  refresh token described above.
 - Tokens are never logged.
-- All authentication errors return `401` with a generic message; detailed causes are logged at `debug` level.
+- All authentication errors return `401` with a generic message; detailed
+  causes are logged at `debug` level.

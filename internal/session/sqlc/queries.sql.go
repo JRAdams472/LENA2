@@ -13,16 +13,10 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-WITH ins AS (
-    INSERT INTO identity.session (user_id, family_id, refresh_hash, device, expires_at)
-    VALUES ($1, 0, $2, $3, $4)
-    RETURNING session_id
-)
-UPDATE identity.session AS s
-SET family_id = ins.session_id
-FROM ins
-WHERE s.session_id = ins.session_id
-RETURNING s.session_id, s.user_id, s.family_id, s.refresh_hash, s.device, s.created_at, s.expires_at, s.revoked_at, s.replaced_by
+WITH seq AS (SELECT nextval('identity.session_session_id_seq') AS id)
+INSERT INTO identity.session (session_id, user_id, family_id, refresh_hash, device, expires_at)
+SELECT seq.id, $1, seq.id, $2, $3, $4 FROM seq
+RETURNING session_id, user_id, family_id, refresh_hash, device, created_at, expires_at, revoked_at, replaced_by
 `
 
 type CreateSessionParams struct {
@@ -32,6 +26,9 @@ type CreateSessionParams struct {
 	ExpiresAt   time.Time   `json:"expires_at"`
 }
 
+// The family root's family_id equals its own session_id, so draw the
+// sequence value first and insert both columns explicitly. (An
+// INSERT-then-UPDATE CTE cannot see the row it just inserted.)
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (IdentitySession, error) {
 	row := q.db.QueryRow(ctx, createSession,
 		arg.UserID,
