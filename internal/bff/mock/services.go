@@ -9281,3 +9281,18 @@ func (mr *MockAIServiceMockRecorder) Available() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Available", reflect.TypeOf((*MockAIService)(nil).Available))
 }
+
+// SuggestMeals mocks base method.
+func (m *MockAIService) SuggestMeals(ctx context.Context, userID, householdID, mealPlanID int64, maxSuggestions int) ([]ai.MealSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestMeals", ctx, userID, householdID, mealPlanID, maxSuggestions)
+	ret0, _ := ret[0].([]ai.MealSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SuggestMeals indicates an expected call of SuggestMeals.
+func (mr *MockAIServiceMockRecorder) SuggestMeals(ctx, userID, householdID, mealPlanID, maxSuggestions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestMeals", reflect.TypeOf((*MockAIService)(nil).SuggestMeals), ctx, userID, householdID, mealPlanID, maxSuggestions)
+}

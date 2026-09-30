@@ -27,6 +27,7 @@ import {
   MealSlot,
   MealSlotItem,
   MealPlanNutrition,
+  MealPlanSuggestion,
   GroceryList,
   GroceryListItem,
   Household,
@@ -549,6 +550,14 @@ interface GqlMealPlan {
 interface GqlMealPlanPage {
   items: GqlMealPlan[];
   pageInfo: GqlPageInfo;
+}
+
+interface GqlMealPlanSuggestion {
+  recipe: GqlRecipe;
+  dayOfWeek: number;
+  mealType: string;
+  reason: string;
+  usesExpiringItems: string[];
 }
 
 interface GqlEventRecipeStep {
@@ -3509,6 +3518,32 @@ export const api = {
       `mutation ($groceryListItemId: ID!) { deleteGroceryItem(groceryListItemId: $groceryListItemId) }`,
       { groceryListItemId: String(id) }
     );
+  },
+
+  /* ---------------------------- AI assistant ---------------------------- */
+
+  getAIAvailable: async (): Promise<boolean> => {
+    const data = await request<{ aiAvailable: boolean }>(`query { aiAvailable }`);
+    return data.aiAvailable;
+  },
+
+  suggestMeals: async (mealPlanId: number, maxSuggestions = 6): Promise<MealPlanSuggestion[]> => {
+    const data = await request<{ suggestMeals: GqlMealPlanSuggestion[] }>(
+      `query ($mealPlanId: ID!, $maxSuggestions: Int) {
+        suggestMeals(mealPlanId: $mealPlanId, maxSuggestions: $maxSuggestions) {
+          recipe { ${RECIPE_FIELDS} }
+          dayOfWeek mealType reason usesExpiringItems
+        }
+      }`,
+      { mealPlanId: String(mealPlanId), maxSuggestions }
+    );
+    return data.suggestMeals.map((s) => ({
+      recipe: toRecipe(s.recipe),
+      dayOfWeek: s.dayOfWeek,
+      mealType: mealTypeToNumber(s.mealType),
+      reason: s.reason,
+      usesExpiringItems: s.usesExpiringItems ?? [],
+    }));
   },
 };
 

@@ -17,6 +17,8 @@ import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CloseIcon from "@mui/icons-material/Close";
 import Autocomplete from "@mui/material/Autocomplete";
 import { api, asEntity } from "@/lib/api";
 import { fmtQty } from "@/lib/format";
@@ -25,6 +27,7 @@ import {
   AuditableEntity,
   MealSlot,
   MealSlotItem,
+  MealPlanSuggestion,
   Recipe,
   MealPlanNutrition,
   Brand,
@@ -618,7 +621,48 @@ export default function MealPlanDetailPage({
   const { id } = use(params);
   const planId = Number(id);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [slotDialog, setSlotDialog] = useState<SlotDialogState | null>(null);
+  const [suggestions, setSuggestions] = useState<MealPlanSuggestion[] | null>(null);
+
+  const aiQuery = useQuery({
+    queryKey: ["aiAvailable"],
+    queryFn: api.getAIAvailable,
+    staleTime: 60_000,
+  });
+
+  const suggestMutation = useMutation({
+    mutationFn: () => api.suggestMeals(planId, 6),
+    onSuccess: setSuggestions,
+  });
+
+  const addSuggestionMutation = useMutation({
+    mutationFn: async (s: MealPlanSuggestion) => {
+      const existing = planQuery.data?.mealSlots?.find(
+        (x) => x.dayOfWeek === s.dayOfWeek && x.mealType === s.mealType
+      );
+      const payload = {
+        dayOfWeek: s.dayOfWeek,
+        mealType: s.mealType,
+        recipeID: s.recipe.recipeID,
+        servings: s.recipe.servings ?? 1,
+        replacementNote: null,
+      };
+      if (existing) {
+        return api.updateMealSlot(planId, existing.mealSlotID, payload);
+      }
+      return api.addMealSlot(planId, payload as Omit<MealSlot, "mealSlotID" | "mealPlanID" | "mealPlan" | "recipe" | "mealSlotItems">);
+    },
+    onSuccess: (_, s) => {
+      queryClient.invalidateQueries({ queryKey: ["mealPlan", planId] });
+      queryClient.invalidateQueries({ queryKey: ["mealPlanNutrition", planId] });
+      setSuggestions((prev) =>
+        prev?.filter(
+          (x) => !(x.dayOfWeek === s.dayOfWeek && x.mealType === s.mealType)
+        ) ?? prev
+      );
+    },
+  });
 
   const planQuery = useQuery({
     queryKey: ["mealPlan", planId],
@@ -703,15 +747,112 @@ export default function MealPlanDetailPage({
               {DAY_NAMES[plan.weekStartDayOfWeek]})
             </Typography>
           </Box>
-          <Button
-            variant="contained"
-            onClick={() => generateGroceryListMutation.mutate()}
-            disabled={generateGroceryListMutation.isPending}
-          >
-            Generate Grocery List
-          </Button>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            {aiQuery.data && (
+              <Button
+                variant="outlined"
+                startIcon={<AutoAwesomeIcon />}
+                onClick={() => suggestMutation.mutate()}
+                disabled={suggestMutation.isPending}
+              >
+                {suggestMutation.isPending ? "Thinking…" : "Suggest Meals"}
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              onClick={() => generateGroceryListMutation.mutate()}
+              disabled={generateGroceryListMutation.isPending}
+            >
+              Generate Grocery List
+            </Button>
+          </Box>
         </Box>
       </Paper>
+
+      {(suggestions !== null || suggestMutation.error) && (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="h5">Suggested for your week</Typography>
+            <IconButton
+              size="small"
+              onClick={() => setSuggestions(null)}
+              aria-label="Dismiss suggestions"
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          {suggestMutation.error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {(suggestMutation.error as Error).message}
+            </Alert>
+          )}
+          {suggestions !== null &&
+            suggestions.length === 0 &&
+            !suggestMutation.error && (
+              <Typography color="text.secondary">
+                No suggestions — your week looks full.
+              </Typography>
+            )}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: 2,
+              mt: 1,
+            }}
+          >
+            {(suggestions ?? []).map((s) => (
+              <Paper
+                key={`${s.dayOfWeek}-${s.mealType}-${s.recipe.recipeID}`}
+                variant="outlined"
+                sx={{ p: 2 }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  {DAY_NAMES[s.dayOfWeek] ?? `Day ${s.dayOfWeek}`} ·{" "}
+                  {MEAL_TYPES[s.mealType] ?? `Meal ${s.mealType}`}
+                </Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  {s.recipe.recipeName}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1 }}
+                >
+                  {s.reason}
+                </Typography>
+                {s.usesExpiringItems.length > 0 && (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mb: 1 }}>
+                    {s.usesExpiringItems.map((name) => (
+                      <Chip
+                        key={name}
+                        label={`uses soon: ${name}`}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                      />
+                    ))}
+                  </Box>
+                )}
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => addSuggestionMutation.mutate(s)}
+                  disabled={addSuggestionMutation.isPending}
+                >
+                  Add to plan
+                </Button>
+              </Paper>
+            ))}
+          </Box>
+        </Paper>
+      )}
 
       <Paper sx={{ p: 3, mb: 3, overflowX: "auto" }}>
         <Typography variant="h5" gutterBottom>

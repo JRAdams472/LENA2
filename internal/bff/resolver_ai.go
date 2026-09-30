@@ -5,6 +5,8 @@ import (
 	"errors"
 
 	"github.com/JRAdams472/LENA2/internal/ai"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/graph-gophers/graphql-go"
 )
 
 // AIAvailable reports whether the assistant is configured. Clients use it
@@ -48,6 +50,44 @@ func (r *Resolver) AskAssistant(ctx context.Context, args struct{ Question strin
 	return out, nil
 }
 
+// SuggestMeals returns AI meal suggestions for a plan's open cells —
+// reviewable cards the client applies through addMealSlot.
+func (r *Resolver) SuggestMeals(ctx context.Context, args struct {
+	MealPlanID     graphql.ID
+	MaxSuggestions int32
+}) ([]*mealSuggestionResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.AIService == nil || !r.AIService.Available() {
+		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+	}
+	if !r.aiLimiter().allow(u.UserID) {
+		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+	}
+	mealPlanID, err := parseID(string(args.MealPlanID))
+	if err != nil {
+		return nil, err
+	}
+	limit := int(args.MaxSuggestions)
+	if limit < 1 || limit > 10 {
+		return nil, badInputf("maxSuggestions must be 1-10")
+	}
+	suggs, err := r.AIService.SuggestMeals(ctx, u.UserID, u.HouseholdID, mealPlanID, limit)
+	if err != nil {
+		if errors.Is(err, ai.ErrUnavailable) {
+			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		}
+		return nil, err
+	}
+	out := make([]*mealSuggestionResolver, len(suggs))
+	for i, sg := range suggs {
+		out[i] = &mealSuggestionResolver{r: r, user: u, sugg: sg}
+	}
+	return out, nil
+}
+
 // aiLimiter returns the per-user assistant rate limiter, lazily built so
 // Resolver literals in tests still work. LLM calls are expensive, so the
 // burst is tighter than the upload limiter.
@@ -77,3 +117,36 @@ type assistantToolCallResolver struct {
 
 // Name is the tool the assistant invoked (e.g. "get_pantry_inventory").
 func (t *assistantToolCallResolver) Name() string { return t.name }
+
+// mealSuggestionResolver resolves MealPlanSuggestion fields.
+type mealSuggestionResolver struct {
+	r    *Resolver
+	user currentuser.User
+	sugg ai.MealSuggestion
+}
+
+// Recipe is the suggested recipe — always a validated catalog recipe.
+func (s *mealSuggestionResolver) Recipe(ctx context.Context) (*recipeResolver, error) {
+	rec, err := s.r.RecipeService.GetRecipeByID(ctx, s.sugg.RecipeID)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: s.r.InventoryService, rec: s.r.RecipeService, up: s.r.UserPrefsService, user: s.user, recipe: rec}, nil
+}
+
+// DayOfWeek is the open cell's day (0=Sunday … 6=Saturday).
+func (s *mealSuggestionResolver) DayOfWeek() int32 { return int32(s.sugg.DayOfWeek) }
+
+// MealType is the open cell's meal type (e.g. "Dinner").
+func (s *mealSuggestionResolver) MealType() string { return s.sugg.MealType }
+
+// Reason is the model's short justification for the pick.
+func (s *mealSuggestionResolver) Reason() string { return s.sugg.Reason }
+
+// UsesExpiringItems lists expiring pantry items the recipe would consume.
+func (s *mealSuggestionResolver) UsesExpiringItems() []string {
+	if s.sugg.Expiring == nil {
+		return []string{}
+	}
+	return s.sugg.Expiring
+}
