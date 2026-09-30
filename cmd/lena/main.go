@@ -409,6 +409,13 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	bff.NewSessionHandler(sessionSvc).RegisterRoutes(e,
 		authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
+
+	// Account linking: list/link/unlink provider identities. Link rejects
+	// session-authenticated requests — it requires a fresh provider
+	// credential (step-up auth).
+	bff.NewLinkHandler(authenticator, identitySvc).RegisterRoutes(e,
+		authenticator.Middleware(),
+		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 	return e, resolver, nil
 }
 

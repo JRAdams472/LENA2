@@ -128,7 +128,18 @@ const (
 var (
 	ErrSelfModification = errors.New("cannot change your own role or active status")
 	ErrProtectedUser    = errors.New("user is a protected admin")
-	ErrLastAdmin        = domainerr.ErrLastAdmin
+	// ErrLoginTaken reports a link attempt for a provider identity that
+	// already belongs to a different account.
+	ErrLoginTaken = errors.New("provider identity already linked to another account")
+	// ErrLastLogin reports an attempt to remove a user's only sign-in method.
+	ErrLastLogin = errors.New("cannot remove the last linked sign-in")
+	// ErrPrimaryLogin reports an attempt to unlink the provider identity
+	// stored on the users row. Unlinking it would not actually disown the
+	// identity — the (provider, subject) unique constraint on users would
+	// upsert it back into this account on the next sign-in — so the
+	// primary login is never removable.
+	ErrPrimaryLogin = errors.New("cannot remove the primary sign-in")
+	ErrLastAdmin    = domainerr.ErrLastAdmin
 )
 
 // User is the identity module's view of a user row.
@@ -171,19 +182,182 @@ func (s *Service) IsProtected(provider, email string) bool {
 
 // UpsertUser creates the user on first sign-in or refreshes email/display
 // name/last-login on subsequent sign-ins, keyed by (provider, subject).
+// Resolution goes through identity.user_login so an explicitly linked
+// login lands on the owning account; a new provider identity creates the
+// user row and its login row atomically.
 func (s *Service) UpsertUser(ctx context.Context, provider, subject, email, displayName string) (User, error) {
-	row, err := s.q.UpsertUser(ctx, sqlc.UpsertUserParams{
+	var out User
+	err := s.InTx(ctx, func(tx *Service) error {
+		row, err := tx.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
+			Provider:        provider,
+			ExternalSubject: subject,
+		})
+		switch {
+		case err == nil:
+			// Refresh the login's provider claims; the user row's
+			// email/display_name only follow its primary login.
+			if _, uerr := tx.q.UpsertLogin(ctx, upsertLoginParams(row.UserID, provider, subject, email, displayName)); uerr != nil {
+				return uerr
+			}
+			if row.Provider == provider && row.ExternalSubject == subject {
+				if _, uerr := tx.q.UpsertUser(ctx, upsertUserParams(provider, subject, email, displayName)); uerr != nil {
+					return uerr
+				}
+				row, err = tx.q.GetUserByID(ctx, row.UserID)
+				if err != nil {
+					return err
+				}
+			} else if _, terr := tx.q.TouchUserLogin(ctx, row.UserID); terr != nil {
+				return terr
+			}
+			out = toUser(row)
+			return nil
+		case errors.Is(err, pgx.ErrNoRows):
+			u, uerr := tx.q.UpsertUser(ctx, upsertUserParams(provider, subject, email, displayName))
+			if uerr != nil {
+				return uerr
+			}
+			if _, lerr := tx.q.UpsertLogin(ctx, upsertLoginParams(u.UserID, provider, subject, email, displayName)); lerr != nil {
+				return lerr
+			}
+			out = toUser(u)
+			return nil
+		default:
+			return err
+		}
+	})
+	if err != nil {
+		// A concurrent first sign-in can insert the login between our
+		// lookup and our insert; resolve the winner instead of failing.
+		if errors.Is(err, domainerr.ErrConflict) {
+			row, rerr := s.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
+				Provider:        provider,
+				ExternalSubject: subject,
+			})
+			if rerr == nil {
+				return toUser(row), nil
+			}
+		}
+		return User{}, fmt.Errorf("upsert user: %w", err)
+	}
+	return out, nil
+}
+
+func upsertUserParams(provider, subject, email, displayName string) sqlc.UpsertUserParams {
+	return sqlc.UpsertUserParams{
 		Provider:        provider,
 		ExternalSubject: subject,
 		Email:           email,
 		DisplayName:     textOrNull(displayName),
 		CreatedBy:       email,
 		UpdatedBy:       textOrNull(email),
+	}
+}
+
+func upsertLoginParams(userID int64, provider, subject, email, displayName string) sqlc.UpsertLoginParams {
+	return sqlc.UpsertLoginParams{
+		UserID:          userID,
+		Provider:        provider,
+		ExternalSubject: subject,
+		Email:           email,
+		DisplayName:     textOrNull(displayName),
+	}
+}
+
+// Login is a provider identity linked to a user.
+type Login struct {
+	Provider    string
+	Email       string
+	DisplayName string
+	LastLoginAt *time.Time
+	CreatedAt   time.Time
+}
+
+// LinkLogin binds a verified provider identity to the user. A provider
+// identity already bound to another account reports ErrLoginTaken — two
+// existing accounts are never merged. Re-linking the same login to the
+// same user is a no-op.
+func (s *Service) LinkLogin(ctx context.Context, userID int64, provider, subject, email, displayName string) error {
+	// Same-user re-link is idempotent; a login already bound to another
+	// account is rejected before we touch the constraint.
+	switch existing, err := s.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
+		Provider:        provider,
+		ExternalSubject: subject,
+	}); {
+	case err == nil && existing.UserID == userID:
+		return nil
+	case err == nil:
+		return ErrLoginTaken
+	case !errors.Is(err, pgx.ErrNoRows):
+		return fmt.Errorf("link login: %w", domainerr.FromStorage(err))
+	}
+	// A login inserted between the lookup and our insert still surfaces as
+	// a constraint violation.
+	_, err := s.q.InsertLogin(ctx, sqlc.InsertLoginParams{
+		UserID:          userID,
+		Provider:        provider,
+		ExternalSubject: subject,
+		Email:           email,
+		DisplayName:     textOrNull(displayName),
 	})
 	if err != nil {
-		return User{}, fmt.Errorf("upsert user: %w", err)
+		if errors.Is(domainerr.FromStorage(err), domainerr.ErrConflict) {
+			return ErrLoginTaken
+		}
+		return fmt.Errorf("link login: %w", domainerr.FromStorage(err))
 	}
-	return toUser(row), nil
+	return nil
+}
+
+// UnlinkLogin removes every login for the provider on this user. Neither
+// the primary login nor the last remaining login may be removed.
+func (s *Service) UnlinkLogin(ctx context.Context, userID int64, provider string) error {
+	return s.InTx(ctx, func(tx *Service) error {
+		u, err := tx.q.GetUserByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if u.Provider == provider {
+			return ErrPrimaryLogin
+		}
+		n, err := tx.q.CountLoginsByUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return ErrLastLogin
+		}
+		rows, err := tx.q.DeleteLoginsByProvider(ctx, sqlc.DeleteLoginsByProviderParams{
+			UserID:   userID,
+			Provider: provider,
+		})
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			return fmt.Errorf("unlink login: %w", domainerr.ErrNotFound)
+		}
+		return nil
+	})
+}
+
+// ListLogins returns the provider identities bound to the user.
+func (s *Service) ListLogins(ctx context.Context, userID int64) ([]Login, error) {
+	rows, err := s.q.ListLoginsByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list logins: %w", domainerr.FromStorage(err))
+	}
+	logins := make([]Login, 0, len(rows))
+	for _, r := range rows {
+		logins = append(logins, Login{
+			Provider:    r.Provider,
+			Email:       r.Email,
+			DisplayName: r.DisplayName.String,
+			LastLoginAt: timeOrNil(r.LastLoginAt),
+			CreatedAt:   r.CreatedAt,
+		})
+	}
+	return logins, nil
 }
 
 // SetUserRole updates a user's persisted role.
@@ -474,6 +648,14 @@ func toUser(row sqlc.IdentityUser) User {
 		u.Birthdate = &t
 	}
 	return u
+}
+
+func timeOrNil(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	v := t.Time
+	return &v
 }
 
 func textOrNull(s string) pgtype.Text {

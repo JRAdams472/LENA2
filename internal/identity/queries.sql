@@ -9,6 +9,71 @@ FROM identity.users
 WHERE provider = $1
   AND external_subject = $2;
 
+-- name: GetUserByLogin :one
+-- Resolves a provider identity to its user via the login mapping table —
+-- covers both primary logins and explicitly linked ones.
+SELECT u.*
+FROM identity.users AS u
+JOIN identity.user_login AS l ON l.user_id = u.user_id
+WHERE l.provider = $1
+  AND l.external_subject = $2;
+
+-- name: UpsertLogin :one
+-- First sign-in creates the mapping; subsequent sign-ins refresh the
+-- cached provider claims and the sign-in timestamp.
+INSERT INTO identity.user_login (
+    user_id,
+    provider,
+    external_subject,
+    email,
+    display_name,
+    last_login_at
+)
+VALUES ($1, $2, $3, $4, $5, now())
+ON CONFLICT (provider, external_subject)
+    DO UPDATE SET
+        email = CASE WHEN EXCLUDED.email = '' THEN identity.user_login.email ELSE EXCLUDED.email END,
+        display_name = EXCLUDED.display_name,
+        last_login_at = now()
+RETURNING *;
+
+-- name: InsertLogin :one
+-- Link flow: strict insert — a conflict means the provider identity is
+-- already bound (to this or another user) and surfaces as ErrConflict.
+INSERT INTO identity.user_login (
+    user_id,
+    provider,
+    external_subject,
+    email,
+    display_name,
+    last_login_at
+)
+VALUES ($1, $2, $3, $4, $5, now())
+RETURNING *;
+
+-- name: ListLoginsByUser :many
+SELECT *
+FROM identity.user_login
+WHERE user_id = $1
+ORDER BY created_at;
+
+-- name: CountLoginsByUser :one
+SELECT count(*)
+FROM identity.user_login
+WHERE user_id = $1;
+
+-- name: DeleteLoginsByProvider :execrows
+DELETE FROM identity.user_login
+WHERE user_id = $1
+  AND provider = $2;
+
+-- name: TouchUserLogin :execrows
+-- Linked-login sign-in: bump the user row's sign-in timestamp without
+-- overwriting its primary email/display_name.
+UPDATE identity.users
+SET last_login_at = now()
+WHERE user_id = $1;
+
 -- name: UpsertUser :one
 INSERT INTO identity.users (
     provider,
