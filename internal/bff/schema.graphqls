@@ -153,6 +153,13 @@ type Query {
   # dishes. Advisory only: apply via updateEventRecipe/updateEventRecipeStep.
   # Errors UNAVAILABLE when no provider is configured.
   suggestEventFixes(foodEventId: ID!, maxSuggestions: Int = 6): [EventFixSuggestion!]!
+  # AI wine pairings for a recipe — cellar bottles plus style picks.
+  # Requires a stored birthdate showing the caller is 21+.
+  suggestPairings(recipeId: ID!, maxSuggestions: Int = 4): [PairingSuggestion!]!
+  # AI cocktail ideas from the catalog's Cocktail dish type. With
+  # inStockOnly, picks needing missing ingredients are dropped.
+  # Requires a stored birthdate showing the caller is 21+.
+  suggestCocktails(maxSuggestions: Int = 6, inStockOnly: Boolean = false): [CocktailSuggestion!]!
 }
 
 type Mutation {
@@ -340,6 +347,8 @@ input UpdateProfileInput {
   firstName: String
   lastName: String
   backupEmail: String
+  # YYYY-MM-DD, or "" to clear. Unset leaves the stored value unchanged.
+  birthdate: String
   isSearchable: Boolean
 }
 
@@ -356,6 +365,8 @@ type User {
   firstName: String
   lastName: String
   backupEmail: String
+  # YYYY-MM-DD birthdate; gates sommelier/cocktail AI suggestions at 21+.
+  birthdate: String
   role: Role!
   isActive: Boolean!
   # True when the user's email is in LENA_PROTECTED_EMAILS: such admins
@@ -1413,6 +1424,23 @@ type MealPlanSuggestion {
   reason: String!
   # Expiring pantry items the recipe would consume.
   usesExpiringItems: [String!]!
+}
+
+# One AI wine pairing for a recipe. bottleId/inCellar identify a bottle
+# from the household cellar; when null the name is a style suggestion.
+type PairingSuggestion {
+  bottleId: ID
+  name: String!
+  reason: String!
+  inCellar: Boolean!
+}
+
+# One AI cocktail pick — a catalog recipe tagged with the Cocktail dish
+# type. missingIngredients lists pantry gaps the model identified.
+type CocktailSuggestion {
+  recipe: Recipe!
+  reason: String!
+  missingIngredients: [String!]!
 }
 
 # One AI schedule fix for an event timeline problem. The action field

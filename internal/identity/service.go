@@ -151,7 +151,10 @@ type User struct {
 	// (owner/admin/member); empty when HouseholdID is nil.
 	HouseholdRole string
 	IsSearchable  bool
-	CreatedAt     time.Time
+	// Birthdate gates alcohol-related AI suggestions (sommelier/cocktail);
+	// nil until the user sets it in their profile.
+	Birthdate *time.Time
+	CreatedAt time.Time
 }
 
 // IsAdmin reports whether the user holds the admin role.
@@ -419,13 +422,18 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 
 // UpdateProfile stores the user's editable profile fields. Names are
 // already validated for length by the caller; backupEmail may be empty to
-// clear the field.
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error {
+// clear the field. birthdate is nil to clear.
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error {
+	var bd pgtype.Date
+	if birthdate != nil {
+		bd = pgtype.Date{Time: *birthdate, Valid: true}
+	}
 	n, err := s.q.UpdateUserProfile(ctx, sqlc.UpdateUserProfileParams{
 		UserID:      userID,
 		FirstName:   textOrNull(firstName),
 		LastName:    textOrNull(lastName),
 		BackupEmail: textOrNull(backupEmail),
+		Birthdate:   bd,
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
@@ -460,6 +468,10 @@ func toUser(row sqlc.IdentityUser) User {
 	if row.LastLoginAt.Valid {
 		t := row.LastLoginAt.Time
 		u.LastLoginAt = &t
+	}
+	if row.Birthdate.Valid {
+		t := row.Birthdate.Time
+		u.Birthdate = &t
 	}
 	return u
 }

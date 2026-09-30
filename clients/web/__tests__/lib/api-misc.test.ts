@@ -130,6 +130,7 @@ describe("api client: auth and helpers", () => {
       provider: null,
       isSearchable: true,
       household: null,
+      birthdate: null,
     });
   });
 

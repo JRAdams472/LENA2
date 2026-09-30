@@ -29,8 +29,10 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "@/lib/api";
-import { Brand, RecipeStep } from "@/lib/types";
+import { Brand, PairingSuggestion, RecipeStep } from "@/lib/types";
 import { fmtQty } from "@/lib/format";
+import { isOfDrinkingAge } from "@/lib/age";
+import { useMe } from "@/app/auth/useMe";
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>();
@@ -55,6 +57,21 @@ export default function RecipeDetailPage() {
   const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
+
+  const { me } = useMe();
+
+  const aiQuery = useQuery({
+    queryKey: ["aiAvailable"],
+    queryFn: () => api.getAIAvailable(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const [pairings, setPairings] = useState<PairingSuggestion[] | null>(null);
+  const pairingMutation = useMutation({
+    mutationFn: () => api.suggestPairings(recipeId),
+    onSuccess: (data) => setPairings(data),
+  });
+  const canPair = aiQuery.data === true && isOfDrinkingAge(me?.birthdate);
 
   const recipeQuery = useQuery({
     queryKey: ["recipe", recipeId],
@@ -325,6 +342,41 @@ export default function RecipeDetailPage() {
               <Alert severity="error" sx={{ mt: 1 }}>
                 {(rateMutation.error as Error).message}
               </Alert>
+            )}
+            {canPair && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => pairingMutation.mutate()}
+                  disabled={pairingMutation.isPending}
+                >
+                  {pairingMutation.isPending ? "Thinking…" : "Suggest wine pairing"}
+                </Button>
+                {pairingMutation.error && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    {(pairingMutation.error as Error).message}
+                  </Alert>
+                )}
+                {pairings !== null && pairings.length === 0 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    No pairing suggestions for this dish.
+                  </Typography>
+                )}
+                {pairings?.map((p) => (
+                  <Box
+                    key={`${p.bottleId ?? "style"}-${p.name}`}
+                    sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}
+                  >
+                    <Typography variant="body2">
+                      {p.name} — {p.reason}
+                    </Typography>
+                    {p.inCellar && (
+                      <Chip size="small" color="success" label="In your cellar" />
+                    )}
+                  </Box>
+                ))}
+              </Box>
             )}
           </>
         )}

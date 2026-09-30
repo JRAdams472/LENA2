@@ -169,6 +169,59 @@ describe("recipes page", () => {
       expect(getBodies().some((b) => b.query.includes("deleteRecipe") && b.variables.id === "1")).toBe(true);
     });
   });
+
+  it("offers cocktail ideas to a 21+ user and applies the in-stock toggle", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: "1985-06-20" },
+      isAdmin: false,
+      isLoading: false,
+    });
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("aiAvailable")) {
+        return Promise.resolve(gql({ aiAvailable: true }));
+      }
+      if (body.query.includes("suggestCocktails")) {
+        return Promise.resolve(
+          gql({
+            suggestCocktails: [
+              {
+                recipe: { ...recipe, name: "Margarita" },
+                reason: "citrus on hand",
+                missingIngredients: [],
+              },
+            ],
+          })
+        );
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      return Promise.resolve(
+        gql({
+          recipes: {
+            items: [recipe],
+            pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+          },
+        })
+      );
+    });
+
+    renderPage(<RecipesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /cocktail ideas/i }));
+    await waitFor(() => screen.getByText("Margarita"));
+    expect(screen.getByText("In stock")).toBeInTheDocument();
+    expect(screen.getByText("citrus on hand")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/Only what I can make/i));
+    await waitFor(() =>
+      expect(
+        getBodies().some(
+          (b) => b.query.includes("suggestCocktails") && b.variables.inStockOnly === true
+        )
+      ).toBe(true)
+    );
+  });
 });
 
 describe("recipe detail page", () => {
@@ -250,6 +303,73 @@ describe("recipe detail page", () => {
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("updateRecipe"))).toBe(true);
     });
+  });
+
+  it("offers wine pairing suggestions for a 21+ user", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: "1990-01-15" },
+      isAdmin: false,
+      isLoading: false,
+    });
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("aiAvailable")) {
+        return Promise.resolve(gql({ aiAvailable: true }));
+      }
+      if (body.query.includes("suggestPairings")) {
+        return Promise.resolve(
+          gql({
+            suggestPairings: [
+              { bottleId: "501", name: "Ridge 2019", reason: "tannins cut the fat", inCellar: true },
+              { bottleId: null, name: "off-dry Riesling", reason: "acidity lifts the sauce", inCellar: false },
+            ],
+          })
+        );
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      if (body.query.includes("recordView")) {
+        return Promise.resolve(gql({ recordView: true }));
+      }
+      return Promise.resolve(gql({ recipe: recipe }));
+    });
+
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => screen.getByText("Pasta"));
+    fireEvent.click(await screen.findByRole("button", { name: /suggest wine pairing/i }));
+    await waitFor(() => screen.getByText(/Ridge 2019 — tannins cut the fat/));
+    expect(screen.getByText("In your cellar")).toBeInTheDocument();
+    expect(screen.getByText(/off-dry Riesling/)).toBeInTheDocument();
+    const call = getBodies().find((b) => b.query.includes("suggestPairings"))!;
+    expect(call.variables.recipeId).toBe("1");
+  });
+
+  it("hides the pairing button without a 21+ birthdate", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: null },
+      isAdmin: false,
+      isLoading: false,
+    });
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("aiAvailable")) {
+        return Promise.resolve(gql({ aiAvailable: true }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      if (body.query.includes("recordView")) {
+        return Promise.resolve(gql({ recordView: true }));
+      }
+      return Promise.resolve(gql({ recipe: recipe }));
+    });
+
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => screen.getByText("Pasta"));
+    expect(
+      screen.queryByRole("button", { name: /suggest wine pairing/i })
+    ).not.toBeInTheDocument();
   });
 });
 

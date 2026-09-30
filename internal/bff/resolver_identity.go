@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 
@@ -97,6 +98,7 @@ type updateProfileInput struct {
 	FirstName    *string
 	LastName     *string
 	BackupEmail  *string
+	Birthdate    *string
 	IsSearchable *bool
 }
 
@@ -136,7 +138,23 @@ func (r *Resolver) UpdateMyProfile(ctx context.Context, args struct {
 			}
 		}
 	}
-	if err := r.IdentityService.UpdateProfile(ctx, actor.UserID, first, last, backup, actor.Email); err != nil {
+	birthdate := current.Birthdate
+	if args.Input.Birthdate != nil {
+		raw := strings.TrimSpace(*args.Input.Birthdate)
+		if raw == "" {
+			birthdate = nil
+		} else {
+			bd, err := time.Parse("2006-01-02", raw)
+			if err != nil || bd.Format("2006-01-02") != raw {
+				return nil, badInputf("birthdate must be YYYY-MM-DD")
+			}
+			if bd.After(time.Now()) || bd.Year() < 1900 {
+				return nil, badInputf("birthdate is out of range")
+			}
+			birthdate = &bd
+		}
+	}
+	if err := r.IdentityService.UpdateProfile(ctx, actor.UserID, first, last, backup, birthdate, actor.Email); err != nil {
 		return nil, err
 	}
 	// Searchability lives on the identity row but is cached in the

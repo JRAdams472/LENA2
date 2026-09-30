@@ -25,8 +25,10 @@ import Link from "next/link";
 import { api, asEntity, ApiError } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
-import { Recipe } from "@/lib/types";
+import { CocktailSuggestion, Recipe } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
+import { isOfDrinkingAge } from "@/lib/age";
+import Chip from "@mui/material/Chip";
 
 function toRow(recipe: Recipe) {
   return {
@@ -56,7 +58,7 @@ const recipeFields: FieldDef<Recipe>[] = [
 ];
 
 export default function RecipesPage() {
-  const { isAdmin } = useMe();
+  const { isAdmin, me } = useMe();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogData, setDialogData] = useState<Record<string, unknown>>({});
@@ -95,6 +97,20 @@ export default function RecipesPage() {
     queryFn: api.getRecipeCategoryGroups,
     staleTime: 60_000,
   });
+
+  const aiQuery = useQuery({
+    queryKey: ["aiAvailable"],
+    queryFn: () => api.getAIAvailable(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const [cocktailsOpen, setCocktailsOpen] = useState(false);
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const cocktailMutation = useMutation({
+    mutationFn: (stockOnly: boolean) => api.suggestCocktails(stockOnly),
+  });
+  const canSuggestCocktails =
+    aiQuery.data === true && isOfDrinkingAge(me?.birthdate);
 
   const listQuery = useQuery({
     queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds],
@@ -271,6 +287,17 @@ export default function RecipesPage() {
             Upload Recipe Scan
           </Button>
         )}
+        {canSuggestCocktails && (
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setCocktailsOpen(true);
+              cocktailMutation.mutate(inStockOnly);
+            }}
+          >
+            Cocktail ideas
+          </Button>
+        )}
       </Box>
       <DataTable
         title="Recipes"
@@ -347,6 +374,60 @@ export default function RecipesPage() {
           >
             {uploading ? "Uploading..." : "Upload"}
           </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={cocktailsOpen} onClose={() => setCocktailsOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Cocktail ideas</DialogTitle>
+        <DialogContent>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={inStockOnly}
+                onChange={(e) => {
+                  setInStockOnly(e.target.checked);
+                  cocktailMutation.mutate(e.target.checked);
+                }}
+              />
+            }
+            label="Only what I can make from my pantry"
+          />
+          {cocktailMutation.isPending && <CircularProgress size={24} sx={{ mt: 1 }} />}
+          {cocktailMutation.error && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {(cocktailMutation.error as Error).message}
+            </Alert>
+          )}
+          {cocktailMutation.data?.length === 0 && !cocktailMutation.isPending && (
+            <DialogContentText sx={{ mt: 1 }}>
+              No cocktail recipes in the catalog yet — tag some with the
+              Cocktail dish type.
+            </DialogContentText>
+          )}
+          {(cocktailMutation.data ?? []).map((c: CocktailSuggestion) => (
+            <Box key={c.recipe.recipeID} sx={{ mt: 1.5 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Button
+                  component={Link}
+                  href={`/recipes/${c.recipe.recipeID}`}
+                  size="small"
+                >
+                  {c.recipe.recipeName}
+                </Button>
+                {c.missingIngredients.length === 0 && (
+                  <Chip size="small" color="success" label="In stock" />
+                )}
+              </Box>
+              <DialogContentText variant="body2">{c.reason}</DialogContentText>
+              {c.missingIngredients.length > 0 && (
+                <DialogContentText variant="caption">
+                  Missing: {c.missingIngredients.join(", ")}
+                </DialogContentText>
+              )}
+            </Box>
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCocktailsOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

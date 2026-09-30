@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
@@ -89,12 +90,12 @@ func (f *fakeIdentityService) AdminSetActive(_ context.Context, _, targetID int6
 	return nil
 }
 
-func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, first, last, backup, _ string) error {
+func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, first, last, backup string, birthdate *time.Time, _ string) error {
 	if f.profileErr != nil {
 		return f.profileErr
 	}
 	u := f.users[userID]
-	u.FirstName, u.LastName, u.BackupEmail = first, last, backup
+	u.FirstName, u.LastName, u.BackupEmail, u.Birthdate = first, last, backup, birthdate
 	f.users[userID] = u
 	return nil
 }

@@ -212,6 +212,7 @@ type IdentityUser struct {
 	HouseholdID     pgtype.Int8        `json:"household_id"`
 	IsSearchable    bool               `json:"is_searchable"`
 	HouseholdRole   string             `json:"household_role"`
+	Birthdate       pgtype.Date        `json:"birthdate"`
 }
 
 type InventoryBrand struct {

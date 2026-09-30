@@ -28,6 +28,8 @@ import {
   MealSlotItem,
   MealPlanNutrition,
   MealPlanSuggestion,
+  PairingSuggestion,
+  CocktailSuggestion,
   GroceryList,
   GroceryListItem,
   Household,
@@ -561,6 +563,19 @@ interface GqlMealPlanSuggestion {
   usesExpiringItems: string[];
 }
 
+interface GqlPairingSuggestion {
+  bottleId: string | null;
+  name: string;
+  reason: string;
+  inCellar: boolean;
+}
+
+interface GqlCocktailSuggestion {
+  recipe: GqlRecipe;
+  reason: string;
+  missingIngredients: string[];
+}
+
 interface GqlEventFixSuggestion {
   eventRecipeId: string;
   recipeName: string;
@@ -689,6 +704,7 @@ interface GqlUser {
   firstName: string | null;
   lastName: string | null;
   backupEmail: string | null;
+  birthdate?: string | null;
   role: string;
   isActive: boolean;
   isProtected: boolean;
@@ -766,6 +782,7 @@ const toUser = (u: GqlUser): User => ({
   firstName: u.firstName ?? null,
   lastName: u.lastName ?? null,
   backupEmail: u.backupEmail ?? null,
+  birthdate: u.birthdate ?? null,
   role: u.role === "admin" ? "admin" : "member",
   isActive: u.isActive !== false,
   isProtected: u.isProtected === true,
@@ -1611,7 +1628,7 @@ export const api = {
   // Auth
   getMe: async (): Promise<User> => {
     const data = await request<{ me: GqlUser }>(
-      `query { me { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt isSearchable household { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } } }`
+      `query { me { id email displayName firstName lastName backupEmail birthdate role isActive isProtected lastLoginAt isSearchable household { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } } }`
     );
     return toUser(data.me);
   },
@@ -1621,10 +1638,11 @@ export const api = {
     firstName?: string;
     lastName?: string;
     backupEmail?: string;
+    birthdate?: string;
     isSearchable?: boolean;
   }): Promise<User> => {
     const data = await request<{ updateMyProfile: GqlUser }>(
-      `mutation ($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt isSearchable } }`,
+      `mutation ($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id email displayName firstName lastName backupEmail birthdate role isActive isProtected lastLoginAt isSearchable } }`,
       { input }
     );
     return toUser(data.updateMyProfile);
@@ -3537,7 +3555,7 @@ export const api = {
 
   getAIAvailable: async (): Promise<boolean> => {
     const data = await request<{ aiAvailable: boolean }>(`query { aiAvailable }`);
-    return data.aiAvailable;
+    return data.aiAvailable ?? false;
   },
 
   suggestMeals: async (mealPlanId: number, maxSuggestions = 6): Promise<MealPlanSuggestion[]> => {
@@ -3579,6 +3597,40 @@ export const api = {
       durationMinutes: f.durationMinutes ?? null,
       dependsOnStepNumber: f.dependsOnStepNumber ?? null,
       reason: f.reason,
+    }));
+  },
+
+  suggestPairings: async (recipeId: number, maxSuggestions = 4): Promise<PairingSuggestion[]> => {
+    const data = await request<{ suggestPairings: GqlPairingSuggestion[] }>(
+      `query ($recipeId: ID!, $maxSuggestions: Int) {
+        suggestPairings(recipeId: $recipeId, maxSuggestions: $maxSuggestions) {
+          bottleId name reason inCellar
+        }
+      }`,
+      { recipeId: String(recipeId), maxSuggestions }
+    );
+    return data.suggestPairings.map((p) => ({
+      bottleId: p.bottleId == null ? null : Number(p.bottleId),
+      name: p.name,
+      reason: p.reason,
+      inCellar: p.inCellar,
+    }));
+  },
+
+  suggestCocktails: async (inStockOnly = false, maxSuggestions = 6): Promise<CocktailSuggestion[]> => {
+    const data = await request<{ suggestCocktails: GqlCocktailSuggestion[] }>(
+      `query ($maxSuggestions: Int, $inStockOnly: Boolean) {
+        suggestCocktails(maxSuggestions: $maxSuggestions, inStockOnly: $inStockOnly) {
+          recipe { ${RECIPE_FIELDS} }
+          reason missingIngredients
+        }
+      }`,
+      { maxSuggestions, inStockOnly }
+    );
+    return data.suggestCocktails.map((c) => ({
+      recipe: toRecipe(c.recipe),
+      reason: c.reason,
+      missingIngredients: c.missingIngredients ?? [],
     }));
   },
 };

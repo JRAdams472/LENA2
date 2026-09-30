@@ -33,6 +33,7 @@ const member = {
   firstName: "Ada",
   lastName: "L",
   backupEmail: null,
+    birthdate: null,
   role: "member" as const,
   isActive: true,
   isProtected: false,

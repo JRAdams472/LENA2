@@ -27,6 +27,7 @@ const me = {
   firstName: "Ada",
   lastName: "Lovelace",
   backupEmail: null,
+    birthdate: null,
   role: "member" as const,
   isActive: true,
   isProtected: false,
@@ -77,6 +78,7 @@ describe("profile page", () => {
         firstName: "Ada",
         lastName: "Lovelace",
         backupEmail: "alt@x.com",
+        birthdate: "",
         isSearchable: true,
       })
     );

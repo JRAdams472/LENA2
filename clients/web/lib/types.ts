@@ -20,6 +20,8 @@ export interface User {
   firstName: string | null;
   lastName: string | null;
   backupEmail: string | null;
+  // YYYY-MM-DD; gates sommelier/cocktail AI suggestions at 21+.
+  birthdate: string | null;
   role: "member" | "admin";
   isActive: boolean;
   isProtected: boolean;
@@ -476,6 +478,23 @@ export interface MealPlanSuggestion {
   mealType: number;
   reason: string;
   usesExpiringItems: string[];
+}
+
+// One AI wine pairing. bottleId/inCellar identify a household cellar
+// bottle; when null, name is a general style suggestion.
+export interface PairingSuggestion {
+  bottleId: number | null;
+  name: string;
+  reason: string;
+  inCellar: boolean;
+}
+
+// One AI cocktail pick — a catalog recipe tagged with the Cocktail dish
+// type. missingIngredients lists pantry gaps the model identified.
+export interface CocktailSuggestion {
+  recipe: Recipe;
+  reason: string;
+  missingIngredients: string[];
 }
 
 // One AI schedule fix for an event timeline problem. `action` selects
