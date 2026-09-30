@@ -30,6 +30,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "@/lib/api";
 import { Brand, RecipeStep } from "@/lib/types";
+import { fmtQty } from "@/lib/format";
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>();
@@ -548,7 +549,7 @@ export default function RecipeDetailPage() {
                 {(recipeItemsQuery.data ?? []).map((recipeItem) => (
                   <TableRow key={recipeItem.itemID}>
                     <TableCell>
-                      {recipeItem.quantity}{" "}
+                      {fmtQty(recipeItem.quantity)}{" "}
                       {recipeItem.unitOfMeasure ?? ""}
                     </TableCell>
                     <TableCell>

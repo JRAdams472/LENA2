@@ -19,6 +19,7 @@ import IconButton from "@mui/material/IconButton";
 import DeleteIcon from "@mui/icons-material/Delete";
 import Autocomplete from "@mui/material/Autocomplete";
 import { api, asEntity } from "@/lib/api";
+import { fmtQty } from "@/lib/format";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import {
   AuditableEntity,
@@ -401,7 +402,7 @@ function SlotDialog({
                 const item = itemsQuery.data?.find((i) => i.itemID === oi.itemID);
                 return (
                   <MenuItem key={oi.itemID} value={String(oi.itemID)}>
-                    {item?.name ?? oi.itemID} ({oi.quantity} {oi.unitOfMeasure})
+                    {item?.name ?? oi.itemID} ({fmtQty(oi.quantity)} {oi.unitOfMeasure})
                   </MenuItem>
                 );
               })}
@@ -533,7 +534,7 @@ function SlotDialog({
               sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
             >
               <Typography variant="body2">
-                {itemName} - {a.quantity} {a.unit}
+                {itemName} - {fmtQty(Number(a.quantity))} {a.unit}
               </Typography>
               <IconButton size="small" onClick={() => handleRemoveAdhoc(i)}>
                 <DeleteIcon fontSize="small" />
@@ -762,7 +763,7 @@ export default function MealPlanDetailPage({
                         {slot.mealSlotItems.map((it) => (
                           <Chip
                             key={it.mealSlotItemID}
-                            label={`${itemLabel(it.itemID)}${it.quantity ? ` - ${it.quantity} ${it.unitOfMeasure ?? ""}`.trim() : ""}`}
+                            label={`${itemLabel(it.itemID)}${it.quantity ? ` - ${fmtQty(it.quantity)} ${it.unitOfMeasure ?? ""}`.trim() : ""}`}
                             size="small"
                             sx={{ mr: 0.5, mb: 0.5 }}
                           />

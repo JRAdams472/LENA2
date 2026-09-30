@@ -22,6 +22,7 @@ import TablePagination from "@mui/material/TablePagination";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { api, ApiError } from "@/lib/api";
+import { fmtQty } from "@/lib/format";
 import { Item } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
@@ -88,7 +89,7 @@ export default function PendingItemsPage() {
     if (!item.foodNutrients || item.foodNutrients.length === 0) return "—";
     const labels = item.foodNutrients.slice(0, 3).map((n) => {
       const name = n.nutrientType?.nutrientName ?? "Unknown";
-      return `${name}: ${n.amountPerServing}`;
+      return `${name}: ${fmtQty(n.amountPerServing)}`;
     });
     const extra = item.foodNutrients.length > 3 ? ` (+${item.foodNutrients.length - 3} more)` : "";
     return labels.join(", ") + extra;
