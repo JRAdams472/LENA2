@@ -32,8 +32,10 @@ var allowedSchemas = map[string][]string{
 	"mealplan":         {"mealplan"},
 	// notifier is the cross-domain scheduler: it writes household
 	// notifications and reads plan/recipe/pantry/identity inputs.
-	"notifier":  {"household", "userprefs", "mealplan", "recipe", "inventory", "identity"},
-	"recipe":    {"recipe"},
+	"notifier": {"household", "userprefs", "mealplan", "recipe", "inventory", "identity"},
+	"recipe":   {"recipe"},
+	// session owns identity.session — refresh-token state alongside users.
+	"session":   {"identity"},
 	"userprefs": {"userprefs"},
 	"wine":      {"wine"},
 }

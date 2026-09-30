@@ -41,6 +41,8 @@ services:
       # AI assistant runs on the scripted provider — e2e never needs a
       # real LLM.
       LENA_AI_PROVIDER: mock
+      # Fixed session key so refresh-token specs can run; throwaway stack.
+      LENA_SESSION_SECRET: e2e-session-secret-not-for-prod
     depends_on:
       db-seed:
         condition: service_completed_successfully

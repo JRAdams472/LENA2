@@ -217,3 +217,19 @@ sql:
           - db_type: "jsonb"
             go_type:
               type: "[]byte"
+  - engine: "postgresql"
+    schema: "migrations/"
+    queries: "internal/session/queries.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/session/sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"

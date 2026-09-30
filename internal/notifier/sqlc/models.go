@@ -193,6 +193,18 @@ type HouseholdNotificationType struct {
 	IsActive    bool        `json:"is_active"`
 }
 
+type IdentitySession struct {
+	SessionID   int64              `json:"session_id"`
+	UserID      int64              `json:"user_id"`
+	FamilyID    int64              `json:"family_id"`
+	RefreshHash []byte             `json:"refresh_hash"`
+	Device      pgtype.Text        `json:"device"`
+	CreatedAt   time.Time          `json:"created_at"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	RevokedAt   pgtype.Timestamptz `json:"revoked_at"`
+	ReplacedBy  pgtype.Int8        `json:"replaced_by"`
+}
+
 type IdentityUser struct {
 	UserID          int64              `json:"user_id"`
 	Provider        string             `json:"provider"`
