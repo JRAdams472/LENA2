@@ -518,6 +518,16 @@ func (r *userResolver) LastName() *string { return nilIfEmpty(r.u.LastName) }
 
 func (r *userResolver) BackupEmail() *string { return nilIfEmpty(r.u.BackupEmail) }
 
+// Birthdate is YYYY-MM-DD — a date-only string, not a timestamp, so the
+// user's zone can't shift the day.
+func (r *userResolver) Birthdate() *string {
+	if r.u.Birthdate == nil {
+		return nil
+	}
+	s := r.u.Birthdate.Format("2006-01-02")
+	return &s
+}
+
 func (r *userResolver) Role() string { return r.u.Role }
 
 func (r *userResolver) IsActive() bool { return r.u.IsActive }

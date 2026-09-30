@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
@@ -263,7 +264,20 @@ func TestUpdateProfile(t *testing.T) {
 				return 1, nil
 			})
 
-		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "alt@b.com", "a@b.com"))
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "alt@b.com", nil, "a@b.com"))
+	})
+
+	t.Run("birthdate is stored", func(t *testing.T) {
+		svc, mq := newService(t)
+		bd := time.Date(1990, 5, 4, 0, 0, 0, 0, time.UTC)
+		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpdateUserProfileParams) (int64, error) {
+				assert.True(t, arg.Birthdate.Valid)
+				assert.Equal(t, bd, arg.Birthdate.Time)
+				return 1, nil
+			})
+
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "", &bd, "a@b.com"))
 	})
 
 	t.Run("empty fields become null", func(t *testing.T) {
@@ -272,10 +286,11 @@ func TestUpdateProfile(t *testing.T) {
 			func(_ context.Context, arg sqlc.UpdateUserProfileParams) (int64, error) {
 				assert.False(t, arg.FirstName.Valid)
 				assert.False(t, arg.BackupEmail.Valid)
+				assert.False(t, arg.Birthdate.Valid)
 				return 1, nil
 			})
 
-		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "Lovelace", "", "a@b.com"))
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "Lovelace", "", nil, "a@b.com"))
 	})
 }
 

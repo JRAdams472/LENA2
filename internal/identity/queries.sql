@@ -98,7 +98,8 @@ UPDATE identity.users
 SET first_name   = $2,
     last_name    = $3,
     backup_email = $4,
-    updated_by   = $5,
+    birthdate    = $5,
+    updated_by   = $6,
     updated_at   = now()
 WHERE user_id = $1;
 

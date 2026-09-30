@@ -6804,17 +6804,17 @@ func (mr *MockIdentityServiceMockRecorder) SetUserSearchable(ctx, userID, search
 }
 
 // UpdateProfile mocks base method.
-func (m *MockIdentityService) UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error {
+func (m *MockIdentityService) UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateProfile", ctx, userID, firstName, lastName, backupEmail, by)
+	ret := m.ctrl.Call(m, "UpdateProfile", ctx, userID, firstName, lastName, backupEmail, birthdate, by)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateProfile indicates an expected call of UpdateProfile.
-func (mr *MockIdentityServiceMockRecorder) UpdateProfile(ctx, userID, firstName, lastName, backupEmail, by any) *gomock.Call {
+func (mr *MockIdentityServiceMockRecorder) UpdateProfile(ctx, userID, firstName, lastName, backupEmail, birthdate, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockIdentityService)(nil).UpdateProfile), ctx, userID, firstName, lastName, backupEmail, by)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockIdentityService)(nil).UpdateProfile), ctx, userID, firstName, lastName, backupEmail, birthdate, by)
 }
 
 // MockHouseholdService is a mock of HouseholdService interface.
@@ -9282,6 +9282,21 @@ func (mr *MockAIServiceMockRecorder) Available() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Available", reflect.TypeOf((*MockAIService)(nil).Available))
 }
 
+// SuggestCocktails mocks base method.
+func (m *MockAIService) SuggestCocktails(ctx context.Context, userID, householdID int64, maxSuggestions int, inStockOnly bool) ([]ai.CocktailSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestCocktails", ctx, userID, householdID, maxSuggestions, inStockOnly)
+	ret0, _ := ret[0].([]ai.CocktailSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SuggestCocktails indicates an expected call of SuggestCocktails.
+func (mr *MockAIServiceMockRecorder) SuggestCocktails(ctx, userID, householdID, maxSuggestions, inStockOnly any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestCocktails", reflect.TypeOf((*MockAIService)(nil).SuggestCocktails), ctx, userID, householdID, maxSuggestions, inStockOnly)
+}
+
 // SuggestEventFixes mocks base method.
 func (m *MockAIService) SuggestEventFixes(ctx context.Context, userID, householdID, foodEventID int64, maxSuggestions int) ([]ai.EventFix, error) {
 	m.ctrl.T.Helper()
@@ -9310,4 +9325,19 @@ func (m *MockAIService) SuggestMeals(ctx context.Context, userID, householdID, m
 func (mr *MockAIServiceMockRecorder) SuggestMeals(ctx, userID, householdID, mealPlanID, maxSuggestions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestMeals", reflect.TypeOf((*MockAIService)(nil).SuggestMeals), ctx, userID, householdID, mealPlanID, maxSuggestions)
+}
+
+// SuggestPairings mocks base method.
+func (m *MockAIService) SuggestPairings(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]ai.PairingSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestPairings", ctx, userID, householdID, recipeID, maxSuggestions)
+	ret0, _ := ret[0].([]ai.PairingSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SuggestPairings indicates an expected call of SuggestPairings.
+func (mr *MockAIServiceMockRecorder) SuggestPairings(ctx, userID, householdID, recipeID, maxSuggestions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestPairings", reflect.TypeOf((*MockAIService)(nil).SuggestPairings), ctx, userID, householdID, recipeID, maxSuggestions)
 }

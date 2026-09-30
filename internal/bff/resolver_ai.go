@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -127,6 +128,110 @@ func (r *Resolver) SuggestEventFixes(ctx context.Context, args struct {
 	return out, nil
 }
 
+// requireDrinkingAge gates alcohol-related suggestions: the caller needs
+// a stored birthdate showing 21+. Birthdate lives on the identity row,
+// not the auth context, so this does a fresh read each call.
+func (r *Resolver) requireDrinkingAge(ctx context.Context, userID int64) error {
+	if r.IdentityService == nil {
+		return errUnavailablef("profile lookup is unavailable")
+	}
+	u, err := r.IdentityService.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.Birthdate == nil {
+		return badInputf("set your birthdate in your profile to use pairing and cocktail suggestions")
+	}
+	now := time.Now()
+	age := now.Year() - u.Birthdate.Year()
+	if now.Month() < u.Birthdate.Month() ||
+		(now.Month() == u.Birthdate.Month() && now.Day() < u.Birthdate.Day()) {
+		age--
+	}
+	if age < 21 {
+		return badInputf("pairing and cocktail suggestions require an account holder of legal drinking age")
+	}
+	return nil
+}
+
+// SuggestPairings returns AI wine pairings for a recipe — cellar bottles
+// and style picks, gated to callers of legal drinking age.
+func (r *Resolver) SuggestPairings(ctx context.Context, args struct {
+	RecipeID       graphql.ID
+	MaxSuggestions int32
+}) ([]*pairingResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.AIService == nil || !r.AIService.Available() {
+		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+	}
+	if !r.aiLimiter().allow(u.UserID) {
+		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+	}
+	if err := r.requireDrinkingAge(ctx, u.UserID); err != nil {
+		return nil, err
+	}
+	recipeID, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return nil, err
+	}
+	limit := int(args.MaxSuggestions)
+	if limit < 1 || limit > 10 {
+		return nil, badInputf("maxSuggestions must be 1-10")
+	}
+	pairings, err := r.AIService.SuggestPairings(ctx, u.UserID, u.HouseholdID, recipeID, limit)
+	if err != nil {
+		if errors.Is(err, ai.ErrUnavailable) {
+			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		}
+		return nil, err
+	}
+	out := make([]*pairingResolver, len(pairings))
+	for i, p := range pairings {
+		out[i] = &pairingResolver{sugg: p}
+	}
+	return out, nil
+}
+
+// SuggestCocktails returns AI cocktail picks from the catalog, optionally
+// limited to recipes the pantry can make, gated to 21+.
+func (r *Resolver) SuggestCocktails(ctx context.Context, args struct {
+	MaxSuggestions int32
+	InStockOnly    bool
+}) ([]*cocktailResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.AIService == nil || !r.AIService.Available() {
+		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+	}
+	if !r.aiLimiter().allow(u.UserID) {
+		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+	}
+	if err := r.requireDrinkingAge(ctx, u.UserID); err != nil {
+		return nil, err
+	}
+	limit := int(args.MaxSuggestions)
+	if limit < 1 || limit > 10 {
+		return nil, badInputf("maxSuggestions must be 1-10")
+	}
+	suggs, err := r.AIService.SuggestCocktails(ctx, u.UserID, u.HouseholdID, limit, args.InStockOnly)
+	if err != nil {
+		if errors.Is(err, ai.ErrUnavailable) {
+			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		}
+		return nil, err
+	}
+	out := make([]*cocktailResolver, len(suggs))
+	for i, c := range suggs {
+		out[i] = &cocktailResolver{sugg: c, r: r, user: u}
+	}
+	return out, nil
+}
+
 // aiLimiter returns the per-user assistant rate limiter, lazily built so
 // Resolver literals in tests still work. LLM calls are expensive, so the
 // burst is tighter than the upload limiter.
@@ -214,3 +319,48 @@ func (f *eventFixResolver) DurationMinutes() *int32 { return f.fix.DurationMin }
 func (f *eventFixResolver) DependsOnStepNumber() *int32 { return f.fix.DependsOn }
 
 func (f *eventFixResolver) Reason() string { return f.fix.Reason }
+
+// pairingResolver resolves PairingSuggestion fields.
+type pairingResolver struct {
+	sugg ai.PairingSuggestion
+}
+
+func (p *pairingResolver) BottleID() *graphql.ID {
+	if p.sugg.BottleID == nil {
+		return nil
+	}
+	id := graphql.ID(strconv.FormatInt(*p.sugg.BottleID, 10))
+	return &id
+}
+
+func (p *pairingResolver) Name() string { return p.sugg.Name }
+
+func (p *pairingResolver) Reason() string { return p.sugg.Reason }
+
+func (p *pairingResolver) InCellar() bool { return p.sugg.InCellar }
+
+// cocktailResolver resolves CocktailSuggestion fields.
+type cocktailResolver struct {
+	sugg ai.CocktailSuggestion
+	r    *Resolver
+	user currentuser.User
+}
+
+// Recipe loads the suggested cocktail recipe — always a validated catalog
+// recipe tagged with the Cocktail dish type.
+func (c *cocktailResolver) Recipe(ctx context.Context) (*recipeResolver, error) {
+	rec, err := c.r.RecipeService.GetRecipeByID(ctx, c.sugg.RecipeID)
+	if err != nil {
+		return nil, err
+	}
+	return &recipeResolver{inv: c.r.InventoryService, rec: c.r.RecipeService, up: c.r.UserPrefsService, user: c.user, recipe: rec}, nil
+}
+
+func (c *cocktailResolver) Reason() string { return c.sugg.Reason }
+
+func (c *cocktailResolver) MissingIngredients() []string {
+	if c.sugg.Missing == nil {
+		return []string{}
+	}
+	return c.sugg.Missing
+}

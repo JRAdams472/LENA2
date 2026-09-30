@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
@@ -190,6 +192,102 @@ func TestResolver_SuggestEventFixes_BadID(t *testing.T) {
 		MaxSuggestions int32
 	}{FoodEventID: "abc", MaxSuggestions: 6})
 	require.Error(t, err)
+}
+
+func TestResolver_SuggestPairings_Happy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	ofAge := time.Now().AddDate(-30, 0, 0)
+	bottle := int64(501)
+	aiSvc.EXPECT().Available().Return(true)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(7)).
+		Return(identity.User{UserID: 7, Birthdate: &ofAge}, nil)
+	aiSvc.EXPECT().SuggestPairings(gomock.Any(), int64(7), int64(7), int64(1), 4).
+		Return([]ai.PairingSuggestion{
+			{BottleID: &bottle, Name: "Estate 501 2021", Reason: "tannins", InCellar: true},
+			{Name: "off-dry Riesling", Reason: "acidity"},
+		}, nil)
+
+	r := &Resolver{AIService: aiSvc, IdentityService: idSvc}
+	res, err := r.SuggestPairings(aiCtx(), struct {
+		RecipeID       graphql.ID
+		MaxSuggestions int32
+	}{RecipeID: "1", MaxSuggestions: 4})
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+	assert.Equal(t, "501", string(*res[0].BottleID()))
+	assert.True(t, res[0].InCellar())
+	assert.Nil(t, res[1].BottleID())
+	assert.False(t, res[1].InCellar())
+	assert.Equal(t, "off-dry Riesling", res[1].Name())
+}
+
+func TestResolver_SuggestPairings_UnderageOrMissingBirthdate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	aiSvc.EXPECT().Available().Return(true).Times(2)
+	minor := time.Now().AddDate(-17, 0, 0)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(7)).Return(identity.User{UserID: 7, Birthdate: &minor}, nil)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(7)).Return(identity.User{UserID: 7}, nil)
+
+	r := &Resolver{AIService: aiSvc, IdentityService: idSvc}
+	args := struct {
+		RecipeID       graphql.ID
+		MaxSuggestions int32
+	}{RecipeID: "1", MaxSuggestions: 4}
+	_, err := r.SuggestPairings(aiCtx(), args)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "drinking age")
+	_, err = r.SuggestPairings(aiCtx(), args)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "birthdate")
+}
+
+func TestResolver_SuggestCocktails_Happy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	recipes := mock.NewMockRecipeService(ctrl)
+	ofAge := time.Now().AddDate(-40, 0, 0)
+	aiSvc.EXPECT().Available().Return(true)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(7)).
+		Return(identity.User{UserID: 7, Birthdate: &ofAge}, nil)
+	aiSvc.EXPECT().SuggestCocktails(gomock.Any(), int64(7), int64(7), 6, true).
+		Return([]ai.CocktailSuggestion{{RecipeID: 1, Reason: "citrus on hand"}}, nil)
+	recipes.EXPECT().GetRecipeByID(gomock.Any(), int64(1)).
+		Return(recipe.Recipe{RecipeID: 1, Name: "Margarita"}, nil)
+
+	r := &Resolver{AIService: aiSvc, IdentityService: idSvc, RecipeService: recipes}
+	res, err := r.SuggestCocktails(aiCtx(), struct {
+		MaxSuggestions int32
+		InStockOnly    bool
+	}{MaxSuggestions: 6, InStockOnly: true})
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "citrus on hand", res[0].Reason())
+	assert.Empty(t, res[0].MissingIngredients())
+	rec, err := res[0].Recipe(aiCtx())
+	require.NoError(t, err)
+	assert.NotNil(t, rec)
+}
+
+func TestResolver_SuggestCocktails_Underage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	minor := time.Now().AddDate(-20, 0, 0)
+	aiSvc.EXPECT().Available().Return(true)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(7)).Return(identity.User{UserID: 7, Birthdate: &minor}, nil)
+
+	r := &Resolver{AIService: aiSvc, IdentityService: idSvc}
+	_, err := r.SuggestCocktails(aiCtx(), struct {
+		MaxSuggestions int32
+		InStockOnly    bool
+	}{MaxSuggestions: 6})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "drinking age")
 }
 
 func TestResolver_AskAssistant_RateLimited(t *testing.T) {

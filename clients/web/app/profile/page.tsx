@@ -21,13 +21,14 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
   const [firstName, setFirstName] = useState(me.firstName ?? "");
   const [lastName, setLastName] = useState(me.lastName ?? "");
   const [backupEmail, setBackupEmail] = useState(me.backupEmail ?? "");
+  const [birthdate, setBirthdate] = useState(me.birthdate ?? "");
   const [isSearchable, setIsSearchable] = useState(me.isSearchable);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.updateMyProfile({ firstName, lastName, backupEmail, isSearchable }),
+      api.updateMyProfile({ firstName, lastName, backupEmail, birthdate, isSearchable }),
     onSuccess: () => {
       setSaved(true);
       setError(null);
@@ -70,6 +71,15 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
         value={backupEmail}
         onChange={(e) => setBackupEmail(e.target.value)}
         helperText="Used only if we need to reach you and your sign-in email fails."
+        fullWidth
+      />
+      <TextField
+        label="Birthdate"
+        type="date"
+        value={birthdate}
+        onChange={(e) => setBirthdate(e.target.value)}
+        helperText="Optional — unlocks wine pairing and cocktail suggestions (21+)."
+        slotProps={{ inputLabel: { shrink: true } }}
         fullWidth
       />
       <FormControlLabel

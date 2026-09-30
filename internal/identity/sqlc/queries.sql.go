@@ -105,7 +105,7 @@ func (q *Queries) CountUsersByHousehold(ctx context.Context, householdID pgtype.
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
 WHERE user_id = $1
 `
@@ -132,12 +132,13 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (IdentityUser, 
 		&i.HouseholdID,
 		&i.IsSearchable,
 		&i.HouseholdRole,
+		&i.Birthdate,
 	)
 	return i, err
 }
 
 const getUserByProviderSubject = `-- name: GetUserByProviderSubject :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
 WHERE provider = $1
   AND external_subject = $2
@@ -170,12 +171,13 @@ func (q *Queries) GetUserByProviderSubject(ctx context.Context, arg GetUserByPro
 		&i.HouseholdID,
 		&i.IsSearchable,
 		&i.HouseholdRole,
+		&i.Birthdate,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -214,6 +216,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 			&i.HouseholdID,
 			&i.IsSearchable,
 			&i.HouseholdRole,
+			&i.Birthdate,
 		); err != nil {
 			return nil, err
 		}
@@ -226,7 +229,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 }
 
 const listUsersByHousehold = `-- name: ListUsersByHousehold :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
 WHERE household_id = $1
 ORDER BY created_at
@@ -260,6 +263,7 @@ func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID pgtype.I
 			&i.HouseholdID,
 			&i.IsSearchable,
 			&i.HouseholdRole,
+			&i.Birthdate,
 		); err != nil {
 			return nil, err
 		}
@@ -272,7 +276,7 @@ func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID pgtype.I
 }
 
 const listUsersByIDs = `-- name: ListUsersByIDs :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
 WHERE user_id = ANY($1::bigint[])
 `
@@ -305,6 +309,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 			&i.HouseholdID,
 			&i.IsSearchable,
 			&i.HouseholdRole,
+			&i.Birthdate,
 		); err != nil {
 			return nil, err
 		}
@@ -317,7 +322,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 }
 
 const searchUsers = `-- name: SearchUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
 WHERE is_active
   AND is_searchable
@@ -377,6 +382,7 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Ide
 			&i.HouseholdID,
 			&i.IsSearchable,
 			&i.HouseholdRole,
+			&i.Birthdate,
 		); err != nil {
 			return nil, err
 		}
@@ -553,7 +559,8 @@ UPDATE identity.users
 SET first_name   = $2,
     last_name    = $3,
     backup_email = $4,
-    updated_by   = $5,
+    birthdate    = $5,
+    updated_by   = $6,
     updated_at   = now()
 WHERE user_id = $1
 `
@@ -563,6 +570,7 @@ type UpdateUserProfileParams struct {
 	FirstName   pgtype.Text `json:"first_name"`
 	LastName    pgtype.Text `json:"last_name"`
 	BackupEmail pgtype.Text `json:"backup_email"`
+	Birthdate   pgtype.Date `json:"birthdate"`
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
@@ -572,6 +580,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		arg.FirstName,
 		arg.LastName,
 		arg.BackupEmail,
+		arg.Birthdate,
 		arg.UpdatedBy,
 	)
 	if err != nil {
@@ -599,7 +608,7 @@ ON CONFLICT (provider, external_subject)
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
-RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role
+RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 `
 
 type UpsertUserParams struct {
@@ -640,6 +649,7 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (Identit
 		&i.HouseholdID,
 		&i.IsSearchable,
 		&i.HouseholdRole,
+		&i.Birthdate,
 	)
 	return i, err
 }

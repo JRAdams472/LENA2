@@ -397,7 +397,7 @@ type IdentityService interface {
 	UserReader
 	UserAdmin
 	HouseholdDirectory
-	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail, by string) error
+	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error
 }
 
 var _ IdentityService = (*identity.Service)(nil)
@@ -560,6 +560,10 @@ type AIService interface {
 	Ask(ctx context.Context, userID, householdID int64, question string) (ai.Answer, error)
 	SuggestMeals(ctx context.Context, userID, householdID, mealPlanID int64, maxSuggestions int) ([]ai.MealSuggestion, error)
 	SuggestEventFixes(ctx context.Context, userID, householdID, foodEventID int64, maxSuggestions int) ([]ai.EventFix, error)
+	// Sommelier/bartender suggestions — the resolver age-gates these; the
+	// service itself stays household-scoped and read-only.
+	SuggestPairings(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]ai.PairingSuggestion, error)
+	SuggestCocktails(ctx context.Context, userID, householdID int64, maxSuggestions int, inStockOnly bool) ([]ai.CocktailSuggestion, error)
 }
 
 var _ AIService = (*ai.Service)(nil)
