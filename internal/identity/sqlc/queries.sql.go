@@ -79,6 +79,19 @@ func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countLoginsByUser = `-- name: CountLoginsByUser :one
+SELECT count(*)
+FROM identity.user_login
+WHERE user_id = $1
+`
+
+func (q *Queries) CountLoginsByUser(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countLoginsByUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT count(*)
 FROM identity.users
@@ -104,6 +117,25 @@ func (q *Queries) CountUsersByHousehold(ctx context.Context, householdID pgtype.
 	return count, err
 }
 
+const deleteLoginsByProvider = `-- name: DeleteLoginsByProvider :execrows
+DELETE FROM identity.user_login
+WHERE user_id = $1
+  AND provider = $2
+`
+
+type DeleteLoginsByProviderParams struct {
+	UserID   int64  `json:"user_id"`
+	Provider string `json:"provider"`
+}
+
+func (q *Queries) DeleteLoginsByProvider(ctx context.Context, arg DeleteLoginsByProviderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLoginsByProvider, arg.UserID, arg.Provider)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users
@@ -112,6 +144,48 @@ WHERE user_id = $1
 
 func (q *Queries) GetUserByID(ctx context.Context, userID int64) (IdentityUser, error) {
 	row := q.db.QueryRow(ctx, getUserByID, userID)
+	var i IdentityUser
+	err := row.Scan(
+		&i.UserID,
+		&i.Provider,
+		&i.ExternalSubject,
+		&i.Email,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.LastLoginAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.Role,
+		&i.FirstName,
+		&i.LastName,
+		&i.BackupEmail,
+		&i.HouseholdID,
+		&i.IsSearchable,
+		&i.HouseholdRole,
+		&i.Birthdate,
+	)
+	return i, err
+}
+
+const getUserByLogin = `-- name: GetUserByLogin :one
+SELECT u.user_id, u.provider, u.external_subject, u.email, u.display_name, u.is_active, u.last_login_at, u.created_by, u.created_at, u.updated_by, u.updated_at, u.role, u.first_name, u.last_name, u.backup_email, u.household_id, u.is_searchable, u.household_role, u.birthdate
+FROM identity.users AS u
+JOIN identity.user_login AS l ON l.user_id = u.user_id
+WHERE l.provider = $1
+  AND l.external_subject = $2
+`
+
+type GetUserByLoginParams struct {
+	Provider        string `json:"provider"`
+	ExternalSubject string `json:"external_subject"`
+}
+
+// Resolves a provider identity to its user via the login mapping table —
+// covers both primary logins and explicitly linked ones.
+func (q *Queries) GetUserByLogin(ctx context.Context, arg GetUserByLoginParams) (IdentityUser, error) {
+	row := q.db.QueryRow(ctx, getUserByLogin, arg.Provider, arg.ExternalSubject)
 	var i IdentityUser
 	err := row.Scan(
 		&i.UserID,
@@ -174,6 +248,87 @@ func (q *Queries) GetUserByProviderSubject(ctx context.Context, arg GetUserByPro
 		&i.Birthdate,
 	)
 	return i, err
+}
+
+const insertLogin = `-- name: InsertLogin :one
+INSERT INTO identity.user_login (
+    user_id,
+    provider,
+    external_subject,
+    email,
+    display_name,
+    last_login_at
+)
+VALUES ($1, $2, $3, $4, $5, now())
+RETURNING user_login_id, user_id, provider, external_subject, email, display_name, last_login_at, created_at
+`
+
+type InsertLoginParams struct {
+	UserID          int64       `json:"user_id"`
+	Provider        string      `json:"provider"`
+	ExternalSubject string      `json:"external_subject"`
+	Email           string      `json:"email"`
+	DisplayName     pgtype.Text `json:"display_name"`
+}
+
+// Link flow: strict insert — a conflict means the provider identity is
+// already bound (to this or another user) and surfaces as ErrConflict.
+func (q *Queries) InsertLogin(ctx context.Context, arg InsertLoginParams) (IdentityUserLogin, error) {
+	row := q.db.QueryRow(ctx, insertLogin,
+		arg.UserID,
+		arg.Provider,
+		arg.ExternalSubject,
+		arg.Email,
+		arg.DisplayName,
+	)
+	var i IdentityUserLogin
+	err := row.Scan(
+		&i.UserLoginID,
+		&i.UserID,
+		&i.Provider,
+		&i.ExternalSubject,
+		&i.Email,
+		&i.DisplayName,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listLoginsByUser = `-- name: ListLoginsByUser :many
+SELECT user_login_id, user_id, provider, external_subject, email, display_name, last_login_at, created_at
+FROM identity.user_login
+WHERE user_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListLoginsByUser(ctx context.Context, userID int64) ([]IdentityUserLogin, error) {
+	rows, err := q.db.Query(ctx, listLoginsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityUserLogin{}
+	for rows.Next() {
+		var i IdentityUserLogin
+		if err := rows.Scan(
+			&i.UserLoginID,
+			&i.UserID,
+			&i.Provider,
+			&i.ExternalSubject,
+			&i.Email,
+			&i.DisplayName,
+			&i.LastLoginAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUsers = `-- name: ListUsers :many
@@ -522,6 +677,22 @@ func (q *Queries) SetUserSearchable(ctx context.Context, arg SetUserSearchablePa
 	return result.RowsAffected(), nil
 }
 
+const touchUserLogin = `-- name: TouchUserLogin :execrows
+UPDATE identity.users
+SET last_login_at = now()
+WHERE user_id = $1
+`
+
+// Linked-login sign-in: bump the user row's sign-in timestamp without
+// overwriting its primary email/display_name.
+func (q *Queries) TouchUserLogin(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, touchUserLogin, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateUser = `-- name: UpdateUser :execrows
 UPDATE identity.users
 SET email        = $2,
@@ -587,6 +758,56 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertLogin = `-- name: UpsertLogin :one
+INSERT INTO identity.user_login (
+    user_id,
+    provider,
+    external_subject,
+    email,
+    display_name,
+    last_login_at
+)
+VALUES ($1, $2, $3, $4, $5, now())
+ON CONFLICT (provider, external_subject)
+    DO UPDATE SET
+        email = CASE WHEN EXCLUDED.email = '' THEN identity.user_login.email ELSE EXCLUDED.email END,
+        display_name = EXCLUDED.display_name,
+        last_login_at = now()
+RETURNING user_login_id, user_id, provider, external_subject, email, display_name, last_login_at, created_at
+`
+
+type UpsertLoginParams struct {
+	UserID          int64       `json:"user_id"`
+	Provider        string      `json:"provider"`
+	ExternalSubject string      `json:"external_subject"`
+	Email           string      `json:"email"`
+	DisplayName     pgtype.Text `json:"display_name"`
+}
+
+// First sign-in creates the mapping; subsequent sign-ins refresh the
+// cached provider claims and the sign-in timestamp.
+func (q *Queries) UpsertLogin(ctx context.Context, arg UpsertLoginParams) (IdentityUserLogin, error) {
+	row := q.db.QueryRow(ctx, upsertLogin,
+		arg.UserID,
+		arg.Provider,
+		arg.ExternalSubject,
+		arg.Email,
+		arg.DisplayName,
+	)
+	var i IdentityUserLogin
+	err := row.Scan(
+		&i.UserLoginID,
+		&i.UserID,
+		&i.Provider,
+		&i.ExternalSubject,
+		&i.Email,
+		&i.DisplayName,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const upsertUser = `-- name: UpsertUser :one

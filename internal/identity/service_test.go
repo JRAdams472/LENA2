@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,17 +20,34 @@ import (
 
 var errDB = errors.New("db error")
 
+// newService returns a service whose plain and tx-bound queries both land
+// on the mock; the stub pool supplies a no-op transaction for InTx.
 func newService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
 	mq := mock.NewMockQuerier(gomock.NewController(t))
-	return &Service{q: mq}, mq
+	s := &Service{q: mq, pool: &stubPool{tx: &stubTx{}}}
+	s.newQ = func(pgx.Tx) sqlc.Querier { return mq }
+	return s, mq
+}
+
+// missLogin stubs the login-table miss that precedes user creation.
+func missLogin(mq *mock.MockQuerier) {
+	mq.EXPECT().GetUserByLogin(gomock.Any(), gomock.Any()).
+		Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+}
+
+// expectLogin stub the login row write that follows a user upsert.
+func expectLogin(mq *mock.MockQuerier) {
+	mq.EXPECT().UpsertLogin(gomock.Any(), gomock.Any()).
+		Return(sqlc.IdentityUserLogin{}, nil)
 }
 
 func TestUpsertUser(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success passes params and maps row", func(t *testing.T) {
+	t.Run("new identity creates user and login rows", func(t *testing.T) {
 		svc, mq := newService(t)
+		missLogin(mq)
 		mq.EXPECT().UpsertUser(ctx, gomock.Any()).DoAndReturn(
 			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.IdentityUser, error) {
 				assert.Equal(t, "entra", arg.Provider)
@@ -47,6 +66,13 @@ func TestUpsertUser(t *testing.T) {
 					Role:            RoleMember,
 				}, nil
 			})
+		mq.EXPECT().UpsertLogin(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.UpsertLoginParams) (sqlc.IdentityUserLogin, error) {
+				assert.Equal(t, int64(42), arg.UserID)
+				assert.Equal(t, "entra", arg.Provider)
+				assert.Equal(t, "sub-123", arg.ExternalSubject)
+				return sqlc.IdentityUserLogin{UserID: arg.UserID}, nil
+			})
 
 		got, err := svc.UpsertUser(ctx, "entra", "sub-123", "a@b.com", "Alice")
 		require.NoError(t, err)
@@ -62,13 +88,56 @@ func TestUpsertUser(t *testing.T) {
 		assert.False(t, got.IsAdmin())
 	})
 
+	t.Run("existing login resolves to its user", func(t *testing.T) {
+		svc, mq := newService(t)
+		// A linked (non-primary) login still lands on the owning user;
+		// the user row keeps its primary provider claims.
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).Return(sqlc.IdentityUser{
+			UserID:          42,
+			Provider:        "google",
+			ExternalSubject: "g-sub",
+			Email:           "a@b.com",
+			DisplayName:     pgtype.Text{String: "Alice", Valid: true},
+			IsActive:        true,
+			Role:            RoleMember,
+		}, nil)
+		expectLogin(mq)
+		mq.EXPECT().TouchUserLogin(ctx, int64(42)).Return(int64(1), nil)
+
+		got, err := svc.UpsertUser(ctx, "discord", "d-sub", "x@y.com", "Al")
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), got.UserID)
+		assert.Equal(t, "google", got.Provider)
+	})
+
+	t.Run("primary login refreshes the user row", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).Return(sqlc.IdentityUser{
+			UserID:          42,
+			Provider:        "entra",
+			ExternalSubject: "sub-123",
+			Role:            RoleMember,
+		}, nil)
+		expectLogin(mq)
+		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.IdentityUser{UserID: 42}, nil)
+		mq.EXPECT().GetUserByID(ctx, int64(42)).Return(sqlc.IdentityUser{
+			UserID: 42, Provider: "entra", ExternalSubject: "sub-123", Role: RoleMember,
+		}, nil)
+
+		got, err := svc.UpsertUser(ctx, "entra", "sub-123", "a@b.com", "Alice")
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), got.UserID)
+	})
+
 	t.Run("empty display name becomes null", func(t *testing.T) {
 		svc, mq := newService(t)
+		missLogin(mq)
 		mq.EXPECT().UpsertUser(ctx, gomock.Any()).DoAndReturn(
 			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.IdentityUser, error) {
 				assert.False(t, arg.DisplayName.Valid)
 				return sqlc.IdentityUser{UserID: 43, Provider: arg.Provider, Email: arg.Email, Role: RoleMember}, nil
 			})
+		expectLogin(mq)
 
 		got, err := svc.UpsertUser(ctx, "entra", "sub-124", "b@c.com", "")
 		require.NoError(t, err)
@@ -79,6 +148,7 @@ func TestUpsertUser(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
+		missLogin(mq)
 		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.IdentityUser{}, errDB)
 
 		_, err := svc.UpsertUser(ctx, "entra", "sub-123", "a@b.com", "Alice")
@@ -87,6 +157,164 @@ func TestUpsertUser(t *testing.T) {
 		assert.ErrorIs(t, err, errDB)
 	})
 }
+
+func TestLinkLogin(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("inserts the login", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).
+			Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+		mq.EXPECT().InsertLogin(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.InsertLoginParams) (sqlc.IdentityUserLogin, error) {
+				assert.Equal(t, int64(42), arg.UserID)
+				assert.Equal(t, "discord", arg.Provider)
+				return sqlc.IdentityUserLogin{}, nil
+			})
+
+		require.NoError(t, svc.LinkLogin(ctx, 42, "discord", "d-sub", "x@y.com", "Al"))
+	})
+
+	t.Run("re-linking own login is a no-op", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).Return(sqlc.IdentityUser{
+			UserID: 42,
+		}, nil)
+		require.NoError(t, svc.LinkLogin(ctx, 42, "discord", "d-sub", "x@y.com", "Al"))
+	})
+
+	t.Run("login bound to another user is ErrLoginTaken", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).
+			Return(sqlc.IdentityUser{UserID: 99}, nil)
+
+		err := svc.LinkLogin(ctx, 42, "discord", "d-sub", "x@y.com", "Al")
+		assert.ErrorIs(t, err, ErrLoginTaken)
+	})
+
+	t.Run("insert race still reports ErrLoginTaken", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).
+			Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+		pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "user_login_provider_key"}
+		mq.EXPECT().InsertLogin(ctx, gomock.Any()).Return(sqlc.IdentityUserLogin{}, pgErr)
+
+		err := svc.LinkLogin(ctx, 42, "discord", "d-sub", "x@y.com", "Al")
+		assert.ErrorIs(t, err, ErrLoginTaken)
+	})
+
+	t.Run("db error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByLogin(ctx, gomock.Any()).
+			Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+		mq.EXPECT().InsertLogin(ctx, gomock.Any()).Return(sqlc.IdentityUserLogin{}, errDB)
+
+		err := svc.LinkLogin(ctx, 42, "discord", "d-sub", "x@y.com", "Al")
+		assert.ErrorContains(t, err, "link login")
+	})
+}
+
+func TestUnlinkLogin(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("removes the provider login", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(42)).Return(sqlc.IdentityUser{
+			UserID: 42, Provider: "google",
+		}, nil)
+		mq.EXPECT().CountLoginsByUser(ctx, int64(42)).Return(int64(2), nil)
+		mq.EXPECT().DeleteLoginsByProvider(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.DeleteLoginsByProviderParams) (int64, error) {
+				assert.Equal(t, "discord", arg.Provider)
+				return int64(1), nil
+			})
+
+		require.NoError(t, svc.UnlinkLogin(ctx, 42, "discord"))
+	})
+
+	t.Run("last login cannot be removed", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(42)).Return(sqlc.IdentityUser{
+			UserID: 42, Provider: "google",
+		}, nil)
+		mq.EXPECT().CountLoginsByUser(ctx, int64(42)).Return(int64(1), nil)
+
+		assert.ErrorIs(t, svc.UnlinkLogin(ctx, 42, "discord"), ErrLastLogin)
+	})
+
+	t.Run("primary login cannot be removed", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(42)).Return(sqlc.IdentityUser{
+			UserID: 42, Provider: "google",
+		}, nil)
+
+		assert.ErrorIs(t, svc.UnlinkLogin(ctx, 42, "google"), ErrPrimaryLogin)
+	})
+
+	t.Run("unknown provider is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(42)).Return(sqlc.IdentityUser{
+			UserID: 42, Provider: "google",
+		}, nil)
+		mq.EXPECT().CountLoginsByUser(ctx, int64(42)).Return(int64(2), nil)
+		mq.EXPECT().DeleteLoginsByProvider(ctx, gomock.Any()).Return(int64(0), nil)
+
+		assert.ErrorIs(t, svc.UnlinkLogin(ctx, 42, "discord"), domainerr.ErrNotFound)
+	})
+}
+
+func TestListLogins(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("maps rows", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListLoginsByUser(ctx, int64(42)).Return([]sqlc.IdentityUserLogin{
+			{Provider: "google", Email: "a@b.com", DisplayName: pgtype.Text{String: "Alice", Valid: true}},
+			{Provider: "discord", Email: "x@y.com"},
+		}, nil)
+
+		got, err := svc.ListLogins(ctx, 42)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, "google", got[0].Provider)
+		assert.Equal(t, "Alice", got[0].DisplayName)
+	})
+}
+
+// --- test doubles (mirror internal/session/service_test.go) ---
+
+type stubTx struct{ closed bool }
+
+func (f *stubTx) Begin(context.Context) (pgx.Tx, error) { return nil, errors.New("nested tx") }
+func (f *stubTx) Commit(context.Context) error          { f.closed = true; return nil }
+func (f *stubTx) Rollback(context.Context) error        { f.closed = true; return nil }
+func (f *stubTx) CopyFrom(context.Context, pgx.Identifier, []string, pgx.CopyFromSource) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+func (f *stubTx) SendBatch(context.Context, *pgx.Batch) pgx.BatchResults { return nil }
+func (f *stubTx) LargeObjects() pgx.LargeObjects                         { return pgx.LargeObjects{} }
+func (f *stubTx) Prepare(context.Context, string, string) (*pgconn.StatementDescription, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *stubTx) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+func (f *stubTx) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *stubTx) QueryRow(context.Context, string, ...any) pgx.Row { return nil }
+func (f *stubTx) Conn() *pgx.Conn                                  { return nil }
+
+type stubPool struct{ tx *stubTx }
+
+func (p *stubPool) Begin(context.Context) (pgx.Tx, error) { return p.tx, nil }
+func (p *stubPool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, errors.New("not implemented")
+}
+func (p *stubPool) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, errors.New("not implemented")
+}
+func (p *stubPool) QueryRow(context.Context, string, ...any) pgx.Row { return nil }
 
 func TestGetByID(t *testing.T) {
 	ctx := context.Background()

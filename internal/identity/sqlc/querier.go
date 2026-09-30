@@ -14,10 +14,19 @@ type Querier interface {
 	ConditionalSetUserActive(ctx context.Context, arg ConditionalSetUserActiveParams) (int64, error)
 	ConditionalSetUserRole(ctx context.Context, arg ConditionalSetUserRoleParams) (int64, error)
 	CountActiveAdmins(ctx context.Context) (int64, error)
+	CountLoginsByUser(ctx context.Context, userID int64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error)
+	DeleteLoginsByProvider(ctx context.Context, arg DeleteLoginsByProviderParams) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
+	// Resolves a provider identity to its user via the login mapping table —
+	// covers both primary logins and explicitly linked ones.
+	GetUserByLogin(ctx context.Context, arg GetUserByLoginParams) (IdentityUser, error)
 	GetUserByProviderSubject(ctx context.Context, arg GetUserByProviderSubjectParams) (IdentityUser, error)
+	// Link flow: strict insert — a conflict means the provider identity is
+	// already bound (to this or another user) and surfaces as ErrConflict.
+	InsertLogin(ctx context.Context, arg InsertLoginParams) (IdentityUserLogin, error)
+	ListLoginsByUser(ctx context.Context, userID int64) ([]IdentityUserLogin, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
 	ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]IdentityUser, error)
 	ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]IdentityUser, error)
@@ -36,8 +45,14 @@ type Querier interface {
 	SetUserHouseholdRole(ctx context.Context, arg SetUserHouseholdRoleParams) (int64, error)
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) (int64, error)
 	SetUserSearchable(ctx context.Context, arg SetUserSearchableParams) (int64, error)
+	// Linked-login sign-in: bump the user row's sign-in timestamp without
+	// overwriting its primary email/display_name.
+	TouchUserLogin(ctx context.Context, userID int64) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (int64, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (int64, error)
+	// First sign-in creates the mapping; subsequent sign-ins refresh the
+	// cached provider claims and the sign-in timestamp.
+	UpsertLogin(ctx context.Context, arg UpsertLoginParams) (IdentityUserLogin, error)
 	UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error)
 }
 

@@ -227,6 +227,17 @@ type IdentityUser struct {
 	Birthdate       pgtype.Date        `json:"birthdate"`
 }
 
+type IdentityUserLogin struct {
+	UserLoginID     int64              `json:"user_login_id"`
+	UserID          int64              `json:"user_id"`
+	Provider        string             `json:"provider"`
+	ExternalSubject string             `json:"external_subject"`
+	Email           string             `json:"email"`
+	DisplayName     pgtype.Text        `json:"display_name"`
+	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+}
+
 type InventoryBrand struct {
 	BrandID           int64              `json:"brand_id"`
 	Name              string             `json:"name"`

@@ -348,7 +348,7 @@ func (a *Authenticator) authenticate(ctx context.Context, raw string) (currentus
 		u, err := a.authenticateSession(ctx, raw, unverified)
 		return u, err == nil, err
 	}
-	u, err := a.authenticateOIDC(ctx, raw, issuer)
+	u, err := a.authenticateOIDC(ctx, raw)
 	return u, false, err
 }
 
@@ -392,14 +392,36 @@ func (a *Authenticator) authenticateSession(ctx context.Context, raw string, unv
 	return cu, nil
 }
 
-func (a *Authenticator) authenticateOIDC(ctx context.Context, raw, issuer string) (currentuser.User, error) {
+// oidcClaims is the verified provider identity extracted from a token:
+// issuer (also the login's provider key), subject, and profile claims.
+type oidcClaims struct {
+	issuer        string
+	subject       string
+	email         string
+	name          string
+	emailVerified bool
+	exp           time.Time
+}
+
+// verifyOIDCToken validates a provider ID token against the configured
+// issuer allowlist and JWKS and extracts its claims. It never touches the
+// identity store — callers that need persistence call it then decide.
+func (a *Authenticator) verifyOIDCToken(ctx context.Context, raw string) (oidcClaims, error) {
+	unverified, err := jwt.ParseInsecure([]byte(raw))
+	if err != nil {
+		return oidcClaims{}, fmt.Errorf("%w: parse token: %w", errTokenInvalid, err)
+	}
+	issuer, ok := unverified.Issuer()
+	if !ok {
+		return oidcClaims{}, fmt.Errorf("%w: token has no issuer", errTokenInvalid)
+	}
 	if _, ok := a.audiencesByIssuer[issuer]; !ok {
-		return currentuser.User{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
+		return oidcClaims{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
 	}
 
 	keySet, err := a.keySetForIssuer(ctx, issuer, false)
 	if err != nil {
-		return currentuser.User{}, fmt.Errorf("%w: load jwks for issuer %q: %w", errKeyDiscovery, issuer, err)
+		return oidcClaims{}, fmt.Errorf("%w: load jwks for issuer %q: %w", errKeyDiscovery, issuer, err)
 	}
 
 	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
@@ -415,34 +437,65 @@ func (a *Authenticator) authenticateOIDC(ctx context.Context, raw, issuer string
 			}
 		}
 		if err != nil {
-			return currentuser.User{}, fmt.Errorf("%w: verify token: %w", errTokenInvalid, err)
+			return oidcClaims{}, fmt.Errorf("%w: verify token: %w", errTokenInvalid, err)
 		}
 	}
 
 	audience, ok := token.Audience()
 	if !ok {
-		return currentuser.User{}, fmt.Errorf("%w: token has no audience claim", errTokenInvalid)
+		return oidcClaims{}, fmt.Errorf("%w: token has no audience claim", errTokenInvalid)
 	}
 	if !containsAny(a.audiencesByIssuer[issuer], audience) {
-		return currentuser.User{}, fmt.Errorf("%w: audience %v is not allowed for issuer %q", errTokenInvalid, audience, issuer)
+		return oidcClaims{}, fmt.Errorf("%w: audience %v is not allowed for issuer %q", errTokenInvalid, audience, issuer)
 	}
 
 	subject, ok := token.Subject()
 	if !ok || subject == "" {
-		return currentuser.User{}, fmt.Errorf("%w: token has no subject", errTokenInvalid)
+		return oidcClaims{}, fmt.Errorf("%w: token has no subject", errTokenInvalid)
 	}
 
 	var email, name string
 	if err := token.Get("email", &email); err != nil {
-		return currentuser.User{}, fmt.Errorf("%w: token email claim: %w", errTokenInvalid, err)
+		return oidcClaims{}, fmt.Errorf("%w: token email claim: %w", errTokenInvalid, err)
 	}
 	if err := token.Get("name", &name); err != nil {
-		return currentuser.User{}, fmt.Errorf("%w: token name claim: %w", errTokenInvalid, err)
+		return oidcClaims{}, fmt.Errorf("%w: token name claim: %w", errTokenInvalid, err)
 	}
 
 	// A missing or non-boolean claim simply means "not verified".
 	var emailVerified bool
 	_ = token.Get("email_verified", &emailVerified)
+
+	exp, _ := token.Expiration()
+	return oidcClaims{
+		issuer:        issuer,
+		subject:       subject,
+		email:         email,
+		name:          name,
+		emailVerified: emailVerified,
+		exp:           exp,
+	}, nil
+}
+
+// VerifyProviderCredential validates a provider credential without
+// touching the identity store — the account-linking flow uses it to prove
+// a sign-in before binding it to an existing user. OIDC providers verify
+// via JWKS; the issuer claim is the provider key.
+func (a *Authenticator) VerifyProviderCredential(ctx context.Context, raw string) (issuer, subject, email, name string, err error) {
+	claims, err := a.verifyOIDCToken(ctx, raw)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return claims.issuer, claims.subject, claims.email, claims.name, nil
+}
+
+func (a *Authenticator) authenticateOIDC(ctx context.Context, raw string) (currentuser.User, error) {
+	claims, err := a.verifyOIDCToken(ctx, raw)
+	if err != nil {
+		return currentuser.User{}, err
+	}
+	issuer, subject, email, name := claims.issuer, claims.subject, claims.email, claims.name
+	emailVerified := claims.emailVerified
 
 	if cu, ok := a.cachedUser(issuer, subject); ok {
 		return cu, nil
@@ -492,8 +545,8 @@ func (a *Authenticator) authenticateOIDC(ctx context.Context, raw, issuer string
 	// Cap the cache entry by the token's own expiry so a cached resolution
 	// never outlives the credential it was minted for.
 	ttl := userCacheTTL
-	if exp, ok := token.Expiration(); ok {
-		if rem := time.Until(exp); rem < ttl {
+	if !claims.exp.IsZero() {
+		if rem := time.Until(claims.exp); rem < ttl {
 			ttl = rem
 		}
 	}
