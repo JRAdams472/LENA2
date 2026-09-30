@@ -70,6 +70,9 @@ Signals to rank by should include but not be limited to:
 - Dashboard "Today's meals" as a 3-column icon grid with dashed-pill "+ Plan a meal" actions; "Suggested for You" recipe reasons as soft-green chips; "Running low" rows with amber status dots and package-size badges (size deduplicated out of item names); suggested/restock cards in a bento grid on wide screens.
 
 # Version 2
+## Session refresh tokens
+Implement refresh tokens — today clients must re-sign in with Google when the ID token expires (see `docs/auth-oidc.md`). Add a server-issued refresh token (rotating, revocable, stored server-side per device) so web and mobile sessions persist without forcing a fresh Google sign-in every hour.
+
 ## TokTok Integration 
 Give the app the ability to link a TikToc cooking video.
 Should be able to build the recipe from the video
