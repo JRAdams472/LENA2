@@ -74,6 +74,11 @@ Signals to rank by should include but not be limited to:
 ## Session refresh tokens
 Implement refresh tokens — today clients must re-sign in with Google when the ID token expires (see `docs/auth-oidc.md`). Add a server-issued refresh token (rotating, revocable, stored server-side per device) so web and mobile sessions persist without forcing a fresh Google sign-in every hour.
 
+## Semantic recipe search (RAG)
+Keyword/category search can't answer free-form intent ("something cozy for a rainy night", "like shakshuka but no eggs"). Add vector search over recipes so the assistant and recipe search can bridge it.
+- Add `pgvector` + a `recipe.embedding` column, backfilled by a small Ollama embedding model (e.g. `nomic-embed-text`) over name + description + ingredient list; refresh on recipe save.
+- Add a `search_recipes_semantic` read-only tool to the MCP-shaped registry (household-scoped, bounded results) and wire it into `askAssistant` plus a "semantic" mode on recipe search.
+
 ## TokTok Integration 
 Give the app the ability to link a TikToc cooking video.
 Should be able to build the recipe from the video
