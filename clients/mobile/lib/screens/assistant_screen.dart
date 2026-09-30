@@ -43,8 +43,11 @@ class _AssistantScreenState extends State<AssistantScreen> {
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // GraphQLProvider.of reads an inherited widget, so it must wait for
+    // didChangeDependencies — calling it in initState throws.
+    if (!_loading) return;
     _checkAvailable();
   }
 
