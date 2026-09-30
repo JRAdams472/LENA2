@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -239,6 +240,13 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		log.Error("failed to configure AI provider", "error", err)
 		os.Exit(1)
 	}
+	// e2e and demos run LENA_AI_PROVIDER=mock; an empty scripted queue would
+	// error on the first call, so give the mock a deterministic handler —
+	// one canned tool call, then a canned reply; empty results for the
+	// JSON-mode suggesters.
+	if mp, ok := aiProvider.(*llm.MockProvider); ok {
+		mp.Handler = cannedMockHandler
+	}
 	aiTools := tools.New()
 	tools.RegisterPantryTools(aiTools, userPrefsSvc, inventorySvc)
 	tools.RegisterMealPlanTools(aiTools, mealPlanSvc, recipeSvc)
@@ -436,4 +444,38 @@ func buildIPExtractor(cidrs []string) echo.IPExtractor {
 		opts = append(opts, echo.TrustIPRange(ipnet))
 	}
 	return echo.ExtractIPFromXFFHeader(opts...)
+}
+
+// cannedMockHandler drives LENA_AI_PROVIDER=mock for e2e and demos: the
+// first turn requests one real tool (so the UI's "looked up" trace is
+// exercised end-to-end), the turn after a tool result returns a fixed
+// answer, and JSON-mode calls from the suggesters get every known envelope
+// empty.
+func cannedMockHandler(req llm.Request) (llm.Response, error) {
+	if req.JSONMode {
+		return llm.Response{Message: llm.Message{
+			Role:    llm.RoleAssistant,
+			Content: `{"suggestions":[],"pairings":[],"fixes":[]}`,
+		}}, nil
+	}
+	if len(req.Messages) > 0 && req.Messages[len(req.Messages)-1].Role == llm.RoleTool {
+		return llm.Response{Message: llm.Message{
+			Role:    llm.RoleAssistant,
+			Content: "I checked your household data — based on what's on hand, you're set for the week. (mock provider)",
+		}}, nil
+	}
+	if len(req.Tools) > 0 {
+		return llm.Response{Message: llm.Message{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{{
+				ID:        "call_1",
+				Name:      "get_expiring_items",
+				Arguments: json.RawMessage(`{"days":7}`),
+			}},
+		}}, nil
+	}
+	return llm.Response{Message: llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "Hi! I'm LENA's canned demo answer — no tools needed for that one.",
+	}}, nil
 }

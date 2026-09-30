@@ -61,6 +61,7 @@ interface NavItem {
 
 const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?: NavItem[] }[] = [
   { label: "Dashboard", href: "/" },
+  { label: "Assistant", href: "/assistant" },
   {
     label: "Inventory",
     children: [

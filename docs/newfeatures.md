@@ -13,26 +13,27 @@
 
 Mobile push notifications are deferred; delivery is in-app feed only for now.
 ## Full AI Integration
+✅ Done — provider-agnostic `llm.Provider` (Ollama + mock + seam for commercial APIs), MCP-shaped read-only tool registry with a bounded agent loop, household-scoped GraphQL surface (`askAssistant`, `suggestMeals`, `suggestEventFixes`, `suggestPairings`, `suggestCocktails`), web + mobile assistant UIs, and a birthdate-based 21+ gate on all alcohol suggestions (PRs #196–#200).
 ### Integrate AI into the meal planner
-AI should evaluate what is in stock, what types of preferences not only the user but the whole household has
-Evaluate what might be close to expiration
-Suggest recipies that the whole house is likey to enjoy that will consume in stock items with a prefernce towards consuming items about to expire.
+~~AI should evaluate what is in stock, what types of preferences not only the user but the whole household has~~ ✅ Done — `get_household_tastes` feeds analytics-driven household affinity into prompts.
+~~Evaluate what might be close to expiration~~ ✅ Done — `get_expiring_items` surfaces pantry items nearing expiry.
+~~Suggest recipies that the whole house is likey to enjoy that will consume in stock items with a prefernce towards consuming items about to expire.~~ ✅ Done — `suggestMeals` returns reviewable cards applied via `addMealSlot` (PR #198).
 ### Meal event integration
-AI integration for meal events to assisnt in recipe modifications to meet serving times
-Integration should take into account limitations of cooking appliances
-Integration should be able to make suggestions to alter recipie cooking time and temp so multiple dishes can be prepared at the same time.
-The event timeline already detects appliance conflicts between scheduled steps — the AI layer should suggest resolutions for those flagged conflicts (shift serve times, reorder steps, reassign appliances).
+~~AI integration for meal events to assisnt in recipe modifications to meet serving times~~
+~~Integration should take into account limitations of cooking appliances~~
+~~Integration should be able to make suggestions to alter recipie cooking time and temp so multiple dishes can be prepared at the same time.~~
+~~The event timeline already detects appliance conflicts between scheduled steps — the AI layer should suggest resolutions for those flagged conflicts (shift serve times, reorder steps, reassign appliances).~~ ✅ Done — `suggestEventFixes` consumes `BuildTimeline` conflicts and proposes shift_serve/set_appliance/set_duration/set_dependency fixes applied through existing mutations (PR #199).
 ### Sommerlier Integration
-If the user has a wine collection, the system should be able to, when prompted, suggest wine pairings with dishes
-If the request happens during meal planning or event planning there should be an option to limit to wine in stock or advise on wines to be purchased.
-AI should consider the contents of each recipie in the meal as well as any preferences that have been found in the household.
-We may need to add age of users to weight preferences towards those of legal drinking age.
+~~If the user has a wine collection, the system should be able to, when prompted, suggest wine pairings with dishes~~ ✅ Done — `suggestPairings` on recipe detail (PR #200).
+~~If the request happens during meal planning or event planning there should be an option to limit to wine in stock or advise on wines to be purchased.~~ ✅ Done — cellar bottles are marked `inCellar`; style picks carry no bottle id.
+~~AI should consider the contents of each recipie in the meal as well as any preferences that have been found in the household.~~ ✅ Done — recipe + household tastes are in the prompt context.
+~~We may need to add age of users to weight preferences towards those of legal drinking age.~~ ✅ Done — nullable `birthdate` on profile; server-side 21+ gate on all alcohol suggestions.
 ### Bartender
-Add an AI bartender to the system that works simmilarly to the wine adviser, but for cocktails
-Do we need to add a Liquor flag to items to do this?
-Do we need to flag recipe types as drink or cocktail vs meal?
+~~Add an AI bartender to the system that works simmilarly to the wine adviser, but for cocktails~~ ✅ Done — `suggestCocktails` with an in-stock pantry filter (PR #200).
+~~Do we need to add a Liquor flag to items to do this?~~ ✅ Done — the pantry coverage check uses existing ingredient items; no liquor flag needed.
+~~Do we need to flag recipe types as drink or cocktail vs meal?~~ ✅ Done — the seeded `Cocktail` dish-type category selects candidates.
 ### Generic interface
-Ensure the AI integration is generic enough that Ollama can be swapped out for a commercial ai system like claud or chat gpt with minimal changes.
+~~Ensure the AI integration is generic enough that Ollama can be swapped out for a commercial ai system like claud or chat gpt with minimal changes.~~ ✅ Done — `llm.Provider` interface with Ollama and mock implementations; a commercial provider is a new adapter + a config value.
 
 ## System validations
 ~~Make sure the entire interface and api is idempotent.~~ ✅ Done — `Idempotency-Key` transport dedup on all mutations (PRs #159–#162, see `docs/idempotency-plan.md`).
