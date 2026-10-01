@@ -190,8 +190,8 @@ console.log("shot: event-timeline");
 
 // AI assistant — the e2e overlay runs LENA_AI_PROVIDER=mock, so the page
 // is live and Ask returns the canned deterministic answer.
-await shot("assistant", "/assistant", "Ask LENA");
-await page.getByPlaceholder("Ask LENA").fill("What's in my wine cellar?");
+await shot("assistant", "/assistant", "Ask Dot");
+await page.getByPlaceholder("Ask Dot").fill("What's in my wine cellar?");
 await page.getByRole("button", { name: /ask|send/i }).first().click();
 await page.getByText("mock provider", { exact: false }).first().waitFor({ timeout: 30000 });
 await page.waitForTimeout(400);
