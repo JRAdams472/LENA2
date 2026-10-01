@@ -8,6 +8,8 @@ package grocery
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +50,21 @@ type RouteIdentity struct {
 
 func (id RouteIdentity) manual() pgtype.Text { return textOrNull(normalizeManual(id.ManualName)) }
 
+// routeMapKey is the canonical map key for a RouteIdentity — item and
+// ingredient IDs are distinct namespaces, manual names normalize.
+type routeMapKey string
+
+func (id RouteIdentity) key() routeMapKey {
+	switch {
+	case id.ItemID != nil:
+		return routeMapKey("i:" + strconv.FormatInt(*id.ItemID, 10))
+	case id.IngredientID != nil:
+		return routeMapKey("g:" + strconv.FormatInt(*id.IngredientID, 10))
+	default:
+		return routeMapKey("m:" + normalizeManual(id.ManualName))
+	}
+}
+
 func normalizeManual(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
@@ -73,11 +90,16 @@ func routeKey(it GroceryListItem) RouteIdentity {
 // walk-position mean plus the optional manual override that outranks it.
 type ItemRoute struct {
 	Identity     RouteIdentity
+	StoreID      int64
 	LearnedMean  float64
 	LearnedCount int32
 	ManualRank   *float64
 	ManualAt     *time.Time
 }
+
+// StoreSpecific reports whether the row belongs to the given store rather
+// than the generic household route (store_id 0).
+func (r ItemRoute) StoreSpecific(storeID int64) bool { return r.StoreID == storeID && storeID != 0 }
 
 // EffectiveRank is the sort key — manual arrangement wins over learned.
 func (r ItemRoute) EffectiveRank() *float64 {
@@ -219,22 +241,20 @@ func (s *Service) ListAisles(ctx context.Context, storeID, householdID int64) ([
 	return out, nil
 }
 
-// RenameAisle renames an aisle on a store owned by the household.
-func (s *Service) RenameAisle(ctx context.Context, aisleID, householdID int64, name string, by string) error {
+// RenameAisle renames an aisle on a store owned by the household and
+// returns the updated row.
+func (s *Service) RenameAisle(ctx context.Context, aisleID, householdID int64, name string, by string) (StoreAisle, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return fmt.Errorf("rename aisle: name is required")
+		return StoreAisle{}, fmt.Errorf("rename aisle: name is required")
 	}
-	n, err := s.q.RenameAisle(ctx, sqlc.RenameAisleParams{
+	row, err := s.q.RenameAisle(ctx, sqlc.RenameAisleParams{
 		AisleID: aisleID, HouseholdID: householdID, Name: name, UpdatedBy: textOrNull(by),
 	})
 	if err != nil {
-		return fmt.Errorf("rename aisle: %w", domainerr.FromStorage(err))
+		return StoreAisle{}, fmt.Errorf("rename aisle: %w", domainerr.FromStorage(err))
 	}
-	if n == 0 {
-		return fmt.Errorf("rename aisle: %w", domainerr.ErrNotFound)
-	}
-	return nil
+	return toAisle(row), nil
 }
 
 // DeleteAisle removes an aisle; its assignments cascade.
@@ -393,6 +413,248 @@ func (s *Service) ResetStoreRoute(ctx context.Context, storeID, householdID int6
 	return s.q.ResetStoreRoute(ctx, sqlc.ResetStoreRouteParams{StoreID: storeID, HouseholdID: householdID})
 }
 
+// RouteItem is one list row inside a route group. Suggested marks an item
+// placed in an aisle by the learned-order heuristic rather than an
+// explicit assignment.
+type RouteItem struct {
+	Item      GroceryListItem
+	Suggested bool
+}
+
+// RouteGroup is one stop on the store walk: an aisle (in position order)
+// or the trailing bucket for items with no aisle signal (Aisle nil).
+type RouteGroup struct {
+	Aisle *StoreAisle
+	Items []RouteItem
+}
+
+// RouteGroups is the server-side source of truth for grocery ordering:
+// both clients render this verbatim so web and mobile always agree.
+// Items group by their aisle assignment, sort by effective rank (manual
+// arrangement outranks the learned check-off mean), and unassigned items
+// either slot into the aisle of their nearest ranked neighbor as a
+// suggestion or fall into a trailing unsorted bucket.
+func (s *Service) RouteGroups(ctx context.Context, groceryListID, householdID int64) ([]RouteGroup, error) {
+	list, err := s.GetGroceryListByID(ctx, groceryListID, householdID)
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.ListGroceryListItems(ctx, groceryListID, householdID)
+	if err != nil {
+		return nil, err
+	}
+
+	storeID := GenericStoreID
+	if list.StoreID != nil {
+		storeID = *list.StoreID
+	}
+	routes, err := s.ListItemRoutes(ctx, storeID, householdID)
+	if err != nil {
+		return nil, err
+	}
+	// Store-specific rows win over generic (store_id 0) fallbacks.
+	rankByKey := make(map[routeMapKey]*float64, len(routes))
+	storeSpecific := make(map[routeMapKey]bool, len(routes))
+	for _, rt := range routes {
+		k := rt.Identity.key()
+		if rt.StoreSpecific(storeID) {
+			storeSpecific[k] = true
+			rankByKey[k] = rt.EffectiveRank()
+			continue
+		}
+		if !storeSpecific[k] {
+			rankByKey[k] = rt.EffectiveRank()
+		}
+	}
+
+	var aisles []StoreAisle
+	aisleByItem := make(map[int64]int64)
+	if list.StoreID != nil {
+		if aisles, err = s.ListAisles(ctx, *list.StoreID, householdID); err != nil {
+			return nil, err
+		}
+		assignments, err := s.ListAssignments(ctx, *list.StoreID, householdID)
+		if err != nil {
+			return nil, err
+		}
+		assignByKey := make(map[routeMapKey]int64, len(assignments))
+		for _, a := range assignments {
+			assignByKey[a.Identity.key()] = a.AisleID
+		}
+		// Ranked neighbor lookup for aisle suggestions: the ranked assigned
+		// items sorted by rank.
+		type rankedItem struct {
+			rank    float64
+			aisleID int64
+		}
+		var ranked []rankedItem
+		for _, it := range items {
+			k := routeKey(it).key()
+			aID, ok := assignByKey[k]
+			if !ok {
+				continue
+			}
+			if r := rankByKey[k]; r != nil {
+				ranked = append(ranked, rankedItem{rank: *r, aisleID: aID})
+				aisleByItem[it.GroceryListItemID] = aID
+			} else {
+				aisleByItem[it.GroceryListItemID] = aID
+			}
+		}
+		sort.Slice(ranked, func(i, j int) bool { return ranked[i].rank < ranked[j].rank })
+
+		for _, it := range items {
+			if _, ok := aisleByItem[it.GroceryListItemID]; ok {
+				continue
+			}
+			r := rankByKey[routeKey(it).key()]
+			if r == nil || len(ranked) == 0 {
+				continue
+			}
+			// Nearest ranked assigned item suggests this item's aisle.
+			i := sort.Search(len(ranked), func(i int) bool { return ranked[i].rank >= *r })
+			if i == len(ranked) {
+				i--
+			}
+			if i > 0 && *r-ranked[i-1].rank < ranked[i].rank-*r {
+				i--
+			}
+			aisleByItem[it.GroceryListItemID] = -ranked[i].aisleID // negative marks suggested
+		}
+	}
+
+	sortItems := func(items []RouteItem) {
+		sort.SliceStable(items, func(i, j int) bool {
+			ri := rankByKey[routeKey(items[i].Item).key()]
+			rj := rankByKey[routeKey(items[j].Item).key()]
+			switch {
+			case ri == nil && rj == nil:
+				return items[i].Item.GroceryListItemID < items[j].Item.GroceryListItemID
+			case ri == nil:
+				return false
+			case rj == nil:
+				return true
+			case *ri != *rj:
+				return *ri < *rj
+			default:
+				return items[i].Item.GroceryListItemID < items[j].Item.GroceryListItemID
+			}
+		})
+	}
+
+	groups := make([]RouteGroup, 0, len(aisles)+1)
+	byAisle := make(map[int64]int, len(aisles))
+	for i := range aisles {
+		byAisle[aisles[i].AisleID] = i
+		groups = append(groups, RouteGroup{Aisle: &aisles[i]})
+	}
+	var unsorted []RouteItem
+	for _, it := range items {
+		aID, ok := aisleByItem[it.GroceryListItemID]
+		switch {
+		case !ok || aID == 0:
+			unsorted = append(unsorted, RouteItem{Item: it})
+		case aID < 0: // suggested placement
+			gi, known := byAisle[-aID]
+			if !known {
+				unsorted = append(unsorted, RouteItem{Item: it})
+				continue
+			}
+			groups[gi].Items = append(groups[gi].Items, RouteItem{Item: it, Suggested: true})
+		default:
+			gi, known := byAisle[aID]
+			if !known {
+				unsorted = append(unsorted, RouteItem{Item: it})
+				continue
+			}
+			groups[gi].Items = append(groups[gi].Items, RouteItem{Item: it})
+		}
+	}
+	out := groups[:0]
+	for _, g := range groups {
+		if len(g.Items) == 0 {
+			continue
+		}
+		sortItems(g.Items)
+		out = append(out, g)
+	}
+	if len(unsorted) > 0 {
+		sortItems(unsorted)
+		out = append(out, RouteGroup{Items: unsorted})
+	}
+	return out, nil
+}
+
+// ReorderEntry is one item's slot in a submitted list order. AisleID
+// additionally reassigns the item's aisle at the list's store when set.
+type ReorderEntry struct {
+	GroceryListItemID int64
+	AisleID           *int64
+}
+
+// ReorderListItems records a user arrangement: every submitted item gets a
+// manual rank equal to its fractional position in the order (index n of N
+// becomes (n+1)/(N+1), leaving headroom for items added later). Entries
+// carrying an aisle ID also update the item's aisle assignment at the
+// list's store, so a cross-aisle drag lands in one mutation. Callers wrap
+// this in a unit of work so ranks and assignments commit atomically.
+func (s *Service) ReorderListItems(ctx context.Context, groceryListID, householdID int64, entries []ReorderEntry, by string) error {
+	list, err := s.GetGroceryListByID(ctx, groceryListID, householdID)
+	if err != nil {
+		return fmt.Errorf("reorder list items: %w", err)
+	}
+	items, err := s.ListGroceryListItems(ctx, groceryListID, householdID)
+	if err != nil {
+		return fmt.Errorf("reorder list items: %w", err)
+	}
+	byID := make(map[int64]GroceryListItem, len(items))
+	for _, it := range items {
+		byID[it.GroceryListItemID] = it
+	}
+	storeID := GenericStoreID
+	if list.StoreID != nil {
+		storeID = *list.StoreID
+	}
+	var aisleSet map[int64]bool
+	for _, e := range entries {
+		if e.AisleID == nil {
+			continue
+		}
+		if list.StoreID == nil {
+			return fmt.Errorf("reorder list items: aisle moves require a store on the list")
+		}
+		if aisleSet == nil {
+			aisles, err := s.ListAisles(ctx, *list.StoreID, householdID)
+			if err != nil {
+				return fmt.Errorf("reorder list items: %w", err)
+			}
+			aisleSet = make(map[int64]bool, len(aisles))
+			for _, a := range aisles {
+				aisleSet[a.AisleID] = true
+			}
+		}
+		if !aisleSet[*e.AisleID] {
+			return fmt.Errorf("reorder list items: %w", domainerr.ErrNotFound)
+		}
+	}
+	for i, e := range entries {
+		it, ok := byID[e.GroceryListItemID]
+		if !ok {
+			return fmt.Errorf("reorder list items: %w", domainerr.ErrNotFound)
+		}
+		rank := float64(i+1) / float64(len(entries)+1)
+		if err := s.WriteManualRank(ctx, householdID, storeID, routeKey(it), rank, by); err != nil {
+			return err
+		}
+		if e.AisleID != nil {
+			if err := s.AssignToAisle(ctx, storeID, householdID, routeKey(it), e.AisleID, by); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func toStore(row sqlc.GroceryStore) Store {
 	return Store{
 		StoreID:     row.StoreID,
@@ -426,7 +688,7 @@ func toAssignment(row sqlc.GroceryAisleAssignment) AisleAssignment {
 }
 
 func toItemRoute(row sqlc.GroceryItemRoute) ItemRoute {
-	r := ItemRoute{LearnedCount: row.LearnedCount}
+	r := ItemRoute{StoreID: row.StoreID, LearnedCount: row.LearnedCount}
 	if row.ItemID.Valid {
 		v := row.ItemID.Int64
 		r.Identity.ItemID = &v

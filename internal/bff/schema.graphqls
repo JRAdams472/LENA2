@@ -106,6 +106,11 @@ type Query {
   nutrition(mealPlanId: ID!): MealPlanNutrition!
   groceryList(id: ID!): GroceryList
   groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
+  # Household stores for routing grocery lists through aisle layouts.
+  groceryStores: [Store!]!
+  # The authoritative walk order for a list — aisle groups in position
+  # order, items sorted by manual rank then learned check-off order.
+  groceryRouteGroups(groceryListId: ID!): [GroceryRouteGroup!]!
   # Pantry items at or below min_qty, ranked by household engagement and
   # excluding anything already on the latest grocery list.
   suggestedRestockItems(limit: Int = 10): [Item!]!
@@ -272,6 +277,20 @@ type Mutation {
   toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!
   addGroceryItem(input: AddGroceryItemInput!): GroceryListItem!
   deleteGroceryItem(groceryListItemId: ID!): Boolean!
+
+  createStore(name: String!): Store!
+  renameStore(storeId: ID!, name: String!): Store!
+  deleteStore(storeId: ID!): Boolean!
+  createStoreAisle(storeId: ID!, name: String!, position: Int!): StoreAisle!
+  renameStoreAisle(aisleId: ID!, name: String!): StoreAisle!
+  deleteStoreAisle(aisleId: ID!): Boolean!
+  reorderStoreAisles(storeId: ID!, aisleIds: [ID!]!): [StoreAisle!]!
+  assignItemToAisle(storeId: ID!, aisleId: ID, itemId: ID, ingredientId: ID, manualItemName: String): Boolean!
+  # Selects which store routes a list; null clears it.
+  setGroceryListStore(groceryListId: ID!, storeId: ID): GroceryList!
+  # Persists the user's arrangement — entries are the items in display
+  # order; an entry carrying aisleId also moves the item to that aisle.
+  reorderGroceryListItems(groceryListId: ID!, entries: [GroceryReorderEntryInput!]!): Boolean!
 
   createBottle(input: CreateBottleInput!): Bottle! @admin
   updateBottle(id: ID!, input: UpdateBottleInput!): Bottle! @admin
@@ -950,6 +969,40 @@ type GroceryList {
   id: ID!
   generatedAt: Time!
   items: [GroceryListItem!]!
+  store: Store
+}
+
+# A household-defined shopping location with its own aisle layout.
+type Store {
+  id: ID!
+  name: String!
+  aisles: [StoreAisle!]!
+}
+
+# One ordered section of a store's walk path.
+type StoreAisle {
+  id: ID!
+  name: String!
+  position: Int!
+}
+
+# A single stop's worth of items: an aisle group, or the trailing
+# unassigned bucket when aisle is null.
+type GroceryRouteGroup {
+  aisle: StoreAisle
+  items: [GroceryRouteItem!]!
+}
+
+type GroceryRouteItem {
+  item: GroceryListItem!
+  # True when the aisle placement came from learned-order inference rather
+  # than an explicit assignment.
+  suggested: Boolean!
+}
+
+input GroceryReorderEntryInput {
+  groceryListItemId: ID!
+  aisleId: ID
 }
 
 type GroceryListItem {

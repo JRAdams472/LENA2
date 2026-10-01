@@ -102,6 +102,21 @@ func (mr *MockQuerierMockRecorder) AssignManualToAisle(ctx, arg any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignManualToAisle", reflect.TypeOf((*MockQuerier)(nil).AssignManualToAisle), ctx, arg)
 }
 
+// CountGroceryListItems mocks base method.
+func (m *MockQuerier) CountGroceryListItems(ctx context.Context, arg sqlc.CountGroceryListItemsParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountGroceryListItems", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountGroceryListItems indicates an expected call of CountGroceryListItems.
+func (mr *MockQuerierMockRecorder) CountGroceryListItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryListItems", reflect.TypeOf((*MockQuerier)(nil).CountGroceryListItems), ctx, arg)
+}
+
 // CountGroceryLists mocks base method.
 func (m *MockQuerier) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -442,10 +457,10 @@ func (mr *MockQuerierMockRecorder) ReassignGroceryListsToHousehold(ctx, arg any)
 }
 
 // RenameAisle mocks base method.
-func (m *MockQuerier) RenameAisle(ctx context.Context, arg sqlc.RenameAisleParams) (int64, error) {
+func (m *MockQuerier) RenameAisle(ctx context.Context, arg sqlc.RenameAisleParams) (sqlc.GroceryStoreAisle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RenameAisle", ctx, arg)
-	ret0, _ := ret[0].(int64)
+	ret0, _ := ret[0].(sqlc.GroceryStoreAisle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
