@@ -400,6 +400,7 @@ type oidcClaims struct {
 	email         string
 	name          string
 	emailVerified bool
+	nonce         string
 	exp           time.Time
 }
 
@@ -466,6 +467,11 @@ func (a *Authenticator) verifyOIDCToken(ctx context.Context, raw string) (oidcCl
 	var emailVerified bool
 	_ = token.Get("email_verified", &emailVerified)
 
+	// nonce is echoed from the authorize request when the flow supplies
+	// one (server-side code exchange); absent on plain bearer tokens.
+	var nonce string
+	_ = token.Get("nonce", &nonce)
+
 	exp, _ := token.Expiration()
 	return oidcClaims{
 		issuer:        issuer,
@@ -473,6 +479,7 @@ func (a *Authenticator) verifyOIDCToken(ctx context.Context, raw string) (oidcCl
 		email:         email,
 		name:          name,
 		emailVerified: emailVerified,
+		nonce:         nonce,
 		exp:           exp,
 	}, nil
 }

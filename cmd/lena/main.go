@@ -267,9 +267,24 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		RefreshTTL: cfg.SessionRefreshTTL,
 	})
 
+	// Code-exchange OIDC providers (Microsoft, Facebook) trust their own
+	// issuer + client id — no duplicate AUTH_ISSUERS/AUTH_AUDIENCES entry
+	// is required; explicit config still wins.
+	issuers := splitAndTrim(cfg.AuthIssuers)
+	audiences := splitAndTrim(cfg.AuthAudiences)
+	if cfg.MicrosoftClientID != "" {
+		if iss := bff.MicrosoftIssuer(cfg.MicrosoftTenant); iss != "" {
+			issuers, audiences = bff.TrustIssuer(issuers, audiences, iss, cfg.MicrosoftClientID)
+		} else {
+			log.Warn("unsupported MICROSOFT_TENANT (use 'consumers' or a tenant GUID); microsoft sign-in disabled",
+				"tenant", cfg.MicrosoftTenant)
+		}
+	}
+	issuers, audiences = bff.TrustIssuer(issuers, audiences, bff.FacebookIssuer(), cfg.FacebookClientID)
+
 	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
-		Issuers:     splitAndTrim(cfg.AuthIssuers),
-		Audiences:   splitAndTrim(cfg.AuthAudiences),
+		Issuers:     issuers,
+		Audiences:   audiences,
 		AdminEmails: splitAndTrim(cfg.AdminEmails),
 	}, identitySvc, householdSvc)
 	if err != nil {
@@ -410,18 +425,37 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 
+	// Code-exchange providers: the authorization code is the credential,
+	// exchanged server-side (client_secret never leaves the server).
+	// Discord is plain OAuth2; Microsoft and Facebook return an OIDC
+	// id_token verified by the standard issuer/JWKS path.
+	codeVerifiers := map[string]bff.CodeVerifier{}
+	if v := bff.NewDiscordVerifier(cfg.DiscordClientID, cfg.DiscordClientSecret, cfg.DiscordRedirectURI); v != nil {
+		codeVerifiers[bff.DiscordProvider] = v
+	}
+	if iss := bff.MicrosoftIssuer(cfg.MicrosoftTenant); iss != "" {
+		if v := bff.NewOAuthOIDCVerifier(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret,
+			cfg.MicrosoftRedirectURI,
+			"https://login.microsoftonline.com/"+cfg.MicrosoftTenant+"/oauth2/v2.0/token",
+			authenticator, false); v != nil {
+			codeVerifiers[bff.MicrosoftProvider] = v
+		}
+	}
+	if v := bff.NewOAuthOIDCVerifier(cfg.FacebookClientID, cfg.FacebookClientSecret,
+		cfg.FacebookRedirectURI, "https://graph.facebook.com/v21.0/oauth/access_token",
+		authenticator, true); v != nil {
+		codeVerifiers[bff.FacebookProvider] = v
+	}
+
 	// Account linking: list/link/unlink provider identities. Link is a
 	// step-up operation — an OIDC bearer is fresh proof, while a session
 	// bearer must be accompanied by a fresh provider credential.
-	discord := bff.NewDiscordVerifier(cfg.DiscordClientID, cfg.DiscordClientSecret, cfg.DiscordRedirectURI)
-	bff.NewLinkHandler(authenticator, discord, identitySvc).RegisterRoutes(e,
+	bff.NewLinkHandler(authenticator, codeVerifiers, identitySvc).RegisterRoutes(e,
 		authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 
-	// Discord sign-in: the authorization code is the credential, exchanged
-	// server-side (client_secret never leaves the server) and turned into
-	// a LENA session.
-	bff.NewDiscordHandler(discord, authenticator, sessionSvc).RegisterRoutes(e,
+	// Provider code-exchange sign-in (POST /auth/session/{provider}).
+	bff.NewProviderSessionHandler(codeVerifiers, authenticator, sessionSvc).RegisterRoutes(e,
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 	return e, resolver, nil
 }

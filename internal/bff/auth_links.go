@@ -38,35 +38,36 @@ type linkStore interface {
 
 // LinkHandler serves the linked-identity endpoints.
 type LinkHandler struct {
-	verifier linkVerifier
-	discord  codeVerifier
-	identity linkStore
+	verifier  linkVerifier
+	providers map[string]CodeVerifier
+	identity  linkStore
 }
 
-// NewLinkHandler builds the handler. discord may be nil — requests naming
-// that provider then fail verification.
-func NewLinkHandler(v linkVerifier, discord codeVerifier, id linkStore) *LinkHandler {
-	return &LinkHandler{verifier: v, discord: discord, identity: id}
+// NewLinkHandler builds the handler. providers maps provider names to
+// code-exchange verifiers (discord, microsoft, facebook); requests
+// naming an unmapped provider fail verification.
+func NewLinkHandler(v linkVerifier, providers map[string]CodeVerifier, id linkStore) *LinkHandler {
+	return &LinkHandler{verifier: v, providers: providers, identity: id}
 }
 
-// verifyCredential verifies a provider credential by name: an empty
-// provider means an OIDC ID token; "discord" means an OAuth2
-// authorization code.
-func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential string) (prov, subject, email, name string, err error) {
+// verifyCredential verifies a provider credential by name: an empty or
+// "oidc" provider means an OIDC ID token; any other name looks up a
+// code-exchange verifier. nonce is the authorize-request value echoed
+// in the id_token for providers that use one.
+func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential, nonce string) (prov, subject, email, name string, err error) {
 	switch provider {
 	case "", "oidc":
 		return h.verifier.VerifyProviderCredential(ctx, credential)
-	case DiscordProvider:
-		if h.discord == nil {
-			return "", "", "", "", errDiscordCredential
+	default:
+		cv, ok := h.providers[provider]
+		if !ok || cv == nil {
+			return "", "", "", "", fmt.Errorf("unknown provider %q", provider)
 		}
-		me, err := h.discord.verify(ctx, credential)
+		me, err := cv.verify(ctx, credential, nonce)
 		if err != nil {
 			return "", "", "", "", err
 		}
-		return DiscordProvider, me.subject, me.email, me.name, nil
-	default:
-		return "", "", "", "", fmt.Errorf("unknown provider %q", provider)
+		return me.provider, me.subject, me.email, me.name, nil
 	}
 }
 
@@ -124,15 +125,19 @@ func (h *LinkHandler) List(c echo.Context) error {
 
 type linkRequest struct {
 	// Provider names the credential type being linked: "" for an OIDC
-	// ID token, "discord" for an OAuth2 authorization code.
+	// ID token, otherwise a code-exchange provider name (discord,
+	// microsoft, facebook). Nonce is the authorize-request value for
+	// code-exchange providers that verify it in the id_token.
 	Provider   string `json:"provider"`
 	Credential string `json:"credential"`
+	Nonce      string `json:"nonce"`
 	// CurrentProvider/CurrentCredential provide step-up authentication
 	// when the bearer is a LENA session token: a fresh provider credential
 	// that must resolve to the caller's own account, so a stolen access
 	// token alone cannot attach an attacker's identity.
 	CurrentProvider   string `json:"currentProvider"`
 	CurrentCredential string `json:"currentCredential"`
+	CurrentNonce      string `json:"currentNonce"`
 }
 
 // Link verifies the supplied provider credential and binds it to the
@@ -152,7 +157,7 @@ func (h *LinkHandler) Link(c echo.Context) error {
 		if req.CurrentCredential == "" {
 			return echo.NewHTTPError(http.StatusForbidden, "fresh provider credential required to link sign-ins")
 		}
-		cp, cs, _, _, err := h.verifyCredential(ctx, req.CurrentProvider, req.CurrentCredential)
+		cp, cs, _, _, err := h.verifyCredential(ctx, req.CurrentProvider, req.CurrentCredential, req.CurrentNonce)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusUnauthorized, "invalid current credential")
 		}
@@ -161,7 +166,7 @@ func (h *LinkHandler) Link(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, "current credential does not match this account")
 		}
 	}
-	prov, subject, email, name, err := h.verifyCredential(ctx, req.Provider, req.Credential)
+	prov, subject, email, name, err := h.verifyCredential(ctx, req.Provider, req.Credential, req.Nonce)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credential")
 	}
