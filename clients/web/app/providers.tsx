@@ -21,13 +21,29 @@ if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === CLIENT_ID_PLACEHOLDER) {
 
 const theme = createTheme({
   palette: {
-    background: { default: "#f8fafc" },
+    primary: { main: "#7C9473", light: "#A4B79C", dark: "#5F7A57" },
+    background: { default: "#FAF6EF", paper: "#FFFDF8" },
+    success: { main: "#8A9A5B", dark: "#6E7B45", light: "#A9B87F" },
+    info: { main: "#8A9A5B", dark: "#6E7B45", light: "#A9B87F" },
+    divider: "#E5DFD3",
+    text: { primary: "#3E3E34", secondary: "#6B6B5E" },
   },
   shape: { borderRadius: 10 },
   components: {
     MuiPaper: {
       styleOverrides: {
-        root: { boxShadow: "0 4px 12px rgba(0,0,0,0.05)" },
+        root: { boxShadow: "0 4px 12px rgba(62,62,52,0.06)" },
+      },
+    },
+    MuiAppBar: {
+      defaultProps: { color: "default" },
+      styleOverrides: {
+        root: ({ theme }) => ({
+          backgroundColor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          boxShadow: "none",
+        }),
       },
     },
     MuiListItemButton: {
@@ -52,7 +68,10 @@ const theme = createTheme({
     },
     MuiListItemIcon: {
       styleOverrides: {
-        root: { color: "#4b5563", minWidth: 40 },
+        root: ({ theme }) => ({
+          color: theme.palette.text.secondary,
+          minWidth: 40,
+        }),
       },
     },
   },

@@ -54,20 +54,20 @@ function stripSize(name: string, size: string | null): string {
     .trim();
 }
 
-const PlanMealLink = styled(Link)({
+const PlanMealLink = styled(Link)(({ theme }) => ({
   display: "inline-flex",
   alignItems: "center",
   fontSize: "0.75rem",
   fontWeight: 500,
   fontStyle: "normal",
-  color: "#475569",
-  backgroundColor: "#ffffff",
-  border: "1px dashed #cbd5e1",
+  color: theme.palette.text.secondary,
+  backgroundColor: theme.palette.background.paper,
+  border: `1px dashed ${theme.palette.divider}`,
   borderRadius: 999,
   padding: "5px 12px",
   textDecoration: "none",
-  "&:hover": { backgroundColor: "#f1f5f9" },
-});
+  "&:hover": { backgroundColor: alpha(theme.palette.primary.main, 0.08) },
+}));
 
 function isDateInRange(date: Date, weekStartDate: string) {
   const start = new Date(weekStartDate);
@@ -250,7 +250,11 @@ export default function Dashboard() {
               return (
                 <Box
                   key={meal}
-                  sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: 2 }}
+                  sx={{
+                    bgcolor: alpha(theme.palette.primary.main, 0.06),
+                    borderRadius: 2,
+                    p: 2,
+                  }}
                 >
                   <Box
                     sx={{
