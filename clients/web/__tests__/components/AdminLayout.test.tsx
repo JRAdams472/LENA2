@@ -147,6 +147,22 @@ describe("AdminLayout", () => {
     expect(screen.getAllByText("Meal Planning")[0]).toBeInTheDocument();
   });
 
+  it("links to Ask Dot in the header instead of the sidebar", async () => {
+    signIn();
+    renderLayout();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("page-content")).toBeInTheDocument()
+    );
+
+    const askDot = screen.getAllByRole("link", { name: "Ask Dot" })[0];
+    expect(askDot).toHaveAttribute("href", "/assistant");
+
+    // The assistant moved out of the sidebar's main navigation.
+    const mainNav = screen.getAllByLabelText("main navigation")[0];
+    expect(within(mainNav).queryByText("Assistant")).not.toBeInTheDocument();
+  });
+
   it("pins Household and Profile in a bottom secondary zone", async () => {
     signIn();
     renderLayout();
