@@ -11,10 +11,10 @@ import Typography from "@mui/material/Typography";
 import { useAuth } from "@/app/auth/AuthProvider";
 import LenaLogo from "@/app/components/LenaLogo";
 import {
-  DISCORD_STATE_KEY,
-  discordAuthorizeUrl,
-  discordEnabled,
-} from "@/lib/discord";
+  OAuthProvider,
+  enabledProviders,
+  startOAuthSignIn,
+} from "@/lib/oauth";
 
 // Discord brand mark (blurple #5865F2 is applied via the button).
 function DiscordIcon() {
@@ -25,11 +25,50 @@ function DiscordIcon() {
   );
 }
 
-function startDiscordSignIn() {
-  const state = crypto.randomUUID();
-  window.sessionStorage.setItem(DISCORD_STATE_KEY, state);
-  window.location.assign(discordAuthorizeUrl(state));
+// Microsoft brand mark: the four-square tile logo.
+function MicrosoftIcon() {
+  return (
+    <SvgIcon viewBox="0 0 23 23">
+      <path fill="#F35325" d="M1 1h10v10H1z" />
+      <path fill="#81BC06" d="M12 1h10v10H12z" />
+      <path fill="#05A6F0" d="M1 12h10v10H1z" />
+      <path fill="#FFBA08" d="M12 12h10v10H12z" />
+    </SvgIcon>
+  );
 }
+
+// Facebook brand mark (white "f" on the button's brand blue).
+function FacebookIcon() {
+  return (
+    <SvgIcon viewBox="0 0 24 24">
+      <path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047v-2.66c0-3.025 1.792-4.697 4.533-4.697 1.313 0 2.686.236 2.686.236v2.971H15.83c-1.491 0-1.956.931-1.956 1.886v2.264h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
+    </SvgIcon>
+  );
+}
+
+const PROVIDER_META: Record<
+  OAuthProvider,
+  { label: string; icon: React.ReactNode; color: string; hover: string }
+> = {
+  discord: {
+    label: "Sign in with Discord",
+    icon: <DiscordIcon />,
+    color: "#5865F2",
+    hover: "#4752C4",
+  },
+  microsoft: {
+    label: "Sign in with Microsoft",
+    icon: <MicrosoftIcon />,
+    color: "#2F2F2F",
+    hover: "#1B1B1B",
+  },
+  facebook: {
+    label: "Sign in with Facebook",
+    icon: <FacebookIcon />,
+    color: "#1877F2",
+    hover: "#0E5FC7",
+  },
+};
 
 export default function LoginScreen() {
   const { signIn, isAuthenticated } = useAuth();
@@ -88,20 +127,24 @@ export default function LoginScreen() {
             );
           }}
         />
-        {discordEnabled() && (
-          <Button
-            variant="contained"
-            startIcon={<DiscordIcon />}
-            onClick={startDiscordSignIn}
-            sx={{
-              bgcolor: "#5865F2",
-              "&:hover": { bgcolor: "#4752C4" },
-              textTransform: "none",
-            }}
-          >
-            Sign in with Discord
-          </Button>
-        )}
+        {enabledProviders().map((provider) => {
+          const meta = PROVIDER_META[provider];
+          return (
+            <Button
+              key={provider}
+              variant="contained"
+              startIcon={meta.icon}
+              onClick={() => startOAuthSignIn(provider)}
+              sx={{
+                bgcolor: meta.color,
+                "&:hover": { bgcolor: meta.hover },
+                textTransform: "none",
+              }}
+            >
+              {meta.label}
+            </Button>
+          );
+        })}
         {error && (
           <Typography color="error" sx={{ mt: 1 }}>
             {error}

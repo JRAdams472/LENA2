@@ -15,7 +15,7 @@ import {
   setAuthTokenGetter,
   setOnUnauthorized,
   setSessionRefresher,
-  createDiscordSession,
+  createProviderSession,
   createSession,
   refreshSessionRequest,
   revokeSession,
@@ -41,9 +41,13 @@ interface AuthContextValue {
   // (new tab / cleared tab storage) — SilentReAuth stays quiet meanwhile.
   isRestoring: boolean;
   signIn: (credential: string) => void;
-  // signInWithDiscord exchanges an OAuth2 authorization code for a LENA
+  // signInWithProvider exchanges an OAuth2 authorization code for a LENA
   // session. Rejects when the exchange fails — no OIDC fallback exists.
-  signInWithDiscord: (code: string) => Promise<void>;
+  signInWithProvider: (
+    provider: string,
+    code: string,
+    nonce?: string
+  ) => Promise<void>;
   signOut: () => void;
 }
 
@@ -224,20 +228,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  // Discord sign-in: the authorization code exchanges for a session
-  // server-side, then `me` hydrates the display identity (a code carries
-  // no readable claims).
-  const signInWithDiscord = useCallback(async (code: string) => {
-    const bundle = await createDiscordSession(code, DEVICE);
-    setRefreshToken(bundle.refreshToken);
-    tokenStore.setToken(bundle.accessToken);
-    const me = await api.getMe().catch(() => null);
-    if (me?.email) {
-      const u = { email: me.email, sub: String(me.userID) };
-      persistUser(u);
-      setUserOverride(u);
-    }
-  }, []);
+  // OAuth provider sign-in: the authorization code exchanges for a
+  // session server-side, then `me` hydrates the display identity (a
+  // code carries no readable claims).
+  const signInWithProvider = useCallback(
+    async (provider: string, code: string, nonce?: string) => {
+      const bundle = await createProviderSession(provider, code, nonce, DEVICE);
+      setRefreshToken(bundle.refreshToken);
+      tokenStore.setToken(bundle.accessToken);
+      const me = await api.getMe().catch(() => null);
+      if (me?.email) {
+        const u = { email: me.email, sub: String(me.userID) };
+        persistUser(u);
+        setUserOverride(u);
+      }
+    },
+    []
+  );
 
   const signOut = useCallback(() => {
     const rt = getRefreshToken();
@@ -284,7 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!token && !!user,
     isRestoring,
     signIn,
-    signInWithDiscord,
+    signInWithProvider,
     signOut,
   };
 

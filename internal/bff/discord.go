@@ -50,19 +50,12 @@ func NewDiscordVerifier(clientID, clientSecret, redirectURI string) *DiscordVeri
 	}
 }
 
-// discordIdentity is the provider identity proven by a code exchange.
-type discordIdentity struct {
-	subject       string // Discord user id (snowflake)
-	email         string
-	emailVerified bool
-	name          string
-}
-
 // verify exchanges the authorization code and fetches /users/@me.
-func (d *DiscordVerifier) verify(ctx context.Context, code string) (discordIdentity, error) {
+// Discord has no id_token, so the nonce parameter is ignored.
+func (d *DiscordVerifier) verify(ctx context.Context, code, _ string) (providerIdentity, error) {
 	accessToken, err := d.exchange(ctx, code)
 	if err != nil {
-		return discordIdentity{}, err
+		return providerIdentity{}, err
 	}
 	return d.fetchUser(ctx, accessToken)
 }
@@ -106,17 +99,17 @@ func (d *DiscordVerifier) exchange(ctx context.Context, code string) (string, er
 	return tok.AccessToken, nil
 }
 
-func (d *DiscordVerifier) fetchUser(ctx context.Context, accessToken string) (discordIdentity, error) {
+func (d *DiscordVerifier) fetchUser(ctx context.Context, accessToken string) (providerIdentity, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.base+"/users/@me", nil)
 	if err != nil {
-		return discordIdentity{}, fmt.Errorf("%w: %w", errDiscordCredential, err)
+		return providerIdentity{}, fmt.Errorf("%w: %w", errDiscordCredential, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	res, err := d.http.Do(req)
 	if err != nil {
-		return discordIdentity{}, fmt.Errorf("%w: %w", errDiscordCredential, err)
+		return providerIdentity{}, fmt.Errorf("%w: %w", errDiscordCredential, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
@@ -128,16 +121,17 @@ func (d *DiscordVerifier) fetchUser(ctx context.Context, accessToken string) (di
 		Verified   bool   `json:"verified"`
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&me); err != nil {
-		return discordIdentity{}, fmt.Errorf("%w: decode user: %w", errDiscordCredential, err)
+		return providerIdentity{}, fmt.Errorf("%w: decode user: %w", errDiscordCredential, err)
 	}
 	if res.StatusCode != http.StatusOK || me.ID == "" {
-		return discordIdentity{}, fmt.Errorf("%w: users/@me returned %d", errDiscordCredential, res.StatusCode)
+		return providerIdentity{}, fmt.Errorf("%w: users/@me returned %d", errDiscordCredential, res.StatusCode)
 	}
 	name := me.GlobalName
 	if name == "" {
 		name = me.Username
 	}
-	return discordIdentity{
+	return providerIdentity{
+		provider:      DiscordProvider,
 		subject:       me.ID,
 		email:         me.Email,
 		emailVerified: me.Verified,

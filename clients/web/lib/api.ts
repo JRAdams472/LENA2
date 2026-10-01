@@ -163,21 +163,25 @@ export async function refreshSessionRequest(
   return (await res.json()) as SessionBundle;
 }
 
-// createDiscordSession exchanges a Discord OAuth2 authorization code for
-// a LENA session. There is no OIDC fallback — a code is not a bearer
-// token, so this fails hard when Discord sign-in or sessions are not
-// configured on the server.
-export async function createDiscordSession(
+// createProviderSession exchanges an OAuth2 authorization code for a
+// LENA session at /auth/session/{provider}. There is no OIDC fallback —
+// a code is not a bearer token, so this fails hard when the provider or
+// sessions are not configured on the server. nonce is the authorize-
+// request value the provider echoes in its id_token (Microsoft,
+// Facebook); providers without id_tokens ignore it.
+export async function createProviderSession(
+  provider: string,
   code: string,
+  nonce?: string,
   device?: string
 ): Promise<SessionBundle> {
-  const res = await fetch(sessionUrl("/auth/session/discord"), {
+  const res = await fetch(sessionUrl(`/auth/session/${provider}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, device: device ?? "web" }),
+    body: JSON.stringify({ code, nonce, device: device ?? "web" }),
   });
   if (!res.ok) {
-    throw new Error(`discord sign-in failed (HTTP ${res.status})`);
+    throw new Error(`${provider} sign-in failed (HTTP ${res.status})`);
   }
   return (await res.json()) as SessionBundle;
 }

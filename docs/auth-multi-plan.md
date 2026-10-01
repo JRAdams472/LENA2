@@ -78,9 +78,30 @@ the per-request hot path never talks to Discord.
   (resolve/link/unlink/list, transactional upsert), verify-only OIDC
   seam, link endpoints, tests. No UI yet — nothing to link until a second
   provider ships.
-- **`auth-multi-p2`** — Facebook OIDC: issuer/audience config, client
-  sign-in buttons (web + mobile), "linked sign-ins" section on web
-  Profile, handle missing/unverified email claims.
+- **`auth-multi-p2`** — Microsoft Entra + Facebook OIDC via the generic
+  code-exchange verifier: both token endpoints return an `id_token`
+  verified by the standard issuer/JWKS/audience path, so their login rows
+  store the issuer URL exactly like a bearer-token sign-in.
+  - `OAuthOIDCVerifier` generalizes the Discord pattern: server-side
+    `code`→`id_token` exchange (secret stays server-side), then
+    `verifyOIDCToken` for issuer allowlist + JWKS + audience + **nonce**
+    (`nonce` is echoed from the authorize request and verified against
+    the `nonce` claim; required for Facebook, verified-when-present for
+    Microsoft).
+  - `POST /auth/session/{provider}` now dispatches through a
+    `map[string]CodeVerifier` registry (discord | microsoft | facebook);
+    `/auth/link` uses the same registry and gains `nonce`/`currentNonce`.
+  - Microsoft issuer resolution: `LENA_MICROSOFT_TENANT` is `consumers`
+    (well-known MSA tenant GUID) or a tenant GUID — `common`/
+    `organizations` are rejected because their iss claim is templated.
+    Provider issuers+audiences are auto-trusted (`TrustIssuer`) when the
+    client id/secret are set; no duplicate `AUTH_ISSUERS` entry needed.
+  - Web: `lib/oauth.ts` provider registry + dynamic
+    `app/auth/[provider]/callback` route (the existing
+    `/auth/discord/callback` URL keeps working), brand buttons gated by
+    `NEXT_PUBLIC_*` env.
+  - Still deferred: mobile OAuth flows (app-link deep-link bounce),
+    link/unlink management UI, per-provider logout.
 - **`auth-multi-p3`** — Discord: server-side code exchange,
   `/users/@me` verification, web OAuth redirect flow, link support.
   - Registered redirect URI (dev): `http://localhost/auth/discord/callback`

@@ -52,7 +52,7 @@ func newTestDiscord(t *testing.T, exchangeStatus int, meStatus int) (*DiscordVer
 
 func TestDiscordVerify(t *testing.T) {
 	d, _, gotCode := newTestDiscord(t, http.StatusOK, http.StatusOK)
-	id, err := d.verify(t.Context(), "auth-code")
+	id, err := d.verify(t.Context(), "auth-code", "")
 	require.NoError(t, err)
 	assert.Equal(t, "auth-code", *gotCode)
 	assert.Equal(t, "123456789", id.subject)
@@ -63,13 +63,13 @@ func TestDiscordVerify(t *testing.T) {
 
 func TestDiscordVerify_ExchangeRejected(t *testing.T) {
 	d, _, _ := newTestDiscord(t, http.StatusBadRequest, http.StatusOK)
-	_, err := d.verify(t.Context(), "used-code")
+	_, err := d.verify(t.Context(), "used-code", "")
 	assert.ErrorIs(t, err, errDiscordCredential)
 }
 
 func TestDiscordVerify_MeRejected(t *testing.T) {
 	d, _, _ := newTestDiscord(t, http.StatusOK, http.StatusUnauthorized)
-	_, err := d.verify(t.Context(), "code")
+	_, err := d.verify(t.Context(), "code", "")
 	assert.ErrorIs(t, err, errDiscordCredential)
 }
 
