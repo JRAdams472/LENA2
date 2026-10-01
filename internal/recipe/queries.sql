@@ -295,3 +295,31 @@ WHERE r.is_active = $1
   )
   AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
   AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])));
+
+-- name: SetRecipeEmbedding :exec
+-- Stores an embedding for semantic search. The vector arrives as a text
+-- literal and is cast server-side so generated code stays dependency-free.
+UPDATE recipe.recipe
+SET embedding = sqlc.arg(embedding)::text::vector,
+    embedding_model = sqlc.arg(embedding_model),
+    embedding_at = now()
+WHERE recipe_id = sqlc.arg(recipe_id);
+
+-- name: ListEmbeddingCandidates :many
+-- Active recipes whose embedding is missing or was built by another model —
+-- the backfill sweep's work set.
+SELECT recipe_id
+FROM recipe.recipe
+WHERE is_active
+  AND (embedding IS NULL OR embedding_model <> sqlc.arg(model)::text)
+ORDER BY recipe_id
+LIMIT sqlc.arg('limit')::int;
+
+-- name: ClearRecipeEmbedding :exec
+-- Drops a recipe's embedding (stale-failure bookkeeping; the sweep will
+-- retry on its next pass since embedding becomes NULL).
+UPDATE recipe.recipe
+SET embedding = NULL,
+    embedding_model = NULL,
+    embedding_at = NULL
+WHERE recipe_id = sqlc.arg(recipe_id);

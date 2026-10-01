@@ -70,6 +70,12 @@ type LLMClient interface {
 	Chat(ctx context.Context, req llm.Request) (llm.Response, error)
 }
 
+// Embedder refreshes a recipe's semantic-search embedding after the import
+// approves a recipe. Optional — nil leaves embeddings to the backfill sweep.
+type Embedder interface {
+	Refresh(ctx context.Context, recipeID int64) error
+}
+
 // jobQueueDepth bounds the buffered job channel. Jobs also persist in the
 // database, so a full channel never loses work — the row stays claimable and
 // is re-enqueued on the next service start.
@@ -84,6 +90,7 @@ type Service struct {
 	ollama    LLMClient
 	inv       InventoryReader
 	rec       RecipeWriter
+	embed     Embedder
 	profanity *profanity.Detector
 	cfg       Config
 
@@ -135,6 +142,10 @@ func NewService(
 	}
 	return s
 }
+
+// SetEmbedder wires the optional recipe-embedding refresher used after an
+// approved import persists a recipe.
+func (s *Service) SetEmbedder(e Embedder) { s.embed = e }
 
 // Start recovers jobs orphaned by a previous shutdown and re-enqueues them.
 // Rows left in processing mean the claiming worker died before reaching a
@@ -316,12 +327,31 @@ func (s *Service) Approve(ctx context.Context, id int64, approvedBy currentuser.
 	if err != nil {
 		return nil, nil, err
 	}
+	s.refreshEmbedding(created.RecipeID)
 
 	rc, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &created, rc, nil
+}
+
+// refreshEmbedding re-embeds a freshly persisted recipe on a worker-bound
+// goroutine so a slow embedding backend never stalls the approve call.
+// Failures are logged; the row stays stale for the backfill sweep.
+func (s *Service) refreshEmbedding(recipeID int64) {
+	if s.embed == nil {
+		return
+	}
+	s.workerWG.Add(1)
+	go func() {
+		defer s.workerWG.Done()
+		ctx, cancel := context.WithTimeout(s.lifetimeCtx, 45*time.Second)
+		defer cancel()
+		if err := s.embed.Refresh(ctx, recipeID); err != nil && ctx.Err() == nil {
+			slog.Warn("recipe embedding refresh after import failed", "recipe_id", recipeID, "error", err)
+		}
+	}()
 }
 
 func (s *Service) buildRecipe(ctx context.Context, review *ocrimport.ReviewRecipe) (recipe.Recipe, []recipe.RecipeItem, []recipe.RecipeStep, error) {

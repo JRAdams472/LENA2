@@ -98,6 +98,54 @@ type ChatResponse struct {
 	Done    bool    `json:"done"`
 }
 
+// EmbedRequest is the payload for POST /api/embed.
+type EmbedRequest struct {
+	Model string   `json:"model"`
+	Input []string `json:"input"`
+}
+
+// EmbedResponse is the response from /api/embed — one embedding per input.
+type EmbedResponse struct {
+	Model      string      `json:"model"`
+	Embeddings [][]float64 `json:"embeddings"`
+}
+
+// Embed embeds a batch of texts with the given model (embedding models are
+// separate from the chat model, so it is a parameter rather than a client
+// field).
+func (c *Client) Embed(ctx context.Context, model string, inputs []string) ([][]float64, error) {
+	data, err := json.Marshal(EmbedRequest{Model: model, Input: inputs})
+	if err != nil {
+		return nil, fmt.Errorf("marshal ollama embed request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/embed", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create ollama embed request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ollama embed request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama embed returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var embedResp EmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
+		return nil, fmt.Errorf("decode ollama embed response: %w", err)
+	}
+	if len(embedResp.Embeddings) != len(inputs) {
+		return nil, fmt.Errorf("ollama embed returned %d embeddings for %d inputs", len(embedResp.Embeddings), len(inputs))
+	}
+	return embedResp.Embeddings, nil
+}
+
 // Chat sends a single-turn chat and returns the assistant's content.
 func (c *Client) Chat(ctx context.Context, system, user string) (string, error) {
 	resp, err := c.ChatRaw(ctx, ChatRequest{

@@ -118,6 +118,12 @@ type Config struct {
 	// AIMaxToolRounds bounds how many tool-call round trips one assistant
 	// request may take before the loop gives up.
 	AIMaxToolRounds int `envconfig:"AI_MAX_TOOL_ROUNDS" default:"5"`
+	// AIEmbedModel is the Ollama embedding model for semantic recipe search.
+	// The schema column is vector(768), so the model must produce 768-dim
+	// vectors (nomic-embed-text does).
+	AIEmbedModel string `envconfig:"AI_EMBED_MODEL" default:"nomic-embed-text"`
+	// AIEmbedTimeout caps one embedding call.
+	AIEmbedTimeout time.Duration `envconfig:"AI_EMBED_TIMEOUT" default:"30s"`
 	// SessionSecret signs LENA-issued access tokens (HS256) for the
 	// refresh-token session flow. Empty disables session issuing — OIDC-only
 	// mode, matching the pre-session behaviour.

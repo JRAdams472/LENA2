@@ -10,6 +10,8 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/llm"
+	"github.com/JRAdams472/LENA2/internal/recipe/sqlc"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -640,4 +642,49 @@ func TestIntegrationRecipeSearchCourseBoost(t *testing.T) {
 	require.Len(t, got, 3)
 	assert.Equal(t, plain.RecipeID, got[0].RecipeID)
 	assert.Equal(t, dinner.RecipeID, got[1].RecipeID)
+}
+
+func TestIntegrationRecipeEmbedding(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	fresh, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Embed Fresh", IsActive: true}, itBy)
+	require.NoError(t, err)
+	done, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Embed Done", IsActive: true}, itBy)
+	require.NoError(t, err)
+
+	// A stored embedding marks the row done for this model.
+	vec := make([]float32, llm.EmbedDims)
+	vec[0] = 1
+	require.NoError(t, svc.SetRecipeEmbedding(ctx, done.RecipeID, llm.VectorLiteral(vec), "test-model"))
+
+	// r.* reads must round-trip a stored vector (pgx decodes to
+	// pgvector.Vector before the Scanner fallback sees it).
+	row, err := sqlc.New(pool).GetRecipeByID(ctx, done.RecipeID)
+	require.NoError(t, err)
+	require.True(t, row.Embedding.Valid)
+	assert.Len(t, row.Embedding.V, llm.EmbedDims)
+	assert.Equal(t, float32(1), row.Embedding.V[0])
+
+	ids, err := svc.ListEmbeddingCandidates(ctx, "test-model", 100)
+	require.NoError(t, err)
+	assert.Contains(t, ids, fresh.RecipeID)
+	assert.NotContains(t, ids, done.RecipeID)
+
+	// A different model makes the row stale again.
+	ids, err = svc.ListEmbeddingCandidates(ctx, "other-model", 100)
+	require.NoError(t, err)
+	assert.Contains(t, ids, done.RecipeID)
+
+	// Clear returns the row to the candidate set.
+	require.NoError(t, svc.ClearRecipeEmbedding(ctx, done.RecipeID))
+	ids, err = svc.ListEmbeddingCandidates(ctx, "test-model", 100)
+	require.NoError(t, err)
+	assert.Contains(t, ids, done.RecipeID)
 }
