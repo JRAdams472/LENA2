@@ -469,7 +469,7 @@ export default function HouseholdPage() {
           ))}
         </List>
         {searchQuery.data && searchQuery.data.length === 0 && (
-          <Typography color="text.secondary">No users found.</Typography>
+          <Typography color="text.secondary">Nobody by that name.</Typography>
         )}
       </Paper>
     </Box>

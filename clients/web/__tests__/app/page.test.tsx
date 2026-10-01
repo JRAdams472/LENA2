@@ -112,7 +112,7 @@ describe("dashboard page", () => {
     renderPage();
     await waitFor(() =>
       expect(
-        screen.getByText(/No suggestions yet/)
+        screen.getByText(/Nothing to suggest yet/)
       ).toBeInTheDocument()
     );
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { createElement, useMemo } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -15,15 +15,16 @@ import Paper from "@mui/material/Paper";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import LunchDiningIcon from "@mui/icons-material/LunchDining";
 import DinnerDiningIcon from "@mui/icons-material/DinnerDining";
+import LocalCafeIcon from "@mui/icons-material/LocalCafe";
+import CakeIcon from "@mui/icons-material/Cake";
+import SetMealIcon from "@mui/icons-material/SetMeal";
+import RestaurantIcon from "@mui/icons-material/Restaurant";
 import { alpha, styled, useTheme } from "@mui/material/styles";
+import { Recipe } from "@/lib/types";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 
-const MEAL_ICONS = [
-  <FreeBreakfastIcon key="breakfast" fontSize="small" />,
-  <LunchDiningIcon key="lunch" fontSize="small" />,
-  <DinnerDiningIcon key="dinner" fontSize="small" />,
-];
+const MEAL_ICONS = [FreeBreakfastIcon, LunchDiningIcon, DinnerDiningIcon];
 
 const REASON_LABELS: Record<string, string> = {
   ingredient_overlap: "Similar to your menu",
@@ -37,6 +38,38 @@ function reasonLabel(reason: string) {
   return REASON_LABELS[reason] ?? "Recommended for you";
 }
 
+// Deterministic accent per recipe so suggestion tiles differentiate
+// without real photos: sage, olive, terracotta, wheat.
+const ACCENT_COLORS = ["#7C9473", "#8A9A5B", "#C0876B", "#D9B26A"];
+
+function accentFor(recipeID: number) {
+  return ACCENT_COLORS[Math.abs(recipeID) % ACCENT_COLORS.length];
+}
+
+// Category/dish-type keywords drive the suggestion tile icon.
+function suggestionIcon(recipe: Recipe) {
+  const text = (recipe.categories ?? [])
+    .map((c) => `${c.group?.groupName ?? ""} ${c.categoryName}`)
+    .join(" ")
+    .toLowerCase();
+  if (/breakfast|brunch/.test(text)) return FreeBreakfastIcon;
+  if (/café|cafe|coffee|beverage|drink/.test(text)) return LocalCafeIcon;
+  if (/dessert|cake|sweet|baking|pastry|cookie/.test(text)) return CakeIcon;
+  if (/seafood|fish/.test(text)) return SetMealIcon;
+  if (/dinner|supper|main course/.test(text)) return DinnerDiningIcon;
+  if (/lunch|salad|sandwich/.test(text)) return LunchDiningIcon;
+  return RestaurantIcon;
+}
+
+function suggestionMeta(recipe: Recipe): string {
+  const parts: string[] = [];
+  const mins = (recipe.prepTimeMinutes ?? 0) + (recipe.cookTimeMinutes ?? 0);
+  if (mins > 0) parts.push(`${mins} min`);
+  if (recipe.averageRating != null)
+    parts.push(`★ ${recipe.averageRating.toFixed(1)}`);
+  return parts.join(" · ");
+}
+
 const SIZE_RE =
   /\b(\d+(?:\.\d+)?\s?(?:pk|ct|count|pack|oz|fl\.?\s?oz|lb|g|kg|ml|l))\b/i;
 
@@ -46,11 +79,19 @@ function sizeBadge(name: string, unit: string): string | null {
   return unit && unit !== "each" ? unit : null;
 }
 
-function stripSize(name: string, size: string | null): string {
-  if (!size) return name;
-  return name
-    .replace(size, "")
-    .replace(/[\s\-–—,]+$/, "")
+function stripSize(
+  name: string,
+  size: string | null,
+  brand?: string | null
+): string {
+  let n = size ? name.replace(size, "") : name;
+  const b = brand?.trim();
+  if (b && n.trim().toLowerCase().startsWith(b.toLowerCase())) {
+    n = n.trim().slice(b.length);
+  }
+  return n
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s\-–—,]+|[\s\-–—,]+$/g, "")
     .trim();
 }
 
@@ -178,7 +219,8 @@ export default function Dashboard() {
           weekday: "long",
           month: "long",
           day: "numeric",
-        })}
+        })}{" "}
+        — here's what's cooking
       </Typography>
       {pendingIncoming.length > 0 && (
         <Paper sx={{ p: 2, mb: 2 }}>
@@ -234,8 +276,8 @@ export default function Dashboard() {
         </Typography>
         {activePlanId === null ? (
           <Typography color="text.secondary">
-            No meal plan for this week.{" "}
-            <PlanMealLink href="/meal-plans">+ Plan a meal</PlanMealLink>
+            No meal plan for this week yet.{" "}
+            <PlanMealLink href="/meal-plans">Plan one →</PlanMealLink>
           </Typography>
         ) : (
           <Box
@@ -265,7 +307,7 @@ export default function Dashboard() {
                       mb: 0.5,
                     }}
                   >
-                    {MEAL_ICONS[mt]}
+                    {createElement(MEAL_ICONS[mt], { fontSize: "small" })}
                     <Typography variant="subtitle2">{meal}</Typography>
                   </Box>
                   {slot ? (
@@ -273,9 +315,26 @@ export default function Dashboard() {
                       {slot.recipe?.recipeName ?? recipeName(slot.recipeID)}
                     </Typography>
                   ) : (
-                    <PlanMealLink href="/meal-plans">
-                      + Plan a meal
-                    </PlanMealLink>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        gap: 0.5,
+                        py: 0.5,
+                      }}
+                    >
+                      {createElement(MEAL_ICONS[mt], {
+                        sx: {
+                          fontSize: 40,
+                          color: alpha(theme.palette.primary.main, 0.35),
+                        },
+                      })}
+                      <Typography variant="body2" color="text.secondary">
+                        Nothing planned for {meal.toLowerCase()} yet
+                      </Typography>
+                      <PlanMealLink href="/meal-plans">Plan it →</PlanMealLink>
+                    </Box>
                   )}
                 </Box>
               );
@@ -303,7 +362,7 @@ export default function Dashboard() {
           }}
         >
           <Typography variant="h6" gutterBottom>
-            Suggested for You
+            Delicious ideas for tonight
           </Typography>
         {suggestionsQuery.isLoading && <CircularProgress />}
         {suggestionsQuery.error && (
@@ -315,36 +374,76 @@ export default function Dashboard() {
           !suggestionsQuery.error &&
           (suggestionsQuery.data ?? []).length === 0 && (
             <Typography color="text.secondary">
-              No suggestions yet — rate some recipes and plan a few meals.
+              Nothing to suggest yet — rate a few recipes and we'll get ideas
+              flowing.
             </Typography>
           )}
           {(suggestionsQuery.data ?? []).length > 0 && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {(suggestionsQuery.data ?? []).map((s) => (
-                <Box
-                  key={`${s.recipe.recipeID}-${s.reason}`}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1.5,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <Link href={`/recipes/${s.recipe.recipeID}`}>
-                    {s.recipe.recipeName}
-                  </Link>
-                  <Chip
-                    size="small"
-                    label={reasonLabel(s.reason)}
+              {(suggestionsQuery.data ?? []).slice(0, 5).map((s) => {
+                const meta = suggestionMeta(s.recipe);
+                return (
+                  <Paper
+                    key={`${s.recipe.recipeID}-${s.reason}`}
+                    variant="outlined"
                     sx={{
-                      bgcolor: alpha(theme.palette.success.main, 0.12),
-                      color: "success.dark",
-                      fontWeight: 500,
-                      "& .MuiChip-label": { px: 1.25 },
+                      p: 1.5,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1.5,
                     }}
-                  />
-                </Box>
-              ))}
+                  >
+                    <Box
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 2,
+                        bgcolor: accentFor(s.recipe.recipeID),
+                        color: "#FFFDF8",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {createElement(suggestionIcon(s.recipe))}
+                    </Box>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" component="div">
+                        <Link href={`/recipes/${s.recipe.recipeID}`}>
+                          {s.recipe.recipeName}
+                        </Link>
+                      </Typography>
+                      {meta && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "block" }}
+                        >
+                          {meta}
+                        </Typography>
+                      )}
+                    </Box>
+                    <Chip
+                      size="small"
+                      label={reasonLabel(s.reason)}
+                      sx={{
+                        bgcolor: alpha(theme.palette.success.main, 0.12),
+                        color: "success.dark",
+                        fontWeight: 500,
+                        "& .MuiChip-label": { px: 1.25 },
+                      }}
+                    />
+                  </Paper>
+                );
+              })}
+              {(suggestionsQuery.data ?? []).length > 5 && (
+                <Typography variant="body2">
+                  <Link href="/recipes">
+                    and {(suggestionsQuery.data ?? []).length - 5} more…
+                  </Link>
+                </Typography>
+              )}
             </Box>
           )}
         </Paper>
@@ -352,7 +451,7 @@ export default function Dashboard() {
         {(restockQuery.data ?? []).length > 0 && (
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              Running low
+              Time to restock
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {(restockQuery.data ?? []).map((it) => {
@@ -372,7 +471,7 @@ export default function Dashboard() {
                       }}
                     />
                     <Typography variant="body2">
-                      {stripSize(it.name, size)}
+                      {stripSize(it.name, size, it.brand)}
                       {it.brand && (
                         <Typography
                           component="span"

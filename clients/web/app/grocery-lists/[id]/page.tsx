@@ -594,7 +594,7 @@ export default function GroceryListDetailPage({
 
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h5" gutterBottom>
-          Add Manual Item
+          Jot something down
         </Typography>
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
           <TextField
@@ -642,11 +642,11 @@ export default function GroceryListDetailPage({
       {(restockQuery.data ?? []).length > 0 && (
         <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h5" gutterBottom>
-            Suggested Restock
+            Time to restock
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Pantry items at or below their minimum, ranked by how often your
-            household uses them.
+            These pantry staples are at or below their minimum — ranked by
+            how often your household uses them.
           </Typography>
           {(restockQuery.data ?? []).map((it) => (
             <Box

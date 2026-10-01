@@ -30,6 +30,12 @@ const theme = createTheme({
   },
   shape: { borderRadius: 10 },
   components: {
+    MuiCssBaseline: {
+      // Raw next/link anchors otherwise render the browser default blue,
+      // which clashes with the warm palette; MUI components keep their
+      // own colors since class selectors beat this element rule.
+      styleOverrides: { a: { color: "#5F7A57" } },
+    },
     MuiPaper: {
       styleOverrides: {
         root: { boxShadow: "0 4px 12px rgba(62,62,52,0.06)" },

@@ -43,7 +43,7 @@ test.describe("meal plans", () => {
       ).toBeVisible();
 
       // Add a manual item, check it off, then remove it. The "Add" button
-      // must be scoped to the manual-item box — Suggested Restock rows have
+      // must be scoped to the manual-item box — restock suggestion rows have
       // their own Add buttons.
       const manualBox = page
         .locator("div")

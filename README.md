@@ -57,7 +57,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 ### Dashboard
 
-- `/` — today’s meal-plan slots, analytics-driven recipe suggestions (ingredient overlap, rating recency, category affinity, and household trending), pending household invites, and a **Running low** card listing depleted pantry items ranked by household engagement.
+- `/` — today’s meal-plan slots with friendly empty-slot prompts, analytics-driven recipe suggestion cards (ingredient overlap, rating recency, category affinity, and household trending), pending household invites, and a **Time to restock** card listing depleted pantry items ranked by household engagement.
 
 ### Food inventory
 
@@ -74,7 +74,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 - `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata). Category filters narrow the list server-side; assignments happen on the detail page. `/recipes/categories` is the admin's taxonomy manager (groups, exclusivity, display order, categories).
 - `/meal-plans` — weekly meal plans with daily slots and per-slot servings.
 - `/events` — food events: dish slots with granularity-snapped serve times, per-slot recipe snapshots (steps + ingredients copied per event so edits never touch the shared recipe), servings scaling, and a generated cooking timeline with conflict warnings.
-- `/grocery-lists` — shopping lists generated from meal plans, with check-off, plus a **Suggested Restock** section listing pantry items at or below their minimum, ranked by household engagement. Each list can be routed through a household-defined **store**: the server groups items into the store's ordered aisles, learns per-item positions from check-off order, and honors your manual arrangement (drag handles or the move-to menu) across regenerated lists. Web and mobile render the same server-computed order.
+- `/grocery-lists` — shopping lists generated from meal plans, with check-off, plus a **Time to restock** section listing pantry items at or below their minimum, ranked by household engagement. Each list can be routed through a household-defined **store**: the server groups items into the store's ordered aisles, learns per-item positions from check-off order, and honors your manual arrangement (drag handles or the move-to menu) across regenerated lists. Web and mobile render the same server-computed order.
 - **OCR recipe import** — bulk-import scanned cookbook pages, recipe cards, and photos using local OCR and a local LLM. Admin-only; see `docs/recipe-ocr-usage.md`.
 
 ### Wine cellar
