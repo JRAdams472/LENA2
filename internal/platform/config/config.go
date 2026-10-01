@@ -138,6 +138,23 @@ type Config struct {
 	// Discord app (e.g. http://localhost/auth/discord/callback); it is
 	// echoed in the token exchange.
 	DiscordRedirectURI string `envconfig:"DISCORD_REDIRECT_URI" default:""`
+	// MicrosoftClientID/Secret configure Microsoft Entra sign-in via the
+	// authorization-code exchange (the token response carries an OIDC
+	// id_token). MicrosoftTenant scopes sign-in: "consumers" (personal
+	// accounts, the default) or a tenant GUID for one organization;
+	// "common"/"organizations" are unsupported because their issuer is
+	// templated per tenant.
+	MicrosoftClientID     string `envconfig:"MICROSOFT_CLIENT_ID" default:""`
+	MicrosoftClientSecret string `envconfig:"MICROSOFT_CLIENT_SECRET" default:""`
+	MicrosoftTenant       string `envconfig:"MICROSOFT_TENANT" default:"consumers"`
+	MicrosoftRedirectURI  string `envconfig:"MICROSOFT_REDIRECT_URI" default:""`
+	// FacebookClientID/Secret configure Facebook Login (OIDC id_token via
+	// the authorization-code exchange). The redirect URI must match a
+	// redirect registered in the Facebook app; id_tokens require the
+	// nonce sent in the authorize request.
+	FacebookClientID     string `envconfig:"FACEBOOK_CLIENT_ID" default:""`
+	FacebookClientSecret string `envconfig:"FACEBOOK_CLIENT_SECRET" default:""`
+	FacebookRedirectURI  string `envconfig:"FACEBOOK_REDIRECT_URI" default:""`
 	// ImportInbox is the directory where source images/PDFs are placed before
 	// the importer processes them. The new submitRecipeScan mutation also
 	// writes uploaded admin scans here.
@@ -210,7 +227,9 @@ func (c *Config) ValidateServer() error {
 	if c.DatabaseURL == "" {
 		missing = append(missing, "DATABASE_URL")
 	}
-	if c.AuthAudiences == "" {
+	// A configured code-exchange OIDC provider supplies its own audience
+	// (client id), so AUTH_AUDIENCES can be empty only in that case.
+	if c.AuthAudiences == "" && c.MicrosoftClientID == "" && c.FacebookClientID == "" {
 		missing = append(missing, "AUTH_AUDIENCES")
 	}
 	if len(missing) > 0 {

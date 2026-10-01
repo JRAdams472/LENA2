@@ -3,7 +3,7 @@
 ## 1. Runtime
 
 - **Go monolith**: single binary compiled from `cmd/lena/main.go`.
-- **PostgreSQL 16**.
+- **PostgreSQL 18** (see `docker-compose.yml` for the pinned image).
 - **Caddy 2** reverse proxy.
 
 ## 2. Docker Compose
@@ -42,10 +42,12 @@ services:
       dockerfile: Dockerfile
     container_name: lena-api
     environment:
-      DATABASE_URL: postgres://lena_app:${LENA_DB_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?}
-      AUTH_ISSUERS: ${AUTH_ISSUERS:-https://accounts.google.com}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+      LENA_DATABASE_URL: postgres://lena_app:${LENA_DB_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+      LENA_GOOGLE_CLIENT_ID: ${LENA_GOOGLE_CLIENT_ID:?}
+      LENA_AUTH_ISSUERS: ${LENA_AUTH_ISSUERS:-https://accounts.google.com}
+      LENA_AUTH_AUDIENCES: ${LENA_AUTH_AUDIENCES:?}
+      LENA_CORS_ALLOWED_ORIGINS: ${LENA_CORS_ALLOWED_ORIGINS:-http://localhost}
+      LENA_SESSION_SECRET: ${LENA_SESSION_SECRET:-}
       PORT: 8080
     ports:
       - "8080:8080"
@@ -80,13 +82,22 @@ volumes:
     auto_https off
 }
 
-http://localhost {
-    handle /graphql* {
+{$CADDY_ADDR:-:80} {
+    handle /graphql {
+        reverse_proxy api:8080
+    }
+
+    # Auth/session endpoints must reach the API, not the web container.
+    handle /auth/* {
+        reverse_proxy api:8080
+    }
+
+    handle /health {
         reverse_proxy api:8080
     }
 
     handle {
-        reverse_proxy ui:3000
+        reverse_proxy web:3000
     }
 }
 ```
@@ -102,10 +113,25 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=<strong-sa-password>
 POSTGRES_DB=lena
 LENA_DB_PASSWORD=<app-password>
-GOOGLE_CLIENT_ID=<client-id>
-AUTH_ISSUERS=https://accounts.google.com
-AUTH_AUDIENCES=<client-id>
-CORS_ALLOWED_ORIGINS=http://localhost,http://localhost:3000
+LENA_GOOGLE_CLIENT_ID=<client-id>
+LENA_AUTH_ISSUERS=https://accounts.google.com
+LENA_AUTH_AUDIENCES=<client-id>
+LENA_CORS_ALLOWED_ORIGINS=http://localhost
+```
+
+Recommended/optional additions:
+
+```env
+# Long-lived sessions (rotating refresh tokens); unset = OIDC-only mode.
+LENA_SESSION_SECRET=<openssl rand -hex 32>
+
+# Extra sign-in providers — each is disabled until its id+secret are set.
+# Secrets stay server-side; NEXT_PUBLIC_* vars only carry the public
+# client id so the web build shows the button.
+LENA_DISCORD_CLIENT_ID= / LENA_DISCORD_CLIENT_SECRET=
+LENA_MICROSOFT_CLIENT_ID= / LENA_MICROSOFT_CLIENT_SECRET= (+ LENA_MICROSOFT_TENANT=consumers)
+LENA_FACEBOOK_CLIENT_ID= / LENA_FACEBOOK_CLIENT_SECRET=
+# + matching *_REDIRECT_URI values registered in each provider portal.
 ```
 
 ## 5. Build & Run

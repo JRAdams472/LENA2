@@ -86,11 +86,39 @@ On Android this requires a matching `google-services.json` in
 client ID, not the Android client ID, so that the returned ID token's `aud`
 matches the BFF's configured `LENA_AUTH_AUDIENCES`.
 
+### Sessions
+
+When the server sets `LENA_SESSION_SECRET`, `AuthService` exchanges the
+Google credential at `POST /auth/session` for a LENA session: a ~15-minute
+`iss=lena` access token plus a ~30-day rotating refresh token stored in
+`flutter_secure_storage`. The auth link proactively refreshes before
+sending an expired token, and `ErrorLink` retries a request once after a
+401. Without the secret the app falls back to the raw Google ID token.
+
+Discord/Microsoft/Facebook sign-in is web-only for now — mobile OAuth
+needs an HTTPS-callback → `lena://` app-link bounce (deferred). A user
+whose account is linked to Google can still sign in on mobile via Google.
+
+### Emulator sign-in for screenshots/e2e
+
+Debug builds accept a pre-minted OIDC token instead of Google sign-in —
+useful on emulators without Play Services:
+
+```bash
+flutter run \
+  --dart-define=LENA_API_URL=http://10.0.2.2/graphql \
+  --dart-define=LENA_DEBUG_ID_TOKEN=<test-issuer token>
+```
+
+The check is gated by `kDebugMode`, so release builds compile the read
+out entirely. Mint a token from the e2e stack's test issuer
+(`http://localhost:8085/token?sub=...&email=...`).
+
 ## Project structure
 
-- `lib/graphql_config.dart` — `GraphQLClient` with `AuthLink` + `ErrorLink`.
+- `lib/graphql_config.dart` — `GraphQLClient` with `AuthLink` (proactive session refresh) + `ErrorLink` (one-time refresh-and-retry on 401).
 - `lib/main.dart` — App entry point with `GraphQLProvider` and `AuthGate`.
-- `lib/auth/auth_service.dart` — Google sign-in + secure token storage.
+- `lib/auth/auth_service.dart` — Google sign-in, `/auth/session` exchange, secure token storage.
 - `lib/screens/login_screen.dart` — Google sign-in button.
 - `lib/screens/main_screen.dart` — Bottom-nav shell.
 - `lib/screens/dashboard_screen.dart` — Today's meal plan + recommendations.

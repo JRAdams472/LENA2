@@ -24,7 +24,7 @@ const googleToken = makeToken({
 const lenaAccess = makeToken({ iss: "lena", sub: "7", exp: future });
 
 function Probe() {
-  const { isAuthenticated, isRestoring, user, signIn, signInWithDiscord, signOut } =
+  const { isAuthenticated, isRestoring, user, signIn, signInWithProvider, signOut } =
     useAuth();
   return (
     <div>
@@ -32,7 +32,13 @@ function Probe() {
       <span data-testid="restoring">{String(isRestoring)}</span>
       <span data-testid="email">{user?.email ?? ""}</span>
       <button onClick={() => signIn(googleToken)}>in</button>
-      <button onClick={() => signInWithDiscord("code-1").catch(() => undefined)}>
+      <button
+        onClick={() =>
+          signInWithProvider("discord", "code-1", "nonce-1").catch(
+            () => undefined
+          )
+        }
+      >
         discord
       </button>
       <button onClick={signOut}>out</button>
@@ -124,7 +130,7 @@ describe("AuthProvider sessions", () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("http://localhost:5059/auth/session/discord");
     expect(JSON.parse((init as RequestInit).body as string)).toEqual(
-      expect.objectContaining({ code: "code-1" })
+      expect.objectContaining({ code: "code-1", nonce: "nonce-1" })
     );
     expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
     expect(localStorage.getItem("lena_refresh_token")).toBe("rt-discord");

@@ -183,5 +183,29 @@ await page.waitForTimeout(800);
 await page.screenshot({ path: `${OUT}/event-timeline.png`, fullPage: true });
 console.log("shot: event-timeline");
 
+// AI assistant — the e2e overlay runs LENA_AI_PROVIDER=mock, so the page
+// is live and Ask returns the canned deterministic answer.
+await shot("assistant", "/assistant", "Ask LENA");
+await page.getByPlaceholder("Ask LENA").fill("What's in my wine cellar?");
+await page.getByRole("button", { name: /ask|send/i }).first().click();
+await page.getByText("mock provider", { exact: false }).first().waitFor({ timeout: 30000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/assistant-answer.png`, fullPage: false });
+console.log("shot: assistant-answer");
+
+// Signed-out login screen for Getting-Started — a fresh context with no
+// seeded token shows the real sign-in buttons.
+const anon = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  deviceScaleFactor: 2,
+});
+const loginPage = await anon.newPage();
+await loginPage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+await loginPage.getByText("Sign in", { exact: false }).first().waitFor({ timeout: 20000 });
+await loginPage.waitForTimeout(800);
+await loginPage.screenshot({ path: `${OUT}/login.png` });
+console.log("shot: login");
+await anon.close();
+
 await browser.close();
 console.log("done ->", OUT);

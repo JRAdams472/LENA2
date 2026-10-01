@@ -1,6 +1,6 @@
 # LENA GraphQL Schema
 
-This document describes the public GraphQL API exposed by the BFF at `/graphql`.
+This document describes the public GraphQL API exposed by the BFF at `/graphql`. It is a curated overview of the primary types and operations — `internal/bff/schema.graphqls` is the authoritative, complete definition. Auth/session endpoints (`/auth/*`) are plain REST, not GraphQL; see `docs/auth-oidc.md`.
 
 ## Scalar types
 

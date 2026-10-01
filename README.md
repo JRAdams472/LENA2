@@ -295,7 +295,7 @@ flutter test
 - **UPC lookup** — mobile and web can query `itemByUpc` to find an item by UPC before adding it to pantry.
 - **Item submission** — non-admin users can `submitItem` for items not yet in the catalog. Submitted items are visible only to their creator until an admin approves them.
 - **Grocery sync** — checking a grocery item off can increase `inventory.user_item` stock by the quantity needed; unchecking decreases it.
-- **No refresh tokens** — clients must re-sign in with Google when the ID token expires.
+- **Rotating sessions** — provider credentials exchange for a LENA session (short-lived `iss=lena` access token + ~30-day rotating refresh token); replaying a rotated token revokes the whole family.
 
 ---
 

@@ -30,7 +30,7 @@ func ensureWindowsDockerHost() {
 	}
 }
 
-// NewTestDB starts a PostgreSQL 16 container, applies all migrations, and
+// NewTestDB starts a PostgreSQL 18 container, applies all migrations, and
 // returns a connection pool and a terminate callback. Callers are responsible
 // for calling the returned cleanup function.
 func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error) {

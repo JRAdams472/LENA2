@@ -98,6 +98,12 @@ its own session on top of the provider credential:
   Unauthenticated by design: this is called *after* the access token
   expires. IP-rate-limited.
 - `POST /auth/session/revoke` — `{refreshToken}` → sign out.
+- `POST /auth/session/{provider}` — OAuth2 code-exchange sign-in for
+  providers whose credential can't be a bearer token: `discord`
+  (`code` → `users/@me`), `microsoft` and `facebook` (`code` → OIDC
+  `id_token`, verified by the §3 machinery; `nonce` binds the authorize
+  request to the token and is required for Facebook). Unauthenticated —
+  the code is the credential — IP-rate-limited, 8K body.
 
 **Access token** — HS256 JWT signed with `LENA_SESSION_SECRET`,
 `iss=lena`, `sub=<user_id>`, ~15 min TTL (`LENA_SESSION_ACCESS_TTL`).
