@@ -555,6 +555,31 @@ export interface GroceryList extends AuditableEntity {
   mealPlanID: number | null;
   generatedDate: string;
   groceryListItems?: GroceryListItem[];
+  store?: Store | null;
+}
+
+export interface Store {
+  storeID: number;
+  name: string;
+  aisles?: StoreAisle[];
+}
+
+export interface StoreAisle {
+  aisleID: number;
+  name: string;
+  position: number;
+}
+
+// GroceryRouteGroup is one stop on the store walk — an aisle's items in
+// server-computed order, or the trailing unassigned bucket (aisle null).
+export interface GroceryRouteGroup {
+  aisle: StoreAisle | null;
+  items: GroceryRouteItem[];
+}
+
+export interface GroceryRouteItem {
+  item: GroceryListItem;
+  suggested: boolean;
 }
 
 export interface GroceryListItem extends AuditableEntity {
@@ -562,6 +587,8 @@ export interface GroceryListItem extends AuditableEntity {
   groceryListID: number;
   itemID: number | null;
   itemName: string | null;
+  ingredientID?: number | null;
+  ingredientName?: string | null;
   manualItemName: string | null;
   quantityNeeded: number;
   unitOfMeasure: string | null;

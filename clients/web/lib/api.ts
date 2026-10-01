@@ -32,6 +32,9 @@ import {
   CocktailSuggestion,
   GroceryList,
   GroceryListItem,
+  GroceryRouteGroup,
+  Store,
+  StoreAisle,
   Household,
   HouseholdInvite,
   HouseholdMember,
@@ -802,6 +805,7 @@ interface GqlNutritionSummary {
 interface GqlGroceryListItem {
   id: string;
   item: GqlItem | null;
+  ingredient: { id: string; name: string } | null;
   manualItemName: string | null;
   quantityNeeded: number;
   unitOfMeasure: string | null;
@@ -809,10 +813,33 @@ interface GqlGroceryListItem {
   isChecked: boolean;
 }
 
+interface GqlStoreAisle {
+  id: string;
+  name: string;
+  position: number;
+}
+
+interface GqlStore {
+  id: string;
+  name: string;
+  aisles?: GqlStoreAisle[];
+}
+
 interface GqlGroceryList {
   id: string;
   generatedAt: string;
+  store: GqlStore | null;
   items: GqlGroceryListItem[];
+}
+
+interface GqlGroceryRouteItem {
+  suggested: boolean;
+  item: GqlGroceryListItem;
+}
+
+interface GqlGroceryRouteGroup {
+  aisle: GqlStoreAisle | null;
+  items: GqlGroceryRouteItem[];
 }
 
 interface GqlGroceryListPage {
@@ -1570,12 +1597,26 @@ function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListIt
     groceryListID: listID,
     itemID: i.item ? num(i.item.id) : null,
     itemName: i.item?.name ?? null,
+    ingredientID: i.ingredient ? num(i.ingredient.id) : null,
+    ingredientName: i.ingredient?.name ?? null,
     manualItemName: i.manualItemName,
     quantityNeeded: i.quantityNeeded,
     unitOfMeasure: i.unitOfMeasure,
     source: i.source,
     isChecked: i.isChecked,
     groceryList: null,
+  };
+}
+
+function toStoreAisle(a: GqlStoreAisle): StoreAisle {
+  return { aisleID: num(a.id), name: a.name, position: a.position };
+}
+
+function toStore(s: GqlStore): Store {
+  return {
+    storeID: num(s.id),
+    name: s.name,
+    aisles: (s.aisles ?? []).map(toStoreAisle),
   };
 }
 
@@ -1587,6 +1628,7 @@ function toGroceryList(g: GqlGroceryList): GroceryList {
     mealPlanID: null,
     generatedDate: g.generatedAt,
     groceryListItems: (g.items ?? []).map((i) => toGroceryListItem(listID, i)),
+    store: g.store ? toStore(g.store) : null,
   };
 }
 
@@ -1665,10 +1707,17 @@ const FOOD_EVENT_FIELDS = `
 
 const GROCERY_LIST_FIELDS = `
   id generatedAt
+  store { id name }
   items {
     id manualItemName quantityNeeded unitOfMeasure source isChecked
+          ingredient { id name }
     item { ${ITEM_FIELDS} }
   }
+`;
+
+const STORE_FIELDS = `
+  id name
+  aisles { id name position }
 `;
 
 /* ------------------------------------------------------------------ */
@@ -3637,6 +3686,7 @@ export const api = {
       `mutation ($input: AddGroceryItemInput!) {
         addGroceryItem(input: $input) {
           id manualItemName quantityNeeded unitOfMeasure source isChecked
+          ingredient { id name }
           item { ${ITEM_FIELDS} }
         }
       }`,
@@ -3659,6 +3709,7 @@ export const api = {
       `mutation ($groceryListItemId: ID!) {
         toggleGroceryItemChecked(groceryListItemId: $groceryListItemId) {
           id manualItemName quantityNeeded unitOfMeasure source isChecked
+          ingredient { id name }
           item { ${ITEM_FIELDS} }
         }
       }`,
@@ -3671,6 +3722,141 @@ export const api = {
     await request<{ deleteGroceryItem: boolean }>(
       `mutation ($groceryListItemId: ID!) { deleteGroceryItem(groceryListItemId: $groceryListItemId) }`,
       { groceryListItemId: String(id) }
+    );
+  },
+
+  // Store routing — server computes the order; the client renders
+  // routeGroups verbatim so web and mobile always agree.
+
+  getGroceryStores: async (): Promise<Store[]> => {
+    const data = await request<{ groceryStores: GqlStore[] }>(
+      `query { groceryStores { ${STORE_FIELDS} } }`
+    );
+    return data.groceryStores.map(toStore);
+  },
+
+  getGroceryRouteGroups: async (listId: number): Promise<GroceryRouteGroup[]> => {
+    const data = await request<{ groceryRouteGroups: GqlGroceryRouteGroup[] }>(
+      `query ($groceryListId: ID!) {
+        groceryRouteGroups(groceryListId: $groceryListId) {
+          aisle { id name position }
+          items {
+            suggested
+            item { id manualItemName quantityNeeded unitOfMeasure source isChecked
+          ingredient { id name } item { ${ITEM_FIELDS} } }
+          }
+        }
+      }`,
+      { groceryListId: String(listId) }
+    );
+    return data.groceryRouteGroups.map((g) => ({
+      aisle: g.aisle ? toStoreAisle(g.aisle) : null,
+      items: g.items.map((i) => ({ suggested: i.suggested, item: toGroceryListItem(listId, i.item) })),
+    }));
+  },
+
+  createStore: async (name: string): Promise<Store> => {
+    const data = await request<{ createStore: GqlStore }>(
+      `mutation ($name: String!) { createStore(name: $name) { ${STORE_FIELDS} } }`,
+      { name }
+    );
+    return toStore(data.createStore);
+  },
+
+  renameStore: async (storeId: number, name: string): Promise<Store> => {
+    const data = await request<{ renameStore: GqlStore }>(
+      `mutation ($storeId: ID!, $name: String!) { renameStore(storeId: $storeId, name: $name) { ${STORE_FIELDS} } }`,
+      { storeId: String(storeId), name }
+    );
+    return toStore(data.renameStore);
+  },
+
+  deleteStore: async (storeId: number): Promise<void> => {
+    await request<{ deleteStore: boolean }>(
+      `mutation ($storeId: ID!) { deleteStore(storeId: $storeId) }`,
+      { storeId: String(storeId) }
+    );
+  },
+
+  createStoreAisle: async (storeId: number, name: string, position: number): Promise<StoreAisle> => {
+    const data = await request<{ createStoreAisle: GqlStoreAisle }>(
+      `mutation ($storeId: ID!, $name: String!, $position: Int!) {
+        createStoreAisle(storeId: $storeId, name: $name, position: $position) { id name position }
+      }`,
+      { storeId: String(storeId), name, position }
+    );
+    return toStoreAisle(data.createStoreAisle);
+  },
+
+  renameStoreAisle: async (aisleId: number, name: string): Promise<StoreAisle> => {
+    const data = await request<{ renameStoreAisle: GqlStoreAisle }>(
+      `mutation ($aisleId: ID!, $name: String!) { renameStoreAisle(aisleId: $aisleId, name: $name) { id name position } }`,
+      { aisleId: String(aisleId), name }
+    );
+    return toStoreAisle(data.renameStoreAisle);
+  },
+
+  deleteStoreAisle: async (aisleId: number): Promise<void> => {
+    await request<{ deleteStoreAisle: boolean }>(
+      `mutation ($aisleId: ID!) { deleteStoreAisle(aisleId: $aisleId) }`,
+      { aisleId: String(aisleId) }
+    );
+  },
+
+  reorderStoreAisles: async (storeId: number, aisleIds: number[]): Promise<StoreAisle[]> => {
+    const data = await request<{ reorderStoreAisles: GqlStoreAisle[] }>(
+      `mutation ($storeId: ID!, $aisleIds: [ID!]!) {
+        reorderStoreAisles(storeId: $storeId, aisleIds: $aisleIds) { id name position }
+      }`,
+      { storeId: String(storeId), aisleIds: aisleIds.map(String) }
+    );
+    return data.reorderStoreAisles.map(toStoreAisle);
+  },
+
+  assignItemToAisle: async (
+    storeId: number,
+    aisleId: number | null,
+    identity: { itemID?: number | null; ingredientID?: number | null; manualItemName?: string | null }
+  ): Promise<void> => {
+    await request<{ assignItemToAisle: boolean }>(
+      `mutation ($storeId: ID!, $aisleId: ID, $itemId: ID, $ingredientId: ID, $manualItemName: String) {
+        assignItemToAisle(storeId: $storeId, aisleId: $aisleId, itemId: $itemId, ingredientId: $ingredientId, manualItemName: $manualItemName)
+      }`,
+      {
+        storeId: String(storeId),
+        aisleId: aisleId != null ? String(aisleId) : null,
+        itemId: identity.itemID != null ? String(identity.itemID) : null,
+        ingredientId: identity.ingredientID != null ? String(identity.ingredientID) : null,
+        manualItemName: identity.manualItemName ?? null,
+      }
+    );
+  },
+
+  setGroceryListStore: async (listId: number, storeId: number | null): Promise<GroceryList> => {
+    const data = await request<{ setGroceryListStore: GqlGroceryList }>(
+      `mutation ($groceryListId: ID!, $storeId: ID) {
+        setGroceryListStore(groceryListId: $groceryListId, storeId: $storeId) { ${GROCERY_LIST_FIELDS} }
+      }`,
+      { groceryListId: String(listId), storeId: storeId != null ? String(storeId) : null }
+    );
+    return toGroceryList(data.setGroceryListStore);
+  },
+
+  reorderGroceryListItems: async (
+    listId: number,
+    entries: { groceryListItemID: number; aisleID?: number | null }[]
+  ): Promise<void> => {
+    await request<{ reorderGroceryListItems: boolean }>(
+      `mutation ($groceryListId: ID!, $entries: [GroceryReorderEntryInput!]!) {
+        reorderGroceryListItems(groceryListId: $groceryListId, entries: $entries)
+      }`,
+      {
+        groceryListId: String(listId),
+        entries: entries.map((e) => ({
+          groceryListItemId: String(e.groceryListItemID),
+          aisleId: e.aisleID != null ? String(e.aisleID) : null,
+        })),
+      }
     );
   },
 
