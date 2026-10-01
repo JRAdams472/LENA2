@@ -21,6 +21,7 @@ import SetMealIcon from "@mui/icons-material/SetMeal";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import { alpha, styled, useTheme } from "@mui/material/styles";
 import { Recipe } from "@/lib/types";
+import { sizeBadge, stripSize } from "@/lib/format";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 
@@ -68,31 +69,6 @@ function suggestionMeta(recipe: Recipe): string {
   if (recipe.averageRating != null)
     parts.push(`★ ${recipe.averageRating.toFixed(1)}`);
   return parts.join(" · ");
-}
-
-const SIZE_RE =
-  /\b(\d+(?:\.\d+)?\s?(?:pk|ct|count|pack|oz|fl\.?\s?oz|lb|g|kg|ml|l))\b/i;
-
-function sizeBadge(name: string, unit: string): string | null {
-  const m = name.match(SIZE_RE);
-  if (m) return m[1];
-  return unit && unit !== "each" ? unit : null;
-}
-
-function stripSize(
-  name: string,
-  size: string | null,
-  brand?: string | null
-): string {
-  let n = size ? name.replace(size, "") : name;
-  const b = brand?.trim();
-  if (b && n.trim().toLowerCase().startsWith(b.toLowerCase())) {
-    n = n.trim().slice(b.length);
-  }
-  return n
-    .replace(/\s{2,}/g, " ")
-    .replace(/^[\s\-–—,]+|[\s\-–—,]+$/g, "")
-    .trim();
 }
 
 const PlanMealLink = styled(Link)(({ theme }) => ({
