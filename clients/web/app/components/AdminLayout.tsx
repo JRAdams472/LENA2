@@ -42,14 +42,14 @@ import LenaLogo from "@/app/components/LenaLogo";
 
 const DRAWER_WIDTH = 260;
 
+// The nav Box below reserves DRAWER_WIDTH in the flex row (the permanent
+// drawer's paper is position:fixed), so Main must not offset again —
+// marginLeft here would double the gap.
 const Main = styled("main")(({ theme }) => ({
   flexGrow: 1,
+  minWidth: 0,
   padding: theme.spacing(3),
   paddingTop: theme.spacing(10),
-  [theme.breakpoints.up("md")]: {
-    marginLeft: DRAWER_WIDTH,
-    width: `calc(100% - ${DRAWER_WIDTH}px)`,
-  },
 }));
 
 interface NavItem {
