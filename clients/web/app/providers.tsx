@@ -36,13 +36,12 @@ const theme = createTheme({
       },
     },
     MuiAppBar: {
-      defaultProps: { color: "default" },
       styleOverrides: {
         root: ({ theme }) => ({
-          backgroundColor: theme.palette.background.paper,
-          color: theme.palette.text.primary,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.primary.main,
+          color: theme.palette.primary.contrastText,
           boxShadow: "none",
+          borderBottom: `1px solid ${theme.palette.primary.dark}`,
         }),
       },
     },

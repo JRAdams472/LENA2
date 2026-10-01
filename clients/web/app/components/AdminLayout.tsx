@@ -513,7 +513,7 @@ export default function AdminLayout({
                   px: 1.5,
                   py: 0.5,
                   mr: 1,
-                  bgcolor: alpha(theme.palette.primary.main, 0.12),
+                  bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
                 }}
               >
                 <AccountCircleIcon fontSize="small" />
