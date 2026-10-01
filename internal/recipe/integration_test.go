@@ -11,6 +11,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
+	"github.com/JRAdams472/LENA2/internal/recipe/sqlc"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -662,6 +663,14 @@ func TestIntegrationRecipeEmbedding(t *testing.T) {
 	vec := make([]float32, llm.EmbedDims)
 	vec[0] = 1
 	require.NoError(t, svc.SetRecipeEmbedding(ctx, done.RecipeID, llm.VectorLiteral(vec), "test-model"))
+
+	// r.* reads must round-trip a stored vector (pgx decodes to
+	// pgvector.Vector before the Scanner fallback sees it).
+	row, err := sqlc.New(pool).GetRecipeByID(ctx, done.RecipeID)
+	require.NoError(t, err)
+	require.True(t, row.Embedding.Valid)
+	assert.Len(t, row.Embedding.V, llm.EmbedDims)
+	assert.Equal(t, float32(1), row.Embedding.V[0])
 
 	ids, err := svc.ListEmbeddingCandidates(ctx, "test-model", 100)
 	require.NoError(t, err)

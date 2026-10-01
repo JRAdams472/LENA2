@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/pgvector/pgvector-go"
 )
 
 // Vector is a nullable pgvector value: Valid=false represents SQL NULL.
@@ -28,6 +30,12 @@ func (v *Vector) Scan(src any) error {
 		return v.parse(s)
 	case []byte:
 		return v.parse(string(s))
+	case pgvector.Vector:
+		// With pgxvector.RegisterTypes, pgx decodes vector columns into
+		// pgvector.Vector before Scanner fallback, so the source arrives
+		// already decoded rather than as the text literal.
+		v.V, v.Valid = s.Slice(), true
+		return nil
 	default:
 		return fmt.Errorf("vector: unsupported scan source %T", src)
 	}
