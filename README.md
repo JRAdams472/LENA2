@@ -118,7 +118,7 @@ UPC normalization follows this rule: 12 digits go to `upc12`, 13 digits are left
 
 LENA can run a local LLM (Ollama) as an optional assistant. Set `LENA_AI_PROVIDER=ollama` plus `LENA_OLLAMA_URL`/`LENA_AI_MODEL`, or run `docker compose --profile ai up` to start the bundled Ollama service. With no provider configured every AI surface stays hidden and queries return `UNAVAILABLE`.
 
-- **Ask LENA** (`/assistant` on web, the Assistant tab on mobile) — free-form questions answered with read-only, household-scoped tools (pantry, expiring items, meal plan, recipes, household tastes, cellar, event timeline). Each reply lists the lookups it made.
+- **Ask Dot** (`/assistant` on web via the header's second row, the Assistant tab on mobile) — free-form questions answered with read-only, household-scoped tools (pantry, expiring items, meal plan, recipes, household tastes, cellar, event timeline). Each reply lists the lookups it made.
 - **Suggest Meals** (`/meal-plans`) — proposes recipes for open slots, informed by stock, near-expiry items, and household taste analytics; applied via the normal meal-slot mutations after review.
 - **Suggest Fixes** (`/events` timeline) — proposes schedule fixes (shift serve time, reassign appliance, adjust duration/dependency) for timeline conflicts; applied through the existing event mutations.
 - **Sommelier & bartender** (`/recipes`) — wine pairings for a recipe and cocktail picks with an in-stock toggle. Both are gated server-side on a stored `birthdate` showing 21+.
