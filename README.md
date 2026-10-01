@@ -18,7 +18,7 @@ LENA2 is a personal, privacy-first household management system. It replaces scat
 - **Add items on the go** — use the mobile app to scan a UPC barcode, look up catalog items, and submit missing products for approval.
 - **Share a household** — invite family members; recipes, plans, lists, events, pantry, and cellar are household-scoped, and changes notify the other members.
 
-Authentication is handled by Google sign-in via OpenID Connect. Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar, and accepting a household invite merges the new member's existing plans, lists, and events into the shared household.
+Authentication is handled by Google sign-in via OpenID Connect or Discord OAuth2; a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar, and accepting a household invite merges the new member's existing plans, lists, and events into the shared household.
 
 ---
 
@@ -45,7 +45,7 @@ It is a single-tenant application: you run your own instance and your data lives
 | **Database** | PostgreSQL 16 with schema-per-domain |
 | **Reverse proxy** | Caddy 2 |
 | **Dev / deploy** | Docker Compose |
-| **Authentication** | Google OIDC ID tokens as JWT bearer tokens |
+| **Authentication** | Google OIDC + Discord OAuth2, exchanged for LENA session tokens |
 
 The web and mobile clients talk to a single **GraphQL Backend-for-Frontend (BFF)** exposed at `/graphql`. The Go backend uses `sqlc` for type-safe SQL queries and `testcontainers` for integration tests.
 
