@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	sqlc "github.com/JRAdams472/LENA2/internal/grocery/sqlc"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -56,6 +57,51 @@ func (mr *MockQuerierMockRecorder) AddGroceryListItem(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroceryListItem", reflect.TypeOf((*MockQuerier)(nil).AddGroceryListItem), ctx, arg)
 }
 
+// AssignIngredientToAisle mocks base method.
+func (m *MockQuerier) AssignIngredientToAisle(ctx context.Context, arg sqlc.AssignIngredientToAisleParams) (sqlc.GroceryAisleAssignment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AssignIngredientToAisle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryAisleAssignment)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AssignIngredientToAisle indicates an expected call of AssignIngredientToAisle.
+func (mr *MockQuerierMockRecorder) AssignIngredientToAisle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignIngredientToAisle", reflect.TypeOf((*MockQuerier)(nil).AssignIngredientToAisle), ctx, arg)
+}
+
+// AssignItemToAisle mocks base method.
+func (m *MockQuerier) AssignItemToAisle(ctx context.Context, arg sqlc.AssignItemToAisleParams) (sqlc.GroceryAisleAssignment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AssignItemToAisle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryAisleAssignment)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AssignItemToAisle indicates an expected call of AssignItemToAisle.
+func (mr *MockQuerierMockRecorder) AssignItemToAisle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignItemToAisle", reflect.TypeOf((*MockQuerier)(nil).AssignItemToAisle), ctx, arg)
+}
+
+// AssignManualToAisle mocks base method.
+func (m *MockQuerier) AssignManualToAisle(ctx context.Context, arg sqlc.AssignManualToAisleParams) (sqlc.GroceryAisleAssignment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AssignManualToAisle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryAisleAssignment)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AssignManualToAisle indicates an expected call of AssignManualToAisle.
+func (mr *MockQuerierMockRecorder) AssignManualToAisle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignManualToAisle", reflect.TypeOf((*MockQuerier)(nil).AssignManualToAisle), ctx, arg)
+}
+
 // CountGroceryLists mocks base method.
 func (m *MockQuerier) CountGroceryLists(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -71,6 +117,21 @@ func (mr *MockQuerierMockRecorder) CountGroceryLists(ctx, householdID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountGroceryLists", reflect.TypeOf((*MockQuerier)(nil).CountGroceryLists), ctx, householdID)
 }
 
+// CreateAisle mocks base method.
+func (m *MockQuerier) CreateAisle(ctx context.Context, arg sqlc.CreateAisleParams) (sqlc.GroceryStoreAisle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateAisle", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryStoreAisle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateAisle indicates an expected call of CreateAisle.
+func (mr *MockQuerierMockRecorder) CreateAisle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAisle", reflect.TypeOf((*MockQuerier)(nil).CreateAisle), ctx, arg)
+}
+
 // CreateGroceryList mocks base method.
 func (m *MockQuerier) CreateGroceryList(ctx context.Context, arg sqlc.CreateGroceryListParams) (sqlc.GroceryGroceryList, error) {
 	m.ctrl.T.Helper()
@@ -84,6 +145,35 @@ func (m *MockQuerier) CreateGroceryList(ctx context.Context, arg sqlc.CreateGroc
 func (mr *MockQuerierMockRecorder) CreateGroceryList(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroceryList", reflect.TypeOf((*MockQuerier)(nil).CreateGroceryList), ctx, arg)
+}
+
+// CreateStore mocks base method.
+func (m *MockQuerier) CreateStore(ctx context.Context, arg sqlc.CreateStoreParams) (sqlc.GroceryStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateStore", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateStore indicates an expected call of CreateStore.
+func (mr *MockQuerierMockRecorder) CreateStore(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateStore", reflect.TypeOf((*MockQuerier)(nil).CreateStore), ctx, arg)
+}
+
+// DeleteAisle mocks base method.
+func (m *MockQuerier) DeleteAisle(ctx context.Context, arg sqlc.DeleteAisleParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteAisle", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteAisle indicates an expected call of DeleteAisle.
+func (mr *MockQuerierMockRecorder) DeleteAisle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAisle", reflect.TypeOf((*MockQuerier)(nil).DeleteAisle), ctx, arg)
 }
 
 // DeleteGeneratedGroceryListItems mocks base method.
@@ -126,6 +216,35 @@ func (m *MockQuerier) DeleteGroceryListItem(ctx context.Context, arg sqlc.Delete
 func (mr *MockQuerierMockRecorder) DeleteGroceryListItem(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockQuerier)(nil).DeleteGroceryListItem), ctx, arg)
+}
+
+// DeleteStore mocks base method.
+func (m *MockQuerier) DeleteStore(ctx context.Context, arg sqlc.DeleteStoreParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteStore", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteStore indicates an expected call of DeleteStore.
+func (mr *MockQuerierMockRecorder) DeleteStore(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteStore", reflect.TypeOf((*MockQuerier)(nil).DeleteStore), ctx, arg)
+}
+
+// GetAisleByID mocks base method.
+func (m *MockQuerier) GetAisleByID(ctx context.Context, arg sqlc.GetAisleByIDParams) (sqlc.GroceryStoreAisle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAisleByID", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryStoreAisle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAisleByID indicates an expected call of GetAisleByID.
+func (mr *MockQuerierMockRecorder) GetAisleByID(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAisleByID", reflect.TypeOf((*MockQuerier)(nil).GetAisleByID), ctx, arg)
 }
 
 // GetGroceryListByID mocks base method.
@@ -173,6 +292,66 @@ func (mr *MockQuerierMockRecorder) GetLatestGroceryListByPlan(ctx, arg any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestGroceryListByPlan", reflect.TypeOf((*MockQuerier)(nil).GetLatestGroceryListByPlan), ctx, arg)
 }
 
+// GetLatestListStore mocks base method.
+func (m *MockQuerier) GetLatestListStore(ctx context.Context, householdID int64) (pgtype.Int8, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestListStore", ctx, householdID)
+	ret0, _ := ret[0].(pgtype.Int8)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestListStore indicates an expected call of GetLatestListStore.
+func (mr *MockQuerierMockRecorder) GetLatestListStore(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestListStore", reflect.TypeOf((*MockQuerier)(nil).GetLatestListStore), ctx, householdID)
+}
+
+// GetStoreByID mocks base method.
+func (m *MockQuerier) GetStoreByID(ctx context.Context, arg sqlc.GetStoreByIDParams) (sqlc.GroceryStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStoreByID", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStoreByID indicates an expected call of GetStoreByID.
+func (mr *MockQuerierMockRecorder) GetStoreByID(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStoreByID", reflect.TypeOf((*MockQuerier)(nil).GetStoreByID), ctx, arg)
+}
+
+// ListAisles mocks base method.
+func (m *MockQuerier) ListAisles(ctx context.Context, arg sqlc.ListAislesParams) ([]sqlc.GroceryStoreAisle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAisles", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.GroceryStoreAisle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAisles indicates an expected call of ListAisles.
+func (mr *MockQuerierMockRecorder) ListAisles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAisles", reflect.TypeOf((*MockQuerier)(nil).ListAisles), ctx, arg)
+}
+
+// ListAssignments mocks base method.
+func (m *MockQuerier) ListAssignments(ctx context.Context, arg sqlc.ListAssignmentsParams) ([]sqlc.GroceryAisleAssignment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAssignments", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.GroceryAisleAssignment)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAssignments indicates an expected call of ListAssignments.
+func (mr *MockQuerierMockRecorder) ListAssignments(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssignments", reflect.TypeOf((*MockQuerier)(nil).ListAssignments), ctx, arg)
+}
+
 // ListGroceryListItems mocks base method.
 func (m *MockQuerier) ListGroceryListItems(ctx context.Context, arg sqlc.ListGroceryListItemsParams) ([]sqlc.GroceryGroceryListItem, error) {
 	m.ctrl.T.Helper()
@@ -218,6 +397,36 @@ func (mr *MockQuerierMockRecorder) ListGroceryLists(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGroceryLists", reflect.TypeOf((*MockQuerier)(nil).ListGroceryLists), ctx, arg)
 }
 
+// ListItemRoutes mocks base method.
+func (m *MockQuerier) ListItemRoutes(ctx context.Context, arg sqlc.ListItemRoutesParams) ([]sqlc.GroceryItemRoute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListItemRoutes", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.GroceryItemRoute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListItemRoutes indicates an expected call of ListItemRoutes.
+func (mr *MockQuerierMockRecorder) ListItemRoutes(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItemRoutes", reflect.TypeOf((*MockQuerier)(nil).ListItemRoutes), ctx, arg)
+}
+
+// ListStores mocks base method.
+func (m *MockQuerier) ListStores(ctx context.Context, householdID int64) ([]sqlc.GroceryStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListStores", ctx, householdID)
+	ret0, _ := ret[0].([]sqlc.GroceryStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListStores indicates an expected call of ListStores.
+func (mr *MockQuerierMockRecorder) ListStores(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockQuerier)(nil).ListStores), ctx, householdID)
+}
+
 // ReassignGroceryListsToHousehold mocks base method.
 func (m *MockQuerier) ReassignGroceryListsToHousehold(ctx context.Context, arg sqlc.ReassignGroceryListsToHouseholdParams) error {
 	m.ctrl.T.Helper()
@@ -230,6 +439,79 @@ func (m *MockQuerier) ReassignGroceryListsToHousehold(ctx context.Context, arg s
 func (mr *MockQuerierMockRecorder) ReassignGroceryListsToHousehold(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReassignGroceryListsToHousehold", reflect.TypeOf((*MockQuerier)(nil).ReassignGroceryListsToHousehold), ctx, arg)
+}
+
+// RenameAisle mocks base method.
+func (m *MockQuerier) RenameAisle(ctx context.Context, arg sqlc.RenameAisleParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameAisle", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenameAisle indicates an expected call of RenameAisle.
+func (mr *MockQuerierMockRecorder) RenameAisle(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameAisle", reflect.TypeOf((*MockQuerier)(nil).RenameAisle), ctx, arg)
+}
+
+// RenameStore mocks base method.
+func (m *MockQuerier) RenameStore(ctx context.Context, arg sqlc.RenameStoreParams) (sqlc.GroceryStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameStore", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenameStore indicates an expected call of RenameStore.
+func (mr *MockQuerierMockRecorder) RenameStore(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameStore", reflect.TypeOf((*MockQuerier)(nil).RenameStore), ctx, arg)
+}
+
+// ReorderAisles mocks base method.
+func (m *MockQuerier) ReorderAisles(ctx context.Context, arg sqlc.ReorderAislesParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReorderAisles", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReorderAisles indicates an expected call of ReorderAisles.
+func (mr *MockQuerierMockRecorder) ReorderAisles(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReorderAisles", reflect.TypeOf((*MockQuerier)(nil).ReorderAisles), ctx, arg)
+}
+
+// ResetStoreRoute mocks base method.
+func (m *MockQuerier) ResetStoreRoute(ctx context.Context, arg sqlc.ResetStoreRouteParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetStoreRoute", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetStoreRoute indicates an expected call of ResetStoreRoute.
+func (mr *MockQuerierMockRecorder) ResetStoreRoute(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetStoreRoute", reflect.TypeOf((*MockQuerier)(nil).ResetStoreRoute), ctx, arg)
+}
+
+// SetGroceryListStore mocks base method.
+func (m *MockQuerier) SetGroceryListStore(ctx context.Context, arg sqlc.SetGroceryListStoreParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetGroceryListStore", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetGroceryListStore indicates an expected call of SetGroceryListStore.
+func (mr *MockQuerierMockRecorder) SetGroceryListStore(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetGroceryListStore", reflect.TypeOf((*MockQuerier)(nil).SetGroceryListStore), ctx, arg)
 }
 
 // ToggleGroceryListItemChecked mocks base method.
@@ -262,6 +544,21 @@ func (mr *MockQuerierMockRecorder) TouchGroceryListGeneratedAt(ctx, arg any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TouchGroceryListGeneratedAt", reflect.TypeOf((*MockQuerier)(nil).TouchGroceryListGeneratedAt), ctx, arg)
 }
 
+// UnassignItem mocks base method.
+func (m *MockQuerier) UnassignItem(ctx context.Context, arg sqlc.UnassignItemParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnassignItem", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UnassignItem indicates an expected call of UnassignItem.
+func (mr *MockQuerierMockRecorder) UnassignItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnassignItem", reflect.TypeOf((*MockQuerier)(nil).UnassignItem), ctx, arg)
+}
+
 // UpdateGroceryListItem mocks base method.
 func (m *MockQuerier) UpdateGroceryListItem(ctx context.Context, arg sqlc.UpdateGroceryListItemParams) (int64, error) {
 	m.ctrl.T.Helper()
@@ -275,4 +572,91 @@ func (m *MockQuerier) UpdateGroceryListItem(ctx context.Context, arg sqlc.Update
 func (mr *MockQuerierMockRecorder) UpdateGroceryListItem(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGroceryListItem", reflect.TypeOf((*MockQuerier)(nil).UpdateGroceryListItem), ctx, arg)
+}
+
+// UpsertManualRankIngredient mocks base method.
+func (m *MockQuerier) UpsertManualRankIngredient(ctx context.Context, arg sqlc.UpsertManualRankIngredientParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertManualRankIngredient", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertManualRankIngredient indicates an expected call of UpsertManualRankIngredient.
+func (mr *MockQuerierMockRecorder) UpsertManualRankIngredient(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertManualRankIngredient", reflect.TypeOf((*MockQuerier)(nil).UpsertManualRankIngredient), ctx, arg)
+}
+
+// UpsertManualRankItem mocks base method.
+func (m *MockQuerier) UpsertManualRankItem(ctx context.Context, arg sqlc.UpsertManualRankItemParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertManualRankItem", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertManualRankItem indicates an expected call of UpsertManualRankItem.
+func (mr *MockQuerierMockRecorder) UpsertManualRankItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertManualRankItem", reflect.TypeOf((*MockQuerier)(nil).UpsertManualRankItem), ctx, arg)
+}
+
+// UpsertManualRankManual mocks base method.
+func (m *MockQuerier) UpsertManualRankManual(ctx context.Context, arg sqlc.UpsertManualRankManualParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertManualRankManual", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertManualRankManual indicates an expected call of UpsertManualRankManual.
+func (mr *MockQuerierMockRecorder) UpsertManualRankManual(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertManualRankManual", reflect.TypeOf((*MockQuerier)(nil).UpsertManualRankManual), ctx, arg)
+}
+
+// UpsertRouteObservationIngredient mocks base method.
+func (m *MockQuerier) UpsertRouteObservationIngredient(ctx context.Context, arg sqlc.UpsertRouteObservationIngredientParams) (sqlc.GroceryItemRoute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertRouteObservationIngredient", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryItemRoute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertRouteObservationIngredient indicates an expected call of UpsertRouteObservationIngredient.
+func (mr *MockQuerierMockRecorder) UpsertRouteObservationIngredient(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertRouteObservationIngredient", reflect.TypeOf((*MockQuerier)(nil).UpsertRouteObservationIngredient), ctx, arg)
+}
+
+// UpsertRouteObservationItem mocks base method.
+func (m *MockQuerier) UpsertRouteObservationItem(ctx context.Context, arg sqlc.UpsertRouteObservationItemParams) (sqlc.GroceryItemRoute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertRouteObservationItem", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryItemRoute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertRouteObservationItem indicates an expected call of UpsertRouteObservationItem.
+func (mr *MockQuerierMockRecorder) UpsertRouteObservationItem(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertRouteObservationItem", reflect.TypeOf((*MockQuerier)(nil).UpsertRouteObservationItem), ctx, arg)
+}
+
+// UpsertRouteObservationManual mocks base method.
+func (m *MockQuerier) UpsertRouteObservationManual(ctx context.Context, arg sqlc.UpsertRouteObservationManualParams) (sqlc.GroceryItemRoute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertRouteObservationManual", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryItemRoute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertRouteObservationManual indicates an expected call of UpsertRouteObservationManual.
+func (mr *MockQuerierMockRecorder) UpsertRouteObservationManual(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertRouteObservationManual", reflect.TypeOf((*MockQuerier)(nil).UpsertRouteObservationManual), ctx, arg)
 }

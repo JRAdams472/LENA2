@@ -182,7 +182,8 @@ func (s *Service) ReassignHousehold(ctx context.Context, fromHouseholdID, toHous
 
 // GroceryListItem is a single item on a shopping list. ItemID is the
 // branded catalog item; IngredientID optionally points at the
-// brand-agnostic ingredient abstraction.
+// brand-agnostic ingredient abstraction. CheckedSeq records the order it
+// was checked off in — the observation the store router learns from.
 type GroceryListItem struct {
 	GroceryListItemID int64
 	GroceryListID     int64
@@ -193,6 +194,8 @@ type GroceryListItem struct {
 	UnitID            *int64
 	Source            string
 	IsChecked         bool
+	CheckedAt         *time.Time
+	CheckedSeq        *int32
 }
 
 // AddGroceryListItem adds an item to a grocery list owned by the household;
@@ -412,6 +415,14 @@ func toGroceryListItem(row sqlc.GroceryGroceryListItem) (GroceryListItem, error)
 			return GroceryListItem{}, fmt.Errorf("grocery list item %d quantity: %w", row.GroceryListItemID, err)
 		}
 		gli.QuantityNeeded = f8.Float64
+	}
+	if row.CheckedAt.Valid {
+		t := row.CheckedAt.Time
+		gli.CheckedAt = &t
+	}
+	if row.CheckedSeq.Valid {
+		v := row.CheckedSeq.Int32
+		gli.CheckedSeq = &v
 	}
 	return gli, nil
 }
