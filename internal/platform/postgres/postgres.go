@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/exaring/otelpgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgxvector "github.com/pgvector/pgvector-go/pgx"
 )
 
 // NewPool opens and verifies a pgx connection pool. Every query is
@@ -23,6 +25,11 @@ func NewPool(ctx context.Context, databaseURL string, statementTimeout time.Dura
 		return nil, fmt.Errorf("invalid database url: %w", err)
 	}
 	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
+	// pgvector codec registration so `vector` columns (recipe embeddings)
+	// decode into pgvector.Vector on every pooled connection.
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		return pgxvector.RegisterTypes(ctx, conn)
+	}
 	if statementTimeout > 0 {
 		cfg.ConnConfig.RuntimeParams["statement_timeout"] = strconv.FormatInt(statementTimeout.Milliseconds(), 10)
 	}

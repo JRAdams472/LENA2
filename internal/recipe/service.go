@@ -911,6 +911,28 @@ func (s *Service) SearchRecipes(ctx context.Context, arg RecipeSearch) ([]Recipe
 	return out, nil
 }
 
+// SetRecipeEmbedding stores a recipe's embedding (as a pgvector text
+// literal) and records which model produced it.
+func (s *Service) SetRecipeEmbedding(ctx context.Context, recipeID int64, embedding, model string) error {
+	return s.q.SetRecipeEmbedding(ctx, sqlc.SetRecipeEmbeddingParams{
+		Embedding:      embedding,
+		EmbeddingModel: textOrNull(model),
+		RecipeID:       recipeID,
+	})
+}
+
+// ClearRecipeEmbedding drops a recipe's embedding. The next backfill sweep
+// sees the NULL and re-embeds.
+func (s *Service) ClearRecipeEmbedding(ctx context.Context, recipeID int64) error {
+	return s.q.ClearRecipeEmbedding(ctx, recipeID)
+}
+
+// ListEmbeddingCandidates returns active recipe IDs whose embedding is
+// missing or was produced by a different model — the backfill work set.
+func (s *Service) ListEmbeddingCandidates(ctx context.Context, model string, limit int32) ([]int64, error) {
+	return s.q.ListEmbeddingCandidates(ctx, sqlc.ListEmbeddingCandidatesParams{Model: model, Limit: limit})
+}
+
 // CountSearchRecipes returns the un-paged match count for the same filters.
 func (s *Service) CountSearchRecipes(ctx context.Context, arg RecipeSearch) (int64, error) {
 	n, err := s.q.CountSearchRecipes(ctx, sqlc.CountSearchRecipesParams{

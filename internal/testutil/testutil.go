@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgxvector "github.com/pgvector/pgvector-go/pgx"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -38,7 +39,7 @@ func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error)
 	// postgres logs "ready to accept connections" twice: once during initdb
 	// bootstrap and once after the real startup. Wait for the second
 	// occurrence plus the port, otherwise the first connection hits EOF.
-	container, err := postgres.Run(ctx, "postgres:18-alpine",
+	container, err := postgres.Run(ctx, "pgvector/pgvector:pg18",
 		postgres.WithDatabase("lena"),
 		postgres.WithUsername("lena"),
 		postgres.WithPassword("change-me"),
@@ -65,22 +66,39 @@ func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error)
 		return nil, nil, fmt.Errorf("get container connection string: %w", err)
 	}
 
-	pool, err := pgxpool.New(ctx, connStr)
+	// Bootstrap pool without the pgvector codec: the extension is created by
+	// the migrations this pool is about to run, so registration would fail
+	// (production pools register fine — compose runs db-migrate before api).
+	migPool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("open pgx pool: %w", err)
+		return nil, nil, fmt.Errorf("open migration pool: %w", err)
 	}
-
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	if err := migPool.Ping(ctx); err != nil {
+		migPool.Close()
 		cleanup()
 		return nil, nil, fmt.Errorf("ping database: %w", err)
 	}
-
-	if err := RunMigrations(ctx, pool); err != nil {
-		pool.Close()
+	if err := RunMigrations(ctx, migPool); err != nil {
+		migPool.Close()
 		cleanup()
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
+	}
+	migPool.Close()
+
+	poolCfg, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("parse pgx pool config: %w", err)
+	}
+	// pgvector codec for recipe embedding columns.
+	poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		return pgxvector.RegisterTypes(ctx, conn)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
+	if err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("open pgx pool: %w", err)
 	}
 
 	return pool, func() {

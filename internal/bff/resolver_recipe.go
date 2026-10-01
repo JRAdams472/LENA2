@@ -295,6 +295,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 		EntityID:   rec.RecipeID,
 	})
 	r.computeOverlapAsync(rec.RecipeID)
+	r.refreshEmbeddingAsync(rec.RecipeID)
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
 }
 
@@ -344,6 +345,7 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	r.refreshEmbeddingAsync(id)
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: updated}, nil
 }
 

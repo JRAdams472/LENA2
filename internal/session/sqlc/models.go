@@ -7,6 +7,7 @@ package sqlc
 import (
 	"time"
 
+	"github.com/JRAdams472/LENA2/internal/platform/vector"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -483,6 +484,9 @@ type RecipeRecipe struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedBy       pgtype.Text        `json:"updated_by"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	Embedding       vector.Vector      `json:"embedding"`
+	EmbeddingModel  pgtype.Text        `json:"embedding_model"`
+	EmbeddingAt     pgtype.Timestamptz `json:"embedding_at"`
 }
 
 type RecipeRecipeCategory struct {

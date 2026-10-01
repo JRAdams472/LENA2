@@ -16,6 +16,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/inventory/queries.sql"
@@ -32,6 +36,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/wine/queries.sql"
@@ -48,6 +56,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/recipe/queries.sql"
@@ -64,6 +76,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/userprefs/queries.sql"
@@ -80,6 +96,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/mealplan/queries.sql"
@@ -96,6 +116,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/grocery/queries.sql"
@@ -112,6 +136,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/household/queries.sql"
@@ -128,6 +156,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/event/queries.sql"
@@ -144,6 +176,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/analytics/queries.sql"
@@ -160,6 +196,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
   - engine: "postgresql"
     schema: "migrations/"
     queries: "internal/app/recipeimport/queries.sql"
@@ -176,6 +216,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
           - db_type: "jsonb"
             go_type:
               type: "[]byte"
@@ -195,6 +239,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
           - db_type: "jsonb"
             go_type:
               type: "[]byte"
@@ -214,6 +262,10 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"
           - db_type: "jsonb"
             go_type:
               type: "[]byte"
@@ -233,3 +285,7 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+          - column: "recipe.recipe.embedding"
+            go_type:
+              import: "github.com/JRAdams472/LENA2/internal/platform/vector"
+              type: "Vector"

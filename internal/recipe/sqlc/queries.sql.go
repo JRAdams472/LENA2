@@ -122,6 +122,21 @@ func (q *Queries) ClearRecipeCategories(ctx context.Context, recipeID int64) err
 	return err
 }
 
+const clearRecipeEmbedding = `-- name: ClearRecipeEmbedding :exec
+UPDATE recipe.recipe
+SET embedding = NULL,
+    embedding_model = NULL,
+    embedding_at = NULL
+WHERE recipe_id = $1
+`
+
+// Drops a recipe's embedding (stale-failure bookkeeping; the sweep will
+// retry on its next pass since embedding becomes NULL).
+func (q *Queries) ClearRecipeEmbedding(ctx context.Context, recipeID int64) error {
+	_, err := q.db.Exec(ctx, clearRecipeEmbedding, recipeID)
+	return err
+}
+
 const countCategoriesInGroup = `-- name: CountCategoriesInGroup :one
 SELECT COUNT(*)
 FROM recipe.category
@@ -265,7 +280,7 @@ func (q *Queries) CreateCategoryGroup(ctx context.Context, arg CreateCategoryGro
 const createRecipe = `-- name: CreateRecipe :one
 INSERT INTO recipe.recipe (name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
+RETURNING recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at, embedding, embedding_model, embedding_at
 `
 
 type CreateRecipeParams struct {
@@ -303,6 +318,9 @@ func (q *Queries) CreateRecipe(ctx context.Context, arg CreateRecipeParams) (Rec
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.Embedding,
+		&i.EmbeddingModel,
+		&i.EmbeddingAt,
 	)
 	return i, err
 }
@@ -411,7 +429,7 @@ func (q *Queries) GetCategoryGroupByID(ctx context.Context, categoryGroupID int6
 }
 
 const getRecipeByID = `-- name: GetRecipeByID :one
-SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
+SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at, embedding, embedding_model, embedding_at
 FROM recipe.recipe
 WHERE recipe_id = $1
 `
@@ -431,6 +449,9 @@ func (q *Queries) GetRecipeByID(ctx context.Context, recipeID int64) (RecipeReci
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.Embedding,
+		&i.EmbeddingModel,
+		&i.EmbeddingAt,
 	)
 	return i, err
 }
@@ -462,7 +483,7 @@ func (q *Queries) GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams
 }
 
 const getRecipesByIDs = `-- name: GetRecipesByIDs :many
-SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
+SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at, embedding, embedding_model, embedding_at
 FROM recipe.recipe
 WHERE recipe_id = ANY($1::bigint[])
 `
@@ -488,6 +509,9 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.Embedding,
+			&i.EmbeddingModel,
+			&i.EmbeddingAt,
 		); err != nil {
 			return nil, err
 		}
@@ -665,6 +689,42 @@ func (q *Queries) ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEmbeddingCandidates = `-- name: ListEmbeddingCandidates :many
+SELECT recipe_id
+FROM recipe.recipe
+WHERE is_active
+  AND (embedding IS NULL OR embedding_model <> $1::text)
+ORDER BY recipe_id
+LIMIT $2::int
+`
+
+type ListEmbeddingCandidatesParams struct {
+	Model string `json:"model"`
+	Limit int32  `json:"limit"`
+}
+
+// Active recipes whose embedding is missing or was built by another model —
+// the backfill sweep's work set.
+func (q *Queries) ListEmbeddingCandidates(ctx context.Context, arg ListEmbeddingCandidatesParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listEmbeddingCandidates, arg.Model, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var recipe_id int64
+		if err := rows.Scan(&recipe_id); err != nil {
+			return nil, err
+		}
+		items = append(items, recipe_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -943,7 +1003,7 @@ func (q *Queries) ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int6
 }
 
 const listRecipes = `-- name: ListRecipes :many
-SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at
+SELECT recipe_id, name, description, servings, prep_time_minutes, cook_time_minutes, is_active, created_by, created_at, updated_by, updated_at, embedding, embedding_model, embedding_at
 FROM recipe.recipe
 WHERE is_active = $1
 ORDER BY name
@@ -977,6 +1037,9 @@ func (q *Queries) ListRecipes(ctx context.Context, arg ListRecipesParams) ([]Rec
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.Embedding,
+			&i.EmbeddingModel,
+			&i.EmbeddingAt,
 		); err != nil {
 			return nil, err
 		}
@@ -999,7 +1062,7 @@ func (q *Queries) RemoveRecipeItem(ctx context.Context, recipeItemID int64) erro
 }
 
 const searchRecipes = `-- name: SearchRecipes :many
-SELECT r.recipe_id, r.name, r.description, r.servings, r.prep_time_minutes, r.cook_time_minutes, r.is_active, r.created_by, r.created_at, r.updated_by, r.updated_at
+SELECT r.recipe_id, r.name, r.description, r.servings, r.prep_time_minutes, r.cook_time_minutes, r.is_active, r.created_by, r.created_at, r.updated_by, r.updated_at, r.embedding, r.embedding_model, r.embedding_at
 FROM recipe.recipe r
 WHERE r.is_active = $1
   AND ($2::text IS NULL OR lower(r.name) LIKE '%' || lower($2) || '%')
@@ -1098,6 +1161,9 @@ func (q *Queries) SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.Embedding,
+			&i.EmbeddingModel,
+			&i.EmbeddingAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1107,6 +1173,27 @@ func (q *Queries) SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const setRecipeEmbedding = `-- name: SetRecipeEmbedding :exec
+UPDATE recipe.recipe
+SET embedding = $1::text::vector,
+    embedding_model = $2,
+    embedding_at = now()
+WHERE recipe_id = $3
+`
+
+type SetRecipeEmbeddingParams struct {
+	Embedding      string      `json:"embedding"`
+	EmbeddingModel pgtype.Text `json:"embedding_model"`
+	RecipeID       int64       `json:"recipe_id"`
+}
+
+// Stores an embedding for semantic search. The vector arrives as a text
+// literal and is cast server-side so generated code stays dependency-free.
+func (q *Queries) SetRecipeEmbedding(ctx context.Context, arg SetRecipeEmbeddingParams) error {
+	_, err := q.db.Exec(ctx, setRecipeEmbedding, arg.Embedding, arg.EmbeddingModel, arg.RecipeID)
+	return err
 }
 
 const updateCategory = `-- name: UpdateCategory :one

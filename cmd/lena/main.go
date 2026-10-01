@@ -28,6 +28,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/ai/tools"
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/app/recipeembed"
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/event"
@@ -259,6 +260,26 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		MaxToolRounds: cfg.AIMaxToolRounds,
 	})
 
+	// Semantic recipe search: an Ollama URL alone enables embeddings — the
+	// index builds even when the chat assistant is off. The mock pair keeps
+	// e2e deterministic.
+	var embedSvc *recipeembed.Service
+	if cfg.AIProvider == "mock" {
+		embedSvc = recipeembed.NewService(llm.NewMockEmbedder(), cfg.AIEmbedModel, recipeSvc, inventorySvc, recipeembed.WithLogger(log))
+	} else if cfg.OllamaURL != "" {
+		embedSvc = recipeembed.NewService(
+			llm.NewOllamaEmbedder(cfg.OllamaURL, cfg.AIEmbedModel, cfg.AIEmbedTimeout, "", ""),
+			cfg.AIEmbedModel, recipeSvc, inventorySvc, recipeembed.WithLogger(log))
+	}
+	// RecipeEmbedder is an interface: assign only when configured so a nil
+	// *Service never slips through as a non-nil interface.
+	var recipeEmbedder bff.RecipeEmbedder
+	if embedSvc != nil {
+		recipeEmbedder = embedSvc
+		recipeImportSvc.SetEmbedder(embedSvc)
+		embedSvc.Start()
+	}
+
 	// Refresh-token sessions: an empty secret leaves the service disabled
 	// (Enabled() == false), preserving OIDC-only auth.
 	sessionSvc := session.NewService(pool, session.Config{
@@ -372,21 +393,22 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 
 	resolver := bff.NewResolver(pool,
 		bff.Services{
-			Analytics:    analyticsSvc,
-			Grocery:      grocerySvc,
-			Inventory:    inventorySvc,
-			MealPlan:     mealPlanSvc,
-			Event:        eventSvc,
-			Recipe:       recipeSvc,
-			UserPrefs:    userPrefsSvc,
-			Wine:         wineSvc,
-			Identity:     identitySvc,
-			RecipeImport: recipeImportSvc,
-			Household:    householdSvc,
-			Notifier:     notifierSvc,
-			Auth:         authenticator,
-			AI:           aiSvc,
-			OCR:          ocrClient,
+			Analytics:      analyticsSvc,
+			Grocery:        grocerySvc,
+			Inventory:      inventorySvc,
+			MealPlan:       mealPlanSvc,
+			Event:          eventSvc,
+			Recipe:         recipeSvc,
+			UserPrefs:      userPrefsSvc,
+			Wine:           wineSvc,
+			Identity:       identitySvc,
+			RecipeImport:   recipeImportSvc,
+			Household:      householdSvc,
+			Notifier:       notifierSvc,
+			Auth:           authenticator,
+			AI:             aiSvc,
+			OCR:            ocrClient,
+			RecipeEmbedder: recipeEmbedder,
 		},
 		bff.Options{
 			NutritionPhotoMaxBytes: cfg.NutritionPhotoMaxBytes,

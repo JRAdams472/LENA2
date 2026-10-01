@@ -82,6 +82,13 @@ type GroceryService interface {
 
 var _ GroceryService = (*grocery.Service)(nil)
 
+// RecipeEmbedder refreshes a recipe's semantic-search embedding after
+// recipe writes. Refresh runs on the resolver's bounded background worker
+// so embed latency never blocks a save.
+type RecipeEmbedder interface {
+	Refresh(ctx context.Context, recipeID int64) error
+}
+
 // ItemReader is the read-only catalog surface used by nested item,
 // ingredient, and unit resolvers as well as the batch preload helpers.
 type ItemReader interface {

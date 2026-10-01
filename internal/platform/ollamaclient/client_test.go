@@ -52,3 +52,36 @@ func TestChatError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "404")
 }
+
+func TestEmbed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/embed", r.URL.Path)
+
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		var req EmbedRequest
+		require.NoError(t, json.Unmarshal(body, &req))
+		assert.Equal(t, "nomic-embed-text", req.Model)
+		assert.Equal(t, []string{"one", "two"}, req.Input)
+
+		resp := EmbedResponse{Model: req.Model, Embeddings: [][]float64{{0.1, 0.2}, {0.3, 0.4}}}
+		require.NoError(t, json.NewEncoder(w).Encode(resp))
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "irrelevant-chat-model", 0, 0)
+	embs, err := client.Embed(context.Background(), "nomic-embed-text", []string{"one", "two"})
+	require.NoError(t, err)
+	assert.Equal(t, [][]float64{{0.1, 0.2}, {0.3, 0.4}}, embs)
+}
+
+func TestEmbedCountMismatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(EmbedResponse{Embeddings: [][]float64{{0.1}}})
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "m", 0, 0)
+	_, err := client.Embed(context.Background(), "m", []string{"a", "b"})
+	assert.ErrorContains(t, err, "1 embeddings for 2 inputs")
+}

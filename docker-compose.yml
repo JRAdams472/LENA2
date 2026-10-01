@@ -8,8 +8,11 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
+  # pgvector image = postgres:18 + the vector extension (recipe embeddings).
+  # Same PGDATA layout as the postgres:18 image, so existing volumes migrate
+  # in place; the migration creates the extension itself.
   db:
-    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: pgvector/pgvector:0.8.6-pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lena}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -43,7 +46,7 @@ services:
   # Applies the lena_app role password after migrations create the role.
   # One-shot and instant; the API waits on this, not on the seed.
   db-grant:
-    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: pgvector/pgvector:0.8.6-pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     environment:
       PGUSER: ${POSTGRES_USER:-lena}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -64,7 +67,7 @@ services:
   # is a no-op and the API never waits on it.
   #   docker compose --profile seed up db-seed
   db-seed:
-    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: pgvector/pgvector:0.8.6-pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     profiles: ["seed"]
     environment:
       PGUSER: ${POSTGRES_USER:-lena}
@@ -127,6 +130,13 @@ services:
       LENA_FACEBOOK_REDIRECT_URI: ${LENA_FACEBOOK_REDIRECT_URI:-http://localhost/auth/facebook/callback}
       # Writable import inbox (named volume so the container's chown applies).
       LENA_IMPORT_INBOX: ${LENA_IMPORT_INBOX:-/data/import/inbox}
+      # AI assistant + semantic recipe search (optional). OLLAMA_URL alone
+      # enables recipe embeddings; AI_PROVIDER also gates the chat assistant.
+      LENA_OLLAMA_URL: ${LENA_OLLAMA_URL:-}
+      LENA_OLLAMA_MODEL: ${LENA_OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      LENA_AI_PROVIDER: ${LENA_AI_PROVIDER:-}
+      LENA_AI_MODEL: ${LENA_AI_MODEL:-}
+      LENA_AI_EMBED_MODEL: ${LENA_AI_EMBED_MODEL:-nomic-embed-text}
     volumes:
       - import_data:/data/import
     depends_on:

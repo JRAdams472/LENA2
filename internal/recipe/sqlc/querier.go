@@ -13,6 +13,9 @@ type Querier interface {
 	AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) error
 	AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (RecipeRecipeStep, error)
 	ClearRecipeCategories(ctx context.Context, recipeID int64) error
+	// Drops a recipe's embedding (stale-failure bookkeeping; the sweep will
+	// retry on its next pass since embedding becomes NULL).
+	ClearRecipeEmbedding(ctx context.Context, recipeID int64) error
 	CountCategoriesInGroup(ctx context.Context, categoryGroupID int64) (int64, error)
 	CountRecipes(ctx context.Context, isActive bool) (int64, error)
 	CountSearchRecipes(ctx context.Context, arg CountSearchRecipesParams) (int64, error)
@@ -39,6 +42,9 @@ type Querier interface {
 	// metadata so resolvers never query per-row.
 	ListCategoriesForRecipes(ctx context.Context, recipeIds []int64) ([]ListCategoriesForRecipesRow, error)
 	ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup, error)
+	// Active recipes whose embedding is missing or was built by another model —
+	// the backfill sweep's work set.
+	ListEmbeddingCandidates(ctx context.Context, arg ListEmbeddingCandidatesParams) ([]int64, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
 	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
 	ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error)
@@ -58,6 +64,9 @@ type Querier interface {
 	// The used/viewed arrays arrive pre-sorted by signal strength so
 	// array_position doubles as the in-tier tiebreaker.
 	SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([]RecipeRecipe, error)
+	// Stores an embedding for semantic search. The vector arrives as a text
+	// literal and is cast server-side so generated code stays dependency-free.
+	SetRecipeEmbedding(ctx context.Context, arg SetRecipeEmbeddingParams) error
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (RecipeCategory, error)
 	UpdateCategoryGroup(ctx context.Context, arg UpdateCategoryGroupParams) (RecipeCategoryGroup, error)
 	UpdateRecipe(ctx context.Context, arg UpdateRecipeParams) (int64, error)

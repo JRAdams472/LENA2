@@ -59,6 +59,7 @@ type Resolver struct {
 	AuthInvalidator        AuthInvalidator
 	AIService              AIService
 	OCRClient              OCRClient
+	RecipeEmbedder         RecipeEmbedder
 	IdemStore              IdempotencyStore
 	NutritionPhotoMaxBytes int
 	RecipeScanMaxBytes     int
@@ -88,21 +89,22 @@ const maxUserOCRJobs = 1
 // Field types are role interfaces so consumers state the minimum surface
 // they need; the concrete domain services satisfy them all.
 type Services struct {
-	Analytics    AnalyticsService
-	Grocery      GroceryService
-	Inventory    InventoryService
-	MealPlan     MealPlanService
-	Event        EventService
-	Recipe       RecipeService
-	UserPrefs    UserPrefsService
-	Wine         WineService
-	Identity     IdentityService
-	RecipeImport RecipeImportService
-	Household    HouseholdService
-	Notifier     NotifierService
-	Auth         AuthInvalidator
-	AI           AIService
-	OCR          OCRClient
+	Analytics      AnalyticsService
+	Grocery        GroceryService
+	Inventory      InventoryService
+	MealPlan       MealPlanService
+	Event          EventService
+	Recipe         RecipeService
+	UserPrefs      UserPrefsService
+	Wine           WineService
+	Identity       IdentityService
+	RecipeImport   RecipeImportService
+	Household      HouseholdService
+	Notifier       NotifierService
+	Auth           AuthInvalidator
+	AI             AIService
+	OCR            OCRClient
+	RecipeEmbedder RecipeEmbedder
 }
 
 // Options carries resolver limits and tunables out of the constructor so
@@ -140,6 +142,7 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		AuthInvalidator:        svc.Auth,
 		AIService:              svc.AI,
 		OCRClient:              svc.OCR,
+		RecipeEmbedder:         svc.RecipeEmbedder,
 		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
 		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
 		IdemStore:              opts.Idempotency,
@@ -225,6 +228,9 @@ func (r *Resolver) Shutdown(ctx context.Context) error {
 		if err == nil && r.RecipeImportService != nil {
 			err = r.RecipeImportService.Shutdown(ctx)
 		}
+		if s, ok := r.RecipeEmbedder.(interface{ Stop() }); ok {
+			s.Stop()
+		}
 		if err != nil {
 			slog.Default().Error("background shutdown incomplete", "error", err)
 		}
@@ -304,6 +310,19 @@ func (r *Resolver) computeOverlapAsync(newRecipeID int64) {
 	r.runAsync("compute ingredient overlap suggestions", 30*time.Second, func(ctx context.Context) error {
 		_, err := r.AnalyticsService.ComputeIngredientOverlapSuggestions(ctx, newRecipeID)
 		return err
+	})
+}
+
+// refreshEmbeddingAsync re-embeds a recipe after a save on the bounded
+// background worker: a slow or down embedding backend never blocks or
+// breaks the write. Failures leave embedding NULL and the backfill sweep
+// retries on its next pass.
+func (r *Resolver) refreshEmbeddingAsync(recipeID int64) {
+	if r.RecipeEmbedder == nil {
+		return
+	}
+	r.runAsync("refresh recipe embedding", 45*time.Second, func(ctx context.Context) error {
+		return r.RecipeEmbedder.Refresh(ctx, recipeID)
 	})
 }
 
