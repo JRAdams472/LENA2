@@ -36,6 +36,15 @@ CREATE TABLE identity.users (
     display_name        VARCHAR(200),
     is_active           BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at       TIMESTAMPTZ,
+    role                TEXT NOT NULL DEFAULT 'member',
+    first_name          VARCHAR(100),
+    last_name           VARCHAR(100),
+    backup_email        VARCHAR(320),
+    household_id        BIGINT REFERENCES household.households(household_id),
+    is_searchable       BOOLEAN NOT NULL DEFAULT TRUE,
+    household_role      VARCHAR(20) NOT NULL DEFAULT 'member'
+        CHECK (household_role IN ('owner','admin','member')),
+    birthdate           DATE,
     created_by          VARCHAR(100) NOT NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by          VARCHAR(100),
@@ -43,7 +52,45 @@ CREATE TABLE identity.users (
     UNIQUE (provider, external_subject)
 );
 CREATE INDEX idx_users_email ON identity.users (email);
+CREATE INDEX idx_users_household ON identity.users (household_id);
 ```
+
+`users.provider`/`external_subject` hold the *primary* login (the first
+sign-in that created the account). Additional provider logins live in
+`identity.user_login`, and refresh-token sessions in `identity.session`:
+
+```sql
+CREATE TABLE identity.user_login (
+    user_login_id    BIGSERIAL PRIMARY KEY,
+    user_id          BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    provider         VARCHAR(50)  NOT NULL,
+    external_subject VARCHAR(255) NOT NULL,
+    email            VARCHAR(320) NOT NULL DEFAULT '',
+    display_name     VARCHAR(200),
+    last_login_at    TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (provider, external_subject)
+);
+CREATE INDEX idx_user_login_user ON identity.user_login (user_id);
+
+CREATE TABLE identity.session (
+    session_id    BIGSERIAL PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    family_id     BIGINT NOT NULL,
+    refresh_hash  BYTEA NOT NULL,           -- SHA-256; raw tokens never stored
+    device        VARCHAR(200),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at    TIMESTAMPTZ NOT NULL,
+    revoked_at    TIMESTAMPTZ,
+    replaced_by   BIGINT,
+    UNIQUE (refresh_hash)
+);
+CREATE INDEX idx_session_user ON identity.session (user_id);
+CREATE INDEX idx_session_family ON identity.session (family_id);
+```
+
+`provider` is the OIDC issuer URL for OIDC logins (Google, Microsoft,
+Facebook) or a short key like `discord` for pure-OAuth2 providers.
 
 ## 4. Inventory (catalog + per-user)
 

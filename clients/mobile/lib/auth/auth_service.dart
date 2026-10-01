@@ -6,6 +6,10 @@ import 'package:http/http.dart' as http;
 
 const _tokenKey = 'id_token';
 const _refreshKey = 'refresh_token';
+// Debug builds only: seeds the bearer directly so emulators can reach
+// the app for screenshots/e2e without Play Services Google sign-in.
+// kDebugMode makes the read dead code in release builds.
+const _debugIdToken = String.fromEnvironment('LENA_DEBUG_ID_TOKEN');
 const _serverClientId = String.fromEnvironment('LENA_GOOGLE_SERVER_CLIENT_ID');
 const _iosClientId = String.fromEnvironment('LENA_GOOGLE_IOS_CLIENT_ID');
 
@@ -122,6 +126,10 @@ class AuthService extends ChangeNotifier {
     try {
       _idToken = await _storage.read(_tokenKey);
       _refreshToken = await _storage.read(_refreshKey);
+      if (kDebugMode && _debugIdToken.isNotEmpty) {
+        _idToken = _debugIdToken;
+        await _storage.write(_tokenKey, _debugIdToken);
+      }
       // Expired or missing bearer with a stored refresh token: rotate now
       // so startup doesn't hit a 401.
       if (_refreshToken != null && (_idToken == null || _isExpired)) {

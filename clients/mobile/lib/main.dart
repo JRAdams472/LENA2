@@ -19,6 +19,7 @@ class LenaApp extends StatelessWidget {
       child: ChangeNotifierProvider.value(
         value: authService,
         child: MaterialApp(
+          debugShowCheckedModeBanner: false,
           title: 'LENA',
           theme: ThemeData(primarySwatch: Colors.teal),
           home: const AuthGate(),
