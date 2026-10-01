@@ -22,14 +22,16 @@ type OllamaEmbedder struct {
 // embedding model. docPrefix/queryPrefix default to the nomic convention
 // when empty; pass "-" for a bare model with no prefix.
 func NewOllamaEmbedder(baseURL, model string, timeout time.Duration, docPrefix, queryPrefix string) *OllamaEmbedder {
-	if docPrefix == "" {
+	switch docPrefix {
+	case "":
 		docPrefix = "search_document: "
-	} else if docPrefix == "-" {
+	case "-":
 		docPrefix = ""
 	}
-	if queryPrefix == "" {
+	switch queryPrefix {
+	case "":
 		queryPrefix = "search_query: "
-	} else if queryPrefix == "-" {
+	case "-":
 		queryPrefix = ""
 	}
 	c := ollamaclient.NewWithTimeout(baseURL, model, 0, 0, timeout)

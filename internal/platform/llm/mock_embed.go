@@ -47,7 +47,7 @@ func mockVector(text string) []float32 {
 		}
 		h := fnv.New32a()
 		_, _ = h.Write([]byte(w))
-		v[h.Sum32()%EmbedDims] += 1
+		v[h.Sum32()%EmbedDims]++
 	}
 	var norm float64
 	for _, x := range v {

@@ -92,9 +92,7 @@ func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error)
 		return nil, nil, fmt.Errorf("parse pgx pool config: %w", err)
 	}
 	// pgvector codec for recipe embedding columns.
-	poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		return pgxvector.RegisterTypes(ctx, conn)
-	}
+	poolCfg.AfterConnect = pgxvector.RegisterTypes
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		cleanup()

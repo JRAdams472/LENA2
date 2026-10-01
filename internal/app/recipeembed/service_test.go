@@ -117,7 +117,7 @@ func (f *fakeStore) ListEmbeddingCandidates(_ context.Context, model string, lim
 			continue
 		}
 		out = append(out, id)
-		if int32(len(out)) >= limit {
+		if len(out) >= int(limit) {
 			break
 		}
 	}
@@ -205,7 +205,7 @@ func TestSweepStopsWhenNoProgress(t *testing.T) {
 	assert.LessOrEqual(t, store.listCalls, 2)
 }
 
-func TestRunStopsOnCancel(t *testing.T) {
+func TestRunStopsOnCancel(_ *testing.T) {
 	store := newFakeStore()
 	store.recipes[1] = recipe.Recipe{RecipeID: 1, Name: "R"}
 	s := NewService(llm.NewMockEmbedder(), "m", store, &fakeNamer{},
