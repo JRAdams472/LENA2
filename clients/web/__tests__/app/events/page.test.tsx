@@ -132,7 +132,7 @@ describe("EventsPage", () => {
     );
 
     renderPage(<EventsPage />);
-    await waitFor(() => screen.getByText("No data"));
+    await waitFor(() => screen.getByText("Nothing here yet"));
 
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();

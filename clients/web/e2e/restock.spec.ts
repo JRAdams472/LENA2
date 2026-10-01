@@ -119,7 +119,7 @@ test.describe("restock suggestions", () => {
 
       // The list page renders the suggestion and can add it in one click.
       await page.goto(`/grocery-lists/${list.generateGroceryList.id}`);
-      await expect(page.getByText("Suggested Restock")).toBeVisible();
+      await expect(page.getByText("Time to restock")).toBeVisible();
       const row = page
         .locator("div")
         .filter({ hasText: new RegExp(`^${suggestedName}`) })

@@ -159,6 +159,11 @@ export default function PendingItemsPage() {
           </TableBody>
         </Table>
       </TableContainer>
+      {!isLoading && (data?.items ?? []).length === 0 && (
+        <Typography color="text.secondary" sx={{ mt: 2 }}>
+          Nothing pending right now.
+        </Typography>
+      )}
       <TablePagination
         component="div"
         count={data?.totalCount ?? 0}

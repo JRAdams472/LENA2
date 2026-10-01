@@ -125,7 +125,7 @@ for (const kw of ["milk", "flour", "butter"]) {
   );
 }
 
-await shot("dashboard", "/", "Running low");
+await shot("dashboard", "/", "Time to restock");
 await shot("recipes", "/recipes", "Herb Roast Chicken");
 await shot("recipe-detail", `/recipes/${roastId}`, "Herb Roast Chicken");
 await shot("recipe-categories-admin", "/recipes/categories", "Cuisine");
@@ -165,7 +165,7 @@ const listId = await gql(
     (d.groceryLists.items.find((l) => l.store != null) ??
       d.groceryLists.items[0]).id
 );
-await shot("grocery-list", `/grocery-lists/${listId}`, "Suggested Restock");
+await shot("grocery-list", `/grocery-lists/${listId}`, "Time to restock");
 await shot("events", "/events", "Autumn Dinner Party");
 await shot("event-detail", "/events/1", "Autumn Dinner Party");
 await shot("wine-bottles", "/wine/bottles", "Silver Oak");

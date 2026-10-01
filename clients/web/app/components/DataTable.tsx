@@ -140,7 +140,7 @@ export default function DataTable<T extends object>({
       {isLoading && <CircularProgress />}
       {error && <Alert severity="error">{error.message}</Alert>}
       {!isLoading && !error && rows.length === 0 && (
-        <Typography color="text.secondary">No data</Typography>
+        <Typography color="text.secondary">Nothing here yet</Typography>
       )}
       {!isLoading && !error && rows.length > 0 && (
         <TableContainer component={Paper}>

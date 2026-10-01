@@ -46,7 +46,7 @@ describe("DataTable", () => {
       />
     );
 
-    expect(screen.getByText("No data")).toBeInTheDocument();
+    expect(screen.getByText("Nothing here yet")).toBeInTheDocument();
   });
 
   it("renders an error alert", () => {
@@ -309,6 +309,6 @@ describe("DataTable", () => {
     );
 
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
-    expect(screen.queryByText("No data")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing here yet")).not.toBeInTheDocument();
   });
 });
