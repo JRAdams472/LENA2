@@ -118,6 +118,19 @@ type EventFoodEvent struct {
 	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
 }
 
+type GroceryAisleAssignment struct {
+	AisleAssignmentID int64              `json:"aisle_assignment_id"`
+	StoreID           int64              `json:"store_id"`
+	AisleID           int64              `json:"aisle_id"`
+	ItemID            pgtype.Int8        `json:"item_id"`
+	IngredientID      pgtype.Int8        `json:"ingredient_id"`
+	ManualName        pgtype.Text        `json:"manual_name"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
 type GroceryGroceryList struct {
 	GroceryListID int64              `json:"grocery_list_id"`
 	MealPlanID    pgtype.Int8        `json:"meal_plan_id"`
@@ -127,6 +140,7 @@ type GroceryGroceryList struct {
 	UpdatedBy     pgtype.Text        `json:"updated_by"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 	HouseholdID   int64              `json:"household_id"`
+	StoreID       pgtype.Int8        `json:"store_id"`
 }
 
 type GroceryGroceryListItem struct {
@@ -145,6 +159,45 @@ type GroceryGroceryListItem struct {
 	UnitID            pgtype.Int8        `json:"unit_id"`
 	CheckedAt         pgtype.Timestamptz `json:"checked_at"`
 	CheckedSeq        pgtype.Int4        `json:"checked_seq"`
+}
+
+type GroceryItemRoute struct {
+	ItemRouteID  int64              `json:"item_route_id"`
+	HouseholdID  int64              `json:"household_id"`
+	StoreID      int64              `json:"store_id"`
+	ItemID       pgtype.Int8        `json:"item_id"`
+	IngredientID pgtype.Int8        `json:"ingredient_id"`
+	ManualName   pgtype.Text        `json:"manual_name"`
+	LearnedSum   float64            `json:"learned_sum"`
+	LearnedCount int32              `json:"learned_count"`
+	ManualRank   pgtype.Float8      `json:"manual_rank"`
+	ManualAt     pgtype.Timestamptz `json:"manual_at"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type GroceryStore struct {
+	StoreID     int64              `json:"store_id"`
+	HouseholdID int64              `json:"household_id"`
+	Name        string             `json:"name"`
+	ExternalRef pgtype.Text        `json:"external_ref"`
+	CreatedBy   string             `json:"created_by"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type GroceryStoreAisle struct {
+	AisleID   int64              `json:"aisle_id"`
+	StoreID   int64              `json:"store_id"`
+	Name      string             `json:"name"`
+	Position  int32              `json:"position"`
+	CreatedBy string             `json:"created_by"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedBy pgtype.Text        `json:"updated_by"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type HouseholdHousehold struct {
