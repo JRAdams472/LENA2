@@ -140,3 +140,10 @@ Recommended integrations:
 - Web, option B — Chrome's built-in Gemini Nano via `window.ai`: no download at all, but Chrome-only; good as the first step in the capability check.
 - Mobile — MediaPipe LLM Inference API Flutter plugin: Dart wrapper targeting CoreML on iOS and AICore/NPU on Android; compact models like Gemma 2B or Llama 3.2 1B/3B.
 - Mobile, alternative — flutter_llama (llama.cpp over Dart FFI): self-contained on-device client, compiles to ARM64.
+
+## Web UI refresh
+✅ Done — sage/cream/olive theme and a warmer voice across the web client (PRs #221–#222; see `docs/web-ui-refresh-plan.md`):
+- Sage primary `#7C9473` with a solid sage AppBar, warm cream surfaces (`#FAF6EF`/`#FFFDF8`), olive success/info chips, warm text/divider tokens; OAuth brand buttons untouched.
+- Two-zone sidebar: core kitchen nav on top, a pinned bottom zone with collapsible "Administration" (admin-only: Users, Pending Items) and "Account" (Household, Profile) captions.
+- Dashboard warmth: empty meal slots show a faded icon + "Nothing planned for … yet" + "Plan it →"; recipe suggestions are cards with deterministic accent tiles and category-driven icons, capped at 5; headings and empty states read conversationally ("Delicious ideas for tonight", "Time to restock", "Nothing here yet").
+- Bare links pick up the sage palette via `CssBaseline`; the cloche logo and favicon are recolored to match.
