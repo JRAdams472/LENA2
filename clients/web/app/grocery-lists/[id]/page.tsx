@@ -28,7 +28,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import { api } from "@/lib/api";
-import { fmtQty } from "@/lib/format";
+import { fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { GroceryListItem, GroceryRouteGroup, Store, StoreAisle } from "@/lib/types";
 
 interface ManualForm {
@@ -648,29 +648,50 @@ export default function GroceryListDetailPage({
             These pantry staples are at or below their minimum — ranked by
             how often your household uses them.
           </Typography>
-          {(restockQuery.data ?? []).map((it) => (
-            <Box
-              key={it.itemID}
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                py: 0.5,
-              }}
-            >
-              <Typography sx={{ flexGrow: 1 }}>
-                {it.brand ? `${it.brand} — ${it.name}` : it.name}
-              </Typography>
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={addSuggestedMutation.isPending}
-                onClick={() => addSuggestedMutation.mutate(it.itemID)}
+          {(restockQuery.data ?? []).map((it) => {
+            const size = sizeBadge(it.name, it.unit);
+            return (
+              <Box
+                key={it.itemID}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  py: 0.5,
+                }}
               >
-                Add
-              </Button>
-            </Box>
-          ))}
+                <Typography sx={{ flexGrow: 1 }}>
+                  {stripSize(it.name, size, it.brand)}
+                  {it.brand && (
+                    <Typography component="span" color="text.secondary">
+                      {" "}
+                      — {it.brand}
+                    </Typography>
+                  )}
+                </Typography>
+                {size && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={size}
+                    sx={{
+                      color: "text.secondary",
+                      borderColor: "divider",
+                      "& .MuiChip-label": { px: 1.25 },
+                    }}
+                  />
+                )}
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={addSuggestedMutation.isPending}
+                  onClick={() => addSuggestedMutation.mutate(it.itemID)}
+                >
+                  Add
+                </Button>
+              </Box>
+            );
+          })}
         </Paper>
       )}
 
