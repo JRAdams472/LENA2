@@ -10,10 +10,10 @@ test.describe("assistant", () => {
     await page.goto("/assistant");
 
     await expect(
-      page.getByRole("heading", { name: "Ask LENA" })
+      page.getByRole("heading", { name: "Ask Dot" })
     ).toBeVisible();
 
-    await page.getByPlaceholder("Ask LENA…").fill("what is expiring soon?");
+    await page.getByPlaceholder("Ask Dot…").fill("what is expiring soon?");
     await page.getByRole("button", { name: "Send" }).click();
 
     await expect(
@@ -25,12 +25,12 @@ test.describe("assistant", () => {
     await expect(page.getByText("what is expiring soon?")).toBeVisible();
   });
 
-  test("navigates from the sidebar", async ({ page }) => {
+  test("navigates from the header", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Assistant" }).first().click();
+    await page.getByRole("link", { name: "Ask Dot" }).first().click();
     await expect(page).toHaveURL(/\/assistant/);
     await expect(
-      page.getByRole("heading", { name: "Ask LENA" })
+      page.getByRole("heading", { name: "Ask Dot" })
     ).toBeVisible();
   });
 });

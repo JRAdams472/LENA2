@@ -27,6 +27,7 @@ import Badge from "@mui/material/Badge";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import NotificationsIcon from "@mui/icons-material/Notifications";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import SettingsIcon from "@mui/icons-material/Settings";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -41,6 +42,7 @@ import LoginScreen from "@/app/components/LoginScreen";
 import LenaLogo from "@/app/components/LenaLogo";
 
 const DRAWER_WIDTH = 260;
+const APPBAR_HEIGHT = 96;
 
 // The nav Box below reserves DRAWER_WIDTH in the flex row (the permanent
 // drawer's paper is position:fixed), so Main must not offset again —
@@ -49,7 +51,7 @@ const Main = styled("main")(({ theme }) => ({
   flexGrow: 1,
   minWidth: 0,
   padding: theme.spacing(3),
-  paddingTop: theme.spacing(10),
+  paddingTop: APPBAR_HEIGHT + 16,
 }));
 
 interface NavItem {
@@ -63,7 +65,6 @@ type NavEntry = { label: string; href?: string; adminOnly?: boolean; children?: 
 
 const CORE_NAV: NavEntry[] = [
   { label: "Dashboard", href: "/" },
-  { label: "Assistant", href: "/assistant" },
   {
     label: "Meal Planning",
     children: [
@@ -489,50 +490,94 @@ export default function AdminLayout({
           zIndex: theme.zIndex.drawer + 1,
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ minHeight: APPBAR_HEIGHT, alignItems: "stretch" }}>
           <IconButton
             color="inherit"
             edge="start"
             onClick={() => setMobileOpen(!mobileOpen)}
-            sx={{ mr: 2, display: { md: "none" } }}
+            sx={{ mr: 2, display: { md: "none" }, alignSelf: "center" }}
           >
             <MenuIcon />
           </IconButton>
-          <Box sx={{ flexGrow: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", flexGrow: 1 }}>
             <LenaLogo size={26} iconColor="inherit" textColor="inherit" />
           </Box>
-          {user && (
-            <>
-              <NotificationBell />
-              <Box
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                height: APPBAR_HEIGHT / 2,
+              }}
+            >
+              {user && (
+                <>
+                  <NotificationBell />
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.75,
+                      borderRadius: 999,
+                      px: 1.5,
+                      py: 0.5,
+                      mr: 1,
+                      bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
+                    }}
+                  >
+                    <AccountCircleIcon fontSize="small" />
+                    <Typography
+                      variant="body2"
+                      sx={{ display: { xs: "none", sm: "block" } }}
+                    >
+                      {user.email}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    color="inherit"
+                    aria-label="Sign out"
+                    onClick={signOut}
+                  >
+                    <LogoutIcon />
+                  </IconButton>
+                </>
+              )}
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                height: APPBAR_HEIGHT / 2,
+              }}
+            >
+              <Button
+                component={Link}
+                href="/assistant"
+                color="inherit"
+                startIcon={<AutoAwesomeIcon />}
+                aria-current={pathname === "/assistant" ? "page" : undefined}
                 sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.75,
+                  textTransform: "none",
+                  fontWeight: 600,
                   borderRadius: 999,
-                  px: 1.5,
-                  py: 0.5,
-                  mr: 1,
-                  bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
+                  mr: 0.5,
+                  ...(pathname === "/assistant" && {
+                    bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
+                  }),
                 }}
               >
-                <AccountCircleIcon fontSize="small" />
-                <Typography
-                  variant="body2"
-                  sx={{ display: { xs: "none", sm: "block" } }}
-                >
-                  {user.email}
-                </Typography>
-              </Box>
-              <IconButton
-                color="inherit"
-                aria-label="Sign out"
-                onClick={signOut}
-              >
-                <LogoutIcon />
-              </IconButton>
-            </>
-          )}
+                Ask Dot
+              </Button>
+            </Box>
+          </Box>
         </Toolbar>
       </AppBar>
 
@@ -568,7 +613,7 @@ export default function AdminLayout({
         >
           <Box
             sx={{
-              height: 64,
+              height: APPBAR_HEIGHT,
               flexShrink: 0,
               borderBottom: `1px solid ${theme.palette.divider}`,
             }}

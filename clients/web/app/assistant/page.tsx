@@ -12,7 +12,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import { api, ApiError } from "@/lib/api";
 import { AssistantAnswer } from "@/lib/types";
 
@@ -85,11 +85,11 @@ export default function AssistantPage() {
     return (
       <Paper sx={{ maxWidth: 560, p: 3 }}>
         <Typography variant="h5" gutterBottom>
-          Assistant
+          Ask Dot
         </Typography>
         <Alert severity="info">
-          LENA's assistant isn't configured on this server — no AI provider is
-          set, so meal suggestions, event fixes, and pairing ideas are off too.
+          Dot isn't configured on this server — no AI provider is set, so meal
+          suggestions, event fixes, and pairing ideas are off too.
         </Alert>
       </Paper>
     );
@@ -98,8 +98,8 @@ export default function AssistantPage() {
   return (
     <Paper sx={{ maxWidth: 720, p: 3 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
-        <SmartToyIcon color="primary" />
-        <Typography variant="h5">Ask LENA</Typography>
+        <AutoAwesomeIcon color="primary" />
+        <Typography variant="h5">Ask Dot</Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Ask about your pantry, meal plan, recipes, or cellar. Every answer shows
@@ -155,7 +155,7 @@ export default function AssistantPage() {
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <CircularProgress size={16} />
             <Typography variant="body2" color="text.secondary">
-              LENA is thinking…
+              Dot is thinking…
             </Typography>
           </Stack>
         )}
@@ -172,7 +172,7 @@ export default function AssistantPage() {
           inputRef={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask LENA…"
+          placeholder="Ask Dot…"
           size="small"
           fullWidth
           autoFocus

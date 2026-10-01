@@ -50,8 +50,8 @@ describe("assistant page", () => {
 
   it("sends a question and renders the answer with its tool trace", async () => {
     renderPage();
-    await screen.findByText("Ask LENA");
-    await userEvent.type(screen.getByPlaceholderText("Ask LENA…"), "what is expiring?");
+    await screen.findByText("Ask Dot");
+    await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "what is expiring?");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
     await waitFor(() => screen.getByText("Your milk expires tomorrow."));
@@ -62,7 +62,7 @@ describe("assistant page", () => {
 
   it("sends a quick prompt chip", async () => {
     renderPage();
-    await screen.findByText("Ask LENA");
+    await screen.findByText("Ask Dot");
     await userEvent.click(screen.getByText("What's in my wine cellar?"));
     await waitFor(() =>
       expect(mockedApi.askAssistant).toHaveBeenCalledWith("What's in my wine cellar?")
@@ -74,8 +74,8 @@ describe("assistant page", () => {
     const { ApiError } = jest.requireMock("../../../lib/api") as typeof import("../../../lib/api");
     mockedApi.askAssistant.mockRejectedValue(new ApiError(429, "slow down"));
     renderPage();
-    await screen.findByText("Ask LENA");
-    await userEvent.type(screen.getByPlaceholderText("Ask LENA…"), "hi");
+    await screen.findByText("Ask Dot");
+    await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "hi");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(await screen.findByText("slow down")).toBeInTheDocument();
   });
