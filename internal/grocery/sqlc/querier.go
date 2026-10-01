@@ -17,8 +17,13 @@ type Querier interface {
 	// three partial unique indexes make each variant an upsert.
 	AssignItemToAisle(ctx context.Context, arg AssignItemToAisleParams) (GroceryAisleAssignment, error)
 	AssignManualToAisle(ctx context.Context, arg AssignManualToAisleParams) (GroceryAisleAssignment, error)
+	// List size normalizes a check-off's checked_seq into a 0..1 route
+	// position for the learned-ordering mean.
+	CountGroceryListItems(ctx context.Context, arg CountGroceryListItemsParams) (int64, error)
 	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
 	CreateAisle(ctx context.Context, arg CreateAisleParams) (GroceryStoreAisle, error)
+	// New lists inherit the household's most recently used store so web and
+	// mobile default to the same routing context.
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
 	CreateStore(ctx context.Context, arg CreateStoreParams) (GroceryStore, error)
 	DeleteAisle(ctx context.Context, arg DeleteAisleParams) error
@@ -47,7 +52,7 @@ type Querier interface {
 	// Invite-accept merge: repoint all of the source household's lists. Zero
 	// rows is not an error.
 	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
-	RenameAisle(ctx context.Context, arg RenameAisleParams) (int64, error)
+	RenameAisle(ctx context.Context, arg RenameAisleParams) (GroceryStoreAisle, error)
 	RenameStore(ctx context.Context, arg RenameStoreParams) (GroceryStore, error)
 	// Rewrite every aisle's position from the submitted order in one
 	// statement: position is the row's index in the id array.

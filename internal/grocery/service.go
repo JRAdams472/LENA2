@@ -72,11 +72,14 @@ func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
 	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error { return fn(s.WithTx(tx)) })
 }
 
-// GroceryList is a household's generated shopping list.
+// GroceryList is a household's generated shopping list. StoreID selects
+// which store layout routes the list; new lists inherit the household's
+// most recent store so web and mobile route identically.
 type GroceryList struct {
 	GroceryListID int64
 	HouseholdID   int64
 	MealPlanID    *int64
+	StoreID       *int64
 	GeneratedAt   time.Time
 }
 
@@ -312,7 +315,11 @@ func (s *Service) DeleteGroceryListItem(ctx context.Context, groceryListItemID, 
 }
 
 // ToggleGroceryListItemChecked flips the checked state of an item and
-// returns the post-toggle row in one atomic statement.
+// returns the post-toggle row in one atomic statement. A check-off also
+// feeds the store router: the item's normalized check position is folded
+// into its learned-order record for the list's store (the generic route
+// when the list has none). Callers wrap the toggle in a unit of work, so
+// the observation commits with the flip.
 func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (GroceryListItem, error) {
 	row, err := s.q.ToggleGroceryListItemChecked(ctx, sqlc.ToggleGroceryListItemCheckedParams{
 		GroceryListItemID: groceryListItemID,
@@ -325,6 +332,26 @@ func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListI
 	gli, err := toGroceryListItem(row)
 	if err != nil {
 		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
+	if !gli.IsChecked || gli.CheckedSeq == nil {
+		return gli, nil
+	}
+	list, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: gli.GroceryListID, HouseholdID: householdID})
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", domainerr.FromStorage(err))
+	}
+	total, err := s.q.CountGroceryListItems(ctx, sqlc.CountGroceryListItemsParams{GroceryListID: gli.GroceryListID, HouseholdID: householdID})
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
+	if total > 0 {
+		storeID := GenericStoreID
+		if list.StoreID.Valid {
+			storeID = list.StoreID.Int64
+		}
+		if err := s.RecordRouteObservation(ctx, householdID, storeID, gli, float64(*gli.CheckedSeq)/float64(total), by); err != nil {
+			return GroceryListItem{}, err
+		}
 	}
 	return gli, nil
 }
@@ -385,6 +412,10 @@ func toGroceryList(row sqlc.GroceryGroceryList) GroceryList {
 	if row.MealPlanID.Valid {
 		v := row.MealPlanID.Int64
 		gl.MealPlanID = &v
+	}
+	if row.StoreID.Valid {
+		v := row.StoreID.Int64
+		gl.StoreID = &v
 	}
 	return gl
 }
