@@ -127,12 +127,12 @@ test.describe("restock suggestions", () => {
       await expect(row).toBeVisible();
       await row.getByRole("button", { name: "Add" }).click();
 
-      // After adding, the item lands in the Depleted Stock group.
-      const depletedSection = page
+      // After adding, the item lands in the unassigned route group.
+      const unassignedSection = page
         .locator("div.MuiPaper-root")
-        .filter({ has: page.getByRole("heading", { name: "Depleted Stock" }) });
+        .filter({ has: page.getByRole("heading", { name: "Other items" }) });
       await expect(
-        depletedSection.getByText(suggestedName)
+        unassignedSection.getByText(suggestedName)
       ).toBeVisible({ timeout: 20_000 });
     } finally {
       for (const itemId of [suggestedId, excludedId, quietId]) {

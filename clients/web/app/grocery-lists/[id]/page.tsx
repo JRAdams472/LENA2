@@ -216,6 +216,7 @@ export function ItemRow({
       )}
       <IconButton
         size="small"
+        aria-label="delete item"
         onClick={() => deleteMutation.mutate()}
         disabled={deleteMutation.isPending}
       >

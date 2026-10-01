@@ -64,7 +64,7 @@ test.describe("meal plans", () => {
       await itemRow.getByRole("checkbox").click();
       await expect(itemRow.getByRole("checkbox")).toBeChecked();
 
-      await itemRow.locator("button").click();
+      await itemRow.getByRole("button", { name: "delete item" }).click();
       await expect(page.getByText("E2E Eggs")).toHaveCount(0);
     } finally {
       // There is no deleteGroceryList mutation, and grocery_list has an FK
