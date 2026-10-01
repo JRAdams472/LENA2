@@ -64,6 +64,132 @@ func (q *Queries) AddGroceryListItem(ctx context.Context, arg AddGroceryListItem
 	return i, err
 }
 
+const assignIngredientToAisle = `-- name: AssignIngredientToAisle :one
+INSERT INTO grocery.aisle_assignment
+    (store_id, aisle_id, ingredient_id, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (store_id, ingredient_id) WHERE ingredient_id IS NOT NULL
+    DO UPDATE SET aisle_id = EXCLUDED.aisle_id, updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING aisle_assignment_id, store_id, aisle_id, item_id, ingredient_id, manual_name, created_by, created_at, updated_by, updated_at
+`
+
+type AssignIngredientToAisleParams struct {
+	StoreID      int64       `json:"store_id"`
+	AisleID      int64       `json:"aisle_id"`
+	IngredientID pgtype.Int8 `json:"ingredient_id"`
+	CreatedBy    string      `json:"created_by"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) AssignIngredientToAisle(ctx context.Context, arg AssignIngredientToAisleParams) (GroceryAisleAssignment, error) {
+	row := q.db.QueryRow(ctx, assignIngredientToAisle,
+		arg.StoreID,
+		arg.AisleID,
+		arg.IngredientID,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryAisleAssignment
+	err := row.Scan(
+		&i.AisleAssignmentID,
+		&i.StoreID,
+		&i.AisleID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.ManualName,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const assignItemToAisle = `-- name: AssignItemToAisle :one
+INSERT INTO grocery.aisle_assignment
+    (store_id, aisle_id, item_id, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (store_id, item_id) WHERE item_id IS NOT NULL
+    DO UPDATE SET aisle_id = EXCLUDED.aisle_id, updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING aisle_assignment_id, store_id, aisle_id, item_id, ingredient_id, manual_name, created_by, created_at, updated_by, updated_at
+`
+
+type AssignItemToAisleParams struct {
+	StoreID   int64       `json:"store_id"`
+	AisleID   int64       `json:"aisle_id"`
+	ItemID    pgtype.Int8 `json:"item_id"`
+	CreatedBy string      `json:"created_by"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
+}
+
+// Identity is exactly one of item_id/ingredient_id/manual_name; the
+// three partial unique indexes make each variant an upsert.
+func (q *Queries) AssignItemToAisle(ctx context.Context, arg AssignItemToAisleParams) (GroceryAisleAssignment, error) {
+	row := q.db.QueryRow(ctx, assignItemToAisle,
+		arg.StoreID,
+		arg.AisleID,
+		arg.ItemID,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryAisleAssignment
+	err := row.Scan(
+		&i.AisleAssignmentID,
+		&i.StoreID,
+		&i.AisleID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.ManualName,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const assignManualToAisle = `-- name: AssignManualToAisle :one
+INSERT INTO grocery.aisle_assignment
+    (store_id, aisle_id, manual_name, created_by, updated_by)
+VALUES ($1, $2, $3::varchar,
+        $4, $5)
+ON CONFLICT (store_id, manual_name) WHERE manual_name IS NOT NULL
+    DO UPDATE SET aisle_id = EXCLUDED.aisle_id, updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING aisle_assignment_id, store_id, aisle_id, item_id, ingredient_id, manual_name, created_by, created_at, updated_by, updated_at
+`
+
+type AssignManualToAisleParams struct {
+	StoreID    int64       `json:"store_id"`
+	AisleID    int64       `json:"aisle_id"`
+	ManualName string      `json:"manual_name"`
+	CreatedBy  string      `json:"created_by"`
+	UpdatedBy  pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) AssignManualToAisle(ctx context.Context, arg AssignManualToAisleParams) (GroceryAisleAssignment, error) {
+	row := q.db.QueryRow(ctx, assignManualToAisle,
+		arg.StoreID,
+		arg.AisleID,
+		arg.ManualName,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryAisleAssignment
+	err := row.Scan(
+		&i.AisleAssignmentID,
+		&i.StoreID,
+		&i.AisleID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.ManualName,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const countGroceryLists = `-- name: CountGroceryLists :one
 SELECT COUNT(*)
 FROM grocery.grocery_list
@@ -77,10 +203,46 @@ func (q *Queries) CountGroceryLists(ctx context.Context, householdID int64) (int
 	return count, err
 }
 
+const createAisle = `-- name: CreateAisle :one
+INSERT INTO grocery.store_aisle (store_id, name, position, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING aisle_id, store_id, name, position, created_by, created_at, updated_by, updated_at
+`
+
+type CreateAisleParams struct {
+	StoreID   int64       `json:"store_id"`
+	Name      string      `json:"name"`
+	Position  int32       `json:"position"`
+	CreatedBy string      `json:"created_by"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateAisle(ctx context.Context, arg CreateAisleParams) (GroceryStoreAisle, error) {
+	row := q.db.QueryRow(ctx, createAisle,
+		arg.StoreID,
+		arg.Name,
+		arg.Position,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryStoreAisle
+	err := row.Scan(
+		&i.AisleID,
+		&i.StoreID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createGroceryList = `-- name: CreateGroceryList :one
 INSERT INTO grocery.grocery_list (household_id, meal_plan_id, created_by, updated_by)
 VALUES ($1, $2, $3, $4)
-RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 `
 
 type CreateGroceryListParams struct {
@@ -107,8 +269,60 @@ func (q *Queries) CreateGroceryList(ctx context.Context, arg CreateGroceryListPa
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.HouseholdID,
+		&i.StoreID,
 	)
 	return i, err
+}
+
+const createStore = `-- name: CreateStore :one
+INSERT INTO grocery.store (household_id, name, created_by, updated_by)
+VALUES ($1, $2, $3, $4)
+RETURNING store_id, household_id, name, external_ref, created_by, created_at, updated_by, updated_at
+`
+
+type CreateStoreParams struct {
+	HouseholdID int64       `json:"household_id"`
+	Name        string      `json:"name"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateStore(ctx context.Context, arg CreateStoreParams) (GroceryStore, error) {
+	row := q.db.QueryRow(ctx, createStore,
+		arg.HouseholdID,
+		arg.Name,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryStore
+	err := row.Scan(
+		&i.StoreID,
+		&i.HouseholdID,
+		&i.Name,
+		&i.ExternalRef,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteAisle = `-- name: DeleteAisle :exec
+DELETE FROM grocery.store_aisle sa
+USING grocery.store s
+WHERE sa.store_id = s.store_id
+  AND sa.aisle_id = $1 AND s.household_id = $2
+`
+
+type DeleteAisleParams struct {
+	AisleID     int64 `json:"aisle_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteAisle(ctx context.Context, arg DeleteAisleParams) error {
+	_, err := q.db.Exec(ctx, deleteAisle, arg.AisleID, arg.HouseholdID)
+	return err
 }
 
 const deleteGeneratedGroceryListItems = `-- name: DeleteGeneratedGroceryListItems :exec
@@ -155,8 +369,50 @@ func (q *Queries) DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryLi
 	return err
 }
 
+const deleteStore = `-- name: DeleteStore :exec
+DELETE FROM grocery.store
+WHERE store_id = $1 AND household_id = $2
+`
+
+type DeleteStoreParams struct {
+	StoreID     int64 `json:"store_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteStore(ctx context.Context, arg DeleteStoreParams) error {
+	_, err := q.db.Exec(ctx, deleteStore, arg.StoreID, arg.HouseholdID)
+	return err
+}
+
+const getAisleByID = `-- name: GetAisleByID :one
+SELECT sa.aisle_id, sa.store_id, sa.name, sa.position, sa.created_by, sa.created_at, sa.updated_by, sa.updated_at FROM grocery.store_aisle sa
+JOIN grocery.store s ON sa.store_id = s.store_id
+WHERE sa.aisle_id = $1 AND s.household_id = $2
+`
+
+type GetAisleByIDParams struct {
+	AisleID     int64 `json:"aisle_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) GetAisleByID(ctx context.Context, arg GetAisleByIDParams) (GroceryStoreAisle, error) {
+	row := q.db.QueryRow(ctx, getAisleByID, arg.AisleID, arg.HouseholdID)
+	var i GroceryStoreAisle
+	err := row.Scan(
+		&i.AisleID,
+		&i.StoreID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getGroceryListByID = `-- name: GetGroceryListByID :one
-SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND household_id = $2
 `
@@ -178,6 +434,7 @@ func (q *Queries) GetGroceryListByID(ctx context.Context, arg GetGroceryListByID
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.HouseholdID,
+		&i.StoreID,
 	)
 	return i, err
 }
@@ -218,7 +475,7 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, arg GetGroceryList
 }
 
 const getLatestGroceryListByPlan = `-- name: GetLatestGroceryListByPlan :one
-SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 FROM grocery.grocery_list
 WHERE household_id = $1 AND meal_plan_id = $2
 ORDER BY generated_at DESC, grocery_list_id DESC
@@ -242,8 +499,134 @@ func (q *Queries) GetLatestGroceryListByPlan(ctx context.Context, arg GetLatestG
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.HouseholdID,
+		&i.StoreID,
 	)
 	return i, err
+}
+
+const getLatestListStore = `-- name: GetLatestListStore :one
+SELECT store_id FROM grocery.grocery_list
+WHERE household_id = $1 AND store_id IS NOT NULL
+ORDER BY generated_at DESC, grocery_list_id DESC
+LIMIT 1
+`
+
+// New lists inherit the household's most recently used store so web and
+// mobile default identically.
+func (q *Queries) GetLatestListStore(ctx context.Context, householdID int64) (pgtype.Int8, error) {
+	row := q.db.QueryRow(ctx, getLatestListStore, householdID)
+	var store_id pgtype.Int8
+	err := row.Scan(&store_id)
+	return store_id, err
+}
+
+const getStoreByID = `-- name: GetStoreByID :one
+SELECT store_id, household_id, name, external_ref, created_by, created_at, updated_by, updated_at FROM grocery.store
+WHERE store_id = $1 AND household_id = $2
+`
+
+type GetStoreByIDParams struct {
+	StoreID     int64 `json:"store_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) GetStoreByID(ctx context.Context, arg GetStoreByIDParams) (GroceryStore, error) {
+	row := q.db.QueryRow(ctx, getStoreByID, arg.StoreID, arg.HouseholdID)
+	var i GroceryStore
+	err := row.Scan(
+		&i.StoreID,
+		&i.HouseholdID,
+		&i.Name,
+		&i.ExternalRef,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listAisles = `-- name: ListAisles :many
+SELECT sa.aisle_id, sa.store_id, sa.name, sa.position, sa.created_by, sa.created_at, sa.updated_by, sa.updated_at FROM grocery.store_aisle sa
+JOIN grocery.store s ON sa.store_id = s.store_id
+WHERE sa.store_id = $1 AND s.household_id = $2
+ORDER BY sa.position, sa.aisle_id
+`
+
+type ListAislesParams struct {
+	StoreID     int64 `json:"store_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) ListAisles(ctx context.Context, arg ListAislesParams) ([]GroceryStoreAisle, error) {
+	rows, err := q.db.Query(ctx, listAisles, arg.StoreID, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroceryStoreAisle{}
+	for rows.Next() {
+		var i GroceryStoreAisle
+		if err := rows.Scan(
+			&i.AisleID,
+			&i.StoreID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAssignments = `-- name: ListAssignments :many
+SELECT aa.aisle_assignment_id, aa.store_id, aa.aisle_id, aa.item_id, aa.ingredient_id, aa.manual_name, aa.created_by, aa.created_at, aa.updated_by, aa.updated_at FROM grocery.aisle_assignment aa
+JOIN grocery.store s ON aa.store_id = s.store_id
+WHERE aa.store_id = $1 AND s.household_id = $2
+`
+
+type ListAssignmentsParams struct {
+	StoreID     int64 `json:"store_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) ListAssignments(ctx context.Context, arg ListAssignmentsParams) ([]GroceryAisleAssignment, error) {
+	rows, err := q.db.Query(ctx, listAssignments, arg.StoreID, arg.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroceryAisleAssignment{}
+	for rows.Next() {
+		var i GroceryAisleAssignment
+		if err := rows.Scan(
+			&i.AisleAssignmentID,
+			&i.StoreID,
+			&i.AisleID,
+			&i.ItemID,
+			&i.IngredientID,
+			&i.ManualName,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listGroceryListItems = `-- name: ListGroceryListItems :many
@@ -345,7 +728,7 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, arg ListGroce
 }
 
 const listGroceryLists = `-- name: ListGroceryLists :many
-SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 FROM grocery.grocery_list
 WHERE household_id = $1
 ORDER BY generated_at DESC
@@ -376,6 +759,88 @@ func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsPara
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.HouseholdID,
+			&i.StoreID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemRoutes = `-- name: ListItemRoutes :many
+SELECT ir.item_route_id, ir.household_id, ir.store_id, ir.item_id, ir.ingredient_id, ir.manual_name, ir.learned_sum, ir.learned_count, ir.manual_rank, ir.manual_at, ir.created_by, ir.created_at, ir.updated_by, ir.updated_at FROM grocery.item_route ir
+WHERE ir.household_id = $1 AND ir.store_id IN ($2, 0)
+`
+
+type ListItemRoutesParams struct {
+	HouseholdID int64 `json:"household_id"`
+	StoreID     int64 `json:"store_id"`
+}
+
+// Store-specific rows plus the generic (store_id = 0) fallback.
+func (q *Queries) ListItemRoutes(ctx context.Context, arg ListItemRoutesParams) ([]GroceryItemRoute, error) {
+	rows, err := q.db.Query(ctx, listItemRoutes, arg.HouseholdID, arg.StoreID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroceryItemRoute{}
+	for rows.Next() {
+		var i GroceryItemRoute
+		if err := rows.Scan(
+			&i.ItemRouteID,
+			&i.HouseholdID,
+			&i.StoreID,
+			&i.ItemID,
+			&i.IngredientID,
+			&i.ManualName,
+			&i.LearnedSum,
+			&i.LearnedCount,
+			&i.ManualRank,
+			&i.ManualAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStores = `-- name: ListStores :many
+SELECT store_id, household_id, name, external_ref, created_by, created_at, updated_by, updated_at FROM grocery.store
+WHERE household_id = $1
+ORDER BY name, store_id
+`
+
+func (q *Queries) ListStores(ctx context.Context, householdID int64) ([]GroceryStore, error) {
+	rows, err := q.db.Query(ctx, listStores, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroceryStore{}
+	for rows.Next() {
+		var i GroceryStore
+		if err := rows.Scan(
+			&i.StoreID,
+			&i.HouseholdID,
+			&i.Name,
+			&i.ExternalRef,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -406,6 +871,148 @@ type ReassignGroceryListsToHouseholdParams struct {
 func (q *Queries) ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error {
 	_, err := q.db.Exec(ctx, reassignGroceryListsToHousehold, arg.ToHouseholdID, arg.UpdatedBy, arg.FromHouseholdID)
 	return err
+}
+
+const renameAisle = `-- name: RenameAisle :execrows
+UPDATE grocery.store_aisle sa
+SET name = $3, updated_by = $4, updated_at = now()
+FROM grocery.store s
+WHERE sa.store_id = s.store_id
+  AND sa.aisle_id = $1 AND s.household_id = $2
+`
+
+type RenameAisleParams struct {
+	AisleID     int64       `json:"aisle_id"`
+	HouseholdID int64       `json:"household_id"`
+	Name        string      `json:"name"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) RenameAisle(ctx context.Context, arg RenameAisleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renameAisle,
+		arg.AisleID,
+		arg.HouseholdID,
+		arg.Name,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const renameStore = `-- name: RenameStore :one
+UPDATE grocery.store
+SET name = $3, updated_by = $4, updated_at = now()
+WHERE store_id = $1 AND household_id = $2
+RETURNING store_id, household_id, name, external_ref, created_by, created_at, updated_by, updated_at
+`
+
+type RenameStoreParams struct {
+	StoreID     int64       `json:"store_id"`
+	HouseholdID int64       `json:"household_id"`
+	Name        string      `json:"name"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) RenameStore(ctx context.Context, arg RenameStoreParams) (GroceryStore, error) {
+	row := q.db.QueryRow(ctx, renameStore,
+		arg.StoreID,
+		arg.HouseholdID,
+		arg.Name,
+		arg.UpdatedBy,
+	)
+	var i GroceryStore
+	err := row.Scan(
+		&i.StoreID,
+		&i.HouseholdID,
+		&i.Name,
+		&i.ExternalRef,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const reorderAisles = `-- name: ReorderAisles :exec
+UPDATE grocery.store_aisle sa
+SET position = ord.idx - 1,
+    updated_by = $1::varchar,
+    updated_at = now()
+FROM (
+    SELECT aisle_id, ordinality AS idx
+    FROM unnest($3::bigint[]) WITH ORDINALITY AS t(aisle_id, ordinality)
+) ord
+JOIN grocery.store s ON s.store_id = $4
+WHERE sa.aisle_id = ord.aisle_id
+  AND sa.store_id = s.store_id
+  AND s.household_id = $2
+`
+
+type ReorderAislesParams struct {
+	UpdatedBy   string  `json:"updated_by"`
+	HouseholdID int64   `json:"household_id"`
+	AisleIds    []int64 `json:"aisle_ids"`
+	StoreID     int64   `json:"store_id"`
+}
+
+// Rewrite every aisle's position from the submitted order in one
+// statement: position is the row's index in the id array.
+func (q *Queries) ReorderAisles(ctx context.Context, arg ReorderAislesParams) error {
+	_, err := q.db.Exec(ctx, reorderAisles,
+		arg.UpdatedBy,
+		arg.HouseholdID,
+		arg.AisleIds,
+		arg.StoreID,
+	)
+	return err
+}
+
+const resetStoreRoute = `-- name: ResetStoreRoute :exec
+DELETE FROM grocery.item_route ir
+USING grocery.store s
+WHERE s.store_id = $1
+  AND s.household_id = $2
+  AND ir.household_id = s.household_id
+  AND (ir.store_id = s.store_id OR ir.store_id = 0)
+`
+
+type ResetStoreRouteParams struct {
+	StoreID     int64 `json:"store_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) ResetStoreRoute(ctx context.Context, arg ResetStoreRouteParams) error {
+	_, err := q.db.Exec(ctx, resetStoreRoute, arg.StoreID, arg.HouseholdID)
+	return err
+}
+
+const setGroceryListStore = `-- name: SetGroceryListStore :execrows
+UPDATE grocery.grocery_list
+SET store_id = $3, updated_by = $4, updated_at = now()
+WHERE grocery_list_id = $1 AND household_id = $2
+`
+
+type SetGroceryListStoreParams struct {
+	GroceryListID int64       `json:"grocery_list_id"`
+	HouseholdID   int64       `json:"household_id"`
+	StoreID       pgtype.Int8 `json:"store_id"`
+	UpdatedBy     pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) SetGroceryListStore(ctx context.Context, arg SetGroceryListStoreParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setGroceryListStore,
+		arg.GroceryListID,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const toggleGroceryListItemChecked = `-- name: ToggleGroceryListItemChecked :one
@@ -466,7 +1073,7 @@ SET generated_at = now(),
     updated_by   = $3,
     updated_at   = now()
 WHERE grocery_list_id = $1 AND household_id = $2
-RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 `
 
 type TouchGroceryListGeneratedAtParams struct {
@@ -487,8 +1094,39 @@ func (q *Queries) TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroc
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.HouseholdID,
+		&i.StoreID,
 	)
 	return i, err
+}
+
+const unassignItem = `-- name: UnassignItem :execrows
+DELETE FROM grocery.aisle_assignment aa
+USING grocery.store s
+WHERE aa.store_id = s.store_id
+  AND aa.store_id = $1 AND s.household_id = $2
+  AND (aa.item_id = $3 OR aa.ingredient_id = $4 OR aa.manual_name = $5)
+`
+
+type UnassignItemParams struct {
+	StoreID      int64       `json:"store_id"`
+	HouseholdID  int64       `json:"household_id"`
+	ItemID       pgtype.Int8 `json:"item_id"`
+	IngredientID pgtype.Int8 `json:"ingredient_id"`
+	ManualName   pgtype.Text `json:"manual_name"`
+}
+
+func (q *Queries) UnassignItem(ctx context.Context, arg UnassignItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, unassignItem,
+		arg.StoreID,
+		arg.HouseholdID,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.ManualName,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateGroceryListItem = `-- name: UpdateGroceryListItem :execrows
@@ -537,4 +1175,246 @@ func (q *Queries) UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryLi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertManualRankIngredient = `-- name: UpsertManualRankIngredient :exec
+INSERT INTO grocery.item_route
+    (household_id, store_id, ingredient_id, manual_rank, manual_at, created_by, updated_by)
+VALUES ($1, $2, $3, $4, now(), $5, $6)
+ON CONFLICT (household_id, store_id, ingredient_id) WHERE ingredient_id IS NOT NULL
+    DO UPDATE SET manual_rank = EXCLUDED.manual_rank, manual_at = now(),
+                  updated_by = EXCLUDED.updated_by, updated_at = now()
+`
+
+type UpsertManualRankIngredientParams struct {
+	HouseholdID  int64         `json:"household_id"`
+	StoreID      int64         `json:"store_id"`
+	IngredientID pgtype.Int8   `json:"ingredient_id"`
+	ManualRank   pgtype.Float8 `json:"manual_rank"`
+	CreatedBy    string        `json:"created_by"`
+	UpdatedBy    pgtype.Text   `json:"updated_by"`
+}
+
+func (q *Queries) UpsertManualRankIngredient(ctx context.Context, arg UpsertManualRankIngredientParams) error {
+	_, err := q.db.Exec(ctx, upsertManualRankIngredient,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.IngredientID,
+		arg.ManualRank,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const upsertManualRankItem = `-- name: UpsertManualRankItem :exec
+INSERT INTO grocery.item_route
+    (household_id, store_id, item_id, manual_rank, manual_at, created_by, updated_by)
+VALUES ($1, $2, $3, $4, now(), $5, $6)
+ON CONFLICT (household_id, store_id, item_id) WHERE item_id IS NOT NULL
+    DO UPDATE SET manual_rank = EXCLUDED.manual_rank, manual_at = now(),
+                  updated_by = EXCLUDED.updated_by, updated_at = now()
+`
+
+type UpsertManualRankItemParams struct {
+	HouseholdID int64         `json:"household_id"`
+	StoreID     int64         `json:"store_id"`
+	ItemID      pgtype.Int8   `json:"item_id"`
+	ManualRank  pgtype.Float8 `json:"manual_rank"`
+	CreatedBy   string        `json:"created_by"`
+	UpdatedBy   pgtype.Text   `json:"updated_by"`
+}
+
+// Manual arrangement is written even when no learned row exists yet.
+func (q *Queries) UpsertManualRankItem(ctx context.Context, arg UpsertManualRankItemParams) error {
+	_, err := q.db.Exec(ctx, upsertManualRankItem,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ItemID,
+		arg.ManualRank,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const upsertManualRankManual = `-- name: UpsertManualRankManual :exec
+INSERT INTO grocery.item_route
+    (household_id, store_id, manual_name, manual_rank, manual_at, created_by, updated_by)
+VALUES ($1, $2, $3::varchar,
+        $4, now(), $5, $6)
+ON CONFLICT (household_id, store_id, manual_name) WHERE manual_name IS NOT NULL
+    DO UPDATE SET manual_rank = EXCLUDED.manual_rank, manual_at = now(),
+                  updated_by = EXCLUDED.updated_by, updated_at = now()
+`
+
+type UpsertManualRankManualParams struct {
+	HouseholdID int64         `json:"household_id"`
+	StoreID     int64         `json:"store_id"`
+	ManualName  string        `json:"manual_name"`
+	ManualRank  pgtype.Float8 `json:"manual_rank"`
+	CreatedBy   string        `json:"created_by"`
+	UpdatedBy   pgtype.Text   `json:"updated_by"`
+}
+
+func (q *Queries) UpsertManualRankManual(ctx context.Context, arg UpsertManualRankManualParams) error {
+	_, err := q.db.Exec(ctx, upsertManualRankManual,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ManualName,
+		arg.ManualRank,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const upsertRouteObservationIngredient = `-- name: UpsertRouteObservationIngredient :one
+INSERT INTO grocery.item_route
+    (household_id, store_id, ingredient_id, learned_sum, learned_count, created_by, updated_by)
+VALUES ($1, $2, $3, $4, 1, $5, $6)
+ON CONFLICT (household_id, store_id, ingredient_id) WHERE ingredient_id IS NOT NULL
+    DO UPDATE SET learned_sum = grocery.item_route.learned_sum + EXCLUDED.learned_sum,
+                  learned_count = grocery.item_route.learned_count + 1,
+                  updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING item_route_id, household_id, store_id, item_id, ingredient_id, manual_name, learned_sum, learned_count, manual_rank, manual_at, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertRouteObservationIngredientParams struct {
+	HouseholdID  int64       `json:"household_id"`
+	StoreID      int64       `json:"store_id"`
+	IngredientID pgtype.Int8 `json:"ingredient_id"`
+	LearnedSum   float64     `json:"learned_sum"`
+	CreatedBy    string      `json:"created_by"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpsertRouteObservationIngredient(ctx context.Context, arg UpsertRouteObservationIngredientParams) (GroceryItemRoute, error) {
+	row := q.db.QueryRow(ctx, upsertRouteObservationIngredient,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.IngredientID,
+		arg.LearnedSum,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryItemRoute
+	err := row.Scan(
+		&i.ItemRouteID,
+		&i.HouseholdID,
+		&i.StoreID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.ManualName,
+		&i.LearnedSum,
+		&i.LearnedCount,
+		&i.ManualRank,
+		&i.ManualAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertRouteObservationItem = `-- name: UpsertRouteObservationItem :one
+INSERT INTO grocery.item_route
+    (household_id, store_id, item_id, learned_sum, learned_count, created_by, updated_by)
+VALUES ($1, $2, $3, $4, 1, $5, $6)
+ON CONFLICT (household_id, store_id, item_id) WHERE item_id IS NOT NULL
+    DO UPDATE SET learned_sum = grocery.item_route.learned_sum + EXCLUDED.learned_sum,
+                  learned_count = grocery.item_route.learned_count + 1,
+                  updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING item_route_id, household_id, store_id, item_id, ingredient_id, manual_name, learned_sum, learned_count, manual_rank, manual_at, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertRouteObservationItemParams struct {
+	HouseholdID int64       `json:"household_id"`
+	StoreID     int64       `json:"store_id"`
+	ItemID      pgtype.Int8 `json:"item_id"`
+	LearnedSum  float64     `json:"learned_sum"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+// One check-off contributes normalized position seq/total to the running
+// learned mean for the item's identity at the list's store (0 = generic).
+func (q *Queries) UpsertRouteObservationItem(ctx context.Context, arg UpsertRouteObservationItemParams) (GroceryItemRoute, error) {
+	row := q.db.QueryRow(ctx, upsertRouteObservationItem,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ItemID,
+		arg.LearnedSum,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryItemRoute
+	err := row.Scan(
+		&i.ItemRouteID,
+		&i.HouseholdID,
+		&i.StoreID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.ManualName,
+		&i.LearnedSum,
+		&i.LearnedCount,
+		&i.ManualRank,
+		&i.ManualAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertRouteObservationManual = `-- name: UpsertRouteObservationManual :one
+INSERT INTO grocery.item_route
+    (household_id, store_id, manual_name, learned_sum, learned_count, created_by, updated_by)
+VALUES ($1, $2, $3::varchar,
+        $4, 1, $5, $6)
+ON CONFLICT (household_id, store_id, manual_name) WHERE manual_name IS NOT NULL
+    DO UPDATE SET learned_sum = grocery.item_route.learned_sum + EXCLUDED.learned_sum,
+                  learned_count = grocery.item_route.learned_count + 1,
+                  updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING item_route_id, household_id, store_id, item_id, ingredient_id, manual_name, learned_sum, learned_count, manual_rank, manual_at, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertRouteObservationManualParams struct {
+	HouseholdID int64       `json:"household_id"`
+	StoreID     int64       `json:"store_id"`
+	ManualName  string      `json:"manual_name"`
+	LearnedSum  float64     `json:"learned_sum"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpsertRouteObservationManual(ctx context.Context, arg UpsertRouteObservationManualParams) (GroceryItemRoute, error) {
+	row := q.db.QueryRow(ctx, upsertRouteObservationManual,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ManualName,
+		arg.LearnedSum,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i GroceryItemRoute
+	err := row.Scan(
+		&i.ItemRouteID,
+		&i.HouseholdID,
+		&i.StoreID,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.ManualName,
+		&i.LearnedSum,
+		&i.LearnedCount,
+		&i.ManualRank,
+		&i.ManualAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

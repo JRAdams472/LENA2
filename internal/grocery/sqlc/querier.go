@@ -6,32 +6,70 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	AddGroceryListItem(ctx context.Context, arg AddGroceryListItemParams) (GroceryGroceryListItem, error)
+	AssignIngredientToAisle(ctx context.Context, arg AssignIngredientToAisleParams) (GroceryAisleAssignment, error)
+	// Identity is exactly one of item_id/ingredient_id/manual_name; the
+	// three partial unique indexes make each variant an upsert.
+	AssignItemToAisle(ctx context.Context, arg AssignItemToAisleParams) (GroceryAisleAssignment, error)
+	AssignManualToAisle(ctx context.Context, arg AssignManualToAisleParams) (GroceryAisleAssignment, error)
 	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
+	CreateAisle(ctx context.Context, arg CreateAisleParams) (GroceryStoreAisle, error)
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
+	CreateStore(ctx context.Context, arg CreateStoreParams) (GroceryStore, error)
+	DeleteAisle(ctx context.Context, arg DeleteAisleParams) error
 	// Regenerate-in-place: generated lines (source <> 'manual') are replaced
 	// wholesale; manual lines are preserved.
 	DeleteGeneratedGroceryListItems(ctx context.Context, groceryListID int64) error
 	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
 	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error
+	DeleteStore(ctx context.Context, arg DeleteStoreParams) error
+	GetAisleByID(ctx context.Context, arg GetAisleByIDParams) (GroceryStoreAisle, error)
 	GetGroceryListByID(ctx context.Context, arg GetGroceryListByIDParams) (GroceryGroceryList, error)
 	GetGroceryListItemByID(ctx context.Context, arg GetGroceryListItemByIDParams) (GroceryGroceryListItem, error)
 	GetLatestGroceryListByPlan(ctx context.Context, arg GetLatestGroceryListByPlanParams) (GroceryGroceryList, error)
+	// New lists inherit the household's most recently used store so web and
+	// mobile default identically.
+	GetLatestListStore(ctx context.Context, householdID int64) (pgtype.Int8, error)
+	GetStoreByID(ctx context.Context, arg GetStoreByIDParams) (GroceryStore, error)
+	ListAisles(ctx context.Context, arg ListAislesParams) ([]GroceryStoreAisle, error)
+	ListAssignments(ctx context.Context, arg ListAssignmentsParams) ([]GroceryAisleAssignment, error)
 	ListGroceryListItems(ctx context.Context, arg ListGroceryListItemsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryListItemsByLists(ctx context.Context, arg ListGroceryListItemsByListsParams) ([]GroceryGroceryListItem, error)
 	ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error)
+	// Store-specific rows plus the generic (store_id = 0) fallback.
+	ListItemRoutes(ctx context.Context, arg ListItemRoutesParams) ([]GroceryItemRoute, error)
+	ListStores(ctx context.Context, householdID int64) ([]GroceryStore, error)
 	// Invite-accept merge: repoint all of the source household's lists. Zero
 	// rows is not an error.
 	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
+	RenameAisle(ctx context.Context, arg RenameAisleParams) (int64, error)
+	RenameStore(ctx context.Context, arg RenameStoreParams) (GroceryStore, error)
+	// Rewrite every aisle's position from the submitted order in one
+	// statement: position is the row's index in the id array.
+	ReorderAisles(ctx context.Context, arg ReorderAislesParams) error
+	ResetStoreRoute(ctx context.Context, arg ResetStoreRouteParams) error
+	SetGroceryListStore(ctx context.Context, arg SetGroceryListStoreParams) (int64, error)
 	// Checking stamps checked_at and assigns the next per-list checked_seq so
 	// the order items were checked off survives for store-routing analytics;
 	// unchecking clears both.
 	ToggleGroceryListItemChecked(ctx context.Context, arg ToggleGroceryListItemCheckedParams) (GroceryGroceryListItem, error)
 	TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroceryListGeneratedAtParams) (GroceryGroceryList, error)
+	UnassignItem(ctx context.Context, arg UnassignItemParams) (int64, error)
 	UpdateGroceryListItem(ctx context.Context, arg UpdateGroceryListItemParams) (int64, error)
+	UpsertManualRankIngredient(ctx context.Context, arg UpsertManualRankIngredientParams) error
+	// Manual arrangement is written even when no learned row exists yet.
+	UpsertManualRankItem(ctx context.Context, arg UpsertManualRankItemParams) error
+	UpsertManualRankManual(ctx context.Context, arg UpsertManualRankManualParams) error
+	UpsertRouteObservationIngredient(ctx context.Context, arg UpsertRouteObservationIngredientParams) (GroceryItemRoute, error)
+	// One check-off contributes normalized position seq/total to the running
+	// learned mean for the item's identity at the list's store (0 = generic).
+	UpsertRouteObservationItem(ctx context.Context, arg UpsertRouteObservationItemParams) (GroceryItemRoute, error)
+	UpsertRouteObservationManual(ctx context.Context, arg UpsertRouteObservationManualParams) (GroceryItemRoute, error)
 }
 
 var _ Querier = (*Queries)(nil)
