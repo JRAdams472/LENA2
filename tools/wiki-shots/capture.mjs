@@ -157,9 +157,14 @@ const planId = await gql(
 ).then((d) => d.mealPlans.items[0].id);
 await shot("meal-plan-week", `/meal-plans/${planId}`, "Week of");
 await shot("grocery-lists", "/grocery-lists", "20");
+// Prefer the seeded list with a store set so the shot shows route groups.
 const listId = await gql(
-  `query { groceryLists(page: 1, pageSize: 1) { items { id } } }`
-).then((d) => d.groceryLists.items[0].id);
+  `query { groceryLists(page: 1, pageSize: 10) { items { id store { id } } } }`
+).then(
+  (d) =>
+    (d.groceryLists.items.find((l) => l.store != null) ??
+      d.groceryLists.items[0]).id
+);
 await shot("grocery-list", `/grocery-lists/${listId}`, "Suggested Restock");
 await shot("events", "/events", "Autumn Dinner Party");
 await shot("event-detail", "/events/1", "Autumn Dinner Party");

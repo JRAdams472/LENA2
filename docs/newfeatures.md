@@ -115,11 +115,7 @@ No Direct Cart Injection: For privacy, security, and store inventory variances, 
 Authentication: The workflow relies on handing the user over to the Instacart web or app interface via the deep link, where their existing account status is recognized if they are already logged in on that device/browser.
 
 ## Grocery store routing
-Order the grocery list by the aisles in the grocery store.
-This can take store input from the user
-It would be great if we could use the users data logs to track as well. 
-Keep track of the order items are checked off the grocery list.
-Make educated guess on what order the list should be in for the future based on past logs.
+✅ Done — household-defined stores with ordered aisles; the server computes route groups (`groceryRouteGroups`) and both clients render them verbatim so web and phone always agree. Check-off order is learned into `grocery.item_route` (`checked_seq / list size` folded in per check); explicit user arrangement (`manual_rank`, persisted via `reorderGroceryListItems`) wins over learned order and survives list regeneration. Cross-aisle drags write the aisle move and rank in one mutation; unassigned items get a `suggested` aisle inferred from their nearest learned neighbor (PRs #216–#219).
 
 ## Allergy information and risk detection
 Track allergen information for recipes so users can spot risks before cooking.
