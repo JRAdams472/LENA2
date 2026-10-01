@@ -9,8 +9,9 @@ unit/component tests, and Playwright end-to-end tests.
 |---|---|---|---|
 | Go unit + integration | `internal/<domain>/*_test.go`, `cmd/lena` | `go test`, `testify`, gomock, testcontainers | `test.yml` → `go` job |
 | Frontend unit/component | `clients/web/__tests__/` | Jest 30, React Testing Library | `test.yml` → `web` job |
+| Mobile unit/widget | `clients/mobile/test/` | `flutter test` | `test.yml` → `mobile` job |
 | End-to-end | `clients/web/e2e/` | Playwright against the Docker stack | `test.yml` → `e2e` job |
-| Lint / static checks | repo-wide | `go vet`, `gofmt`, `golangci-lint` (`ci.yml`), `eslint`, `tsc` | both workflows |
+| Lint / static checks | repo-wide | `go vet`, `gofmt`, `golangci-lint`, `eslint`, `tsc`, `flutter analyze` | `test.yml` → `lint`/`mobile` jobs |
 
 ## Go tests
 
@@ -41,24 +42,24 @@ Notes:
   `.github/workflows/test.yml`, applied to the filtered profile. Raise it as
   coverage improves.
 
-### Test helpers (`internal/platform/testenv`)
+### Test helpers (`internal/testutil`)
 
-- `testenv.NewTestDB(t, ctx)` — starts a `postgres:16-alpine` testcontainer,
+- `testutil.NewTestDB(t, ctx)` — starts a `postgres:18-alpine` testcontainer,
   applies all `migrations/*.up.sql` plus `migrations/seed/*.sql`, and returns a
   `*pgxpool.Pool` and a cleanup func (registers container termination).
-- `testenv.RunMigrations(ctx, pool)` — apply migrations to an existing pool.
-- `testenv.MustUser(ctx, t, pool, email)` — upserts a user and returns its ID
+- `testutil.RunMigrations(ctx, pool)` — apply migrations to an existing pool.
+- `testutil.MustUser(ctx, t, pool, email)` — upserts a user and returns its ID
   (needed for `created_by`/`updated_by` FK columns).
-- `testenv.WithUser(ctx, userID, email)` — returns a context carrying a
+- `testutil.WithUser(ctx, userID, email)` — returns a context carrying a
   `currentuser.User` for resolver tests that need an authenticated principal.
-- `testenv.WithAdmin(ctx, userID, email)` — same, but with `IsAdmin: true`.
+- `testutil.WithAdmin(ctx, userID, email)` — same, but with `IsAdmin: true`.
   Required for shared-catalog mutations: those resolvers call
   `requireAdmin`, which checks the persisted `identity.users.role` column
   (`member` by default). In production, `LENA_ADMIN_EMAILS` (comma-separated)
   promotes a matching user to `admin` on their next authenticated request.
   In e2e, `e2e@example.com` is seeded admin and `e2e-other@example.com`
   remains a member to exercise the `forbidden` rejection path.
-- `testenv.NewTestIssuer(t)` — in-process OIDC issuer (JWKS + token endpoint).
+- `testutil.NewTestIssuer(t)` — in-process OIDC issuer (JWKS + token endpoint).
   `issuer.Token(t, sub, email, name)` mints a signed ID token accepted by
   `NewAuthenticator` configured with that issuer URL/audience.
 
@@ -142,13 +143,13 @@ Key points:
 
 ## CI layout
 
-- `.github/workflows/test.yml` — `go` (build, vet, gofmt, tests + coverage
-  gate + artifact), `web` (tsc, eslint, Jest + coverage artifact, next build),
-  `e2e` (Playwright + report artifacts).
-- `.github/workflows/ci.yml` — Go build/vet/test, `gofmt`, `golangci-lint`
-  (includes `gosec`; see `.golangci.yml` for excluded rules).
-- `.github/workflows/docker.yml` — builds and pushes `lena2-api` / `lena2-web`
-  images on `main`.
+- `.github/workflows/test.yml` — one workflow, per-layer jobs: `go` (build,
+  vet, gofmt, tests + `GO_COVERAGE_MIN` gate), `lint` (golangci-lint incl.
+  `gosec`; see `.golangci.yml`), `ocr-import`, `web` (tsc, eslint, Jest,
+  next build), `mobile` (`flutter analyze` + `flutter test`), `docker`
+  (image builds), `e2e` (Playwright + report artifacts).
+- `.github/workflows/cleanup.yml` — scheduled purge of old workflow
+  artifacts.
 
 ## Troubleshooting
 
