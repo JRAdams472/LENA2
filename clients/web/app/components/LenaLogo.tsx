@@ -10,8 +10,8 @@ interface LenaLogoProps {
 
 export default function LenaLogo({
   size = 28,
-  iconColor = "#059669",
-  textColor = "#1e293b",
+  iconColor = "#5F7A57",
+  textColor = "#3E3E34",
   showWordmark = true,
 }: LenaLogoProps) {
   return (

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { usePathname, useRouter } from "next/navigation";
 import AdminLayout from "@/app/components/AdminLayout";
 import { AuthProvider } from "@/app/auth/AuthProvider";
@@ -145,6 +145,29 @@ describe("AdminLayout", () => {
     expect(screen.getAllByText("Inventory")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Wine")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Meal Planning")[0]).toBeInTheDocument();
+  });
+
+  it("pins Household and Profile in a bottom secondary zone", async () => {
+    signIn();
+    renderLayout();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("page-content")).toBeInTheDocument()
+    );
+
+    const nav = screen.getAllByLabelText("secondary navigation")[0];
+    expect(within(nav).getByText("Household")).toBeInTheDocument();
+    expect(within(nav).getByText("Profile")).toBeInTheDocument();
+
+    // The admin section appears once /me resolves.
+    expect(await within(nav).findByText("Administration")).toBeInTheDocument();
+    expect(await within(nav).findByText("Users")).toBeInTheDocument();
+
+    // The zone renders below the main navigation list.
+    const mainNav = screen.getAllByLabelText("main navigation")[0];
+    expect(
+      mainNav.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it("expands a navigation group to reveal child links", async () => {

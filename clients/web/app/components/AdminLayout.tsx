@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { styled, useTheme } from "@mui/material/styles";
+import { alpha, styled, useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
@@ -59,9 +59,27 @@ interface NavItem {
   children?: NavItem[];
 }
 
-const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?: NavItem[] }[] = [
+type NavEntry = { label: string; href?: string; adminOnly?: boolean; children?: NavItem[] };
+
+const CORE_NAV: NavEntry[] = [
   { label: "Dashboard", href: "/" },
   { label: "Assistant", href: "/assistant" },
+  {
+    label: "Meal Planning",
+    children: [
+      { label: "Weekly Plan", href: "/meal-plans" },
+      { label: "Events", href: "/events" },
+      { label: "Grocery Lists", href: "/grocery-lists" },
+    ],
+  },
+  {
+    label: "Recipes",
+    children: [
+      { label: "Recipes", href: "/recipes" },
+      { label: "Categories", href: "/recipes/categories", adminOnly: true },
+      { label: "Pending Reviews", href: "/recipes/pending", adminOnly: true },
+    ],
+  },
   {
     label: "Inventory",
     children: [
@@ -86,26 +104,25 @@ const NAVIGATION: { label: string; href?: string; adminOnly?: boolean; children?
       { label: "Wine Flavor Profiles", href: "/wine/wine-flavor-profiles" },
     ],
   },
+];
+
+// Bottom zone: collapsible captioned groups pinned to the drawer foot.
+const BOTTOM_NAV: NavEntry[] = [
   {
-    label: "Recipes",
+    label: "Administration",
+    adminOnly: true,
     children: [
-      { label: "Recipes", href: "/recipes" },
-      { label: "Categories", href: "/recipes/categories", adminOnly: true },
-      { label: "Pending Reviews", href: "/recipes/pending", adminOnly: true },
+      { label: "Users", href: "/users", adminOnly: true },
+      { label: "Pending Items", href: "/items/pending", adminOnly: true },
     ],
   },
   {
-    label: "Meal Planning",
+    label: "Account",
     children: [
-      { label: "Weekly Plan", href: "/meal-plans" },
-      { label: "Events", href: "/events" },
-      { label: "Grocery Lists", href: "/grocery-lists" },
+      { label: "Household", href: "/household" },
+      { label: "Profile", href: "/profile" },
     ],
   },
-  { label: "Users", href: "/users", adminOnly: true },
-  { label: "Pending Items", href: "/items/pending", adminOnly: true },
-  { label: "Household", href: "/household" },
-  { label: "Profile", href: "/profile" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -312,9 +329,15 @@ export default function AdminLayout({
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(
     () => {
       const initial: Record<string, boolean> = {};
-      NAVIGATION.forEach((group) => {
+      CORE_NAV.forEach((group) => {
         if (group.children) {
           initial[group.label] = isGroupActive(pathname, group.children);
+        }
+      });
+      // Bottom-zone captions start expanded so their links stay visible.
+      BOTTOM_NAV.forEach((group) => {
+        if (group.children) {
+          initial[group.label] = true;
         }
       });
       return initial;
@@ -329,11 +352,106 @@ export default function AdminLayout({
     return <LoginScreen />;
   }
 
+  const renderNavEntry = (group: NavEntry, caption = false) => {
+    if (group.children) {
+      const active = isGroupActive(pathname, group.children);
+      const icon =
+        group.label === "Inventory" ? (
+          <InventoryIcon />
+        ) : group.label === "Wine" ? (
+          <WineBarIcon />
+        ) : group.label === "Recipes" ? (
+          <MenuBookIcon />
+        ) : group.label === "Meal Planning" ? (
+          <RestaurantIcon />
+        ) : null;
+
+      return (
+        <React.Fragment key={group.label}>
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => toggleGroup(group.label)}
+              selected={active}
+            >
+              {icon && <ListItemIcon>{icon}</ListItemIcon>}
+              <ListItemText
+                primary={group.label}
+                slotProps={
+                  caption
+                    ? {
+                        primary: {
+                          variant: "overline",
+                          color: "text.secondary",
+                          sx: { lineHeight: 1.5 },
+                        },
+                      }
+                    : undefined
+                }
+              />
+              {openGroups[group.label] ? (
+                <ExpandLess fontSize={caption ? "small" : "medium"} />
+              ) : (
+                <ExpandMore fontSize={caption ? "small" : "medium"} />
+              )}
+            </ListItemButton>
+          </ListItem>
+          <Collapse
+            in={openGroups[group.label]}
+            timeout="auto"
+            unmountOnExit
+          >
+            <List component="div" disablePadding>
+              {group.children.map((child) => (
+                <ListItem key={child.href} disablePadding>
+                  <ListItemButton
+                    component={Link}
+                    href={child.href}
+                    selected={isActive(pathname, child.href)}
+                    onClick={() => setMobileOpen(false)}
+                    sx={{ pl: caption ? 3 : 4 }}
+                  >
+                    <ListItemText primary={child.label} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Collapse>
+        </React.Fragment>
+      );
+    }
+
+    return (
+      <ListItem key={group.href!} disablePadding>
+        <ListItemButton
+          component={Link}
+          href={group.href!}
+          selected={isActive(pathname, group.href!)}
+          onClick={() => setMobileOpen(false)}
+        >
+          {group.label === "Dashboard" && (
+            <ListItemIcon>
+              <DashboardIcon />
+            </ListItemIcon>
+          )}
+          <ListItemText primary={group.label} />
+        </ListItemButton>
+      </ListItem>
+    );
+  };
+
   const drawerContent = (
-    <Box sx={{ overflow: "auto" }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+      }}
+    >
       <Box
         sx={{
           height: 64,
+          flexShrink: 0,
           display: { xs: "flex", md: "none" },
           alignItems: "center",
           justifyContent: "center",
@@ -342,78 +460,23 @@ export default function AdminLayout({
       >
         <LenaLogo size={24} />
       </Box>
-      <List component="nav" aria-label="main navigation">
-        {NAVIGATION.filter((item) => !item.adminOnly || isAdmin).map((group) => {
-          if (group.children) {
-            const active = isGroupActive(pathname, group.children);
-            const icon =
-              group.label === "Inventory" ? (
-                <InventoryIcon />
-              ) : group.label === "Wine" ? (
-                <WineBarIcon />
-              ) : group.label === "Recipes" ? (
-                <MenuBookIcon />
-              ) : group.label === "Meal Planning" ? (
-                <RestaurantIcon />
-              ) : null;
-
-            return (
-              <React.Fragment key={group.label}>
-                <ListItem disablePadding>
-                  <ListItemButton
-                    onClick={() => toggleGroup(group.label)}
-                    selected={active}
-                  >
-                    {icon && <ListItemIcon>{icon}</ListItemIcon>}
-                    <ListItemText primary={group.label} />
-                    {openGroups[group.label] ? <ExpandLess /> : <ExpandMore />}
-                  </ListItemButton>
-                </ListItem>
-                <Collapse
-                  in={openGroups[group.label]}
-                  timeout="auto"
-                  unmountOnExit
-                >
-                  <List component="div" disablePadding>
-                    {group.children.map((child) => (
-                      <ListItem key={child.href} disablePadding>
-                        <ListItemButton
-                          component={Link}
-                          href={child.href}
-                          selected={isActive(pathname, child.href)}
-                          onClick={() => setMobileOpen(false)}
-                          sx={{ pl: 4 }}
-                        >
-                          <ListItemText primary={child.label} />
-                        </ListItemButton>
-                      </ListItem>
-                    ))}
-                  </List>
-                </Collapse>
-              </React.Fragment>
-            );
-          }
-
-          return (
-            <ListItem key={group.href!} disablePadding>
-              <ListItemButton
-                component={Link}
-                href={group.href!}
-                selected={isActive(pathname, group.href!)}
-                onClick={() => setMobileOpen(false)}
-              >
-                {group.label === "Dashboard" && (
-                  <ListItemIcon>
-                    <DashboardIcon />
-                  </ListItemIcon>
-                )}
-                <ListItemText primary={group.label} />
-              </ListItemButton>
-            </ListItem>
-          );
-        })}
+      <Box sx={{ flexGrow: 1, overflow: "auto" }}>
+        <List component="nav" aria-label="main navigation">
+          {CORE_NAV.filter((item) => !item.adminOnly || isAdmin).map((group) =>
+            renderNavEntry(group)
+          )}
+        </List>
+      </Box>
+      <Divider sx={{ flexShrink: 0 }} />
+      <List
+        component="nav"
+        aria-label="secondary navigation"
+        sx={{ flexShrink: 0, py: 1 }}
+      >
+        {BOTTOM_NAV.filter((item) => !item.adminOnly || isAdmin).map((group) =>
+          renderNavEntry(group, true)
+        )}
       </List>
-      <Divider />
     </Box>
   );
 
@@ -450,7 +513,7 @@ export default function AdminLayout({
                   px: 1.5,
                   py: 0.5,
                   mr: 1,
-                  bgcolor: "rgba(255,255,255,0.12)",
+                  bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
                 }}
               >
                 <AccountCircleIcon fontSize="small" />
@@ -506,6 +569,7 @@ export default function AdminLayout({
           <Box
             sx={{
               height: 64,
+              flexShrink: 0,
               borderBottom: `1px solid ${theme.palette.divider}`,
             }}
           />
