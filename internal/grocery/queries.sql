@@ -1,6 +1,13 @@
 -- name: CreateGroceryList :one
-INSERT INTO grocery.grocery_list (household_id, meal_plan_id, created_by, updated_by)
-VALUES ($1, $2, $3, $4)
+-- New lists inherit the household's most recently used store so web and
+-- mobile default to the same routing context.
+INSERT INTO grocery.grocery_list (household_id, meal_plan_id, store_id, created_by, updated_by)
+VALUES ($1, $2,
+    (SELECT store_id FROM grocery.grocery_list
+     WHERE household_id = $1 AND store_id IS NOT NULL
+     ORDER BY generated_at DESC, grocery_list_id DESC
+     LIMIT 1),
+    $3, $4)
 RETURNING *;
 
 -- name: GetGroceryListByID :one
@@ -72,6 +79,14 @@ FROM grocery.grocery_list_item gli
 JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
 WHERE gli.grocery_list_id = ANY(sqlc.arg(grocery_list_ids)::bigint[]) AND gl.household_id = sqlc.arg(household_id)
 ORDER BY gli.grocery_list_item_id;
+
+-- name: CountGroceryListItems :one
+-- List size normalizes a check-off's checked_seq into a 0..1 route
+-- position for the learned-ordering mean.
+SELECT COUNT(*)
+FROM grocery.grocery_list_item gli
+JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
+WHERE gli.grocery_list_id = $1 AND gl.household_id = $2;
 
 -- name: GetGroceryListItemByID :one
 SELECT gli.*
@@ -175,12 +190,13 @@ JOIN grocery.store s ON sa.store_id = s.store_id
 WHERE sa.store_id = $1 AND s.household_id = $2
 ORDER BY sa.position, sa.aisle_id;
 
--- name: RenameAisle :execrows
+-- name: RenameAisle :one
 UPDATE grocery.store_aisle sa
 SET name = $3, updated_by = $4, updated_at = now()
 FROM grocery.store s
 WHERE sa.store_id = s.store_id
-  AND sa.aisle_id = $1 AND s.household_id = $2;
+  AND sa.aisle_id = $1 AND s.household_id = $2
+RETURNING sa.*;
 
 -- name: DeleteAisle :exec
 DELETE FROM grocery.store_aisle sa

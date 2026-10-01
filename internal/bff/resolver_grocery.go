@@ -549,6 +549,21 @@ func (r *groceryListResolver) GeneratedAt() graphql.Time {
 	return graphql.Time{Time: r.list.GeneratedAt}
 }
 
+// Store resolves the store selected to route this list.
+func (r *groceryListResolver) Store(ctx context.Context) (*storeResolver, error) {
+	if r.list.StoreID == nil {
+		return nil, nil
+	}
+	st, err := r.g.GetStoreByID(ctx, *r.list.StoreID, r.householdID)
+	if err != nil {
+		if errors.Is(err, domainerr.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &storeResolver{g: r.g, householdID: r.householdID, store: st}, nil
+}
+
 func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemResolver, error) {
 	var items []grocery.GroceryListItem
 	if r.ch != nil {

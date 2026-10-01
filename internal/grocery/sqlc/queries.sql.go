@@ -190,6 +190,27 @@ func (q *Queries) AssignManualToAisle(ctx context.Context, arg AssignManualToAis
 	return i, err
 }
 
+const countGroceryListItems = `-- name: CountGroceryListItems :one
+SELECT COUNT(*)
+FROM grocery.grocery_list_item gli
+JOIN grocery.grocery_list gl ON gli.grocery_list_id = gl.grocery_list_id
+WHERE gli.grocery_list_id = $1 AND gl.household_id = $2
+`
+
+type CountGroceryListItemsParams struct {
+	GroceryListID int64 `json:"grocery_list_id"`
+	HouseholdID   int64 `json:"household_id"`
+}
+
+// List size normalizes a check-off's checked_seq into a 0..1 route
+// position for the learned-ordering mean.
+func (q *Queries) CountGroceryListItems(ctx context.Context, arg CountGroceryListItemsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroceryListItems, arg.GroceryListID, arg.HouseholdID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countGroceryLists = `-- name: CountGroceryLists :one
 SELECT COUNT(*)
 FROM grocery.grocery_list
@@ -240,8 +261,13 @@ func (q *Queries) CreateAisle(ctx context.Context, arg CreateAisleParams) (Groce
 }
 
 const createGroceryList = `-- name: CreateGroceryList :one
-INSERT INTO grocery.grocery_list (household_id, meal_plan_id, created_by, updated_by)
-VALUES ($1, $2, $3, $4)
+INSERT INTO grocery.grocery_list (household_id, meal_plan_id, store_id, created_by, updated_by)
+VALUES ($1, $2,
+    (SELECT store_id FROM grocery.grocery_list
+     WHERE household_id = $1 AND store_id IS NOT NULL
+     ORDER BY generated_at DESC, grocery_list_id DESC
+     LIMIT 1),
+    $3, $4)
 RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 `
 
@@ -252,6 +278,8 @@ type CreateGroceryListParams struct {
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
+// New lists inherit the household's most recently used store so web and
+// mobile default to the same routing context.
 func (q *Queries) CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error) {
 	row := q.db.QueryRow(ctx, createGroceryList,
 		arg.HouseholdID,
@@ -873,12 +901,13 @@ func (q *Queries) ReassignGroceryListsToHousehold(ctx context.Context, arg Reass
 	return err
 }
 
-const renameAisle = `-- name: RenameAisle :execrows
+const renameAisle = `-- name: RenameAisle :one
 UPDATE grocery.store_aisle sa
 SET name = $3, updated_by = $4, updated_at = now()
 FROM grocery.store s
 WHERE sa.store_id = s.store_id
   AND sa.aisle_id = $1 AND s.household_id = $2
+RETURNING sa.aisle_id, sa.store_id, sa.name, sa.position, sa.created_by, sa.created_at, sa.updated_by, sa.updated_at
 `
 
 type RenameAisleParams struct {
@@ -888,17 +917,25 @@ type RenameAisleParams struct {
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) RenameAisle(ctx context.Context, arg RenameAisleParams) (int64, error) {
-	result, err := q.db.Exec(ctx, renameAisle,
+func (q *Queries) RenameAisle(ctx context.Context, arg RenameAisleParams) (GroceryStoreAisle, error) {
+	row := q.db.QueryRow(ctx, renameAisle,
 		arg.AisleID,
 		arg.HouseholdID,
 		arg.Name,
 		arg.UpdatedBy,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var i GroceryStoreAisle
+	err := row.Scan(
+		&i.AisleID,
+		&i.StoreID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const renameStore = `-- name: RenameStore :one

@@ -52,10 +52,31 @@ type GroceryWriter interface {
 	ReplaceGeneratedItems(ctx context.Context, groceryListID, householdID int64, items []grocery.GroceryListItem, by string) ([]grocery.GroceryListItem, error)
 }
 
+// GroceryRouter is the store-routing surface: household store/aisle
+// management, item->aisle assignment, the authoritative list ordering
+// (RouteGroups), and user arrangement (ReorderListItems).
+type GroceryRouter interface {
+	CreateStore(ctx context.Context, householdID int64, name, by string) (grocery.Store, error)
+	GetStoreByID(ctx context.Context, storeID, householdID int64) (grocery.Store, error)
+	ListStores(ctx context.Context, householdID int64) ([]grocery.Store, error)
+	RenameStore(ctx context.Context, storeID, householdID int64, name, by string) (grocery.Store, error)
+	DeleteStore(ctx context.Context, storeID, householdID int64) error
+	SetGroceryListStore(ctx context.Context, groceryListID, householdID int64, storeID *int64, by string) error
+	CreateAisle(ctx context.Context, storeID, householdID int64, name string, position int32, by string) (grocery.StoreAisle, error)
+	ListAisles(ctx context.Context, storeID, householdID int64) ([]grocery.StoreAisle, error)
+	RenameAisle(ctx context.Context, aisleID, householdID int64, name, by string) (grocery.StoreAisle, error)
+	DeleteAisle(ctx context.Context, aisleID, householdID int64) error
+	ReorderAisles(ctx context.Context, storeID, householdID int64, aisleIDs []int64, by string) error
+	AssignToAisle(ctx context.Context, storeID, householdID int64, id grocery.RouteIdentity, aisleID *int64, by string) error
+	RouteGroups(ctx context.Context, groceryListID, householdID int64) ([]grocery.RouteGroup, error)
+	ReorderListItems(ctx context.Context, groceryListID, householdID int64, entries []grocery.ReorderEntry, by string) error
+}
+
 // GroceryService is the subset of *grocery.Service used by the resolver.
 type GroceryService interface {
 	GroceryReader
 	GroceryWriter
+	GroceryRouter
 	HouseholdMigration
 }
 
