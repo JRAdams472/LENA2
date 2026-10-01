@@ -461,7 +461,12 @@ export default function GroceryListDetailPage({
 
   const groups = routeQuery.data ?? [];
   const store = listQuery.data?.store ?? null;
-  const storeAisles = store?.aisles ?? storesQuery.data?.find((s) => s.storeID === store?.storeID)?.aisles ?? [];
+  // The list's store field doesn't select aisles — they come from
+  // groceryStores. store?.aisles maps missing to [] so fall back whenever
+  // it is empty.
+  const storeAisles = store?.aisles?.length
+    ? store.aisles
+    : storesQuery.data?.find((s) => s.storeID === store?.storeID)?.aisles ?? [];
 
   const submitOrder = (movedId: number, targetGroupIdx: number, targetItemIdx: number) => {
     reorderMutation.mutate({ movedId, targetGroupIdx, targetItemIdx });

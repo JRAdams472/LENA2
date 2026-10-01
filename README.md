@@ -74,7 +74,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 - `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata). Category filters narrow the list server-side; assignments happen on the detail page. `/recipes/categories` is the admin's taxonomy manager (groups, exclusivity, display order, categories).
 - `/meal-plans` — weekly meal plans with daily slots and per-slot servings.
 - `/events` — food events: dish slots with granularity-snapped serve times, per-slot recipe snapshots (steps + ingredients copied per event so edits never touch the shared recipe), servings scaling, and a generated cooking timeline with conflict warnings.
-- `/grocery-lists` — shopping lists generated from meal plans, with check-off, plus a **Suggested Restock** section listing pantry items at or below their minimum, ranked by household engagement.
+- `/grocery-lists` — shopping lists generated from meal plans, with check-off, plus a **Suggested Restock** section listing pantry items at or below their minimum, ranked by household engagement. Each list can be routed through a household-defined **store**: the server groups items into the store's ordered aisles, learns per-item positions from check-off order, and honors your manual arrangement (drag handles or the move-to menu) across regenerated lists. Web and mobile render the same server-computed order.
 - **OCR recipe import** — bulk-import scanned cookbook pages, recipe cards, and photos using local OCR and a local LLM. Admin-only; see `docs/recipe-ocr-usage.md`.
 
 ### Wine cellar
@@ -103,7 +103,7 @@ The Flutter app (`clients/mobile`) is intended for quick, on-the-go actions:
 
 - **Google sign-in** — securely persists the ID token to device storage; signed-out or expired tokens return to the login screen.
 - **Dashboard** — today’s meal-plan slots, recommended recipes, and pending household invites.
-- **Grocery lists** — browse lists, check items off while shopping, and view list details.
+- **Grocery lists** — browse lists, check items off while shopping, and view list details grouped by the selected store's aisles; reorder within an aisle by dragging, or move items between aisles from the row menu.
 - **Events** — browse food events, manage dish slots (recipe or free-form, meal type, servings, serve time), and view the cooking timeline as a step-by-step checklist.
 - **Pantry** — view pantry quantities and minimums for tracked items.
 - **Scan** — use the camera to scan a barcode, look up the item by UPC, add or remove stock, or submit a missing item for admin approval.

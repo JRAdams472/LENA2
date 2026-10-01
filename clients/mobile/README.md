@@ -122,7 +122,7 @@ out entirely. Mint a token from the e2e stack's test issuer
 - `lib/screens/login_screen.dart` — Google sign-in button.
 - `lib/screens/main_screen.dart` — Bottom-nav shell.
 - `lib/screens/dashboard_screen.dart` — Today's meal plan + recommendations.
-- `lib/screens/grocery_lists_screen.dart` + `grocery_list_screen.dart` — Grocery list list/detail.
+- `lib/screens/grocery_lists_screen.dart` + `grocery_list_screen.dart` — Grocery list list/detail; the detail screen renders the server's `groceryRouteGroups` verbatim (aisle-grouped, per-group `ReorderableListView`, "move to aisle" menu, store picker).
 - `lib/screens/pantry_screen.dart` — Pantry quantities.
 - `lib/screens/scan_screen.dart` — Barcode scan, UPC lookup, add/remove pantry, submit new items.
 - `lib/scan/upc_utils.dart` — UPC digit normalization.

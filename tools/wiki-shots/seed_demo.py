@@ -269,6 +269,58 @@ if not glist:
     glist = lists[0] if lists else {"id": None}
     print("grocery list existing:", glist["id"])
 
+# Demo store with a walk-ordered aisle layout; the grocery list is routed
+# through it so the detail page shows route groups.
+existing_stores = gql(ADMIN, "{ groceryStores { id name } }")["groceryStores"]
+store = next((s for s in existing_stores if s["name"] == "Corner Market"), None)
+if store:
+    store_id = store["id"]
+    print("store exists:", store["name"])
+else:
+    store_id = gql(
+        ADMIN,
+        "mutation($name: String!) { createStore(name: $name) { id } }",
+        {"name": "Corner Market"},
+    )["createStore"]["id"]
+    for pos, name in enumerate(["Produce", "Dairy", "Pantry Staples"]):
+        gql(
+            ADMIN,
+            "mutation($storeId: ID!, $name: String!, $position: Int!) { createStoreAisle(storeId: $storeId, name: $name, position: $position) { id } }",
+            {"storeId": store_id, "name": name, "position": pos},
+        )
+    print("store + aisles:", store["name"] if store else "Corner Market")
+
+if glist["id"]:
+    gql(
+        ADMIN,
+        "mutation($groceryListId: ID!, $storeId: ID) { setGroceryListStore(groceryListId: $groceryListId, storeId: $storeId) { id } }",
+        {"groceryListId": glist["id"], "storeId": store_id},
+    )
+    aisles = gql(ADMIN, "{ groceryStores { id aisles { id } } }")["groceryStores"]
+    demo_aisles = next(s["aisles"] for s in aisles if s["id"] == store_id)
+    rows = gql(
+        ADMIN,
+        "query($id: ID!) { groceryList(id: $id) { items { id ingredient { id } item { id } manualItemName } } }",
+        {"id": glist["id"]},
+    )["groceryList"]["items"]
+    # Round-robin assignments — enough to show two aisles plus unassigned.
+    for i, row in enumerate(rows):
+        if i % 3 == 2:
+            continue  # leave some items unassigned
+        ident = {
+            "storeId": store_id,
+            "aisleId": demo_aisles[i % 2]["id"],
+            "itemId": (row.get("item") or {}).get("id"),
+            "ingredientId": (row.get("ingredient") or {}).get("id"),
+            "manualItemName": row.get("manualItemName"),
+        }
+        gql(
+            ADMIN,
+            "mutation($storeId: ID!, $aisleId: ID, $itemId: ID, $ingredientId: ID, $manualItemName: String) { assignItemToAisle(storeId: $storeId, aisleId: $aisleId, itemId: $itemId, ingredientId: $ingredientId, manualItemName: $manualItemName) }",
+            ident,
+        )
+    print("list routed:", len(rows), "items")
+
 # Food event on today's date — targetTime's date must match eventDate.
 existing_events = gql(ADMIN, "{ foodEvents(page:1,pageSize:50){ items { id name } } }")["foodEvents"]["items"]
 event = next((e for e in existing_events if e["name"] == "Autumn Dinner Party"), None)

@@ -169,23 +169,40 @@ type MealSlotItem {
 }
 ```
 
-### Grocery — `GroceryList`, `GroceryListItem`
+### Grocery — `GroceryList`, `GroceryListItem`, store routing
 
 ```graphql
 type GroceryList {
   id: ID!
   generatedAt: Time!
   items: [GroceryListItem!]!
+  store: Store            # the store this list is routed through, if any
 }
 
 type GroceryListItem {
   id: ID!
   item: Item
+  ingredient: Ingredient
   manualItemName: String
   quantityNeeded: Float!
   unitOfMeasure: String
   source: String!
   isChecked: Boolean!
+}
+
+type Store { id: ID!, name: String!, aisles: [StoreAisle!]! }
+type StoreAisle { id: ID!, name: String!, position: Int! }
+
+# Server-computed display order: aisle groups in walk order, then a
+# trailing unassigned group (aisle: null). Clients render it verbatim —
+# they never re-sort, so web and mobile always show the same order.
+type GroceryRouteGroup {
+  aisle: StoreAisle
+  items: [GroceryRouteItem!]!
+}
+type GroceryRouteItem {
+  item: GroceryListItem!
+  suggested: Boolean!     # aisle inferred from learned order, not assigned
 }
 ```
 
@@ -210,6 +227,8 @@ type GroceryListItem {
 | `mealPlans(page, pageSize)` | `Int, Int` | `MealPlanPage!` | Current user's plans |
 | `groceryList(id)` | `ID!` | `GroceryList` | Single grocery list |
 | `groceryLists(page, pageSize)` | `Int, Int` | `GroceryListPage!` | Current user's lists |
+| `groceryStores` | — | `[Store!]!` | Household's stores with aisles |
+| `groceryRouteGroups(groceryListId)` | `ID!` | `[GroceryRouteGroup!]!` | Server-computed route grouping |
 | `foodEvent(id)` | `ID!` | `FoodEvent` | Single household event |
 | `foodEvents(page, pageSize)` | `Int, Int` | `FoodEventPage!` | Household's events |
 | `eventTimeline(foodEventId)` | `ID!` | `EventTimeline` | Backwards-scheduled master timeline |
@@ -249,6 +268,14 @@ type GroceryListItem {
 - `generateGroceryList(mealPlanId: ID!): GroceryList!`
 - `toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!`
 - `deleteGroceryItem(groceryListItemId: ID!): Boolean!`
+
+Store routing — all household-scoped:
+
+- `createStore(name: String!): Store!`, `renameStore(storeId: ID!, name: String!): Store!`, `deleteStore(storeId: ID!): Boolean!`
+- `createStoreAisle(storeId: ID!, name: String!, position: Int!): StoreAisle!`, `renameStoreAisle(aisleId: ID!, name: String!): StoreAisle!`, `deleteStoreAisle(aisleId: ID!): Boolean!`, `reorderStoreAisles(storeId: ID!, aisleIds: [ID!]!): [StoreAisle!]!`
+- `assignItemToAisle(storeId: ID!, aisleId: ID, itemId: ID, ingredientId: ID, manualItemName: String): Boolean!` — exactly one identity arg; `aisleId: null` unassigns
+- `setGroceryListStore(groceryListId: ID!, storeId: ID): GroceryList!` — `storeId: null` clears; new lists inherit the household's most recent store
+- `reorderGroceryListItems(groceryListId: ID!, entries: [GroceryReorderEntryInput!]!): Boolean!` — entries are the post-drag display order; an entry's `aisleId` moves that item (null = no change), so a cross-aisle drag lands rank + assignment atomically
 
 ### Events (household-scoped)
 

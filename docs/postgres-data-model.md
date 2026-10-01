@@ -447,6 +447,7 @@ CREATE TABLE grocery.grocery_list (
     grocery_list_id BIGSERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
     meal_plan_id    BIGINT REFERENCES mealplan.meal_plan(meal_plan_id),
+    store_id        BIGINT REFERENCES grocery.store(store_id) ON DELETE SET NULL,
     generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_by      VARCHAR(100) NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -464,12 +465,75 @@ CREATE TABLE grocery.grocery_list_item (
     unit_id              BIGINT REFERENCES inventory.unit(unit_id),
     source               VARCHAR(50) NOT NULL,
     is_checked           BOOLEAN NOT NULL DEFAULT FALSE,
+    checked_at           TIMESTAMPTZ,
+    checked_seq          INTEGER,
     created_by           VARCHAR(100) NOT NULL,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by           VARCHAR(100),
     updated_at           TIMESTAMPTZ
 );
 ```
+
+`checked_at`/`checked_seq` stamp each check-off with a monotonically increasing sequence — the signal the store-routing feature learns from.
+
+### Store routing (migration `0041_store_routing`)
+
+```sql
+-- A household-defined shopping location. external_ref is reserved for a
+-- future cross-household/shared-store linkage.
+CREATE TABLE grocery.store (
+    store_id      BIGSERIAL PRIMARY KEY,
+    household_id  BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
+    name          VARCHAR(200) NOT NULL,
+    external_ref  VARCHAR(200),
+    ...,
+    UNIQUE (household_id, name)
+);
+
+-- Ordered aisles per store — position is the walk order.
+CREATE TABLE grocery.store_aisle (
+    aisle_id  BIGSERIAL PRIMARY KEY,
+    store_id  BIGINT NOT NULL REFERENCES grocery.store(store_id) ON DELETE CASCADE,
+    name      VARCHAR(200) NOT NULL,
+    position  INTEGER NOT NULL,
+    ...,
+    UNIQUE (store_id, name)
+);
+
+-- Maps an item, ingredient, or normalized manual name to an aisle within
+-- a store. Exactly one identity column is non-null (CHECK + partial unique
+-- indexes per (store_id, identity)).
+CREATE TABLE grocery.aisle_assignment (
+    aisle_assignment_id BIGSERIAL PRIMARY KEY,
+    store_id            BIGINT NOT NULL REFERENCES grocery.store(store_id) ON DELETE CASCADE,
+    aisle_id            BIGINT NOT NULL REFERENCES grocery.store_aisle(aisle_id) ON DELETE CASCADE,
+    item_id             BIGINT REFERENCES inventory.item(item_id) ON DELETE CASCADE,
+    ingredient_id       BIGINT REFERENCES inventory.ingredient(ingredient_id) ON DELETE CASCADE,
+    manual_name         VARCHAR(200),  -- lower(trim(...)), normalized in Go
+    ...
+);
+
+-- Per-(household, store, identity) route record. learned_sum/learned_count
+-- form a running mean of the item's normalized check-off position
+-- (checked_seq / list size); manual_rank is the user's explicit arrangement
+-- and wins over the learned mean. store_id = 0 is the generic household
+-- route used when a list has no store — deliberately no FK on store_id.
+CREATE TABLE grocery.item_route (
+    item_route_id  BIGSERIAL PRIMARY KEY,
+    household_id   BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
+    store_id       BIGINT NOT NULL,
+    item_id        BIGINT REFERENCES inventory.item(item_id) ON DELETE CASCADE,
+    ingredient_id  BIGINT REFERENCES inventory.ingredient(ingredient_id) ON DELETE CASCADE,
+    manual_name    VARCHAR(200),
+    learned_sum    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    learned_count  INTEGER NOT NULL DEFAULT 0,
+    manual_rank    DOUBLE PRECISION,
+    manual_at      TIMESTAMPTZ,
+    ...
+);
+```
+
+Sort order is `manual_rank ?? learned_mean` within aisle groups; route data lives outside `grocery_list_item` rows so user arrangement survives `generateGroceryList`'s in-place regeneration.
 
 ## 9. Mobile redesign catalog approval columns
 
