@@ -188,21 +188,22 @@ func splitLeadingQuantity(line string) (*float64, string, []string, string) {
 	}
 
 	tok, n := nextToken(s)
-	if tok == "fl" {
+	switch {
+	case tok == "fl":
 		if rest := strings.TrimSpace(s[n:]); len(rest) > 0 {
 			if t2, n2 := nextToken(rest); t2 == "oz" || t2 == "ounce" || t2 == "ounces" {
 				unit = "fl oz"
 				s = rest[n2:]
 			}
 		}
-	} else if tok == "fluid" {
+	case tok == "fluid":
 		if rest := strings.TrimSpace(s[n:]); len(rest) > 0 {
 			if t2, n2 := nextToken(rest); t2 == "ounce" || t2 == "ounces" {
 				unit = "fluid ounce"
 				s = rest[n2:]
 			}
 		}
-	} else if unitWords[tok] && tok != "fluid" {
+	case unitWords[tok]:
 		unit = tok
 		s = s[n:]
 	}
