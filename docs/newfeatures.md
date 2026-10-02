@@ -78,9 +78,7 @@ Signals to rank by should include but not be limited to:
 ✅ Done (PRs #205–#208). LENA-issued sessions on top of the Google credential: short-lived signed access token (`iss=lena`, ~15 min) + rotating opaque refresh token (hashed at rest, ~30-day sliding expiry, theft-detection family revocation). Endpoints `POST /auth/session{,/refresh,/revoke}`; web and mobile refresh transparently and fall back to OIDC-only mode when `LENA_SESSION_SECRET` is unset. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
 
 ## Semantic recipe search (RAG)
-Keyword/category search can't answer free-form intent ("something cozy for a rainy night", "like shakshuka but no eggs"). Add vector search over recipes so the assistant and recipe search can bridge it.
-- Add `pgvector` + a `recipe.embedding` column, backfilled by a small Ollama embedding model (e.g. `nomic-embed-text`) over name + description + ingredient list; refresh on recipe save.
-- Add a `search_recipes_semantic` read-only tool to the MCP-shaped registry (household-scoped, bounded results) and wire it into `askAssistant` plus a "semantic" mode on recipe search.
+✅ Done (PRs #226, #227). pgvector `recipe.embedding` (768-dim `nomic-embed-text` via Ollama `/api/embed`, `LENA_AI_EMBED_MODEL`), refreshed on every recipe write and healed by a startup+periodic sweep; a deterministic hashing mock embedder covers e2e. `recipes(searchMode: semantic)` ranks embedded recipes by cosine distance + a small engagement bump (filters preserved, `semanticSearchAvailable` gates it); Dot gets the bounded read-only `search_recipes_semantic` tool; the web recipes page has a Semantic toggle with a describe-the-mood hint. "No eggs"-style negations still need `get_recipe_details` verification — embeddings can't exclude.
 
 ## TokTok Integration 
 Give the app the ability to link a TikToc cooking video.
