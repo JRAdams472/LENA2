@@ -17,7 +17,9 @@ const String askAssistantQuery = r'''
 ''';
 
 class _Message {
-  _Message.user(this.text) : isUser = true, tools = const [];
+  _Message.user(this.text)
+      : isUser = true,
+        tools = const [];
   _Message.assistant(this.text, this.tools) : isUser = false;
   final String text;
   final bool isUser;
@@ -54,7 +56,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
   Future<void> _checkAvailable() async {
     final client = GraphQLProvider.of(context).value;
     final result = await client.query(
-      QueryOptions(document: gql(aiAvailableQuery), fetchPolicy: FetchPolicy.noCache),
+      QueryOptions(
+          document: gql(aiAvailableQuery), fetchPolicy: FetchPolicy.noCache),
     );
     if (!mounted) return;
     setState(() {
@@ -91,7 +94,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
       final tools = (answer?['toolCalls'] as List? ?? [])
           .map((t) => t['name'] as String)
           .toList();
-      _messages.add(_Message.assistant(answer?['answer'] as String? ?? '', tools));
+      _messages
+          .add(_Message.assistant(answer?['answer'] as String? ?? '', tools));
     });
   }
 
@@ -102,11 +106,11 @@ class _AssistantScreenState extends State<AssistantScreen> {
     }
     if (!_available) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Assistant')),
+        appBar: AppBar(title: const Text('Ask Dot')),
         body: const Padding(
           padding: EdgeInsets.all(16),
           child: Text(
-            "LENA's assistant isn't configured on this server — no AI "
+            "Dot isn't configured on this server — no AI "
             'provider is set, so meal suggestions, event fixes, and pairing '
             'ideas are off too.',
           ),
@@ -114,7 +118,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Ask LENA')),
+      appBar: AppBar(title: const Text('Ask Dot')),
       body: Column(
         children: [
           Expanded(
@@ -124,17 +128,21 @@ class _AssistantScreenState extends State<AssistantScreen> {
               itemBuilder: (context, i) {
                 final m = _messages[i];
                 return Align(
-                  alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment:
+                      m.isUser ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     constraints: BoxConstraints(
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
                       color: m.isUser
                           ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.surfaceContainerHighest,
+                          : Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(
@@ -164,12 +172,13 @@ class _AssistantScreenState extends State<AssistantScreen> {
           if (_sending)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 4),
-              child: Text('LENA is thinking…'),
+              child: Text('Dot is thinking…'),
             ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              child: Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ),
           Padding(
             padding: const EdgeInsets.all(12),
@@ -179,7 +188,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   child: TextField(
                     controller: _input,
                     decoration: const InputDecoration(
-                      hintText: 'Ask LENA…',
+                      hintText: 'Ask Dot…',
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: _send,

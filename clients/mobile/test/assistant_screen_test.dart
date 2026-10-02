@@ -19,7 +19,7 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 5));
 
       expect(find.textContaining("isn't configured"), findsOneWidget);
-      expect(find.text('Assistant'), findsOneWidget);
+      expect(find.text('Ask Dot'), findsOneWidget);
     },
   );
 }

@@ -112,8 +112,8 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Household',
           ),
           const BottomNavigationBarItem(
-            icon: Icon(Icons.smart_toy),
-            label: 'Assistant',
+            icon: Icon(Icons.auto_awesome),
+            label: 'Ask Dot',
           ),
         ],
       ),
