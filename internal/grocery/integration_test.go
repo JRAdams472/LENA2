@@ -2,6 +2,7 @@ package grocery
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -27,9 +28,8 @@ func itUnitID(t *testing.T, ctx context.Context, invSvc *inventory.Service, name
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool), pool
 }
 
@@ -322,4 +322,8 @@ func TestIntegrationGroceryToggle(t *testing.T) {
 		gli.GroceryListItemID).Scan(&seq, &checkedAt))
 	assert.Nil(t, seq)
 	assert.Nil(t, checkedAt)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

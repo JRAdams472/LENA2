@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -19,9 +20,8 @@ const itBy = "analytics-integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool, Config{}), pool
 }
 
@@ -318,4 +318,8 @@ func TestIntegrationHouseholdCountsAndVelocity(t *testing.T) {
 	velocities, err = svc.HouseholdRecipeVelocities(ctx, 99999, 30)
 	require.NoError(t, err)
 	assert.Empty(t, velocities)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

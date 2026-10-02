@@ -253,9 +253,8 @@ func TestIntegrationStoreContract_SQL(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 
 	recipeSvc := recipe.NewService(pool)
 	rcp, err := recipeSvc.CreateRecipeWithChildren(ctx,

@@ -26,9 +26,8 @@ import (
 // transaction semantics instead of a hand-rolled in-memory double.
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return &Service{
 		uow:   dbtx.NewUnitOfWork(pool),
 		store: NewStore(pool),
@@ -57,11 +56,11 @@ func mustImportItem(t *testing.T, ctx context.Context, svc *inventory.Service, n
 
 // walkToReady drives an import through the worker stages to ready with an
 // approved review, mirroring the real pipeline order.
-func walkToReady(t *testing.T, ctx context.Context, svc *Service, id int64, itemID, unitID int64) {
+func walkToReady(t *testing.T, ctx context.Context, svc *Service, id int64, itemID, unitID int64, name string) {
 	t.Helper()
 	reviewJSON := fmt.Sprintf(
-		`{"name":"IT Recipe","approved":true,"items":[{"draftItem":{"ingredient":"flour"},"itemId":"%d","unit":"cup","unitId":"%d","status":"accepted","approved":true}],"steps":[]}`,
-		itemID, unitID)
+		`{"name":%q,"approved":true,"items":[{"draftItem":{"ingredient":"flour"},"itemId":"%d","unit":"cup","unitId":"%d","status":"accepted","approved":true}],"steps":[]}`,
+		name, itemID, unitID)
 	_, err := svc.store.Claim(ctx, id)
 	require.NoError(t, err)
 	require.NoError(t, svc.store.UpdateOCR(ctx, id, "text", nil))
@@ -185,7 +184,7 @@ func TestIntegrationService_Approve(t *testing.T) {
 
 	ri, err := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, itBy)
 	require.NoError(t, err)
-	walkToReady(t, ctx, svc, ri.ID, itemID, unitID)
+	walkToReady(t, ctx, svc, ri.ID, itemID, unitID, "IT Recipe")
 
 	created, updated, err := svc.Approve(ctx, ri.ID, admin)
 	require.NoError(t, err)
@@ -236,7 +235,7 @@ func TestIntegrationService_Approve_NegativeStates(t *testing.T) {
 
 	// persisted: already approved once.
 	persisted := newImport()
-	walkToReady(t, ctx, svc, persisted.ID, itemID, unitID)
+	walkToReady(t, ctx, svc, persisted.ID, itemID, unitID, "IT Negative Recipe")
 	_, _, err = svc.Approve(ctx, persisted.ID, admin)
 	require.NoError(t, err)
 	_, _, err = svc.Approve(ctx, persisted.ID, admin)
@@ -274,9 +273,8 @@ func TestIntegrationService_Approve_RollbackOnPersistFailure(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 
 	svc := &Service{
 		uow:   dbtx.NewUnitOfWork(pool),
@@ -291,7 +289,7 @@ func TestIntegrationService_Approve_RollbackOnPersistFailure(t *testing.T) {
 
 	ri, err := svc.Create(ctx, "scan.pdf", "/inbox/scan.pdf", "abc", nil, itBy)
 	require.NoError(t, err)
-	walkToReady(t, ctx, svc, ri.ID, itemID, unitID)
+	walkToReady(t, ctx, svc, ri.ID, itemID, unitID, "IT Rollback Recipe")
 
 	// Swap in the store that fails SetPersisted inside the transaction.
 	svc.store = failPersistStore{Store: svc.store, err: errors.New("persist boom")}
@@ -309,6 +307,6 @@ func TestIntegrationService_Approve_RollbackOnPersistFailure(t *testing.T) {
 	// The recipe insert must have rolled back too: no recipe named for this run.
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM recipe.recipe WHERE name = 'IT Recipe'`).Scan(&count))
+		`SELECT COUNT(*) FROM recipe.recipe WHERE name = 'IT Rollback Recipe'`).Scan(&count))
 	assert.Equal(t, 0, count, "recipe insert must roll back when persist fails")
 }

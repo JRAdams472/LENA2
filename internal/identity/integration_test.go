@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,9 +19,8 @@ func TestIntegrationUserLifecycle(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 
 	svc := identity.NewService(pool)
 
@@ -62,9 +62,8 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 
 	svc := identity.NewService(pool)
 	hsvc := household.NewService(pool)
@@ -137,4 +136,8 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 	got, err = svc.GetByID(ctx, mate)
 	require.NoError(t, err)
 	require.NotNil(t, got.HouseholdID)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

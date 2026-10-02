@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -20,17 +21,15 @@ const itBy = "integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) *Service {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool)
 }
 
 func newIntegrationServiceWithPool(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool), pool
 }
 
@@ -652,4 +651,8 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 	})
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

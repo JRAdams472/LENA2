@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -34,7 +35,22 @@ func ensureWindowsDockerHost() {
 // NewTestDB starts a PostgreSQL 18 container, applies all migrations, and
 // returns a connection pool and a terminate callback. Callers are responsible
 // for calling the returned cleanup function.
+//
+// Prefer SharedTestDB for new tests — it reuses one container per test
+// binary instead of paying container + migration startup per call.
 func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error) {
+	pool, terminate, err := newTestDB(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pool, func() {
+		if err := terminate(); err != nil {
+			t.Logf("failed to terminate test container: %v", err)
+		}
+	}, nil
+}
+
+func newTestDB(ctx context.Context) (*pgxpool.Pool, func() error, error) {
 	ensureWindowsDockerHost()
 	// postgres logs "ready to accept connections" twice: once during initdb
 	// bootstrap and once after the real startup. Wait for the second
@@ -54,15 +70,13 @@ func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error)
 		return nil, nil, fmt.Errorf("start postgres container: %w", err)
 	}
 
-	cleanup := func() {
-		if err := container.Terminate(ctx); err != nil {
-			t.Logf("failed to terminate test container: %v", err)
-		}
+	cleanup := func() error {
+		return container.Terminate(ctx)
 	}
 
 	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		cleanup()
+		_ = cleanup()
 		return nil, nil, fmt.Errorf("get container connection string: %w", err)
 	}
 
@@ -71,38 +85,80 @@ func NewTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, func(), error)
 	// (production pools register fine — compose runs db-migrate before api).
 	migPool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
-		cleanup()
+		_ = cleanup()
 		return nil, nil, fmt.Errorf("open migration pool: %w", err)
 	}
 	if err := migPool.Ping(ctx); err != nil {
 		migPool.Close()
-		cleanup()
+		_ = cleanup()
 		return nil, nil, fmt.Errorf("ping database: %w", err)
 	}
 	if err := RunMigrations(ctx, migPool); err != nil {
 		migPool.Close()
-		cleanup()
+		_ = cleanup()
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
 	}
 	migPool.Close()
 
 	poolCfg, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		cleanup()
+		_ = cleanup()
 		return nil, nil, fmt.Errorf("parse pgx pool config: %w", err)
 	}
 	// pgvector codec for recipe embedding columns.
 	poolCfg.AfterConnect = pgxvector.RegisterTypes
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
-		cleanup()
+		_ = cleanup()
 		return nil, nil, fmt.Errorf("open pgx pool: %w", err)
 	}
 
-	return pool, func() {
+	return pool, func() error {
 		pool.Close()
-		cleanup()
+		return cleanup()
 	}, nil
+}
+
+var sharedDB struct {
+	once      sync.Once
+	pool      *pgxpool.Pool
+	terminate func() error
+	err       error
+}
+
+// SharedTestDB returns a PostgreSQL container shared by every test in this
+// test binary — each `go test` package run compiles to its own binary, so
+// the container starts lazily on first use and is reused for the rest of the
+// package. Tests must tolerate rows left behind by earlier tests in the same
+// package; anything needing a pristine database should use NewTestDB.
+//
+// The container is terminated when the test process exits: explicitly via
+// TestMain calling SharedDBTestMain, or by testcontainers' Ryuk reaper if the
+// package has no TestMain.
+func SharedTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, error) {
+	t.Helper()
+	sharedDB.once.Do(func() {
+		// Background context so the pool outlives the first test's ctx.
+		sharedDB.pool, sharedDB.terminate, sharedDB.err = newTestDB(context.Background())
+	})
+	if sharedDB.err != nil {
+		return nil, sharedDB.err
+	}
+	return sharedDB.pool, nil
+}
+
+// SharedDBTestMain runs m and then terminates the shared test container if
+// one was started. Use as:
+//
+//	func TestMain(m *testing.M) { os.Exit(testutil.SharedDBTestMain(m)) }
+func SharedDBTestMain(m *testing.M) int {
+	code := m.Run()
+	if sharedDB.terminate != nil {
+		if err := sharedDB.terminate(); err != nil {
+			fmt.Fprintf(os.Stderr, "terminate shared test container: %v\n", err)
+		}
+	}
+	return code
 }
 
 // RunMigrations applies all *.up.sql migration files and seed scripts found

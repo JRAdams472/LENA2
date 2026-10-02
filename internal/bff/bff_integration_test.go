@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -43,9 +44,8 @@ func TestBFF_Integration(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	defer cleanup()
 
 	issuer := testutil.NewTestIssuer(t)
 
@@ -1163,9 +1163,8 @@ func TestIntegrationGroceryTogglePantrySync(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	defer cleanup()
 
 	invSvc := inventory.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
@@ -1241,9 +1240,8 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	defer cleanup()
 
 	invSvc := inventory.NewService(pool)
 	grocerySvc := grocery.NewService(pool)
@@ -1899,4 +1897,8 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 		}
 	}
 	assert.True(t, sawDeleted)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

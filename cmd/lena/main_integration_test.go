@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -24,9 +25,8 @@ func TestIntegration(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	defer cleanup()
 
 	issuer := testutil.NewTestIssuer(t)
 
@@ -131,4 +131,8 @@ func graphQLRequest(t *testing.T, baseURL, token, query string, vars map[string]
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	return req
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }
