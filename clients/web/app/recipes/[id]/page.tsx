@@ -562,7 +562,7 @@ export default function RecipeDetailPage() {
           <Button
             variant="contained"
             onClick={handleAddItem}
-            disabled={itemId === "" || portion === "" || Number(portion) < 0}
+            disabled={itemId === "" || portion === "" || Number(portion) <= 0}
           >
             Add Item
           </Button>

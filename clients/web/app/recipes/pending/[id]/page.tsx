@@ -11,6 +11,10 @@ import ButtonGroup from "@mui/material/ButtonGroup";
 import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
@@ -237,6 +241,7 @@ export default function PendingRecipeDetailPage() {
   });
 
   const [review, setReview] = useState<RecipeImportReview | null>(null);
+  const [zeroQtyIndex, setZeroQtyIndex] = useState<number | null>(null);
 
   if (recipeImport && !review) {
     setReview(reviewFromImport(recipeImport));
@@ -298,6 +303,11 @@ export default function PendingRecipeDetailPage() {
   };
 
   const updateItem = (index: number, patch: Partial<RecipeImportReviewItem>) => {
+    // A zero quantity means the ingredient is gone — ask before removing it.
+    if (patch.quantity === 0) {
+      setZeroQtyIndex(index);
+      return;
+    }
     setReview((r) => {
       if (!r) return r;
       const items = [...r.items];
@@ -446,6 +456,42 @@ export default function PendingRecipeDetailPage() {
           <Button onClick={() => retryMutation.mutate()}>Retry</Button>
         </ButtonGroup>
       </Stack>
+
+      <Dialog open={zeroQtyIndex !== null} onClose={() => {
+        if (zeroQtyIndex !== null) updateItem(zeroQtyIndex, { quantity: 1 });
+        setZeroQtyIndex(null);
+      }}>
+        <DialogTitle>Remove this ingredient?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            A quantity of 0 doesn&apos;t make sense in a recipe. Remove
+            {zeroQtyIndex !== null && review?.items[zeroQtyIndex]
+              ? ` "${review.items[zeroQtyIndex].ingredient}"`
+              : " this ingredient"}{" "}
+            instead, or keep it with a quantity of 1?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (zeroQtyIndex !== null) updateItem(zeroQtyIndex, { quantity: 1 });
+              setZeroQtyIndex(null);
+            }}
+          >
+            No, keep at 1
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (zeroQtyIndex !== null) removeItem(zeroQtyIndex);
+              setZeroQtyIndex(null);
+            }}
+          >
+            Yes, remove it
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

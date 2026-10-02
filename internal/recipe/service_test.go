@@ -393,7 +393,7 @@ func TestAddRecipeItem(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().AddRecipeItem(gomock.Any(), gomock.Any()).Return(errDB)
 
-		assert.ErrorIs(t, svc.AddRecipeItem(context.Background(), RecipeItem{}), errDB)
+		assert.ErrorIs(t, svc.AddRecipeItem(context.Background(), RecipeItem{Quantity: 1}), errDB)
 	})
 }
 
@@ -1105,10 +1105,12 @@ func TestSearchRecipes(t *testing.T) {
 	})
 }
 
-func TestAddRecipeItem_NegativeQuantity(t *testing.T) {
+func TestAddRecipeItem_NonPositiveQuantity(t *testing.T) {
 	// The guard fires before the querier is touched, so nil is fine.
-	err := addRecipeItem(context.Background(), nil, RecipeItem{Quantity: -1})
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
-	assert.Contains(t, err.Error(), "negative")
+	for _, qty := range []float64{-1, 0} {
+		err := addRecipeItem(context.Background(), nil, RecipeItem{Quantity: qty})
+		require.Error(t, err, "qty=%v", qty)
+		assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
+		assert.Contains(t, err.Error(), "greater than zero")
+	}
 }

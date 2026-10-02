@@ -311,8 +311,8 @@ func (s *Service) AddRecipeItem(ctx context.Context, arg RecipeItem) error {
 }
 
 func addRecipeItem(ctx context.Context, q sqlc.Querier, arg RecipeItem) error {
-	if arg.Quantity < 0 {
-		return &domainerr.ValidationError{Msg: "recipe item quantity cannot be negative"}
+	if arg.Quantity <= 0 {
+		return &domainerr.ValidationError{Msg: "recipe item quantity must be greater than zero"}
 	}
 	qty, err := numericFromFloat64(arg.Quantity)
 	if err != nil {

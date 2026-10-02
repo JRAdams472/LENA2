@@ -241,8 +241,8 @@ func (s *Service) UpdateReview(ctx context.Context, id int64, review *ocrimport.
 		return nil, errors.New("review is nil")
 	}
 	for i, it := range review.Items {
-		if it.DraftItem.Quantity != nil && *it.DraftItem.Quantity < 0 {
-			return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: quantity cannot be negative", i)}
+		if it.DraftItem.Quantity != nil && *it.DraftItem.Quantity <= 0 {
+			return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: quantity must be greater than zero", i)}
 		}
 		if it.ItemID != "" {
 			itemID, err := strconv.ParseInt(it.ItemID, 10, 64)

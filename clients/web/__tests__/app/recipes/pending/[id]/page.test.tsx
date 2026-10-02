@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import PendingRecipeDetailPage from "@/app/recipes/pending/[id]/page";
@@ -466,6 +466,73 @@ describe("pending recipe detail page", () => {
       expect(update).toBeTruthy();
       expect(update.variables.input.items[0].itemId).toBe("42");
       expect(update.variables.input.items[0].approved).toBe(true);
+    });
+  });
+
+  it("setting qty to 0 offers to remove the row", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      return Promise.resolve(gql({ recipeImport }));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByLabelText("Qty"), { target: { value: "0" } });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Remove this ingredient/i)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /yes, remove/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Qty")).not.toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items).toHaveLength(0);
+    });
+  });
+
+  it("setting qty to 0 and declining restores 1", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      return Promise.resolve(gql({ recipeImport }));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByLabelText("Qty"), { target: { value: "0" } });
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /no, keep at 1/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Qty")).toHaveValue(1)
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items[0].quantity).toBe(1);
     });
   });
 });

@@ -436,5 +436,5 @@ func TestService_UpdateReview_NegativeQuantityRejected(t *testing.T) {
 	_, err = svc.UpdateReview(context.Background(), ri.ID, review, "tester")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
-	assert.Contains(t, err.Error(), "negative")
+	assert.Contains(t, err.Error(), "greater than zero")
 }
