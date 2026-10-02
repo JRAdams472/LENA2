@@ -420,6 +420,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		})
 	handler, err := bff.NewGraphQLHandler(resolver,
 		cfg.GraphQLTimeout,
+		cfg.GraphQLAITimeout,
 		cfg.GraphQLMaxCost,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))
