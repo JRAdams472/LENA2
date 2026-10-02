@@ -524,6 +524,22 @@ export interface AssistantAnswer {
   toolCalls: AssistantToolCall[];
 }
 
+// One read-only assistant tool spec (assistantTools) — advertised to
+// client-side inference agents for the JSON tool protocol.
+export interface AssistantToolSpec {
+  name: string;
+  description: string;
+  parametersJson: string;
+}
+
+// A one-shot AI request assembled server-side for client-side generation
+// (prepareAssistantRequest).
+export interface PreparedAIRequest {
+  prompt: string;
+  contextJson: string;
+  outputSchemaJson: string;
+}
+
 export interface NutrientAmount {
   nutrientId: number;
   nutrientName: string;
