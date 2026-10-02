@@ -7,6 +7,7 @@ import 'dashboard_screen.dart';
 import 'events_screen.dart';
 import 'grocery_lists_screen.dart';
 import 'household_screen.dart';
+import 'more_screen.dart';
 import 'pantry_screen.dart';
 import 'scan_screen.dart';
 
@@ -37,6 +38,7 @@ class _MainScreenState extends State<MainScreen> {
     PantryScreen(),
     HouseholdScreen(),
     AssistantScreen(),
+    MoreScreen(),
   ];
 
   @override
@@ -114,6 +116,10 @@ class _MainScreenState extends State<MainScreen> {
           const BottomNavigationBarItem(
             icon: Icon(Icons.auto_awesome),
             label: 'Ask Dot',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.more_horiz),
+            label: 'More',
           ),
         ],
       ),
