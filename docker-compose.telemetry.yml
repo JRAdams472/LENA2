@@ -1,0 +1,38 @@
+# Optional compose overlay: distributed tracing via Jaeger.
+# The API exports OTLP gRPC spans when LENA_OTEL_EXPORTER_OTLP_ENDPOINT is
+# set; this overlay points it at an all-in-one Jaeger on the compose network
+# and exposes the Jaeger UI on host loopback only (http://localhost:16686).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.telemetry.yml up -d
+#
+# Note: the API's /metrics endpoint is bearer-authenticated like /graphql,
+# so Prometheus-style scraping needs a token from a trusted issuer; traces
+# are the practical telemetry surface for local QA.
+services:
+  api:
+    environment:
+      LENA_OTEL_EXPORTER_OTLP_ENDPOINT: ${LENA_OTEL_EXPORTER_OTLP_ENDPOINT:-jaeger:4317}
+      LENA_OTEL_EXPORTER_OTLP_INSECURE: "true"
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0@sha256:3d0ac795ff98aa04d1be04311d2dac6c25b4bfc8322dc02e53bc5b170c5018c3
+    ports:
+      # Jaeger UI on host loopback only: http://localhost:16686
+      - "127.0.0.1:16686:16686"
+    # All-in-one keeps spans in memory — restart clears trace history.
+    volumes:
+      - jaeger_badger:/badger
+    environment:
+      # Badger ephemerality off = spans survive container restarts.
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_VALUE: /badger/data
+      BADGER_DIRECTORY_KEY: /badger/key
+      # Jaeger v2 accepts OTLP gRPC on 4317 by default; span keys/values are
+      # bounded to keep a runaway instrumented path from filling the store.
+      BADGER_SPAN_STORE_TTL: "72h"
+
+volumes:
+  jaeger_badger:
