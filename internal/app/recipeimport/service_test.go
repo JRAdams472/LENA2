@@ -412,3 +412,29 @@ func TestService_Approve_DuplicateNameIsValidationError(t *testing.T) {
 	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
 	assert.Contains(t, err.Error(), "already exists")
 }
+
+func TestService_UpdateReview_NegativeQuantityRejected(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReviewing
+
+	svc := &Service{
+		inv:   &fakeInventory{units: []inventory.Unit{{UnitID: 2, Name: "each"}}, items: []inventory.Item{{ItemID: 10, Name: "Salt"}}},
+		store: store,
+	}
+	neg := -2.0
+	review := &ocrimport.ReviewRecipe{
+		Name: "Bad",
+		Items: []ocrimport.MatchResult{{
+			DraftItem: ocrimport.DraftItem{Ingredient: "flour", Quantity: &neg},
+			ItemID:    "10",
+			Approved:  true,
+		}},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "x"}},
+	}
+	_, err = svc.UpdateReview(context.Background(), ri.ID, review, "tester")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
+	assert.Contains(t, err.Error(), "negative")
+}

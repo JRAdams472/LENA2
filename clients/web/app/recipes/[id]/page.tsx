@@ -541,6 +541,7 @@ export default function RecipeDetailPage() {
             label="Portion"
             type="number"
             value={portion}
+            slotProps={{ htmlInput: { min: 0, step: "any" } }}
             onChange={(e) => setPortion(e.target.value)}
           />
           <TextField
@@ -561,7 +562,7 @@ export default function RecipeDetailPage() {
           <Button
             variant="contained"
             onClick={handleAddItem}
-            disabled={itemId === "" || portion === ""}
+            disabled={itemId === "" || portion === "" || Number(portion) < 0}
           >
             Add Item
           </Button>

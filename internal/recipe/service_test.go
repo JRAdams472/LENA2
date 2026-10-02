@@ -1104,3 +1104,11 @@ func TestSearchRecipes(t *testing.T) {
 		assert.Equal(t, int64(4), n)
 	})
 }
+
+func TestAddRecipeItem_NegativeQuantity(t *testing.T) {
+	// The guard fires before the querier is touched, so nil is fine.
+	err := addRecipeItem(context.Background(), nil, RecipeItem{Quantity: -1})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
+	assert.Contains(t, err.Error(), "negative")
+}

@@ -120,7 +120,13 @@ function IngredientRow({
           label="Qty"
           type="number"
           value={item.quantity ?? ""}
-          onChange={(e) => onChange({ quantity: e.target.value ? Number(e.target.value) : null })}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") return onChange({ quantity: null });
+            const n = Number(v);
+            if (!Number.isNaN(n) && n >= 0) onChange({ quantity: n });
+          }}
+          slotProps={{ htmlInput: { min: 0, step: "any" } }}
           size="small"
           sx={{ width: 90 }}
         />
