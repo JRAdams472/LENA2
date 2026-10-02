@@ -68,7 +68,8 @@ void main() {
     expect(find.text('Categories'), findsNothing);
   });
 
-  testWidgets('EditRecipeScreen edit mode renders its app bar', (tester) async {
+  testWidgets('EditRecipeScreen edit mode renders its app bar',
+      (tester) async {
     await tester.pumpWidget(
       GraphQLProvider(
         client: ValueNotifier(graphQLClient),

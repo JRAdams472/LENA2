@@ -4,8 +4,7 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:lena_mobile/graphql_config.dart';
 import 'package:lena_mobile/screens/grocery_list_screen.dart';
 
-Map<String, dynamic> routeGroup(
-        Object? aisleId, String name, List<String> itemIds) =>
+Map<String, dynamic> routeGroup(Object? aisleId, String name, List<String> itemIds) =>
     {
       'aisle': aisleId == null ? null : {'id': aisleId, 'name': name},
       'items': [

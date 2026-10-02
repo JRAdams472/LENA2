@@ -27,8 +27,7 @@ class MealPlansScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Meal Plans')),
       body: Query(
         options: QueryOptions(document: gql(mealPlansQuery)),
-        builder: (QueryResult result,
-            {VoidCallback? refetch, FetchMore? fetchMore}) {
+        builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
           if (result.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -51,8 +50,7 @@ class MealPlansScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        EditMealPlanScreen(mealPlanId: item['id'] as String),
+                    builder: (_) => EditMealPlanScreen(mealPlanId: item['id'] as String),
                   ),
                 ),
               );

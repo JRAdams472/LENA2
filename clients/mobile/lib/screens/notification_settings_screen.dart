@@ -43,18 +43,8 @@ String _fmtUntil(String? iso) {
   if (t == null) return '';
   final local = t.toLocal();
   const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
   final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
   final ampm = local.hour < 12 ? 'AM' : 'PM';
@@ -117,10 +107,7 @@ class _NotificationSettingsScreenState
                   Navigator.pop(ctx);
                   _mutate(muteNotificationsMutation, {
                     'category': isAll ? null : pref['category'],
-                    'until': DateTime.now()
-                        .add(o.duration)
-                        .toUtc()
-                        .toIso8601String(),
+                    'until': DateTime.now().add(o.duration).toUtc().toIso8601String(),
                   });
                 },
               ),
@@ -214,8 +201,9 @@ class _NotificationSettingsScreenState
     if (result.hasException && result.data == null) {
       return Center(child: Text('Error: ${result.exception}'));
     }
-    final prefs = (result.data?['myNotificationPreferences'] as List? ?? [])
-        .cast<Map<String, dynamic>>();
+    final prefs =
+        (result.data?['myNotificationPreferences'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
     return RefreshIndicator(
       onRefresh: () async => _refetch?.call(),
       child: ListView(

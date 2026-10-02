@@ -34,8 +34,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('LENA')),
       body: Query(
         options: QueryOptions(document: gql(dashboardQuery)),
-        builder: (QueryResult result,
-            {VoidCallback? refetch, FetchMore? fetchMore}) {
+        builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
           if (result.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -53,9 +52,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Text('Hello, ${me?['displayName'] ?? me?['email'] ?? 'guest'}'),
                 const SizedBox(height: 16),
-                const Text('Pantry',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('Pantry', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Expanded(
                   child: ListView.builder(
                     itemCount: userItems.length,

@@ -39,17 +39,18 @@ String get liveAccess => makeToken({'iss': 'lena', 'sub': '7', 'exp': _future});
 String get expiredAccess =>
     makeToken({'iss': 'lena', 'sub': '7', 'exp': _past});
 String get googleToken => makeToken({
-      'iss': 'https://accounts.google.com',
-      'email': 'm@example.com',
-      'exp': _future,
-    });
+  'iss': 'https://accounts.google.com',
+  'email': 'm@example.com',
+  'exp': _future,
+});
 
 Map<String, dynamic> bundle(String access, String refresh) => {
-      'accessToken': access,
-      'refreshToken': refresh,
-      'expiresAt':
-          DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-    };
+  'accessToken': access,
+  'refreshToken': refresh,
+  'expiresAt': DateTime.now()
+      .add(const Duration(days: 30))
+      .toIso8601String(),
+};
 
 AuthService makeService(
   MemStorage storage,
@@ -151,8 +152,7 @@ void main() {
     await svc.ready;
     refreshCalls = 0;
 
-    final results =
-        await Future.wait([svc.refreshSession(), svc.refreshSession()]);
+    final results = await Future.wait([svc.refreshSession(), svc.refreshSession()]);
     expect(results, [true, true]);
     expect(refreshCalls, 1);
   });

@@ -87,8 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         document: gql(dashboardQuery),
         variables: const {'limit': 10},
       ),
-      builder: (QueryResult result,
-          {VoidCallback? refetch, FetchMore? fetchMore}) {
+      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
         _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Dashboard')),
@@ -98,8 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _body(
-      BuildContext context, QueryResult result, VoidCallback? refetch) {
+  Widget _body(BuildContext context, QueryResult result, VoidCallback? refetch) {
     if (result.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -131,8 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final me = result.data?['me'] as Map<String, dynamic>?;
-    final name =
-        (me?['displayName'] as String?) ?? (me?['email'] as String?) ?? 'there';
+    final name = (me?['displayName'] as String?) ?? (me?['email'] as String?) ?? 'there';
     final plans = result.data?['mealPlans']?['items'] as List? ?? [];
     final recommendations = result.data?['recommendedRecipes'] as List? ?? [];
     final myId = me?['id'] as String?;
@@ -150,8 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          Text('Hello, $name',
-              style: Theme.of(context).textTheme.headlineSmall),
+          Text('Hello, $name', style: Theme.of(context).textTheme.headlineSmall),
           if (incomingInvites.isNotEmpty || unread > 0) ...[
             const SizedBox(height: 8),
             for (final inv in incomingInvites)
@@ -181,8 +177,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
           ],
           const SizedBox(height: 24),
-          Text('Today\'s Meal Plan',
-              style: Theme.of(context).textTheme.titleLarge),
+          Text('Today\'s Meal Plan', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           if (slots.isEmpty)
             const Card(
@@ -197,14 +192,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               return Card(
                 child: ListTile(
                   title: Text(recipe?['name'] as String? ?? 'Unknown recipe'),
-                  subtitle: Text(
-                      'Meal: ${slot['mealType']} — ${slot['servings']} servings'),
+                  subtitle: Text('Meal: ${slot['mealType']} — ${slot['servings']} servings'),
                 ),
               );
             }),
           const SizedBox(height: 24),
-          Text('Suggested for You',
-              style: Theme.of(context).textTheme.titleLarge),
+          Text('Suggested for You', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           if (recommendations.isEmpty)
             const Card(
@@ -233,8 +226,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (u == null) return 'Someone';
     final display = u['displayName'] as String?;
     if (display != null && display.isNotEmpty) return display;
-    final combined =
-        [u['firstName'], u['lastName']].whereType<String>().join(' ');
+    final combined = [u['firstName'], u['lastName']]
+        .whereType<String>()
+        .join(' ');
     return combined.isNotEmpty ? combined : 'Someone';
   }
 
