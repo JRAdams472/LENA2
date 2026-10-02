@@ -344,7 +344,14 @@ func (r *recipeImportReviewItemResolver) Suggestions() []*recipeImportSuggestion
 	return out
 }
 
-func (r *recipeImportReviewItemResolver) Status() string { return r.item.Status }
+func (r *recipeImportReviewItemResolver) Status() string {
+	// Reviews saved before status was derived from input (or any legacy JSON)
+	// can carry "" — normalize so ReviewItemStatus! never fails coercion.
+	if r.item.Status == "" {
+		return "unmatched"
+	}
+	return r.item.Status
+}
 func (r *recipeImportReviewItemResolver) Notes() *string { return nilIfEmpty(r.item.Notes) }
 func (r *recipeImportReviewItemResolver) Approved() bool { return r.item.Approved }
 
@@ -415,6 +422,12 @@ func (r recipeImportReviewInput) toReviewRecipe() (*ocrimport.ReviewRecipe, erro
 
 	items := make([]ocrimport.MatchResult, 0, len(r.Items))
 	for _, it := range r.Items {
+		// The input has no status field (it's matcher-computed) — derive one
+		// so the stored review always carries a valid ReviewItemStatus.
+		status := "unmatched"
+		if it.Approved {
+			status = "accepted"
+		}
 		items = append(items, ocrimport.MatchResult{
 			DraftItem: ocrimport.DraftItem{
 				Quantity:   it.Quantity,
@@ -429,6 +442,7 @@ func (r recipeImportReviewInput) toReviewRecipe() (*ocrimport.ReviewRecipe, erro
 			Unit:     stringPtr(it.Unit),
 			UnitID:   stringPtrID(it.UnitID),
 			Approved: it.Approved,
+			Status:   status,
 		})
 	}
 
