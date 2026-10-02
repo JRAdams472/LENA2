@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -16,6 +16,7 @@ export interface FieldDef<T = Record<string, unknown>> {
   label: string;
   type?: "text" | "number" | "boolean" | "date";
   sortable?: boolean;
+  render?: (row: T) => ReactNode;
 }
 
 interface CrudDialogProps<T> {

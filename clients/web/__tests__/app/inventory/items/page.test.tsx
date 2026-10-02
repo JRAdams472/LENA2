@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ItemsPage from "@/app/inventory/items/page";
 
@@ -80,6 +80,12 @@ describe("items page", () => {
       if (body.query.includes("deleteItem")) {
         return Promise.resolve(gql({ deleteItem: true }));
       }
+      if (body.query.includes("adjustUserItem")) {
+        return Promise.resolve(gql({ adjustUserItem: { id: "10" } }));
+      }
+      if (body.query.includes("setItemFavorite")) {
+        return Promise.resolve(gql({ setItemFavorite: true }));
+      }
       if (body.query.includes("userItems")) {
         return Promise.resolve(
           gql({
@@ -140,7 +146,9 @@ describe("items page", () => {
     renderPage();
     await waitFor(() => screen.getByText("Milk"));
     const row = screen.getByText("Milk").closest("tr")!;
-    fireEvent.click(row.querySelectorAll("button")[0]);
+    fireEvent.click(
+      row.querySelector('[data-testid="row-edit-button"]')!
+    );
     const nameInput = await screen.findByLabelText("Name");
     expect(nameInput).toHaveValue("Milk");
     fireEvent.change(nameInput, { target: { value: "Whole Milk" } });
@@ -154,10 +162,88 @@ describe("items page", () => {
     renderPage();
     await waitFor(() => screen.getByText("Milk"));
     const row = screen.getByText("Milk").closest("tr")!;
-    const buttons = row.querySelectorAll("button");
-    fireEvent.click(buttons[1]);
+    fireEvent.click(
+      row.querySelector('[data-testid="row-delete-button"]')!
+    );
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteItem") && b.variables.id === "1")).toBe(true);
+    });
+  });
+
+  it("adds to inventory via the quantity dialog", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Milk"));
+    const row = screen.getByText("Milk").closest("tr")!;
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Add to Inventory" })
+    );
+
+    const input = await screen.findByLabelText("How many to add");
+    expect(input).toHaveValue("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Increase quantity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Increase quantity" }));
+    expect(input).toHaveValue("3");
+
+    fireEvent.change(input, { target: { value: "a4b" } });
+    expect(input).toHaveValue("4");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => {
+      expect(
+        getBodies().some(
+          (b) =>
+            b.query.includes("adjustUserItem") &&
+            b.variables.itemId === "1" &&
+            b.variables.quantity === 9
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("edits quantity via the column link", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Milk"));
+    const row = screen.getByText("Milk").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "5" }));
+
+    const input = await screen.findByLabelText("Quantity");
+    expect(input).toHaveValue("5");
+
+    fireEvent.change(input, { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(
+        getBodies().some(
+          (b) =>
+            b.query.includes("adjustUserItem") &&
+            b.variables.itemId === "1" &&
+            b.variables.quantity === 12
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("edits favorite via the column link", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Milk"));
+    const row = screen.getByText("Milk").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "No" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const toggle = within(dialog).getByRole("switch", { name: "Favorite" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(
+        getBodies().some(
+          (b) =>
+            b.query.includes("setItemFavorite") &&
+            b.variables.itemId === "1" &&
+            b.variables.isFavorite === true
+        )
+      ).toBe(true);
     });
   });
 });

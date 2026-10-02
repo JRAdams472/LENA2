@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Link from "@mui/material/Link";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
-import CrudDialog from "@/app/components/CrudDialog";
+import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
+import QuantityDialog from "@/app/components/QuantityDialog";
 import { Item, Brand } from "@/lib/types";
 
 const itemFields = [
@@ -42,6 +44,9 @@ export default function ItemsPage() {
   const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
   const [inStock, setInStock] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [qtyDialogItem, setQtyDialogItem] = useState<Item | null>(null);
+  const [qtyEditItem, setQtyEditItem] = useState<Item | null>(null);
+  const [favEditItem, setFavEditItem] = useState<Item | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -196,49 +201,79 @@ export default function ItemsPage() {
     changeCategoryMutation.mutate({ id, categoryId });
   };
 
-  const handleAdjustQuantity = (id: number) => {
-    const value = window.prompt("Enter quantity adjustment");
-    if (value === null) return;
-    const quantity = Number(value);
-    if (isNaN(quantity)) {
-      alert("Quantity must be a number");
-      return;
-    }
-    const purchaseDate = window.prompt(
-      "Enter purchase date (ISO, optional)"
-    );
-    adjustQuantityMutation.mutate({
-      id,
-      quantity,
-      purchaseDate: purchaseDate || undefined,
-    });
+  const handleSaveQuantity = (quantity: number) => {
+    if (!qtyEditItem) return;
+    adjustQuantityMutation.mutate({ id: qtyEditItem.itemID, quantity });
+    setQtyEditItem(null);
   };
 
-  const handleToggleFavorite = (id: number, current: boolean) => {
-    setFavoriteMutation.mutate({ id, isFavorite: !current });
+  const handleSaveFavorite = (values: Record<string, unknown>) => {
+    if (!favEditItem) return;
+    setFavoriteMutation.mutate({
+      id: favEditItem.itemID,
+      isFavorite: Boolean(values.isFavorite),
+    });
+    setFavEditItem(null);
   };
+
+  const handleAddToInventory = (quantity: number) => {
+    if (!qtyDialogItem) return;
+    adjustQuantityMutation.mutate({
+      id: qtyDialogItem.itemID,
+      quantity: qtyDialogItem.currentQuantity + quantity,
+    });
+    setQtyDialogItem(null);
+  };
+
+  const itemColumns: FieldDef<Item>[] = [
+    { key: "name", label: "Name" },
+    { key: "brand", label: "Brand" },
+    {
+      key: "currentQuantity",
+      label: "Current Quantity",
+      type: "number",
+      render: (row) => (
+        <Link
+          component="button"
+          variant="body2"
+          onClick={() => setQtyEditItem(row)}
+        >
+          {row.currentQuantity}
+        </Link>
+      ),
+    },
+    { key: "minQuantity", label: "Min Quantity", type: "number" },
+    { key: "purchaseDate", label: "Purchase Date" },
+    { key: "expiryDate", label: "Expiry Date" },
+    { key: "notes", label: "Notes" },
+    {
+      key: "isFavorite",
+      label: "Favorite",
+      render: (row) => (
+        <Link
+          component="button"
+          variant="body2"
+          onClick={() => setFavEditItem(row)}
+        >
+          {row.isFavorite ? "Yes" : "No"}
+        </Link>
+      ),
+    },
+  ];
 
   const extraActions = (row: Item) => (
     <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
       <Button
         size="small"
+        onClick={() => setQtyDialogItem(row)}
+      >
+        Add to Inventory
+      </Button>
+      <Button
+        size="small"
         onClick={() => handleChangeCategory(row.itemID)}
       >
         Category
-      </Button>
-      <Button
-        size="small"
-        onClick={() => handleAdjustQuantity(row.itemID)}
-      >
-        Qty
-      </Button>
-      <Button
-        size="small"
-        onClick={() =>
-          handleToggleFavorite(row.itemID, row.isFavorite)
-        }
-      >
-        {row.isFavorite ? "Unfav" : "Fav"}
       </Button>
     </Box>
   );
@@ -312,6 +347,7 @@ export default function ItemsPage() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
+        fields={itemColumns}
         pagination={
           listQuery.data
             ? {
@@ -332,6 +368,41 @@ export default function ItemsPage() {
         values={dialogData}
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
+      />
+      <QuantityDialog
+        open={qtyDialogItem !== null}
+        title={
+          qtyDialogItem
+            ? `Add ${qtyDialogItem.name} to Inventory`
+            : "Add to Inventory"
+        }
+        label="How many to add"
+        onClose={() => setQtyDialogItem(null)}
+        onConfirm={handleAddToInventory}
+      />
+      <QuantityDialog
+        open={qtyEditItem !== null}
+        title={
+          qtyEditItem ? `Edit ${qtyEditItem.name} Quantity` : "Edit Quantity"
+        }
+        label="Quantity"
+        confirmLabel="Save"
+        min={0}
+        initialValue={qtyEditItem?.currentQuantity}
+        onClose={() => setQtyEditItem(null)}
+        onConfirm={handleSaveQuantity}
+      />
+      <CrudDialog
+        open={favEditItem !== null}
+        title={
+          favEditItem ? `Edit ${favEditItem.name} Favorite` : "Edit Favorite"
+        }
+        fields={[{ key: "isFavorite", label: "Favorite", type: "boolean" }]}
+        values={
+          favEditItem ? { isFavorite: favEditItem.isFavorite } : {}
+        }
+        onClose={() => setFavEditItem(null)}
+        onSave={handleSaveFavorite}
       />
     </Box>
   );
