@@ -17,6 +17,8 @@ dependencies:
   uuid: ^4.6.0
   gql: ^1.0.1
   http: ^1.6.0
+  flutter_gemma: ^0.13.6
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

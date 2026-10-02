@@ -1,36 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
-const String aiAvailableQuery = r'''
-  query AIAvailable {
-    aiAvailable
-  }
-''';
-
-const String askAssistantQuery = r'''
-  query AskAssistant($question: String!) {
-    askAssistant(question: $question) {
-      answer
-      toolCalls { name }
-    }
-  }
-''';
+import '../ai/api.dart';
+import '../ai/controller.dart';
+import '../ai/gemma_binding.dart';
+import '../ai/gemma_engine.dart';
+import '../ai/model_manager.dart';
 
 class _Message {
   _Message.user(this.text)
       : isUser = true,
-        tools = const [];
-  _Message.assistant(this.text, this.tools) : isUser = false;
+        tools = const [],
+        engineLabel = null;
+  _Message.assistant(this.text, this.tools, {this.engineLabel})
+      : isUser = false;
   final String text;
   final bool isUser;
   final List<String> tools;
+  final String? engineLabel;
 }
 
-/// Chat surface for the LENA assistant (askAssistant). Hidden affordances
-/// stay consistent with the web: when the server reports aiAvailable=false
-/// the screen explains the provider isn't configured instead of failing.
+/// Chat surface for the LENA assistant. Ask Dot prefers the on-device
+/// Gemma model once the user has opted in and downloaded it; every tool
+/// call still executes server-side under the caller's household scope, and
+/// the server answers directly whenever no local model is ready.
 class AssistantScreen extends StatefulWidget {
-  const AssistantScreen({super.key});
+  const AssistantScreen({super.key, this.controller});
+
+  /// Injectable for tests; when null the screen wires the real
+  /// GraphQL-backed controller in didChangeDependencies.
+  final AssistantController? controller;
 
   @override
   State<AssistantScreen> createState() => _AssistantScreenState();
@@ -39,72 +38,148 @@ class AssistantScreen extends StatefulWidget {
 class _AssistantScreenState extends State<AssistantScreen> {
   final _messages = <_Message>[];
   final _input = TextEditingController();
-  bool _available = false;
-  bool _loading = true;
-  bool _sending = false;
-  String? _error;
+  late AssistantController _controller;
+  bool _ownsController = false;
+  bool _initialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // GraphQLProvider.of reads an inherited widget, so it must wait for
-    // didChangeDependencies — calling it in initState throws.
-    if (!_loading) return;
-    _checkAvailable();
+    if (_initialized) return;
+    _initialized = true;
+    _controller = widget.controller ?? _buildController();
+    _ownsController = widget.controller == null;
+    _controller.addListener(_onControllerChanged);
+    _controller.initialize();
   }
 
-  Future<void> _checkAvailable() async {
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(
-      QueryOptions(
-          document: gql(aiAvailableQuery), fetchPolicy: FetchPolicy.noCache),
+  AssistantController _buildController() {
+    final binding = FlutterGemmaBinding();
+    return AssistantController(
+      api: GraphQLAssistantApi(GraphQLProvider.of(context).value),
+      modelManager: LocalModelManager(binding),
+      engineFactory: () => GemmaEngine(binding),
     );
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _available = result.data?['aiAvailable'] == true;
-    });
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    if (_ownsController) _controller.dispose();
+    _input.dispose();
+    super.dispose();
   }
 
   Future<void> _send(String question) async {
     final q = question.trim();
-    if (q.isEmpty || _sending) return;
+    if (q.isEmpty || _controller.sending) return;
     _input.clear();
-    setState(() {
-      _messages.add(_Message.user(q));
-      _sending = true;
-      _error = null;
-    });
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(
-      QueryOptions(
-        document: gql(askAssistantQuery),
-        variables: {'question': q},
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    );
-    if (!mounted) return;
-    setState(() {
-      _sending = false;
-      if (result.hasException) {
-        _error = result.exception.toString();
-        return;
-      }
-      final answer = result.data?['askAssistant'];
-      final tools = (answer?['toolCalls'] as List? ?? [])
-          .map((t) => t['name'] as String)
-          .toList();
-      _messages
-          .add(_Message.assistant(answer?['answer'] as String? ?? '', tools));
-    });
+    setState(() => _messages.add(_Message.user(q)));
+    try {
+      final result = await _controller.ask(q);
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _Message.assistant(
+            result.answer,
+            result.tools,
+            engineLabel: result.engineLabel,
+          ),
+        );
+      });
+    } catch (_) {
+      // The controller surfaced the error text; nothing else to do.
+    }
+  }
+
+  Widget _buildLocalCard() {
+    final c = _controller;
+    if (c.status == LocalStatus.downloading) {
+      final p = c.downloadProgress;
+      return Card(
+        margin: const EdgeInsets.all(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Downloading the on-device model…'),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: p == null || p <= 0 ? null : p / 100,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                p == null ? '' : '$p%',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: c.cancelDownload,
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (c.status == LocalStatus.optIn) {
+      return Card(
+        margin: const EdgeInsets.all(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Run Dot on this device',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Download a small model (~550 MB) once and Dot can answer '
+                'on this device — faster replies, and your questions never '
+                'leave the phone. Dot still reads household data through '
+                'the server.',
+              ),
+              if (c.downloadError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Last download attempt failed.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonal(
+                  onPressed: c.enableLocal,
+                  child: const Text('Download model'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    final c = _controller;
+
+    if (c.status == LocalStatus.checking) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (!_available) {
+    if (!c.available) {
       return Scaffold(
         appBar: AppBar(title: const Text('Ask Dot')),
         body: const Padding(
@@ -118,9 +193,43 @@ class _AssistantScreenState extends State<AssistantScreen> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Ask Dot')),
+      appBar: AppBar(
+        title: const Text('Ask Dot'),
+        actions: [
+          if (c.modelInstalled || c.localActive)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: Text(
+                  c.engineLabel,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
+          if (c.modelInstalled)
+            PopupMenuButton<String>(
+              iconSize: 20,
+              onSelected: (v) {
+                if (v == 'server') c.setServerOnly(true);
+                if (v == 'local') c.setServerOnly(false);
+                if (v == 'delete') c.deleteModel();
+              },
+              itemBuilder: (context) => [
+                if (c.mode == AssistantMode.server)
+                  const PopupMenuItem(
+                      value: 'local', child: Text('Use on-device model'))
+                else
+                  const PopupMenuItem(
+                      value: 'server', child: Text('Use server answers')),
+                const PopupMenuItem(
+                    value: 'delete', child: Text('Delete on-device model')),
+              ],
+            ),
+        ],
+      ),
       body: Column(
         children: [
+          _buildLocalCard(),
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
@@ -162,6 +271,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ),
+                        if (m.engineLabel != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              m.engineLabel!,
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -169,15 +286,15 @@ class _AssistantScreenState extends State<AssistantScreen> {
               },
             ),
           ),
-          if (_sending)
+          if (c.sending)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 4),
               child: Text('Dot is thinking…'),
             ),
-          if (_error != null)
+          if (c.error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(_error!,
+              child: Text(c.error!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ),
           Padding(
@@ -197,7 +314,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.send),
-                  onPressed: _sending ? null : () => _send(_input.text),
+                  onPressed: c.sending ? null : () => _send(_input.text),
                 ),
               ],
             ),
