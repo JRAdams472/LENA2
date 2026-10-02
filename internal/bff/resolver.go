@@ -77,6 +77,7 @@ type Resolver struct {
 	ocrInFlight map[int64]int
 	uploads     *userRateLimiter
 	aiCalls     *userRateLimiter
+	aiToolCalls *userRateLimiter
 }
 
 // asyncWorkerCap bounds the number of in-flight background tasks.

@@ -11,6 +11,7 @@ package mock
 
 import (
 	context "context"
+	json "encoding/json"
 	reflect "reflect"
 	time "time"
 
@@ -27,6 +28,7 @@ import (
 	notifier "github.com/JRAdams472/LENA2/internal/notifier"
 	ocrimport "github.com/JRAdams472/LENA2/internal/ocrimport"
 	currentuser "github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	llm "github.com/JRAdams472/LENA2/internal/platform/llm"
 	recipe "github.com/JRAdams472/LENA2/internal/recipe"
 	userprefs "github.com/JRAdams472/LENA2/internal/userprefs"
 	wine "github.com/JRAdams472/LENA2/internal/wine"
@@ -9827,6 +9829,51 @@ func (mr *MockAIServiceMockRecorder) Available() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Available", reflect.TypeOf((*MockAIService)(nil).Available))
 }
 
+// CallTool mocks base method.
+func (m *MockAIService) CallTool(ctx context.Context, userID, householdID int64, name string, args json.RawMessage) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CallTool", ctx, userID, householdID, name, args)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CallTool indicates an expected call of CallTool.
+func (mr *MockAIServiceMockRecorder) CallTool(ctx, userID, householdID, name, args any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallTool", reflect.TypeOf((*MockAIService)(nil).CallTool), ctx, userID, householdID, name, args)
+}
+
+// PrepareRequest mocks base method.
+func (m *MockAIService) PrepareRequest(ctx context.Context, userID, householdID int64, name string, params json.RawMessage) (*ai.PreparedRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareRequest", ctx, userID, householdID, name, params)
+	ret0, _ := ret[0].(*ai.PreparedRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareRequest indicates an expected call of PrepareRequest.
+func (mr *MockAIServiceMockRecorder) PrepareRequest(ctx, userID, householdID, name, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareRequest", reflect.TypeOf((*MockAIService)(nil).PrepareRequest), ctx, userID, householdID, name, params)
+}
+
+// Prompt mocks base method.
+func (m *MockAIService) Prompt(name string) (string, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Prompt", name)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// Prompt indicates an expected call of Prompt.
+func (mr *MockAIServiceMockRecorder) Prompt(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prompt", reflect.TypeOf((*MockAIService)(nil).Prompt), name)
+}
+
 // SuggestCocktails mocks base method.
 func (m *MockAIService) SuggestCocktails(ctx context.Context, userID, householdID int64, maxSuggestions int, inStockOnly bool) ([]ai.CocktailSuggestion, error) {
 	m.ctrl.T.Helper()
@@ -9885,4 +9932,18 @@ func (m *MockAIService) SuggestPairings(ctx context.Context, userID, householdID
 func (mr *MockAIServiceMockRecorder) SuggestPairings(ctx, userID, householdID, recipeID, maxSuggestions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestPairings", reflect.TypeOf((*MockAIService)(nil).SuggestPairings), ctx, userID, householdID, recipeID, maxSuggestions)
+}
+
+// ToolSpecs mocks base method.
+func (m *MockAIService) ToolSpecs() []llm.ToolSpec {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ToolSpecs")
+	ret0, _ := ret[0].([]llm.ToolSpec)
+	return ret0
+}
+
+// ToolSpecs indicates an expected call of ToolSpecs.
+func (mr *MockAIServiceMockRecorder) ToolSpecs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToolSpecs", reflect.TypeOf((*MockAIService)(nil).ToolSpecs))
 }

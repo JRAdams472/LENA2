@@ -2,6 +2,8 @@ package bff
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/ai"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/identity"
+	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
@@ -303,4 +306,156 @@ func TestResolver_AskAssistant_RateLimited(t *testing.T) {
 	_, err = r.AskAssistant(aiCtx(), struct{ Question string }{Question: "two"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "rate limit")
+}
+
+func TestResolver_AssistantTools(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	svc := mock.NewMockAIService(ctrl)
+	svc.EXPECT().ToolSpecs().Return([]llm.ToolSpec{{
+		Name:        "get_pantry_inventory",
+		Description: "List pantry items",
+		Parameters:  map[string]any{"type": "object"},
+	}})
+
+	r := &Resolver{AIService: svc}
+	res, err := r.AssistantTools(aiCtx())
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "get_pantry_inventory", res[0].Name())
+	assert.Equal(t, "List pantry items", res[0].Description())
+	assert.JSONEq(t, `{"type":"object"}`, res[0].ParametersJson())
+
+	// Nil service → empty catalog, not an error: tools are just reads and
+	// may exist without a configured provider.
+	r = &Resolver{}
+	res, err = r.AssistantTools(aiCtx())
+	require.NoError(t, err)
+	assert.Empty(t, res)
+}
+
+func TestResolver_CallAssistantTool(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	svc := mock.NewMockAIService(ctrl)
+	// Scope flows from the authenticated user — never from arguments.
+	svc.EXPECT().CallTool(gomock.Any(), int64(7), int64(7), "get_expiring_items", json.RawMessage(`{"days":7}`)).
+		Return(`[{"name":"milk"}]`, nil)
+
+	r := &Resolver{AIService: svc}
+	out, err := r.CallAssistantTool(aiCtx(), struct {
+		Name      string
+		Arguments string
+	}{Name: "get_expiring_items", Arguments: `{"days":7}`})
+	require.NoError(t, err)
+	assert.JSONEq(t, `[{"name":"milk"}]`, out)
+
+	// Tool failures are model fodder — error payloads pass through.
+	svc.EXPECT().CallTool(gomock.Any(), int64(7), int64(7), "bogus", json.RawMessage(`{}`)).
+		Return(`{"error":"unknown tool: bogus"}`, nil)
+	out, err = r.CallAssistantTool(aiCtx(), struct {
+		Name      string
+		Arguments string
+	}{Name: "bogus", Arguments: `{}`})
+	require.NoError(t, err)
+	assert.Contains(t, out, "unknown tool")
+}
+
+func TestResolver_CallAssistantTool_DisabledAndRateLimited(t *testing.T) {
+	r := &Resolver{}
+	_, err := r.CallAssistantTool(aiCtx(), struct {
+		Name      string
+		Arguments string
+	}{Name: "x", Arguments: `{}`})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+
+	ctrl := gomock.NewController(t)
+	svc := mock.NewMockAIService(ctrl)
+	svc.EXPECT().CallTool(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(`{}`, nil).AnyTimes()
+	r = &Resolver{AIService: svc, aiToolCalls: newUserRateLimiter(1)}
+	_, err = r.CallAssistantTool(aiCtx(), struct {
+		Name      string
+		Arguments string
+	}{Name: "x", Arguments: `{}`})
+	require.NoError(t, err)
+	_, err = r.CallAssistantTool(aiCtx(), struct {
+		Name      string
+		Arguments string
+	}{Name: "x", Arguments: `{}`})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rate limit")
+}
+
+func TestResolver_AssistantPrompt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	svc := mock.NewMockAIService(ctrl)
+	svc.EXPECT().Prompt("ask").Return("You are Dot...", true)
+	svc.EXPECT().Prompt("nope").Return("", false)
+
+	r := &Resolver{AIService: svc}
+	p, err := r.AssistantPrompt(aiCtx(), struct{ Name string }{Name: "ask"})
+	require.NoError(t, err)
+	assert.Equal(t, "You are Dot...", p)
+
+	_, err = r.AssistantPrompt(aiCtx(), struct{ Name string }{Name: "nope"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown assistant prompt")
+}
+
+func TestResolver_PrepareAssistantRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	svc := mock.NewMockAIService(ctrl)
+	svc.EXPECT().PrepareRequest(gomock.Any(), int64(7), int64(7), "suggest-meals",
+		json.RawMessage(`{"mealPlanId":10}`)).
+		Return(&ai.PreparedRequest{
+			Prompt:       "You are LENA's meal-planning assistant.",
+			Context:      json.RawMessage(`{"plan":{}}`),
+			OutputSchema: json.RawMessage(`{"type":"object"}`),
+		}, nil)
+	svc.EXPECT().PrepareRequest(gomock.Any(), int64(7), int64(7), "suggest-meals",
+		json.RawMessage(`{"mealPlanId":99}`)).
+		Return(nil, nil)
+	svc.EXPECT().PrepareRequest(gomock.Any(), int64(7), int64(7), "bogus", gomock.Any()).
+		Return(nil, fmt.Errorf("%w: bogus", ai.ErrUnknownRequest))
+
+	r := &Resolver{AIService: svc}
+	res, err := r.PrepareAssistantRequest(aiCtx(), struct {
+		Name       string
+		ParamsJson string
+	}{Name: "suggest-meals", ParamsJson: `{"mealPlanId":10}`})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Contains(t, res.Prompt(), "meal-planning")
+	assert.JSONEq(t, `{"plan":{}}`, res.ContextJson())
+	assert.JSONEq(t, `{"type":"object"}`, res.OutputSchemaJson())
+
+	// Nothing to generate → null, not an error.
+	res, err = r.PrepareAssistantRequest(aiCtx(), struct {
+		Name       string
+		ParamsJson string
+	}{Name: "suggest-meals", ParamsJson: `{"mealPlanId":99}`})
+	require.NoError(t, err)
+	assert.Nil(t, res)
+
+	_, err = r.PrepareAssistantRequest(aiCtx(), struct {
+		Name       string
+		ParamsJson string
+	}{Name: "bogus", ParamsJson: `{}`})
+	require.Error(t, err)
+}
+
+func TestResolver_PrepareAssistantRequest_AgeGate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aiSvc := mock.NewMockAIService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	minor := time.Now().AddDate(-19, 0, 0)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(7)).Return(identity.User{UserID: 7, Birthdate: &minor}, nil)
+	// PrepareRequest must never be reached for an underage caller.
+	r := &Resolver{AIService: aiSvc, IdentityService: idSvc}
+	_, err := r.PrepareAssistantRequest(aiCtx(), struct {
+		Name       string
+		ParamsJson string
+	}{Name: "suggest-pairings", ParamsJson: `{"recipeId":1}`})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "drinking age")
 }

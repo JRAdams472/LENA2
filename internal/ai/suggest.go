@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/ai/tools"
-	"github.com/JRAdams472/LENA2/internal/platform/llm"
 )
 
 // MealSuggestion is one reviewable meal-plan suggestion: a recipe for an
@@ -55,21 +54,44 @@ type suggestResponse struct {
 	Suggestions []MealSuggestion `json:"suggestions"`
 }
 
-// SuggestMeals assembles plan/pantry/expiry/taste context through the
-// read-only tool registry, asks the provider for structured picks, then
-// validates every suggestion server-side — only real recipe IDs and truly
-// open cells survive. Up to one retry on malformed JSON.
+// mealSuggestionsSchema constrains structured output for suggest-meals —
+// served in PreparedRequest.OutputSchema for client-side generation.
+const mealSuggestionsSchema = `{"type":"object","required":["suggestions"],` +
+	`"properties":{"suggestions":{"type":"array","items":{"type":"object",` +
+	`"required":["recipeId","dayOfWeek","mealType","reason"],` +
+	`"properties":{"recipeId":{"type":"integer"},"dayOfWeek":{"type":"integer"},` +
+	`"mealType":{"type":"string"},"reason":{"type":"string"},` +
+	`"usesExpiring":{"type":"array","items":{"type":"string"}}}}},"additionalProperties":false}`
+
+// SuggestMeals runs the server-inference path: assemble context through
+// the read-only tool registry, generate with the provider, validate every
+// pick — only real recipe IDs and truly open cells survive.
 func (s *Service) SuggestMeals(ctx context.Context, userID, householdID, mealPlanID int64, maxSuggestions int) ([]MealSuggestion, error) {
 	if !s.Available() {
 		return nil, ErrUnavailable
 	}
+	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
+	p, err := s.prepareMeals(ctx, scope, mealPlanID, maxSuggestions)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return []MealSuggestion{}, nil
+	}
+	return runPrepared(ctx, s.provider, p)
+}
+
+// prepareMeals assembles plan/pantry/expiry/taste context through the
+// read-only tool registry into a prepared request usable by either the
+// server provider or a client-side engine. Returns (nil, nil) when there
+// are no recipe candidates to pick from.
+func (s *Service) prepareMeals(ctx context.Context, scope tools.Scope, mealPlanID int64, maxSuggestions int) (*prepared[[]MealSuggestion], error) {
 	if maxSuggestions <= 0 {
 		maxSuggestions = 6
 	}
 	if maxSuggestions > 10 {
 		maxSuggestions = 10
 	}
-	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
 
 	planAny, err := s.reg.Call(ctx, scope, "get_meal_plan", jsonArgs(map[string]any{"mealPlanId": mealPlanID}))
 	if err != nil {
@@ -92,7 +114,7 @@ func (s *Service) SuggestMeals(ctx context.Context, userID, householdID, mealPla
 		return nil, fmt.Errorf("list_recipes returned %T", candAny)
 	}
 	if len(candidates) == 0 {
-		return []MealSuggestion{}, nil
+		return nil, nil
 	}
 
 	expiring, err := s.callJSON(ctx, scope, "get_expiring_items", map[string]any{"days": 14})
@@ -132,33 +154,26 @@ func (s *Service) SuggestMeals(ctx context.Context, userID, householdID, mealPla
 		return nil, fmt.Errorf("marshal suggest context: %w", err)
 	}
 
-	msgs := []llm.Message{
-		{Role: llm.RoleSystem, Content: suggestSystemPrompt},
-		{Role: llm.RoleUser, Content: string(reqBody)},
-	}
-
 	valid := map[int64]bool{}
 	for _, c := range candidates {
 		valid[c.ID] = true
 	}
+	max := maxSuggestions
 
-	for attempt := 0; attempt < 2; attempt++ {
-		resp, err := s.provider.Chat(ctx, llm.Request{Messages: msgs, JSONMode: true})
-		if err != nil {
-			return nil, fmt.Errorf("suggest provider: %w", err)
-		}
-		var parsed suggestResponse
-		if err := json.Unmarshal([]byte(resp.Message.Content), &parsed); err != nil {
-			// One retry, telling the model what was wrong.
-			msgs = append(msgs,
-				llm.Message{Role: llm.RoleAssistant, Content: resp.Message.Content},
-				llm.Message{Role: llm.RoleUser, Content: "That was not valid JSON matching the required schema. Reply ONLY with the JSON object."},
-			)
-			continue
-		}
-		return filterSuggestions(parsed.Suggestions, valid, occupied, maxSuggestions), nil
-	}
-	return nil, errors.New("assistant returned malformed suggestions")
+	return &prepared[[]MealSuggestion]{
+		req: PreparedRequest{
+			Prompt:       suggestSystemPrompt,
+			Context:      reqBody,
+			OutputSchema: json.RawMessage(mealSuggestionsSchema),
+		},
+		validate: func(content string) ([]MealSuggestion, error) {
+			var parsed suggestResponse
+			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+				return nil, err
+			}
+			return filterSuggestions(parsed.Suggestions, valid, occupied, max), nil
+		},
+	}, nil
 }
 
 // filterSuggestions drops model output that violates the contract:

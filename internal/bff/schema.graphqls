@@ -176,6 +176,22 @@ type Query {
   # inStockOnly, picks needing missing ingredients are dropped.
   # Requires a stored birthdate showing the caller is 21+.
   suggestCocktails(maxSuggestions: Int = 6, inStockOnly: Boolean = false): [CocktailSuggestion!]!
+  # Read-only assistant tool catalog for client-side (on-device) agents —
+  # the same specs the server provider is offered. Available even when no
+  # server provider is configured.
+  assistantTools: [AssistantToolSpec!]!
+  # Execute one read-only assistant tool under the caller's household
+  # scope for a client-side agent. Result is a JSON string; tool failures
+  # arrive as {"error":...} payloads the client feeds back to the model.
+  callAssistantTool(name: String!, arguments: String!): String!
+  # Server-owned system prompt for a named assistant flow
+  # (ask|suggest-meals|suggest-event-fixes|suggest-pairings|suggest-cocktails),
+  # so on-device agents run identical prompts to the server path.
+  assistantPrompt(name: String!): String!
+  # Assemble a one-shot structured AI request server-side for client-side
+  # generation — context gathered through the same read-only tools. Null
+  # when nothing needs generating (e.g. a clean event timeline).
+  prepareAssistantRequest(name: String!, paramsJson: String!): PreparedAIRequest
 }
 
 type Mutation {
@@ -1476,6 +1492,27 @@ type AssistantAnswer {
 # One tool invocation the assistant made while answering.
 type AssistantToolCall {
   name: String!
+}
+
+# One read-only assistant tool spec for a client-side agent.
+type AssistantToolSpec {
+  # Tool name the model invokes (e.g. "get_pantry_inventory").
+  name: String!
+  # Human/model-facing purpose text.
+  description: String!
+  # JSON Schema for the tool's arguments, as a JSON string.
+  parametersJson: String!
+}
+
+# A fully assembled one-shot AI request for client-side inference: system
+# prompt, assembled context message, and the required output contract.
+type PreparedAIRequest {
+  # System prompt.
+  prompt: String!
+  # Assembled user message, as a JSON string.
+  contextJson: String!
+  # JSON Schema the model output must satisfy, as a JSON string.
+  outputSchemaJson: String!
 }
 
 # One AI meal suggestion for an open dayOfWeek/mealType cell — reviewable
