@@ -21,6 +21,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/recipe"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Config holds the recipe import service thresholds and the inbox
@@ -243,25 +244,25 @@ func (s *Service) UpdateReview(ctx context.Context, id int64, review *ocrimport.
 		if it.ItemID != "" {
 			itemID, err := strconv.ParseInt(it.ItemID, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("item %d has invalid itemId: %w", i, err)
+				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d has an invalid item id %q", i, it.ItemID)}
 			}
 			if _, err := s.inv.GetItemByID(ctx, itemID); err != nil {
-				return nil, fmt.Errorf("item %d catalog item invalid: %w", i, err)
+				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: no catalog item with id %q", i, it.ItemID)}
 			}
 		}
 		if it.UnitID != "" {
 			unitID, err := strconv.ParseInt(it.UnitID, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("item %d has invalid unitId: %w", i, err)
+				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d has an invalid unit id %q", i, it.UnitID)}
 			}
 			if _, err := s.inv.GetUnitByID(ctx, unitID); err != nil {
-				return nil, fmt.Errorf("item %d catalog unit invalid: %w", i, err)
+				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: no catalog unit with id %q", i, it.UnitID)}
 			}
 		}
 		if it.Unit != "" && it.UnitID == "" {
 			unit, err := s.inv.GetUnitByName(ctx, it.Unit)
 			if err != nil {
-				return nil, fmt.Errorf("item %d unit name invalid: %w", i, err)
+				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: unknown unit %q", i, it.Unit)}
 			}
 			review.Items[i].UnitID = strconv.FormatInt(unit.UnitID, 10)
 		}
@@ -325,6 +326,10 @@ func (s *Service) Approve(ctx context.Context, id int64, approvedBy currentuser.
 		var err error
 		created, err = s.rec.CreateRecipeWithChildren(ctx, rcp, items, steps, approvedBy.Email)
 		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "recipe_name_key" {
+				return &domainerr.ValidationError{Msg: fmt.Sprintf("a recipe named %q already exists — rename it in the review and approve again", review.Name)}
+			}
 			return fmt.Errorf("create recipe from import: %w", err)
 		}
 		if err := s.store.SetPersisted(ctx, id, created.RecipeID, approvedBy.UserID); err != nil {
