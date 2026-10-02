@@ -147,3 +147,10 @@ Recommended integrations:
 - Bare links pick up the sage palette via `CssBaseline`; the cloche logo and favicon are recolored to match.
 - Grocery-list restock rows share the dashboard's `stripSize`/`sizeBadge` helpers, so duplicated brand prefixes and size tokens collapse into a clean name + chip (#223).
 - Two-row header: the logo spans both rows, notifications/user/sign-out sit top-right, and the assistant moved out of the sidebar to a sparkles "Ask Dot" link on the second row — the chat page is rebranded to Dot (#224).
+
+## Mobile UI refresh
+✅ Done — the web's sage/cream palette and warmer voice ported to the Flutter app (PRs #229–#232):
+- App-wide `lenaTheme()` — sage primary, warm cream surfaces, bundled Nunito, themed nav bar/cards/inputs/buttons; "Assistant" renamed to Ask Dot with the sparkles icon.
+- Dashboard redesigned to mirror the web: greeting header with date + avatar, "Today's meals" with meal-type icons and a tappable "Plan it →" empty state, a featured recommendation card plus compact suggestion rows with category-colored icon badges, cook-time metadata, friendly reason labels (no more `Reason: category_affinity`), and chevrons tapping through to recipes.
+- Fixed a latent bug where Sunday meal plans never rendered (wire `dayOfWeek` 0=Sun vs Dart `weekday` 1=Mon).
+- Debug sign-in: `LENA_DEBUG_ID_TOKEN` now works from the login-screen button too, so emulator screenshot/e2e runs skip Google entirely.

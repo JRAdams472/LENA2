@@ -6,7 +6,7 @@ A Flutter client for the LENA GraphQL BFF.
 
 - Flutter SDK >= 3.0.0
 - Dart >= 3.0.0
-- Android SDK with `minSdk 23` (for `mobile_scanner`)
+- Android SDK — `minSdk` comes from `flutter.minSdkVersion` (24 on recent Flutter), which covers `mobile_scanner`'s floor of 23
 - iOS 13.0+
 
 ## Getting started
@@ -110,18 +110,22 @@ flutter run \
   --dart-define=LENA_DEBUG_ID_TOKEN=<test-issuer token>
 ```
 
-The check is gated by `kDebugMode`, so release builds compile the read
-out entirely. Mint a token from the e2e stack's test issuer
-(`http://localhost:8085/token?sub=...&email=...`).
+The seeded token signs the app in at startup; if it has expired by the
+time you open the app, the login screen's button uses it too, so the
+flow works either way. The check is gated by `kDebugMode`, so release
+builds compile the read out entirely. Mint a token from the e2e stack's
+test issuer (`http://localhost:8085/token?sub=...&email=...`) — tokens
+are valid for one hour.
 
 ## Project structure
 
+- `lib/theme.dart` — `lenaTheme()`: the web's sage/cream palette, bundled Nunito, and M3 component themes.
 - `lib/graphql_config.dart` — `GraphQLClient` with `AuthLink` (proactive session refresh) + `ErrorLink` (one-time refresh-and-retry on 401).
 - `lib/main.dart` — App entry point with `GraphQLProvider` and `AuthGate`.
-- `lib/auth/auth_service.dart` — Google sign-in, `/auth/session` exchange, secure token storage.
+- `lib/auth/auth_service.dart` — Google sign-in, `/auth/session` exchange, secure token storage, `LENA_DEBUG_ID_TOKEN` bypass for emulator/e2e runs.
 - `lib/screens/login_screen.dart` — Google sign-in button.
 - `lib/screens/main_screen.dart` — Bottom-nav shell.
-- `lib/screens/dashboard_screen.dart` — Today's meal plan + recommendations.
+- `lib/screens/dashboard_screen.dart` + `dashboard_content.dart` — Dashboard GraphQL wrapper + the greeting/meals/recommendations layout; display logic lives in pure helpers under `lib/dashboard_helpers.dart`.
 - `lib/screens/grocery_lists_screen.dart` + `grocery_list_screen.dart` — Grocery list list/detail; the detail screen renders the server's `groceryRouteGroups` verbatim (aisle-grouped, per-group `ReorderableListView`, "move to aisle" menu, store picker).
 - `lib/screens/pantry_screen.dart` — Pantry quantities.
 - `lib/screens/scan_screen.dart` — Barcode scan, UPC lookup, add/remove pantry, submit new items.
