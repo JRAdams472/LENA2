@@ -20,6 +20,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CloseIcon from "@mui/icons-material/Close";
 import Autocomplete from "@mui/material/Autocomplete";
+import * as aiSuggest from "@/lib/ai/suggest";
+import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, asEntity } from "@/lib/api";
 import { fmtQty } from "@/lib/format";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
@@ -625,14 +627,17 @@ export default function MealPlanDetailPage({
   const [slotDialog, setSlotDialog] = useState<SlotDialogState | null>(null);
   const [suggestions, setSuggestions] = useState<MealPlanSuggestion[] | null>(null);
 
+  const localAIReady = useLocalEngineReady();
   const aiQuery = useQuery({
     queryKey: ["aiAvailable"],
     queryFn: api.getAIAvailable,
     staleTime: 60_000,
   });
+  // Suggestions run on-device when a local engine is ready, else server.
+  const aiAvailable = aiQuery.data === true || localAIReady;
 
   const suggestMutation = useMutation({
-    mutationFn: () => api.suggestMeals(planId, 6),
+    mutationFn: () => aiSuggest.suggestMeals(planId, 6),
     onSuccess: setSuggestions,
   });
 
@@ -748,7 +753,7 @@ export default function MealPlanDetailPage({
             </Typography>
           </Box>
           <Box sx={{ display: "flex", gap: 1 }}>
-            {aiQuery.data && (
+            {aiAvailable && (
               <Button
                 variant="outlined"
                 startIcon={<AutoAwesomeIcon />}
