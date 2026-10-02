@@ -53,6 +53,7 @@ import {
   InviteStatus,
   NotificationCategoryPreference,
   NotificationKind,
+  Unit,
   RecipeImport,
   RecipeImportDraft,
   RecipeImportDraftItem,
@@ -341,6 +342,14 @@ interface GqlBrand {
   name: string;
   selectionCount: number;
   personalSelectionCount: number;
+}
+
+interface GqlUnit {
+  id: string;
+  name: string;
+  abbreviation: string | null;
+  kind: string;
+  isActive: boolean;
 }
 
 interface GqlCategory {
@@ -1053,6 +1062,16 @@ function toFoodFlavor(foodId: number, f: GqlFoodFlavor): FoodFlavor {
   };
 }
 
+function toUnit(u: GqlUnit): Unit {
+  return {
+    unitID: num(u.id),
+    name: u.name,
+    abbreviation: u.abbreviation,
+    kind: u.kind,
+    isActive: u.isActive,
+  };
+}
+
 function toBrand(b: GqlBrand): Brand {
   return {
     brandID: num(b.id),
@@ -1259,7 +1278,9 @@ function toRecipeImportReviewInput(review: RecipeImportReview): Record<string, u
       itemId: it.itemId,
       itemName: it.itemName,
       unitId: it.unitId,
-      approved: it.approved,
+      // "accepted" has no input field — carry it through as approved so a
+      // save doesn't un-resolve rows the matcher already cleared.
+      approved: it.approved || it.status === "accepted",
     })),
     steps: review.steps.map((s) => ({
       stepNumber: s.stepNumber,
@@ -2101,6 +2122,13 @@ export const api = {
       { search: search.trim() || null, brandId: brandId ? String(brandId) : null, limit }
     );
     return (data.items.items ?? []).map((i) => toItem(i));
+  },
+
+  getUnits: async (): Promise<Unit[]> => {
+    const data = await request<{ units: GqlUnit[] }>(
+      `query { units { id name abbreviation kind isActive } }`
+    );
+    return (data.units ?? []).map(toUnit);
   },
 
   getBrands: async (search?: string): Promise<Brand[]> => {

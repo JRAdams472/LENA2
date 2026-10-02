@@ -265,6 +265,14 @@ func (s *Service) UpdateReview(ctx context.Context, id int64, review *ocrimport.
 			}
 			review.Items[i].UnitID = strconv.FormatInt(unit.UnitID, 10)
 		}
+		if review.Items[i].UnitID == "" {
+			// Unquantified lines ("salt to taste") carry no unit — default to
+			// 'each', the same convention the unit migration backfilled with.
+			unit, err := s.inv.GetUnitByName(ctx, "each")
+			if err == nil {
+				review.Items[i].UnitID = strconv.FormatInt(unit.UnitID, 10)
+			}
+		}
 	}
 
 	review.Approved = review.AllResolved()
@@ -374,8 +382,12 @@ func (s *Service) buildRecipe(ctx context.Context, review *ocrimport.ReviewRecip
 		}
 		unitID, err := strconv.ParseInt(it.UnitID, 10, 64)
 		if err != nil {
-			// fall back to name lookup
-			unit, err := s.inv.GetUnitByName(ctx, it.Unit)
+			// fall back to name lookup; unquantified items default to 'each'
+			name := it.Unit
+			if name == "" {
+				name = "each"
+			}
+			unit, err := s.inv.GetUnitByName(ctx, name)
 			if err != nil {
 				return rcp, nil, nil, fmt.Errorf("item %d unresolved unit: %w", i, err)
 			}

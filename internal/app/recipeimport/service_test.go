@@ -301,3 +301,66 @@ func TestService_buildRecipe(t *testing.T) {
 	assert.Equal(t, int64(1), items[0].UnitID)
 	assert.Len(t, steps, 1)
 }
+
+func TestService_buildRecipe_blankUnitDefaultsToEach(t *testing.T) {
+	inv := &fakeInventory{
+		units: []inventory.Unit{{UnitID: 2, Name: "each"}},
+		items: []inventory.Item{{ItemID: 10, Name: "Salt"}},
+	}
+	svc := &Service{inv: inv}
+	review := &ocrimport.ReviewRecipe{
+		Name: "Seasoning",
+		Items: []ocrimport.MatchResult{
+			{
+				DraftItem: ocrimport.DraftItem{Ingredient: "salt"},
+				ItemID:    "10",
+				// no Unit/UnitID — "salt to taste" style rows carry no unit
+				Approved: true,
+			},
+		},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "Season"}},
+	}
+	_, items, _, err := svc.buildRecipe(context.Background(), review)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(2), items[0].UnitID)
+	assert.Equal(t, 1.0, items[0].Quantity)
+}
+
+func TestService_UpdateReview_blankUnitDefaultsToEach(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReviewing
+
+	inv := &fakeInventory{
+		units: []inventory.Unit{{UnitID: 2, Name: "each"}, {UnitID: 3, Name: "to taste"}},
+		items: []inventory.Item{{ItemID: 10, Name: "Salt"}},
+	}
+	svc := &Service{inv: inv, store: store}
+
+	review := &ocrimport.ReviewRecipe{
+		Name: "Seasoning",
+		Items: []ocrimport.MatchResult{
+			{
+				DraftItem: ocrimport.DraftItem{Ingredient: "salt"},
+				ItemID:    "10",
+				Approved:  true,
+			},
+			{
+				DraftItem: ocrimport.DraftItem{Ingredient: "pepper"},
+				ItemID:    "10",
+				Unit:      "to taste",
+				Approved:  true,
+			},
+		},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "Season"}},
+	}
+	updated, err := svc.UpdateReview(context.Background(), ri.ID, review, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, StatusReady, updated.Status)
+
+	// blank unit -> 'each'; named unit -> resolved by name
+	assert.Equal(t, "2", review.Items[0].UnitID)
+	assert.Equal(t, "3", review.Items[1].UnitID)
+}
