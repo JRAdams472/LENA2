@@ -48,6 +48,8 @@ import {
   EventTimeline,
   EventFixSuggestion,
   AssistantAnswer,
+  AssistantToolSpec,
+  PreparedAIRequest,
   InviteStatus,
   NotificationCategoryPreference,
   NotificationKind,
@@ -700,6 +702,12 @@ interface GqlCocktailSuggestion {
 interface GqlAssistantAnswer {
   answer: string;
   toolCalls: { name: string }[] | null;
+}
+
+interface GqlPreparedRequest {
+  prompt: string;
+  contextJson: string;
+  outputSchemaJson: string;
 }
 
 interface GqlEventFixSuggestion {
@@ -3963,6 +3971,49 @@ export const api = {
       answer: data.askAssistant.answer,
       toolCalls: data.askAssistant.toolCalls ?? [],
     };
+  },
+
+  /* -------- Client-side inference surface (local AI assistant) -------- */
+
+  getAssistantTools: async (): Promise<AssistantToolSpec[]> => {
+    const data = await request<{ assistantTools: AssistantToolSpec[] }>(
+      `query { assistantTools { name description parametersJson } }`
+    );
+    return data.assistantTools ?? [];
+  },
+
+  callAssistantTool: async (name: string, argumentsJson: string): Promise<string> => {
+    const data = await request<{ callAssistantTool: string }>(
+      `query ($name: String!, $arguments: String!) {
+        callAssistantTool(name: $name, arguments: $arguments)
+      }`,
+      { name, arguments: argumentsJson }
+    );
+    return data.callAssistantTool;
+  },
+
+  getAssistantPrompt: async (name: string): Promise<string> => {
+    const data = await request<{ assistantPrompt: string }>(
+      `query ($name: String!) { assistantPrompt(name: $name) }`,
+      { name }
+    );
+    return data.assistantPrompt;
+  },
+
+  prepareAssistantRequest: async (
+    name: string,
+    paramsJson: string
+  ): Promise<PreparedAIRequest | null> => {
+    const data = await request<{ prepareAssistantRequest: GqlPreparedRequest | null }>(
+      `query ($name: String!, $paramsJson: String!) {
+        prepareAssistantRequest(name: $name, paramsJson: $paramsJson) {
+          prompt contextJson outputSchemaJson
+        }
+      }`,
+      { name, paramsJson }
+    );
+    const p = data.prepareAssistantRequest;
+    return p ? { prompt: p.prompt, contextJson: p.contextJson, outputSchemaJson: p.outputSchemaJson } : null;
   },
 };
 

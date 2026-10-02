@@ -2,19 +2,20 @@
 
 import { useRef, useState } from "react";
 import NextLink from "next/link";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import { api, ApiError } from "@/lib/api";
-import { AssistantAnswer } from "@/lib/types";
+import { useAssistant } from "@/lib/ai/useAssistant";
+import type { AssistantResult } from "@/lib/ai/types";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -37,31 +38,24 @@ const CAPABILITIES = [
 ];
 
 export default function AssistantPage() {
-  const { data: available, isLoading } = useQuery({
-    queryKey: ["aiAvailable"],
-    queryFn: api.getAIAvailable,
-  });
+  const dot = useAssistant();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const ask = useMutation({
-    mutationFn: (question: string) => api.askAssistant(question),
-    onSuccess: (answer: AssistantAnswer) => {
+    mutationFn: (question: string) => dot.ask(question),
+    onSuccess: (answer: AssistantResult) => {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          text: answer.answer,
-          tools: answer.toolCalls.map((t) => t.name),
-        },
+        { role: "assistant", text: answer.answer, tools: answer.tools },
       ]);
       setError(null);
       inputRef.current?.focus();
     },
     onError: (e) => {
-      setError(e instanceof ApiError ? e.message : "The assistant didn't answer");
+      setError(e instanceof Error ? e.message : "The assistant didn't answer");
     },
   });
 
@@ -73,7 +67,7 @@ export default function AssistantPage() {
     ask.mutate(q);
   };
 
-  if (isLoading) {
+  if (dot.status === null) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
         <CircularProgress />
@@ -81,15 +75,15 @@ export default function AssistantPage() {
     );
   }
 
-  if (!available) {
+  if (!dot.available) {
     return (
       <Paper sx={{ maxWidth: 560, p: 3 }}>
         <Typography variant="h5" gutterBottom>
           Ask Dot
         </Typography>
         <Alert severity="info">
-          Dot isn't configured on this server — no AI provider is set, so meal
-          suggestions, event fixes, and pairing ideas are off too.
+          Dot can't run here — this browser can't run a local model and the
+          server has no AI provider configured.
         </Alert>
       </Paper>
     );
@@ -100,11 +94,56 @@ export default function AssistantPage() {
       <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
         <AutoAwesomeIcon color="primary" />
         <Typography variant="h5">Ask Dot</Typography>
+        <Chip
+          size="small"
+          variant="outlined"
+          color={dot.localActive ? "primary" : "default"}
+          label={dot.localActive ? "On this device" : "Via server"}
+        />
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Ask about your pantry, meal plan, recipes, or cellar. Every answer shows
         which household lookups the assistant made.
       </Typography>
+
+      {dot.status === "opt-in" && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => void dot.enableLocal()}>
+              Enable
+            </Button>
+          }
+        >
+          This browser can run Dot locally — answers would be generated on your
+          device instead of the server.
+        </Alert>
+      )}
+      {dot.status === "downloading" && dot.download && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+            Downloading the on-device model — {Math.round(dot.download.fraction * 100)}%
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={Math.round(dot.download.fraction * 100)}
+          />
+        </Box>
+      )}
+      {dot.downloadError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Couldn't set up the local model ({dot.downloadError}) — Dot will keep
+          using the server.
+        </Alert>
+      )}
+      {dot.localActive && (
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          <Button size="small" onClick={() => dot.setServerOnly(true)}>
+            Use server instead
+          </Button>
+        </Typography>
+      )}
 
       <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap" }} useFlexGap>
         {CAPABILITIES.map((c) => (

@@ -2,23 +2,33 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AssistantPage from "@/app/assistant/page";
-import { api } from "@/lib/api";
+import { useAssistant, type AssistantController } from "../../../lib/ai/useAssistant";
 
-jest.mock("../../../lib/api", () => ({
-  api: {
-    getAIAvailable: jest.fn(),
-    askAssistant: jest.fn(),
-  },
-  ApiError: class ApiError extends Error {
-    status: number;
-    constructor(status: number, message: string) {
-      super(message);
-      this.status = status;
-    }
-  },
+jest.mock("../../../lib/ai/useAssistant", () => ({
+  useAssistant: jest.fn(),
 }));
 
-const mockedApi = api as jest.Mocked<typeof api>;
+const mockUseAssistant = useAssistant as jest.Mock;
+
+function controller(over: Partial<AssistantController> = {}): AssistantController {
+  return {
+    available: true,
+    status: "unavailable",
+    engineLabel: "Via server",
+    localActive: false,
+    mode: "auto",
+    setServerOnly: jest.fn(),
+    enableLocal: jest.fn(async () => {}),
+    download: null,
+    downloadError: null,
+    ask: jest.fn(async () => ({
+      answer: "Your milk expires tomorrow.",
+      tools: ["get_expiring_items"],
+      engine: "server" as const,
+    })),
+    ...over,
+  };
+}
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -32,47 +42,68 @@ function renderPage() {
 describe("assistant page", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedApi.getAIAvailable.mockResolvedValue(true);
-    mockedApi.askAssistant.mockResolvedValue({
-      answer: "Your milk expires tomorrow.",
-      toolCalls: [{ name: "get_expiring_items" }],
-    });
+    mockUseAssistant.mockReturnValue(controller());
   });
 
-  it("shows an info notice when AI is unavailable", async () => {
-    mockedApi.getAIAvailable.mockResolvedValue(false);
+  it("shows an info notice when Dot can't run at all", async () => {
+    mockUseAssistant.mockReturnValue(controller({ available: false }));
     renderPage();
     expect(
-      await screen.findByText(/isn't configured on this server/i)
+      await screen.findByText(/can't run here/i)
     ).toBeInTheDocument();
-    expect(mockedApi.askAssistant).not.toHaveBeenCalled();
   });
 
   it("sends a question and renders the answer with its tool trace", async () => {
+    const c = controller();
+    mockUseAssistant.mockReturnValue(c);
     renderPage();
     await screen.findByText("Ask Dot");
     await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "what is expiring?");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
     await waitFor(() => screen.getByText("Your milk expires tomorrow."));
-    expect(mockedApi.askAssistant).toHaveBeenCalledWith("what is expiring?");
+    expect(c.ask).toHaveBeenCalledWith("what is expiring?");
     expect(screen.getByText("what is expiring?")).toBeInTheDocument();
     expect(screen.getByText(/looked up: get_expiring_items/)).toBeInTheDocument();
   });
 
-  it("sends a quick prompt chip", async () => {
+  it("shows the opt-in card and enables local on click", async () => {
+    const c = controller({ status: "opt-in" });
+    mockUseAssistant.mockReturnValue(c);
     renderPage();
-    await screen.findByText("Ask Dot");
-    await userEvent.click(screen.getByText("What's in my wine cellar?"));
-    await waitFor(() =>
-      expect(mockedApi.askAssistant).toHaveBeenCalledWith("What's in my wine cellar?")
-    );
-    expect(await screen.findByText("Your milk expires tomorrow.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/run Dot locally/i)
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /enable/i }));
+    expect(c.enableLocal).toHaveBeenCalled();
   });
 
-  it("surfaces the server error", async () => {
-    const { ApiError } = jest.requireMock("../../../lib/api") as typeof import("../../../lib/api");
-    mockedApi.askAssistant.mockRejectedValue(new ApiError(429, "slow down"));
+  it("shows download progress while the model downloads", async () => {
+    mockUseAssistant.mockReturnValue(
+      controller({
+        status: "downloading",
+        download: { fraction: 0.42, text: "Fetching weights" },
+      })
+    );
+    renderPage();
+    expect(await screen.findByText(/Downloading the on-device model — 42%/)).toBeInTheDocument();
+  });
+
+  it("badges local inference and offers a server toggle", async () => {
+    const c = controller({ localActive: true, status: "ready" });
+    mockUseAssistant.mockReturnValue(c);
+    renderPage();
+    expect(await screen.findByText("On this device")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /use server instead/i }));
+    expect(c.setServerOnly).toHaveBeenCalledWith(true);
+  });
+
+  it("surfaces errors from the ask path", async () => {
+    const c = controller();
+    c.ask = jest.fn(async () => {
+      throw new Error("slow down");
+    });
+    mockUseAssistant.mockReturnValue(c);
     renderPage();
     await screen.findByText("Ask Dot");
     await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "hi");
