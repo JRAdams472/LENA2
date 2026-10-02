@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import PendingRecipeDetailPage from "@/app/recipes/pending/[id]/page";
@@ -92,6 +92,53 @@ const updatedRecipeImport = {
   status: "ready",
 };
 
+const reviewWithSuggestions = {
+  pageId: null,
+  name: "Draft Pasta",
+  description: "A draft",
+  servings: 2,
+  prepTimeMinutes: 10,
+  cookTimeMinutes: 20,
+  sourceHint: null,
+  items: [
+    {
+      draftItem: {
+        ingredient: "flour",
+        quantity: 2,
+        unit: "cup",
+        section: null,
+        notes: null,
+        isOptional: false,
+      },
+      itemId: null,
+      itemName: null,
+      unit: "cup",
+      unitId: null,
+      confidence: 0.92,
+      suggestions: [
+        { id: "10", name: "Flour, All-Purpose", kind: "item", score: 0.92 },
+        { id: "5", name: "flour", kind: "ingredient", score: 0.8 },
+      ],
+      status: "suggested",
+      notes: null,
+      approved: false,
+    },
+  ],
+  steps: [{ stepNumber: 1, instruction: "Mix" }],
+  approved: false,
+};
+
+const reviewingImport = {
+  ...recipeImport,
+  review: reviewWithSuggestions,
+};
+
+const units = [
+  { id: "1", name: "cup", abbreviation: "c", kind: "volume", isActive: true },
+  { id: "2", name: "each", abbreviation: null, kind: "count", isActive: true },
+  { id: "3", name: "to taste", abbreviation: null, kind: "count", isActive: true },
+];
+
 beforeEach(() => {
   mockFetch.mockReset();
   mockPush.mockReset();
@@ -181,6 +228,9 @@ describe("pending recipe detail page", () => {
           })
         );
       }
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
       return Promise.resolve(gql({ recipeImport }));
     });
     renderPage();
@@ -191,6 +241,12 @@ describe("pending recipe detail page", () => {
     await waitFor(() =>
       expect(getBodies().some((b) => b.query.includes("approveRecipeImport"))).toBe(true)
     );
+    // approve persists edits first — update must precede approve
+    const bodies = getBodies();
+    const updateIdx = bodies.findIndex((b) => b.query.includes("updateRecipeImport"));
+    const approveIdx = bodies.findIndex((b) => b.query.includes("approveRecipeImport"));
+    expect(updateIdx).toBeGreaterThanOrEqual(0);
+    expect(updateIdx).toBeLessThan(approveIdx);
     expect(mockPush).toHaveBeenCalledWith("/recipes/pending");
   });
 
@@ -280,5 +336,203 @@ describe("pending recipe detail page", () => {
     await waitFor(() =>
       expect(screen.getByText(/Save failed/i)).toBeInTheDocument()
     );
+  });
+
+  it("resolves an ingredient by picking a suggestion chip", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      if (body.query?.includes("recipeImport")) {
+        return Promise.resolve(gql({ recipeImport: reviewingImport }));
+      }
+      if (body.query?.includes("units")) {
+        return Promise.resolve(gql({ units }));
+      }
+      if (body.query?.includes("items(")) {
+        return Promise.resolve(gql({ items: { items: [] } }));
+      }
+      return Promise.resolve(gql({}));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    // status chip + unresolved checkbox are visible
+    expect(screen.getByText("suggested")).toBeInTheDocument();
+    const resolved = screen.getByRole("checkbox", { name: /resolved/i });
+    expect(resolved).not.toBeChecked();
+
+    // picking an item suggestion fills the catalog item and checks Resolved
+    fireEvent.click(screen.getByText(/Flour, All-Purpose/));
+    await waitFor(() => expect(resolved).toBeChecked());
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items[0].itemId).toBe("10");
+      expect(update.variables.input.items[0].itemName).toBe("Flour, All-Purpose");
+      expect(update.variables.input.items[0].approved).toBe(true);
+    });
+  });
+
+  it("lets the reviewer pick 'to taste' as the unit", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      if (body.query?.includes("recipeImport")) {
+        return Promise.resolve(gql({ recipeImport: reviewingImport }));
+      }
+      if (body.query?.includes("units")) {
+        return Promise.resolve(gql({ units }));
+      }
+      if (body.query?.includes("items(")) {
+        return Promise.resolve(gql({ items: { items: [] } }));
+      }
+      return Promise.resolve(gql({}));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    const unitInput = screen.getByLabelText("Unit");
+    fireEvent.mouseDown(unitInput);
+    const option = await screen.findByRole("option", { name: "to taste" });
+    fireEvent.click(option);
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items[0].unit).toBe("to taste");
+      expect(update.variables.input.items[0].unitId).toBe("3");
+    });
+  });
+
+  it("fills the catalog item from search results", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    const searchItem = {
+      id: "42",
+      name: "Semolina Flour",
+      brand: null,
+      category: null,
+      upc12: null,
+      upc14: null,
+      unit: "each",
+      description: null,
+      nutrients: [],
+      flavors: [],
+      selectionCount: 0,
+      personalSelectionCount: 0,
+    };
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      if (body.query?.includes("recipeImport")) {
+        return Promise.resolve(gql({ recipeImport: reviewingImport }));
+      }
+      if (body.query?.includes("units")) {
+        return Promise.resolve(gql({ units }));
+      }
+      if (body.query?.includes("items(")) {
+        return Promise.resolve(gql({ items: { items: [searchItem] } }));
+      }
+      return Promise.resolve(gql({}));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    const itemInput = screen.getByLabelText("Catalog Item");
+    itemInput.focus();
+    fireEvent.change(itemInput, { target: { value: "semo" } });
+    const option = await screen.findByRole("option", { name: "Semolina Flour" }, { timeout: 3000 });
+    fireEvent.click(option);
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items[0].itemId).toBe("42");
+      expect(update.variables.input.items[0].approved).toBe(true);
+    });
+  });
+
+  it("setting qty to 0 offers to remove the row", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      return Promise.resolve(gql({ recipeImport }));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByLabelText("Qty"), { target: { value: "0" } });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Remove this ingredient/i)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /yes, remove/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Qty")).not.toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items).toHaveLength(0);
+    });
+  });
+
+  it("setting qty to 0 and declining restores 1", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      return Promise.resolve(gql({ recipeImport }));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByLabelText("Qty"), { target: { value: "0" } });
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /no, keep at 1/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Qty")).toHaveValue(1)
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items[0].quantity).toBe(1);
+    });
   });
 });

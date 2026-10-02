@@ -2,16 +2,20 @@ package recipeimport
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
+	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
 // memoryStore implements Store with the same transition guards as the SQL
@@ -300,4 +304,137 @@ func TestService_buildRecipe(t *testing.T) {
 	assert.Equal(t, 2.0, items[0].Quantity)
 	assert.Equal(t, int64(1), items[0].UnitID)
 	assert.Len(t, steps, 1)
+}
+
+func TestService_buildRecipe_blankUnitDefaultsToEach(t *testing.T) {
+	inv := &fakeInventory{
+		units: []inventory.Unit{{UnitID: 2, Name: "each"}},
+		items: []inventory.Item{{ItemID: 10, Name: "Salt"}},
+	}
+	svc := &Service{inv: inv}
+	review := &ocrimport.ReviewRecipe{
+		Name: "Seasoning",
+		Items: []ocrimport.MatchResult{
+			{
+				DraftItem: ocrimport.DraftItem{Ingredient: "salt"},
+				ItemID:    "10",
+				// no Unit/UnitID — "salt to taste" style rows carry no unit
+				Approved: true,
+			},
+		},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "Season"}},
+	}
+	_, items, _, err := svc.buildRecipe(context.Background(), review)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(2), items[0].UnitID)
+	assert.Equal(t, 1.0, items[0].Quantity)
+}
+
+func TestService_UpdateReview_blankUnitDefaultsToEach(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReviewing
+
+	inv := &fakeInventory{
+		units: []inventory.Unit{{UnitID: 2, Name: "each"}, {UnitID: 3, Name: "to taste"}},
+		items: []inventory.Item{{ItemID: 10, Name: "Salt"}},
+	}
+	svc := &Service{inv: inv, store: store}
+
+	review := &ocrimport.ReviewRecipe{
+		Name: "Seasoning",
+		Items: []ocrimport.MatchResult{
+			{
+				DraftItem: ocrimport.DraftItem{Ingredient: "salt"},
+				ItemID:    "10",
+				Approved:  true,
+			},
+			{
+				DraftItem: ocrimport.DraftItem{Ingredient: "pepper"},
+				ItemID:    "10",
+				Unit:      "to taste",
+				Approved:  true,
+			},
+		},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "Season"}},
+	}
+	updated, err := svc.UpdateReview(context.Background(), ri.ID, review, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, StatusReady, updated.Status)
+
+	// blank unit -> 'each'; named unit -> resolved by name
+	assert.Equal(t, "2", review.Items[0].UnitID)
+	assert.Equal(t, "3", review.Items[1].UnitID)
+}
+
+// dupNameWriter simulates a recipe_name_key unique violation at persist time.
+type dupNameWriter struct{}
+
+func (dupNameWriter) CreateRecipeWithChildren(context.Context, recipe.Recipe, []recipe.RecipeItem, []recipe.RecipeStep, string) (recipe.Recipe, error) {
+	return recipe.Recipe{}, &pgconn.PgError{
+		Code:           "23505",
+		ConstraintName: "recipe_name_key",
+		Message:        `duplicate key value violates unique constraint "recipe_name_key"`,
+	}
+}
+
+func TestService_Approve_DuplicateNameIsValidationError(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+
+	review := ocrimport.ReviewRecipe{
+		Name: "Cake",
+		Items: []ocrimport.MatchResult{{
+			DraftItem: ocrimport.DraftItem{Ingredient: "flour"},
+			ItemID:    "10",
+			UnitID:    "1",
+			Status:    "accepted",
+			Approved:  true,
+		}},
+		Steps:    []ocrimport.DraftStep{{StepNumber: 1, Instruction: "Mix"}},
+		Approved: true,
+	}
+	rj, err := json.Marshal(review)
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReady
+	store.rows[ri.ID].ReviewJSON = rj
+
+	svc := &Service{
+		inv:   &fakeInventory{units: []inventory.Unit{{UnitID: 1, Name: "cup"}}, items: []inventory.Item{{ItemID: 10, Name: "Flour"}}},
+		store: store,
+		rec:   dupNameWriter{},
+	}
+	_, _, err = svc.Approve(context.Background(), ri.ID, currentuser.User{UserID: 1, Email: "a@b.c"})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestService_UpdateReview_NegativeQuantityRejected(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReviewing
+
+	svc := &Service{
+		inv:   &fakeInventory{units: []inventory.Unit{{UnitID: 2, Name: "each"}}, items: []inventory.Item{{ItemID: 10, Name: "Salt"}}},
+		store: store,
+	}
+	neg := -2.0
+	review := &ocrimport.ReviewRecipe{
+		Name: "Bad",
+		Items: []ocrimport.MatchResult{{
+			DraftItem: ocrimport.DraftItem{Ingredient: "flour", Quantity: &neg},
+			ItemID:    "10",
+			Approved:  true,
+		}},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "x"}},
+	}
+	_, err = svc.UpdateReview(context.Background(), ri.ID, review, "tester")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
+	assert.Contains(t, err.Error(), "greater than zero")
 }

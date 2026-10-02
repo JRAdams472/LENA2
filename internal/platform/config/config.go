@@ -59,6 +59,14 @@ type Config struct {
 	// GraphQLTimeout bounds each GraphQL execution; resolvers outliving a
 	// disconnected client are cancelled and reported as TIMEOUT.
 	GraphQLTimeout time.Duration `envconfig:"GRAPHQL_TIMEOUT" default:"10s"`
+	// GraphQLAITimeout replaces GraphQLTimeout for operations whose root
+	// fields call the LLM provider (askAssistant, suggestMeals,
+	// suggestEventFixes, suggestPairings, suggestCocktails). Real models
+	// cannot answer inside the snappy-interactive budget; keep
+	// GraphQLTimeout tight and give only AI traffic the longer leash.
+	// Note: HTTPWriteTimeout must exceed this for the response to reach
+	// the client, and the provider-side AI_TIMEOUT still caps each call.
+	GraphQLAITimeout time.Duration `envconfig:"GRAPHQL_AI_TIMEOUT" default:"120s"`
 	// GraphQLMaxCost bounds the number of field resolutions a single
 	// request may perform; depth/length limits alone do not bound
 	// cardinality of wide list queries. The floor is set by the

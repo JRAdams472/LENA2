@@ -137,6 +137,12 @@ services:
       LENA_AI_PROVIDER: ${LENA_AI_PROVIDER:-}
       LENA_AI_MODEL: ${LENA_AI_MODEL:-}
       LENA_AI_EMBED_MODEL: ${LENA_AI_EMBED_MODEL:-nomic-embed-text}
+      # AI assistant calls outlive the interactive GraphQL deadline; the
+      # dedicated AI budget applies only to provider-backed fields, and the
+      # HTTP write timeout must exceed it for replies to reach the client.
+      LENA_GRAPHQL_TIMEOUT: ${LENA_GRAPHQL_TIMEOUT:-10s}
+      LENA_GRAPHQL_AI_TIMEOUT: ${LENA_GRAPHQL_AI_TIMEOUT:-120s}
+      LENA_HTTP_WRITE_TIMEOUT: ${LENA_HTTP_WRITE_TIMEOUT:-30s}
     volumes:
       - import_data:/data/import
     depends_on:

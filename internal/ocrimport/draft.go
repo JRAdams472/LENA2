@@ -134,24 +134,26 @@ func ValidateDraft(d *RecipeDraft) error {
 // embedded in prompts and can be sent to Ollama's "format" field.
 func JSONSchema() map[string]interface{} {
 	return map[string]interface{}{
-		"type": "object",
+		"type":                 "object",
+		"required":             []string{"name", "items", "steps"},
+		"additionalProperties": false,
 		"properties": map[string]interface{}{
 			"name": map[string]interface{}{
 				"type":        "string",
 				"description": "The recipe title exactly as written.",
 			},
 			"description": map[string]interface{}{
-				"type":        "string",
+				"type":        []string{"string", "null"},
 				"description": "Brief description or headnote, if any.",
 			},
 			"servings": map[string]interface{}{
-				"type": "integer",
+				"type": []string{"integer", "null"},
 			},
 			"prepTimeMinutes": map[string]interface{}{
-				"type": "integer",
+				"type": []string{"integer", "null"},
 			},
 			"cookTimeMinutes": map[string]interface{}{
-				"type": "integer",
+				"type": []string{"integer", "null"},
 			},
 			"items": map[string]interface{}{
 				"type": "array",
@@ -159,27 +161,33 @@ func JSONSchema() map[string]interface{} {
 					"type": "object",
 					"properties": map[string]interface{}{
 						"quantity": map[string]interface{}{
-							"type": "number",
+							"type":        []string{"number", "null"},
+							"description": "Numeric quantity ('1 1/2' becomes 1.5; ranges like '2-3' use the lower value), or null when unquantified.",
 						},
 						"unit": map[string]interface{}{
-							"type": "string",
+							"type":        []string{"string", "null"},
+							"description": "Unit of measure (cup, tsp, can, ...) or null when unquantified.",
 						},
 						"ingredient": map[string]interface{}{
 							"type":        "string",
 							"description": "The bare ingredient noun phrase (e.g. 'all-purpose flour').",
 						},
 						"section": map[string]interface{}{
-							"type": "string",
+							"type": []string{"string", "null"},
 						},
 						"notes": map[string]interface{}{
-							"type": "string",
+							"type":        []string{"string", "null"},
+							"description": "Ranges, package sizes (e.g. '28-oz'), and preparation notes.",
 						},
 						"isOptional": map[string]interface{}{
 							"type":    "boolean",
 							"default": false,
 						},
 					},
-					"required": []string{"ingredient"},
+					// Requiring quantity/unit forces the model to evaluate
+					// each line instead of dumping raw text into ingredient.
+					"required":             []string{"quantity", "unit", "ingredient", "isOptional"},
+					"additionalProperties": false,
 				},
 			},
 			"steps": map[string]interface{}{
@@ -196,11 +204,12 @@ func JSONSchema() map[string]interface{} {
 							"description": "The full instruction text for this step.",
 						},
 					},
-					"required": []string{"stepNumber", "instruction"},
+					"required":             []string{"stepNumber", "instruction"},
+					"additionalProperties": false,
 				},
 			},
 			"sourceHint": map[string]interface{}{
-				"type":        "string",
+				"type":        []string{"string", "null"},
 				"description": "Page, book, or source reference, if any.",
 			},
 			"profanityDetected": map[string]interface{}{

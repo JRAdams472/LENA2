@@ -68,7 +68,7 @@ func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 		Return(nil, errors.New(`list brands visible: ERROR: relation "inventory.brand" does not exist (SQLSTATE 42P01)`))
 
 	r := &Resolver{InventoryService: inv}
-	h, err := NewGraphQLHandler(r, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(r, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 
 	e := echo.New()
@@ -90,7 +90,7 @@ func TestGraphQLHandler_MasksInternalErrors(t *testing.T) {
 // Client-safe errors (auth, bad input) keep their message and carry a code.
 func TestGraphQLHandler_PassesClientErrors(t *testing.T) {
 	r := &Resolver{}
-	h, err := NewGraphQLHandler(r, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(r, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 
 	e := echo.New()

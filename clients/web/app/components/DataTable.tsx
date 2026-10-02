@@ -172,7 +172,9 @@ export default function DataTable<T extends object>({
                     const value = (row as Record<string, unknown>)[col.key];
                     return (
                       <TableCell key={col.key}>
-                        {value === null || value === undefined
+                        {col.render
+                          ? col.render(row)
+                          : value === null || value === undefined
                           ? ""
                           : typeof value === "object"
                           ? JSON.stringify(value)

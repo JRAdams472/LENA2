@@ -33,8 +33,12 @@ func (p *ollamaProvider) Chat(ctx context.Context, req Request) (Response, error
 	}
 	// Ollama cannot combine format:"json" with tool calling — when tools are
 	// advertised the model answers with structured tool_calls instead.
-	if req.JSONMode && len(req.Tools) == 0 {
-		raw.Format = "json"
+	if len(req.Tools) == 0 {
+		if req.JSONSchema != nil {
+			raw.Format = req.JSONSchema
+		} else if req.JSONMode {
+			raw.Format = "json"
+		}
 	}
 	resp, err := p.client.ChatRaw(ctx, raw)
 	if err != nil {

@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
+import Checkbox from "@mui/material/Checkbox";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -16,7 +24,7 @@ import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import { api, ApiError } from "@/lib/api";
-import { RecipeImport, RecipeImportReview, RecipeImportReviewItem, RecipeImportReviewStep } from "@/lib/types";
+import { RecipeImport, RecipeImportReview, RecipeImportReviewItem, RecipeImportReviewStep, Unit } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
 function emptyReviewItem(): RecipeImportReviewItem {
@@ -39,6 +47,159 @@ function emptyReviewItem(): RecipeImportReviewItem {
 
 function emptyReviewStep(): RecipeImportReviewStep {
   return { stepNumber: 1, instruction: "" };
+}
+
+interface ItemOption {
+  id: string;
+  name: string;
+}
+
+const statusColors: Record<string, "success" | "warning" | "error" | "default"> = {
+  accepted: "success",
+  suggested: "warning",
+  unmatched: "error",
+};
+
+function IngredientRow({
+  item,
+  units,
+  onChange,
+  onRemove,
+}: {
+  item: RecipeImportReviewItem;
+  units: Unit[];
+  onChange: (patch: Partial<RecipeImportReviewItem>) => void;
+  onRemove: () => void;
+}) {
+  const [itemInput, setItemInput] = useState("");
+  const [debouncedItem, setDebouncedItem] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedItem(itemInput), 300);
+    return () => clearTimeout(t);
+  }, [itemInput]);
+
+  const itemSearch = useQuery({
+    queryKey: ["item-search", debouncedItem],
+    queryFn: () => api.searchItems(debouncedItem),
+    enabled: debouncedItem.trim().length > 0,
+  });
+
+  const itemOptions = useMemo(() => {
+    const map = new Map<string, ItemOption>();
+    for (const s of item.suggestions) {
+      if (s.kind === "item") map.set(s.id, { id: s.id, name: s.name });
+    }
+    for (const it of itemSearch.data ?? []) {
+      map.set(String(it.itemID), { id: String(it.itemID), name: it.name });
+    }
+    return [...map.values()];
+  }, [item.suggestions, itemSearch.data]);
+
+  const selectItem = (opt: ItemOption | null) => {
+    onChange({
+      itemId: opt?.id ?? null,
+      itemName: opt?.name ?? null,
+      approved: opt !== null,
+    });
+  };
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+        <Chip
+          size="small"
+          label={item.status}
+          color={statusColors[item.status] ?? "default"}
+          sx={{ minWidth: 84 }}
+        />
+        <TextField
+          label="Ingredient"
+          value={item.ingredient}
+          onChange={(e) => onChange({ ingredient: e.target.value })}
+          size="small"
+          sx={{ flex: 2 }}
+        />
+        <TextField
+          label="Qty"
+          type="number"
+          value={item.quantity ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") return onChange({ quantity: null });
+            const n = Number(v);
+            if (!Number.isNaN(n) && n >= 0) onChange({ quantity: n });
+          }}
+          slotProps={{ htmlInput: { min: 0, step: "any" } }}
+          size="small"
+          sx={{ width: 90 }}
+        />
+        <Autocomplete
+          freeSolo
+          size="small"
+          options={units}
+          getOptionLabel={(o) => (typeof o === "string" ? o : o.name)}
+          isOptionEqualToValue={(o, v) => (typeof v === "string" ? o.name === v : o.unitID === v.unitID)}
+          value={item.unit ?? ""}
+          onChange={(_, v) => {
+            const name = typeof v === "string" ? v : v?.name ?? "";
+            const match = units.find((u) => u.name === name);
+            onChange({ unit: name || null, unitId: match ? String(match.unitID) : null });
+          }}
+          renderInput={(params) => <TextField {...params} label="Unit" />}
+          sx={{ width: 130 }}
+        />
+        <Autocomplete
+          size="small"
+          options={itemOptions}
+          getOptionLabel={(o) => o.name}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          value={
+            item.itemId
+              ? { id: item.itemId, name: item.itemName ?? item.itemId }
+              : null
+          }
+          inputValue={itemInput}
+          onInputChange={(_, v) => setItemInput(v)}
+          onChange={(_, v) => selectItem(v)}
+          loading={itemSearch.isLoading}
+          noOptionsText="No catalog items"
+          renderInput={(params) => <TextField {...params} label="Catalog Item" />}
+          sx={{ flex: 2 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              size="small"
+              checked={item.approved}
+              onChange={(e) => onChange({ approved: e.target.checked })}
+            />
+          }
+          label="Resolved"
+        />
+        <IconButton onClick={onRemove} color="error" size="small" aria-label="Remove ingredient">
+          <DeleteIcon />
+        </IconButton>
+      </Stack>
+      {item.suggestions.length > 0 && (
+        <Stack direction="row" spacing={0.5} sx={{ pl: 12, mt: 0.5, flexWrap: "wrap" }}>
+          {item.suggestions.map((s) => (
+            <Chip
+              key={`${s.kind}-${s.id}`}
+              size="small"
+              variant="outlined"
+              label={`${s.name}${s.kind === "ingredient" ? " (ingredient)" : ""} ${Math.round(s.score * 100)}%`}
+              onClick={() =>
+                s.kind === "item"
+                  ? selectItem({ id: s.id, name: s.name })
+                  : setItemInput(s.name)
+              }
+            />
+          ))}
+        </Stack>
+      )}
+    </Box>
+  );
 }
 
 function reviewFromImport(ri: RecipeImport): RecipeImportReview {
@@ -73,7 +234,14 @@ export default function PendingRecipeDetailPage() {
     refetchInterval: 5000,
   });
 
+  const { data: units = [] } = useQuery({
+    queryKey: ["units"],
+    queryFn: () => api.getUnits(),
+    enabled: isAdmin,
+  });
+
   const [review, setReview] = useState<RecipeImportReview | null>(null);
+  const [zeroQtyIndex, setZeroQtyIndex] = useState<number | null>(null);
 
   if (recipeImport && !review) {
     setReview(reviewFromImport(recipeImport));
@@ -135,6 +303,11 @@ export default function PendingRecipeDetailPage() {
   };
 
   const updateItem = (index: number, patch: Partial<RecipeImportReviewItem>) => {
+    // A zero quantity means the ingredient is gone — ask before removing it.
+    if (patch.quantity === 0) {
+      setZeroQtyIndex(index);
+      return;
+    }
     setReview((r) => {
       if (!r) return r;
       const items = [...r.items];
@@ -224,49 +397,19 @@ export default function PendingRecipeDetailPage() {
           <Typography variant="h6" gutterBottom>
             Ingredients
           </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: -1 }}>
+            Each row needs a catalog item and the Resolved check before the recipe can be approved.
+            Unit may be left blank — it defaults to &quot;each&quot; (pick &quot;to taste&quot; for unquantified seasoning).
+          </Typography>
           <Stack spacing={2}>
             {review.items.map((item, i) => (
-              <Stack key={i} direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                <TextField
-                  label="Ingredient"
-                  value={item.ingredient}
-                  onChange={(e) => updateItem(i, { ingredient: e.target.value })}
-                  size="small"
-                  sx={{ flex: 2 }}
-                />
-                <TextField
-                  label="Qty"
-                  type="number"
-                  value={item.quantity ?? ""}
-                  onChange={(e) => updateItem(i, { quantity: e.target.value ? Number(e.target.value) : null })}
-                  size="small"
-                  sx={{ flex: 1 }}
-                />
-                <TextField
-                  label="Unit"
-                  value={item.unit ?? ""}
-                  onChange={(e) => updateItem(i, { unit: e.target.value || null })}
-                  size="small"
-                  sx={{ flex: 1 }}
-                />
-                <TextField
-                  label="Item ID"
-                  value={item.itemId ?? ""}
-                  onChange={(e) => updateItem(i, { itemId: e.target.value || null })}
-                  size="small"
-                  sx={{ flex: 1 }}
-                />
-                <TextField
-                  label="Unit ID"
-                  value={item.unitId ?? ""}
-                  onChange={(e) => updateItem(i, { unitId: e.target.value || null })}
-                  size="small"
-                  sx={{ flex: 1 }}
-                />
-                <IconButton onClick={() => removeItem(i)} color="error" size="small" aria-label="Remove ingredient">
-                  <DeleteIcon />
-                </IconButton>
-              </Stack>
+              <IngredientRow
+                key={i}
+                item={item}
+                units={units}
+                onChange={(patch) => updateItem(i, patch)}
+                onRemove={() => removeItem(i)}
+              />
             ))}
             <Button startIcon={<AddIcon />} onClick={addItem} size="small">
               Add Ingredient
@@ -301,7 +444,10 @@ export default function PendingRecipeDetailPage() {
 
         <ButtonGroup variant="contained" disabled={anyLoading}>
           <Button onClick={() => updateMutation.mutate(review)}>Save Review</Button>
-          <Button onClick={() => approveMutation.mutate()} color="success">
+          <Button
+            onClick={() => updateMutation.mutate(review, { onSuccess: () => approveMutation.mutate() })}
+            color="success"
+          >
             Approve
           </Button>
           <Button onClick={() => rejectMutation.mutate()} color="error">
@@ -310,6 +456,42 @@ export default function PendingRecipeDetailPage() {
           <Button onClick={() => retryMutation.mutate()}>Retry</Button>
         </ButtonGroup>
       </Stack>
+
+      <Dialog open={zeroQtyIndex !== null} onClose={() => {
+        if (zeroQtyIndex !== null) updateItem(zeroQtyIndex, { quantity: 1 });
+        setZeroQtyIndex(null);
+      }}>
+        <DialogTitle>Remove this ingredient?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            A quantity of 0 doesn&apos;t make sense in a recipe. Remove
+            {zeroQtyIndex !== null && review?.items[zeroQtyIndex]
+              ? ` "${review.items[zeroQtyIndex].ingredient}"`
+              : " this ingredient"}{" "}
+            instead, or keep it with a quantity of 1?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (zeroQtyIndex !== null) updateItem(zeroQtyIndex, { quantity: 1 });
+              setZeroQtyIndex(null);
+            }}
+          >
+            No, keep at 1
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (zeroQtyIndex !== null) removeItem(zeroQtyIndex);
+              setZeroQtyIndex(null);
+            }}
+          >
+            Yes, remove it
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

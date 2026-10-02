@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testUnit struct {
@@ -126,4 +127,60 @@ func TestMapDraftItem(t *testing.T) {
 	assert.Equal(t, "accepted", m.Status)
 	assert.Equal(t, "11", m.ItemID)
 	assert.Equal(t, "tablespoon", m.Unit)
+}
+
+func TestMatchItem_ContentWordGate(t *testing.T) {
+	s := NewCatalogSnapshot(&StaticCatalog{
+		UnitsField: []CatalogUnit{
+			testUnit{id: "1", name: "cup", abbreviation: "c"},
+			testUnit{id: "2", name: "each"},
+		},
+		ItemsField: []CatalogItem{
+			testItem{id: "50", name: "Strudel Apple Mini 3.2 Oz"},
+			testItem{id: "51", name: "Chile Ancho"},
+			testItem{id: "52", name: "Rid Step 1 Lice Killing Shampoo"},
+		},
+		IngredientsField: []CatalogIngredient{
+			testIngredient{id: "60", name: "water"},
+		},
+	})
+
+	t.Run("digit-heavy line does not surface unrelated SKUs", func(t *testing.T) {
+		m := s.MatchItem("2-3 dried ancho chiles", 0.92, 0.75)
+		// the real chile shares words and auto-accepts; the junk SKUs share
+		// nothing and never become candidates.
+		assert.Equal(t, "accepted", m.Status)
+		assert.Equal(t, "51", m.ItemID)
+		for _, sug := range m.Suggestions {
+			assert.NotEqual(t, "50", sug.ID, "strudel shares no content word")
+			assert.NotEqual(t, "52", sug.ID)
+		}
+	})
+
+	t.Run("no shared content words -> unmatched", func(t *testing.T) {
+		m := s.MatchItem("1 cup boiling water", 0.92, 0.75)
+		for _, sug := range m.Suggestions {
+			assert.NotEqual(t, "52", sug.ID)
+			assert.NotEqual(t, "50", sug.ID)
+		}
+	})
+}
+
+func TestMatchItem_IngredientPreference(t *testing.T) {
+	s := NewCatalogSnapshot(&StaticCatalog{
+		UnitsField: []CatalogUnit{
+			testUnit{id: "1", name: "clove"},
+			testUnit{id: "2", name: "each"},
+		},
+		ItemsField: []CatalogItem{
+			testItem{id: "70", name: "Kraft Garlic Powder"},
+		},
+		IngredientsField: []CatalogIngredient{
+			testIngredient{id: "71", name: "garlic"},
+		},
+	})
+	m := s.MatchItem("garlic clove", 0.92, 0.75)
+	require.NotEmpty(t, m.Suggestions)
+	assert.Equal(t, "ingredient", m.Suggestions[0].Kind)
+	assert.Equal(t, "71", m.Suggestions[0].ID)
 }

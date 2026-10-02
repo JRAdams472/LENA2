@@ -181,6 +181,14 @@ export interface Brand {
   personalSelectionCount: number;
 }
 
+export interface Unit {
+  unitID: number;
+  name: string;
+  abbreviation: string | null;
+  kind: string;
+  isActive: boolean;
+}
+
 export interface Bottle extends AuditableEntity {
   bottleID: number;
   bottleNumber: number | null;

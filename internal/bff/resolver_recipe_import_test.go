@@ -11,6 +11,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/app/recipeimport"
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
@@ -135,4 +136,30 @@ func TestResolver_PendingRecipeImports_Pagination(t *testing.T) {
 	assert.Equal(t, int32(1), info.PageNumber())
 	assert.Equal(t, int32(100), info.PageSize())
 	assert.Equal(t, int32(7), info.TotalCount(), "total must come from the DB count, not len(items)")
+}
+
+// The review input has no status field — toReviewRecipe must derive a valid
+// ReviewItemStatus or the stored JSON fails enum coercion on read-back.
+func TestToReviewRecipe_DerivesStatus(t *testing.T) {
+	approvedID := graphql.ID("10")
+	input := recipeImportReviewInput{
+		Items: []recipeImportReviewItemInput{
+			{Ingredient: "salt", Approved: true, ItemID: &approvedID},
+			{Ingredient: "flour"},
+		},
+	}
+	review, err := input.toReviewRecipe()
+	require.NoError(t, err)
+	require.Len(t, review.Items, 2)
+	assert.Equal(t, "accepted", review.Items[0].Status)
+	assert.Equal(t, "unmatched", review.Items[1].Status)
+}
+
+// Legacy stored reviews can carry an empty status — the resolver must emit a
+// valid enum value regardless.
+func TestRecipeImportReviewItem_StatusNormalizesEmpty(t *testing.T) {
+	empty := &recipeImportReviewItemResolver{item: ocrimport.MatchResult{Status: ""}}
+	assert.Equal(t, "unmatched", empty.Status())
+	ok := &recipeImportReviewItemResolver{item: ocrimport.MatchResult{Status: "accepted"}}
+	assert.Equal(t, "accepted", ok.Status())
 }

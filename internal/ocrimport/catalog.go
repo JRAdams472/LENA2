@@ -181,6 +181,65 @@ func (s *CatalogSnapshot) ResolveUnit(raw string) (CatalogUnit, bool) {
 	return nil, false
 }
 
+// ingredientBoost nudges generic-ingredient candidates above same-scored
+// branded SKUs when ranking suggestions. Recipes want the generic item
+// ("water", "salt") more often than a specific product.
+const ingredientBoost = 0.05
+
+// matchStopwords are tokens that carry no matching signal even at length.
+var matchStopwords = map[string]bool{
+	"and": true, "the": true, "for": true, "with": true, "per": true,
+	"fresh": true, "dried": true, "chopped": true, "minced": true, "sliced": true,
+}
+
+// contentWords returns the normalized tokens that are meaningful for matching:
+// at least 3 chars, not purely numeric, and not a catalog unit (name,
+// abbreviation, or alias) or generic cooking verb/stopword.
+func (s *CatalogSnapshot) contentWords(str string) map[string]bool {
+	out := make(map[string]bool)
+	for _, w := range strings.Fields(NormalizeName(str)) {
+		if len(w) < 3 || isNumericToken(w) || matchStopwords[w] {
+			continue
+		}
+		if _, ok := s.unitByName[w]; ok {
+			continue
+		}
+		if _, ok := s.unitByAbbr[w]; ok {
+			continue
+		}
+		if _, ok := s.unitAliases[w]; ok {
+			continue
+		}
+		out[w] = true
+	}
+	return out
+}
+
+func isNumericToken(w string) bool {
+	for _, r := range w {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return len(w) > 0
+}
+
+// sharesContentWord reports whether the candidate name shares at least one
+// content word with the query words. Jaro-Winkler is character-level, so
+// without this gate "2-3 dried ancho chiles" scores 0.84 against
+// "Strudel Apple Mini 3.2 Oz" purely on shared digits and short tokens.
+func (s *CatalogSnapshot) sharesContentWord(queryWords map[string]bool, name string) bool {
+	if len(queryWords) == 0 {
+		return true // nothing to gate on — fail open
+	}
+	for w := range s.contentWords(name) {
+		if queryWords[w] {
+			return true
+		}
+	}
+	return false
+}
+
 // MatchItem maps a raw ingredient string to the catalog. It returns the best
 // result along with suggestions and a status string.
 func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold float64) MatchResult {
@@ -193,7 +252,14 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		return result
 	}
 
-	query := NormalizeName(raw)
+	// Score the bare ingredient noun phrase — a leading quantity/unit left
+	// over from a dirty draft line only feeds noise into the fuzzy sweep.
+	matchText := raw
+	if qty, _, _, rest := splitLeadingQuantity(raw); qty != nil && strings.TrimSpace(rest) != "" {
+		matchText = rest
+	}
+
+	query := NormalizeName(matchText)
 
 	// Exact normalized match on item name.
 	if items, ok := s.itemIndex[query]; ok && len(items) > 0 {
@@ -227,17 +293,35 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		score float64
 	}
 	candidates := make([]scored, 0, len(s.Items)+len(s.Ingredients))
+	queryWords := s.contentWords(matchText)
 
 	for _, it := range s.Items {
-		score := Similarity(raw, it.Name())
+		if !s.sharesContentWord(queryWords, it.Name()) {
+			continue
+		}
+		score := Similarity(matchText, it.Name())
 		candidates = append(candidates, scored{it.ID(), it.Name(), "item", score})
 	}
 	for _, in := range s.Ingredients {
-		score := Similarity(raw, in.Name())
+		if !s.sharesContentWord(queryWords, in.Name()) {
+			continue
+		}
+		score := Similarity(matchText, in.Name())
 		candidates = append(candidates, scored{in.ID(), in.Name(), "ingredient", score})
 	}
 
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].score > candidates[j].score })
+	// Rank by score, with a small ingredient-kind preference so generic
+	// ingredients outrank same-scored branded products.
+	sort.Slice(candidates, func(i, j int) bool {
+		si, sj := candidates[i].score, candidates[j].score
+		if candidates[i].kind == "ingredient" {
+			si += ingredientBoost
+		}
+		if candidates[j].kind == "ingredient" {
+			sj += ingredientBoost
+		}
+		return si > sj
+	})
 
 	if len(candidates) > 0 {
 		best := candidates[0]

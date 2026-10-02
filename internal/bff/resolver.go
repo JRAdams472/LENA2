@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1132,6 +1133,20 @@ func loadBottleSelectionCounts(ctx context.Context, an AnalyticsService, userID 
 // handler maps it onto the TIMEOUT GraphQL error code after Exec returns.
 var errQueryTimeout = errors.New("graphql request timed out")
 
+// aiProviderFieldPattern matches the root fields whose resolvers call the
+// LLM provider. aiAvailable/assistantTools/assistantPrompt/callAssistantTool/
+// prepareAssistantRequest stay on the normal budget — they never reach the
+// model. A stray match inside a string literal only widens a deadline, so
+// the cheap text scan is safe.
+var aiProviderFieldPattern = regexp.MustCompile(
+	`\b(?:askAssistant|suggestMeals|suggestEventFixes|suggestPairings|suggestCocktails)\b`)
+
+// usesAIProvider reports whether the query touches an LLM-backed field and
+// therefore deserves the AI budget instead of the interactive one.
+func usesAIProvider(query string) bool {
+	return aiProviderFieldPattern.MatchString(query)
+}
+
 // costLimiter counts field resolutions for one request via TraceField and
 // cancels the execution context once the budget is exceeded.
 type costLimiter struct {
@@ -1154,12 +1169,14 @@ func (l *costLimiter) add() {
 type costLimiterContextKey struct{}
 
 // NewGraphQLHandler returns an Echo handler that executes GraphQL requests.
-// timeout bounds each execution (empty means use the default), maxCost caps
-// the number of field resolutions per request (<= 0 disables the budget),
-// and extra schema options (e.g. graphql.MaxDepth, graphql.MaxQueryLength)
-// are applied on top of the built-in tracer. A schema parse failure is
-// returned as an error rather than panicking.
-func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
+// timeout bounds each execution (empty means use the default); aiTimeout
+// bounds executions that call the LLM provider (empty or <= timeout keeps
+// timeout for everything). maxCost caps the number of field resolutions per
+// request (<= 0 disables the budget), and extra schema options (e.g.
+// graphql.MaxDepth, graphql.MaxQueryLength) are applied on top of the
+// built-in tracer. A schema parse failure is returned as an error rather
+// than panicking.
+func NewGraphQLHandler(r *Resolver, timeout time.Duration, aiTimeout time.Duration, maxCost int, schemaOpts ...graphql.SchemaOpt) (echo.HandlerFunc, error) {
 	opts := append([]graphql.SchemaOpt{graphql.Tracer(newGraphQLTracer())}, schemaOpts...)
 	parsed, err := graphql.ParseSchema(schema, r, opts...)
 	if err != nil {
@@ -1209,7 +1226,11 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, maxCost int, schemaOp
 			}
 		}
 
-		ctx, cancel := context.WithTimeoutCause(c.Request().Context(), timeout, errQueryTimeout)
+		execTimeout := timeout
+		if aiTimeout > timeout && usesAIProvider(req.Query) {
+			execTimeout = aiTimeout
+		}
+		ctx, cancel := context.WithTimeoutCause(c.Request().Context(), execTimeout, errQueryTimeout)
 		limiter := &costLimiter{max: maxCost, fire: cancel}
 		ctx = context.WithValue(ctx, costLimiterContextKey{}, limiter)
 

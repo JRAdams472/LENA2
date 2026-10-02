@@ -90,7 +90,7 @@ func postDedup(t *testing.T, h echo.HandlerFunc, body []byte, headers map[string
 
 func TestIdemHandler_QuerySkipsDedup(t *testing.T) {
 	store := &fakeIdemStore{}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	postDedup(t, h, []byte(`{"query":"{ me { id } }"}`), nil)
 	assert.Empty(t, store.begins, "queries must not claim idempotency keys")
@@ -98,7 +98,7 @@ func TestIdemHandler_QuerySkipsDedup(t *testing.T) {
 
 func TestIdemHandler_MutationCompletesClaim(t *testing.T) {
 	store := &fakeIdemStore{}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	// An unknown mutation still produces a GraphQL response body — enough
 	// to exercise the claim/complete cycle without resolver services.
@@ -114,7 +114,7 @@ func TestIdemHandler_MutationCompletesClaim(t *testing.T) {
 
 func TestIdemHandler_AutoKeyFallback(t *testing.T) {
 	store := &fakeIdemStore{}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`), nil)
 	require.Len(t, store.begins, 1)
@@ -126,7 +126,7 @@ func TestIdemHandler_ReplaysStoredResponse(t *testing.T) {
 	store := &fakeIdemStore{beginFn: func(string, []byte) (*idempotency.Stored, error) {
 		return stored, nil
 	}}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	rec := postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`), nil)
 	assert.JSONEq(t, `{"data":{"cached":true}}`, rec.Body.String())
@@ -154,7 +154,7 @@ func TestIdemHandler_KeyReusedConflict(t *testing.T) {
 	store := &fakeIdemStore{beginFn: func(string, []byte) (*idempotency.Stored, error) {
 		return nil, idempotency.ErrKeyReused
 	}}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	rec := postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`), nil)
 	assertIdemRejection(t, rec, codeIdemKeyReused)
@@ -165,7 +165,7 @@ func TestIdemHandler_InFlight(t *testing.T) {
 	store := &fakeIdemStore{beginFn: func(string, []byte) (*idempotency.Stored, error) {
 		return nil, idempotency.ErrInFlight
 	}}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	rec := postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`), nil)
 	assertIdemRejection(t, rec, codeIdemInFlight)
@@ -174,7 +174,7 @@ func TestIdemHandler_InFlight(t *testing.T) {
 
 func TestIdemHandler_KeyTooLong(t *testing.T) {
 	store := &fakeIdemStore{cfg: idempotency.Config{MaxKeyLen: 8}}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	rec := postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`),
 		map[string]string{"Idempotency-Key": "way-too-long-key"})
@@ -186,7 +186,7 @@ func TestIdemHandler_StoreErrorFailsOpen(t *testing.T) {
 	store := &fakeIdemStore{beginFn: func(string, []byte) (*idempotency.Stored, error) {
 		return nil, errors.New("db down")
 	}}
-	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0)
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
 	require.NoError(t, err)
 	rec := postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`), nil)
 	// Dedup failure must not break the API — the mutation still executes.

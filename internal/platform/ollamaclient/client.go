@@ -85,7 +85,7 @@ type ToolFunction struct {
 type ChatRequest struct {
 	Model    string                 `json:"model"`
 	Messages []Message              `json:"messages"`
-	Format   string                 `json:"format,omitempty"`
+	Format   interface{}            `json:"format,omitempty"`
 	Tools    []ToolSpec             `json:"tools,omitempty"`
 	Options  map[string]interface{} `json:"options,omitempty"`
 	Stream   bool                   `json:"stream"`
