@@ -39,10 +39,10 @@ It is a single-tenant application: you run your own instance and your data lives
 
 | Layer | Technology |
 |---|---|
-| **Backend** | Go 1.27, Echo, `graphql-go`, sqlc, PostgreSQL 16 |
+| **Backend** | Go 1.27, Echo, `graphql-go`, sqlc, PostgreSQL 18 + pgvector |
 | **Web app** | Next.js 16 (App Router), TypeScript, Material UI, React Query |
 | **Mobile app** | Flutter 3.47+, `google_sign_in`, `graphql_flutter`, `mobile_scanner` |
-| **Database** | PostgreSQL 16 with schema-per-domain |
+| **Database** | PostgreSQL 18 with schema-per-domain, pgvector for recipe embeddings |
 | **Reverse proxy** | Caddy 2 |
 | **Dev / deploy** | Docker Compose |
 | **Authentication** | Google OIDC + Discord OAuth2, exchanged for LENA session tokens |
@@ -122,6 +122,7 @@ LENA can run a local LLM (Ollama) as an optional assistant. Set `LENA_AI_PROVIDE
 - **Suggest Meals** (`/meal-plans`) — proposes recipes for open slots, informed by stock, near-expiry items, and household taste analytics; applied via the normal meal-slot mutations after review.
 - **Suggest Fixes** (`/events` timeline) — proposes schedule fixes (shift serve time, reassign appliance, adjust duration/dependency) for timeline conflicts; applied through the existing event mutations.
 - **Sommelier & bartender** (`/recipes`) — wine pairings for a recipe and cocktail picks with an in-stock toggle. Both are gated server-side on a stored `birthdate` showing 21+.
+- **Semantic recipe search** (`/recipes`, plus Dot's `search_recipes_semantic` tool) — recipes ranked by pgvector cosine distance blended with engagement (favorites, household use, views), so "something cozy for a rainy night" works. Embeddings come from a small Ollama model (`LENA_AI_EMBED_MODEL`, default `nomic-embed-text`, 768 dims); a sweep keeps them fresh whenever recipes are saved or the model changes. No embedder configured → the web toggle hides and semantic mode returns `UNAVAILABLE`; keyword search is untouched.
 
 The model never writes — every suggestion is advisory and applies only through the existing mutations. `internal/platform/llm` defines a provider-agnostic interface, so swapping Ollama for a commercial API is a config change plus a small adapter. `LENA_AI_PROVIDER=mock` gives a deterministic canned assistant for e2e.
 
@@ -150,7 +151,7 @@ The GraphQL endpoint is available at `http://localhost/graphql` and the `/health
 
 ### Run the backend locally (no Docker)
 
-1. Start PostgreSQL 16 and create a `lena` database plus a `lena_app` user.
+1. Start PostgreSQL 18 with the pgvector extension (e.g. the `pgvector/pgvector:pg18` image) and create a `lena` database plus a `lena_app` user.
 2. Apply migrations:
 
    ```bash
