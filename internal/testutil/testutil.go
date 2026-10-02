@@ -138,8 +138,7 @@ var sharedDB struct {
 func SharedTestDB(t *testing.T, ctx context.Context) (*pgxpool.Pool, error) {
 	t.Helper()
 	sharedDB.once.Do(func() {
-		// Background context so the pool outlives the first test's ctx.
-		sharedDB.pool, sharedDB.terminate, sharedDB.err = newTestDB(context.Background())
+		sharedDB.pool, sharedDB.terminate, sharedDB.err = newTestDB(ctx)
 	})
 	if sharedDB.err != nil {
 		return nil, sharedDB.err
