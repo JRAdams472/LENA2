@@ -377,11 +377,15 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             ),
             DropdownButtonFormField<String?>(
               value: _itemId,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Item'),
               items: _items
                   .map((i) => DropdownMenuItem(
                         value: i['id'] as String,
-                        child: Text(i['name'] as String),
+                        child: Text(
+                          i['name'] as String,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ))
                   .toList(),
               onChanged: (v) => setState(() {
