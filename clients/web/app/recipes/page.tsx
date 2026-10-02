@@ -23,6 +23,8 @@ import Switch from "@mui/material/Switch";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import TextField from "@mui/material/TextField";
 import Link from "next/link";
+import * as aiSuggest from "@/lib/ai/suggest";
+import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, asEntity, ApiError } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
@@ -100,6 +102,7 @@ export default function RecipesPage() {
     staleTime: 60_000,
   });
 
+  const localAIReady = useLocalEngineReady();
   const aiQuery = useQuery({
     queryKey: ["aiAvailable"],
     queryFn: () => api.getAIAvailable(),
@@ -117,10 +120,10 @@ export default function RecipesPage() {
   const [cocktailsOpen, setCocktailsOpen] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
   const cocktailMutation = useMutation({
-    mutationFn: (stockOnly: boolean) => api.suggestCocktails(stockOnly),
+    mutationFn: (stockOnly: boolean) => aiSuggest.suggestCocktails(stockOnly),
   });
   const canSuggestCocktails =
-    aiQuery.data === true && isOfDrinkingAge(me?.birthdate);
+    (aiQuery.data === true || localAIReady) && isOfDrinkingAge(me?.birthdate);
 
   const listQuery = useQuery({
     queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, semantic, categoryIds],

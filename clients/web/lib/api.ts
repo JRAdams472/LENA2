@@ -1420,7 +1420,7 @@ const MEAL_TYPE_MAP: Record<string, number> = {
   snack: 3,
 };
 
-function mealTypeToNumber(mealType: string): number {
+export function mealTypeToNumber(mealType: string): number {
   const mapped = MEAL_TYPE_MAP[mealType.toLowerCase()];
   if (mapped !== undefined) return mapped;
   const parsed = Number(mealType);

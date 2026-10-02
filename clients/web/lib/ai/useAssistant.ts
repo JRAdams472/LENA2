@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { runAgent } from "./agent";
+import { setLocalEngine } from "./engineStore";
 import { detectLocalCapability, nanoAvailability, type LocalCapability } from "./capabilities";
 import { NanoEngine } from "./engines/nano";
 import { DEFAULT_WEBLLM_MODEL, WebLLMEngine, WEBLLM_MODELS, type DownloadProgress, type WebLLMModelKey } from "./engines/webllm";
@@ -99,6 +100,7 @@ export function useAssistant(): AssistantController {
         const e = await NanoEngine.create();
         if (!e) throw new Error("the built-in model isn't ready on this browser");
         setEngine(e);
+        setLocalEngine(e);
         return;
       }
       if (cap === "webllm") {
@@ -107,6 +109,7 @@ export function useAssistant(): AssistantController {
         const e = await WebLLMEngine.create(key, setDownload);
         setDownload(null);
         setEngine(e);
+        setLocalEngine(e);
         return;
       }
       throw new Error("this browser can't run a local model");
@@ -124,7 +127,10 @@ export function useAssistant(): AssistantController {
       // Auto mode: a zero-download nano session is created on first use.
       if (currentMode !== "server" && !local && capability === "nano" && nanoReady) {
         local = await NanoEngine.create();
-        if (local) setEngine(local);
+        if (local) {
+          setEngine(local);
+          setLocalEngine(local);
+        }
       }
 
       if (currentMode !== "server" && local && tools && tools.length > 0) {
@@ -148,6 +154,7 @@ export function useAssistant(): AssistantController {
           // the broken engine so the next ask doesn't retry it.
           local.destroy();
           setEngine((prev) => (prev === local ? null : prev));
+          setLocalEngine(null);
           if (!serverAI) throw new Error("the local model didn't answer and no server provider is configured");
         }
       }

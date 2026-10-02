@@ -28,6 +28,8 @@ import Rating from "@mui/material/Rating";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import * as aiSuggest from "@/lib/ai/suggest";
+import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api } from "@/lib/api";
 import { Brand, PairingSuggestion, RecipeStep } from "@/lib/types";
 import { fmtQty } from "@/lib/format";
@@ -60,6 +62,7 @@ export default function RecipeDetailPage() {
 
   const { me } = useMe();
 
+  const localAIReady = useLocalEngineReady();
   const aiQuery = useQuery({
     queryKey: ["aiAvailable"],
     queryFn: () => api.getAIAvailable(),
@@ -68,10 +71,10 @@ export default function RecipeDetailPage() {
 
   const [pairings, setPairings] = useState<PairingSuggestion[] | null>(null);
   const pairingMutation = useMutation({
-    mutationFn: () => api.suggestPairings(recipeId),
+    mutationFn: () => aiSuggest.suggestPairings(recipeId),
     onSuccess: (data) => setPairings(data),
   });
-  const canPair = aiQuery.data === true && isOfDrinkingAge(me?.birthdate);
+  const canPair = (aiQuery.data === true || localAIReady) && isOfDrinkingAge(me?.birthdate);
 
   const recipeQuery = useQuery({
     queryKey: ["recipe", recipeId],

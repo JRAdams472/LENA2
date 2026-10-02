@@ -60,7 +60,7 @@ function stripFences(text: string): string {
 
 // extractJsonObject finds a JSON object in possibly-noisy model output:
 // the whole reply first, then the widest brace span as a fallback.
-function extractJsonObject(raw: string): unknown | undefined {
+export function extractJsonObject(raw: string): unknown | undefined {
   const text = stripFences(raw);
   for (const candidate of [text, text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)]) {
     if (!candidate || !candidate.startsWith("{")) continue;

@@ -31,6 +31,8 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import * as aiSuggest from "@/lib/ai/suggest";
+import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
 import { fmtQty } from "@/lib/format";
 import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
@@ -140,11 +142,13 @@ export default function EventDetailPage({
     enabled: !isNaN(eventId) && showTimeline,
   });
 
+  const localAIReady = useLocalEngineReady();
   const aiQuery = useQuery({
     queryKey: ["aiAvailable"],
     queryFn: () => api.getAIAvailable(),
     staleTime: 5 * 60 * 1000,
   });
+  const aiAvailable = aiQuery.data === true || localAIReady;
 
   const recipesQuery = useQuery({
     queryKey: ["recipes"],
@@ -260,7 +264,7 @@ export default function EventDetailPage({
   });
 
   const suggestFixesMutation = useMutation({
-    mutationFn: () => api.suggestEventFixes(eventId),
+    mutationFn: () => aiSuggest.suggestEventFixes(eventId),
     onSuccess: (data) => setFixes(data),
   });
 
@@ -546,7 +550,7 @@ export default function EventDetailPage({
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
           <Typography variant="h5">Timeline</Typography>
           <Box sx={{ display: "flex", gap: 1 }}>
-            {aiQuery.data === true && showTimeline && timelineQuery.data && (
+            {aiAvailable && showTimeline && timelineQuery.data && (
               <Button
                 variant="outlined"
                 onClick={() => suggestFixesMutation.mutate()}
