@@ -296,6 +296,67 @@ WHERE r.is_active = $1
   AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
   AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])));
 
+-- name: SearchRecipesSemantic :many
+-- Vector-similarity recipe listing. Only embedded rows participate (the
+-- backfill sweep fills the rest). Ranking blends cosine distance with a
+-- small additive engagement bump — favorites 1.0, household-used 0.6,
+-- viewed 0.3, scaled by semanticEngagementBoost — so a mediocre-vector
+-- favorite can't swamp a strong match. The same category/include/exclude
+-- filters as SearchRecipes apply; there is no name-LIKE filter since the
+-- query text becomes the vector.
+SELECT r.*, (r.embedding <=> sqlc.arg(query_vec)::text::vector)::float8 AS distance
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND r.embedding IS NOT NULL
+  AND (
+    sqlc.arg(category_ids)::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    )
+  )
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
+  AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])))
+ORDER BY
+  (r.embedding <=> sqlc.arg(query_vec)::text::vector)
+    - (0.15 * CASE
+        WHEN sqlc.arg(favorite_ids)::bigint[] IS NOT NULL AND r.recipe_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 1.0
+        WHEN r.recipe_id = ANY(sqlc.arg(used_ids)::bigint[]) THEN 0.6
+        WHEN r.recipe_id = ANY(sqlc.arg(viewed_ids)::bigint[]) THEN 0.3
+        ELSE 0
+      END),
+  r.name
+LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+
+-- name: CountSearchRecipesSemantic :one
+-- The un-paged match count for the same semantic-mode filters (no
+-- engagement args — they only affect ordering).
+SELECT COUNT(*)
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND r.embedding IS NOT NULL
+  AND (
+    sqlc.arg(category_ids)::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY(sqlc.arg(category_ids)::bigint[])
+    )
+  )
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
+  AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])));
+
 -- name: SetRecipeEmbedding :exec
 -- Stores an embedding for semantic search. The vector arrives as a text
 -- literal and is cast server-side so generated code stays dependency-free.

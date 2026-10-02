@@ -20,6 +20,7 @@ import MenuItem from "@mui/material/MenuItem";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import Select from "@mui/material/Select";
 import Switch from "@mui/material/Switch";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import TextField from "@mui/material/TextField";
 import Link from "next/link";
 import { api, asEntity, ApiError } from "@/lib/api";
@@ -68,6 +69,7 @@ export default function RecipesPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
+  const [semantic, setSemantic] = useState(false);
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
 
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -90,7 +92,7 @@ export default function RecipesPage() {
   useEffect(() => {
     // eslint-disable-next-line @eslint-react/set-state-in-effect
     setPageNumber(1);
-  }, [debouncedSearch, isFavorite, categoryIds]);
+  }, [debouncedSearch, isFavorite, semantic, categoryIds]);
 
   const groupsQuery = useQuery({
     queryKey: ["recipe-category-groups"],
@@ -104,6 +106,14 @@ export default function RecipesPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const semanticQuery = useQuery({
+    queryKey: ["semanticSearchAvailable"],
+    queryFn: () => api.getSemanticSearchAvailable(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const semanticAvailable = semanticQuery.data === true;
+  const semanticIdle = semantic && debouncedSearch.trim() === "";
+
   const [cocktailsOpen, setCocktailsOpen] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
   const cocktailMutation = useMutation({
@@ -113,10 +123,13 @@ export default function RecipesPage() {
     aiQuery.data === true && isOfDrinkingAge(me?.birthdate);
 
   const listQuery = useQuery({
-    queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds],
+    queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, semantic, categoryIds],
     queryFn: () =>
-      api.getRecipesPaged(pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds),
+      api.getRecipesPaged(pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds, semantic ? "semantic" : "keyword"),
     placeholderData: (prev) => prev,
+    // With semantic on and nothing typed yet there's no query to embed —
+    // the hint below replaces the list instead.
+    enabled: !semanticIdle,
   });
 
 
@@ -248,6 +261,22 @@ export default function RecipesPage() {
           }
           label="Favorites"
         />
+        {semanticAvailable && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={semantic}
+                onChange={(e) => setSemantic(e.target.checked)}
+              />
+            }
+            label={
+              <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                <AutoAwesomeIcon fontSize="small" />
+                Semantic
+              </Box>
+            }
+          />
+        )}
         {(groupsQuery.data ?? []).map((g) => (
           <FormControl key={g.categoryGroupID} size="small" sx={{ minWidth: 140 }}>
             <InputLabel id={`cat-group-${g.categoryGroupID}`}>{g.groupName}</InputLabel>
@@ -299,6 +328,12 @@ export default function RecipesPage() {
           </Button>
         )}
       </Box>
+      {semanticIdle ? (
+        <Alert severity="info" icon={<AutoAwesomeIcon />}>
+          Describe what you&apos;re in the mood for — semantic search matches
+          recipes by meaning, not just the name.
+        </Alert>
+      ) : (
       <DataTable
         title="Recipes"
         rows={(listQuery.data?.items ?? []).map(toRow)}
@@ -322,6 +357,7 @@ export default function RecipesPage() {
             : undefined
         }
       />
+      )}
       <CrudDialog
         open={dialogOpen}
         title={isCreate ? "Create Recipe" : "Edit Recipe"}

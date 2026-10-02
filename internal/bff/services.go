@@ -87,6 +87,9 @@ var _ GroceryService = (*grocery.Service)(nil)
 // so embed latency never blocks a save.
 type RecipeEmbedder interface {
 	Refresh(ctx context.Context, recipeID int64) error
+	// EmbedQuery embeds one free-text search query into a pgvector text
+	// literal — the query half of semantic recipe search.
+	EmbedQuery(ctx context.Context, query string) (string, error)
 }
 
 // ItemReader is the read-only catalog surface used by nested item,
@@ -269,6 +272,8 @@ type RecipeReader interface {
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIDs []int64) ([]recipe.RecipeStep, error)
 	SearchRecipes(ctx context.Context, arg recipe.RecipeSearch) ([]recipe.Recipe, error)
 	CountSearchRecipes(ctx context.Context, arg recipe.RecipeSearch) (int64, error)
+	SearchRecipesSemantic(ctx context.Context, arg recipe.SemanticSearch) ([]recipe.SemanticResult, error)
+	CountSearchRecipesSemantic(ctx context.Context, arg recipe.SemanticSearch) (int64, error)
 	ListCategoryGroups(ctx context.Context) ([]recipe.CategoryGroup, error)
 	ListCategoriesByGroup(ctx context.Context, groupID int64) ([]recipe.Category, error)
 	ListCategoriesForRecipes(ctx context.Context, recipeIDs []int64) (map[int64][]recipe.Category, error)

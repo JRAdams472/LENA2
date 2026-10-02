@@ -20,6 +20,14 @@ enum EntityType {
   ingredient
 }
 
+# How the recipes query's `search` text is matched: keyword does a
+# name-LIKE filter; semantic embeds the text and ranks by blended cosine
+# distance + engagement (requires embeddings — see semanticSearchAvailable).
+enum RecipeSearchMode {
+  keyword
+  semantic
+}
+
 # Where a recipe import sits in the staged pipeline
 # (internal/app/recipeimport.Status).
 enum RecipeImportStatus {
@@ -83,7 +91,7 @@ type Query {
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
-  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String): RecipePage!
+  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String, searchMode: RecipeSearchMode = keyword): RecipePage!
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
   userItems(page: Int = 1, pageSize: Int = 25, search: String): UserItemPage!
@@ -146,6 +154,9 @@ type Query {
   # Whether the AI assistant is configured on this deployment — clients
   # hide AI entry points when false.
   aiAvailable: Boolean!
+  # Whether recipe embeddings are configured — gates the semantic search
+  # mode on the recipes query and the web toggle.
+  semanticSearchAvailable: Boolean!
   # Ask the household assistant a question. The model may read household
   # data through its tools but can never write; errors UNAVAILABLE when no
   # provider is configured.

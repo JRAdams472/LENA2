@@ -688,3 +688,91 @@ func TestIntegrationRecipeEmbedding(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, ids, done.RecipeID)
 }
+
+// unitVec returns a 768-dim vector with a 1 at dim i — cosine distance to
+// another unit vector is 1 - dot, so dim choices make ordering exact.
+func unitVec(i int) []float32 {
+	v := make([]float32, llm.EmbedDims)
+	v[i] = 1
+	return v
+}
+
+func TestIntegrationSemanticSearch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	svc := NewService(pool)
+
+	near, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Sem Near", IsActive: true}, itBy)
+	require.NoError(t, err)
+	mid, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Sem Mid", IsActive: true}, itBy)
+	require.NoError(t, err)
+	far, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Sem Far", IsActive: true}, itBy)
+	require.NoError(t, err)
+	unembedded, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Sem None", IsActive: true}, itBy)
+	require.NoError(t, err)
+
+	// Orthogonal-ish vectors: near shares the query's dim, mid shares half
+	// weight, far is fully orthogonal, unembedded never appears.
+	require.NoError(t, svc.SetRecipeEmbedding(ctx, near.RecipeID, llm.VectorLiteral(unitVec(0)), "test-model"))
+	midVec := unitVec(0)
+	midVec[1] = 1 // cosine sim 0.5 → distance 0.5
+	require.NoError(t, svc.SetRecipeEmbedding(ctx, mid.RecipeID, llm.VectorLiteral(midVec), "test-model"))
+	require.NoError(t, svc.SetRecipeEmbedding(ctx, far.RecipeID, llm.VectorLiteral(unitVec(2)), "test-model"))
+
+	arg := SemanticSearch{Active: true, QueryVector: llm.VectorLiteral(unitVec(0)), Limit: 100}
+	hits, err := svc.SearchRecipesSemantic(ctx, arg)
+	require.NoError(t, err)
+	ids := make([]int64, 0, len(hits))
+	for _, h := range hits {
+		ids = append(ids, h.Recipe.RecipeID)
+	}
+	assert.Less(t, indexOf(ids, near.RecipeID), indexOf(ids, mid.RecipeID), "near before mid")
+	assert.Less(t, indexOf(ids, mid.RecipeID), indexOf(ids, far.RecipeID), "mid before far")
+	assert.NotContains(t, ids, unembedded.RecipeID, "unembedded rows are excluded")
+	assert.InDelta(t, 0.0, hits[indexOf(ids, near.RecipeID)].Distance, 0.001)
+
+	// The engagement bump can reorder equal-distance rows: far is a
+	// favorite here, so it outranks mid despite the wider distance?
+	// distance(far)=1.0 - 0.15 = 0.85 > distance(mid)=0.5 — mid still wins;
+	// the boost is deliberately too small to swamp a strong match. But an
+	// equal-distance favorite does win: give far the same vector as mid.
+	require.NoError(t, svc.SetRecipeEmbedding(ctx, far.RecipeID, llm.VectorLiteral(midVec), "test-model"))
+	arg.FavoriteIDs = []int64{far.RecipeID}
+	hits, err = svc.SearchRecipesSemantic(ctx, arg)
+	require.NoError(t, err)
+	ids = ids[:0]
+	for _, h := range hits {
+		ids = append(ids, h.Recipe.RecipeID)
+	}
+	assert.Less(t, indexOf(ids, far.RecipeID), indexOf(ids, mid.RecipeID), "favorite wins on tie")
+
+	// Filters still apply: excluding the favorite drops it entirely.
+	arg.ExcludeIDs = []int64{far.RecipeID}
+	hits, err = svc.SearchRecipesSemantic(ctx, arg)
+	require.NoError(t, err)
+	ids = ids[:0]
+	for _, h := range hits {
+		ids = append(ids, h.Recipe.RecipeID)
+	}
+	assert.NotContains(t, ids, far.RecipeID)
+	assert.Contains(t, ids, near.RecipeID)
+
+	// Count mirrors the filtered set without engagement args.
+	total, err := svc.CountSearchRecipesSemantic(ctx, arg)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(hits)), total)
+}
+
+func indexOf(ids []int64, id int64) int {
+	for i, v := range ids {
+		if v == id {
+			return i
+		}
+	}
+	return -1
+}

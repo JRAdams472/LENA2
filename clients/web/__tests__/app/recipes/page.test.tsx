@@ -222,6 +222,70 @@ describe("recipes page", () => {
       ).toBe(true)
     );
   });
+
+  it("hides the semantic toggle when embeddings aren't configured", async () => {
+    renderPage(<RecipesPage />);
+    await waitFor(() => expect(screen.getByText("Pasta")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Semantic")).not.toBeInTheDocument();
+  });
+
+  it("sends searchMode=semantic when the toggle is on", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("semanticSearchAvailable")) {
+        return Promise.resolve(gql({ semanticSearchAvailable: true }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      return Promise.resolve(
+        gql({
+          recipes: {
+            items: [recipe],
+            pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+          },
+        })
+      );
+    });
+
+    renderPage(<RecipesPage />);
+    fireEvent.click(await screen.findByLabelText("Semantic"));
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "cozy stew" } });
+    await waitFor(() =>
+      expect(
+        getBodies().some(
+          (b) => b.query.includes("recipes(") && b.variables.searchMode === "semantic"
+        )
+      ).toBe(true)
+    );
+  });
+
+  it("shows the describe hint instead of the list when semantic is on with no search", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("semanticSearchAvailable")) {
+        return Promise.resolve(gql({ semanticSearchAvailable: true }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      return Promise.resolve(
+        gql({
+          recipes: {
+            items: [recipe],
+            pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+          },
+        })
+      );
+    });
+
+    renderPage(<RecipesPage />);
+    fireEvent.click(await screen.findByLabelText("Semantic"));
+    await waitFor(() =>
+      expect(screen.getByText(/Describe what you're in the mood for/)).toBeInTheDocument()
+    );
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
 });
 
 describe("recipe detail page", () => {

@@ -112,6 +112,8 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 // (search text, faceted category IDs, favorites) narrow the set; results are
 // engagement-ranked — favorites, then household-used, then personally
 // viewed, then searched — with in-tier order following signal strength.
+// searchMode=semantic instead embeds the search text and ranks embedded
+// recipes by cosine distance blended with a small engagement bump.
 func (r *Resolver) Recipes(ctx context.Context, args struct {
 	Page        int32
 	PageSize    int32
@@ -119,6 +121,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	CategoryIDs *[]graphql.ID
 	IsFavorite  *bool
 	MealType    *string
+	SearchMode  string
 }) (*recipePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -172,13 +175,49 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		}
 	}
 
-	recipes, err := r.RecipeService.SearchRecipes(ctx, search)
-	if err != nil {
-		return nil, err
-	}
-	total, err := r.RecipeService.CountSearchRecipes(ctx, search)
-	if err != nil {
-		return nil, err
+	var recipes []recipe.Recipe
+	var total int64
+	if recipeSearchMode(args.SearchMode) == recipeSearchModeSemantic && search.Search != "" {
+		semantic := recipe.SemanticSearch{
+			Active:      search.Active,
+			CategoryIDs: search.CategoryIDs,
+			IncludeIDs:  search.IncludeIDs,
+			ExcludeIDs:  search.ExcludeIDs,
+			FavoriteIDs: search.FavoriteIDs,
+			UsedIDs:     search.UsedIDs,
+			ViewedIDs:   search.ViewedIDs,
+			Limit:       search.Limit,
+			Offset:      search.Offset,
+		}
+		if r.RecipeEmbedder == nil {
+			return nil, errUnavailablef("semantic search isn't available on this deployment")
+		}
+		vec, err := r.RecipeEmbedder.EmbedQuery(ctx, search.Search)
+		if err != nil {
+			return nil, errUnavailablef("semantic search isn't available on this deployment")
+		}
+		semantic.QueryVector = vec
+		results, err := r.RecipeService.SearchRecipesSemantic(ctx, semantic)
+		if err != nil {
+			return nil, err
+		}
+		recipes = make([]recipe.Recipe, len(results))
+		for i, res := range results {
+			recipes[i] = res.Recipe
+		}
+		total, err = r.RecipeService.CountSearchRecipesSemantic(ctx, semantic)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		recipes, err = r.RecipeService.SearchRecipes(ctx, search)
+		if err != nil {
+			return nil, err
+		}
+		total, err = r.RecipeService.CountSearchRecipes(ctx, search)
+		if err != nil {
+			return nil, err
+		}
 	}
 	recipeIDs := distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID })
 	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
@@ -189,6 +228,26 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// recipeSearchModeSemantic is the schema enum value that switches the
+// recipes query from name-LIKE to embedding-distance ranking.
+const recipeSearchModeSemantic = "semantic"
+
+// recipeSearchMode normalizes the enum arg; unknown/empty values fall back
+// to keyword behavior.
+func recipeSearchMode(mode string) string {
+	return strings.ToLower(strings.TrimSpace(mode))
+}
+
+// SemanticSearchAvailable reports whether recipe embeddings are configured.
+// Clients gate the semantic search toggle on this instead of erroring on
+// first use.
+func (r *Resolver) SemanticSearchAvailable(ctx context.Context) (bool, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return false, err
+	}
+	return r.RecipeEmbedder != nil, nil
 }
 
 // parseRecipeChildren converts GraphQL recipe items/steps into service

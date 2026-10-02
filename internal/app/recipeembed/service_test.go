@@ -205,6 +205,16 @@ func TestSweepStopsWhenNoProgress(t *testing.T) {
 	assert.LessOrEqual(t, store.listCalls, 2)
 }
 
+func TestEmbedQueryReturnsLiteral(t *testing.T) {
+	s := NewService(llm.NewMockEmbedder(), "m", newFakeStore(), &fakeNamer{},
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	lit, err := s.EmbedQuery(context.Background(), "cozy soup")
+	require.NoError(t, err)
+	vec, err := llm.ParseVectorLiteral(lit)
+	require.NoError(t, err)
+	assert.Len(t, vec, llm.EmbedDims)
+}
+
 func TestRunStopsOnCancel(_ *testing.T) {
 	store := newFakeStore()
 	store.recipes[1] = recipe.Recipe{RecipeID: 1, Name: "R"}

@@ -2973,11 +2973,12 @@ export const api = {
     pageSize: number,
     search?: string,
     isFavorite?: boolean,
-    categoryIds?: number[]
+    categoryIds?: number[],
+    searchMode?: "keyword" | "semantic"
   ): Promise<PagedResult<Recipe>> => {
     const data = await request<{ recipes: GqlRecipePage }>(
-      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean) {
-        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite) {
+      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean, $searchMode: RecipeSearchMode) {
+        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite, searchMode: $searchMode) {
           items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount }
         }
       }`,
@@ -2987,6 +2988,7 @@ export const api = {
         search: search?.trim() || null,
         categoryIds: categoryIds?.length ? categoryIds.map(String) : null,
         isFavorite: isFavorite ?? null,
+        searchMode: searchMode ?? "keyword",
       }
     );
     const items = data.recipes.items.map(toRecipe);
@@ -3865,6 +3867,13 @@ export const api = {
   getAIAvailable: async (): Promise<boolean> => {
     const data = await request<{ aiAvailable: boolean }>(`query { aiAvailable }`);
     return data.aiAvailable ?? false;
+  },
+
+  getSemanticSearchAvailable: async (): Promise<boolean> => {
+    const data = await request<{ semanticSearchAvailable: boolean }>(
+      `query { semanticSearchAvailable }`
+    );
+    return data.semanticSearchAvailable ?? false;
   },
 
   suggestMeals: async (mealPlanId: number, maxSuggestions = 6): Promise<MealPlanSuggestion[]> => {

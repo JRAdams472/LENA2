@@ -277,6 +277,9 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	if embedSvc != nil {
 		recipeEmbedder = embedSvc
 		recipeImportSvc.SetEmbedder(embedSvc)
+		// The model only sees the semantic tool when an embedder can
+		// actually run it.
+		tools.RegisterSemanticSearchTool(aiTools, recipeSvc, embedSvc)
 		embedSvc.Start()
 	}
 
@@ -564,6 +567,6 @@ func cannedMockHandler(req llm.Request) (llm.Response, error) {
 	}
 	return llm.Response{Message: llm.Message{
 		Role:    llm.RoleAssistant,
-		Content: "Hi! I'm LENA's canned demo answer — no tools needed for that one.",
+		Content: "Hi! I'm Dot's canned demo answer — no tools needed for that one.",
 	}}, nil
 }
