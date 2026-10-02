@@ -54,6 +54,11 @@ type Request struct {
 	// JSONMode asks the provider for strictly-JSON output. Providers that
 	// cannot combine JSON mode with tools may ignore it when Tools is set.
 	JSONMode bool
+	// JSONSchema constrains structured output to a JSON Schema when the
+	// provider supports it (Ollama: format field). It implies JSONMode;
+	// providers that cannot combine format with tools ignore it like
+	// JSONMode when Tools is set.
+	JSONSchema map[string]any
 }
 
 // Response is one provider reply: either assistant content, tool calls, or

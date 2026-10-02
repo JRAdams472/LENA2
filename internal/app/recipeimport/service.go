@@ -648,7 +648,8 @@ func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimpo
 			{Role: llm.RoleSystem, Content: systemPrompt},
 			{Role: llm.RoleUser, Content: userPrompt},
 		},
-		JSONMode: true,
+		JSONMode:   true,
+		JSONSchema: ocrimport.JSONSchema(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ollama: %w", err)
@@ -661,6 +662,12 @@ func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimpo
 	}
 	if vErr := ocrimport.ValidateDraft(&draft); vErr != nil {
 		return nil, fmt.Errorf("validate draft: %w", vErr)
+	}
+
+	// Safety net: even with the schema enforced, the model may still leave a
+	// leading quantity inside the ingredient text — split it deterministically.
+	for i := range draft.Items {
+		ocrimport.FillMissingQuantity(&draft.Items[i])
 	}
 
 	// Second opinion: if the OCR text itself was clean but the LLM produced

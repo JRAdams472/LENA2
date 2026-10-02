@@ -54,6 +54,26 @@ func TestOllamaProviderJSONMode(t *testing.T) {
 	assert.Equal(t, "ollama", p.Name())
 }
 
+func TestOllamaProviderJSONSchema(t *testing.T) {
+	schema := map[string]any{"type": "object", "required": []string{"a"}}
+	server := ollamaTestServer(t, func(req ollamaclient.ChatRequest) ollamaclient.ChatResponse {
+		assert.Equal(t, map[string]any{"type": "object", "required": []any{"a"}}, req.Format)
+		return ollamaclient.ChatResponse{
+			Done:    true,
+			Message: ollamaclient.Message{Role: "assistant", Content: `{"a":1}`},
+		}
+	})
+	defer server.Close()
+
+	p := NewOllamaProvider(Params{URL: server.URL, Model: "m"})
+	_, err := p.Chat(context.Background(), Request{
+		JSONMode:   true,
+		JSONSchema: schema,
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+	})
+	require.NoError(t, err)
+}
+
 func TestOllamaProviderToolCalling(t *testing.T) {
 	server := ollamaTestServer(t, func(req ollamaclient.ChatRequest) ollamaclient.ChatResponse {
 		// format must not force plain JSON while tools are advertised.
