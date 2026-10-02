@@ -2,6 +2,7 @@ package household_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,11 +14,11 @@ import (
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
-func newService(t *testing.T, ctx context.Context) (*household.Service, *pgxpool.Pool, func()) {
+func newService(t *testing.T, ctx context.Context) (*household.Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	return household.NewService(pool), pool, cleanup
+	return household.NewService(pool), pool
 }
 
 // TestIntegrationInviteLifecycle walks the happy path: household create,
@@ -27,8 +28,7 @@ func TestIntegrationInviteLifecycle(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	svc, pool, cleanup := newService(t, ctx)
-	t.Cleanup(cleanup)
+	svc, pool := newService(t, ctx)
 
 	inviter := testutil.MustUser(ctx, t, pool, "hh-inviter@example.com")
 	target := testutil.MustUser(ctx, t, pool, "hh-target@example.com")
@@ -74,8 +74,7 @@ func TestIntegrationInviteGuards(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	svc, pool, cleanup := newService(t, ctx)
-	t.Cleanup(cleanup)
+	svc, pool := newService(t, ctx)
 
 	inviter := testutil.MustUser(ctx, t, pool, "hh-guard-a@example.com")
 	target := testutil.MustUser(ctx, t, pool, "hh-guard-b@example.com")
@@ -104,4 +103,8 @@ func TestIntegrationInviteGuards(t *testing.T) {
 
 	_, err = svc.GetInviteByID(ctx, 999999)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

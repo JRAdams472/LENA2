@@ -2,6 +2,7 @@ package event
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -19,9 +20,8 @@ const itBy = "integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool), pool
 }
 
@@ -399,4 +399,8 @@ func TestIntegrationEventRecipeItems(t *testing.T) {
 	// Cross-household writes denied.
 	err = svc.ReplaceEventRecipeItems(ctx, slot.EventRecipeID, hhB, snap, rec.Servings, itBy)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

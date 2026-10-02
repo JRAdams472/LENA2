@@ -2,6 +2,7 @@ package recipe
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -30,9 +31,8 @@ func TestIntegrationRecipeCRUD(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	active, err := svc.CreateRecipe(ctx, Recipe{
@@ -119,9 +119,8 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	// Create an inventory item for recipe_item FK.
@@ -221,9 +220,8 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	invSvc := inventory.NewService(pool)
@@ -289,9 +287,8 @@ func TestIntegrationRecipeRatings(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	userA := testutil.MustUser(ctx, t, pool, "rating-a@example.com")
@@ -354,9 +351,8 @@ func TestIntegrationRatingRecency(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 	mpSvc := mealplan.NewService(pool)
 
@@ -425,9 +421,8 @@ func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	invSvc := inventory.NewService(pool)
@@ -492,9 +487,8 @@ func TestIntegrationRecipeCategories(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	// Seed taxonomy from migration 0035.
@@ -599,9 +593,8 @@ func TestIntegrationRecipeSearchCourseBoost(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	dinnerID := itCategoryID(t, svc, ctx, "Course", "Dinner")
@@ -649,9 +642,8 @@ func TestIntegrationRecipeEmbedding(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	fresh, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Embed Fresh", IsActive: true}, itBy)
@@ -702,9 +694,8 @@ func TestIntegrationSemanticSearch(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	svc := NewService(pool)
 
 	near, err := svc.CreateRecipe(ctx, Recipe{Name: "IT Sem Near", IsActive: true}, itBy)
@@ -775,4 +766,8 @@ func indexOf(ids []int64, id int64) int {
 		}
 	}
 	return -1
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

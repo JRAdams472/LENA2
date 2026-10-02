@@ -3,6 +3,7 @@ package userprefs
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -19,9 +20,8 @@ const itBy = "integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool), pool
 }
 
@@ -563,4 +563,8 @@ func TestIntegrationSearchHouseholdBottlesRanking(t *testing.T) {
 	for i, hb := range got {
 		assert.Equal(t, want[i], hb.BottleID, "position %d", i)
 	}
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

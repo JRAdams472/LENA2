@@ -2,6 +2,7 @@ package wine
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,9 +16,8 @@ const itBy = "integration-test"
 
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewService(pool), pool
 }
 
@@ -454,4 +454,8 @@ func TestIntegrationSearchBottlesRanking(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []int64{favID}, ids)
 	})
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

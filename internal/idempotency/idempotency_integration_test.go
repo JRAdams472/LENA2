@@ -2,6 +2,7 @@ package idempotency_test
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -14,11 +15,11 @@ import (
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
-func newStore(t *testing.T, ctx context.Context, cfg idempotency.Config) (*idempotency.Store, *pgxpool.Pool, func()) {
+func newStore(t *testing.T, ctx context.Context, cfg idempotency.Config) (*idempotency.Store, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	return idempotency.NewStore(pool, cfg), pool, cleanup
+	return idempotency.NewStore(pool, cfg), pool
 }
 
 func TestIntegrationClaimCompleteReplay(t *testing.T) {
@@ -26,8 +27,7 @@ func TestIntegrationClaimCompleteReplay(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{})
-	t.Cleanup(cleanup)
+	store, pool := newStore(t, ctx, idempotency.Config{})
 	uid := testutil.MustUser(ctx, t, pool, "idem-a@example.com")
 	hash := idempotency.Hash([]byte(`{"query":"mutation { a }"}`))
 
@@ -49,8 +49,7 @@ func TestIntegrationKeyReusedDifferentPayload(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{})
-	t.Cleanup(cleanup)
+	store, pool := newStore(t, ctx, idempotency.Config{})
 	uid := testutil.MustUser(ctx, t, pool, "idem-b@example.com")
 
 	_, err := store.Begin(ctx, uid, "k1", idempotency.Hash([]byte("a")))
@@ -66,8 +65,7 @@ func TestIntegrationUserIsolation(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{})
-	t.Cleanup(cleanup)
+	store, pool := newStore(t, ctx, idempotency.Config{})
 	uid1 := testutil.MustUser(ctx, t, pool, "idem-c1@example.com")
 	uid2 := testutil.MustUser(ctx, t, pool, "idem-c2@example.com")
 	hash := idempotency.Hash([]byte("same body"))
@@ -88,11 +86,10 @@ func TestIntegrationInFlightWaitsThenReplays(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{
+	store, pool := newStore(t, ctx, idempotency.Config{
 		WaitTimeout:  5 * time.Second,
 		PollInterval: 20 * time.Millisecond,
 	})
-	t.Cleanup(cleanup)
 	uid := testutil.MustUser(ctx, t, pool, "idem-d@example.com")
 	hash := idempotency.Hash([]byte("body"))
 
@@ -119,12 +116,11 @@ func TestIntegrationInFlightTimeout(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{
+	store, pool := newStore(t, ctx, idempotency.Config{
 		WaitTimeout:  200 * time.Millisecond,
 		PollInterval: 20 * time.Millisecond,
 		InFlightTTL:  time.Hour,
 	})
-	t.Cleanup(cleanup)
 	uid := testutil.MustUser(ctx, t, pool, "idem-e@example.com")
 	hash := idempotency.Hash([]byte("body"))
 
@@ -140,10 +136,9 @@ func TestIntegrationStaleInFlightReclaimed(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{
+	store, pool := newStore(t, ctx, idempotency.Config{
 		InFlightTTL: 50 * time.Millisecond,
 	})
-	t.Cleanup(cleanup)
 	uid := testutil.MustUser(ctx, t, pool, "idem-f@example.com")
 	hash := idempotency.Hash([]byte("body"))
 
@@ -165,8 +160,7 @@ func TestIntegrationExpiredKeyReclaimed(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{})
-	t.Cleanup(cleanup)
+	store, pool := newStore(t, ctx, idempotency.Config{})
 	uid := testutil.MustUser(ctx, t, pool, "idem-g@example.com")
 	hash := idempotency.Hash([]byte("body"))
 
@@ -189,8 +183,7 @@ func TestIntegrationAbandonReleasesClaim(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool, cleanup := newStore(t, ctx, idempotency.Config{})
-	t.Cleanup(cleanup)
+	store, pool := newStore(t, ctx, idempotency.Config{})
 	uid := testutil.MustUser(ctx, t, pool, "idem-h@example.com")
 	hash := idempotency.Hash([]byte("body"))
 
@@ -214,4 +207,8 @@ func TestHashAndAutoKey(t *testing.T) {
 	k := idempotency.AutoKey(h1)
 	assert.Contains(t, k, idempotency.AutoKeyPrefix)
 	assert.Len(t, k, len(idempotency.AutoKeyPrefix)+64)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

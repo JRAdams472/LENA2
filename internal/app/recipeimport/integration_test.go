@@ -27,9 +27,8 @@ const itBy = "recipeimport-it"
 
 func newIntegrationStore(t *testing.T, ctx context.Context) (Store, *pgxpool.Pool) {
 	t.Helper()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 	return NewStore(pool), pool
 }
 
@@ -135,7 +134,11 @@ func TestIntegrationListByStatusesPagination(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	store, pool := newIntegrationStore(t, ctx)
+	// Isolated container: this test asserts global row counts.
+	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	store := NewStore(pool)
 
 	// Create imports in a mix of statuses by walking transitions.
 	var ids []int64
@@ -147,7 +150,7 @@ func TestIntegrationListByStatusesPagination(t *testing.T) {
 		require.NoError(t, err)
 		ids = append(ids, ri.ID)
 	}
-	_, err := store.Claim(ctx, ids[1])
+	_, err = store.Claim(ctx, ids[1])
 	require.NoError(t, err)
 	require.NoError(t, store.UpdateOCR(ctx, ids[1], "t", nil))
 	_, err = store.Claim(ctx, ids[2])
@@ -219,9 +222,8 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	defer cleanup()
 
 	invSvc := inventory.NewService(pool)
 	recipeSvc := recipe.NewService(pool)
@@ -299,4 +301,8 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*) FROM recipe.recipe WHERE name = 'IT Pancakes'`).Scan(&n))
 	assert.Equal(t, 1, n)
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
 }

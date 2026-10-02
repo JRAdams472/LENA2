@@ -2,6 +2,7 @@ package notifier_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -33,9 +34,8 @@ func TestIntegrationSweep(t *testing.T) {
 		t.Skip("integration test")
 	}
 	ctx := context.Background()
-	pool, cleanup, err := testutil.NewTestDB(t, ctx)
+	pool, err := testutil.SharedTestDB(t, ctx)
 	require.NoError(t, err)
-	t.Cleanup(cleanup)
 
 	owner := testutil.MustUser(ctx, t, pool, "notify-owner@example.com")
 	member := testutil.MustUser(ctx, t, pool, "notify-member@example.com")
@@ -173,3 +173,7 @@ func TestIntegrationSweep(t *testing.T) {
 }
 
 func intPtr4(v int32) *int32 { return &v }
+
+func TestMain(m *testing.M) {
+	os.Exit(testutil.SharedDBTestMain(m))
+}
