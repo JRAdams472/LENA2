@@ -179,7 +179,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(2, 10);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 2, pageSize: 10, search: null, categoryIds: null, isFavorite: null,
+      page: 2, pageSize: 10, search: null, categoryIds: null, isFavorite: null, searchMode: "keyword",
     });
     expect(result.totalPages).toBe(3);
     expect(result.items[0].recipeID).toBe(1);
@@ -193,7 +193,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(1, 10, "pan");
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: "pan", categoryIds: null, isFavorite: null,
+      page: 1, pageSize: 10, search: "pan", categoryIds: null, isFavorite: null, searchMode: "keyword",
     });
     expect(result.items[0].recipeName).toBe("Pancakes");
   });
@@ -206,7 +206,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(1, 10, undefined, true);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: true,
+      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: true, searchMode: "keyword",
     });
     expect(result.items[0].recipeName).toBe("Soup");
   });
@@ -219,7 +219,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(1, 10, undefined, undefined, [21, 40]);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: null, categoryIds: ["21", "40"], isFavorite: null,
+      page: 1, pageSize: 10, search: null, categoryIds: ["21", "40"], isFavorite: null, searchMode: "keyword",
     });
     expect(result.items[0].recipeName).toBe("Tacos");
   });
@@ -230,7 +230,7 @@ describe("api client: recipes", () => {
     await api.getRecipesPaged(1, 10, undefined, undefined, []);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: null,
+      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: null, searchMode: "keyword",
     });
   });
 

@@ -218,7 +218,7 @@ type GroceryRouteItem {
 | `item(id)` | `ID!` | `Item` | Single catalog item |
 | `items(page, pageSize)` | `Int, Int` | `ItemPage!` | Paginated catalog items |
 | `recipe(id)` | `ID!` | `Recipe` | Single recipe |
-| `recipes(page, pageSize)` | `Int, Int` | `RecipePage!` | Paginated recipes |
+| `recipes(page, pageSize, search, categoryIds, isFavorite, mealType, searchMode)` | `Int, Int, String, [ID!], Boolean, String, RecipeSearchMode` | `RecipePage!` | Paginated recipes — `searchMode: semantic` ranks embedded recipes by cosine distance + engagement (see `semanticSearchAvailable`) |
 | `userItems(page, pageSize)` | `Int, Int` | `UserItemPage!` | Current user's pantry |
 | `userBottles(page, pageSize)` | `Int, Int` | `UserBottlePage!` | Current user's cellar |
 | `bottle(id)` | `ID!` | `Bottle` | Single wine bottle |
@@ -232,6 +232,8 @@ type GroceryRouteItem {
 | `foodEvent(id)` | `ID!` | `FoodEvent` | Single household event |
 | `foodEvents(page, pageSize)` | `Int, Int` | `FoodEventPage!` | Household's events |
 | `eventTimeline(foodEventId)` | `ID!` | `EventTimeline` | Backwards-scheduled master timeline |
+| `aiAvailable` | — | `Boolean!` | Whether the AI assistant is configured |
+| `semanticSearchAvailable` | — | `Boolean!` | Whether recipe embeddings (semantic search mode) are configured |
 
 ## Mutations
 

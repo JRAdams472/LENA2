@@ -270,6 +270,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: 2, PageSize: 10})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 2)
@@ -292,6 +293,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: -3, PageSize: 500})
 		require.NoError(t, err)
 		pi := res.PageInfo()
@@ -331,6 +333,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: 1, PageSize: 10, MealType: &mt})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 1)
@@ -358,6 +361,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: 1, PageSize: 10, MealType: &mt})
 		require.NoError(t, err)
 		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
@@ -373,6 +377,7 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: 1, PageSize: 10})
 		require.ErrorContains(t, err, "unauthorized")
 	})
@@ -388,9 +393,123 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: 1, PageSize: 10})
 		require.ErrorIs(t, err, errRecBoom)
 	})
+
+	t.Run("semantic mode embeds the query and ranks by distance", func(t *testing.T) {
+		rec, inv, up := newRecMocks(t)
+		ctrl := gomock.NewController(t)
+		emb := mock.NewMockRecipeEmbedder(ctrl)
+		emb.EXPECT().EmbedQuery(gomock.Any(), "cozy stew").Return("[0.1,0.2]", nil)
+		rec.EXPECT().SearchRecipesSemantic(gomock.Any(), gomock.Cond(func(s recipe.SemanticSearch) bool {
+			return s.QueryVector == "[0.1,0.2]" && s.Active && s.Limit == 10
+		})).Return([]recipe.SemanticResult{
+			{Recipe: recipe.Recipe{RecipeID: 7, Name: "Stew"}, Distance: 0.2},
+		}, nil)
+		rec.EXPECT().CountSearchRecipesSemantic(gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{7}).Return([]recipe.Recipe{{RecipeID: 7, Name: "Stew"}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		up.EXPECT().ListFavoriteRecipeIDs(gomock.Any(), int64(11)).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{7}).Return(nil, nil)
+
+		mode := "semantic"
+		q := "cozy stew"
+		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up, RecipeEmbedder: emb}
+		res, err := r.Recipes(recCtx(), struct {
+			Page        int32
+			PageSize    int32
+			Search      *string
+			CategoryIDs *[]graphql.ID
+			IsFavorite  *bool
+			MealType    *string
+			SearchMode  string
+		}{Page: 1, PageSize: 10, Search: &q, SearchMode: mode})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 1)
+		assert.Equal(t, "Stew", res.Items()[0].Name())
+		assert.Equal(t, int32(1), res.PageInfo().TotalCount())
+	})
+
+	t.Run("semantic mode without an embedder is unavailable", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		mode := "semantic"
+		q := "cozy stew"
+		r := &Resolver{RecipeService: rec}
+		_, err := r.Recipes(recCtx(), struct {
+			Page        int32
+			PageSize    int32
+			Search      *string
+			CategoryIDs *[]graphql.ID
+			IsFavorite  *bool
+			MealType    *string
+			SearchMode  string
+		}{Page: 1, PageSize: 10, Search: &q, SearchMode: mode})
+		require.ErrorContains(t, err, "semantic search isn't available")
+	})
+
+	t.Run("semantic embed failure degrades to unavailable", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		ctrl := gomock.NewController(t)
+		emb := mock.NewMockRecipeEmbedder(ctrl)
+		emb.EXPECT().EmbedQuery(gomock.Any(), "soup").Return("", errRecBoom)
+		mode := "semantic"
+		q := "soup"
+		r := &Resolver{RecipeService: rec, RecipeEmbedder: emb}
+		_, err := r.Recipes(recCtx(), struct {
+			Page        int32
+			PageSize    int32
+			Search      *string
+			CategoryIDs *[]graphql.ID
+			IsFavorite  *bool
+			MealType    *string
+			SearchMode  string
+		}{Page: 1, PageSize: 10, Search: &q, SearchMode: mode})
+		require.ErrorContains(t, err, "semantic search isn't available")
+	})
+
+	t.Run("semantic mode with empty search falls back to keyword", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		ctrl := gomock.NewController(t)
+		emb := mock.NewMockRecipeEmbedder(ctrl)
+		// EmbedQuery must not be called — an empty query keyword-searches.
+		rec.EXPECT().SearchRecipes(gomock.Any(), gomock.Any()).Return([]recipe.Recipe{}, nil)
+		rec.EXPECT().CountSearchRecipes(gomock.Any(), gomock.Any()).Return(int64(0), nil)
+		mode := "semantic"
+		r := &Resolver{RecipeService: rec, RecipeEmbedder: emb}
+		res, err := r.Recipes(recCtx(), struct {
+			Page        int32
+			PageSize    int32
+			Search      *string
+			CategoryIDs *[]graphql.ID
+			IsFavorite  *bool
+			MealType    *string
+			SearchMode  string
+		}{Page: 1, PageSize: 10, SearchMode: mode})
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
+	})
+}
+
+func TestResolver_SemanticSearchAvailable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	r := &Resolver{RecipeEmbedder: mock.NewMockRecipeEmbedder(ctrl)}
+	ok, err := r.SemanticSearchAvailable(recCtx())
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	r = &Resolver{}
+	ok, err = r.SemanticSearchAvailable(recCtx())
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	_, err = r.SemanticSearchAvailable(context.Background())
+	require.Error(t, err)
 }
 
 func TestResolver_Recipe_CreateRecipe(t *testing.T) {
@@ -691,6 +810,7 @@ func TestResolver_Recipe_RatingFields(t *testing.T) {
 			CategoryIDs *[]graphql.ID
 			IsFavorite  *bool
 			MealType    *string
+			SearchMode  string
 		}{Page: 1, PageSize: 25})
 		require.NoError(t, err)
 		items := res.Items()

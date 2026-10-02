@@ -991,6 +991,21 @@ func (m *MockRecipeEmbedder) EXPECT() *MockRecipeEmbedderMockRecorder {
 	return m.recorder
 }
 
+// EmbedQuery mocks base method.
+func (m *MockRecipeEmbedder) EmbedQuery(ctx context.Context, query string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmbedQuery", ctx, query)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EmbedQuery indicates an expected call of EmbedQuery.
+func (mr *MockRecipeEmbedderMockRecorder) EmbedQuery(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmbedQuery", reflect.TypeOf((*MockRecipeEmbedder)(nil).EmbedQuery), ctx, query)
+}
+
 // Refresh mocks base method.
 func (m *MockRecipeEmbedder) Refresh(ctx context.Context, recipeID int64) error {
 	m.ctrl.T.Helper()
@@ -4453,6 +4468,21 @@ func (mr *MockRecipeReaderMockRecorder) CountSearchRecipes(ctx, arg any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchRecipes", reflect.TypeOf((*MockRecipeReader)(nil).CountSearchRecipes), ctx, arg)
 }
 
+// CountSearchRecipesSemantic mocks base method.
+func (m *MockRecipeReader) CountSearchRecipesSemantic(ctx context.Context, arg recipe.SemanticSearch) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchRecipesSemantic", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchRecipesSemantic indicates an expected call of CountSearchRecipesSemantic.
+func (mr *MockRecipeReaderMockRecorder) CountSearchRecipesSemantic(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchRecipesSemantic", reflect.TypeOf((*MockRecipeReader)(nil).CountSearchRecipesSemantic), ctx, arg)
+}
+
 // GetRecipeByID mocks base method.
 func (m *MockRecipeReader) GetRecipeByID(ctx context.Context, recipeID int64) (recipe.Recipe, error) {
 	m.ctrl.T.Helper()
@@ -4631,6 +4661,21 @@ func (m *MockRecipeReader) SearchRecipes(ctx context.Context, arg recipe.RecipeS
 func (mr *MockRecipeReaderMockRecorder) SearchRecipes(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecipes", reflect.TypeOf((*MockRecipeReader)(nil).SearchRecipes), ctx, arg)
+}
+
+// SearchRecipesSemantic mocks base method.
+func (m *MockRecipeReader) SearchRecipesSemantic(ctx context.Context, arg recipe.SemanticSearch) ([]recipe.SemanticResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchRecipesSemantic", ctx, arg)
+	ret0, _ := ret[0].([]recipe.SemanticResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchRecipesSemantic indicates an expected call of SearchRecipesSemantic.
+func (mr *MockRecipeReaderMockRecorder) SearchRecipesSemantic(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecipesSemantic", reflect.TypeOf((*MockRecipeReader)(nil).SearchRecipesSemantic), ctx, arg)
 }
 
 // MockRecipeWriter is a mock of RecipeWriter interface.
@@ -5070,6 +5115,21 @@ func (mr *MockRecipeServiceMockRecorder) CountSearchRecipes(ctx, arg any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchRecipes", reflect.TypeOf((*MockRecipeService)(nil).CountSearchRecipes), ctx, arg)
 }
 
+// CountSearchRecipesSemantic mocks base method.
+func (m *MockRecipeService) CountSearchRecipesSemantic(ctx context.Context, arg recipe.SemanticSearch) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchRecipesSemantic", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchRecipesSemantic indicates an expected call of CountSearchRecipesSemantic.
+func (mr *MockRecipeServiceMockRecorder) CountSearchRecipesSemantic(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchRecipesSemantic", reflect.TypeOf((*MockRecipeService)(nil).CountSearchRecipesSemantic), ctx, arg)
+}
+
 // CreateCategory mocks base method.
 func (m *MockRecipeService) CreateCategory(ctx context.Context, arg recipe.Category, by string) (recipe.Category, error) {
 	m.ctrl.T.Helper()
@@ -5438,6 +5498,21 @@ func (m *MockRecipeService) SearchRecipes(ctx context.Context, arg recipe.Recipe
 func (mr *MockRecipeServiceMockRecorder) SearchRecipes(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecipes", reflect.TypeOf((*MockRecipeService)(nil).SearchRecipes), ctx, arg)
+}
+
+// SearchRecipesSemantic mocks base method.
+func (m *MockRecipeService) SearchRecipesSemantic(ctx context.Context, arg recipe.SemanticSearch) ([]recipe.SemanticResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchRecipesSemantic", ctx, arg)
+	ret0, _ := ret[0].([]recipe.SemanticResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchRecipesSemantic indicates an expected call of SearchRecipesSemantic.
+func (mr *MockRecipeServiceMockRecorder) SearchRecipesSemantic(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecipesSemantic", reflect.TypeOf((*MockRecipeService)(nil).SearchRecipesSemantic), ctx, arg)
 }
 
 // SetRating mocks base method.

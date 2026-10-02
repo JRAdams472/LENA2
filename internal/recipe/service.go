@@ -933,6 +933,73 @@ func (s *Service) ListEmbeddingCandidates(ctx context.Context, model string, lim
 	return s.q.ListEmbeddingCandidates(ctx, sqlc.ListEmbeddingCandidatesParams{Model: model, Limit: limit})
 }
 
+// SemanticSearch carries the query vector plus the RecipeSearch filters the
+// semantic listing shares with keyword mode. QueryVector is a pgvector text
+// literal produced by an llm.Embedder; CategoryIDs/Include/Exclude filter,
+// Favorite/Used/Viewed feed the small engagement blend.
+type SemanticSearch struct {
+	Active      bool
+	QueryVector string
+	CategoryIDs []int64
+	IncludeIDs  []int64
+	ExcludeIDs  []int64
+	FavoriteIDs []int64
+	UsedIDs     []int64
+	ViewedIDs   []int64
+	Limit       int32
+	Offset      int32
+}
+
+// SemanticResult is one semantic-search hit: the recipe plus its cosine
+// distance to the query vector (0 = identical; the tool exposes it as a
+// 1-distance score).
+type SemanticResult struct {
+	Recipe   Recipe
+	Distance float64
+}
+
+func (ss SemanticSearch) params() sqlc.SearchRecipesSemanticParams {
+	return sqlc.SearchRecipesSemanticParams{
+		IsActive: ss.Active, QueryVec: ss.QueryVector,
+		CategoryIds: ss.CategoryIDs, IncludeIds: ss.IncludeIDs, ExcludeIds: ss.ExcludeIDs,
+		FavoriteIds: ss.FavoriteIDs, UsedIds: ss.UsedIDs, ViewedIds: ss.ViewedIDs,
+		Limit: ss.Limit, Offset: ss.Offset,
+	}
+}
+
+// SearchRecipesSemantic returns one page of embedded recipes ranked by
+// blended cosine distance + engagement boost.
+func (s *Service) SearchRecipesSemantic(ctx context.Context, arg SemanticSearch) ([]SemanticResult, error) {
+	rows, err := s.q.SearchRecipesSemantic(ctx, arg.params())
+	if err != nil {
+		return nil, fmt.Errorf("semantic search recipes: %w", err)
+	}
+	out := make([]SemanticResult, len(rows))
+	for i, r := range rows {
+		out[i] = SemanticResult{Recipe: toRecipe(sqlc.RecipeRecipe{
+			RecipeID: r.RecipeID, Name: r.Name, Description: r.Description,
+			Servings: r.Servings, PrepTimeMinutes: r.PrepTimeMinutes,
+			CookTimeMinutes: r.CookTimeMinutes, IsActive: r.IsActive,
+			CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt,
+			UpdatedBy: r.UpdatedBy, UpdatedAt: r.UpdatedAt,
+		}), Distance: r.Distance}
+	}
+	return out, nil
+}
+
+// CountSearchRecipesSemantic returns the un-paged embedded match count for
+// the same filters (engagement inputs don't affect the count).
+func (s *Service) CountSearchRecipesSemantic(ctx context.Context, arg SemanticSearch) (int64, error) {
+	n, err := s.q.CountSearchRecipesSemantic(ctx, sqlc.CountSearchRecipesSemanticParams{
+		IsActive:    arg.Active,
+		CategoryIds: arg.CategoryIDs, IncludeIds: arg.IncludeIDs, ExcludeIds: arg.ExcludeIDs,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count semantic search recipes: %w", err)
+	}
+	return n, nil
+}
+
 // CountSearchRecipes returns the un-paged match count for the same filters.
 func (s *Service) CountSearchRecipes(ctx context.Context, arg RecipeSearch) (int64, error) {
 	n, err := s.q.CountSearchRecipes(ctx, sqlc.CountSearchRecipesParams{

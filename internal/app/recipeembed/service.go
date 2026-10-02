@@ -146,6 +146,20 @@ func (s *Service) Refresh(ctx context.Context, recipeID int64) error {
 	return nil
 }
 
+// EmbedQuery embeds one search query and returns it as a pgvector text
+// literal ready for ::vector casts. Queries go through the embedder's
+// asymmetric query entry point (nomic's search_query: prefix).
+func (s *Service) EmbedQuery(ctx context.Context, query string) (string, error) {
+	v, err := s.embedder.EmbedQuery(ctx, query)
+	if err != nil {
+		return "", fmt.Errorf("embed query: %w", err)
+	}
+	if len(v) == 0 {
+		return "", fmt.Errorf("embed query: empty vector")
+	}
+	return llm.VectorLiteral(v), nil
+}
+
 // ingredientNames resolves recipe items to display names — ingredient when
 // linked, item otherwise — preserving recipe order and skipping empties.
 func (s *Service) ingredientNames(ctx context.Context, items []recipe.RecipeItem) ([]string, error) {

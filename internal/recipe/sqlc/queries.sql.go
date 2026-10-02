@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/JRAdams472/LENA2/internal/platform/vector"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -197,6 +198,49 @@ func (q *Queries) CountSearchRecipes(ctx context.Context, arg CountSearchRecipes
 	row := q.db.QueryRow(ctx, countSearchRecipes,
 		arg.IsActive,
 		arg.Search,
+		arg.CategoryIds,
+		arg.IncludeIds,
+		arg.ExcludeIds,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSearchRecipesSemantic = `-- name: CountSearchRecipesSemantic :one
+SELECT COUNT(*)
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND r.embedding IS NOT NULL
+  AND (
+    $2::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY($2::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY($2::bigint[])
+    )
+  )
+  AND ($3::bigint[] IS NULL OR r.recipe_id = ANY($3::bigint[]))
+  AND ($4::bigint[] IS NULL OR NOT (r.recipe_id = ANY($4::bigint[])))
+`
+
+type CountSearchRecipesSemanticParams struct {
+	IsActive    bool    `json:"is_active"`
+	CategoryIds []int64 `json:"category_ids"`
+	IncludeIds  []int64 `json:"include_ids"`
+	ExcludeIds  []int64 `json:"exclude_ids"`
+}
+
+// The un-paged match count for the same semantic-mode filters (no
+// engagement args — they only affect ordering).
+func (q *Queries) CountSearchRecipesSemantic(ctx context.Context, arg CountSearchRecipesSemanticParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchRecipesSemantic,
+		arg.IsActive,
 		arg.CategoryIds,
 		arg.IncludeIds,
 		arg.ExcludeIds,
@@ -1164,6 +1208,123 @@ func (q *Queries) SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([
 			&i.Embedding,
 			&i.EmbeddingModel,
 			&i.EmbeddingAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchRecipesSemantic = `-- name: SearchRecipesSemantic :many
+SELECT r.recipe_id, r.name, r.description, r.servings, r.prep_time_minutes, r.cook_time_minutes, r.is_active, r.created_by, r.created_at, r.updated_by, r.updated_at, r.embedding, r.embedding_model, r.embedding_at, (r.embedding <=> $2::text::vector)::float8 AS distance
+FROM recipe.recipe r
+WHERE r.is_active = $1
+  AND r.embedding IS NOT NULL
+  AND (
+    $3::bigint[] IS NULL
+    OR (
+      SELECT COUNT(DISTINCT c.category_group_id)
+      FROM recipe.recipe_category rc
+      JOIN recipe.category c ON c.category_id = rc.category_id
+      WHERE rc.recipe_id = r.recipe_id AND c.category_id = ANY($3::bigint[])
+    ) = (
+      SELECT COUNT(DISTINCT category_group_id)
+      FROM recipe.category
+      WHERE category_id = ANY($3::bigint[])
+    )
+  )
+  AND ($4::bigint[] IS NULL OR r.recipe_id = ANY($4::bigint[]))
+  AND ($5::bigint[] IS NULL OR NOT (r.recipe_id = ANY($5::bigint[])))
+ORDER BY
+  (r.embedding <=> $2::text::vector)
+    - (0.15 * CASE
+        WHEN $6::bigint[] IS NOT NULL AND r.recipe_id = ANY($6::bigint[]) THEN 1.0
+        WHEN r.recipe_id = ANY($7::bigint[]) THEN 0.6
+        WHEN r.recipe_id = ANY($8::bigint[]) THEN 0.3
+        ELSE 0
+      END),
+  r.name
+LIMIT $10::int OFFSET $9::int
+`
+
+type SearchRecipesSemanticParams struct {
+	IsActive    bool    `json:"is_active"`
+	QueryVec    string  `json:"query_vec"`
+	CategoryIds []int64 `json:"category_ids"`
+	IncludeIds  []int64 `json:"include_ids"`
+	ExcludeIds  []int64 `json:"exclude_ids"`
+	FavoriteIds []int64 `json:"favorite_ids"`
+	UsedIds     []int64 `json:"used_ids"`
+	ViewedIds   []int64 `json:"viewed_ids"`
+	Offset      int32   `json:"offset"`
+	Limit       int32   `json:"limit"`
+}
+
+type SearchRecipesSemanticRow struct {
+	RecipeID        int64              `json:"recipe_id"`
+	Name            string             `json:"name"`
+	Description     pgtype.Text        `json:"description"`
+	Servings        pgtype.Int4        `json:"servings"`
+	PrepTimeMinutes pgtype.Int4        `json:"prep_time_minutes"`
+	CookTimeMinutes pgtype.Int4        `json:"cook_time_minutes"`
+	IsActive        bool               `json:"is_active"`
+	CreatedBy       string             `json:"created_by"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedBy       pgtype.Text        `json:"updated_by"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	Embedding       vector.Vector      `json:"embedding"`
+	EmbeddingModel  pgtype.Text        `json:"embedding_model"`
+	EmbeddingAt     pgtype.Timestamptz `json:"embedding_at"`
+	Distance        float64            `json:"distance"`
+}
+
+// Vector-similarity recipe listing. Only embedded rows participate (the
+// backfill sweep fills the rest). Ranking blends cosine distance with a
+// small additive engagement bump — favorites 1.0, household-used 0.6,
+// viewed 0.3, scaled by semanticEngagementBoost — so a mediocre-vector
+// favorite can't swamp a strong match. The same category/include/exclude
+// filters as SearchRecipes apply; there is no name-LIKE filter since the
+// query text becomes the vector.
+func (q *Queries) SearchRecipesSemantic(ctx context.Context, arg SearchRecipesSemanticParams) ([]SearchRecipesSemanticRow, error) {
+	rows, err := q.db.Query(ctx, searchRecipesSemantic,
+		arg.IsActive,
+		arg.QueryVec,
+		arg.CategoryIds,
+		arg.IncludeIds,
+		arg.ExcludeIds,
+		arg.FavoriteIds,
+		arg.UsedIds,
+		arg.ViewedIds,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchRecipesSemanticRow{}
+	for rows.Next() {
+		var i SearchRecipesSemanticRow
+		if err := rows.Scan(
+			&i.RecipeID,
+			&i.Name,
+			&i.Description,
+			&i.Servings,
+			&i.PrepTimeMinutes,
+			&i.CookTimeMinutes,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.Embedding,
+			&i.EmbeddingModel,
+			&i.EmbeddingAt,
+			&i.Distance,
 		); err != nil {
 			return nil, err
 		}

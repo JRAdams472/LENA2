@@ -19,6 +19,9 @@ type Querier interface {
 	CountCategoriesInGroup(ctx context.Context, categoryGroupID int64) (int64, error)
 	CountRecipes(ctx context.Context, isActive bool) (int64, error)
 	CountSearchRecipes(ctx context.Context, arg CountSearchRecipesParams) (int64, error)
+	// The un-paged match count for the same semantic-mode filters (no
+	// engagement args — they only affect ordering).
+	CountSearchRecipesSemantic(ctx context.Context, arg CountSearchRecipesSemanticParams) (int64, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (RecipeCategory, error)
 	// ---------- recipe categories (0035) ----------
 	CreateCategoryGroup(ctx context.Context, arg CreateCategoryGroupParams) (RecipeCategoryGroup, error)
@@ -64,6 +67,14 @@ type Querier interface {
 	// The used/viewed arrays arrive pre-sorted by signal strength so
 	// array_position doubles as the in-tier tiebreaker.
 	SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([]RecipeRecipe, error)
+	// Vector-similarity recipe listing. Only embedded rows participate (the
+	// backfill sweep fills the rest). Ranking blends cosine distance with a
+	// small additive engagement bump — favorites 1.0, household-used 0.6,
+	// viewed 0.3, scaled by semanticEngagementBoost — so a mediocre-vector
+	// favorite can't swamp a strong match. The same category/include/exclude
+	// filters as SearchRecipes apply; there is no name-LIKE filter since the
+	// query text becomes the vector.
+	SearchRecipesSemantic(ctx context.Context, arg SearchRecipesSemanticParams) ([]SearchRecipesSemanticRow, error)
 	// Stores an embedding for semantic search. The vector arrives as a text
 	// literal and is cast server-side so generated code stays dependency-free.
 	SetRecipeEmbedding(ctx context.Context, arg SetRecipeEmbeddingParams) error

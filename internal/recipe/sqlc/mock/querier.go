@@ -157,6 +157,21 @@ func (mr *MockQuerierMockRecorder) CountSearchRecipes(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchRecipes", reflect.TypeOf((*MockQuerier)(nil).CountSearchRecipes), ctx, arg)
 }
 
+// CountSearchRecipesSemantic mocks base method.
+func (m *MockQuerier) CountSearchRecipesSemantic(ctx context.Context, arg sqlc.CountSearchRecipesSemanticParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSearchRecipesSemantic", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSearchRecipesSemantic indicates an expected call of CountSearchRecipesSemantic.
+func (mr *MockQuerierMockRecorder) CountSearchRecipesSemantic(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchRecipesSemantic", reflect.TypeOf((*MockQuerier)(nil).CountSearchRecipesSemantic), ctx, arg)
+}
+
 // CreateCategory mocks base method.
 func (m *MockQuerier) CreateCategory(ctx context.Context, arg sqlc.CreateCategoryParams) (sqlc.RecipeCategory, error) {
 	m.ctrl.T.Helper()
@@ -583,6 +598,21 @@ func (m *MockQuerier) SearchRecipes(ctx context.Context, arg sqlc.SearchRecipesP
 func (mr *MockQuerierMockRecorder) SearchRecipes(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecipes", reflect.TypeOf((*MockQuerier)(nil).SearchRecipes), ctx, arg)
+}
+
+// SearchRecipesSemantic mocks base method.
+func (m *MockQuerier) SearchRecipesSemantic(ctx context.Context, arg sqlc.SearchRecipesSemanticParams) ([]sqlc.SearchRecipesSemanticRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchRecipesSemantic", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.SearchRecipesSemanticRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchRecipesSemantic indicates an expected call of SearchRecipesSemantic.
+func (mr *MockQuerierMockRecorder) SearchRecipesSemantic(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecipesSemantic", reflect.TypeOf((*MockQuerier)(nil).SearchRecipesSemantic), ctx, arg)
 }
 
 // SetRecipeEmbedding mocks base method.
