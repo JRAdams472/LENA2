@@ -155,7 +155,12 @@ class AuthService extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
     try {
-      final googleToken = await _googleSignIn();
+      // Debug builds seeded with LENA_DEBUG_ID_TOKEN (screenshot/e2e
+      // runs) skip Google entirely — the button works on emulators
+      // without Play Services.
+      final googleToken = (kDebugMode && _debugIdToken.isNotEmpty)
+          ? _debugIdToken
+          : await _googleSignIn();
       if (googleToken == null) {
         _idToken = null;
         _lastError = 'Sign in cancelled';
