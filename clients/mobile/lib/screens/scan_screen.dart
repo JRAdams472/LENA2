@@ -218,7 +218,9 @@ class _ScanScreenState extends State<ScanScreen> {
 
     final itemId = (result.data?['submitItem']?['id'] as String?) ?? '';
     final nutrients = _nutrientCtrls
-        .where((row) => row['id']!.text.trim().isNotEmpty && row['amount']!.text.trim().isNotEmpty)
+        .where((row) =>
+            row['id']!.text.trim().isNotEmpty &&
+            row['amount']!.text.trim().isNotEmpty)
         .map((row) => {
               'nutrientId': row['id']!.text.trim(),
               'amount': double.tryParse(row['amount']!.text.trim()) ?? 0,
@@ -358,7 +360,8 @@ class _ScanScreenState extends State<ScanScreen> {
     final name = item['name'] as String? ?? 'Unknown';
     final brand = item['brand'] as String?;
     final unit = item['unit'] as String? ?? '';
-    final upc = item['upc12'] as String? ?? item['upc14'] as String? ?? _upc ?? '';
+    final upc =
+        item['upc12'] as String? ?? item['upc14'] as String? ?? _upc ?? '';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -366,8 +369,7 @@ class _ScanScreenState extends State<ScanScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(name, style: Theme.of(context).textTheme.headlineSmall),
-          if (brand != null && brand.isNotEmpty)
-            Text('Brand: $brand'),
+          if (brand != null && brand.isNotEmpty) Text('Brand: $brand'),
           Text('Unit: $unit'),
           Text('UPC: $upc'),
           const SizedBox(height: 24),
@@ -407,7 +409,8 @@ class _ScanScreenState extends State<ScanScreen> {
               child: Center(
                 child: Text(
                   _message!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                  style:
+                      TextStyle(color: Theme.of(context).colorScheme.primary),
                 ),
               ),
             ),
@@ -459,7 +462,8 @@ class _ScanScreenState extends State<ScanScreen> {
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 24),
-          Text('Nutrients (optional)', style: Theme.of(context).textTheme.titleMedium),
+          Text('Nutrients (optional)',
+              style: Theme.of(context).textTheme.titleMedium),
           ..._nutrientCtrls.asMap().entries.map((entry) {
             final index = entry.key;
             final row = entry.value;
@@ -481,7 +485,8 @@ class _ScanScreenState extends State<ScanScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Amount',
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                   ),
                 ),
                 IconButton(
@@ -518,7 +523,8 @@ class _ScanScreenState extends State<ScanScreen> {
               child: Center(
                 child: Text(
                   _message!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                  style:
+                      TextStyle(color: Theme.of(context).colorScheme.primary),
                 ),
               ),
             ),

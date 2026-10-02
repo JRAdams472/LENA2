@@ -55,7 +55,8 @@ class WineScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Wine Cellar')),
       body: Query(
         options: QueryOptions(document: gql(userBottlesQuery)),
-        builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+        builder: (QueryResult result,
+            {VoidCallback? refetch, FetchMore? fetchMore}) {
           if (result.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -79,10 +80,12 @@ class WineScreen extends StatelessWidget {
                 title: Text('$name $year'),
                 subtitle: Text('Quantity: ${item['quantity'] ?? 0}'),
                 trailing: IconButton(
-                  icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                  icon:
+                      Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
                   onPressed: bottleId == null
                       ? null
-                      : () => _toggleFavorite(context, bottleId, isFavorite, refetch),
+                      : () => _toggleFavorite(
+                          context, bottleId, isFavorite, refetch),
                 ),
                 onTap: bottleId == null
                     ? null

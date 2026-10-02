@@ -29,6 +29,10 @@ void main() {
           findsOneWidget);
       expect(find.descendant(of: nav, matching: find.text('Household')),
           findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Ask Dot')),
+          findsOneWidget);
+      expect(find.descendant(of: nav, matching: find.text('Assistant')),
+          findsNothing);
     },
   );
 

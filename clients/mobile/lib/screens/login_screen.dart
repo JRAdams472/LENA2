@@ -21,7 +21,8 @@ class LoginScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 16.0),
                   child: Text(
                     auth.lastError!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
                     textAlign: TextAlign.center,
                   ),
                 ),

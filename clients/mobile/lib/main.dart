@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'auth/auth_gate.dart';
 import 'auth/auth_service.dart';
 import 'graphql_config.dart';
+import 'theme.dart';
 
 void main() {
   runApp(const LenaApp());
@@ -21,7 +22,7 @@ class LenaApp extends StatelessWidget {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'LENA',
-          theme: ThemeData(primarySwatch: Colors.teal),
+          theme: lenaTheme(),
           home: const AuthGate(),
         ),
       ),

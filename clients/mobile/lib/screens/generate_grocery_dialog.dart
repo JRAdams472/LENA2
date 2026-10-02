@@ -38,7 +38,8 @@ class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
 
   Future<List<Map<String, dynamic>>> _loadMealPlans() async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(document: gql(mealPlansQuery)));
+    final result =
+        await client.query(QueryOptions(document: gql(mealPlansQuery)));
     return (result.data?['mealPlans']?['items'] as List? ?? [])
         .cast<Map<String, dynamic>>();
   }

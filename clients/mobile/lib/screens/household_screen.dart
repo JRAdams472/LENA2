@@ -149,8 +149,7 @@ const String addToGroceryMutation = r'''
 
 String _notificationText(Map<String, dynamic> n) {
   final actor = n['actor'] as Map<String, dynamic>?;
-  final who =
-      actor == null ? 'Someone' : _userName(actor);
+  final who = actor == null ? 'Someone' : _userName(actor);
   switch (n['kind'] as String?) {
     case 'INVITE_RECEIVED':
       return '$who invited you to their household';
@@ -439,21 +438,16 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
         (household?['members'] as List? ?? []).cast<Map<String, dynamic>>();
     final myRole = household?['myRole'] as String? ?? 'MEMBER';
     final isOwner = myRole == 'OWNER';
-    final invites =
-        (result.data?['householdInvites'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
-    final incoming = invites
-        .where((i) => (i['toUser'] as Map?)?['id'] == myId)
-        .toList();
-    final outgoing = invites
-        .where((i) => (i['fromUser'] as Map?)?['id'] == myId)
-        .toList();
-    final searchResults =
-        (result.data?['searchHouseholdUsers'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
-    final notifications =
-        (result.data?['myNotifications'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
+    final invites = (result.data?['householdInvites'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    final incoming =
+        invites.where((i) => (i['toUser'] as Map?)?['id'] == myId).toList();
+    final outgoing =
+        invites.where((i) => (i['fromUser'] as Map?)?['id'] == myId).toList();
+    final searchResults = (result.data?['searchHouseholdUsers'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    final notifications = (result.data?['myNotifications'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     final unread = result.data?['unreadNotificationCount'] as int? ?? 0;
     final atCap = members.length >= maxHouseholdMembers;
 
@@ -562,13 +556,12 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                     if (ago.isNotEmpty) Text(ago),
                   ],
                 ),
-                trailing:
-                    n['kind'] == 'ITEM_EXPIRING' && itemId != null
-                        ? TextButton(
-                            onPressed: () => _addReplacement(itemId),
-                            child: const Text('Add to list'),
-                          )
-                        : null,
+                trailing: n['kind'] == 'ITEM_EXPIRING' && itemId != null
+                    ? TextButton(
+                        onPressed: () => _addReplacement(itemId),
+                        child: const Text('Add to list'),
+                      )
+                    : null,
                 onTap: _notificationLink(n),
               );
             }),
@@ -615,10 +608,9 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               'Other users can find and invite you by name or email.',
             ),
             value: isSearchable,
-            onChanged: (v) =>
-                _mutate(updateProfileMutation, {
-                  'input': {'isSearchable': v},
-                }),
+            onChanged: (v) => _mutate(updateProfileMutation, {
+              'input': {'isSearchable': v},
+            }),
           ),
           const SizedBox(height: 16),
           if (incoming.isNotEmpty) ...[
@@ -678,7 +670,8 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
             }),
             const SizedBox(height: 8),
           ],
-          Text('Invite someone', style: Theme.of(context).textTheme.titleMedium),
+          Text('Invite someone',
+              style: Theme.of(context).textTheme.titleMedium),
           if (atCap)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 4.0),
@@ -692,8 +685,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Name or email',
                   ),
-                  onSubmitted: (v) =>
-                      setState(() => _searchTerm = v.trim()),
+                  onSubmitted: (v) => setState(() => _searchTerm = v.trim()),
                 ),
               ),
               IconButton(
@@ -703,8 +695,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               ),
             ],
           ),
-          if (_searchCtrl.text.trim().isNotEmpty &&
-              _searchTerm.length < 2)
+          if (_searchCtrl.text.trim().isNotEmpty && _searchTerm.length < 2)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 4.0),
               child: Text('Type at least 2 characters to search.'),
@@ -716,8 +707,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                 trailing: FilledButton(
                   onPressed: atCap
                       ? null
-                      : () =>
-                          _mutate(inviteMutation, {'userId': u['id']}),
+                      : () => _mutate(inviteMutation, {'userId': u['id']}),
                   child: const Text('Invite'),
                 ),
               ),

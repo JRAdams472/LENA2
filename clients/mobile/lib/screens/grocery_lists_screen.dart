@@ -29,7 +29,8 @@ class GroceryListsScreen extends StatelessWidget {
         document: gql(groceryListsQuery),
         variables: const {'page': 1, 'pageSize': 25},
       ),
-      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+      builder: (QueryResult result,
+          {VoidCallback? refetch, FetchMore? fetchMore}) {
         return Scaffold(
           appBar: AppBar(title: const Text('Grocery Lists')),
           body: _body(context, result, refetch),
@@ -45,7 +46,8 @@ class GroceryListsScreen extends StatelessWidget {
     );
   }
 
-  Widget _body(BuildContext context, QueryResult result, VoidCallback? refetch) {
+  Widget _body(
+      BuildContext context, QueryResult result, VoidCallback? refetch) {
     if (result.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
