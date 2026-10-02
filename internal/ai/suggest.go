@@ -158,7 +158,7 @@ func (s *Service) prepareMeals(ctx context.Context, scope tools.Scope, mealPlanI
 	for _, c := range candidates {
 		valid[c.ID] = true
 	}
-	max := maxSuggestions
+	limit := maxSuggestions
 
 	return &prepared[[]MealSuggestion]{
 		req: PreparedRequest{
@@ -171,7 +171,7 @@ func (s *Service) prepareMeals(ctx context.Context, scope tools.Scope, mealPlanI
 			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 				return nil, err
 			}
-			return filterSuggestions(parsed.Suggestions, valid, occupied, max), nil
+			return filterSuggestions(parsed.Suggestions, valid, occupied, limit), nil
 		},
 	}, nil
 }

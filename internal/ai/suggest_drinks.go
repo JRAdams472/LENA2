@@ -136,7 +136,7 @@ func (s *Service) preparePairings(ctx context.Context, scope tools.Scope, recipe
 	if err != nil {
 		return nil, fmt.Errorf("marshal pairing context: %w", err)
 	}
-	max := maxSuggestions
+	limit := maxSuggestions
 
 	return &prepared[[]PairingSuggestion]{
 		req: PreparedRequest{
@@ -149,7 +149,7 @@ func (s *Service) preparePairings(ctx context.Context, scope tools.Scope, recipe
 			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 				return nil, err
 			}
-			return filterPairings(parsed.Pairings, cellar, max), nil
+			return filterPairings(parsed.Pairings, cellar, limit), nil
 		},
 	}, nil
 }
@@ -209,7 +209,7 @@ func (s *Service) prepareCocktails(ctx context.Context, scope tools.Scope, maxSu
 	if err != nil {
 		return nil, fmt.Errorf("marshal cocktail context: %w", err)
 	}
-	max := maxSuggestions
+	limit := maxSuggestions
 
 	return &prepared[[]CocktailSuggestion]{
 		req: PreparedRequest{
@@ -222,7 +222,7 @@ func (s *Service) prepareCocktails(ctx context.Context, scope tools.Scope, maxSu
 			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 				return nil, err
 			}
-			return filterCocktails(parsed.Suggestions, cocktails, max, inStockOnly), nil
+			return filterCocktails(parsed.Suggestions, cocktails, limit, inStockOnly), nil
 		},
 	}, nil
 }

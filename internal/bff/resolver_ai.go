@@ -276,7 +276,7 @@ func (r *Resolver) AssistantTools(ctx context.Context) ([]*assistantToolSpecReso
 		if err != nil {
 			return nil, fmt.Errorf("marshal tool schema %q: %w", s.Name, err)
 		}
-		out[i] = &assistantToolSpecResolver{name: s.Name, description: s.Description, parametersJson: string(params)}
+		out[i] = &assistantToolSpecResolver{name: s.Name, description: s.Description, parametersJSON: string(params)}
 	}
 	return out, nil
 }
@@ -330,7 +330,7 @@ func (r *Resolver) AssistantPrompt(ctx context.Context, args struct{ Name string
 // client-side generation. Returns null when nothing needs generating.
 func (r *Resolver) PrepareAssistantRequest(ctx context.Context, args struct {
 	Name       string
-	ParamsJson string
+	ParamsJSON string
 }) (*preparedAIRequestResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -349,7 +349,7 @@ func (r *Resolver) PrepareAssistantRequest(ctx context.Context, args struct {
 	if !r.aiToolLimiter().allow(u.UserID) {
 		return nil, errUnavailablef("assistant tool rate limit reached — try again shortly")
 	}
-	p, err := r.AIService.PrepareRequest(ctx, u.UserID, u.HouseholdID, args.Name, json.RawMessage(args.ParamsJson))
+	p, err := r.AIService.PrepareRequest(ctx, u.UserID, u.HouseholdID, args.Name, json.RawMessage(args.ParamsJSON))
 	if err != nil {
 		switch {
 		case errors.Is(err, ai.ErrUnavailable):
@@ -369,7 +369,7 @@ func (r *Resolver) PrepareAssistantRequest(ctx context.Context, args struct {
 type assistantToolSpecResolver struct {
 	name           string
 	description    string
-	parametersJson string
+	parametersJSON string
 }
 
 // Name is the tool name the model invokes (e.g. "get_pantry_inventory").
@@ -378,8 +378,8 @@ func (t *assistantToolSpecResolver) Name() string { return t.name }
 // Description is the human/model-facing purpose text.
 func (t *assistantToolSpecResolver) Description() string { return t.description }
 
-// ParametersJson is the JSON Schema for the tool's arguments.
-func (t *assistantToolSpecResolver) ParametersJson() string { return t.parametersJson }
+// ParametersJSON is the JSON Schema for the tool's arguments.
+func (t *assistantToolSpecResolver) ParametersJSON() string { return t.parametersJSON }
 
 type preparedAIRequestResolver struct {
 	req *ai.PreparedRequest
@@ -388,11 +388,11 @@ type preparedAIRequestResolver struct {
 // Prompt is the system prompt.
 func (p *preparedAIRequestResolver) Prompt() string { return p.req.Prompt }
 
-// ContextJson is the assembled user message as a JSON string.
-func (p *preparedAIRequestResolver) ContextJson() string { return string(p.req.Context) }
+// ContextJSON is the assembled user message as a JSON string.
+func (p *preparedAIRequestResolver) ContextJSON() string { return string(p.req.Context) }
 
-// OutputSchemaJson is the JSON Schema the model output must satisfy.
-func (p *preparedAIRequestResolver) OutputSchemaJson() string { return string(p.req.OutputSchema) }
+// OutputSchemaJSON is the JSON Schema the model output must satisfy.
+func (p *preparedAIRequestResolver) OutputSchemaJSON() string { return string(p.req.OutputSchema) }
 
 type assistantAnswerResolver struct {
 	answer    string

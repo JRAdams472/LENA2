@@ -119,11 +119,11 @@ func validateValue(schema map[string]any, v any, path string) error {
 
 // checkBounds applies minimum/maximum when the schema declares them.
 func checkBounds(schema map[string]any, f float64, path string) error {
-	if min, ok := numOf(schema["minimum"]); ok && f < min {
-		return fmt.Errorf("%w: %s must be >= %v", ErrInvalidArgs, path, min)
+	if lo, ok := numOf(schema["minimum"]); ok && f < lo {
+		return fmt.Errorf("%w: %s must be >= %v", ErrInvalidArgs, path, lo)
 	}
-	if max, ok := numOf(schema["maximum"]); ok && f > max {
-		return fmt.Errorf("%w: %s must be <= %v", ErrInvalidArgs, path, max)
+	if hi, ok := numOf(schema["maximum"]); ok && f > hi {
+		return fmt.Errorf("%w: %s must be <= %v", ErrInvalidArgs, path, hi)
 	}
 	return nil
 }

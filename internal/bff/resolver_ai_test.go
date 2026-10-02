@@ -323,7 +323,7 @@ func TestResolver_AssistantTools(t *testing.T) {
 	require.Len(t, res, 1)
 	assert.Equal(t, "get_pantry_inventory", res[0].Name())
 	assert.Equal(t, "List pantry items", res[0].Description())
-	assert.JSONEq(t, `{"type":"object"}`, res[0].ParametersJson())
+	assert.JSONEq(t, `{"type":"object"}`, res[0].ParametersJSON())
 
 	// Nil service → empty catalog, not an error: tools are just reads and
 	// may exist without a configured provider.
@@ -421,26 +421,26 @@ func TestResolver_PrepareAssistantRequest(t *testing.T) {
 	r := &Resolver{AIService: svc}
 	res, err := r.PrepareAssistantRequest(aiCtx(), struct {
 		Name       string
-		ParamsJson string
-	}{Name: "suggest-meals", ParamsJson: `{"mealPlanId":10}`})
+		ParamsJSON string
+	}{Name: "suggest-meals", ParamsJSON: `{"mealPlanId":10}`})
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Contains(t, res.Prompt(), "meal-planning")
-	assert.JSONEq(t, `{"plan":{}}`, res.ContextJson())
-	assert.JSONEq(t, `{"type":"object"}`, res.OutputSchemaJson())
+	assert.JSONEq(t, `{"plan":{}}`, res.ContextJSON())
+	assert.JSONEq(t, `{"type":"object"}`, res.OutputSchemaJSON())
 
 	// Nothing to generate → null, not an error.
 	res, err = r.PrepareAssistantRequest(aiCtx(), struct {
 		Name       string
-		ParamsJson string
-	}{Name: "suggest-meals", ParamsJson: `{"mealPlanId":99}`})
+		ParamsJSON string
+	}{Name: "suggest-meals", ParamsJSON: `{"mealPlanId":99}`})
 	require.NoError(t, err)
 	assert.Nil(t, res)
 
 	_, err = r.PrepareAssistantRequest(aiCtx(), struct {
 		Name       string
-		ParamsJson string
-	}{Name: "bogus", ParamsJson: `{}`})
+		ParamsJSON string
+	}{Name: "bogus", ParamsJSON: `{}`})
 	require.Error(t, err)
 }
 
@@ -454,8 +454,8 @@ func TestResolver_PrepareAssistantRequest_AgeGate(t *testing.T) {
 	r := &Resolver{AIService: aiSvc, IdentityService: idSvc}
 	_, err := r.PrepareAssistantRequest(aiCtx(), struct {
 		Name       string
-		ParamsJson string
-	}{Name: "suggest-pairings", ParamsJson: `{"recipeId":1}`})
+		ParamsJSON string
+	}{Name: "suggest-pairings", ParamsJSON: `{"recipeId":1}`})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "drinking age")
 }

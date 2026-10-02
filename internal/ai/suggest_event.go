@@ -121,7 +121,7 @@ func (s *Service) prepareEventFixes(ctx context.Context, scope tools.Scope, food
 	if err != nil {
 		return nil, fmt.Errorf("marshal timeline: %w", err)
 	}
-	max := maxSuggestions
+	limit := maxSuggestions
 
 	return &prepared[[]EventFix]{
 		req: PreparedRequest{
@@ -134,7 +134,7 @@ func (s *Service) prepareEventFixes(ctx context.Context, scope tools.Scope, food
 			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 				return nil, err
 			}
-			return filterEventFixes(parsed.Fixes, tl, max), nil
+			return filterEventFixes(parsed.Fixes, tl, limit), nil
 		},
 	}, nil
 }
