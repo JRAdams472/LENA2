@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/JRAdams472/LENA2/internal/ai"
@@ -17,6 +18,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
@@ -597,6 +599,13 @@ type AIService interface {
 	// service itself stays household-scoped and read-only.
 	SuggestPairings(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]ai.PairingSuggestion, error)
 	SuggestCocktails(ctx context.Context, userID, householdID int64, maxSuggestions int, inStockOnly bool) ([]ai.CocktailSuggestion, error)
+	// Client-side inference surface: the same read-only tool catalog and
+	// prompts the server provider sees, for on-device agents. CallTool and
+	// PrepareRequest stay household-scoped and read-only.
+	ToolSpecs() []llm.ToolSpec
+	CallTool(ctx context.Context, userID, householdID int64, name string, args json.RawMessage) (string, error)
+	Prompt(name string) (string, bool)
+	PrepareRequest(ctx context.Context, userID, householdID int64, name string, params json.RawMessage) (*ai.PreparedRequest, error)
 }
 
 var _ AIService = (*ai.Service)(nil)

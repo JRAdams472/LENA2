@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/ai/tools"
-	"github.com/JRAdams472/LENA2/internal/platform/llm"
 )
 
 // PairingSuggestion is one sommelier pick for a recipe. When BottleID is
@@ -61,20 +60,48 @@ Household tastes may inform the picks. Rules:
 - "reason" is one short phrase ("uses your citrus", "household favorite").
 - Reply ONLY with {"suggestions":[{...}]} — [] if nothing fits.`
 
-// SuggestPairings recommends wines for a recipe: cellar bottles first,
-// style suggestions second. Every bottleId is validated against the
-// household cellar; unknown picks are dropped.
+// pairingSuggestionsSchema constrains structured output for
+// suggest-pairings — served in PreparedRequest.OutputSchema.
+const pairingSuggestionsSchema = `{"type":"object","required":["pairings"],` +
+	`"properties":{"pairings":{"type":"array","items":{"type":"object",` +
+	`"required":["name","reason"],` +
+	`"properties":{"bottleId":{"type":"integer"},"name":{"type":"string"},` +
+	`"reason":{"type":"string"}}}},"additionalProperties":false}`
+
+// cocktailSuggestionsSchema constrains structured output for
+// suggest-cocktails — served in PreparedRequest.OutputSchema.
+const cocktailSuggestionsSchema = `{"type":"object","required":["suggestions"],` +
+	`"properties":{"suggestions":{"type":"array","items":{"type":"object",` +
+	`"required":["recipeId","reason"],` +
+	`"properties":{"recipeId":{"type":"integer"},"reason":{"type":"string"},` +
+	`"missingIngredients":{"type":"array","items":{"type":"string"}}}}},"additionalProperties":false}`
+
+// SuggestPairings runs the server-inference path for wine pairings.
 func (s *Service) SuggestPairings(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]PairingSuggestion, error) {
 	if !s.Available() {
 		return nil, ErrUnavailable
 	}
+	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
+	p, err := s.preparePairings(ctx, scope, recipeID, maxSuggestions)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return []PairingSuggestion{}, nil
+	}
+	return runPrepared(ctx, s.provider, p)
+}
+
+// preparePairings assembles recipe/cellar/taste context for pairing picks.
+// Every bottleId is validated against the household cellar; unknown picks
+// are dropped by the returned validator.
+func (s *Service) preparePairings(ctx context.Context, scope tools.Scope, recipeID int64, maxSuggestions int) (*prepared[[]PairingSuggestion], error) {
 	if maxSuggestions <= 0 {
 		maxSuggestions = 4
 	}
 	if maxSuggestions > 10 {
 		maxSuggestions = 10
 	}
-	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
 
 	detailAny, err := s.reg.Call(ctx, scope, "get_recipe_details", jsonArgs(map[string]any{"recipeIds": []int64{recipeID}}))
 	if err != nil {
@@ -109,43 +136,49 @@ func (s *Service) SuggestPairings(ctx context.Context, userID, householdID, reci
 	if err != nil {
 		return nil, fmt.Errorf("marshal pairing context: %w", err)
 	}
-	msgs := []llm.Message{
-		{Role: llm.RoleSystem, Content: pairingSystemPrompt},
-		{Role: llm.RoleUser, Content: string(reqBody)},
-	}
+	limit := maxSuggestions
 
-	for attempt := 0; attempt < 2; attempt++ {
-		resp, err := s.provider.Chat(ctx, llm.Request{Messages: msgs, JSONMode: true})
-		if err != nil {
-			return nil, fmt.Errorf("suggest provider: %w", err)
-		}
-		var parsed pairingResponse
-		if err := json.Unmarshal([]byte(resp.Message.Content), &parsed); err != nil {
-			msgs = append(msgs,
-				llm.Message{Role: llm.RoleAssistant, Content: resp.Message.Content},
-				llm.Message{Role: llm.RoleUser, Content: "That was not valid JSON matching the required schema. Reply ONLY with the JSON object."},
-			)
-			continue
-		}
-		return filterPairings(parsed.Pairings, cellar, maxSuggestions), nil
-	}
-	return nil, errors.New("assistant returned malformed suggestions")
+	return &prepared[[]PairingSuggestion]{
+		req: PreparedRequest{
+			Prompt:       pairingSystemPrompt,
+			Context:      reqBody,
+			OutputSchema: json.RawMessage(pairingSuggestionsSchema),
+		},
+		validate: func(content string) ([]PairingSuggestion, error) {
+			var parsed pairingResponse
+			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+				return nil, err
+			}
+			return filterPairings(parsed.Pairings, cellar, limit), nil
+		},
+	}, nil
 }
 
-// SuggestCocktails recommends Cocktail-category recipes the household can
-// make. When inStockOnly is set, picks the model thinks need missing
-// ingredients are dropped.
+// SuggestCocktails runs the server-inference path for cocktail picks.
 func (s *Service) SuggestCocktails(ctx context.Context, userID, householdID int64, maxSuggestions int, inStockOnly bool) ([]CocktailSuggestion, error) {
 	if !s.Available() {
 		return nil, ErrUnavailable
 	}
+	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
+	p, err := s.prepareCocktails(ctx, scope, maxSuggestions, inStockOnly)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return []CocktailSuggestion{}, nil
+	}
+	return runPrepared(ctx, s.provider, p)
+}
+
+// prepareCocktails assembles cocktail-catalog/pantry/taste context for
+// bartender picks. Returns (nil, nil) when the catalog has no cocktails.
+func (s *Service) prepareCocktails(ctx context.Context, scope tools.Scope, maxSuggestions int, inStockOnly bool) (*prepared[[]CocktailSuggestion], error) {
 	if maxSuggestions <= 0 {
 		maxSuggestions = 6
 	}
 	if maxSuggestions > 10 {
 		maxSuggestions = 10
 	}
-	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
 
 	cocktailsAny, err := s.reg.Call(ctx, scope, "list_cocktail_recipes", jsonArgs(map[string]any{"limit": 200}))
 	if err != nil {
@@ -156,7 +189,7 @@ func (s *Service) SuggestCocktails(ctx context.Context, userID, householdID int6
 		return nil, fmt.Errorf("list_cocktail_recipes returned %T", cocktailsAny)
 	}
 	if len(cocktails) == 0 {
-		return []CocktailSuggestion{}, nil
+		return nil, nil
 	}
 	pantryAny, err := s.reg.Call(ctx, scope, "get_pantry_inventory", jsonArgs(map[string]any{"limit": 200}))
 	if err != nil {
@@ -176,27 +209,22 @@ func (s *Service) SuggestCocktails(ctx context.Context, userID, householdID int6
 	if err != nil {
 		return nil, fmt.Errorf("marshal cocktail context: %w", err)
 	}
-	msgs := []llm.Message{
-		{Role: llm.RoleSystem, Content: cocktailSystemPrompt},
-		{Role: llm.RoleUser, Content: string(reqBody)},
-	}
+	limit := maxSuggestions
 
-	for attempt := 0; attempt < 2; attempt++ {
-		resp, err := s.provider.Chat(ctx, llm.Request{Messages: msgs, JSONMode: true})
-		if err != nil {
-			return nil, fmt.Errorf("suggest provider: %w", err)
-		}
-		var parsed cocktailResponse
-		if err := json.Unmarshal([]byte(resp.Message.Content), &parsed); err != nil {
-			msgs = append(msgs,
-				llm.Message{Role: llm.RoleAssistant, Content: resp.Message.Content},
-				llm.Message{Role: llm.RoleUser, Content: "That was not valid JSON matching the required schema. Reply ONLY with the JSON object."},
-			)
-			continue
-		}
-		return filterCocktails(parsed.Suggestions, cocktails, maxSuggestions, inStockOnly), nil
-	}
-	return nil, errors.New("assistant returned malformed suggestions")
+	return &prepared[[]CocktailSuggestion]{
+		req: PreparedRequest{
+			Prompt:       cocktailSystemPrompt,
+			Context:      reqBody,
+			OutputSchema: json.RawMessage(cocktailSuggestionsSchema),
+		},
+		validate: func(content string) ([]CocktailSuggestion, error) {
+			var parsed cocktailResponse
+			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+				return nil, err
+			}
+			return filterCocktails(parsed.Suggestions, cocktails, limit, inStockOnly), nil
+		},
+	}, nil
 }
 
 // filterPairings drops picks with unknown bottleIds or bad fields, stamps

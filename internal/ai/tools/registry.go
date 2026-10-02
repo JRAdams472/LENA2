@@ -75,13 +75,21 @@ func (r *Registry) Specs() []llm.ToolSpec {
 
 // Call dispatches one model-requested tool call. Unknown names fail with
 // ErrUnknownTool so the loop can tell the model the tool doesn't exist
-// rather than crashing the request.
+// rather than crashing the request. Arguments are validated against the
+// tool's JSON schema before the handler sees them — model output and
+// direct client calls are both untrusted input.
 func (r *Registry) Call(ctx context.Context, scope Scope, name string, args json.RawMessage) (any, error) {
 	r.mu.RLock()
 	e, ok := r.entries[name]
 	r.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownTool, name)
+	}
+	if len(args) > MaxArgsBytes {
+		return nil, fmt.Errorf("%w: arguments exceed %d bytes", ErrInvalidArgs, MaxArgsBytes)
+	}
+	if err := ValidateArgs(e.spec, args); err != nil {
+		return nil, err
 	}
 	return e.handler(ctx, scope, args)
 }

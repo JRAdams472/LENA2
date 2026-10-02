@@ -2,7 +2,9 @@ package bff
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -243,6 +245,154 @@ func (r *Resolver) aiLimiter() *userRateLimiter {
 	}
 	return r.aiCalls
 }
+
+// aiToolLimiter throttles the read-only tool surface used by client-side
+// inference agents. One askAssistant turn can fan out to several tool
+// calls, so it's looser than the inference limiter.
+func (r *Resolver) aiToolLimiter() *userRateLimiter {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.aiToolCalls == nil {
+		r.aiToolCalls = newUserRateLimiter(30)
+	}
+	return r.aiToolCalls
+}
+
+// AssistantTools exposes the assistant's read-only tool catalog to
+// client-side agents — the same specs advertised to the server provider.
+// Available even when no LLM provider is configured: the tools are just
+// household-scoped reads.
+func (r *Resolver) AssistantTools(ctx context.Context) ([]*assistantToolSpecResolver, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return nil, err
+	}
+	if r.AIService == nil {
+		return []*assistantToolSpecResolver{}, nil
+	}
+	specs := r.AIService.ToolSpecs()
+	out := make([]*assistantToolSpecResolver, len(specs))
+	for i, s := range specs {
+		params, err := json.Marshal(s.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("marshal tool schema %q: %w", s.Name, err)
+		}
+		out[i] = &assistantToolSpecResolver{name: s.Name, description: s.Description, parametersJSON: string(params)}
+	}
+	return out, nil
+}
+
+// CallAssistantTool executes one read-only tool under the caller's
+// household scope for a client-side agent. The result is a JSON string;
+// tool failures arrive as {"error":...} payloads — mirroring how the
+// server loop reports them to the model.
+func (r *Resolver) CallAssistantTool(ctx context.Context, args struct {
+	Name      string
+	Arguments string
+}) (string, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	if r.AIService == nil {
+		return "", errUnavailablef("assistant tools are not configured on this deployment")
+	}
+	if !r.aiToolLimiter().allow(u.UserID) {
+		return "", errUnavailablef("assistant tool rate limit reached — try again shortly")
+	}
+	out, err := r.AIService.CallTool(ctx, u.UserID, u.HouseholdID, args.Name, json.RawMessage(args.Arguments))
+	if err != nil {
+		if errors.Is(err, ai.ErrUnavailable) {
+			return "", errUnavailablef("assistant tools are not configured on this deployment")
+		}
+		return "", err
+	}
+	return out, nil
+}
+
+// AssistantPrompt serves the server-owned system prompt for a named
+// assistant flow so local agents stay in sync with the server path.
+func (r *Resolver) AssistantPrompt(ctx context.Context, args struct{ Name string }) (string, error) {
+	if _, err := userFromContext(ctx); err != nil {
+		return "", err
+	}
+	if r.AIService == nil {
+		return "", errUnavailablef("assistant prompts are not configured on this deployment")
+	}
+	p, ok := r.AIService.Prompt(args.Name)
+	if !ok {
+		return "", badInputf("unknown assistant prompt %q", args.Name)
+	}
+	return p, nil
+}
+
+// PrepareAssistantRequest assembles a one-shot structured AI request
+// server-side — context gathered through the same read-only tools — for
+// client-side generation. Returns null when nothing needs generating.
+func (r *Resolver) PrepareAssistantRequest(ctx context.Context, args struct {
+	Name       string
+	ParamsJSON string
+}) (*preparedAIRequestResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.AIService == nil {
+		return nil, errUnavailablef("assistant tools are not configured on this deployment")
+	}
+	// The alcohol-gated features keep their age gate on the server even
+	// when inference moves to the client.
+	if args.Name == "suggest-pairings" || args.Name == "suggest-cocktails" {
+		if err := r.requireDrinkingAge(ctx, u.UserID); err != nil {
+			return nil, err
+		}
+	}
+	if !r.aiToolLimiter().allow(u.UserID) {
+		return nil, errUnavailablef("assistant tool rate limit reached — try again shortly")
+	}
+	p, err := r.AIService.PrepareRequest(ctx, u.UserID, u.HouseholdID, args.Name, json.RawMessage(args.ParamsJSON))
+	if err != nil {
+		switch {
+		case errors.Is(err, ai.ErrUnavailable):
+			return nil, errUnavailablef("assistant tools are not configured on this deployment")
+		case errors.Is(err, ai.ErrUnknownRequest), errors.Is(err, ai.ErrBadParams):
+			return nil, badInputf("%s", err)
+		default:
+			return nil, err
+		}
+	}
+	if p == nil {
+		return nil, nil
+	}
+	return &preparedAIRequestResolver{req: p}, nil
+}
+
+type assistantToolSpecResolver struct {
+	name           string
+	description    string
+	parametersJSON string
+}
+
+// Name is the tool name the model invokes (e.g. "get_pantry_inventory").
+func (t *assistantToolSpecResolver) Name() string { return t.name }
+
+// Description is the human/model-facing purpose text.
+func (t *assistantToolSpecResolver) Description() string { return t.description }
+
+// ParametersJSON is the JSON Schema for the tool's arguments.
+func (t *assistantToolSpecResolver) ParametersJSON() string { return t.parametersJSON }
+
+type preparedAIRequestResolver struct {
+	req *ai.PreparedRequest
+}
+
+// Prompt is the system prompt.
+func (p *preparedAIRequestResolver) Prompt() string { return p.req.Prompt }
+
+// ContextJSON is the assembled user message as a JSON string.
+func (p *preparedAIRequestResolver) ContextJSON() string { return string(p.req.Context) }
+
+// OutputSchemaJSON is the JSON Schema the model output must satisfy.
+func (p *preparedAIRequestResolver) OutputSchemaJSON() string { return string(p.req.OutputSchema) }
 
 type assistantAnswerResolver struct {
 	answer    string

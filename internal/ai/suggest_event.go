@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/ai/tools"
-	"github.com/JRAdams472/LENA2/internal/platform/llm"
 )
 
 // Event fix actions the client can apply through existing mutations.
@@ -65,22 +64,43 @@ type eventFixResponse struct {
 	Fixes []EventFix `json:"fixes"`
 }
 
-// SuggestEventFixes assembles the event timeline through the read-only
-// tool registry and asks the provider for structured fixes. With a clean
-// timeline it returns no suggestions without calling the model. Every
-// suggestion is validated against the timeline — unknown recipes, steps,
-// or out-of-range values are dropped.
+// eventFixesSchema constrains structured output for suggest-event-fixes —
+// served in PreparedRequest.OutputSchema.
+const eventFixesSchema = `{"type":"object","required":["fixes"],` +
+	`"properties":{"fixes":{"type":"array","items":{"type":"object",` +
+	`"required":["eventRecipeId","action","reason"],` +
+	`"properties":{"eventRecipeId":{"type":"integer"},"action":{"type":"string"},` +
+	`"stepNumber":{"type":"integer"},"minutes":{"type":"integer"},` +
+	`"appliance":{"type":"string"},"durationMinutes":{"type":"integer"},` +
+	`"dependsOnStepNumber":{"type":"integer"},"reason":{"type":"string"}}}},"additionalProperties":false}`
+
+// SuggestEventFixes runs the server-inference path for timeline fixes.
 func (s *Service) SuggestEventFixes(ctx context.Context, userID, householdID, foodEventID int64, maxSuggestions int) ([]EventFix, error) {
 	if !s.Available() {
 		return nil, ErrUnavailable
 	}
+	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
+	p, err := s.prepareEventFixes(ctx, scope, foodEventID, maxSuggestions)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return []EventFix{}, nil
+	}
+	return runPrepared(ctx, s.provider, p)
+}
+
+// prepareEventFixes assembles the event timeline through the read-only
+// tool registry. Returns (nil, nil) on a clean timeline — nothing to fix
+// means no model call. The validator drops unknown recipes/steps and
+// out-of-range values.
+func (s *Service) prepareEventFixes(ctx context.Context, scope tools.Scope, foodEventID int64, maxSuggestions int) (*prepared[[]EventFix], error) {
 	if maxSuggestions <= 0 {
 		maxSuggestions = 6
 	}
 	if maxSuggestions > 10 {
 		maxSuggestions = 10
 	}
-	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
 
 	tlAny, err := s.reg.Call(ctx, scope, "get_event_timeline", jsonArgs(map[string]any{"foodEventId": foodEventID}))
 	if err != nil {
@@ -94,34 +114,29 @@ func (s *Service) SuggestEventFixes(ctx context.Context, userID, householdID, fo
 		return nil, errors.New("food event not found")
 	}
 	if !timelineNeedsHelp(tl) {
-		return []EventFix{}, nil
+		return nil, nil
 	}
 
 	reqBody, err := json.Marshal(tl)
 	if err != nil {
 		return nil, fmt.Errorf("marshal timeline: %w", err)
 	}
-	msgs := []llm.Message{
-		{Role: llm.RoleSystem, Content: eventFixSystemPrompt},
-		{Role: llm.RoleUser, Content: string(reqBody)},
-	}
+	limit := maxSuggestions
 
-	for attempt := 0; attempt < 2; attempt++ {
-		resp, err := s.provider.Chat(ctx, llm.Request{Messages: msgs, JSONMode: true})
-		if err != nil {
-			return nil, fmt.Errorf("suggest provider: %w", err)
-		}
-		var parsed eventFixResponse
-		if err := json.Unmarshal([]byte(resp.Message.Content), &parsed); err != nil {
-			msgs = append(msgs,
-				llm.Message{Role: llm.RoleAssistant, Content: resp.Message.Content},
-				llm.Message{Role: llm.RoleUser, Content: "That was not valid JSON matching the required schema. Reply ONLY with the JSON object."},
-			)
-			continue
-		}
-		return filterEventFixes(parsed.Fixes, tl, maxSuggestions), nil
-	}
-	return nil, errors.New("assistant returned malformed suggestions")
+	return &prepared[[]EventFix]{
+		req: PreparedRequest{
+			Prompt:       eventFixSystemPrompt,
+			Context:      reqBody,
+			OutputSchema: json.RawMessage(eventFixesSchema),
+		},
+		validate: func(content string) ([]EventFix, error) {
+			var parsed eventFixResponse
+			if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+				return nil, err
+			}
+			return filterEventFixes(parsed.Fixes, tl, limit), nil
+		},
+	}, nil
 }
 
 // timelineNeedsHelp reports whether the timeline has anything to fix —
