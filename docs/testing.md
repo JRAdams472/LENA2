@@ -44,7 +44,7 @@ Notes:
 
 ### Test helpers (`internal/testutil`)
 
-- `testutil.NewTestDB(t, ctx)` — starts a `postgres:18-alpine` testcontainer,
+- `testutil.NewTestDB(t, ctx)` — starts a `pgvector/pgvector:pg18` testcontainer,
   applies all `migrations/*.up.sql` plus `migrations/seed/*.sql`, and returns a
   `*pgxpool.Pool` and a cleanup func (registers container termination).
 - `testutil.RunMigrations(ctx, pool)` — apply migrations to an existing pool.

@@ -11,7 +11,7 @@
 ```yaml
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:0.8.6-pg18
     container_name: lena-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
@@ -132,6 +132,14 @@ LENA_DISCORD_CLIENT_ID= / LENA_DISCORD_CLIENT_SECRET=
 LENA_MICROSOFT_CLIENT_ID= / LENA_MICROSOFT_CLIENT_SECRET= (+ LENA_MICROSOFT_TENANT=consumers)
 LENA_FACEBOOK_CLIENT_ID= / LENA_FACEBOOK_CLIENT_SECRET=
 # + matching *_REDIRECT_URI values registered in each provider portal.
+
+# AI assistant + semantic recipe search — each disabled until set.
+# The `ai` compose profile starts a bundled Ollama and pre-pulls both models.
+LENA_AI_PROVIDER=ollama          # or mock for deterministic e2e
+LENA_OLLAMA_URL=http://ollama:11434
+LENA_OLLAMA_MODEL=qwen2.5:7b-instruct  # also feeds OCR; chat default when AI_MODEL empty
+LENA_AI_MODEL=                         # optional chat-model override
+LENA_AI_EMBED_MODEL=nomic-embed-text   # must emit 768-dim vectors
 ```
 
 ## 5. Build & Run

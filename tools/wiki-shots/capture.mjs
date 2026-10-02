@@ -151,6 +151,15 @@ await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/recipe-category-filter.png` });
 await page.keyboard.press("Escape");
 console.log("shot: recipe-category-filter");
+
+// Semantic mode — toggle the switch and search by vibe instead of name.
+await page.goto(`${BASE}/recipes`, { waitUntil: "domcontentloaded" });
+await page.getByText("Herb Roast Chicken").first().waitFor({ timeout: 20000 });
+await page.getByText("Semantic", { exact: true }).click();
+await page.getByRole("textbox", { name: "Search" }).fill("cozy comfort dinner");
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${OUT}/recipes-semantic.png` });
+console.log("shot: recipes-semantic");
 await shot("meal-plans", "/meal-plans", "Week of");
 const planId = await gql(
   `query { mealPlans(page: 1, pageSize: 1) { items { id } } }`

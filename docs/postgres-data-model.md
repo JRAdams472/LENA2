@@ -343,8 +343,13 @@ CREATE TABLE recipe.recipe (
     created_by        VARCHAR(100) NOT NULL,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by        VARCHAR(100),
-    updated_at        TIMESTAMPTZ
+    updated_at        TIMESTAMPTZ,
+    embedding         vector(768),            -- pgvector; NULL until embedded
+    embedding_model   VARCHAR(100),           -- staleness marker vs current model
+    embedding_at      TIMESTAMPTZ
 );
+-- Partial HNSW index for cosine search: ... ON recipe.recipe USING hnsw
+-- (embedding vector_cosine_ops) WHERE embedding IS NOT NULL
 
 CREATE TABLE recipe.recipe_item (
     recipe_item_id BIGSERIAL PRIMARY KEY,
