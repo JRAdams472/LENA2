@@ -8,15 +8,18 @@
 # host localhost. Seq first-run auth requires SEQ_FIRSTRUN_ADMINPASSWORDHASH
 # (a salted PBKDF hash of the admin password); without it the UI would be
 # unauthenticated, so this overlay fails fast if it is unset.
+#
+# The GELF address is resolved by the Docker daemon, not the containers:
+# on a Linux host localhost reaches the published seq-gelf port, but on
+# Docker Desktop (Windows/macOS) the daemon's localhost is the VM, so set
+#   SEQ_GELF_ADDRESS=udp://host.docker.internal:12201
+# in .env there.
 services:
   api:
     logging:
       driver: gelf
       options:
-        # The GELF driver runs in the Docker daemon and resolves this via
-        # the host network namespace; seq-gelf publishes 12201/udp on the
-        # host loopback, so localhost reaches it.
-        gelf-address: "udp://localhost:12201"
+        gelf-address: "${SEQ_GELF_ADDRESS:-udp://localhost:12201}"
         tag: "{{.Name}}"
     depends_on:
       seq-gelf:
@@ -26,7 +29,7 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://localhost:12201"
+        gelf-address: "${SEQ_GELF_ADDRESS:-udp://localhost:12201}"
         tag: "{{.Name}}"
     depends_on:
       seq-gelf:
