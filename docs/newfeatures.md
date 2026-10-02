@@ -124,20 +124,14 @@ Possibly use AI to analyze a recipe's ingredients and flag likely allergy risks 
 AI-detected flags should be reviewable/overridable since allergen detection can be wrong in both directions.
 
 ## Local AI Assistant
-Run the assistant's inference on the user's own device — web GPU or phone NPU — instead of the server Ollama. Keeps prompts on-device and drops server inference cost to zero for capable hardware.
+✅ Done — Ask Dot and all structured suggestions can run inference on the user's own device, offloading model compute from the server (PRs #235–#238):
 
-Feature list:
-- Capability-check router: browser `window.ai` or WebGPU → run locally; mobile via an on-device runtime → run locally; otherwise fall back to the server Ollama provider.
-- The client-side model calls the same MCP-shaped, read-only, household-scoped tool catalog over GraphQL — no data leaves the user's household authorization boundary.
-- Model download/caching UX: quantized SLM pulled once and cached (browser cache or app storage), with progress and a skip-to-server option.
-- Same assistant contract end-to-end: answers plus a visible "looked up" tool trace; suggestions stay advisory and apply through existing mutations.
-- Server remains the authority for anything it stores — pantry reads, semantic recipe search embeddings, analytics rollups — regardless of where inference runs.
-
-Recommended integrations:
-- Web, option A — WebLLM + WebGPU (https://webllm.mlc.ai): quantized Llama 3.2 / Qwen 2.5 streamed from a CDN into the browser cache; ~30–50 tok/s on a decent GPU; zero server cost.
-- Web, option B — Chrome's built-in Gemini Nano via `window.ai`: no download at all, but Chrome-only; good as the first step in the capability check.
-- Mobile — MediaPipe LLM Inference API Flutter plugin: Dart wrapper targeting CoreML on iOS and AICore/NPU on Android; compact models like Gemma 2B or Llama 3.2 1B/3B.
-- Mobile, alternative — flutter_llama (llama.cpp over Dart FFI): self-contained on-device client, compiles to ARM64.
+- **Server surface (P1).** New GraphQL reads let client agents drive the same pipeline the server agent uses: `assistantTools` (read-only, household-scoped tool specs), `callAssistantTool` (dispatches under the caller's auth scope with a per-user rate limiter and JSON-schema argument validation), `assistantPrompt` (server-owned system prompts), and `prepareAssistantRequest` (server-assembled context + output contract for the structured suggestion flows). Household scope always comes from the auth context, never the request — and the 21+ age gate on alcohol suggestions stays server-enforced.
+- **Web Ask Dot (P2).** `lib/ai/` capability chain: Chrome's built-in model → lazy-loaded WebLLM (~5.8 MB async chunk, never in the shared bundle) → server fallback. A JSON tool-call protocol (`{"toolCalls":[…]}` / `{"answer":…}`) with a bounded agent loop, since small local models lack native function calling. Opt-in card with download progress, engine badge ("On this device" / "Via server"), and `auto`/`server` mode persisted in localStorage.
+- **Mobile Ask Dot (P3).** Same protocol + agent loop in Dart over `flutter_gemma` 0.13.6, behind a `GemmaBinding` seam so the logic is testable without a device. Model manager with download progress/cancel/delete, opt-in card, server-only toggle; model source configurable via `LENA_LOCAL_MODEL_URL`/`_TOKEN`/`_ID` dart-defines (default is the license-gated HF Gemma3-1B-IT, so builds can point at a self-hosted mirror).
+- **Local suggestions (P4).** All four web suggestion surfaces — meal plans, event fixes, recipe pairings, cocktails — go local-first through `prepareAssistantRequest`, then validate output client-side against the candidates already in the context payload before rendering reviewable cards. Suggestions never trigger a model download; they reuse the engine only when it's already ready, else fall back to the server.
+- Server stays authoritative throughout: tools are read-only, writes still flow through the existing validated mutations, and local engines fall back transparently to the server provider.
+- Also shipped: the Go CI test step dropped from ~9 min to ~4 min by sharing one postgres testcontainer per package instead of launching one per test call (#239).
 
 ## Web UI refresh
 ✅ Done — sage/cream/olive theme and a warmer voice across the web client (PRs #221–#224; see `docs/web-ui-refresh-plan.md`):

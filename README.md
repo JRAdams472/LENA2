@@ -126,6 +126,8 @@ LENA can run a local LLM (Ollama) as an optional assistant. Set `LENA_AI_PROVIDE
 
 The model never writes — every suggestion is advisory and applies only through the existing mutations. `internal/platform/llm` defines a provider-agnostic interface, so swapping Ollama for a commercial API is a config change plus a small adapter. `LENA_AI_PROVIDER=mock` gives a deterministic canned assistant for e2e.
 
+**On-device inference.** Ask Dot and all four suggestion surfaces can run the model on the user's own hardware instead of the server — the "cool AI" modern phones and browsers advertise. The client drives the same read-only, household-scoped tool catalog and prompts the server advertises (`assistantTools`, `callAssistantTool`, `assistantPrompt`, `prepareAssistantRequest` in the schema), so household authorization never moves to the client. Web tries Chrome's built-in model first, then a lazy-loaded WebLLM download (explicit opt-in, with progress), then falls back to the server. Mobile runs Gemma via `flutter_gemma` with a bundled model manager (download/delete) — configure the source with `LENA_LOCAL_MODEL_URL`/`_TOKEN`/`_ID` dart-defines. Structured suggestions validate local output against the server-prepared context before rendering, and every local path falls back transparently to the server provider.
+
 ---
 
 ## Quick start

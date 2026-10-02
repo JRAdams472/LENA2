@@ -234,6 +234,15 @@ type GroceryRouteItem {
 | `eventTimeline(foodEventId)` | `ID!` | `EventTimeline` | Backwards-scheduled master timeline |
 | `aiAvailable` | — | `Boolean!` | Whether the AI assistant is configured |
 | `semanticSearchAvailable` | — | `Boolean!` | Whether recipe embeddings (semantic search mode) are configured |
+| `askAssistant(question)` | `String!` | `AssistantAnswer!` | Free-form Ask Dot question answered via read-only household-scoped tools |
+| `suggestMeals(mealPlanId, maxSuggestions)` | `ID!, Int` | `[MealPlanSuggestion!]!` | Meal suggestions for open plan cells (server inference) |
+| `suggestEventFixes(foodEventId, maxSuggestions)` | `ID!, Int` | `[EventFixSuggestion!]!` | Timeline-conflict fixes (server inference) |
+| `suggestPairings(recipeId, maxSuggestions)` | `ID!, Int` | `[PairingSuggestion!]!` | Wine pairings — 21+ gated (server inference) |
+| `suggestCocktails(maxSuggestions, inStockOnly)` | `Int, Boolean` | `[CocktailSuggestion!]!` | Cocktail picks — 21+ gated (server inference) |
+| `assistantTools` | — | `[AssistantToolSpec!]!` | Read-only tool specs for client-side agents; household scope comes from auth context |
+| `callAssistantTool(name, arguments)` | `String!, String!` | `String!` | Execute one read-only tool under the caller's scope — rate-limited, args JSON-schema-validated |
+| `assistantPrompt(name)` | `String!` | `String!` | Server-owned system prompt for a named assistant flow |
+| `prepareAssistantRequest(name, paramsJson)` | `String!, String!` | `PreparedAIRequest` | Server-assembled context + output contract so client-side inference produces identical prompts; alcohol-gated names keep the 21+ check |
 
 ## Mutations
 

@@ -74,6 +74,23 @@ credential for a LENA session: a ~15-minute access token in
 sign-out revokes the session server-side. Without the secret the client
 falls back to passing the provider token as the bearer (OIDC-only mode).
 
+## On-device AI (Ask Dot)
+
+`lib/ai/` runs inference in the browser when the user opts in — the same
+read-only, household-scoped tools the server agent uses, driven through a
+JSON tool-call protocol with a bounded agent loop. Engine chain: Chrome's
+built-in model (`window.ai` / `LanguageModel`) → a lazy-loaded WebLLM
+download (~5.8 MB async chunk, never in the shared bundle) → the server
+provider as fallback. The assistant page shows an opt-in card with download
+progress and an "On this device"/"Via server" badge; `auto`/`server` mode
+and model choice persist in `localStorage` (`lena-ai-mode`, `lena-ai-model`).
+
+`lib/ai/engineStore.ts` lets the four suggestion surfaces (meal plans,
+event fixes, pairings, cocktails) reuse the already-ready engine — they run
+`prepareAssistantRequest` for server-assembled context, generate locally,
+validate the output against the context's candidates, and fall back to the
+server on any failure. Suggestions never trigger a model download.
+
 ## Build
 
 ```bash
