@@ -117,6 +117,30 @@ builds compile the read out entirely. Mint a token from the e2e stack's
 test issuer (`http://localhost:8085/token?sub=...&email=...`) — tokens
 are valid for one hour.
 
+## On-device AI (Ask Dot)
+
+Ask Dot can run inference on the phone itself via `flutter_gemma` instead of
+calling the server's provider — the model answers using the same read-only,
+household-scoped GraphQL tools, and falls back to the server when the local
+engine isn't ready. The user opts in on the assistant screen, downloads the
+model once (progress + cancel + delete in the UI), and can force server mode
+from the overflow menu.
+
+The model artifact is configured at build time:
+
+```bash
+flutter run \
+  --dart-define=LENA_LOCAL_MODEL_URL=https://.../model.task \
+  --dart-define=LENA_LOCAL_MODEL_ID=my-gemma \
+  --dart-define=LENA_LOCAL_MODEL_TOKEN=<download token if gated>
+```
+
+The default source is Hugging Face's license-gated
+`litert-community/Gemma3-1B-IT` (~550 MB int4 LiteRT-LM); point
+`LENA_LOCAL_MODEL_URL` at a self-hosted mirror for builds that can't accept
+the HF license, and `LENA_LOCAL_MODEL_TOKEN` supplies the download token for
+gated artifacts.
+
 ## Project structure
 
 - `lib/theme.dart` — `lenaTheme()`: the web's sage/cream palette, bundled Nunito, and M3 component themes.
@@ -130,6 +154,7 @@ are valid for one hour.
 - `lib/screens/pantry_screen.dart` — Pantry quantities.
 - `lib/screens/scan_screen.dart` — Barcode scan, UPC lookup, add/remove pantry, submit new items.
 - `lib/scan/upc_utils.dart` — UPC digit normalization.
+- `lib/ai/` — Ask Dot local inference: `engine.dart`/`protocol.dart`/`agent.dart` (engine contract, JSON tool protocol, bounded agent loop), `gemma_engine.dart` + `gemma_binding.dart` (`flutter_gemma` seam for tests), `model_manager.dart` (download/delete + dart-define config), `controller.dart` (orchestration + SharedPreferences mode), `api.dart` (assistant GraphQL queries).
 
 ## Testing
 

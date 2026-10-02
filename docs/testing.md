@@ -46,7 +46,16 @@ Notes:
 
 - `testutil.NewTestDB(t, ctx)` — starts a `pgvector/pgvector:pg18` testcontainer,
   applies all `migrations/*.up.sql` plus `migrations/seed/*.sql`, and returns a
-  `*pgxpool.Pool` and a cleanup func (registers container termination).
+  `*pgxpool.Pool` and a cleanup func (registers container termination). Reserve
+  for tests that need a pristine database (e.g. global row-count assertions).
+- `testutil.SharedTestDB(t, ctx)` — lazily starts one container per test
+  binary (i.e. per package) and returns the shared pool; containers +
+  migrations are the dominant cost, so this is the default for integration
+  tests. Pair with `func TestMain(m *testing.M) {
+  os.Exit(testutil.SharedDBTestMain(m)) }` for explicit teardown (Ryuk reaps
+  the container on process exit regardless). Tests on the shared pool must
+  tolerate rows left by earlier tests in the package — use unique names for
+  rows under UNIQUE constraints.
 - `testutil.RunMigrations(ctx, pool)` — apply migrations to an existing pool.
 - `testutil.MustUser(ctx, t, pool, email)` — upserts a user and returns its ID
   (needed for `created_by`/`updated_by` FK columns).
