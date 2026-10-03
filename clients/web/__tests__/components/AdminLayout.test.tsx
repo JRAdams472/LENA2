@@ -82,6 +82,8 @@ describe("AdminLayout", () => {
     mockFetch.mockReset();
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
+      // Session endpoints (e.g. sign-out revoke) aren't GraphQL calls.
+      if (!body.query) return Promise.resolve({ ok: true, status: 204 });
       if (body.query.includes("unreadNotificationCount"))
         return Promise.resolve(gql({ unreadNotificationCount: 2 }));
       if (body.query.includes("myNotifications"))

@@ -74,12 +74,13 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 	optedOut := testutil.MustUser(ctx, t, pool, "hh-hidden@example.com")
 
 	// MustUser assigns each user a default household (household_id = user_id,
-	// the 0028 backfill convention) and users default to searchable.
+	// the 0028 backfill convention). Since migration 0044, searchability is
+	// opt-in: users default to NOT searchable.
 	got, err := svc.GetByID(ctx, caller)
 	require.NoError(t, err)
 	require.NotNil(t, got.HouseholdID)
 	assert.Equal(t, caller, *got.HouseholdID)
-	assert.True(t, got.IsSearchable)
+	assert.False(t, got.IsSearchable)
 	callerH := *got.HouseholdID
 
 	mateGot, err := svc.GetByID(ctx, mate)
@@ -103,7 +104,8 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 	require.NotNil(t, got.HouseholdID)
 	assert.Equal(t, hh.HouseholdID, *got.HouseholdID)
 
-	// Opt out one user; deactivate another.
+	// Opt the candidate in; opt out one user explicitly; deactivate another.
+	require.NoError(t, svc.SetUserSearchable(ctx, candidate, true, "hh-candidate@example.com"))
 	require.NoError(t, svc.SetUserSearchable(ctx, optedOut, false, "hh-hidden@example.com"))
 	inactive := testutil.MustUser(ctx, t, pool, "hh-inactive@example.com")
 	_, err = pool.Exec(ctx, "UPDATE identity.users SET is_active = false WHERE user_id = $1", inactive)

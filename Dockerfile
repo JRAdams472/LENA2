@@ -15,16 +15,36 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -o /build/lena ./cmd/lena
 
-# Runtime stage
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+# Created in the builder so the distroless stage can copy the directory
+# (it has no mkdir); the import inbox is shared with the host for recipe
+# OCR uploads.
+RUN mkdir -p /data/import/inbox /data/import/work
+
+# Runtime stage — distroless static: no shell, package manager, or OS
+# tools an attacker could pivot with after an exploit. CA certs and a
+# nonroot user (uid 65532) are baked into the image. This is the
+# production target.
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab AS runtime
+
+WORKDIR /app
+
+COPY --from=builder /build/lena /app/lena
+COPY --from=builder --chown=65532:65532 /data/import /data/import
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/lena"]
+
+# Debug stage — alpine with a shell and curl so `docker exec` works while
+# testing. Selected via `target: debug` in docker-compose.debug.yml; never
+# ship this target.
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS debug
 
 RUN apk add --no-cache ca-certificates curl
 
 WORKDIR /app
 
 COPY --from=builder /build/lena /app/lena
-
-# Import inbox shared with the host for recipe OCR uploads.
 RUN mkdir -p /data/import/inbox /data/import/work && chown -R 65534:65534 /data/import
 
 EXPOSE 8080

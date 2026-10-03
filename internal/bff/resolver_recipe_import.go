@@ -171,7 +171,7 @@ func (r *recipeImportResolver) ID() graphql.ID          { return graphql.ID(strc
 func (r *recipeImportResolver) Status() string          { return string(r.ri.Status) }
 func (r *recipeImportResolver) SourceFilename() string  { return r.ri.SourceFilename }
 func (r *recipeImportResolver) ProfanityFlag() bool     { return r.ri.ProfanityFlag }
-func (r *recipeImportResolver) CreatedAt() graphql.Time { return graphql.Time{Time: r.ri.CreatedAt} }
+func (r *recipeImportResolver) CreatedAt() graphql.Time { return graphqlTime(r.ri.CreatedAt) }
 func (r *recipeImportResolver) CreatedBy() string       { return r.ri.CreatedBy }
 
 func (r *recipeImportResolver) OCRText() *string {
@@ -428,6 +428,21 @@ func (r recipeImportReviewInput) toReviewRecipe() (*ocrimport.ReviewRecipe, erro
 		if it.Approved {
 			status = "accepted"
 		}
+		var suggestions []ocrimport.Suggestion
+		if it.Suggestions != nil {
+			for _, s := range *it.Suggestions {
+				suggestions = append(suggestions, ocrimport.Suggestion{
+					ID:    string(s.ID),
+					Name:  s.Name,
+					Kind:  s.Kind,
+					Score: s.Score,
+				})
+			}
+		}
+		var confidence float64
+		if it.Confidence != nil {
+			confidence = *it.Confidence
+		}
 		items = append(items, ocrimport.MatchResult{
 			DraftItem: ocrimport.DraftItem{
 				Quantity:   it.Quantity,
@@ -437,12 +452,15 @@ func (r recipeImportReviewInput) toReviewRecipe() (*ocrimport.ReviewRecipe, erro
 				Notes:      it.Notes,
 				IsOptional: it.IsOptional,
 			},
-			ItemID:   stringPtrID(it.ItemID),
-			ItemName: stringPtr(it.ItemName),
-			Unit:     stringPtr(it.Unit),
-			UnitID:   stringPtrID(it.UnitID),
-			Approved: it.Approved,
-			Status:   status,
+			ItemID:      stringPtrID(it.ItemID),
+			ItemName:    stringPtr(it.ItemName),
+			Unit:        stringPtr(it.Unit),
+			UnitID:      stringPtrID(it.UnitID),
+			Confidence:  confidence,
+			Notes:       stringPtr(it.Notes),
+			Suggestions: suggestions,
+			Approved:    it.Approved,
+			Status:      status,
 		})
 	}
 
@@ -467,16 +485,25 @@ func (r recipeImportReviewInput) toReviewRecipe() (*ocrimport.ReviewRecipe, erro
 }
 
 type recipeImportReviewItemInput struct {
-	Ingredient string
-	Quantity   *float64
-	Unit       *string
-	Section    *string
-	Notes      *string
-	IsOptional bool
-	ItemID     *graphql.ID
-	ItemName   *string
-	UnitID     *graphql.ID
-	Approved   bool
+	Ingredient  string
+	Quantity    *float64
+	Unit        *string
+	Section     *string
+	Notes       *string
+	IsOptional  bool
+	ItemID      *graphql.ID
+	ItemName    *string
+	UnitID      *graphql.ID
+	Confidence  *float64
+	Suggestions *[]recipeImportSuggestionInput
+	Approved    bool
+}
+
+type recipeImportSuggestionInput struct {
+	ID    graphql.ID
+	Name  string
+	Kind  string
+	Score float64
 }
 
 type recipeImportReviewStepInput struct {

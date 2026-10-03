@@ -53,7 +53,37 @@ import (
 )
 
 func main() {
+	// The distroless runtime has no shell or curl for the compose
+	// healthcheck, so the binary self-probes: `lena -healthcheck` exits 0
+	// when /ready answers 200.
+	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
+		os.Exit(healthcheck())
+	}
 	os.Exit(run())
+}
+
+func healthcheck() int {
+	port := os.Getenv("LENA_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// The URL is fixed to localhost; only the port comes from the
+	// container's own environment.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:"+port+"/ready", nil) // #nosec G704
+	if err != nil {
+		return 1
+	}
+	resp, err := http.DefaultClient.Do(req) // #nosec G704 -- see above.
+	if err != nil {
+		return 1
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
 
 // run wires configuration, storage, telemetry and HTTP serving, then
@@ -335,11 +365,12 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 
 	e.Use(middleware.CORSWithConfig(buildCORSConfig(cfg.CORSAllowedOrigins)))
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogStatus:  true,
-		LogURI:     true,
-		LogMethod:  true,
-		LogLatency: true,
-		LogError:   true,
+		LogStatus:   true,
+		LogURI:      true,
+		LogMethod:   true,
+		LogLatency:  true,
+		LogRemoteIP: true,
+		LogError:    true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
 			requestID := c.Response().Header().Get(echo.HeaderXRequestID)
 			var traceID string
@@ -350,6 +381,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 				log.Info("request",
 					"request_id", requestID,
 					"trace_id", traceID,
+					"remote_ip", v.RemoteIP,
 					"method", v.Method,
 					"uri", v.URI,
 					"status", v.Status,
@@ -359,6 +391,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 				log.Error("request",
 					"request_id", requestID,
 					"trace_id", traceID,
+					"remote_ip", v.RemoteIP,
 					"method", v.Method,
 					"uri", v.URI,
 					"status", v.Status,
@@ -418,12 +451,16 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 			RecipeScanMaxBytes:     cfg.RecipeScanMaxBytes,
 			Idempotency:            idemStore,
 		})
+	// Introspection is admin-only: members still get full API operation
+	// support, but cannot enumerate the schema (including admin mutations).
+	// LENA_GRAPHQL_DISABLE_INTROSPECTION disables it for everyone.
 	handler, err := bff.NewGraphQLHandler(resolver,
 		cfg.GraphQLTimeout,
 		cfg.GraphQLAITimeout,
 		cfg.GraphQLMaxCost,
 		graphql.MaxDepth(cfg.GraphQLMaxDepth),
-		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength))
+		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength),
+		graphql.RestrictIntrospection(bff.AllowIntrospectionForAdmins(cfg.GraphQLDisableIntrospection)))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -480,9 +517,13 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 
-	// Provider code-exchange sign-in (POST /auth/session/{provider}).
+	// Provider code-exchange sign-in (POST /auth/session/{provider}). The
+	// per-IP limiter alone cannot bound a distributed flood because every
+	// attempt also makes an outbound call to the provider's token endpoint;
+	// the global bucket caps total exchange volume regardless of source.
 	bff.NewProviderSessionHandler(codeVerifiers, authenticator, sessionSvc).RegisterRoutes(e,
-		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
+		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst),
+		bff.GlobalRateLimiter(cfg.AuthCodeExchangeRateLimitPerMinute, cfg.AuthCodeExchangeRateLimitBurst))
 	return e, resolver, nil
 }
 

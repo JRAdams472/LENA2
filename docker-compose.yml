@@ -1,3 +1,9 @@
+# docker-compose.yml — PRODUCTION-hardened configuration.
+# api/web run shell-less distroless images, the network is segmented, and
+# all services carry no-new-privileges / cap_drop / read-only flags. For
+# local debugging (docker exec shells, direct port access), layer
+# docker-compose.debug.yml over this file — see that file's header.
+
 # Default logging: local json-file with rotation. For centralized Seq/GELF
 # logging, add the optional overlay:
 #   docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d
@@ -7,12 +13,28 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Segmentation: `edge` carries the internet-facing path (caddy → api/web)
+# on a pinned subnet so caddy's address is stable — the API trusts
+# X-Forwarded-For only from that single /32 (keep subnet, ipv4_address,
+# and LENA_TRUSTED_PROXY_CIDRS in agreement). Everything else rides the
+# unpinned `default` net; observability services get their own so they
+# cannot reach the database. The API is the only service bridged across
+# all three.
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+  observability:
+
 services:
   # pgvector image = postgres:18 + the vector extension (recipe embeddings).
   # Same PGDATA layout as the postgres:18 image, so existing volumes migrate
   # in place; the migration creates the extension itself.
   db:
     image: pgvector/pgvector:0.8.6-pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lena}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -113,8 +135,10 @@ services:
       LENA_ADMIN_EMAILS: ${LENA_ADMIN_EMAILS:-}
       # Protected admins can never be demoted or banned via the API.
       LENA_PROTECTED_EMAILS: ${LENA_PROTECTED_EMAILS:-}
-      # Trusted proxy CIDRs for X-Forwarded-For parsing (Caddy + Docker).
-      LENA_TRUSTED_PROXY_CIDRS: ${LENA_TRUSTED_PROXY_CIDRS:-}
+      # Trusted proxy CIDRs for X-Forwarded-For parsing. Must match caddy's
+      # pinned ipv4_address below; the API never publishes a host port, so
+      # only Caddy can reach it with a rewritten XFF.
+      LENA_TRUSTED_PROXY_CIDRS: ${LENA_TRUSTED_PROXY_CIDRS:-172.31.0.10/32}
       # Session signing key for refresh-token access tokens. Empty keeps
       # OIDC-only auth (clients re-sign in when the ID token expires).
       LENA_SESSION_SECRET: ${LENA_SESSION_SECRET:-}
@@ -145,17 +169,31 @@ services:
       LENA_HTTP_WRITE_TIMEOUT: ${LENA_HTTP_WRITE_TIMEOUT:-30s}
     volumes:
       - import_data:/data/import
+    # edge for caddy, default for db/ocr/ollama, observability for jaeger.
+    networks:
+      - edge
+      - default
+      - observability
     depends_on:
       db-migrate:
         condition: service_completed_successfully
       db-grant:
         condition: service_completed_successfully
     healthcheck:
-      # /ready verifies the database link, not just process liveness.
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/ready || exit 1"]
+      # /ready verifies the database link, not just process liveness. The
+      # distroless image has no shell/curl — the binary self-probes.
+      test: ["CMD", "/app/lena", "-healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 256
     logging: *default-logging
 
   web:
@@ -174,8 +212,20 @@ services:
         NEXT_PUBLIC_FACEBOOK_REDIRECT_URI: ${NEXT_PUBLIC_FACEBOOK_REDIRECT_URI:-http://localhost/auth/facebook/callback}
     environment:
       PORT: 3000
+    # Edge-only: the browser reaches the API through Caddy, so web never
+    # needs a route to the database or observability services.
+    networks:
+      - edge
     depends_on:
       - api
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 256
     logging: *default-logging
 
   caddy:
@@ -186,10 +236,30 @@ services:
       CADDY_ADDR: ${CADDY_ADDR:-:80}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # Edge-only, static address on the pinned subnet: the API's
+    # X-Forwarded-For trust list is exactly this /32, so a stable IP is
+    # required.
+    networks:
+      edge:
+        ipv4_address: 172.31.0.10
     depends_on:
       - api
       - web
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Binding :80 inside the container requires this one capability.
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   pg_data:
   import_data:
+  caddy_data:
+  caddy_config:

@@ -546,7 +546,7 @@ func (r *groceryListResolver) ID() graphql.ID {
 }
 
 func (r *groceryListResolver) GeneratedAt() graphql.Time {
-	return graphql.Time{Time: r.list.GeneratedAt}
+	return graphqlTime(r.list.GeneratedAt)
 }
 
 // Store resolves the store selected to route this list.

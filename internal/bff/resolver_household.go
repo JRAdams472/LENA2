@@ -808,7 +808,7 @@ func (r *householdResolver) Members() []*householdMemberResolver { return r.memb
 
 func (r *householdResolver) MyRole() string { return strings.ToUpper(r.myRole) }
 
-func (r *householdResolver) CreatedAt() graphql.Time { return graphql.Time{Time: r.hh.CreatedAt} }
+func (r *householdResolver) CreatedAt() graphql.Time { return graphqlTime(r.hh.CreatedAt) }
 
 // householdMemberResolver resolves HouseholdMember — the restricted user
 // projection paired with per-household role metadata.
@@ -861,7 +861,7 @@ func (r *householdInviteResolver) Status() string {
 }
 
 func (r *householdInviteResolver) CreatedAt() graphql.Time {
-	return graphql.Time{Time: r.inv.CreatedAt}
+	return graphqlTime(r.inv.CreatedAt)
 }
 
 type householdNotificationResolver struct {
@@ -888,7 +888,7 @@ func (r *householdNotificationResolver) FoodEventID() *graphql.ID {
 }
 
 func (r *householdNotificationResolver) CreatedAt() graphql.Time {
-	return graphql.Time{Time: r.n.CreatedAt}
+	return graphqlTime(r.n.CreatedAt)
 }
 
 // Title is the server-rendered heading for scheduled reminders; null on

@@ -31,8 +31,28 @@ RUN if [ -z "$NEXT_PUBLIC_GOOGLE_CLIENT_ID" ] || [ "$NEXT_PUBLIC_GOOGLE_CLIENT_I
     fi
 RUN npm run build
 
-# Runtime stage
-FROM node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS runner
+# Runtime stage — distroless nodejs: no shell, npm, or OS tools for an
+# attacker to pivot with. The image's entrypoint is node itself, and the
+# :nonroot tag runs as uid 65532. This is the production target.
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+
+CMD ["server.js"]
+
+# Debug stage — node alpine with a shell so `docker exec` works while
+# testing. Selected via `target: debug` in docker-compose.debug.yml;
+# never ship this target.
+FROM node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS debug
 WORKDIR /app
 
 ENV NODE_ENV=production

@@ -51,6 +51,12 @@ type Config struct {
 	// than the per-user limit because one IP can front several users.
 	IPRateLimitPerMinute int `envconfig:"IP_RATE_LIMIT_PER_MINUTE" default:"300"`
 	IPRateLimitBurst     int `envconfig:"IP_RATE_LIMIT_BURST" default:"60"`
+	// AuthCodeExchangeRateLimit is a single global bucket bounding
+	// /auth/session/{provider} code-exchange calls — each attempt makes an
+	// outbound request to the provider's token endpoint, so the cap must
+	// hold even when the flood is spread across many source IPs.
+	AuthCodeExchangeRateLimitPerMinute int `envconfig:"AUTH_CODE_EXCHANGE_RATE_LIMIT_PER_MINUTE" default:"60"`
+	AuthCodeExchangeRateLimitBurst     int `envconfig:"AUTH_CODE_EXCHANGE_RATE_LIMIT_BURST" default:"20"`
 	// GraphQLBodyLimit caps the HTTP request body accepted by /graphql
 	// (echo BodyLimit syntax, e.g. "64K"). The query-length limit above
 	// applies to the query string inside the body, this applies to the
@@ -74,6 +80,10 @@ type Config struct {
 	// page resolves ~65k fields, so 100k still rejects pathological
 	// nested queries without breaking legitimate pages.
 	GraphQLMaxCost int `envconfig:"GRAPHQL_MAX_COST" default:"100000"`
+	// GraphQLDisableIntrospection turns off schema introspection entirely.
+	// When false, introspection is still restricted to admin role members;
+	// this switch exists for deployments that want no introspection at all.
+	GraphQLDisableIntrospection bool `envconfig:"GRAPHQL_DISABLE_INTROSPECTION" default:"false"`
 	// DatabaseStatementTimeout is the PostgreSQL statement_timeout applied
 	// to every pooled connection so queries abandoned by a cancelled
 	// request still die server-side. It should exceed GraphQLTimeout so

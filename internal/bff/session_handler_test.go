@@ -165,6 +165,93 @@ func TestSessionRefresh_Errors(t *testing.T) {
 	}
 }
 
+func refreshCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, ck := range rec.Result().Cookies() {
+		if ck.Name == refreshCookieName {
+			return ck
+		}
+	}
+	return nil
+}
+
+func TestSessionCreate_SetsRefreshCookie(t *testing.T) {
+	exp := time.Now().Add(30 * 24 * time.Hour)
+	fake := &fakeSessionIssuer{
+		enabled: true,
+		issued:  session.Issued{AccessToken: "acc", RefreshToken: "ref", ExpiresAt: exp},
+	}
+	h := NewSessionHandler(fake)
+	c, rec := sessionCtx(t, `{"device":"web"}`)
+	ctx := currentuser.WithUser(c.Request().Context(), currentuser.User{UserID: 1})
+	c.SetRequest(c.Request().WithContext(ctx))
+
+	require.NoError(t, h.Create(c))
+	ck := refreshCookie(t, rec)
+	require.NotNil(t, ck)
+	assert.Equal(t, "ref", ck.Value)
+	assert.True(t, ck.HttpOnly)
+	assert.Equal(t, http.SameSiteStrictMode, ck.SameSite)
+	assert.Equal(t, "/auth/session", ck.Path)
+	assert.False(t, ck.Secure, "plain-HTTP dev origin must not set Secure")
+}
+
+func TestSessionRefresh_Cookie(t *testing.T) {
+	fake := &fakeSessionIssuer{
+		enabled: true,
+		issued:  session.Issued{AccessToken: "new-acc", RefreshToken: "new-ref", ExpiresAt: time.Now().Add(time.Hour)},
+	}
+	h := NewSessionHandler(fake)
+	c, rec := sessionCtx(t, `{}`)
+	c.Request().AddCookie(&http.Cookie{Name: refreshCookieName, Value: "cookie-ref"}) //nolint:gosec // inbound request cookie, not a response attribute
+
+	require.NoError(t, h.Refresh(c))
+	assert.Equal(t, "cookie-ref", fake.gotToken)
+	ck := refreshCookie(t, rec)
+	require.NotNil(t, ck)
+	assert.Equal(t, "new-ref", ck.Value)
+	assert.True(t, ck.HttpOnly)
+}
+
+func TestSessionRefresh_BodyWinsOverCookie(t *testing.T) {
+	fake := &fakeSessionIssuer{
+		enabled: true,
+		issued:  session.Issued{AccessToken: "a", RefreshToken: "r", ExpiresAt: time.Now()},
+	}
+	h := NewSessionHandler(fake)
+	c, _ := sessionCtx(t, `{"refreshToken":"body-ref"}`)
+	c.Request().AddCookie(&http.Cookie{Name: refreshCookieName, Value: "cookie-ref"}) //nolint:gosec // inbound request cookie, not a response attribute
+
+	require.NoError(t, h.Refresh(c))
+	assert.Equal(t, "body-ref", fake.gotToken)
+}
+
+func TestSessionRefresh_InvalidClearsCookie(t *testing.T) {
+	fake := &fakeSessionIssuer{enabled: true, refreshErr: session.ErrInvalidSession}
+	h := NewSessionHandler(fake)
+	c, rec := sessionCtx(t, `{}`)
+	c.Request().AddCookie(&http.Cookie{Name: refreshCookieName, Value: "stale"}) //nolint:gosec // inbound request cookie, not a response attribute
+
+	err := h.Refresh(c)
+	require.Error(t, err)
+	ck := refreshCookie(t, rec)
+	require.NotNil(t, ck)
+	assert.Equal(t, -1, ck.MaxAge)
+}
+
+func TestSessionRevoke_CookieCleared(t *testing.T) {
+	fake := &fakeSessionIssuer{enabled: true}
+	h := NewSessionHandler(fake)
+	c, rec := sessionCtx(t, `{}`)
+	c.Request().AddCookie(&http.Cookie{Name: refreshCookieName, Value: "bye"}) //nolint:gosec // inbound request cookie, not a response attribute
+
+	require.NoError(t, h.Revoke(c))
+	assert.Equal(t, "bye", fake.gotToken)
+	ck := refreshCookie(t, rec)
+	require.NotNil(t, ck)
+	assert.Equal(t, -1, ck.MaxAge)
+}
+
 func TestSessionRefresh_MissingToken(t *testing.T) {
 	h := NewSessionHandler(&fakeSessionIssuer{enabled: true})
 	c, _ := sessionCtx(t, `{}`)

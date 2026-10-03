@@ -37,9 +37,9 @@ func NewProviderSessionHandler(providers map[string]CodeVerifier, provision iden
 // RegisterRoutes mounts the code-exchange sign-in endpoint. Static
 // siblings (/auth/session/refresh, /revoke) take precedence over the
 // :provider parameter in echo's router.
-func (h *ProviderSessionHandler) RegisterRoutes(e *echo.Echo, ipLimit echo.MiddlewareFunc) {
+func (h *ProviderSessionHandler) RegisterRoutes(e *echo.Echo, mw ...echo.MiddlewareFunc) {
 	g := e.Group("/auth/session", middleware.BodyLimit("8K"))
-	g.POST("/:provider", h.CreateSession, ipLimit)
+	g.POST("/:provider", h.CreateSession, mw...)
 }
 
 type providerSessionRequest struct {
@@ -80,6 +80,7 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "session error")
 	}
+	setRefreshCookie(c, iss)
 	return c.JSON(http.StatusOK, toSessionResponse(iss))
 }
 

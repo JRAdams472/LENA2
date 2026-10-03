@@ -242,6 +242,7 @@ export default function PendingRecipeDetailPage() {
 
   const [review, setReview] = useState<RecipeImportReview | null>(null);
   const [zeroQtyIndex, setZeroQtyIndex] = useState<number | null>(null);
+  const [confirmReject, setConfirmReject] = useState(false);
 
   if (recipeImport && !review) {
     setReview(reviewFromImport(recipeImport));
@@ -450,10 +451,15 @@ export default function PendingRecipeDetailPage() {
           >
             Approve
           </Button>
-          <Button onClick={() => rejectMutation.mutate()} color="error">
+          <Button onClick={() => setConfirmReject(true)} color="error">
             Reject
           </Button>
-          <Button onClick={() => retryMutation.mutate()}>Retry</Button>
+          <Button
+            onClick={() => retryMutation.mutate()}
+            disabled={anyLoading || (recipeImport.status !== "failed" && recipeImport.status !== "profanity")}
+          >
+            Retry
+          </Button>
         </ButtonGroup>
       </Stack>
 
@@ -489,6 +495,29 @@ export default function PendingRecipeDetailPage() {
             }}
           >
             Yes, remove it
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={confirmReject} onClose={() => setConfirmReject(false)}>
+        <DialogTitle>Reject this import?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Rejecting permanently discards {recipeImport.sourceFilename} — it
+            cannot be retried or approved afterward.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmReject(false)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              setConfirmReject(false);
+              rejectMutation.mutate();
+            }}
+          >
+            Yes, reject it
           </Button>
         </DialogActions>
       </Dialog>
