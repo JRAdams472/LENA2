@@ -79,6 +79,9 @@ type Querier interface {
 	// Effective ingredient inputs for a branded item: the household's
 	// override wins over the catalog-level link. Both NULL when unlinked.
 	GetItemIngredient(ctx context.Context, arg GetItemIngredientParams) (GetItemIngredientRow, error)
+	// Batch form of GetItemIngredient: one row per requested item carrying the
+	// override and catalog ingredient (override wins; both NULL when unlinked).
+	GetItemIngredientsForItems(ctx context.Context, arg GetItemIngredientsForItemsParams) ([]GetItemIngredientsForItemsRow, error)
 	GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
 	GetNutrientTypeByName(ctx context.Context, lower string) (InventoryNutrientType, error)
@@ -110,6 +113,9 @@ type Querier interface {
 	ListPendingBrands(ctx context.Context, arg ListPendingBrandsParams) ([]InventoryBrand, error)
 	ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error)
 	ListUnits(ctx context.Context) ([]InventoryUnit, error)
+	// Batch "usual brand" lookup for grocery-line preloads — one row per
+	// (ingredient, household) pair recorded by brand-picked check-offs.
+	ListUsualItemsForIngredients(ctx context.Context, arg ListUsualItemsForIngredientsParams) ([]UserprefsHouseholdIngredientItem, error)
 	// IDs of visible items whose name matches the term — feeds include_ids on
 	// household-scoped queries that cannot join this schema (pantry search).
 	MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]int64, error)

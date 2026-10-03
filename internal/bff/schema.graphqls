@@ -265,6 +265,21 @@ type Mutation {
   createIngredient(input: CreateIngredientInput!): Ingredient! @admin
   updateIngredient(id: ID!, input: UpdateIngredientInput!): Ingredient! @admin
   deleteIngredient(id: ID!): Boolean! @admin
+  # Free-create for members: returns the existing ingredient when the
+  # normalized name already exists, so callers can't mint duplicates.
+  getOrCreateIngredient(input: CreateIngredientInput!): Ingredient!
+  # Admin dedupe tool: repoints every reference (recipes, meal slots,
+  # events, grocery lines, aisle routes, item links, household prefs) from
+  # fromId onto intoId, then deletes the source ingredient.
+  mergeIngredient(fromId: ID!, intoId: ID!): Boolean! @admin
+  # Admin: writes the catalog-level item -> ingredient link (null clears).
+  setItemIngredient(itemId: ID!, ingredientId: ID): Boolean! @admin
+  # Household remap — this item is a different ingredient for us (null
+  # clears the override, restoring the catalog link).
+  setHouseholdItemIngredient(itemId: ID!, ingredientId: ID): Boolean!
+  # Brand-picked check-off: binds the chosen brand to an ingredient line,
+  # checks it off, credits pantry stock, and records it as the usual brand.
+  checkGroceryItemWithBrand(groceryListItemId: ID!, itemId: ID!): GroceryListItem!
 
   adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time, minQty: Float): UserItem!
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
@@ -591,6 +606,11 @@ type Item {
   submittedByMe: Boolean!
   netWeight: Float
   isMetric: Boolean!
+  # Catalog-level generic ingredient this branded product is (global link).
+  ingredient: Ingredient
+  # Override-aware view: the household's remap when set, else the catalog
+  # link. This is what stock rollups and recipe matching actually use.
+  householdIngredient: Ingredient
 }
 
 input ItemNutrientEntryInput {
@@ -605,8 +625,7 @@ type ItemPage {
 
 # Ingredient is a brand-agnostic generic ingredient ("all-purpose flour").
 # Branded items exist for barcode scanning; recipes, meal slots and grocery
-# lists can reference an ingredient instead. Scaffolding only — nothing
-# populates this data yet; ingredientId inputs will eventually replace itemId.
+# lists reference ingredients so recipes don't require brand matches.
 type Ingredient {
   id: ID!
   name: String!
@@ -1041,6 +1060,9 @@ type GroceryListItem {
   unitOfMeasure: String
   source: String!
   isChecked: Boolean!
+  # The household's usual brand for this line's ingredient — recorded by
+  # brand-picked check-offs. Null when the household has never picked one.
+  usualBrand: Item
 }
 
 input AddGroceryItemInput {
@@ -1272,7 +1294,7 @@ input AddMealSlotInput {
 
 input AddMealSlotItemInput {
   slotId: ID!
-  itemId: ID!
+  itemId: ID
   ingredientId: ID
   quantity: Float!
   unit: String!

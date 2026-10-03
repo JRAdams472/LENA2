@@ -34,7 +34,7 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	}
 	// Single-recipe reads preload the same child graph as list pages so
 	// nested field resolvers never fall back to a query per row.
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, []int64{id}, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, []int64{id}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 
 	// Reuse the shared inventory-child loader so scaledRecipe.items.item
 	// and friends never degrade to per-row queries.
-	if err := loadRecipeInventoryChildren(ctx, r.InventoryService, rc, nil); err != nil {
+	if err := loadRecipeInventoryChildren(ctx, r.InventoryService, rc, u.HouseholdID, nil); err != nil {
 		return nil, err
 	}
 
@@ -220,7 +220,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		}
 	}
 	recipeIDs := distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID })
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -255,18 +255,48 @@ func (r *Resolver) SemanticSearchAvailable(ctx context.Context) (bool, error) {
 // are resolved to unit IDs via the shared unit catalog; unknown units are
 // rejected.
 func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
-	outItems := make([]recipe.RecipeItem, 0, len(items))
-	for _, ri := range items {
-		itemID, err := optionalID(ri.ItemID)
+	itemIDs := make([]*int64, len(items))
+	ingredientIDs := make([]*int64, len(items))
+	var brandOnly []int64
+	for i, ri := range items {
+		var err error
+		itemIDs[i], err = optionalID(ri.ItemID)
 		if err != nil {
 			return nil, nil, err
 		}
-		ingredientID, err := optionalID(ri.IngredientID)
+		ingredientIDs[i], err = optionalID(ri.IngredientID)
 		if err != nil {
 			return nil, nil, err
 		}
-		if itemID == nil && ingredientID == nil {
+		if itemIDs[i] == nil && ingredientIDs[i] == nil {
 			return nil, nil, badInputf("recipe item requires itemId or ingredientId")
+		}
+		if ingredientIDs[i] == nil {
+			brandOnly = append(brandOnly, *itemIDs[i])
+		}
+	}
+	// Brand-only inputs resolve to their linked ingredient in one batch so
+	// grocery aggregation keys them correctly. Unlinked items stay
+	// brand-only — the link may not exist yet.
+	var resolved map[int64]*int64
+	if len(brandOnly) > 0 && inv != nil {
+		householdID := int64(0)
+		if u, ok := currentuser.FromContext(ctx); ok {
+			householdID = u.HouseholdID
+		}
+		var err error
+		resolved, err = inv.ResolveItemIngredients(ctx, householdID, brandOnly)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	outItems := make([]recipe.RecipeItem, 0, len(items))
+	for i, ri := range items {
+		itemID := itemIDs[i]
+		ingredientID := ingredientIDs[i]
+		if ingredientID == nil {
+			ingredientID = resolved[*itemID]
 		}
 		unitID, err := resolveUnitID(ctx, inv, ri.Unit)
 		if err != nil {
@@ -597,7 +627,7 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	}
 	recipeIDs, best := mergeRecommendations(sources, limit)
 
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, recipeIDs, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1294,7 +1324,7 @@ func (r *Resolver) SetRecipeCategories(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, []int64{recipeID}, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, []int64{recipeID}, nil)
 	if err != nil {
 		return nil, err
 	}

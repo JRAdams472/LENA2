@@ -133,7 +133,7 @@ func (r *Resolver) UserItems(ctx context.Context, args struct {
 	for _, it := range itemsByID {
 		itemList = append(itemList, it)
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, itemList)
+	ch, err := loadItemChildren(ctx, r.InventoryService, itemList, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}

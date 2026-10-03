@@ -837,3 +837,75 @@ func TestIntegrationMergeIngredients(t *testing.T) {
 	_, err = svc.GetIngredientByID(ctx, src.IngredientID)
 	assert.Error(t, err)
 }
+
+// Batch resolution mirrors the single-item semantics: household override
+// wins, catalog link next, unlinked items map to nil — in one round trip.
+func TestIntegrationItemIngredientBatchResolution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationServiceWithPool(t, ctx)
+
+	hh := testutil.MustHousehold(ctx, t, pool)
+	hhOther := testutil.MustHousehold(ctx, t, pool)
+
+	cat, err := svc.CreateCategory(ctx, "IT Batch Category", "", false, itBy)
+	require.NoError(t, err)
+	corn, err := svc.GetOrCreateIngredient(ctx, "it batch corn", &cat.CategoryID, nil, itBy)
+	require.NoError(t, err)
+	alt, err := svc.GetOrCreateIngredient(ctx, "it batch maize", &cat.CategoryID, nil, itBy)
+	require.NoError(t, err)
+
+	linked, err := svc.CreateItem(ctx, Item{
+		Name: "IT Batch Linked", CategoryID: cat.CategoryID,
+		UnitID: unitID(t, ctx, svc, "can"),
+	}, itBy)
+	require.NoError(t, err)
+	overridden, err := svc.CreateItem(ctx, Item{
+		Name: "IT Batch Overridden", CategoryID: cat.CategoryID,
+		UnitID: unitID(t, ctx, svc, "can"),
+	}, itBy)
+	require.NoError(t, err)
+	loose, err := svc.CreateItem(ctx, Item{
+		Name: "IT Batch Loose", CategoryID: cat.CategoryID,
+		UnitID: unitID(t, ctx, svc, "can"),
+	}, itBy)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.SetItemIngredient(ctx, linked.ItemID, &corn.IngredientID, itBy))
+	require.NoError(t, svc.SetItemIngredient(ctx, overridden.ItemID, &corn.IngredientID, itBy))
+	require.NoError(t, svc.SetItemIngredientOverride(ctx, hh, overridden.ItemID, alt.IngredientID, itBy))
+
+	ids := []int64{linked.ItemID, overridden.ItemID, loose.ItemID}
+	got, err := svc.ResolveItemIngredients(ctx, hh, ids)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	require.NotNil(t, got[linked.ItemID])
+	assert.Equal(t, corn.IngredientID, *got[linked.ItemID])
+	require.NotNil(t, got[overridden.ItemID])
+	assert.Equal(t, alt.IngredientID, *got[overridden.ItemID], "override beats catalog link")
+	assert.Nil(t, got[loose.ItemID], "unlinked item resolves to nil")
+
+	// The other household sees catalog links only.
+	got, err = svc.ResolveItemIngredients(ctx, hhOther, ids)
+	require.NoError(t, err)
+	assert.Equal(t, corn.IngredientID, *got[overridden.ItemID])
+
+	// Empty input short-circuits.
+	got, err = svc.ResolveItemIngredients(ctx, hh, nil)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	// Batch usual-brand lookup mirrors GetUsualItemForIngredient.
+	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, corn.IngredientID, linked.ItemID, itBy))
+	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, alt.IngredientID, overridden.ItemID, itBy))
+	usuals, err := svc.GetUsualItemsForIngredients(ctx, hh, []int64{corn.IngredientID, alt.IngredientID})
+	require.NoError(t, err)
+	require.Len(t, usuals, 2)
+	assert.Equal(t, linked.ItemID, usuals[corn.IngredientID].ItemID)
+	assert.Equal(t, overridden.ItemID, usuals[alt.IngredientID].ItemID)
+	usuals, err = svc.GetUsualItemsForIngredients(ctx, hhOther, []int64{corn.IngredientID})
+	require.NoError(t, err)
+	assert.Empty(t, usuals, "usuals are household-scoped")
+}

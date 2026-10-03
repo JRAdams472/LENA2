@@ -1316,6 +1316,36 @@ func (mr *MockItemReaderMockRecorder) GetUnitsByIDs(ctx, unitIDs any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitsByIDs", reflect.TypeOf((*MockItemReader)(nil).GetUnitsByIDs), ctx, unitIDs)
 }
 
+// GetUsualItemForIngredient mocks base method.
+func (m *MockItemReader) GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*inventory.UsualItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsualItemForIngredient", ctx, householdID, ingredientID)
+	ret0, _ := ret[0].(*inventory.UsualItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsualItemForIngredient indicates an expected call of GetUsualItemForIngredient.
+func (mr *MockItemReaderMockRecorder) GetUsualItemForIngredient(ctx, householdID, ingredientID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsualItemForIngredient", reflect.TypeOf((*MockItemReader)(nil).GetUsualItemForIngredient), ctx, householdID, ingredientID)
+}
+
+// GetUsualItemsForIngredients mocks base method.
+func (m *MockItemReader) GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]inventory.UsualItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsualItemsForIngredients", ctx, householdID, ingredientIDs)
+	ret0, _ := ret[0].(map[int64]inventory.UsualItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsualItemsForIngredients indicates an expected call of GetUsualItemsForIngredients.
+func (mr *MockItemReaderMockRecorder) GetUsualItemsForIngredients(ctx, householdID, ingredientIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsualItemsForIngredients", reflect.TypeOf((*MockItemReader)(nil).GetUsualItemsForIngredients), ctx, householdID, ingredientIDs)
+}
+
 // ListBrands mocks base method.
 func (m *MockItemReader) ListBrands(ctx context.Context) ([]inventory.Brand, error) {
 	m.ctrl.T.Helper()
@@ -1481,6 +1511,66 @@ func (mr *MockItemReaderMockRecorder) MatchItemIDs(ctx, term, userID any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDs", reflect.TypeOf((*MockItemReader)(nil).MatchItemIDs), ctx, term, userID)
 }
 
+// RepresentativeItemForIngredient mocks base method.
+func (m *MockItemReader) RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*inventory.Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RepresentativeItemForIngredient", ctx, householdID, ingredientID, userID)
+	ret0, _ := ret[0].(*inventory.Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RepresentativeItemForIngredient indicates an expected call of RepresentativeItemForIngredient.
+func (mr *MockItemReaderMockRecorder) RepresentativeItemForIngredient(ctx, householdID, ingredientID, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RepresentativeItemForIngredient", reflect.TypeOf((*MockItemReader)(nil).RepresentativeItemForIngredient), ctx, householdID, ingredientID, userID)
+}
+
+// ResolveIngredientItems mocks base method.
+func (m *MockItemReader) ResolveIngredientItems(ctx context.Context, householdID, ingredientID, userID int64) ([]inventory.Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveIngredientItems", ctx, householdID, ingredientID, userID)
+	ret0, _ := ret[0].([]inventory.Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveIngredientItems indicates an expected call of ResolveIngredientItems.
+func (mr *MockItemReaderMockRecorder) ResolveIngredientItems(ctx, householdID, ingredientID, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveIngredientItems", reflect.TypeOf((*MockItemReader)(nil).ResolveIngredientItems), ctx, householdID, ingredientID, userID)
+}
+
+// ResolveItemIngredient mocks base method.
+func (m *MockItemReader) ResolveItemIngredient(ctx context.Context, householdID, itemID int64) (*int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveItemIngredient", ctx, householdID, itemID)
+	ret0, _ := ret[0].(*int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveItemIngredient indicates an expected call of ResolveItemIngredient.
+func (mr *MockItemReaderMockRecorder) ResolveItemIngredient(ctx, householdID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveItemIngredient", reflect.TypeOf((*MockItemReader)(nil).ResolveItemIngredient), ctx, householdID, itemID)
+}
+
+// ResolveItemIngredients mocks base method.
+func (m *MockItemReader) ResolveItemIngredients(ctx context.Context, householdID int64, itemIDs []int64) (map[int64]*int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveItemIngredients", ctx, householdID, itemIDs)
+	ret0, _ := ret[0].(map[int64]*int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveItemIngredients indicates an expected call of ResolveItemIngredients.
+func (mr *MockItemReaderMockRecorder) ResolveItemIngredients(ctx, householdID, itemIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveItemIngredients", reflect.TypeOf((*MockItemReader)(nil).ResolveItemIngredients), ctx, householdID, itemIDs)
+}
+
 // SearchBrands mocks base method.
 func (m *MockItemReader) SearchBrands(ctx context.Context, term string, userID int64, rank inventory.RankParams, limit int32) ([]inventory.Brand, error) {
 	m.ctrl.T.Helper()
@@ -1524,6 +1614,115 @@ func (m *MockItemReader) SearchItems(ctx context.Context, userID int64, term str
 func (mr *MockItemReaderMockRecorder) SearchItems(ctx, userID, term, brandID, rank, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchItems", reflect.TypeOf((*MockItemReader)(nil).SearchItems), ctx, userID, term, brandID, rank, limit, offset)
+}
+
+// MockIngredientLinker is a mock of IngredientLinker interface.
+type MockIngredientLinker struct {
+	ctrl     *gomock.Controller
+	recorder *MockIngredientLinkerMockRecorder
+	isgomock struct{}
+}
+
+// MockIngredientLinkerMockRecorder is the mock recorder for MockIngredientLinker.
+type MockIngredientLinkerMockRecorder struct {
+	mock *MockIngredientLinker
+}
+
+// NewMockIngredientLinker creates a new mock instance.
+func NewMockIngredientLinker(ctrl *gomock.Controller) *MockIngredientLinker {
+	mock := &MockIngredientLinker{ctrl: ctrl}
+	mock.recorder = &MockIngredientLinkerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIngredientLinker) EXPECT() *MockIngredientLinkerMockRecorder {
+	return m.recorder
+}
+
+// ClearItemIngredientOverride mocks base method.
+func (m *MockIngredientLinker) ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearItemIngredientOverride", ctx, householdID, itemID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearItemIngredientOverride indicates an expected call of ClearItemIngredientOverride.
+func (mr *MockIngredientLinkerMockRecorder) ClearItemIngredientOverride(ctx, householdID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearItemIngredientOverride", reflect.TypeOf((*MockIngredientLinker)(nil).ClearItemIngredientOverride), ctx, householdID, itemID)
+}
+
+// GetOrCreateIngredient mocks base method.
+func (m *MockIngredientLinker) GetOrCreateIngredient(ctx context.Context, name string, categoryID, defaultUnitID *int64, by string) (inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOrCreateIngredient", ctx, name, categoryID, defaultUnitID, by)
+	ret0, _ := ret[0].(inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetOrCreateIngredient indicates an expected call of GetOrCreateIngredient.
+func (mr *MockIngredientLinkerMockRecorder) GetOrCreateIngredient(ctx, name, categoryID, defaultUnitID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrCreateIngredient", reflect.TypeOf((*MockIngredientLinker)(nil).GetOrCreateIngredient), ctx, name, categoryID, defaultUnitID, by)
+}
+
+// MergeIngredients mocks base method.
+func (m *MockIngredientLinker) MergeIngredients(ctx context.Context, sourceID, targetID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeIngredients", ctx, sourceID, targetID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MergeIngredients indicates an expected call of MergeIngredients.
+func (mr *MockIngredientLinkerMockRecorder) MergeIngredients(ctx, sourceID, targetID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeIngredients", reflect.TypeOf((*MockIngredientLinker)(nil).MergeIngredients), ctx, sourceID, targetID)
+}
+
+// SetItemIngredient mocks base method.
+func (m *MockIngredientLinker) SetItemIngredient(ctx context.Context, itemID int64, ingredientID *int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetItemIngredient", ctx, itemID, ingredientID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetItemIngredient indicates an expected call of SetItemIngredient.
+func (mr *MockIngredientLinkerMockRecorder) SetItemIngredient(ctx, itemID, ingredientID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemIngredient", reflect.TypeOf((*MockIngredientLinker)(nil).SetItemIngredient), ctx, itemID, ingredientID, by)
+}
+
+// SetItemIngredientOverride mocks base method.
+func (m *MockIngredientLinker) SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetItemIngredientOverride", ctx, householdID, itemID, ingredientID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetItemIngredientOverride indicates an expected call of SetItemIngredientOverride.
+func (mr *MockIngredientLinkerMockRecorder) SetItemIngredientOverride(ctx, householdID, itemID, ingredientID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemIngredientOverride", reflect.TypeOf((*MockIngredientLinker)(nil).SetItemIngredientOverride), ctx, householdID, itemID, ingredientID, by)
+}
+
+// SetUsualItemForIngredient mocks base method.
+func (m *MockIngredientLinker) SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUsualItemForIngredient", ctx, householdID, ingredientID, itemID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUsualItemForIngredient indicates an expected call of SetUsualItemForIngredient.
+func (mr *MockIngredientLinkerMockRecorder) SetUsualItemForIngredient(ctx, householdID, ingredientID, itemID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUsualItemForIngredient", reflect.TypeOf((*MockIngredientLinker)(nil).SetUsualItemForIngredient), ctx, householdID, ingredientID, itemID, by)
 }
 
 // MockItemWriter is a mock of ItemWriter interface.
@@ -2079,6 +2278,20 @@ func (mr *MockInventoryServiceMockRecorder) ApplyNutritionLabel(ctx, itemID, par
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyNutritionLabel", reflect.TypeOf((*MockInventoryService)(nil).ApplyNutritionLabel), ctx, itemID, parsed, by)
 }
 
+// ClearItemIngredientOverride mocks base method.
+func (m *MockInventoryService) ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearItemIngredientOverride", ctx, householdID, itemID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearItemIngredientOverride indicates an expected call of ClearItemIngredientOverride.
+func (mr *MockInventoryServiceMockRecorder) ClearItemIngredientOverride(ctx, householdID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearItemIngredientOverride", reflect.TypeOf((*MockInventoryService)(nil).ClearItemIngredientOverride), ctx, householdID, itemID)
+}
+
 // CountBrandsVisible mocks base method.
 func (m *MockInventoryService) CountBrandsVisible(ctx context.Context, userID int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -2566,6 +2779,21 @@ func (mr *MockInventoryServiceMockRecorder) GetNutrientTypeByName(ctx, name any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNutrientTypeByName", reflect.TypeOf((*MockInventoryService)(nil).GetNutrientTypeByName), ctx, name)
 }
 
+// GetOrCreateIngredient mocks base method.
+func (m *MockInventoryService) GetOrCreateIngredient(ctx context.Context, name string, categoryID, defaultUnitID *int64, by string) (inventory.Ingredient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOrCreateIngredient", ctx, name, categoryID, defaultUnitID, by)
+	ret0, _ := ret[0].(inventory.Ingredient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetOrCreateIngredient indicates an expected call of GetOrCreateIngredient.
+func (mr *MockInventoryServiceMockRecorder) GetOrCreateIngredient(ctx, name, categoryID, defaultUnitID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrCreateIngredient", reflect.TypeOf((*MockInventoryService)(nil).GetOrCreateIngredient), ctx, name, categoryID, defaultUnitID, by)
+}
+
 // GetUnitByID mocks base method.
 func (m *MockInventoryService) GetUnitByID(ctx context.Context, unitID int64) (inventory.Unit, error) {
 	m.ctrl.T.Helper()
@@ -2609,6 +2837,36 @@ func (m *MockInventoryService) GetUnitsByIDs(ctx context.Context, unitIDs []int6
 func (mr *MockInventoryServiceMockRecorder) GetUnitsByIDs(ctx, unitIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitsByIDs", reflect.TypeOf((*MockInventoryService)(nil).GetUnitsByIDs), ctx, unitIDs)
+}
+
+// GetUsualItemForIngredient mocks base method.
+func (m *MockInventoryService) GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*inventory.UsualItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsualItemForIngredient", ctx, householdID, ingredientID)
+	ret0, _ := ret[0].(*inventory.UsualItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsualItemForIngredient indicates an expected call of GetUsualItemForIngredient.
+func (mr *MockInventoryServiceMockRecorder) GetUsualItemForIngredient(ctx, householdID, ingredientID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsualItemForIngredient", reflect.TypeOf((*MockInventoryService)(nil).GetUsualItemForIngredient), ctx, householdID, ingredientID)
+}
+
+// GetUsualItemsForIngredients mocks base method.
+func (m *MockInventoryService) GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]inventory.UsualItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsualItemsForIngredients", ctx, householdID, ingredientIDs)
+	ret0, _ := ret[0].(map[int64]inventory.UsualItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsualItemsForIngredients indicates an expected call of GetUsualItemsForIngredients.
+func (mr *MockInventoryServiceMockRecorder) GetUsualItemsForIngredients(ctx, householdID, ingredientIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsualItemsForIngredients", reflect.TypeOf((*MockInventoryService)(nil).GetUsualItemsForIngredients), ctx, householdID, ingredientIDs)
 }
 
 // ListBrands mocks base method.
@@ -2806,6 +3064,80 @@ func (mr *MockInventoryServiceMockRecorder) MatchItemIDs(ctx, term, userID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDs", reflect.TypeOf((*MockInventoryService)(nil).MatchItemIDs), ctx, term, userID)
 }
 
+// MergeIngredients mocks base method.
+func (m *MockInventoryService) MergeIngredients(ctx context.Context, sourceID, targetID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeIngredients", ctx, sourceID, targetID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MergeIngredients indicates an expected call of MergeIngredients.
+func (mr *MockInventoryServiceMockRecorder) MergeIngredients(ctx, sourceID, targetID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeIngredients", reflect.TypeOf((*MockInventoryService)(nil).MergeIngredients), ctx, sourceID, targetID)
+}
+
+// RepresentativeItemForIngredient mocks base method.
+func (m *MockInventoryService) RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*inventory.Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RepresentativeItemForIngredient", ctx, householdID, ingredientID, userID)
+	ret0, _ := ret[0].(*inventory.Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RepresentativeItemForIngredient indicates an expected call of RepresentativeItemForIngredient.
+func (mr *MockInventoryServiceMockRecorder) RepresentativeItemForIngredient(ctx, householdID, ingredientID, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RepresentativeItemForIngredient", reflect.TypeOf((*MockInventoryService)(nil).RepresentativeItemForIngredient), ctx, householdID, ingredientID, userID)
+}
+
+// ResolveIngredientItems mocks base method.
+func (m *MockInventoryService) ResolveIngredientItems(ctx context.Context, householdID, ingredientID, userID int64) ([]inventory.Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveIngredientItems", ctx, householdID, ingredientID, userID)
+	ret0, _ := ret[0].([]inventory.Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveIngredientItems indicates an expected call of ResolveIngredientItems.
+func (mr *MockInventoryServiceMockRecorder) ResolveIngredientItems(ctx, householdID, ingredientID, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveIngredientItems", reflect.TypeOf((*MockInventoryService)(nil).ResolveIngredientItems), ctx, householdID, ingredientID, userID)
+}
+
+// ResolveItemIngredient mocks base method.
+func (m *MockInventoryService) ResolveItemIngredient(ctx context.Context, householdID, itemID int64) (*int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveItemIngredient", ctx, householdID, itemID)
+	ret0, _ := ret[0].(*int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveItemIngredient indicates an expected call of ResolveItemIngredient.
+func (mr *MockInventoryServiceMockRecorder) ResolveItemIngredient(ctx, householdID, itemID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveItemIngredient", reflect.TypeOf((*MockInventoryService)(nil).ResolveItemIngredient), ctx, householdID, itemID)
+}
+
+// ResolveItemIngredients mocks base method.
+func (m *MockInventoryService) ResolveItemIngredients(ctx context.Context, householdID int64, itemIDs []int64) (map[int64]*int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveItemIngredients", ctx, householdID, itemIDs)
+	ret0, _ := ret[0].(map[int64]*int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveItemIngredients indicates an expected call of ResolveItemIngredients.
+func (mr *MockInventoryServiceMockRecorder) ResolveItemIngredients(ctx, householdID, itemIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveItemIngredients", reflect.TypeOf((*MockInventoryService)(nil).ResolveItemIngredients), ctx, householdID, itemIDs)
+}
+
 // SearchBrands mocks base method.
 func (m *MockInventoryService) SearchBrands(ctx context.Context, term string, userID int64, rank inventory.RankParams, limit int32) ([]inventory.Brand, error) {
 	m.ctrl.T.Helper()
@@ -2865,6 +3197,34 @@ func (mr *MockInventoryServiceMockRecorder) SetBrandStatus(ctx, brandID, status,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBrandStatus", reflect.TypeOf((*MockInventoryService)(nil).SetBrandStatus), ctx, brandID, status, approverUserID, by)
 }
 
+// SetItemIngredient mocks base method.
+func (m *MockInventoryService) SetItemIngredient(ctx context.Context, itemID int64, ingredientID *int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetItemIngredient", ctx, itemID, ingredientID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetItemIngredient indicates an expected call of SetItemIngredient.
+func (mr *MockInventoryServiceMockRecorder) SetItemIngredient(ctx, itemID, ingredientID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemIngredient", reflect.TypeOf((*MockInventoryService)(nil).SetItemIngredient), ctx, itemID, ingredientID, by)
+}
+
+// SetItemIngredientOverride mocks base method.
+func (m *MockInventoryService) SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetItemIngredientOverride", ctx, householdID, itemID, ingredientID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetItemIngredientOverride indicates an expected call of SetItemIngredientOverride.
+func (mr *MockInventoryServiceMockRecorder) SetItemIngredientOverride(ctx, householdID, itemID, ingredientID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemIngredientOverride", reflect.TypeOf((*MockInventoryService)(nil).SetItemIngredientOverride), ctx, householdID, itemID, ingredientID, by)
+}
+
 // SetItemNutrients mocks base method.
 func (m *MockInventoryService) SetItemNutrients(ctx context.Context, itemID int64, entries []inventory.NutrientEntry, by string) error {
 	m.ctrl.T.Helper()
@@ -2891,6 +3251,20 @@ func (m *MockInventoryService) SetItemStatus(ctx context.Context, itemID int64, 
 func (mr *MockInventoryServiceMockRecorder) SetItemStatus(ctx, itemID, status, approverUserID, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetItemStatus", reflect.TypeOf((*MockInventoryService)(nil).SetItemStatus), ctx, itemID, status, approverUserID, by)
+}
+
+// SetUsualItemForIngredient mocks base method.
+func (m *MockInventoryService) SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUsualItemForIngredient", ctx, householdID, ingredientID, itemID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUsualItemForIngredient indicates an expected call of SetUsualItemForIngredient.
+func (mr *MockInventoryServiceMockRecorder) SetUsualItemForIngredient(ctx, householdID, ingredientID, itemID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUsualItemForIngredient", reflect.TypeOf((*MockInventoryService)(nil).SetUsualItemForIngredient), ctx, householdID, ingredientID, itemID, by)
 }
 
 // SubmitBrand mocks base method.

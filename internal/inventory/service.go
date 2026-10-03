@@ -1434,6 +1434,80 @@ func (s *Service) SetUsualItemForIngredient(ctx context.Context, householdID, in
 	return nil
 }
 
+// GetUsualItemsForIngredients is the batch form of
+// GetUsualItemForIngredient, used by grocery-line preloads.
+func (s *Service) GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]UsualItem, error) {
+	out := make(map[int64]UsualItem, len(ingredientIDs))
+	if len(ingredientIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.ListUsualItemsForIngredients(ctx, sqlc.ListUsualItemsForIngredientsParams{
+		HouseholdID:   householdID,
+		IngredientIds: ingredientIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list usual items: %w", domainerr.FromStorage(err))
+	}
+	for _, r := range rows {
+		out[r.IngredientID] = UsualItem{ItemID: r.ItemID, LastUsedAt: r.LastUsedAt}
+	}
+	return out, nil
+}
+
+// ResolveItemIngredients is the batch form of ResolveItemIngredient: every
+// requested item maps to its resolved ingredient ID or nil when unlinked.
+func (s *Service) ResolveItemIngredients(ctx context.Context, householdID int64, itemIDs []int64) (map[int64]*int64, error) {
+	out := make(map[int64]*int64, len(itemIDs))
+	if len(itemIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.GetItemIngredientsForItems(ctx, sqlc.GetItemIngredientsForItemsParams{
+		HouseholdID: householdID,
+		ItemIds:     itemIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve item ingredients: %w", domainerr.FromStorage(err))
+	}
+	for _, r := range rows {
+		switch {
+		case r.OverrideIngredientID.Valid:
+			v := r.OverrideIngredientID.Int64
+			out[r.ItemID] = &v
+		case r.IngredientID.Valid:
+			v := r.IngredientID.Int64
+			out[r.ItemID] = &v
+		default:
+			out[r.ItemID] = nil
+		}
+	}
+	return out, nil
+}
+
+// RepresentativeItemForIngredient picks a branded item to stand in for the
+// ingredient where an item is required (e.g. nutrition rollups). Order:
+// household usual brand → first linked item for the household → nil.
+func (s *Service) RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*Item, error) {
+	if usual, err := s.GetUsualItemForIngredient(ctx, householdID, ingredientID); err != nil {
+		return nil, err
+	} else if usual != nil {
+		it, err := s.GetItemByID(ctx, usual.ItemID)
+		if err == nil {
+			return &it, nil
+		}
+		if !errors.Is(err, domainerr.ErrNotFound) {
+			return nil, err
+		}
+	}
+	items, err := s.ResolveIngredientItems(ctx, householdID, ingredientID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	return &items[0], nil
+}
+
 // MergeIngredients folds source into target: every reference across
 // recipes, meal slots, events, grocery lines, aisle routing, item links,
 // and household prefs is repointed, then the source row is deleted. Rows

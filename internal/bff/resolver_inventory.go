@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -269,7 +270,7 @@ func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }
 	if err != nil {
 		return nil, fmt.Errorf("frequent items: %w", err)
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, items)
+	ch, err := loadItemChildren(ctx, r.InventoryService, items, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +464,7 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, items)
+	ch, err := loadItemChildren(ctx, r.InventoryService, items, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -691,6 +692,113 @@ func (r *Resolver) DeleteIngredient(ctx context.Context, args struct{ ID graphql
 	return true, nil
 }
 
+// GetOrCreateIngredient is the member-facing free-create: normalized-name
+// dedupe means a name that already exists returns the existing row instead
+// of minting a duplicate.
+func (r *Resolver) GetOrCreateIngredient(ctx context.Context, args struct{ Input createIngredientInput }) (*ingredientResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	categoryID, err := optionalID(args.Input.CategoryID)
+	if err != nil {
+		return nil, err
+	}
+	var defaultUnitID *int64
+	if u := strings.TrimSpace(derefString(args.Input.DefaultUnit)); u != "" {
+		id, err := resolveUnitID(ctx, r.InventoryService, u)
+		if err != nil {
+			return nil, err
+		}
+		defaultUnitID = &id
+	}
+	in, err := r.InventoryService.GetOrCreateIngredient(ctx, args.Input.Name, categoryID, defaultUnitID, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+}
+
+// MergeIngredient folds one ingredient into another — the admin dedupe
+// tool behind the "47 carrots" safety valve.
+func (r *Resolver) MergeIngredient(ctx context.Context, args struct {
+	FromID graphql.ID
+	IntoID graphql.ID
+}) (bool, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	fromID, err := parseID(string(args.FromID))
+	if err != nil {
+		return false, err
+	}
+	intoID, err := parseID(string(args.IntoID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.MergeIngredients(ctx, fromID, intoID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetItemIngredient writes the catalog-level item -> ingredient link.
+// Admin-only: the link is global, so it must not be member-editable.
+func (r *Resolver) SetItemIngredient(ctx context.Context, args struct {
+	ItemID       graphql.ID
+	IngredientID *graphql.ID
+}) (bool, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return false, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return false, err
+	}
+	ingredientID, err := optionalID(args.IngredientID)
+	if err != nil {
+		return false, err
+	}
+	if err := r.InventoryService.SetItemIngredient(ctx, itemID, ingredientID, u.Email); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetHouseholdItemIngredient records the household-level remap — "this
+// product is a different ingredient for us". Null clears the override.
+func (r *Resolver) SetHouseholdItemIngredient(ctx context.Context, args struct {
+	ItemID       graphql.ID
+	IngredientID *graphql.ID
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	itemID, err := parseID(string(args.ItemID))
+	if err != nil {
+		return false, err
+	}
+	ingredientID, err := optionalID(args.IngredientID)
+	if err != nil {
+		return false, err
+	}
+	if ingredientID == nil {
+		if err := r.InventoryService.ClearItemIngredientOverride(ctx, u.HouseholdID, itemID); err != nil {
+			if errors.Is(err, domainerr.ErrNotFound) {
+				return true, nil
+			}
+			return false, err
+		}
+		return true, nil
+	}
+	if err := r.InventoryService.SetItemIngredientOverride(ctx, u.HouseholdID, itemID, *ingredientID, u.Email); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ingredientResolver resolves Ingredient fields.
 type ingredientResolver struct {
 	inv ItemReader
@@ -877,7 +985,9 @@ func (r *Resolver) PendingItems(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, items)
+	// Admin browse is catalog-scoped — pass 0 so resolution ignores
+	// household overrides.
+	ch, err := loadItemChildren(ctx, r.InventoryService, items, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1395,6 +1505,62 @@ func (r *itemResolver) SubmittedByMe(ctx context.Context) bool {
 func (r *itemResolver) NetWeight() *float64 { return r.it.NetWeight }
 
 func (r *itemResolver) IsMetric() bool { return r.it.IsMetric }
+
+// Ingredient resolves the catalog-level generic ingredient this branded
+// item is linked to, or null when unlinked.
+func (r *itemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
+	if r.it.IngredientID == nil {
+		return nil, nil
+	}
+	return r.ingredientByID(ctx, *r.it.IngredientID)
+}
+
+// HouseholdIngredient resolves the override-aware ingredient: the
+// household's remap when one exists, else the catalog link. This is the
+// resolution stock rollups and recipe matching actually use.
+func (r *itemResolver) HouseholdIngredient(ctx context.Context) (*ingredientResolver, error) {
+	var id *int64
+	found := false
+	if r.ch != nil {
+		if resolved, ok := r.ch.resolved[r.it.ItemID]; ok {
+			id, found = resolved, true
+		}
+	}
+	if !found {
+		slog.Default().Warn("item.householdIngredient missed preload; lazy-loading", "item_id", r.it.ItemID)
+		u, ok := currentuser.FromContext(ctx)
+		if !ok {
+			return nil, errForbidden()
+		}
+		resolved, err := r.inv.ResolveItemIngredient(ctx, u.HouseholdID, r.it.ItemID)
+		if err != nil {
+			return nil, err
+		}
+		id = resolved
+	}
+	if id == nil {
+		return nil, nil
+	}
+	return r.ingredientByID(ctx, *id)
+}
+
+// ingredientByID renders an ingredient from the preloaded map, falling
+// back to a lazy fetch when the preload missed it.
+func (r *itemResolver) ingredientByID(ctx context.Context, ingredientID int64) (*ingredientResolver, error) {
+	if r.ch != nil {
+		if in, ok := r.ch.ingredients[ingredientID]; ok {
+			return &ingredientResolver{inv: r.inv, in: in}, nil
+		}
+	}
+	in, err := r.inv.GetIngredientByID(ctx, ingredientID)
+	if err != nil {
+		if errors.Is(err, domainerr.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &ingredientResolver{inv: r.inv, in: in}, nil
+}
 
 // requireItemModifiable loads the item and returns errForbidden unless the
 // user may edit it (admin, or submitter of a still-pending item).

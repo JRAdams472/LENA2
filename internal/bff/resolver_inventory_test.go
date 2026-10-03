@@ -289,6 +289,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{0}).Return(nil, nil)
 		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
+		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(7), []int64{1, 2}).Return(map[int64]*int64{1: nil, 2: nil}, nil)
 		r := &Resolver{InventoryService: inv, UserPrefsService: up}
 		res, err := r.Items(invCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)
@@ -901,6 +902,98 @@ func TestResolver_Inventory_IngredientMutations(t *testing.T) {
 	})
 }
 
+func TestResolver_Inventory_IngredientLinking(t *testing.T) {
+	t.Run("getOrCreateIngredient returns the normalized match", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().GetOrCreateIngredient(gomock.Any(), "Corn", (*int64)(nil), (*int64)(nil), invTestEmail).
+			Return(inventory.Ingredient{IngredientID: 5, Name: "corn", IsActive: true}, nil)
+		r := &Resolver{InventoryService: inv}
+		// Members may free-create; the service dedupes on normalized name.
+		res, err := r.GetOrCreateIngredient(invUserCtx(), struct{ Input createIngredientInput }{
+			Input: createIngredientInput{Name: "Corn"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("5"), res.ID())
+		assert.Equal(t, "corn", res.Name())
+	})
+
+	t.Run("getOrCreateIngredient unauthorized", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.GetOrCreateIngredient(context.Background(), struct{ Input createIngredientInput }{
+			Input: createIngredientInput{Name: "Corn"},
+		})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("mergeIngredient repoints the source into the target", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().MergeIngredients(gomock.Any(), int64(3), int64(9)).Return(nil)
+		r := &Resolver{InventoryService: inv}
+		ok, err := r.MergeIngredient(invCtx(), struct {
+			FromID graphql.ID
+			IntoID graphql.ID
+		}{FromID: "3", IntoID: "9"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("mergeIngredient forbidden for non-admin", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.MergeIngredient(invUserCtx(), struct {
+			FromID graphql.ID
+			IntoID graphql.ID
+		}{FromID: "3", IntoID: "9"})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
+	t.Run("setItemIngredient links then clears the catalog link", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SetItemIngredient(gomock.Any(), int64(42), invInt64Ptr(7), invTestEmail).Return(nil)
+		inv.EXPECT().SetItemIngredient(gomock.Any(), int64(42), (*int64)(nil), invTestEmail).Return(nil)
+		r := &Resolver{InventoryService: inv}
+		ok, err := r.SetItemIngredient(invCtx(), struct {
+			ItemID       graphql.ID
+			IngredientID *graphql.ID
+		}{ItemID: "42", IngredientID: gqlIDPtr("7")})
+		require.NoError(t, err)
+		assert.True(t, ok)
+		ok, err = r.SetItemIngredient(invCtx(), struct {
+			ItemID       graphql.ID
+			IngredientID *graphql.ID
+		}{ItemID: "42"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("setItemIngredient forbidden for non-admin", func(t *testing.T) {
+		r := &Resolver{InventoryService: newInvMock(t)}
+		_, err := r.SetItemIngredient(invUserCtx(), struct {
+			ItemID       graphql.ID
+			IngredientID *graphql.ID
+		}{ItemID: "42", IngredientID: gqlIDPtr("7")})
+		require.ErrorContains(t, err, "forbidden")
+	})
+
+	t.Run("setHouseholdItemIngredient sets then clears the override", func(t *testing.T) {
+		inv := newInvMock(t)
+		inv.EXPECT().SetItemIngredientOverride(gomock.Any(), int64(7), int64(42), int64(7), invTestEmail).Return(nil)
+		inv.EXPECT().ClearItemIngredientOverride(gomock.Any(), int64(7), int64(42)).Return(nil)
+		r := &Resolver{InventoryService: inv}
+		ok, err := r.SetHouseholdItemIngredient(invUserCtx(), struct {
+			ItemID       graphql.ID
+			IngredientID *graphql.ID
+		}{ItemID: "42", IngredientID: gqlIDPtr("7")})
+		require.NoError(t, err)
+		assert.True(t, ok)
+		ok, err = r.SetHouseholdItemIngredient(invUserCtx(), struct {
+			ItemID       graphql.ID
+			IngredientID *graphql.ID
+		}{ItemID: "42"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+}
+
 func TestResolver_ItemByUpc(t *testing.T) {
 	type args = struct{ Code string }
 
@@ -980,6 +1073,8 @@ func TestResolver_PendingItems(t *testing.T) {
 		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{0}).Return(nil, nil)
 		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{9}).Return(nil, nil)
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{9}).Return(nil, nil)
+		// Admin browse resolves with household 0 — catalog link only.
+		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(0), []int64{9}).Return(map[int64]*int64{9: nil}, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.PendingItems(invCtx(), pageArgs{Page: 1, PageSize: 25})
 		require.NoError(t, err)

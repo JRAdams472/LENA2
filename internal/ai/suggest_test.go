@@ -103,6 +103,14 @@ func (sugNamer) GetUnitsByIDs(context.Context, []int64) ([]inventory.Unit, error
 	return nil, nil
 }
 
+func (sugNamer) ResolveItemIngredients(_ context.Context, _ int64, ids []int64) (map[int64]*int64, error) {
+	out := make(map[int64]*int64, len(ids))
+	for _, id := range ids {
+		out[id] = nil
+	}
+	return out, nil
+}
+
 type sugTastes struct{}
 
 func (sugTastes) TopUserSelections(context.Context, int64, string, int32) ([]analytics.SelectionCount, error) {

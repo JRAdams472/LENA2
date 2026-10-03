@@ -1103,6 +1103,50 @@ func (q *Queries) GetItemIngredient(ctx context.Context, arg GetItemIngredientPa
 	return i, err
 }
 
+const getItemIngredientsForItems = `-- name: GetItemIngredientsForItems :many
+SELECT i.item_id,
+       o.ingredient_id AS override_ingredient_id,
+       i.ingredient_id
+FROM inventory.item i
+LEFT JOIN userprefs.household_item_ingredient o
+       ON o.item_id = i.item_id
+      AND o.household_id = $1
+WHERE i.item_id = ANY($2::bigint[])
+`
+
+type GetItemIngredientsForItemsParams struct {
+	HouseholdID int64   `json:"household_id"`
+	ItemIds     []int64 `json:"item_ids"`
+}
+
+type GetItemIngredientsForItemsRow struct {
+	ItemID               int64       `json:"item_id"`
+	OverrideIngredientID pgtype.Int8 `json:"override_ingredient_id"`
+	IngredientID         pgtype.Int8 `json:"ingredient_id"`
+}
+
+// Batch form of GetItemIngredient: one row per requested item carrying the
+// override and catalog ingredient (override wins; both NULL when unlinked).
+func (q *Queries) GetItemIngredientsForItems(ctx context.Context, arg GetItemIngredientsForItemsParams) ([]GetItemIngredientsForItemsRow, error) {
+	rows, err := q.db.Query(ctx, getItemIngredientsForItems, arg.HouseholdID, arg.ItemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetItemIngredientsForItemsRow{}
+	for rows.Next() {
+		var i GetItemIngredientsForItemsRow
+		if err := rows.Scan(&i.ItemID, &i.OverrideIngredientID, &i.IngredientID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getItemsByIDs = `-- name: GetItemsByIDs :many
 SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
@@ -1928,6 +1972,49 @@ func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.ToBaseFactor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsualItemsForIngredients = `-- name: ListUsualItemsForIngredients :many
+SELECT household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1
+  AND ingredient_id = ANY($2::bigint[])
+`
+
+type ListUsualItemsForIngredientsParams struct {
+	HouseholdID   int64   `json:"household_id"`
+	IngredientIds []int64 `json:"ingredient_ids"`
+}
+
+// Batch "usual brand" lookup for grocery-line preloads — one row per
+// (ingredient, household) pair recorded by brand-picked check-offs.
+func (q *Queries) ListUsualItemsForIngredients(ctx context.Context, arg ListUsualItemsForIngredientsParams) ([]UserprefsHouseholdIngredientItem, error) {
+	rows, err := q.db.Query(ctx, listUsualItemsForIngredients, arg.HouseholdID, arg.IngredientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsHouseholdIngredientItem{}
+	for rows.Next() {
+		var i UserprefsHouseholdIngredientItem
+		if err := rows.Scan(
+			&i.HouseholdID,
+			&i.IngredientID,
+			&i.ItemID,
+			&i.LastUsedAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
