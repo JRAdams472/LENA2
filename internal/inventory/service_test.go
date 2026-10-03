@@ -1460,3 +1460,181 @@ func TestSearchIngredients_MapsRankParams(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, int64(4), got[0].IngredientID)
 }
+
+func TestGetOrCreateIngredient_Existing(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().FindIngredientByNormalizedName(ctx, "corn").
+		Return(sqlc.InventoryIngredient{IngredientID: 9, Name: "corn", IsActive: true}, nil)
+
+	in, err := s.GetOrCreateIngredient(ctx, "  CORN  ", nil, nil, "alice")
+	require.NoError(t, err)
+	assert.Equal(t, int64(9), in.IngredientID)
+}
+
+func TestGetOrCreateIngredient_Creates(t *testing.T) {
+	ctx := context.Background()
+	catID, unitID := int64(3), int64(4)
+	s, q := newTestService(t)
+	q.EXPECT().FindIngredientByNormalizedName(ctx, "polenta").Return(sqlc.InventoryIngredient{}, pgx.ErrNoRows)
+	q.EXPECT().CreateIngredient(ctx, sqlc.CreateIngredientParams{
+		Name:          "polenta",
+		CategoryID:    pgtype.Int8{Int64: 3, Valid: true},
+		DefaultUnitID: pgtype.Int8{Int64: 4, Valid: true},
+		IsActive:      true,
+		CreatedBy:     "alice",
+		UpdatedBy:     pgtype.Text{String: "alice", Valid: true},
+	}).Return(sqlc.InventoryIngredient{IngredientID: 12, Name: "polenta", IsActive: true}, nil)
+
+	in, err := s.GetOrCreateIngredient(ctx, "  polenta ", &catID, &unitID, "alice")
+	require.NoError(t, err)
+	assert.Equal(t, int64(12), in.IngredientID)
+}
+
+func TestGetOrCreateIngredient_InsertRace(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().FindIngredientByNormalizedName(ctx, "corn").Return(sqlc.InventoryIngredient{}, pgx.ErrNoRows)
+	q.EXPECT().CreateIngredient(ctx, gomock.Any()).
+		Return(sqlc.InventoryIngredient{}, &pgconn.PgError{Code: "23505"})
+	// The losing inserter re-reads and returns the winner's row.
+	q.EXPECT().FindIngredientByNormalizedName(ctx, "corn").
+		Return(sqlc.InventoryIngredient{IngredientID: 9, Name: "corn"}, nil)
+
+	in, err := s.GetOrCreateIngredient(ctx, "corn", nil, nil, "alice")
+	require.NoError(t, err)
+	assert.Equal(t, int64(9), in.IngredientID)
+}
+
+func TestGetOrCreateIngredient_Blank(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newTestService(t)
+	_, err := s.GetOrCreateIngredient(ctx, "   ", nil, nil, "alice")
+	assert.ErrorIs(t, err, domainerr.ErrValidation)
+}
+
+func TestResolveItemIngredient(t *testing.T) {
+	ctx := context.Background()
+	params := sqlc.GetItemIngredientParams{ItemID: 11, HouseholdID: 2}
+
+	t.Run("override wins", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().GetItemIngredient(ctx, params).Return(sqlc.GetItemIngredientRow{
+			OverrideIngredientID: pgtype.Int8{Int64: 8, Valid: true},
+			IngredientID:         pgtype.Int8{Int64: 7, Valid: true},
+		}, nil)
+		got, err := s.ResolveItemIngredient(ctx, 2, 11)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, int64(8), *got)
+	})
+
+	t.Run("catalog link", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().GetItemIngredient(ctx, params).Return(sqlc.GetItemIngredientRow{
+			IngredientID: pgtype.Int8{Int64: 7, Valid: true},
+		}, nil)
+		got, err := s.ResolveItemIngredient(ctx, 2, 11)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, int64(7), *got)
+	})
+
+	t.Run("unlinked", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().GetItemIngredient(ctx, params).Return(sqlc.GetItemIngredientRow{}, nil)
+		got, err := s.ResolveItemIngredient(ctx, 2, 11)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+}
+
+func TestResolveIngredientItems(t *testing.T) {
+	ctx := context.Background()
+	s, q := newTestService(t)
+	q.EXPECT().ListItemsForIngredient(ctx, sqlc.ListItemsForIngredientParams{
+		IngredientID:      7,
+		HouseholdID:       2,
+		SubmittedByUserID: pgtype.Int8{Int64: 5, Valid: true},
+	}).Return([]sqlc.InventoryItem{{ItemID: 11, Name: "Green Giant Corn"}}, nil)
+
+	items, err := s.ResolveIngredientItems(ctx, 2, 7, 5)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "Green Giant Corn", items[0].Name)
+}
+
+func TestUsualItemForIngredient(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	t.Run("set and get", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().UpsertUsualItemForIngredient(ctx, sqlc.UpsertUsualItemForIngredientParams{
+			HouseholdID: 2, IngredientID: 7, ItemID: 11, CreatedBy: "alice",
+		}).Return(sqlc.UserprefsHouseholdIngredientItem{ItemID: 11, LastUsedAt: now}, nil)
+		require.NoError(t, s.SetUsualItemForIngredient(ctx, 2, 7, 11, "alice"))
+
+		q.EXPECT().GetUsualItemForIngredient(ctx, sqlc.GetUsualItemForIngredientParams{
+			HouseholdID: 2, IngredientID: 7,
+		}).Return(sqlc.UserprefsHouseholdIngredientItem{ItemID: 11, LastUsedAt: now}, nil)
+		u, err := s.GetUsualItemForIngredient(ctx, 2, 7)
+		require.NoError(t, err)
+		require.NotNil(t, u)
+		assert.Equal(t, int64(11), u.ItemID)
+	})
+
+	t.Run("none recorded", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().GetUsualItemForIngredient(ctx, gomock.Any()).
+			Return(sqlc.UserprefsHouseholdIngredientItem{}, pgx.ErrNoRows)
+		u, err := s.GetUsualItemForIngredient(ctx, 2, 99)
+		require.NoError(t, err)
+		assert.Nil(t, u)
+	})
+}
+
+func TestMergeIngredients(t *testing.T) {
+	ctx := context.Background()
+	nn := func(v int64) pgtype.Int8 { return pgtype.Int8{Int64: v, Valid: true} }
+
+	t.Run("repoints every reference then deletes source", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().GetIngredientByID(ctx, int64(1)).Return(sqlc.InventoryIngredient{IngredientID: 1}, nil)
+		q.EXPECT().GetIngredientByID(ctx, int64(2)).Return(sqlc.InventoryIngredient{IngredientID: 2}, nil)
+		q.EXPECT().MergeIngredientRefsItem(ctx, sqlc.MergeIngredientRefsItemParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().MergeIngredientRefsOverride(ctx, sqlc.MergeIngredientRefsOverrideParams{IngredientID: 1, IngredientID_2: 2}).Return(nil)
+		q.EXPECT().MergeIngredientRefsUsual(ctx, sqlc.MergeIngredientRefsUsualParams{IngredientID: 1, IngredientID_2: 2}).Return(nil)
+		q.EXPECT().DeleteIngredientRefsUsual(ctx, int64(1)).Return(nil)
+		q.EXPECT().MergeIngredientRefsRecipeItem(ctx, sqlc.MergeIngredientRefsRecipeItemParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().DemoteIngredientRefsRecipeItem(ctx, nn(1)).Return(nil)
+		q.EXPECT().DeleteIngredientRefsRecipeItem(ctx, nn(1)).Return(nil)
+		q.EXPECT().MergeIngredientRefsMealSlot(ctx, sqlc.MergeIngredientRefsMealSlotParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().DemoteIngredientRefsMealSlot(ctx, nn(1)).Return(nil)
+		q.EXPECT().DeleteIngredientRefsMealSlot(ctx, nn(1)).Return(nil)
+		q.EXPECT().MergeIngredientRefsEventRecipeItem(ctx, sqlc.MergeIngredientRefsEventRecipeItemParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().DemoteIngredientRefsEventRecipeItem(ctx, nn(1)).Return(nil)
+		q.EXPECT().DeleteIngredientRefsEventRecipeItem(ctx, nn(1)).Return(nil)
+		q.EXPECT().MergeIngredientRefsGroceryLine(ctx, sqlc.MergeIngredientRefsGroceryLineParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().DemoteIngredientRefsGroceryLine(ctx, nn(1)).Return(nil)
+		q.EXPECT().DeleteIngredientRefsGroceryLine(ctx, nn(1)).Return(nil)
+		q.EXPECT().MergeIngredientRefsAisle(ctx, sqlc.MergeIngredientRefsAisleParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().DeleteIngredientRefsAisle(ctx, nn(1)).Return(nil)
+		q.EXPECT().MergeIngredientRefsRoute(ctx, sqlc.MergeIngredientRefsRouteParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
+		q.EXPECT().DeleteIngredientRefsRoute(ctx, nn(1)).Return(nil)
+		q.EXPECT().DeleteIngredient(ctx, int64(1)).Return(nil)
+
+		require.NoError(t, s.MergeIngredients(ctx, 1, 2))
+	})
+
+	t.Run("same id rejected", func(t *testing.T) {
+		s, _ := newTestService(t)
+		assert.ErrorIs(t, s.MergeIngredients(ctx, 7, 7), domainerr.ErrValidation)
+	})
+
+	t.Run("missing source", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().GetIngredientByID(ctx, int64(1)).Return(sqlc.InventoryIngredient{}, pgx.ErrNoRows)
+		assert.Error(t, s.MergeIngredients(ctx, 1, 2))
+	})
+}

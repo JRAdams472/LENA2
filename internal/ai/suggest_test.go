@@ -91,6 +91,14 @@ func (sugNamer) GetItemsByIDs(_ context.Context, ids []int64) ([]inventory.Item,
 	return out, nil
 }
 
+func (sugNamer) GetIngredientsByIDs(_ context.Context, ids []int64) ([]inventory.Ingredient, error) {
+	var out []inventory.Ingredient
+	for _, id := range ids {
+		out = append(out, inventory.Ingredient{IngredientID: id, Name: fmt.Sprintf("ingredient%d", id)})
+	}
+	return out, nil
+}
+
 func (sugNamer) GetUnitsByIDs(context.Context, []int64) ([]inventory.Unit, error) {
 	return nil, nil
 }

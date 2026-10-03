@@ -384,9 +384,18 @@ func (s *Service) buildRecipe(ctx context.Context, review *ocrimport.ReviewRecip
 
 	items := make([]recipe.RecipeItem, 0, len(review.Items))
 	for i, it := range review.Items {
-		itemID, err := strconv.ParseInt(it.ItemID, 10, 64)
+		refID, err := strconv.ParseInt(it.ItemID, 10, 64)
 		if err != nil {
 			return rcp, nil, nil, fmt.Errorf("item %d invalid itemId: %w", i, err)
+		}
+		// itemKind tells which catalog the selected id belongs to: an
+		// "ingredient" selection binds ingredient_id; anything else is a
+		// branded item (empty kind = legacy payload).
+		var itemID, ingredientID *int64
+		if it.ItemKind == "ingredient" {
+			ingredientID = &refID
+		} else {
+			itemID = &refID
 		}
 		unitID, err := strconv.ParseInt(it.UnitID, 10, 64)
 		if err != nil {
@@ -415,6 +424,7 @@ func (s *Service) buildRecipe(ctx context.Context, review *ocrimport.ReviewRecip
 		}
 		items = append(items, recipe.RecipeItem{
 			ItemID:       itemID,
+			IngredientID: ingredientID,
 			Quantity:     qty,
 			UnitID:       unitID,
 			SectionName:  section,

@@ -61,7 +61,7 @@ func TestResolver_FoodEvent(t *testing.T) {
 		{EventRecipeStepID: 50, EventRecipeID: 9, StepNumber: 1, Instruction: "mix"},
 	}, nil)
 	ev.EXPECT().ListEventRecipeItemsForEvents(gomock.Any(), []int64{3}, int64(7)).Return([]event.EventRecipeItem{
-		{EventRecipeItemID: 60, EventRecipeID: 9, ItemID: 50, Quantity: 2, UnitID: 3},
+		{EventRecipeItemID: 60, EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 2, UnitID: 3},
 	}, nil)
 
 	res, err := r.FoodEvent(evCtx(), struct{ ID graphql.ID }{ID: "3"})
@@ -266,7 +266,7 @@ func TestResolver_AddEventRecipe(t *testing.T) {
 	}, nil)
 	ev.EXPECT().ReplaceEventRecipeSteps(gomock.Any(), int64(9), int64(7), gomock.Any(), "ev-caller@example.com").Return(nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeItem{
-		{RecipeID: 11, ItemID: 50, Quantity: 2, UnitID: 3},
+		{RecipeID: 11, ItemID: int64Ptr(50), Quantity: 2, UnitID: 3},
 	}, nil)
 	ev.EXPECT().ReplaceEventRecipeItems(gomock.Any(), int64(9), int64(7), gomock.Any(), &base, "ev-caller@example.com").Return(nil)
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
@@ -534,9 +534,9 @@ func TestResolver_AddEventRecipeItem(t *testing.T) {
 	}, nil)
 	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 	ev.EXPECT().AddEventRecipeItem(gomock.Any(), event.EventRecipeItem{
-		EventRecipeID: 9, ItemID: 50, Quantity: 1.5, UnitID: 3,
+		EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 1.5, UnitID: 3,
 	}, int64(7), "ev-caller@example.com").Return(event.EventRecipeItem{
-		EventRecipeItemID: 60, EventRecipeID: 9, ItemID: 50, Quantity: 1.5, UnitID: 3,
+		EventRecipeItemID: 60, EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 1.5, UnitID: 3,
 	}, nil)
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindEventUpdated,
@@ -545,7 +545,7 @@ func TestResolver_AddEventRecipeItem(t *testing.T) {
 	res, err := r.AddEventRecipeItem(evCtx(), struct {
 		EventRecipeID graphql.ID
 		Input         eventRecipeItemInput
-	}{EventRecipeID: "9", Input: eventRecipeItemInput{ItemID: "50", Quantity: 1.5, Unit: "cup"}})
+	}{EventRecipeID: "9", Input: eventRecipeItemInput{ItemID: gqlIDPtr("50"), Quantity: 1.5, Unit: "cup"}})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("60"), res.ID())
 	assert.Equal(t, 1.5, res.Quantity())
@@ -560,7 +560,7 @@ func TestResolver_UpdateEventRecipeItem(t *testing.T) {
 	r := &Resolver{EventService: ev, HouseholdService: h, IdentityService: idSvc, InventoryService: inv}
 
 	ev.EXPECT().GetEventRecipeItemByID(gomock.Any(), int64(60), int64(7)).Return(event.EventRecipeItem{
-		EventRecipeItemID: 60, EventRecipeID: 9, ItemID: 50, Quantity: 1, UnitID: 3,
+		EventRecipeItemID: 60, EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 1, UnitID: 3,
 	}, nil)
 	servings, base := int32(8), int32(4)
 	ev.EXPECT().GetEventRecipeByID(gomock.Any(), int64(9), int64(7)).Return(event.EventRecipe{
@@ -569,19 +569,19 @@ func TestResolver_UpdateEventRecipeItem(t *testing.T) {
 	}, nil)
 	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
 	ev.EXPECT().UpdateEventRecipeItem(gomock.Any(), int64(60), int64(7), event.EventRecipeItem{
-		ItemID: 50, Quantity: 3, UnitID: 3,
+		ItemID: int64Ptr(50), Quantity: 3, UnitID: 3,
 	}, "ev-caller@example.com").Return(nil)
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindEventUpdated,
 		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	ev.EXPECT().GetEventRecipeItemByID(gomock.Any(), int64(60), int64(7)).Return(event.EventRecipeItem{
-		EventRecipeItemID: 60, EventRecipeID: 9, ItemID: 50, Quantity: 3, UnitID: 3,
+		EventRecipeItemID: 60, EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 3, UnitID: 3,
 	}, nil)
 
 	res, err := r.UpdateEventRecipeItem(evCtx(), struct {
 		ID    graphql.ID
 		Input eventRecipeItemInput
-	}{ID: "60", Input: eventRecipeItemInput{ItemID: "50", Quantity: 3, Unit: "cup"}})
+	}{ID: "60", Input: eventRecipeItemInput{ItemID: gqlIDPtr("50"), Quantity: 3, Unit: "cup"}})
 	require.NoError(t, err)
 	// Serving 8 over a base of 4 doubles the stored quantity on read.
 	assert.Equal(t, float64(3), res.BaseQuantity())
@@ -634,10 +634,10 @@ func TestResolver_SyncEventRecipe(t *testing.T) {
 		{StepNumber: 1, Instruction: "new instruction"},
 	}, "ev-caller@example.com").Return(nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeItem{
-		{RecipeID: 11, ItemID: 50, Quantity: 2, UnitID: 3},
+		{RecipeID: 11, ItemID: int64Ptr(50), Quantity: 2, UnitID: 3},
 	}, nil)
 	ev.EXPECT().ReplaceEventRecipeItems(gomock.Any(), int64(9), int64(7), []event.EventRecipeItem{
-		{ItemID: 50, Quantity: 2, UnitID: 3},
+		{ItemID: int64Ptr(50), Quantity: 2, UnitID: 3},
 	}, &base, "ev-caller@example.com").Return(nil)
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindEventUpdated,

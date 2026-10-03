@@ -155,8 +155,8 @@ func TestRefreshStoresEmbedding(t *testing.T) {
 	store := newFakeStore()
 	store.recipes[7] = recipe.Recipe{RecipeID: 7, Name: "Chicken Soup", Description: "cozy"}
 	store.items[7] = []recipe.RecipeItem{
-		{RecipeID: 7, ItemID: 100, IngredientID: i64(50)},
-		{RecipeID: 7, ItemID: 101},
+		{RecipeID: 7, ItemID: i64(100), IngredientID: i64(50)},
+		{RecipeID: 7, ItemID: i64(101)},
 	}
 	store.cats[7] = []recipe.Category{{Name: "Soup"}}
 	namer := &fakeNamer{

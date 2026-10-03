@@ -523,6 +523,7 @@ interface GqlRecipeImportSuggestion {
 interface GqlRecipeImportReviewItem {
   draftItem: GqlRecipeImportDraftItem;
   itemId: string | null;
+  itemKind: string | null;
   itemName: string | null;
   unit: string | null;
   unitId: string | null;
@@ -1215,6 +1216,7 @@ function toRecipeImportReviewItem(item: GqlRecipeImportReviewItem): RecipeImport
     unit: item.unit,
     notes: item.notes ?? draft.notes,
     itemId: item.itemId,
+    itemKind: item.itemKind,
     itemName: item.itemName,
     unitId: item.unitId,
     confidence: item.confidence,
@@ -1290,6 +1292,7 @@ function toRecipeImportReviewInput(review: RecipeImportReview): Record<string, u
       notes: it.notes,
       isOptional: it.isOptional,
       itemId: it.itemId,
+      itemKind: it.itemKind,
       itemName: it.itemName,
       unitId: it.unitId,
       confidence: it.confidence,
@@ -1708,7 +1711,7 @@ const RECIPE_IMPORT_FIELDS = `
   id status sourceFilename ocrText createdAt updatedAt createdBy
   profanityFlag profanityReason errorMessage
   draft { name description servings prepTimeMinutes cookTimeMinutes sourceHint items { quantity unit ingredient section notes isOptional } steps { stepNumber instruction } }
-  review { pageId name description servings prepTimeMinutes cookTimeMinutes sourceHint approved items { draftItem { quantity unit ingredient section notes isOptional } itemId itemName unit unitId confidence status notes approved suggestions { id name kind score } } steps { stepNumber instruction } }
+  review { pageId name description servings prepTimeMinutes cookTimeMinutes sourceHint approved items { draftItem { quantity unit ingredient section notes isOptional } itemId itemKind itemName unit unitId confidence status notes approved suggestions { id name kind score } } steps { stepNumber instruction } }
   recipe { ${RECIPE_FIELDS} }
 `;
 

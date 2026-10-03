@@ -387,7 +387,7 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 const createItem = `-- name: CreateItem :one
 INSERT INTO inventory.item (name, brand_id, upc12, upc14, category_id, unit_id, status, submitted_by_user_id, created_by, updated_by, net_weight, is_metric)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+RETURNING item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 `
 
 type CreateItemParams struct {
@@ -439,6 +439,7 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Invento
 		&i.ApprovedAt,
 		&i.NetWeight,
 		&i.IsMetric,
+		&i.IngredientID,
 	)
 	return i, err
 }
@@ -588,6 +589,78 @@ func (q *Queries) DeleteIngredient(ctx context.Context, ingredientID int64) erro
 	return err
 }
 
+const deleteIngredientRefsAisle = `-- name: DeleteIngredientRefsAisle :exec
+DELETE FROM grocery.aisle_assignment
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredientRefsAisle(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsAisle, ingredientID)
+	return err
+}
+
+const deleteIngredientRefsEventRecipeItem = `-- name: DeleteIngredientRefsEventRecipeItem :exec
+DELETE FROM event.event_recipe_item
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsEventRecipeItem, ingredientID)
+	return err
+}
+
+const deleteIngredientRefsGroceryLine = `-- name: DeleteIngredientRefsGroceryLine :exec
+DELETE FROM grocery.grocery_list_item
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredientRefsGroceryLine(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsGroceryLine, ingredientID)
+	return err
+}
+
+const deleteIngredientRefsMealSlot = `-- name: DeleteIngredientRefsMealSlot :exec
+DELETE FROM mealplan.meal_slot_item
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredientRefsMealSlot(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsMealSlot, ingredientID)
+	return err
+}
+
+const deleteIngredientRefsRecipeItem = `-- name: DeleteIngredientRefsRecipeItem :exec
+DELETE FROM recipe.recipe_item
+WHERE ingredient_id = $1
+`
+
+// Whatever remains references the source with no item anchor — a true
+// duplicate of the target's row.
+func (q *Queries) DeleteIngredientRefsRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsRecipeItem, ingredientID)
+	return err
+}
+
+const deleteIngredientRefsRoute = `-- name: DeleteIngredientRefsRoute :exec
+DELETE FROM grocery.item_route
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredientRefsRoute(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsRoute, ingredientID)
+	return err
+}
+
+const deleteIngredientRefsUsual = `-- name: DeleteIngredientRefsUsual :exec
+DELETE FROM userprefs.household_ingredient_item
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) DeleteIngredientRefsUsual(ctx context.Context, ingredientID int64) error {
+	_, err := q.db.Exec(ctx, deleteIngredientRefsUsual, ingredientID)
+	return err
+}
+
 const deleteItem = `-- name: DeleteItem :exec
 DELETE FROM inventory.item
 WHERE item_id = $1
@@ -598,6 +671,24 @@ func (q *Queries) DeleteItem(ctx context.Context, itemID int64) error {
 	return err
 }
 
+const deleteItemIngredientOverride = `-- name: DeleteItemIngredientOverride :execrows
+DELETE FROM userprefs.household_item_ingredient
+WHERE household_id = $1 AND item_id = $2
+`
+
+type DeleteItemIngredientOverrideParams struct {
+	HouseholdID int64 `json:"household_id"`
+	ItemID      int64 `json:"item_id"`
+}
+
+func (q *Queries) DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteItemIngredientOverride, arg.HouseholdID, arg.ItemID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteNutrientType = `-- name: DeleteNutrientType :exec
 DELETE FROM inventory.nutrient_type
 WHERE nutrient_id = $1
@@ -605,6 +696,53 @@ WHERE nutrient_id = $1
 
 func (q *Queries) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
 	_, err := q.db.Exec(ctx, deleteNutrientType, nutrientID)
+	return err
+}
+
+const demoteIngredientRefsEventRecipeItem = `-- name: DemoteIngredientRefsEventRecipeItem :exec
+UPDATE event.event_recipe_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND item_id IS NOT NULL
+`
+
+func (q *Queries) DemoteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, demoteIngredientRefsEventRecipeItem, ingredientID)
+	return err
+}
+
+const demoteIngredientRefsGroceryLine = `-- name: DemoteIngredientRefsGroceryLine :exec
+UPDATE grocery.grocery_list_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND (item_id IS NOT NULL OR manual_item_name IS NOT NULL)
+`
+
+func (q *Queries) DemoteIngredientRefsGroceryLine(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, demoteIngredientRefsGroceryLine, ingredientID)
+	return err
+}
+
+const demoteIngredientRefsMealSlot = `-- name: DemoteIngredientRefsMealSlot :exec
+UPDATE mealplan.meal_slot_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND item_id IS NOT NULL
+`
+
+func (q *Queries) DemoteIngredientRefsMealSlot(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, demoteIngredientRefsMealSlot, ingredientID)
+	return err
+}
+
+const demoteIngredientRefsRecipeItem = `-- name: DemoteIngredientRefsRecipeItem :exec
+UPDATE recipe.recipe_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND item_id IS NOT NULL
+`
+
+// Conflicting rows keep their branded hint: drop the ingredient ref but
+// leave item_id, so "Green Giant corn" survives as a preferred brand even
+// after a merge collapses the generic identity.
+func (q *Queries) DemoteIngredientRefsRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, demoteIngredientRefsRecipeItem, ingredientID)
 	return err
 }
 
@@ -633,6 +771,32 @@ func (q *Queries) FindBrandByNormalizedName(ctx context.Context, regexpReplace s
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
 		&i.NameNormalized,
+	)
+	return i, err
+}
+
+const findIngredientByNormalizedName = `-- name: FindIngredientByNormalizedName :one
+SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
+FROM inventory.ingredient
+WHERE lower(btrim(regexp_replace(name, '\s+', ' ', 'g'))) =
+      lower(btrim(regexp_replace($1, '\s+', ' ', 'g')))
+`
+
+// Free-create dedupe: matches the normalized unique index expression so
+// "Carrots", " carrots  ", and "CARROTS" all resolve to the same row.
+func (q *Queries) FindIngredientByNormalizedName(ctx context.Context, regexpReplace string) (InventoryIngredient, error) {
+	row := q.db.QueryRow(ctx, findIngredientByNormalizedName, regexpReplace)
+	var i InventoryIngredient
+	err := row.Scan(
+		&i.IngredientID,
+		&i.Name,
+		&i.CategoryID,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.DefaultUnitID,
 	)
 	return i, err
 }
@@ -840,7 +1004,7 @@ func (q *Queries) GetIngredientsByIDs(ctx context.Context, ingredientIds []int64
 }
 
 const getItemByID = `-- name: GetItemByID :one
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE item_id = $1
 `
@@ -866,12 +1030,13 @@ func (q *Queries) GetItemByID(ctx context.Context, itemID int64) (InventoryItem,
 		&i.ApprovedAt,
 		&i.NetWeight,
 		&i.IsMetric,
+		&i.IngredientID,
 	)
 	return i, err
 }
 
 const getItemByUpc = `-- name: GetItemByUpc :one
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE (upc12 = $1 OR upc14 = $1)
   AND (status = 'approved' OR submitted_by_user_id = $2)
@@ -905,12 +1070,41 @@ func (q *Queries) GetItemByUpc(ctx context.Context, arg GetItemByUpcParams) (Inv
 		&i.ApprovedAt,
 		&i.NetWeight,
 		&i.IsMetric,
+		&i.IngredientID,
 	)
 	return i, err
 }
 
+const getItemIngredient = `-- name: GetItemIngredient :one
+SELECT o.ingredient_id AS override_ingredient_id, i.ingredient_id
+FROM inventory.item i
+LEFT JOIN userprefs.household_item_ingredient o
+       ON o.item_id = i.item_id
+      AND o.household_id = $2
+WHERE i.item_id = $1
+`
+
+type GetItemIngredientParams struct {
+	ItemID      int64 `json:"item_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+type GetItemIngredientRow struct {
+	OverrideIngredientID pgtype.Int8 `json:"override_ingredient_id"`
+	IngredientID         pgtype.Int8 `json:"ingredient_id"`
+}
+
+// Effective ingredient inputs for a branded item: the household's
+// override wins over the catalog-level link. Both NULL when unlinked.
+func (q *Queries) GetItemIngredient(ctx context.Context, arg GetItemIngredientParams) (GetItemIngredientRow, error) {
+	row := q.db.QueryRow(ctx, getItemIngredient, arg.ItemID, arg.HouseholdID)
+	var i GetItemIngredientRow
+	err := row.Scan(&i.OverrideIngredientID, &i.IngredientID)
+	return i, err
+}
+
 const getItemsByIDs = `-- name: GetItemsByIDs :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE item_id = ANY($1::bigint[])
 `
@@ -942,6 +1136,7 @@ func (q *Queries) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]Invento
 			&i.ApprovedAt,
 			&i.NetWeight,
 			&i.IsMetric,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -1072,6 +1267,33 @@ func (q *Queries) GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]Invento
 		return nil, err
 	}
 	return items, nil
+}
+
+const getUsualItemForIngredient = `-- name: GetUsualItemForIngredient :one
+SELECT household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1 AND ingredient_id = $2
+`
+
+type GetUsualItemForIngredientParams struct {
+	HouseholdID  int64 `json:"household_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+func (q *Queries) GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error) {
+	row := q.db.QueryRow(ctx, getUsualItemForIngredient, arg.HouseholdID, arg.IngredientID)
+	var i UserprefsHouseholdIngredientItem
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.LastUsedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const listBrands = `-- name: ListBrands :many
@@ -1438,7 +1660,7 @@ func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams
 }
 
 const listItems = `-- name: ListItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY name
@@ -1481,6 +1703,66 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Invento
 			&i.ApprovedAt,
 			&i.NetWeight,
 			&i.IsMetric,
+			&i.IngredientID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemsForIngredient = `-- name: ListItemsForIngredient :many
+SELECT i.item_id, i.name, i.brand_id, i.upc12, i.upc14, i.category_id, i.created_by, i.created_at, i.updated_by, i.updated_at, i.unit_id, i.status, i.submitted_by_user_id, i.approved_by_user_id, i.approved_at, i.net_weight, i.is_metric, i.ingredient_id
+FROM inventory.item i
+LEFT JOIN userprefs.household_item_ingredient o
+       ON o.item_id = i.item_id
+      AND o.household_id = $2
+WHERE COALESCE(o.ingredient_id, i.ingredient_id) = $1
+  AND (i.status = 'approved' OR i.submitted_by_user_id = $3)
+ORDER BY i.name
+`
+
+type ListItemsForIngredientParams struct {
+	IngredientID      int64       `json:"ingredient_id"`
+	HouseholdID       int64       `json:"household_id"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+}
+
+// Every item resolving to the ingredient under the same resolution order:
+// catalog link plus overrides (an override can point an otherwise-linked
+// item at this ingredient too).
+func (q *Queries) ListItemsForIngredient(ctx context.Context, arg ListItemsForIngredientParams) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, listItemsForIngredient, arg.IngredientID, arg.HouseholdID, arg.SubmittedByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.Name,
+			&i.BrandID,
+			&i.Upc12,
+			&i.Upc14,
+			&i.CategoryID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.UnitID,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.NetWeight,
+			&i.IsMetric,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -1569,7 +1851,7 @@ func (q *Queries) ListPendingBrands(ctx context.Context, arg ListPendingBrandsPa
 }
 
 const listPendingItems = `-- name: ListPendingItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE status = 'pending'
 ORDER BY created_at
@@ -1608,6 +1890,7 @@ func (q *Queries) ListPendingItems(ctx context.Context, arg ListPendingItemsPara
 			&i.ApprovedAt,
 			&i.NetWeight,
 			&i.IsMetric,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -1732,8 +2015,191 @@ func (q *Queries) MatchItemIDsByTerms(ctx context.Context, arg MatchItemIDsByTer
 	return items, nil
 }
 
+const mergeIngredientRefsAisle = `-- name: MergeIngredientRefsAisle :exec
+UPDATE grocery.aisle_assignment a
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE a.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM grocery.aisle_assignment t
+      WHERE t.store_id = a.store_id AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsAisleParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsAisle(ctx context.Context, arg MergeIngredientRefsAisleParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsAisle, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsEventRecipeItem = `-- name: MergeIngredientRefsEventRecipeItem :exec
+UPDATE event.event_recipe_item e
+SET ingredient_id = $2
+WHERE e.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM event.event_recipe_item t
+      WHERE t.event_recipe_id = e.event_recipe_id AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsEventRecipeItemParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsEventRecipeItem(ctx context.Context, arg MergeIngredientRefsEventRecipeItemParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsEventRecipeItem, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsGroceryLine = `-- name: MergeIngredientRefsGroceryLine :exec
+UPDATE grocery.grocery_list_item g
+SET ingredient_id = $2
+WHERE g.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM grocery.grocery_list_item t
+      WHERE t.grocery_list_id = g.grocery_list_id AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsGroceryLineParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsGroceryLine(ctx context.Context, arg MergeIngredientRefsGroceryLineParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsGroceryLine, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsItem = `-- name: MergeIngredientRefsItem :exec
+UPDATE inventory.item
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE ingredient_id = $1
+`
+
+type MergeIngredientRefsItemParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+// Repoint every ingredient reference onto the merge target. For tables
+// where two rows would collapse to the same natural key, only rows that
+// do not conflict are repointed; the conflicting leftovers are deleted by
+// the paired DeleteIngredientRefs* query.
+func (q *Queries) MergeIngredientRefsItem(ctx context.Context, arg MergeIngredientRefsItemParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsItem, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsMealSlot = `-- name: MergeIngredientRefsMealSlot :exec
+UPDATE mealplan.meal_slot_item m
+SET ingredient_id = $2
+WHERE m.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM mealplan.meal_slot_item t
+      WHERE t.slot_id = m.slot_id AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsMealSlotParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsMealSlot(ctx context.Context, arg MergeIngredientRefsMealSlotParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsMealSlot, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsOverride = `-- name: MergeIngredientRefsOverride :exec
+UPDATE userprefs.household_item_ingredient
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE ingredient_id = $1
+`
+
+type MergeIngredientRefsOverrideParams struct {
+	IngredientID   int64 `json:"ingredient_id"`
+	IngredientID_2 int64 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsOverride(ctx context.Context, arg MergeIngredientRefsOverrideParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsOverride, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsRecipeItem = `-- name: MergeIngredientRefsRecipeItem :exec
+UPDATE recipe.recipe_item r
+SET ingredient_id = $2
+WHERE r.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM recipe.recipe_item t
+      WHERE t.recipe_id = r.recipe_id AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsRecipeItemParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsRecipeItem(ctx context.Context, arg MergeIngredientRefsRecipeItemParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsRecipeItem, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsRoute = `-- name: MergeIngredientRefsRoute :exec
+UPDATE grocery.item_route r
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE r.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM grocery.item_route t
+      WHERE t.household_id = r.household_id
+        AND t.store_id = r.store_id
+        AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsRouteParams struct {
+	IngredientID   pgtype.Int8 `json:"ingredient_id"`
+	IngredientID_2 pgtype.Int8 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsRoute(ctx context.Context, arg MergeIngredientRefsRouteParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsRoute, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
+const mergeIngredientRefsUsual = `-- name: MergeIngredientRefsUsual :exec
+UPDATE userprefs.household_ingredient_item u
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE u.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM userprefs.household_ingredient_item t
+      WHERE t.household_id = u.household_id AND t.ingredient_id = $2
+  )
+`
+
+type MergeIngredientRefsUsualParams struct {
+	IngredientID   int64 `json:"ingredient_id"`
+	IngredientID_2 int64 `json:"ingredient_id_2"`
+}
+
+func (q *Queries) MergeIngredientRefsUsual(ctx context.Context, arg MergeIngredientRefsUsualParams) error {
+	_, err := q.db.Exec(ctx, mergeIngredientRefsUsual, arg.IngredientID, arg.IngredientID_2)
+	return err
+}
+
 const rankedItems = `-- name: RankedItems :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
@@ -1784,6 +2250,7 @@ func (q *Queries) RankedItems(ctx context.Context, arg RankedItemsParams) ([]Inv
 			&i.ApprovedAt,
 			&i.NetWeight,
 			&i.IsMetric,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -1949,7 +2416,7 @@ func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsPa
 }
 
 const searchItemsRemainder = `-- name: SearchItemsRemainder :many
-SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric
+SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
@@ -2005,6 +2472,7 @@ func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemai
 			&i.ApprovedAt,
 			&i.NetWeight,
 			&i.IsMetric,
+			&i.IngredientID,
 		); err != nil {
 			return nil, err
 		}
@@ -2042,6 +2510,29 @@ func (q *Queries) SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) 
 		arg.ApprovedAt,
 		arg.UpdatedBy,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setItemIngredient = `-- name: SetItemIngredient :execrows
+UPDATE inventory.item
+SET ingredient_id = $2,
+    updated_by    = $3,
+    updated_at    = now()
+WHERE item_id = $1
+`
+
+type SetItemIngredientParams struct {
+	ItemID       int64       `json:"item_id"`
+	IngredientID pgtype.Int8 `json:"ingredient_id"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+// Writes the catalog-level item -> ingredient link.
+func (q *Queries) SetItemIngredient(ctx context.Context, arg SetItemIngredientParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setItemIngredient, arg.ItemID, arg.IngredientID, arg.UpdatedBy)
 	if err != nil {
 		return 0, err
 	}
@@ -2347,6 +2838,74 @@ func (q *Queries) UpsertBrand(ctx context.Context, arg UpsertBrandParams) (Inven
 		&i.ApprovedByUserID,
 		&i.ApprovedAt,
 		&i.NameNormalized,
+	)
+	return i, err
+}
+
+const upsertItemIngredientOverride = `-- name: UpsertItemIngredientOverride :exec
+INSERT INTO userprefs.household_item_ingredient (household_id, item_id, ingredient_id, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $4, now())
+ON CONFLICT (household_id, item_id)
+DO UPDATE SET ingredient_id = EXCLUDED.ingredient_id,
+              updated_by    = EXCLUDED.updated_by,
+              updated_at    = now()
+`
+
+type UpsertItemIngredientOverrideParams struct {
+	HouseholdID  int64  `json:"household_id"`
+	ItemID       int64  `json:"item_id"`
+	IngredientID int64  `json:"ingredient_id"`
+	CreatedBy    string `json:"created_by"`
+}
+
+// Household-level remap: "this product is a different ingredient for us."
+func (q *Queries) UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error {
+	_, err := q.db.Exec(ctx, upsertItemIngredientOverride,
+		arg.HouseholdID,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.CreatedBy,
+	)
+	return err
+}
+
+const upsertUsualItemForIngredient = `-- name: UpsertUsualItemForIngredient :one
+INSERT INTO userprefs.household_ingredient_item (household_id, ingredient_id, item_id, last_used_at, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, now(), $4, $4, now())
+ON CONFLICT (household_id, ingredient_id)
+DO UPDATE SET item_id      = EXCLUDED.item_id,
+              last_used_at = now(),
+              updated_by   = EXCLUDED.updated_by,
+              updated_at   = now()
+RETURNING household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertUsualItemForIngredientParams struct {
+	HouseholdID  int64  `json:"household_id"`
+	IngredientID int64  `json:"ingredient_id"`
+	ItemID       int64  `json:"item_id"`
+	CreatedBy    string `json:"created_by"`
+}
+
+// "Usual brand" record — updated each time a check-off credits stock so
+// repeat purchases stop prompting.
+func (q *Queries) UpsertUsualItemForIngredient(ctx context.Context, arg UpsertUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error) {
+	row := q.db.QueryRow(ctx, upsertUsualItemForIngredient,
+		arg.HouseholdID,
+		arg.IngredientID,
+		arg.ItemID,
+		arg.CreatedBy,
+	)
+	var i UserprefsHouseholdIngredientItem
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.LastUsedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

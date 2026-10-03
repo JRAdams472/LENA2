@@ -244,7 +244,7 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{recipeID}).
 		Return([]recipe.Recipe{{RecipeID: recipeID, Servings: &servings}}, nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{recipeID}).
-		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: 10, UnitID: 5, Quantity: 2}}, nil)
+		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: ptrToGrocInt64(10), UnitID: 5, Quantity: 2}}, nil)
 	up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(1000), int32(0)).Return(nil, nil)
 	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10}).
 		Return([]inventory.Item{{ItemID: 10, UnitID: 5}}, nil)
@@ -296,7 +296,7 @@ func TestResolver_GenerateGroceryList_RegeneratesInPlace(t *testing.T) {
 	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{recipeID}).
 		Return([]recipe.Recipe{{RecipeID: recipeID, Servings: &servings}}, nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{recipeID}).
-		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: 10, UnitID: 5, Quantity: 2}}, nil)
+		Return([]recipe.RecipeItem{{RecipeID: recipeID, ItemID: ptrToGrocInt64(10), UnitID: 5, Quantity: 2}}, nil)
 	up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(1000), int32(0)).Return(nil, nil)
 	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10}).
 		Return([]inventory.Item{{ItemID: 10, UnitID: 5}}, nil)

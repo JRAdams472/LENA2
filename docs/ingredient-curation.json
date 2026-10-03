@@ -1,0 +1,438 @@
+{
+  "generated_at": "2026-10-03T19:07:13.2060994Z",
+  "model": "qwen2.5:7b-instruct",
+  "mappings": [
+    {
+      "item_id": 10129,
+      "item_name": "Acadia Drinking Water Purified",
+      "ingredient": "water",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Acadia Drinking Water Purified is a purified water product."
+    },
+    {
+      "item_id": 61861,
+      "item_name": "Ahold 4 Cheese Mexican Blend 2% Milk Finely Shredded",
+      "ingredient": "cheese",
+      "new_ingredient": true,
+      "confidence": "medium",
+      "notes": "Ahold 4 Cheese Mexican Blend 2% Milk Finely Shredded is a blend of four types of cheese."
+    },
+    {
+      "item_id": 13662,
+      "item_name": "Ahold 4 Cheese Mexican Blend Finely Shredded",
+      "ingredient": "cheese",
+      "new_ingredient": true,
+      "confidence": "medium",
+      "notes": "Ahold 4 Cheese Mexican Blend Finely Shredded is a blend of four types of cheese."
+    },
+    {
+      "item_id": 58322,
+      "item_name": "Ahold Heavy Whipping Cream",
+      "ingredient": "cream",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Ahold Heavy Whipping Cream is a heavy cream product."
+    },
+    {
+      "item_id": 94228,
+      "item_name": "Bay Leave",
+      "ingredient": "bay leaf",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Bay Leave is a single bay leaf."
+    },
+    {
+      "item_id": 93020,
+      "item_name": "Bean Black",
+      "ingredient": "black bean",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Bean Black is a reference to black beans."
+    },
+    {
+      "item_id": 31804,
+      "item_name": "Beef Chuck Roast",
+      "ingredient": "beef",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Beef Chuck Roast is a cut of beef."
+    },
+    {
+      "item_id": 76508,
+      "item_name": "Black Pepper",
+      "ingredient": "pepper",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Black Pepper is a type of pepper."
+    },
+    {
+      "item_id": 86575,
+      "item_name": "Broth Beef",
+      "ingredient": "beef broth",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Broth Beef is a beef broth product."
+    },
+    {
+      "item_id": 12430,
+      "item_name": "Bush's Black Beans",
+      "ingredient": "black bean",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Bush's Black Beans is a canned black bean product."
+    },
+    {
+      "item_id": 46663,
+      "item_name": "Butter Unsalted",
+      "ingredient": "butter",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Butter Unsalted is a type of butter."
+    },
+    {
+      "item_id": 35844,
+      "item_name": "Carrots",
+      "ingredient": "carrot",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Carrots are the ingredient."
+    },
+    {
+      "item_id": 83964,
+      "item_name": "Cheese Imprt Prmigiano Regiano",
+      "ingredient": "parmesan cheese",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Cheese Imprt Prmigiano Regiano is a type of parmesan cheese."
+    },
+    {
+      "item_id": 75819,
+      "item_name": "Chile Ancho",
+      "ingredient": "chile",
+      "new_ingredient": true,
+      "confidence": "medium",
+      "notes": "Chile Ancho is a type of dried chili pepper."
+    },
+    {
+      "item_id": 83458,
+      "item_name": "Cilantro",
+      "ingredient": "cilantro",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Cilantro is the ingredient."
+    },
+    {
+      "item_id": 97085,
+      "item_name": "Corn Cob 3in",
+      "ingredient": "corn",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Corn Cob 3in is a reference to corn cobs."
+    },
+    {
+      "item_id": 84939,
+      "item_name": "Cumin Seed Grnd",
+      "ingredient": "cumin",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Cumin Seed Grnd is ground cumin seed."
+    },
+    {
+      "item_id": 91284,
+      "item_name": "Cumin Whl",
+      "ingredient": "cumin",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Cumin Whl is whole cumin seed."
+    },
+    {
+      "item_id": 75668,
+      "item_name": "Flour All Purpose",
+      "ingredient": "all-purpose flour",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Flour All Purpose is a type of all-purpose flour."
+    },
+    {
+      "item_id": 80471,
+      "item_name": "Flour All Purpose",
+      "ingredient": "all-purpose flour",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Flour All Purpose is a type of all-purpose flour."
+    },
+    {
+      "item_id": 98517,
+      "item_name": "Frz Peas",
+      "ingredient": "frozen peas",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Frz Peas is frozen peas."
+    },
+    {
+      "item_id": 71391,
+      "item_name": "Garlic Clove",
+      "ingredient": "garlic",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Garlic Clove is a whole garlic clove."
+    },
+    {
+      "item_id": 87705,
+      "item_name": "Garlic Pwdr",
+      "ingredient": "garlic",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Garlic Pwdr is garlic powder."
+    },
+    {
+      "item_id": 94923,
+      "item_name": "Gelatin Unflavored",
+      "ingredient": "gelatin",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Gelatin Unflavored is a type of gelatin."
+    },
+    {
+      "item_id": 60887,
+      "item_name": "Gwaltney Bacon Center Cut",
+      "ingredient": "bacon",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Gwaltney Bacon Center Cut is a type of bacon."
+    },
+    {
+      "item_id": 52344,
+      "item_name": "Hunt's 100% Natural Whole Tomatoes",
+      "ingredient": "tomato",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Hunt's 100% Natural Whole Tomatoes is a whole tomato product."
+    },
+    {
+      "item_id": 36573,
+      "item_name": "Jalapeno Peppers",
+      "ingredient": "jalapeno pepper",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Jalapeno Peppers are whole jalapeno peppers."
+    },
+    {
+      "item_id": 75808,
+      "item_name": "Jalapeno Whole",
+      "ingredient": "jalapeno pepper",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Jalapeno Whole is a whole jalapeno pepper."
+    },
+    {
+      "item_id": 95561,
+      "item_name": "Lime Juice",
+      "ingredient": "lime",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Lime Juice is a juice from limes."
+    },
+    {
+      "item_id": 47956,
+      "item_name": "Meal Mart Ground Beef",
+      "ingredient": "ground beef",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Meal Mart Ground Beef is ground beef."
+    },
+    {
+      "item_id": 86320,
+      "item_name": "Oil Olive Pure 100%",
+      "ingredient": "olive oil",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "100% pure olive oil"
+    },
+    {
+      "item_id": 86829,
+      "item_name": "Oil Olive Xlt",
+      "ingredient": "olive oil",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Extra light olive oil"
+    },
+    {
+      "item_id": 89084,
+      "item_name": "Oil Vegetable",
+      "ingredient": "vegetable oil",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Generic vegetable oil"
+    },
+    {
+      "item_id": 89360,
+      "item_name": "Onion Powder",
+      "ingredient": "onion powder",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Onion powder"
+    },
+    {
+      "item_id": 91906,
+      "item_name": "Onion Salt",
+      "ingredient": "onion salt",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Onion salt"
+    },
+    {
+      "item_id": 33261,
+      "item_name": "Onion White",
+      "ingredient": "onion",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "White onion"
+    },
+    {
+      "item_id": 45403,
+      "item_name": "Organic Celery",
+      "ingredient": "celery",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Organic celery"
+    },
+    {
+      "item_id": 86127,
+      "item_name": "Paste Tomato",
+      "ingredient": "tomato paste",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Tomato paste"
+    },
+    {
+      "item_id": 77288,
+      "item_name": "Pepper Black Grnd",
+      "ingredient": "black pepper",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Ground black pepper"
+    },
+    {
+      "item_id": 76179,
+      "item_name": "Potato Whole",
+      "ingredient": "potato",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Whole potato"
+    },
+    {
+      "item_id": 61754,
+      "item_name": "Potatoes Russett Baking",
+      "ingredient": "potato",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Russet baking potato"
+    },
+    {
+      "item_id": 95892,
+      "item_name": "Ramen Mushroom",
+      "ingredient": "mushroom",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Ramen mushroom"
+    },
+    {
+      "item_id": 85795,
+      "item_name": "Rosemary",
+      "ingredient": "rosemary",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Rosemary"
+    },
+    {
+      "item_id": 80930,
+      "item_name": "Salt Kosher",
+      "ingredient": "kosher salt",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Kosher salt"
+    },
+    {
+      "item_id": 85226,
+      "item_name": "Salt Kosher",
+      "ingredient": "kosher salt",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Kosher salt"
+    },
+    {
+      "item_id": 88589,
+      "item_name": "Sauce Worcestershire",
+      "ingredient": "worcestershire sauce",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Worcestershire sauce"
+    },
+    {
+      "item_id": 94271,
+      "item_name": "Shallot",
+      "ingredient": "shallot",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Shallot"
+    },
+    {
+      "item_id": 19616,
+      "item_name": "Squash Zucchini",
+      "ingredient": "zucchini",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Zucchini squash"
+    },
+    {
+      "item_id": 87214,
+      "item_name": "Thyme",
+      "ingredient": "thyme",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Thyme"
+    },
+    {
+      "item_id": 92046,
+      "item_name": "Tortilla Corn 6in",
+      "ingredient": "corn tortilla",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Corn tortilla 6in"
+    },
+    {
+      "item_id": 84345,
+      "item_name": "Tortilla Corn Hms Yllw",
+      "ingredient": "corn tortilla",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Corn tortilla with yellow hue"
+    },
+    {
+      "item_id": 85592,
+      "item_name": "Vinegar Wine Red",
+      "ingredient": "red wine vinegar",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Red wine vinegar"
+    },
+    {
+      "item_id": 98222,
+      "item_name": "Vinegar Wine Red",
+      "ingredient": "red wine vinegar",
+      "new_ingredient": false,
+      "confidence": "high",
+      "notes": "Red wine vinegar"
+    },
+    {
+      "item_id": 79723,
+      "item_name": "Water Spring",
+      "ingredient": "spring water",
+      "new_ingredient": true,
+      "confidence": "high",
+      "notes": "Spring water"
+    }
+  ]
+}

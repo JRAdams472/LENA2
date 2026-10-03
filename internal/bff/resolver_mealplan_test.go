@@ -161,8 +161,8 @@ func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
 		{RecipeID: 20, Name: "Pasta", Servings: mealPlanPtrInt32(4)},
 	}, nil)
 	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{20}).Return([]recipe.RecipeItem{
-		{RecipeID: 20, ItemID: 50, Quantity: 0.5, UnitID: 3},
-		{RecipeID: 20, ItemID: 60, Quantity: 1, UnitID: 12},
+		{RecipeID: 20, ItemID: mealPlanPtrInt64(50), Quantity: 0.5, UnitID: 3},
+		{RecipeID: 20, ItemID: mealPlanPtrInt64(60), Quantity: 1, UnitID: 12},
 	}, nil)
 
 	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), gomock.Any()).Return([]inventory.FoodNutrient{

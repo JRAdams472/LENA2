@@ -37,7 +37,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 
 type AddRecipeItemParams struct {
 	RecipeID     int64          `json:"recipe_id"`
-	ItemID       int64          `json:"item_id"`
+	ItemID       pgtype.Int8    `json:"item_id"`
 	IngredientID pgtype.Int8    `json:"ingredient_id"`
 	Quantity     pgtype.Numeric `json:"quantity"`
 	UnitID       int64          `json:"unit_id"`

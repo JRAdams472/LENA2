@@ -144,7 +144,7 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 	cupID := itUnitID(t, ctx, invSvc, "cup")
 	require.NoError(t, svc.AddRecipeItem(ctx, RecipeItem{
 		RecipeID:     rec.RecipeID,
-		ItemID:       item.ItemID,
+		ItemID:       i64(item.ItemID),
 		Quantity:     2.5,
 		UnitID:       cupID,
 		SectionName:  "filling",
@@ -155,7 +155,7 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 	items, err := svc.ListRecipeItems(ctx, rec.RecipeID)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, item.ItemID, items[0].ItemID)
+	assert.Equal(t, item.ItemID, *items[0].ItemID)
 	assert.NotZero(t, items[0].RecipeItemID)
 	assert.InDelta(t, 2.5, items[0].Quantity, 0.0001)
 	assert.Equal(t, cupID, items[0].UnitID)
@@ -167,7 +167,7 @@ func TestIntegrationRecipeItemsAndSteps(t *testing.T) {
 	// FK violation: recipe item referencing a non-existent inventory item.
 	err = svc.AddRecipeItem(ctx, RecipeItem{
 		RecipeID: rec.RecipeID,
-		ItemID:   99999999,
+		ItemID:   i64(99999999),
 		Quantity: 1,
 		UnitID:   itUnitID(t, ctx, invSvc, "g"),
 	})
@@ -245,7 +245,7 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 			CookTimeMinutes: i32(20),
 			IsActive:        true,
 		}, []RecipeItem{
-			{ItemID: item.ItemID, Quantity: 2.5, UnitID: cupID, Notes: "chopped", IsOptional: true},
+			{ItemID: i64(item.ItemID), Quantity: 2.5, UnitID: cupID, Notes: "chopped", IsOptional: true},
 		}, []RecipeStep{
 			{StepNumber: 1, Instruction: "Mix"},
 		}, itBy)
@@ -255,7 +255,7 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 		items, err := svc.ListRecipeItems(ctx, rec.RecipeID)
 		require.NoError(t, err)
 		require.Len(t, items, 1)
-		assert.Equal(t, item.ItemID, items[0].ItemID)
+		assert.Equal(t, item.ItemID, *items[0].ItemID)
 
 		steps, err := svc.ListRecipeSteps(ctx, rec.RecipeID)
 		require.NoError(t, err)
@@ -269,7 +269,7 @@ func TestIntegrationCreateRecipeWithChildrenRollback(t *testing.T) {
 			Description: "should not persist",
 			IsActive:    true,
 		}, []RecipeItem{
-			{ItemID: 99999999, Quantity: 1, UnitID: gID},
+			{ItemID: i64(99999999), Quantity: 1, UnitID: gID},
 		}, nil, itBy)
 		require.Error(t, err)
 
@@ -439,20 +439,20 @@ func TestIntegrationUpdateRecipeWithChildrenRollback(t *testing.T) {
 
 	rec, err := svc.CreateRecipe(ctx, Recipe{Name: "Update Children Recipe", IsActive: true}, itBy)
 	require.NoError(t, err)
-	require.NoError(t, svc.AddRecipeItem(ctx, RecipeItem{RecipeID: rec.RecipeID, ItemID: item.ItemID, Quantity: 1, UnitID: cupID}))
+	require.NoError(t, svc.AddRecipeItem(ctx, RecipeItem{RecipeID: rec.RecipeID, ItemID: i64(item.ItemID), Quantity: 1, UnitID: cupID}))
 	_, err = svc.AddRecipeStep(ctx, rec.RecipeID, 1, "First", itBy)
 	require.NoError(t, err)
 
 	// Updating with a non-existent item should fail and leave prior children intact.
 	err = svc.UpdateRecipeWithChildren(ctx, rec.RecipeID, Recipe{Name: "Update Children Recipe", IsActive: true}, []RecipeItem{
-		{ItemID: 99999999, Quantity: 1, UnitID: gID},
+		{ItemID: i64(99999999), Quantity: 1, UnitID: gID},
 	}, []RecipeStep{{StepNumber: 2, Instruction: "Second"}}, itBy)
 	require.Error(t, err)
 
 	items, err := svc.ListRecipeItems(ctx, rec.RecipeID)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, item.ItemID, items[0].ItemID)
+	assert.Equal(t, item.ItemID, *items[0].ItemID)
 
 	steps, err := svc.ListRecipeSteps(ctx, rec.RecipeID)
 	require.NoError(t, err)

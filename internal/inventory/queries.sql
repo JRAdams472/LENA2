@@ -478,6 +478,212 @@ RETURNING *;
 DELETE FROM inventory.ingredient
 WHERE ingredient_id = $1;
 
+-- name: FindIngredientByNormalizedName :one
+-- Free-create dedupe: matches the normalized unique index expression so
+-- "Carrots", " carrots  ", and "CARROTS" all resolve to the same row.
+SELECT *
+FROM inventory.ingredient
+WHERE lower(btrim(regexp_replace(name, '\s+', ' ', 'g'))) =
+      lower(btrim(regexp_replace($1, '\s+', ' ', 'g')));
+
+-- name: GetItemIngredient :one
+-- Effective ingredient inputs for a branded item: the household's
+-- override wins over the catalog-level link. Both NULL when unlinked.
+SELECT o.ingredient_id AS override_ingredient_id, i.ingredient_id
+FROM inventory.item i
+LEFT JOIN userprefs.household_item_ingredient o
+       ON o.item_id = i.item_id
+      AND o.household_id = $2
+WHERE i.item_id = $1;
+
+-- name: ListItemsForIngredient :many
+-- Every item resolving to the ingredient under the same resolution order:
+-- catalog link plus overrides (an override can point an otherwise-linked
+-- item at this ingredient too).
+SELECT i.*
+FROM inventory.item i
+LEFT JOIN userprefs.household_item_ingredient o
+       ON o.item_id = i.item_id
+      AND o.household_id = $2
+WHERE COALESCE(o.ingredient_id, i.ingredient_id) = $1
+  AND (i.status = 'approved' OR i.submitted_by_user_id = $3)
+ORDER BY i.name;
+
+-- name: SetItemIngredient :execrows
+-- Writes the catalog-level item -> ingredient link.
+UPDATE inventory.item
+SET ingredient_id = $2,
+    updated_by    = $3,
+    updated_at    = now()
+WHERE item_id = $1;
+
+-- name: UpsertItemIngredientOverride :exec
+-- Household-level remap: "this product is a different ingredient for us."
+INSERT INTO userprefs.household_item_ingredient (household_id, item_id, ingredient_id, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $4, now())
+ON CONFLICT (household_id, item_id)
+DO UPDATE SET ingredient_id = EXCLUDED.ingredient_id,
+              updated_by    = EXCLUDED.updated_by,
+              updated_at    = now();
+
+-- name: DeleteItemIngredientOverride :execrows
+DELETE FROM userprefs.household_item_ingredient
+WHERE household_id = $1 AND item_id = $2;
+
+-- name: GetUsualItemForIngredient :one
+SELECT *
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1 AND ingredient_id = $2;
+
+-- name: UpsertUsualItemForIngredient :one
+-- "Usual brand" record — updated each time a check-off credits stock so
+-- repeat purchases stop prompting.
+INSERT INTO userprefs.household_ingredient_item (household_id, ingredient_id, item_id, last_used_at, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, now(), $4, $4, now())
+ON CONFLICT (household_id, ingredient_id)
+DO UPDATE SET item_id      = EXCLUDED.item_id,
+              last_used_at = now(),
+              updated_by   = EXCLUDED.updated_by,
+              updated_at   = now()
+RETURNING *;
+
+-- name: MergeIngredientRefsItem :exec
+-- Repoint every ingredient reference onto the merge target. For tables
+-- where two rows would collapse to the same natural key, only rows that
+-- do not conflict are repointed; the conflicting leftovers are deleted by
+-- the paired DeleteIngredientRefs* query.
+UPDATE inventory.item
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsOverride :exec
+UPDATE userprefs.household_item_ingredient
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsUsual :exec
+UPDATE userprefs.household_ingredient_item u
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE u.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM userprefs.household_ingredient_item t
+      WHERE t.household_id = u.household_id AND t.ingredient_id = $2
+  );
+
+-- name: DeleteIngredientRefsUsual :exec
+DELETE FROM userprefs.household_ingredient_item
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsRecipeItem :exec
+UPDATE recipe.recipe_item r
+SET ingredient_id = $2
+WHERE r.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM recipe.recipe_item t
+      WHERE t.recipe_id = r.recipe_id AND t.ingredient_id = $2
+  );
+
+-- name: DemoteIngredientRefsRecipeItem :exec
+-- Conflicting rows keep their branded hint: drop the ingredient ref but
+-- leave item_id, so "Green Giant corn" survives as a preferred brand even
+-- after a merge collapses the generic identity.
+UPDATE recipe.recipe_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND item_id IS NOT NULL;
+
+-- name: DeleteIngredientRefsRecipeItem :exec
+-- Whatever remains references the source with no item anchor — a true
+-- duplicate of the target's row.
+DELETE FROM recipe.recipe_item
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsMealSlot :exec
+UPDATE mealplan.meal_slot_item m
+SET ingredient_id = $2
+WHERE m.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM mealplan.meal_slot_item t
+      WHERE t.slot_id = m.slot_id AND t.ingredient_id = $2
+  );
+
+-- name: DemoteIngredientRefsMealSlot :exec
+UPDATE mealplan.meal_slot_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND item_id IS NOT NULL;
+
+-- name: DeleteIngredientRefsMealSlot :exec
+DELETE FROM mealplan.meal_slot_item
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsEventRecipeItem :exec
+UPDATE event.event_recipe_item e
+SET ingredient_id = $2
+WHERE e.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM event.event_recipe_item t
+      WHERE t.event_recipe_id = e.event_recipe_id AND t.ingredient_id = $2
+  );
+
+-- name: DemoteIngredientRefsEventRecipeItem :exec
+UPDATE event.event_recipe_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND item_id IS NOT NULL;
+
+-- name: DeleteIngredientRefsEventRecipeItem :exec
+DELETE FROM event.event_recipe_item
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsGroceryLine :exec
+UPDATE grocery.grocery_list_item g
+SET ingredient_id = $2
+WHERE g.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM grocery.grocery_list_item t
+      WHERE t.grocery_list_id = g.grocery_list_id AND t.ingredient_id = $2
+  );
+
+-- name: DemoteIngredientRefsGroceryLine :exec
+UPDATE grocery.grocery_list_item
+SET ingredient_id = NULL
+WHERE ingredient_id = $1 AND (item_id IS NOT NULL OR manual_item_name IS NOT NULL);
+
+-- name: DeleteIngredientRefsGroceryLine :exec
+DELETE FROM grocery.grocery_list_item
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsAisle :exec
+UPDATE grocery.aisle_assignment a
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE a.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM grocery.aisle_assignment t
+      WHERE t.store_id = a.store_id AND t.ingredient_id = $2
+  );
+
+-- name: DeleteIngredientRefsAisle :exec
+DELETE FROM grocery.aisle_assignment
+WHERE ingredient_id = $1;
+
+-- name: MergeIngredientRefsRoute :exec
+UPDATE grocery.item_route r
+SET ingredient_id = $2,
+    updated_at    = now()
+WHERE r.ingredient_id = $1
+  AND NOT EXISTS (
+      SELECT 1 FROM grocery.item_route t
+      WHERE t.household_id = r.household_id
+        AND t.store_id = r.store_id
+        AND t.ingredient_id = $2
+  );
+
+-- name: DeleteIngredientRefsRoute :exec
+DELETE FROM grocery.item_route
+WHERE ingredient_id = $1;
+
 -- name: CreateUnit :one
 INSERT INTO inventory.unit (name, abbreviation, kind, to_base_factor, is_active, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

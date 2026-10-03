@@ -39,12 +39,32 @@ type Querier interface {
 	DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error
 	DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) error
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
+	DeleteIngredientRefsAisle(ctx context.Context, ingredientID pgtype.Int8) error
+	DeleteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
+	DeleteIngredientRefsGroceryLine(ctx context.Context, ingredientID pgtype.Int8) error
+	DeleteIngredientRefsMealSlot(ctx context.Context, ingredientID pgtype.Int8) error
+	// Whatever remains references the source with no item anchor — a true
+	// duplicate of the target's row.
+	DeleteIngredientRefsRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
+	DeleteIngredientRefsRoute(ctx context.Context, ingredientID pgtype.Int8) error
+	DeleteIngredientRefsUsual(ctx context.Context, ingredientID int64) error
 	DeleteItem(ctx context.Context, itemID int64) error
+	DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error)
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
+	DemoteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
+	DemoteIngredientRefsGroceryLine(ctx context.Context, ingredientID pgtype.Int8) error
+	DemoteIngredientRefsMealSlot(ctx context.Context, ingredientID pgtype.Int8) error
+	// Conflicting rows keep their branded hint: drop the ingredient ref but
+	// leave item_id, so "Green Giant corn" survives as a preferred brand even
+	// after a merge collapses the generic identity.
+	DemoteIngredientRefsRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
 	// Special characters (apostrophes, periods, etc.) and case are ignored so
 	// "Bush", "Bushs", and "Bush's" all match the same brand. Rejected rows
 	// are never resurfaced.
 	FindBrandByNormalizedName(ctx context.Context, regexpReplace string) (InventoryBrand, error)
+	// Free-create dedupe: matches the normalized unique index expression so
+	// "Carrots", " carrots  ", and "CARROTS" all resolve to the same row.
+	FindIngredientByNormalizedName(ctx context.Context, regexpReplace string) (InventoryIngredient, error)
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
 	GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error)
 	GetCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]InventoryCategory, error)
@@ -56,12 +76,16 @@ type Querier interface {
 	// Barcode lookup: the caller passes the normalized code plus their user id
 	// so pending items they submitted are still found.
 	GetItemByUpc(ctx context.Context, arg GetItemByUpcParams) (InventoryItem, error)
+	// Effective ingredient inputs for a branded item: the household's
+	// override wins over the catalog-level link. Both NULL when unlinked.
+	GetItemIngredient(ctx context.Context, arg GetItemIngredientParams) (GetItemIngredientRow, error)
 	GetItemsByIDs(ctx context.Context, itemIds []int64) ([]InventoryItem, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (InventoryNutrientType, error)
 	GetNutrientTypeByName(ctx context.Context, lower string) (InventoryNutrientType, error)
 	GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit, error)
 	GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error)
 	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
+	GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	// Brands are visible when approved, or when the caller submitted them.
 	ListBrandsVisible(ctx context.Context, arg ListBrandsVisibleParams) ([]InventoryBrand, error)
@@ -78,6 +102,10 @@ type Querier interface {
 	// Plain alphabetical paging for internal consumers (recipe import); ranked
 	// listing goes through SearchItems.
 	ListItems(ctx context.Context, arg ListItemsParams) ([]InventoryItem, error)
+	// Every item resolving to the ingredient under the same resolution order:
+	// catalog link plus overrides (an override can point an otherwise-linked
+	// item at this ingredient too).
+	ListItemsForIngredient(ctx context.Context, arg ListItemsForIngredientParams) ([]InventoryItem, error)
 	ListNutrientTypes(ctx context.Context) ([]InventoryNutrientType, error)
 	ListPendingBrands(ctx context.Context, arg ListPendingBrandsParams) ([]InventoryBrand, error)
 	ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error)
@@ -89,6 +117,19 @@ type Querier interface {
 	// engagement tier resolved to IDs so it can join the ranked set. One
 	// per-page scan, only run when the user has recorded terms.
 	MatchItemIDsByTerms(ctx context.Context, arg MatchItemIDsByTermsParams) ([]int64, error)
+	MergeIngredientRefsAisle(ctx context.Context, arg MergeIngredientRefsAisleParams) error
+	MergeIngredientRefsEventRecipeItem(ctx context.Context, arg MergeIngredientRefsEventRecipeItemParams) error
+	MergeIngredientRefsGroceryLine(ctx context.Context, arg MergeIngredientRefsGroceryLineParams) error
+	// Repoint every ingredient reference onto the merge target. For tables
+	// where two rows would collapse to the same natural key, only rows that
+	// do not conflict are repointed; the conflicting leftovers are deleted by
+	// the paired DeleteIngredientRefs* query.
+	MergeIngredientRefsItem(ctx context.Context, arg MergeIngredientRefsItemParams) error
+	MergeIngredientRefsMealSlot(ctx context.Context, arg MergeIngredientRefsMealSlotParams) error
+	MergeIngredientRefsOverride(ctx context.Context, arg MergeIngredientRefsOverrideParams) error
+	MergeIngredientRefsRecipeItem(ctx context.Context, arg MergeIngredientRefsRecipeItemParams) error
+	MergeIngredientRefsRoute(ctx context.Context, arg MergeIngredientRefsRouteParams) error
+	MergeIngredientRefsUsual(ctx context.Context, arg MergeIngredientRefsUsualParams) error
 	// The engaged slice of an item search: every catalog row matching the
 	// visibility/term filters whose ID is in the caller's engagement set. At
 	// most a few thousand rows — fetched whole and tier-sorted in Go, which is
@@ -108,6 +149,8 @@ type Querier interface {
 	// large catalog.
 	SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error)
 	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) (int64, error)
+	// Writes the catalog-level item -> ingredient link.
+	SetItemIngredient(ctx context.Context, arg SetItemIngredientParams) (int64, error)
 	SetItemStatus(ctx context.Context, arg SetItemStatusParams) (int64, error)
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)
@@ -118,6 +161,11 @@ type Querier interface {
 	// Race-free submit: if an approved or own-pending normalized name already
 	// exists, return the existing row; otherwise create a new pending brand.
 	UpsertBrand(ctx context.Context, arg UpsertBrandParams) (InventoryBrand, error)
+	// Household-level remap: "this product is a different ingredient for us."
+	UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error
+	// "Usual brand" record — updated each time a check-off credits stock so
+	// repeat purchases stop prompting.
+	UpsertUsualItemForIngredient(ctx context.Context, arg UpsertUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
 }
 
 var _ Querier = (*Queries)(nil)

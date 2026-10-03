@@ -9,9 +9,11 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/inventory/sqlc"
@@ -391,6 +393,10 @@ type Item struct {
 	ApprovedAt        *time.Time
 	NetWeight         *float64
 	IsMetric          bool
+	// IngredientID is the catalog-level link to the generic ingredient this
+	// branded product is. Household overrides layer on top at resolution
+	// time — see ResolveItemIngredient.
+	IngredientID *int64
 }
 
 // CreateItem adds a new item to the catalog. The item is immediately
@@ -1262,6 +1268,253 @@ func (s *Service) DeleteIngredient(ctx context.Context, ingredientID int64) erro
 	return s.q.DeleteIngredient(ctx, ingredientID)
 }
 
+// normalizeIngredientName produces the canonical spelling stored for an
+// ingredient: whitespace-collapsed, trimmed, and lowercased — the same
+// case-folded convention the seed catalog uses, so display and matching
+// agree.
+func normalizeIngredientName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// GetOrCreateIngredient returns the ingredient whose normalized name
+// matches, creating it when none exists. The unique index on the
+// normalized expression makes duplicates impossible; on a racing insert
+// the unique violation is converted into a second lookup.
+func (s *Service) GetOrCreateIngredient(ctx context.Context, name string, categoryID, defaultUnitID *int64, by string) (Ingredient, error) {
+	name = normalizeIngredientName(name)
+	if name == "" {
+		return Ingredient{}, fmt.Errorf("get or create ingredient: %w", domainerr.ErrValidation)
+	}
+	if row, err := s.q.FindIngredientByNormalizedName(ctx, name); err == nil {
+		return toIngredient(row), nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Ingredient{}, fmt.Errorf("get or create ingredient: %w", domainerr.FromStorage(err))
+	}
+	row, err := s.q.CreateIngredient(ctx, sqlc.CreateIngredientParams{
+		Name:          name,
+		CategoryID:    optInt64(categoryID),
+		DefaultUnitID: optInt64(defaultUnitID),
+		IsActive:      true,
+		CreatedBy:     by,
+		UpdatedBy:     textOrNull(by),
+	})
+	if err == nil {
+		return toIngredient(row), nil
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return Ingredient{}, fmt.Errorf("get or create ingredient: %w", domainerr.FromStorage(err))
+	}
+	// Lost the insert race — the winner's row is now visible.
+	row, err = s.q.FindIngredientByNormalizedName(ctx, name)
+	if err != nil {
+		return Ingredient{}, fmt.Errorf("get or create ingredient: %w", domainerr.FromStorage(err))
+	}
+	return toIngredient(row), nil
+}
+
+// ResolveItemIngredient returns the effective ingredient for a branded
+// item under a household: the household's override wins over the
+// catalog-level link. A nil result means the item is unlinked.
+func (s *Service) ResolveItemIngredient(ctx context.Context, householdID, itemID int64) (*int64, error) {
+	row, err := s.q.GetItemIngredient(ctx, sqlc.GetItemIngredientParams{
+		ItemID:      itemID,
+		HouseholdID: householdID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve item ingredient: %w", domainerr.FromStorage(err))
+	}
+	if row.OverrideIngredientID.Valid {
+		return &row.OverrideIngredientID.Int64, nil
+	}
+	if !row.IngredientID.Valid {
+		return nil, nil
+	}
+	return &row.IngredientID.Int64, nil
+}
+
+// ResolveIngredientItems lists every item that resolves to the ingredient
+// under the same override-wins order, limited to items visible to the user.
+func (s *Service) ResolveIngredientItems(ctx context.Context, householdID, ingredientID, userID int64) ([]Item, error) {
+	rows, err := s.q.ListItemsForIngredient(ctx, sqlc.ListItemsForIngredientParams{
+		IngredientID:      ingredientID,
+		HouseholdID:       householdID,
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve ingredient items: %w", err)
+	}
+	out := make([]Item, len(rows))
+	for i := range rows {
+		out[i] = toItem(rows[i])
+	}
+	return out, nil
+}
+
+// SetItemIngredient writes the catalog-level item -> ingredient link.
+// Pass nil to clear it.
+func (s *Service) SetItemIngredient(ctx context.Context, itemID int64, ingredientID *int64, by string) error {
+	n, err := s.q.SetItemIngredient(ctx, sqlc.SetItemIngredientParams{
+		ItemID:       itemID,
+		IngredientID: optInt64(ingredientID),
+		UpdatedBy:    textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set item ingredient: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set item ingredient: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// SetItemIngredientOverride records that a household treats this item as a
+// different ingredient than the catalog link says.
+func (s *Service) SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error {
+	if err := s.q.UpsertItemIngredientOverride(ctx, sqlc.UpsertItemIngredientOverrideParams{
+		HouseholdID:  householdID,
+		ItemID:       itemID,
+		IngredientID: ingredientID,
+		CreatedBy:    by,
+	}); err != nil {
+		return fmt.Errorf("set item ingredient override: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// ClearItemIngredientOverride removes the household remap, restoring the
+// catalog-level resolution.
+func (s *Service) ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error {
+	n, err := s.q.DeleteItemIngredientOverride(ctx, sqlc.DeleteItemIngredientOverrideParams{
+		HouseholdID: householdID,
+		ItemID:      itemID,
+	})
+	if err != nil {
+		return fmt.Errorf("clear item ingredient override: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("clear item ingredient override: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// UsualItem is the brand a household habitually buys for an ingredient.
+type UsualItem struct {
+	ItemID     int64
+	LastUsedAt time.Time
+}
+
+// GetUsualItemForIngredient returns the household's usual brand for an
+// ingredient, or nil when none has been recorded.
+func (s *Service) GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*UsualItem, error) {
+	row, err := s.q.GetUsualItemForIngredient(ctx, sqlc.GetUsualItemForIngredientParams{
+		HouseholdID:  householdID,
+		IngredientID: ingredientID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get usual item: %w", domainerr.FromStorage(err))
+	}
+	return &UsualItem{ItemID: row.ItemID, LastUsedAt: row.LastUsedAt}, nil
+}
+
+// SetUsualItemForIngredient records the item a household just bought for
+// the ingredient, refreshing the usual-brand record.
+func (s *Service) SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error {
+	if _, err := s.q.UpsertUsualItemForIngredient(ctx, sqlc.UpsertUsualItemForIngredientParams{
+		HouseholdID:  householdID,
+		IngredientID: ingredientID,
+		ItemID:       itemID,
+		CreatedBy:    by,
+	}); err != nil {
+		return fmt.Errorf("set usual item: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// MergeIngredients folds source into target: every reference across
+// recipes, meal slots, events, grocery lines, aisle routing, item links,
+// and household prefs is repointed, then the source row is deleted. Rows
+// that would collide with an existing target reference keep their item
+// hint (demoted to item-only) or are dropped as true duplicates.
+func (s *Service) MergeIngredients(ctx context.Context, sourceID, targetID int64) error {
+	if sourceID == targetID {
+		return fmt.Errorf("merge ingredients: %w", domainerr.ErrValidation)
+	}
+	return s.InTx(ctx, func(tx *Service) error {
+		// Both rows must exist before any repointing happens.
+		if _, err := tx.q.GetIngredientByID(ctx, sourceID); err != nil {
+			return fmt.Errorf("merge ingredients source: %w", domainerr.FromStorage(err))
+		}
+		if _, err := tx.q.GetIngredientByID(ctx, targetID); err != nil {
+			return fmt.Errorf("merge ingredients target: %w", domainerr.FromStorage(err))
+		}
+		// Columns declared nullable generate pgtype.Int8 params; the
+		// NOT NULL userprefs keys take plain int64.
+		nn := func(v int64) pgtype.Int8 { return pgtype.Int8{Int64: v, Valid: true} }
+		steps := []func(context.Context, int64, int64) error{
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsItem(ctx, sqlc.MergeIngredientRefsItemParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsOverride(ctx, sqlc.MergeIngredientRefsOverrideParams{IngredientID: src, IngredientID_2: tgt})
+			},
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsUsual(ctx, sqlc.MergeIngredientRefsUsualParams{IngredientID: src, IngredientID_2: tgt})
+			},
+			func(ctx context.Context, src, _ int64) error { return tx.q.DeleteIngredientRefsUsual(ctx, src) },
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsRecipeItem(ctx, sqlc.MergeIngredientRefsRecipeItemParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, _ int64) error {
+				return tx.q.DemoteIngredientRefsRecipeItem(ctx, nn(src))
+			},
+			func(ctx context.Context, src, _ int64) error {
+				return tx.q.DeleteIngredientRefsRecipeItem(ctx, nn(src))
+			},
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsMealSlot(ctx, sqlc.MergeIngredientRefsMealSlotParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, _ int64) error { return tx.q.DemoteIngredientRefsMealSlot(ctx, nn(src)) },
+			func(ctx context.Context, src, _ int64) error { return tx.q.DeleteIngredientRefsMealSlot(ctx, nn(src)) },
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsEventRecipeItem(ctx, sqlc.MergeIngredientRefsEventRecipeItemParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, _ int64) error {
+				return tx.q.DemoteIngredientRefsEventRecipeItem(ctx, nn(src))
+			},
+			func(ctx context.Context, src, _ int64) error {
+				return tx.q.DeleteIngredientRefsEventRecipeItem(ctx, nn(src))
+			},
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsGroceryLine(ctx, sqlc.MergeIngredientRefsGroceryLineParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, _ int64) error {
+				return tx.q.DemoteIngredientRefsGroceryLine(ctx, nn(src))
+			},
+			func(ctx context.Context, src, _ int64) error {
+				return tx.q.DeleteIngredientRefsGroceryLine(ctx, nn(src))
+			},
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsAisle(ctx, sqlc.MergeIngredientRefsAisleParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, _ int64) error { return tx.q.DeleteIngredientRefsAisle(ctx, nn(src)) },
+			func(ctx context.Context, src, tgt int64) error {
+				return tx.q.MergeIngredientRefsRoute(ctx, sqlc.MergeIngredientRefsRouteParams{IngredientID: nn(src), IngredientID_2: nn(tgt)})
+			},
+			func(ctx context.Context, src, _ int64) error { return tx.q.DeleteIngredientRefsRoute(ctx, nn(src)) },
+		}
+		for _, step := range steps {
+			if err := step(ctx, sourceID, targetID); err != nil {
+				return fmt.Errorf("merge ingredients: %w", domainerr.FromStorage(err))
+			}
+		}
+		return tx.q.DeleteIngredient(ctx, sourceID)
+	})
+}
+
 func toIngredient(row sqlc.InventoryIngredient) Ingredient {
 	in := Ingredient{
 		IngredientID: row.IngredientID,
@@ -1426,6 +1679,9 @@ func toItem(row sqlc.InventoryItem) Item {
 	}
 	if v, err := numericToOptionalFloat64(row.NetWeight); err == nil {
 		it.NetWeight = v
+	}
+	if row.IngredientID.Valid {
+		it.IngredientID = &row.IngredientID.Int64
 	}
 	return it
 }

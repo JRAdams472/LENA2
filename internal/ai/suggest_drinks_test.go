@@ -16,6 +16,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
+func int64ptr(v int64) *int64 { return &v }
+
 type sugCellar struct{}
 
 func (sugCellar) ListHouseholdBottles(_ context.Context, hh int64, _, _ int32) ([]userprefs.HouseholdBottle, error) {
@@ -80,7 +82,7 @@ func (sugCocktailRecipes) ListCategoriesForRecipes(context.Context, []int64) (ma
 func (sugCocktailRecipes) ListRecipeItemsByRecipes(_ context.Context, ids []int64) ([]recipe.RecipeItem, error) {
 	var out []recipe.RecipeItem
 	for _, id := range ids {
-		out = append(out, recipe.RecipeItem{RecipeItemID: id, RecipeID: id, ItemID: id * 100})
+		out = append(out, recipe.RecipeItem{RecipeItemID: id, RecipeID: id, ItemID: int64ptr(id * 100)})
 	}
 	return out, nil
 }

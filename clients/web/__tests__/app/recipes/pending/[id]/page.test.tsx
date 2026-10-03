@@ -111,6 +111,7 @@ const reviewWithSuggestions = {
         isOptional: false,
       },
       itemId: null,
+      itemKind: null,
       itemName: null,
       unit: "cup",
       unitId: null,
@@ -399,7 +400,50 @@ describe("pending recipe detail page", () => {
       const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
       expect(update).toBeTruthy();
       expect(update.variables.input.items[0].itemId).toBe("10");
+      expect(update.variables.input.items[0].itemKind).toBe("item");
       expect(update.variables.input.items[0].itemName).toBe("Flour, All-Purpose");
+      expect(update.variables.input.items[0].approved).toBe(true);
+    });
+  });
+
+  it("resolves an ingredient by picking a generic-ingredient chip", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation((_, init) => {
+      const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
+      if (body.query?.includes("updateRecipeImport")) {
+        return Promise.resolve(gql({ updateRecipeImport: updatedRecipeImport }));
+      }
+      if (body.query?.includes("recipeImport")) {
+        return Promise.resolve(gql({ recipeImport: reviewingImport }));
+      }
+      if (body.query?.includes("units")) {
+        return Promise.resolve(gql({ units }));
+      }
+      if (body.query?.includes("items(")) {
+        return Promise.resolve(gql({ items: { items: [] } }));
+      }
+      return Promise.resolve(gql({}));
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+
+    const resolved = screen.getByRole("checkbox", { name: /resolved/i });
+    expect(resolved).not.toBeChecked();
+
+    // the fixture has a "flour" suggestion with kind "ingredient" (id "5") —
+    // clicking it must bind the ingredient id, not just fill the search box.
+    fireEvent.click(screen.getByText(/flour \(ingredient\)/));
+    await waitFor(() => expect(resolved).toBeChecked());
+
+    fireEvent.click(screen.getByRole("button", { name: /save review/i }));
+    await waitFor(() => {
+      const update = getBodies().find((b) => b.query.includes("updateRecipeImport"));
+      expect(update).toBeTruthy();
+      expect(update.variables.input.items[0].itemId).toBe("5");
+      expect(update.variables.input.items[0].itemKind).toBe("ingredient");
+      expect(update.variables.input.items[0].itemName).toBe("flour");
       expect(update.variables.input.items[0].approved).toBe(true);
     });
   });

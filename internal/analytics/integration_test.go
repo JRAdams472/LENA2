@@ -18,6 +18,8 @@ import (
 
 const itBy = "analytics-integration-test"
 
+func ptrInt64(v int64) *int64 { return &v }
+
 func newIntegrationService(t *testing.T, ctx context.Context) (*Service, *pgxpool.Pool) {
 	t.Helper()
 	pool, err := testutil.SharedTestDB(t, ctx)
@@ -112,8 +114,8 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	histA, err := recSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{
 		Name: "IT Overlap History A", IsActive: true,
 	}, []recipe.RecipeItem{
-		{ItemID: i1.ItemID, Quantity: 1, UnitID: gID.UnitID},
-		{ItemID: i2.ItemID, Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i1.ItemID), Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i2.ItemID), Quantity: 1, UnitID: gID.UnitID},
 	}, nil, itBy)
 	require.NoError(t, err)
 	planA, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
@@ -129,8 +131,8 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	histB, err := recSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{
 		Name: "IT Overlap History B", IsActive: true,
 	}, []recipe.RecipeItem{
-		{ItemID: i9.ItemID, Quantity: 1, UnitID: gID.UnitID},
-		{ItemID: i10.ItemID, Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i9.ItemID), Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i10.ItemID), Quantity: 1, UnitID: gID.UnitID},
 	}, nil, itBy)
 	require.NoError(t, err)
 	planB, err := mpSvc.CreateMealPlan(ctx, mealplan.MealPlan{
@@ -147,9 +149,9 @@ func TestIntegrationIngredientOverlap(t *testing.T) {
 	newRec, err := recSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{
 		Name: "IT Overlap New", IsActive: true,
 	}, []recipe.RecipeItem{
-		{ItemID: i1.ItemID, Quantity: 1, UnitID: gID.UnitID},
-		{ItemID: i2.ItemID, Quantity: 1, UnitID: gID.UnitID},
-		{ItemID: i3.ItemID, Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i1.ItemID), Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i2.ItemID), Quantity: 1, UnitID: gID.UnitID},
+		{ItemID: ptrInt64(i3.ItemID), Quantity: 1, UnitID: gID.UnitID},
 	}, nil, itBy)
 	require.NoError(t, err)
 

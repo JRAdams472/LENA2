@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -36,6 +37,14 @@ func (s *stubNamer) GetItemsByIDs(_ context.Context, ids []int64) ([]inventory.I
 		if it, ok := s.items[id]; ok {
 			out = append(out, it)
 		}
+	}
+	return out, nil
+}
+
+func (s *stubNamer) GetIngredientsByIDs(_ context.Context, ids []int64) ([]inventory.Ingredient, error) {
+	out := make([]inventory.Ingredient, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, inventory.Ingredient{IngredientID: id, Name: fmt.Sprintf("ingredient%d", id)})
 	}
 	return out, nil
 }

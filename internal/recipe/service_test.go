@@ -22,6 +22,8 @@ var errDB = errors.New("db failure")
 
 func i32(v int32) *int32 { return &v }
 
+func i64(v int64) *int64 { return &v }
+
 func mustNum(v float64) pgtype.Numeric {
 	n, err := numericFromFloat64(v)
 	if err != nil {
@@ -170,7 +172,7 @@ func TestScaleRecipe(t *testing.T) {
 		assert.Equal(t, int32(2), *got.Recipe.Servings)
 		require.Len(t, got.Items, 1)
 		assert.InDelta(t, 0.75, got.Items[0].Quantity, 1e-9)
-		assert.Equal(t, int64(42), got.Items[0].ItemID)
+		assert.Equal(t, int64(42), *got.Items[0].ItemID)
 		require.Len(t, got.Steps, 1)
 		assert.Equal(t, int32(1), got.Steps[0].StepNumber)
 	})
@@ -337,7 +339,7 @@ func itemRow() sqlc.RecipeRecipeItem {
 	return sqlc.RecipeRecipeItem{
 		RecipeItemID: 55,
 		RecipeID:     7,
-		ItemID:       42,
+		ItemID:       pgtype.Int8{Int64: 42, Valid: true},
 		Quantity:     mustNum(1.5),
 		UnitID:       3,
 		SectionName:  pgtype.Text{String: "filling", Valid: true},
@@ -352,7 +354,7 @@ func TestAddRecipeItem(t *testing.T) {
 		svc, mq := newService(t)
 		arg := RecipeItem{
 			RecipeID:     7,
-			ItemID:       42,
+			ItemID:       i64(42),
 			Quantity:     1.5,
 			UnitID:       3,
 			SectionName:  "filling",
@@ -362,7 +364,7 @@ func TestAddRecipeItem(t *testing.T) {
 		}
 		want := sqlc.AddRecipeItemParams{
 			RecipeID:     7,
-			ItemID:       42,
+			ItemID:       pgtype.Int8{Int64: 42, Valid: true},
 			Quantity:     mustNum(1.5),
 			UnitID:       3,
 			SectionName:  textOrNull("filling"),
@@ -379,21 +381,21 @@ func TestAddRecipeItem(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().AddRecipeItem(gomock.Any(), sqlc.AddRecipeItemParams{
 			RecipeID: 7,
-			ItemID:   42,
+			ItemID:   pgtype.Int8{Int64: 42, Valid: true},
 			Quantity: mustNum(2),
 			UnitID:   10,
 			Notes:    pgtype.Text{},
 		}).Return(nil)
 
 		require.NoError(t, svc.AddRecipeItem(context.Background(),
-			RecipeItem{RecipeID: 7, ItemID: 42, Quantity: 2, UnitID: 10}))
+			RecipeItem{RecipeID: 7, ItemID: i64(42), Quantity: 2, UnitID: 10}))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().AddRecipeItem(gomock.Any(), gomock.Any()).Return(errDB)
 
-		assert.ErrorIs(t, svc.AddRecipeItem(context.Background(), RecipeItem{Quantity: 1}), errDB)
+		assert.ErrorIs(t, svc.AddRecipeItem(context.Background(), RecipeItem{ItemID: i64(1), Quantity: 1}), errDB)
 	})
 }
 
@@ -408,7 +410,7 @@ func TestListRecipeItems(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.Equal(t, int64(55), got[0].RecipeItemID)
 		assert.Equal(t, int64(7), got[0].RecipeID)
-		assert.Equal(t, int64(42), got[0].ItemID)
+		assert.Equal(t, int64(42), *got[0].ItemID)
 		assert.InDelta(t, 1.5, got[0].Quantity, 1e-9)
 		assert.Equal(t, int64(3), got[0].UnitID)
 		assert.Equal(t, "filling", got[0].SectionName)
@@ -420,7 +422,7 @@ func TestListRecipeItems(t *testing.T) {
 	t.Run("null quantity maps to zero", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListRecipeItems(gomock.Any(), int64(7)).
-			Return([]sqlc.RecipeRecipeItem{{RecipeID: 7, ItemID: 9, UnitID: 15}}, nil)
+			Return([]sqlc.RecipeRecipeItem{{RecipeID: 7, ItemID: pgtype.Int8{Int64: 9, Valid: true}, UnitID: 15}}, nil)
 
 		got, err := svc.ListRecipeItems(context.Background(), 7)
 		require.NoError(t, err)

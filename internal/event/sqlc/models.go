@@ -76,7 +76,7 @@ type EventEventRecipe struct {
 type EventEventRecipeItem struct {
 	EventRecipeItemID int64              `json:"event_recipe_item_id"`
 	EventRecipeID     int64              `json:"event_recipe_id"`
-	ItemID            int64              `json:"item_id"`
+	ItemID            pgtype.Int8        `json:"item_id"`
 	IngredientID      pgtype.Int8        `json:"ingredient_id"`
 	Quantity          pgtype.Numeric     `json:"quantity"`
 	UnitID            int64              `json:"unit_id"`
@@ -376,6 +376,7 @@ type InventoryItem struct {
 	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
 	NetWeight         pgtype.Numeric     `json:"net_weight"`
 	IsMetric          bool               `json:"is_metric"`
+	IngredientID      pgtype.Int8        `json:"ingredient_id"`
 }
 
 type InventoryNutrientType struct {
@@ -521,7 +522,7 @@ type RecipeRecipeImport struct {
 
 type RecipeRecipeItem struct {
 	RecipeID     int64          `json:"recipe_id"`
-	ItemID       int64          `json:"item_id"`
+	ItemID       pgtype.Int8    `json:"item_id"`
 	Quantity     pgtype.Numeric `json:"quantity"`
 	Notes        pgtype.Text    `json:"notes"`
 	IsOptional   bool           `json:"is_optional"`
@@ -575,6 +576,17 @@ type UserprefsHouseholdBottle struct {
 	HouseholdID       int64              `json:"household_id"`
 }
 
+type UserprefsHouseholdIngredientItem struct {
+	HouseholdID  int64              `json:"household_id"`
+	IngredientID int64              `json:"ingredient_id"`
+	ItemID       int64              `json:"item_id"`
+	LastUsedAt   time.Time          `json:"last_used_at"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type UserprefsHouseholdItem struct {
 	HouseholdItemID int64              `json:"household_item_id"`
 	ItemID          int64              `json:"item_id"`
@@ -588,6 +600,16 @@ type UserprefsHouseholdItem struct {
 	UpdatedBy       pgtype.Text        `json:"updated_by"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	HouseholdID     int64              `json:"household_id"`
+}
+
+type UserprefsHouseholdItemIngredient struct {
+	HouseholdID  int64              `json:"household_id"`
+	ItemID       int64              `json:"item_id"`
+	IngredientID int64              `json:"ingredient_id"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type UserprefsNotificationPref struct {

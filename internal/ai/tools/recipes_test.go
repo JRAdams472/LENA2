@@ -23,8 +23,8 @@ func recipesFixture() *Registry {
 			1: {{CategoryID: 5, Name: "Breakfast"}},
 		},
 		items: []recipe.RecipeItem{
-			{RecipeID: 1, ItemID: 10, Quantity: 2, UnitID: 1},
-			{RecipeID: 1, ItemID: 11, Quantity: 1, UnitID: 2, IsOptional: true},
+			{RecipeID: 1, ItemID: ptrInt64(10), Quantity: 2, UnitID: 1},
+			{RecipeID: 1, ItemID: ptrInt64(11), Quantity: 1, UnitID: 2, IsOptional: true},
 		},
 	}
 	items := &stubNamer{

@@ -1230,7 +1230,10 @@ func (r *eventRecipeItemResolver) ID() graphql.ID {
 }
 
 func (r *eventRecipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
-	it, err := r.inv.GetItemByID(ctx, r.it.ItemID)
+	if r.it.ItemID == nil {
+		return nil, nil
+	}
+	it, err := r.inv.GetItemByID(ctx, *r.it.ItemID)
 	if err != nil {
 		return nil, err
 	}
@@ -1265,7 +1268,7 @@ func (r *eventRecipeItemResolver) Notes() *string { return nilIfEmpty(r.it.Notes
 func (r *eventRecipeItemResolver) IsOptional() bool { return r.it.IsOptional }
 
 type eventRecipeItemInput struct {
-	ItemID       graphql.ID
+	ItemID       *graphql.ID
 	IngredientID *graphql.ID
 	Quantity     float64
 	Unit         string
@@ -1278,7 +1281,7 @@ type eventRecipeItemInput struct {
 // eventRecipeItemFromInput maps the input and resolves the unit name
 // through the shared unit catalog, like recipe items do.
 func (r *Resolver) eventRecipeItemFromInput(ctx context.Context, in eventRecipeItemInput) (event.EventRecipeItem, error) {
-	itemID, err := parseID(string(in.ItemID))
+	itemID, err := optionalID(in.ItemID)
 	if err != nil {
 		return event.EventRecipeItem{}, err
 	}
@@ -1293,6 +1296,9 @@ func (r *Resolver) eventRecipeItemFromInput(ctx context.Context, in eventRecipeI
 			return event.EventRecipeItem{}, err
 		}
 		ingredientID = &v
+	}
+	if itemID == nil && ingredientID == nil {
+		return event.EventRecipeItem{}, badInputf("event recipe item requires itemId or ingredientId")
 	}
 	if in.Quantity <= 0 {
 		return event.EventRecipeItem{}, badInputf("quantity must be positive")
