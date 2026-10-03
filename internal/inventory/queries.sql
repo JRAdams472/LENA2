@@ -496,6 +496,26 @@ LEFT JOIN userprefs.household_item_ingredient o
       AND o.household_id = $2
 WHERE i.item_id = $1;
 
+-- name: GetItemIngredientsForItems :many
+-- Batch form of GetItemIngredient: one row per requested item carrying the
+-- override and catalog ingredient (override wins; both NULL when unlinked).
+SELECT i.item_id,
+       o.ingredient_id AS override_ingredient_id,
+       i.ingredient_id
+FROM inventory.item i
+LEFT JOIN userprefs.household_item_ingredient o
+       ON o.item_id = i.item_id
+      AND o.household_id = sqlc.arg(household_id)
+WHERE i.item_id = ANY(sqlc.arg(item_ids)::bigint[]);
+
+-- name: ListUsualItemsForIngredients :many
+-- Batch "usual brand" lookup for grocery-line preloads — one row per
+-- (ingredient, household) pair recorded by brand-picked check-offs.
+SELECT *
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1
+  AND ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);
+
 -- name: ListItemsForIngredient :many
 -- Every item resolving to the ingredient under the same resolution order:
 -- catalog link plus overrides (an override can point an otherwise-linked

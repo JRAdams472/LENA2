@@ -69,6 +69,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
+		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(11), []int64{3}).Return(map[int64]*int64{3: nil}, nil)
 
 		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
@@ -171,6 +172,7 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
+		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(11), []int64{3}).Return(map[int64]*int64{3: nil}, nil)
 		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 
@@ -527,6 +529,7 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 			{StepNumber: 1, Instruction: "Boil"},
 		}
 		inv.EXPECT().GetUnitByName(gomock.Any(), "cups").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(11), []int64{3}).Return(map[int64]*int64{3: nil}, nil)
 		rec.EXPECT().CreateRecipeWithChildren(gomock.Any(), gomock.Eq(expectedRecipe), gomock.Eq(expectedItems), gomock.Eq(expectedSteps), recTestEmail).
 			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: recInt32Ptr(4), IsActive: true}, nil)
 
@@ -888,6 +891,7 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 			{StepNumber: 1, Instruction: "Stir"},
 		}
 		inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(11), []int64{3}).Return(map[int64]*int64{3: nil}, nil)
 		rec.EXPECT().UpdateRecipeWithChildren(gomock.Any(), int64(9), gomock.Eq(expectedRecipe), gomock.Eq(expectedItems), gomock.Eq(expectedSteps), recTestEmail).Return(nil)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
 			Return(recipe.Recipe{RecipeID: 9, Name: "New", Servings: recInt32Ptr(6), IsActive: true}, nil)

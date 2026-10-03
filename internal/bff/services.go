@@ -129,6 +129,26 @@ type ItemReader interface {
 	GetFlavorProfileByID(ctx context.Context, flavorProfileID int64) (inventory.FlavorProfile, error)
 	GetNutrientTypeByID(ctx context.Context, nutrientID int64) (inventory.NutrientType, error)
 	GetNutrientTypeByName(ctx context.Context, name string) (inventory.NutrientType, error)
+	// Item↔ingredient resolution — override-aware. Batch variants feed the
+	// preload helpers; singles serve lazy fallbacks and mutation paths.
+	ResolveItemIngredient(ctx context.Context, householdID, itemID int64) (*int64, error)
+	ResolveItemIngredients(ctx context.Context, householdID int64, itemIDs []int64) (map[int64]*int64, error)
+	ResolveIngredientItems(ctx context.Context, householdID, ingredientID, userID int64) ([]inventory.Item, error)
+	GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*inventory.UsualItem, error)
+	GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]inventory.UsualItem, error)
+	RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*inventory.Item, error)
+}
+
+// IngredientLinker is the write side of the item↔ingredient link: the
+// dedupe-safe free-create, the admin merge/link tools, the household
+// override, and the usual-brand record written by brand-picked check-offs.
+type IngredientLinker interface {
+	GetOrCreateIngredient(ctx context.Context, name string, categoryID, defaultUnitID *int64, by string) (inventory.Ingredient, error)
+	MergeIngredients(ctx context.Context, sourceID, targetID int64) error
+	SetItemIngredient(ctx context.Context, itemID int64, ingredientID *int64, by string) error
+	SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error
+	ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error
+	SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error
 }
 
 // ItemWriter is the member-facing catalog write surface (submissions and
@@ -177,6 +197,7 @@ type InventoryService interface {
 	ItemReader
 	ItemWriter
 	CatalogAdmin
+	IngredientLinker
 }
 
 var _ InventoryService = (*inventory.Service)(nil)

@@ -34,6 +34,9 @@ func mealPlanCtx() context.Context {
 func mealPlanPtrInt64(v int64) *int64 { return &v }
 func mealPlanPtrInt32(v int32) *int32 { return &v }
 func mealPlanPtrBool(v bool) *bool    { return &v }
+func mealPlanPtrGID(v graphql.ID) *graphql.ID {
+	return &v
+}
 
 func TestResolver_MealPlan_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -315,6 +318,7 @@ func TestResolver_MealPlan_AddMealSlotItem_Happy(t *testing.T) {
 	r := &Resolver{MealPlanService: mp, InventoryService: inv}
 
 	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+	inv.EXPECT().ResolveItemIngredient(gomock.Any(), mealPlanUserID, int64(50)).Return(nil, nil)
 	mp.EXPECT().AddMealSlotItem(gomock.Any(), gomock.Eq(mealplan.MealSlotItem{
 		SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, UnitID: 3, IsFromRecipe: true,
 	}), mealPlanUserID, mealPlanEmail).Return(mealplan.MealSlotItem{
@@ -324,7 +328,7 @@ func TestResolver_MealPlan_AddMealSlotItem_Happy(t *testing.T) {
 	res, err := r.AddMealSlotItem(mealPlanCtx(), struct{ Input addMealSlotItemInput }{
 		Input: addMealSlotItemInput{
 			SlotID:       "100",
-			ItemID:       "50",
+			ItemID:       mealPlanPtrGID("50"),
 			Quantity:     1.5,
 			Unit:         "cup",
 			IsFromRecipe: mealPlanPtrBool(true),
@@ -389,7 +393,7 @@ func TestResolver_MealPlan_Unauthorized(t *testing.T) {
 		}},
 		{"AddMealSlotItem", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlotItem(ctx, struct{ Input addMealSlotItemInput }{
-				Input: addMealSlotItemInput{SlotID: "100", ItemID: "50", Quantity: 1, Unit: "cup"},
+				Input: addMealSlotItemInput{SlotID: "100", ItemID: mealPlanPtrGID("50"), Quantity: 1, Unit: "cup"},
 			})
 		}},
 		{"RemoveMealSlotItem", func(ctx context.Context) (any, error) {
@@ -446,12 +450,12 @@ func TestResolver_MealPlan_InvalidID(t *testing.T) {
 		}},
 		{"AddMealSlotItem_SlotID", func(context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlotItem(mealPlanCtx(), struct{ Input addMealSlotItemInput }{
-				Input: addMealSlotItemInput{SlotID: "abc", ItemID: "50", Quantity: 1, Unit: "cup"},
+				Input: addMealSlotItemInput{SlotID: "abc", ItemID: mealPlanPtrGID("50"), Quantity: 1, Unit: "cup"},
 			})
 		}},
 		{"AddMealSlotItem_ItemID", func(context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlotItem(mealPlanCtx(), struct{ Input addMealSlotItemInput }{
-				Input: addMealSlotItemInput{SlotID: "100", ItemID: "abc", Quantity: 1, Unit: "cup"},
+				Input: addMealSlotItemInput{SlotID: "100", ItemID: mealPlanPtrGID("abc"), Quantity: 1, Unit: "cup"},
 			})
 		}},
 		{"RemoveMealSlotItem", func(context.Context) (any, error) {
@@ -556,7 +560,7 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
 				return r.AddMealSlotItem(ctx, struct{ Input addMealSlotItemInput }{
-					Input: addMealSlotItemInput{SlotID: "100", ItemID: "50", Quantity: 1, Unit: "cup"},
+					Input: addMealSlotItemInput{SlotID: "100", ItemID: mealPlanPtrGID("50"), Quantity: 1, Unit: "cup"},
 				})
 			},
 		},
@@ -598,10 +602,13 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 			inv := mock.NewMockInventoryService(ctrl)
 			rec := mock.NewMockRecipeService(ctrl)
 			r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec}
-			// AddMealSlotItem resolves the unit name before calling the
-			// service; permit that lookup for any case that reaches it.
+			// AddMealSlotItem resolves the unit name and the item's
+			// ingredient link before calling the service; permit those
+			// lookups for any case that reaches them.
 			inv.EXPECT().GetUnitByName(gomock.Any(), gomock.Any()).
 				Return(inventory.Unit{UnitID: 1, Name: "each"}, nil).AnyTimes()
+			inv.EXPECT().ResolveItemIngredient(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, nil).AnyTimes()
 			tt.setup(mp)
 
 			res, err := tt.call(r, mealPlanCtx())

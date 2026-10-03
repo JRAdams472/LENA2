@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"time"
@@ -84,7 +85,7 @@ func (r *Resolver) loadMealPlanChildren(ctx context.Context, u currentuser.User,
 	}
 	// Recipe children (favorites) stay per-user; only the plan rows
 	// themselves are household-scoped.
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID,
 		distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
 		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }))
 	if err != nil {
@@ -141,16 +142,58 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	}
 
 	lines := expandPlanLines(slots, slotItems, recipes, recipeItems)
-	nutrientsByItem, itemMeta, unitMeta, err := r.nutritionInputs(ctx, lines)
+
+	// Ingredient-keyed lines carry no nutrients themselves — resolve each
+	// to a representative branded item (preferred brand → household usual
+	// → first linked item). Unresolvable lines are skipped with a warning
+	// rather than silently dropped.
+	itemLines := make([]planLine, 0, len(lines))
+	var resolveWarnings []string
+	ingredientIDs := distinctIDs(lines, func(l planLine) *int64 {
+		if l.itemID == nil {
+			return l.ingredientID
+		}
+		return nil
+	})
+	ingredients, err := loadIngredients(ctx, r.InventoryService, ingredientIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range lines {
+		if l.itemID != nil {
+			itemLines = append(itemLines, l)
+			continue
+		}
+		if l.ingredientID == nil {
+			continue
+		}
+		rep, err := r.InventoryService.RepresentativeItemForIngredient(ctx, u.HouseholdID, *l.ingredientID, u.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if rep == nil {
+			name := strconv.FormatInt(*l.ingredientID, 10)
+			if in, ok := ingredients[*l.ingredientID]; ok {
+				name = in.Name
+			}
+			resolveWarnings = append(resolveWarnings, fmt.Sprintf("no linked item for ingredient %q; skipped in nutrition", name))
+			continue
+		}
+		itemID := rep.ItemID
+		itemLines = append(itemLines, planLine{itemID: &itemID, unitID: l.unitID, qty: l.qty})
+	}
+
+	nutrientsByItem, itemMeta, unitMeta, err := r.nutritionInputs(ctx, itemLines)
 	if err != nil {
 		return nil, err
 	}
 
-	nutritionLines := make([]mealplan.NutritionLine, len(lines))
-	for i, l := range lines {
-		nutritionLines[i] = mealplan.NutritionLine{ItemID: l.itemID, Quantity: l.qty, UnitID: l.unitID}
+	nutritionLines := make([]mealplan.NutritionLine, len(itemLines))
+	for i, l := range itemLines {
+		nutritionLines[i] = mealplan.NutritionLine{ItemID: *l.itemID, Quantity: l.qty, UnitID: l.unitID}
 	}
 	totals, warnings := mealplan.AggregateNutrition(nutritionLines, nutrientsByItem, itemMeta, unitMeta)
+	warnings = append(resolveWarnings, warnings...)
 	out := make([]*nutritionResolver, 0, len(totals))
 	for _, t := range totals {
 		out = append(out, &nutritionResolver{nutrition: nutrition{Name: t.Name, Unit: t.Unit, Amount: t.Amount}})
@@ -181,7 +224,9 @@ func (r *Resolver) planRecipes(ctx context.Context, slots []mealplan.MealSlot) (
 func (r *Resolver) nutritionInputs(ctx context.Context, lines []planLine) (map[int64][]mealplan.NutrientBasis, map[int64]mealplan.NutritionItem, map[int64]mealplan.NutritionUnit, error) {
 	itemIDSet := make(map[int64]bool)
 	for _, l := range lines {
-		itemIDSet[l.itemID] = true
+		if l.itemID != nil {
+			itemIDSet[*l.itemID] = true
+		}
 	}
 	itemIDs := make([]int64, 0, len(itemIDSet))
 	for id := range itemIDSet {
@@ -395,7 +440,9 @@ func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graph
 	return true, nil
 }
 
-// AddMealSlotItem adds an ad-hoc item to a slot.
+// AddMealSlotItem adds an ad-hoc item to a slot. Lines may key on either
+// an ingredient or a branded item; an item-only line is resolved to its
+// linked ingredient when one exists.
 func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMealSlotItemInput }) (*mealSlotItemResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -405,13 +452,25 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	if err != nil {
 		return nil, err
 	}
-	itemID, err := parseID(string(args.Input.ItemID))
+	itemID, err := optionalID(args.Input.ItemID)
 	if err != nil {
 		return nil, err
 	}
 	ingredientID, err := optionalID(args.Input.IngredientID)
 	if err != nil {
 		return nil, err
+	}
+	if itemID == nil && ingredientID == nil {
+		return nil, badInputf("slot item requires itemId or ingredientId")
+	}
+	// Brand-only input: fill in the ingredient when the catalog/household
+	// link resolves one, so generated grocery lines aggregate correctly.
+	if ingredientID == nil {
+		resolved, err := r.InventoryService.ResolveItemIngredient(ctx, u.HouseholdID, *itemID)
+		if err != nil {
+			return nil, err
+		}
+		ingredientID = resolved
 	}
 	unitID, err := resolveUnitID(ctx, r.InventoryService, args.Input.Unit)
 	if err != nil {
@@ -426,7 +485,7 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	}
 	item, err := r.MealPlanService.AddMealSlotItem(ctx, mealplan.MealSlotItem{
 		SlotID:       slotID,
-		ItemID:       &itemID,
+		ItemID:       itemID,
 		IngredientID: ingredientID,
 		Quantity:     args.Input.Quantity,
 		UnitID:       unitID,
@@ -687,7 +746,7 @@ type addMealSlotInput struct {
 
 type addMealSlotItemInput struct {
 	SlotID       graphql.ID
-	ItemID       graphql.ID
+	ItemID       *graphql.ID
 	IngredientID *graphql.ID
 	Quantity     float64
 	Unit         string

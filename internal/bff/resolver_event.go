@@ -32,7 +32,7 @@ func (r *Resolver) FoodEvent(ctx context.Context, args struct{ ID graphql.ID }) 
 	if err != nil {
 		return nil, err
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID,
 		distinctIDs(recipes, func(er event.EventRecipe) *int64 { return er.RecipeID }), nil)
 	if err != nil {
 		return nil, err
@@ -276,7 +276,7 @@ func (r *Resolver) UpdateFoodEvent(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID,
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID,
 		distinctIDs(recipes, func(er event.EventRecipe) *int64 { return er.RecipeID }), nil)
 	if err != nil {
 		return nil, err
@@ -1299,6 +1299,19 @@ func (r *Resolver) eventRecipeItemFromInput(ctx context.Context, in eventRecipeI
 	}
 	if itemID == nil && ingredientID == nil {
 		return event.EventRecipeItem{}, badInputf("event recipe item requires itemId or ingredientId")
+	}
+	// Brand-only input: fill in the linked ingredient so the snapshot row
+	// participates in ingredient-keyed flows downstream.
+	if ingredientID == nil {
+		u, ok := currentuser.FromContext(ctx)
+		if !ok {
+			return event.EventRecipeItem{}, errForbidden()
+		}
+		resolved, err := r.InventoryService.ResolveItemIngredient(ctx, u.HouseholdID, *itemID)
+		if err != nil {
+			return event.EventRecipeItem{}, err
+		}
+		ingredientID = resolved
 	}
 	if in.Quantity <= 0 {
 		return event.EventRecipeItem{}, badInputf("quantity must be positive")

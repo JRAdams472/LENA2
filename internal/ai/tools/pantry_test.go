@@ -49,6 +49,19 @@ func (s *stubNamer) GetIngredientsByIDs(_ context.Context, ids []int64) ([]inven
 	return out, nil
 }
 
+func (s *stubNamer) ResolveItemIngredients(_ context.Context, _ int64, ids []int64) (map[int64]*int64, error) {
+	out := make(map[int64]*int64, len(ids))
+	for _, id := range ids {
+		if it, ok := s.items[id]; ok && it.IngredientID != nil {
+			v := *it.IngredientID
+			out[id] = &v
+		} else {
+			out[id] = nil
+		}
+	}
+	return out, nil
+}
+
 func (s *stubNamer) GetUnitsByIDs(_ context.Context, ids []int64) ([]inventory.Unit, error) {
 	out := make([]inventory.Unit, 0, len(ids))
 	for _, id := range ids {

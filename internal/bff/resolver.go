@@ -626,6 +626,10 @@ type itemChildren struct {
 	units       map[int64]inventory.Unit
 	itemCounts  map[int64]countPair
 	brandCounts map[int64]countPair
+	// ingredients covers catalog links and override targets alike;
+	// resolved maps item_id -> effective ingredient (override wins).
+	ingredients map[int64]inventory.Ingredient
+	resolved    map[int64]*int64
 }
 
 // loadUnits fetches a set of units in one query, keyed by ID.
@@ -716,9 +720,11 @@ func loadItems(ctx context.Context, inv ItemReader, itemIDs []int64) (map[int64]
 	return items, nil
 }
 
-// loadItemChildren batch-loads the brand, category, nutrient and flavor
-// rows referenced by items.
-func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Item) (*itemChildren, error) {
+// loadItemChildren batch-loads the brand, category, nutrient, flavor and
+// ingredient rows referenced by items. householdID scopes the
+// override-aware item -> ingredient resolution (pass 0 for catalog-only
+// resolution, e.g. admin browse of another household's data).
+func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Item, householdID int64) (*itemChildren, error) {
 	ch := &itemChildren{
 		brands:      make(map[int64]inventory.Brand),
 		categories:  make(map[int64]inventory.Category),
@@ -727,6 +733,8 @@ func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Ite
 		units:       make(map[int64]inventory.Unit),
 		itemCounts:  make(map[int64]countPair),
 		brandCounts: make(map[int64]countPair),
+		ingredients: make(map[int64]inventory.Ingredient),
+		resolved:    make(map[int64]*int64),
 	}
 	if len(items) == 0 {
 		return ch, nil
@@ -795,6 +803,32 @@ func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Ite
 	if err != nil {
 		return nil, err
 	}
+	// Resolved (override-aware) ingredients plus the catalog link itself —
+	// the union feeds both the ingredient and householdIngredient fields.
+	resolved, err := inv.ResolveItemIngredients(ctx, householdID, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	ch.resolved = resolved
+	ingredientIDSet := make(map[int64]bool)
+	for _, it := range items {
+		if it.IngredientID != nil {
+			ingredientIDSet[*it.IngredientID] = true
+		}
+	}
+	for _, ingID := range resolved {
+		if ingID != nil {
+			ingredientIDSet[*ingID] = true
+		}
+	}
+	ingredientIDs := make([]int64, 0, len(ingredientIDSet))
+	for id := range ingredientIDSet {
+		ingredientIDs = append(ingredientIDs, id)
+	}
+	ch.ingredients, err = loadIngredients(ctx, inv, ingredientIDs)
+	if err != nil {
+		return nil, err
+	}
 	return ch, nil
 }
 
@@ -826,8 +860,9 @@ type recipeChildren struct {
 // current user's favorite flags, and the catalog rows for every item those
 // recipes reference. The returned itemID set is merged into extraItemIDs so
 // callers can also resolve items referenced from elsewhere (e.g. meal slot
-// overrides) with the same maps.
-func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv ItemReader, userID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
+// overrides) with the same maps. householdID scopes override-aware
+// item -> ingredient resolution inside the batch-loaded item children.
+func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv ItemReader, userID, householdID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
 	rc := &recipeChildren{
 		recipes:      make(map[int64]recipe.Recipe),
 		itemsBy:      make(map[int64][]recipe.RecipeItem),
@@ -878,7 +913,7 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 			return nil, err
 		}
 	}
-	if err := loadRecipeInventoryChildren(ctx, inv, rc, extraItemIDs); err != nil {
+	if err := loadRecipeInventoryChildren(ctx, inv, rc, householdID, extraItemIDs); err != nil {
 		return nil, err
 	}
 	return rc, nil
@@ -887,7 +922,7 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 // loadRecipeInventoryChildren batch-loads the inventory-side children
 // referenced by rc.itemsBy (plus any extra item IDs): catalog items,
 // their children, recipe-item units, and brand-agnostic ingredients.
-func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipeChildren, extraItemIDs []int64) error {
+func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipeChildren, householdID int64, extraItemIDs []int64) error {
 	itemIDSet := make(map[int64]bool)
 	for _, id := range extraItemIDs {
 		itemIDSet[id] = true
@@ -916,7 +951,7 @@ func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipe
 	for _, it := range items {
 		list = append(list, it)
 	}
-	ch, err := loadItemChildren(ctx, inv, list)
+	ch, err := loadItemChildren(ctx, inv, list, householdID)
 	if err != nil {
 		return err
 	}

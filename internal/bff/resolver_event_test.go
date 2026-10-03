@@ -533,6 +533,7 @@ func TestResolver_AddEventRecipeItem(t *testing.T) {
 		EventRecipeID: 9, FoodEventID: 3, MealType: "dinner", TargetTime: evTarget,
 	}, nil)
 	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+	inv.EXPECT().ResolveItemIngredient(gomock.Any(), int64(7), int64(50)).Return(nil, nil)
 	ev.EXPECT().AddEventRecipeItem(gomock.Any(), event.EventRecipeItem{
 		EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 1.5, UnitID: 3,
 	}, int64(7), "ev-caller@example.com").Return(event.EventRecipeItem{
@@ -568,6 +569,7 @@ func TestResolver_UpdateEventRecipeItem(t *testing.T) {
 		Servings: &servings, BaseServings: &base,
 	}, nil)
 	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil)
+	inv.EXPECT().ResolveItemIngredient(gomock.Any(), int64(7), int64(50)).Return(nil, nil)
 	ev.EXPECT().UpdateEventRecipeItem(gomock.Any(), int64(60), int64(7), event.EventRecipeItem{
 		ItemID: int64Ptr(50), Quantity: 3, UnitID: 3,
 	}, "ev-caller@example.com").Return(nil)

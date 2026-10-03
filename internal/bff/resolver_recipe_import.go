@@ -222,7 +222,7 @@ func (r *recipeImportResolver) Recipe(ctx context.Context) (*recipeResolver, err
 	u, _ := currentuser.FromContext(ctx)
 	// Preload the child graph so nested fields (items, favorites, ratings)
 	// resolve from the batch maps instead of a query per row.
-	rc, err := loadRecipeChildren(ctx, r.rec, r.up, r.inv, u.UserID, []int64{recipe.RecipeID}, nil)
+	rc, err := loadRecipeChildren(ctx, r.rec, r.up, r.inv, u.UserID, u.HouseholdID, []int64{recipe.RecipeID}, nil)
 	if err != nil {
 		return nil, err
 	}

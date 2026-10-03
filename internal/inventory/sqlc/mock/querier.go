@@ -772,6 +772,21 @@ func (mr *MockQuerierMockRecorder) GetItemIngredient(ctx, arg any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemIngredient", reflect.TypeOf((*MockQuerier)(nil).GetItemIngredient), ctx, arg)
 }
 
+// GetItemIngredientsForItems mocks base method.
+func (m *MockQuerier) GetItemIngredientsForItems(ctx context.Context, arg sqlc.GetItemIngredientsForItemsParams) ([]sqlc.GetItemIngredientsForItemsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemIngredientsForItems", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.GetItemIngredientsForItemsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemIngredientsForItems indicates an expected call of GetItemIngredientsForItems.
+func (mr *MockQuerierMockRecorder) GetItemIngredientsForItems(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemIngredientsForItems", reflect.TypeOf((*MockQuerier)(nil).GetItemIngredientsForItems), ctx, arg)
+}
+
 // GetItemsByIDs mocks base method.
 func (m *MockQuerier) GetItemsByIDs(ctx context.Context, itemIds []int64) ([]sqlc.InventoryItem, error) {
 	m.ctrl.T.Helper()
@@ -1100,6 +1115,21 @@ func (m *MockQuerier) ListUnits(ctx context.Context) ([]sqlc.InventoryUnit, erro
 func (mr *MockQuerierMockRecorder) ListUnits(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockQuerier)(nil).ListUnits), ctx)
+}
+
+// ListUsualItemsForIngredients mocks base method.
+func (m *MockQuerier) ListUsualItemsForIngredients(ctx context.Context, arg sqlc.ListUsualItemsForIngredientsParams) ([]sqlc.UserprefsHouseholdIngredientItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUsualItemsForIngredients", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.UserprefsHouseholdIngredientItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUsualItemsForIngredients indicates an expected call of ListUsualItemsForIngredients.
+func (mr *MockQuerierMockRecorder) ListUsualItemsForIngredients(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUsualItemsForIngredients", reflect.TypeOf((*MockQuerier)(nil).ListUsualItemsForIngredients), ctx, arg)
 }
 
 // MatchItemIDs mocks base method.
