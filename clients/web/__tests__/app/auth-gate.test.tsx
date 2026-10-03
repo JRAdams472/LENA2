@@ -11,6 +11,7 @@ jest.mock("@react-oauth/google", () => ({
 }));
 
 const mockedUsePathname = usePathname as jest.Mock;
+const mockFetch = global.fetch as jest.Mock;
 
 function makeToken(email: string, exp: number) {
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
@@ -29,6 +30,15 @@ describe("auth gate", () => {
     mockedUsePathname.mockReturnValue("/");
     localStorage.clear();
     sessionStorage.clear();
+    mockFetch.mockReset();
+    // Sign-out calls /auth/session/revoke; GraphQL calls keep the old
+    // undefined-mock behavior (the tests never depended on responses).
+    mockFetch.mockImplementation((input) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/auth/session/revoke"))
+        return Promise.resolve({ ok: true, status: 204 });
+      return Promise.resolve(undefined);
+    });
   });
 
   it("renders the login screen when unauthenticated", () => {
