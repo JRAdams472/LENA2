@@ -53,6 +53,7 @@ function emptyReviewStep(): RecipeImportReviewStep {
 interface ItemOption {
   id: string;
   name: string;
+  kind: "item" | "ingredient";
 }
 
 const statusColors: Record<string, "success" | "warning" | "error" | "default"> = {
@@ -86,35 +87,47 @@ function IngredientRow({
     enabled: debouncedItem.trim().length > 0,
   });
 
+  const ingredientSearch = useQuery({
+    queryKey: ["ingredient-search", debouncedItem],
+    queryFn: () => api.searchIngredients(debouncedItem, 10),
+    enabled: debouncedItem.trim().length > 0,
+  });
+
+  // The generic ingredient is the primary binding — ingredient options
+  // lead the list; branded items follow.
   const itemOptions = useMemo(() => {
-    const map = new Map<string, ItemOption>();
+    const options: ItemOption[] = [];
+    const seen = new Set<string>();
+    const push = (o: ItemOption) => {
+      const key = `${o.kind}-${o.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        options.push(o);
+      }
+    };
     for (const s of item.suggestions) {
-      if (s.kind === "item") map.set(s.id, { id: s.id, name: s.name });
+      if (s.kind === "ingredient") push({ id: s.id, name: s.name, kind: "ingredient" });
+    }
+    for (const g of ingredientSearch.data ?? []) {
+      push({ id: String(g.ingredientID), name: g.name, kind: "ingredient" });
+    }
+    for (const s of item.suggestions) {
+      if (s.kind === "item") push({ id: s.id, name: s.name, kind: "item" });
     }
     for (const it of itemSearch.data ?? []) {
-      map.set(String(it.itemID), { id: String(it.itemID), name: it.name });
+      push({ id: String(it.itemID), name: it.name, kind: "item" });
     }
-    return [...map.values()];
-  }, [item.suggestions, itemSearch.data]);
+    return options;
+  }, [item.suggestions, ingredientSearch.data, itemSearch.data]);
 
-  const selectItem = (opt: ItemOption | null) => {
+  // itemId carries whichever id was bound; itemKind tells the backend
+  // which catalog namespace it belongs to ("ingredient" -> ingredient_id).
+  const selectOption = (opt: ItemOption | null) => {
     onChange({
       itemId: opt?.id ?? null,
-      itemKind: opt === null ? null : "item",
+      itemKind: opt?.kind ?? null,
       itemName: opt?.name ?? null,
       approved: opt !== null,
-    });
-  };
-
-  // Picking a generic ingredient binds ingredient_id — itemId carries the
-  // ingredient's id with kind "ingredient" so the backend can tell the two
-  // catalog namespaces apart.
-  const selectIngredient = (s: { id: string; name: string }) => {
-    onChange({
-      itemId: s.id,
-      itemKind: "ingredient",
-      itemName: s.name,
-      approved: true,
     });
   };
 
@@ -166,24 +179,25 @@ function IngredientRow({
         <Autocomplete
           size="small"
           options={itemOptions}
-          getOptionLabel={(o) => o.name}
-          isOptionEqualToValue={(a, b) => a.id === b.id}
+          getOptionLabel={(o) =>
+            o.name + (o.kind === "ingredient" ? " (ingredient)" : "")
+          }
+          isOptionEqualToValue={(a, b) => a.id === b.id && a.kind === b.kind}
           value={
             item.itemId
               ? {
                   id: item.itemId,
-                  name:
-                    (item.itemName ?? item.itemId) +
-                    (item.itemKind === "ingredient" ? " (ingredient)" : ""),
+                  kind: (item.itemKind === "ingredient" ? "ingredient" : "item") as "item" | "ingredient",
+                  name: item.itemName ?? item.itemId,
                 }
               : null
           }
           inputValue={itemInput}
           onInputChange={(_, v) => setItemInput(v)}
-          onChange={(_, v) => selectItem(v)}
-          loading={itemSearch.isLoading}
-          noOptionsText="No catalog items"
-          renderInput={(params) => <TextField {...params} label="Catalog Item" />}
+          onChange={(_, v) => selectOption(v)}
+          loading={itemSearch.isLoading || ingredientSearch.isLoading}
+          noOptionsText="No ingredients or catalog items"
+          renderInput={(params) => <TextField {...params} label="Catalog match" />}
           sx={{ flex: 2 }}
         />
         <FormControlLabel
@@ -202,19 +216,21 @@ function IngredientRow({
       </Stack>
       {item.suggestions.length > 0 && (
         <Stack direction="row" spacing={0.5} sx={{ pl: 12, mt: 0.5, flexWrap: "wrap" }}>
-          {item.suggestions.map((s) => (
-            <Chip
-              key={`${s.kind}-${s.id}`}
-              size="small"
-              variant="outlined"
-              label={`${s.name}${s.kind === "ingredient" ? " (ingredient)" : ""} ${Math.round(s.score * 100)}%`}
-              onClick={() =>
-                s.kind === "item"
-                  ? selectItem({ id: s.id, name: s.name })
-                  : selectIngredient(s)
-              }
-            />
-          ))}
+          {[...item.suggestions]
+            .sort((a, b) =>
+              a.kind === b.kind ? b.score - a.score : a.kind === "ingredient" ? -1 : 1
+            )
+            .map((s) => (
+              <Chip
+                key={`${s.kind}-${s.id}`}
+                size="small"
+                variant="outlined"
+                label={`${s.name}${s.kind === "ingredient" ? " (ingredient)" : ""} ${Math.round(s.score * 100)}%`}
+                onClick={() =>
+                  selectOption({ id: s.id, name: s.name, kind: s.kind === "ingredient" ? "ingredient" : "item" })
+                }
+              />
+            ))}
         </Stack>
       )}
     </Box>

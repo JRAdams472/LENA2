@@ -47,10 +47,10 @@ test.describe("meal plans", () => {
       // their own Add buttons.
       const manualBox = page
         .locator("div")
-        .filter({ has: page.getByLabel("Item Name") })
+        .filter({ has: page.getByLabel("Ingredient or item") })
         .filter({ has: page.getByRole("button", { name: "Add" }) })
         .last();
-      await page.getByLabel("Item Name").fill("E2E Eggs");
+      await page.getByLabel("Ingredient or item").fill("E2E Eggs");
       await page.getByLabel("Qty").fill("2");
       await page.getByLabel("Unit").fill("ea");
       await manualBox.getByRole("button", { name: "Add" }).click();

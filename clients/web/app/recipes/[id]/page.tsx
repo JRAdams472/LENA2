@@ -31,7 +31,8 @@ import Typography from "@mui/material/Typography";
 import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api } from "@/lib/api";
-import { Brand, PairingSuggestion, RecipeStep } from "@/lib/types";
+import { Ingredient, Item, PairingSuggestion, RecipeItem, RecipeStep } from "@/lib/types";
+import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
 import { fmtQty } from "@/lib/format";
 import { isOfDrinkingAge } from "@/lib/age";
 import { useMe } from "@/app/auth/useMe";
@@ -41,7 +42,8 @@ export default function RecipeDetailPage() {
   const recipeId = Number(params.id);
   const queryClient = useQueryClient();
 
-  const [itemId, setItemId] = useState<number | "">("");
+  const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [portion, setPortion] = useState("");
   const [unit, setUnit] = useState("");
   const [isOptional, setIsOptional] = useState(false);
@@ -54,9 +56,7 @@ export default function RecipeDetailPage() {
   const [stepDependsOn, setStepDependsOn] = useState("");
   const [stepAppliance, setStepAppliance] = useState("");
   const [editingStepId, setEditingStepId] = useState<number | null>(null);
-  const [brandId, setBrandId] = useState<number | null>(null);
-  const [brandInput, setBrandInput] = useState("");
-  const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
+  const [debouncedIngredientInput, setDebouncedIngredientInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
 
@@ -92,29 +92,10 @@ export default function RecipeDetailPage() {
     if (!isNaN(recipeId)) void api.recordView("recipe", recipeId);
   }, [recipeId]);
 
-  const brandsQuery = useQuery({
-    queryKey: ["item-brands", brandInput],
-    queryFn: () =>
-      brandInput === ""
-        ? api.getFrequentBrands(10)
-        : api.getBrands(brandInput),
-  });
-
-  const brandOptions = brandsQuery.data ?? [];
-  const selectedBrand =
-    brandId === null
-      ? null
-      : brandOptions.find((b) => b.brandID === brandId) ?? null;
-
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedItemSearch(itemSearch), 300);
     return () => clearTimeout(timer);
   }, [itemSearch]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedBrandInput(brandInput), 300);
-    return () => clearTimeout(timer);
-  }, [brandInput]);
 
   useEffect(() => {
     if (debouncedItemSearch.trim()) {
@@ -123,20 +104,15 @@ export default function RecipeDetailPage() {
   }, [debouncedItemSearch]);
 
   useEffect(() => {
-    if (debouncedBrandInput.trim()) {
-      void api.recordSearch("brand", debouncedBrandInput);
+    if (debouncedIngredientInput.trim()) {
+      void api.recordSearch("ingredient", debouncedIngredientInput);
     }
-  }, [debouncedBrandInput]);
+  }, [debouncedIngredientInput]);
 
   const searchQuery = useQuery({
-    queryKey: ["items-search", debouncedItemSearch, brandId],
-    queryFn: () =>
-      api.searchItems(
-        debouncedItemSearch,
-        brandId ?? undefined,
-        brandId !== null && debouncedItemSearch.length === 0 ? 100 : 50
-      ),
-    enabled: brandId !== null || debouncedItemSearch.length >= 2,
+    queryKey: ["items-search", debouncedItemSearch],
+    queryFn: () => api.searchItems(debouncedItemSearch, undefined, 50),
+    enabled: debouncedItemSearch.length >= 2,
   });
 
   const recipeItemsQuery = useQuery({
@@ -158,13 +134,16 @@ export default function RecipeDetailPage() {
 
   const addItemMutation = useMutation({
     mutationFn: (payload: {
-      itemId: number;
+      itemId?: number | null;
+      ingredientId?: number | null;
       portion: number;
       unit: string | null;
       isOptional: boolean;
     }) => api.addRecipeItem(recipeId, payload),
     onSuccess: () => {
-      setItemId("");
+      setSelectedIngredient(null);
+      setDebouncedIngredientInput("");
+      setSelectedItem(null);
       setItemSearch("");
       setDebouncedItemSearch("");
       setPortion("");
@@ -175,7 +154,7 @@ export default function RecipeDetailPage() {
   });
 
   const removeItemMutation = useMutation({
-    mutationFn: (id: number) => api.removeRecipeItem(recipeId, id),
+    mutationFn: (item: RecipeItem) => api.removeRecipeItem(recipeId, item),
     onSuccess: invalidateItems,
   });
 
@@ -243,9 +222,10 @@ export default function RecipeDetailPage() {
   });
 
   const handleAddItem = () => {
-    if (itemId === "" || portion === "") return;
+    if ((!selectedIngredient && !selectedItem) || portion === "") return;
     addItemMutation.mutate({
-      itemId: Number(itemId),
+      ingredientId: selectedIngredient?.ingredientID ?? null,
+      itemId: selectedItem?.itemID ?? null,
       portion: Number(portion),
       unit: unit === "" ? null : unit,
       isOptional,
@@ -470,32 +450,12 @@ export default function RecipeDetailPage() {
         </Typography>
 
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
-          <Autocomplete
-            size="small"
-            options={brandOptions}
-            getOptionLabel={(b) => (typeof b === "string" ? b : b?.brandName ?? "")}
-            isOptionEqualToValue={(a, b) =>
-              (typeof a === "object" && typeof b === "object" && a?.brandID === b?.brandID)
-            }
-            inputValue={brandInput}
-            onInputChange={(_, value) => setBrandInput(value)}
-            value={selectedBrand}
-            onChange={(_, value) => {
-              const b = value as Brand | null;
-              setBrandId(b?.brandID ?? null);
-              setBrandInput(b?.brandName ?? "");
-              setItemId("");
-              setItemSearch("");
-              setDebouncedItemSearch("");
-              if (b) void api.recordSelection("brand", b.brandID);
-            }}
-            filterOptions={(options) => options}
-            loading={brandsQuery.isLoading}
-            noOptionsText="No brands found"
-            renderInput={(params) => (
-              <TextField {...params} label="Brand" size="small" />
-            )}
-            sx={{ minWidth: 180 }}
+          <IngredientAutocomplete
+            value={selectedIngredient}
+            onChange={setSelectedIngredient}
+            onSelect={(ing) => void api.recordSelection("ingredient", ing.ingredientID)}
+            onInputTextChange={setDebouncedIngredientInput}
+            sx={{ minWidth: 240 }}
           />
           <Autocomplete
             size="small"
@@ -506,20 +466,22 @@ export default function RecipeDetailPage() {
             }
             inputValue={itemSearch}
             onInputChange={(_, value) => setItemSearch(value)}
-            value={
-              searchQuery.data?.find((item) => item.itemID === itemId) ?? null
-            }
+            value={selectedItem}
             onChange={(_, value) => {
-              setItemId(value ? value.itemID : "");
+              setSelectedItem(value);
+              // A picked brand auto-fills the ingredient when the item is
+              // linked — the line binds both keys.
+              if (value && !selectedIngredient) {
+                const linked = value.householdIngredient ?? value.ingredient;
+                if (linked) setSelectedIngredient(linked);
+              }
               if (value) void api.recordSelection("item", value.itemID);
             }}
             filterOptions={(options) => options}
             loading={searchQuery.isLoading}
             noOptionsText={
-              brandId === null && debouncedItemSearch.length < 2
+              debouncedItemSearch.length < 2
                 ? "Type at least 2 characters"
-                : brandId !== null && debouncedItemSearch.length === 0
-                ? "No items for this brand"
                 : "No items found"
             }
             renderOption={(props, item) => {
@@ -532,10 +494,26 @@ export default function RecipeDetailPage() {
               );
             }}
             renderInput={(params) => (
-              <TextField {...params} label="Item" size="small" />
+              <TextField
+                {...params}
+                label="Preferred brand (optional)"
+                size="small"
+              />
             )}
             sx={{ minWidth: 260 }}
           />
+          {selectedItem && (
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              label={`Brand: ${selectedItem.brand ? `${selectedItem.brand} ` : ""}${selectedItem.name}`}
+              onDelete={() => {
+                setSelectedItem(null);
+                setItemSearch("");
+              }}
+            />
+          )}
           <TextField
             size="small"
             label="Portion"
@@ -562,9 +540,13 @@ export default function RecipeDetailPage() {
           <Button
             variant="contained"
             onClick={handleAddItem}
-            disabled={itemId === "" || portion === "" || Number(portion) <= 0}
+            disabled={
+              (!selectedIngredient && !selectedItem) ||
+              portion === "" ||
+              Number(portion) <= 0
+            }
           >
-            Add Item
+            Add Ingredient
           </Button>
         </Box>
 
@@ -609,9 +591,11 @@ export default function RecipeDetailPage() {
                       {recipeItem.unitOfMeasure ?? ""}
                     </TableCell>
                     <TableCell>
-                      {recipeItem.itemBrand
-                        ? `${recipeItem.itemBrand} — ${recipeItem.itemName ?? recipeItem.itemID}`
-                        : (recipeItem.itemName ?? recipeItem.itemID)}
+                      {recipeItem.ingredientName
+                        ? `${recipeItem.ingredientName}${recipeItem.itemName ? ` — ${recipeItem.itemBrand ? `${recipeItem.itemBrand} ` : ""}${recipeItem.itemName}` : ""}`
+                        : recipeItem.itemBrand
+                          ? `${recipeItem.itemBrand} — ${recipeItem.itemName ?? recipeItem.itemID}`
+                          : (recipeItem.itemName ?? recipeItem.itemID)}
                     </TableCell>
                     <TableCell>{recipeItem.isOptional ? "Yes" : "No"}</TableCell>
                     <TableCell>
@@ -619,7 +603,7 @@ export default function RecipeDetailPage() {
                         size="small"
                         color="error"
                         onClick={() =>
-                          removeItemMutation.mutate(recipeItem.itemID)
+                          removeItemMutation.mutate(recipeItem)
                         }
                       >
                         Remove

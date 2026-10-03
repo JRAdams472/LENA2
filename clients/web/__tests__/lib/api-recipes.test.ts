@@ -140,7 +140,7 @@ describe("api client: recipes", () => {
 
     const recipes = await api.getRecipes();
     const ri = recipes[0].recipeItems?.[0];
-    expect(ri?.itemID).toBe(0);
+    expect(ri?.itemID).toBeNull();
     expect(ri?.itemName).toBeNull();
     expect(ri?.itemBrand).toBeNull();
     expect(ri?.item).toBeNull();
@@ -333,6 +333,7 @@ describe("api client: recipes", () => {
         items: [
           {
             itemId: "5",
+            ingredientId: null,
             quantity: 2,
             unit: "cup",
             notes: "sifted",
@@ -425,6 +426,7 @@ describe("api client: recipes", () => {
     expect(lastRequestBody().variables.input.items).toHaveLength(2);
     expect(lastRequestBody().variables.input.items[1]).toEqual({
       itemId: "8",
+      ingredientId: null,
       quantity: 1,
       unit: "ea",
       notes: null,
@@ -461,7 +463,7 @@ describe("api client: recipes", () => {
         mockGraphQL({ updateRecipe: gqlRecipe({ items: [] }) })
       );
 
-    await api.removeRecipeItem(1, 5);
+    await api.removeRecipeItem(1, { itemID: 5 });
 
     expect(lastRequestBody().variables.input.items).toHaveLength(0);
   });

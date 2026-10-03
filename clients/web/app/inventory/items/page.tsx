@@ -13,7 +13,9 @@ import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import QuantityDialog from "@/app/components/QuantityDialog";
-import { Item, Brand } from "@/lib/types";
+import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
+import { Item, Brand, Ingredient } from "@/lib/types";
+import { useMe } from "@/app/auth/useMe";
 
 const itemFields = [
   { key: "name", label: "Name" },
@@ -47,6 +49,11 @@ export default function ItemsPage() {
   const [qtyDialogItem, setQtyDialogItem] = useState<Item | null>(null);
   const [qtyEditItem, setQtyEditItem] = useState<Item | null>(null);
   const [favEditItem, setFavEditItem] = useState<Item | null>(null);
+  // undefined = untouched; null = clear the link; Ingredient = set it.
+  const [dialogCatalogIng, setDialogCatalogIng] = useState<Ingredient | null | undefined>(undefined);
+  const [dialogHouseholdIng, setDialogHouseholdIng] = useState<Ingredient | null | undefined>(undefined);
+  const { me } = useMe();
+  const isAdmin = me?.role === "admin";
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -139,6 +146,8 @@ export default function ItemsPage() {
   const handleCreate = () => {
     setIsCreate(true);
     setDialogData({});
+    setDialogCatalogIng(undefined);
+    setDialogHouseholdIng(undefined);
     setDialogOpen(true);
   };
 
@@ -146,6 +155,8 @@ export default function ItemsPage() {
     void api.recordView("item", row.itemID);
     setIsCreate(false);
     setDialogData({ ...row });
+    setDialogCatalogIng(undefined);
+    setDialogHouseholdIng(undefined);
     setDialogOpen(true);
   };
 
@@ -155,11 +166,29 @@ export default function ItemsPage() {
     }
   };
 
+  const applyIngredientLinks = (itemID: number) => {
+    const jobs: Promise<void>[] = [];
+    if (dialogCatalogIng !== undefined && isAdmin) {
+      jobs.push(api.setItemIngredient(itemID, dialogCatalogIng?.ingredientID ?? null));
+    }
+    if (dialogHouseholdIng !== undefined) {
+      jobs.push(api.setHouseholdItemIngredient(itemID, dialogHouseholdIng?.ingredientID ?? null));
+    }
+    if (jobs.length > 0) {
+      void Promise.all(jobs).then(() =>
+        queryClient.invalidateQueries({ queryKey: ["items"] })
+      );
+    }
+  };
+
   const handleSave = (values: Record<string, unknown>) => {
     if (isCreate) {
-      createMutation.mutate(values);
+      void createMutation
+        .mutateAsync(values)
+        .then((created) => applyIngredientLinks(created.itemID));
     } else {
       updateMutation.mutate(values);
+      applyIngredientLinks(values.itemID as number);
       // Expiry and min-quantity live on the pantry holding, not the
       // catalog item — route them through adjustUserItem (passing current
       // qty/purchase date so they're unchanged).
@@ -228,6 +257,11 @@ export default function ItemsPage() {
   const itemColumns: FieldDef<Item>[] = [
     { key: "name", label: "Name" },
     { key: "brand", label: "Brand" },
+    {
+      key: "ingredient",
+      label: "Ingredient",
+      render: (row) => row.householdIngredient?.name ?? row.ingredient?.name ?? "—",
+    },
     {
       key: "currentQuantity",
       label: "Current Quantity",
@@ -366,6 +400,38 @@ export default function ItemsPage() {
         title={isCreate ? "Create Item" : "Edit Item"}
         fields={itemFields}
         values={dialogData}
+        extraFields={
+          <>
+            {isAdmin && (
+              <IngredientAutocomplete
+                label="Catalog ingredient"
+                helperText="The shared ingredient this item represents (admin-only link)"
+                size="medium"
+                value={
+                  dialogCatalogIng !== undefined
+                    ? dialogCatalogIng
+                    : ((dialogData.ingredient as Ingredient | null) ?? null)
+                }
+                onChange={setDialogCatalogIng}
+              />
+            )}
+            <IngredientAutocomplete
+              label="Household ingredient"
+              helperText={
+                isAdmin
+                  ? "Override for your household only"
+                  : "The generic ingredient this item is for your household"
+              }
+              size="medium"
+              value={
+                dialogHouseholdIng !== undefined
+                  ? dialogHouseholdIng
+                  : ((dialogData.householdIngredient as Ingredient | null) ?? null)
+              }
+              onChange={setDialogHouseholdIng}
+            />
+          </>
+        }
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
       />

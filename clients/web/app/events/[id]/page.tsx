@@ -99,9 +99,10 @@ interface StepForm {
 interface ItemForm {
   eventRecipeItemID: number | null;
   eventRecipeID: number;
-  // itemID is preserved from the row being edited; item is set when the
-  // user picks a different one in the autocomplete.
-  itemID: number;
+  // itemID is preserved from the row being edited (null on
+  // ingredient-only rows); item is set when the user picks a different
+  // one in the autocomplete.
+  itemID: number | null;
   item: Item | null;
   quantity: string;
   unit: string;

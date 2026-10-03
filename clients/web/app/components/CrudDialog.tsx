@@ -25,6 +25,9 @@ interface CrudDialogProps<T> {
   fields: FieldDef<T>[];
   values: Record<string, unknown>;
   error?: Error | null;
+  // Rendered after the generated fields — for pickers that don't fit the
+  // text/number/boolean/date shape (their state lives in the parent).
+  extraFields?: ReactNode;
   onClose: () => void;
   onSave: (values: Record<string, unknown>) => void;
 }
@@ -35,6 +38,7 @@ export default function CrudDialog<T = Record<string, unknown>>({
   fields,
   values,
   error,
+  extraFields,
   onClose,
   onSave,
 }: CrudDialogProps<T>) {
@@ -125,6 +129,7 @@ export default function CrudDialog<T = Record<string, unknown>>({
             />
           );
         })}
+        {extraFields}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
