@@ -16,6 +16,29 @@ const String itemsQuery = r'''
   }
 ''';
 
+const String ingredientsQuery = r'''
+  query Ingredients($search: String) {
+    ingredients(page: 1, pageSize: 50, search: $search) {
+      items {
+        id
+        name
+      }
+      pageInfo {
+        totalCount
+      }
+    }
+  }
+''';
+
+const String getOrCreateIngredientMutation = r'''
+  mutation GetOrCreateIngredient($input: CreateIngredientInput!) {
+    getOrCreateIngredient(input: $input) {
+      id
+      name
+    }
+  }
+''';
+
 const String recipeQuery = r'''
   query Recipe($id: ID!) {
     recipe(id: $id) {
@@ -38,6 +61,10 @@ const String recipeQuery = r'''
       }
       items {
         item {
+          id
+          name
+        }
+        ingredient {
           id
           name
         }
@@ -116,15 +143,18 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   final _unitCtrl = TextEditingController();
   final _stepCtrl = TextEditingController();
   final _itemSearchCtrl = TextEditingController();
+  final _ingredientSearchCtrl = TextEditingController();
   final _debouncer = Debouncer();
 
   String? _itemId;
+  String? _ingredientId;
   bool _loaded = false;
   bool _isSaving = false;
   bool _isFavorite = false;
   bool _isTogglingFavorite = false;
   bool _isSavingCategories = false;
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _ingredients = [];
   List<Map<String, dynamic>> _categoryGroups = [];
   final Set<String> _selectedCategoryIds = {};
 
@@ -165,9 +195,59 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     });
   }
 
+  Future<void> _loadIngredients(String search) async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.query(QueryOptions(
+      document: gql(ingredientsQuery),
+      variables: {'search': search.isEmpty ? null : search},
+    ));
+    if (!mounted) return;
+    setState(() {
+      final loaded = (result.data?['ingredients']?['items'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+      if (_ingredientId != null &&
+          !loaded.any((i) => i['id'] == _ingredientId)) {
+        final prev =
+            _ingredients.where((i) => i['id'] == _ingredientId).toList();
+        if (prev.isNotEmpty) loaded.insert(0, prev.first);
+      }
+      _ingredients = loaded;
+    });
+  }
+
+  void _onIngredientSearchChanged(String value) {
+    _debouncer.run(() {
+      final term = value.trim();
+      if (term.isNotEmpty) {
+        recordSearch(GraphQLProvider.of(context).value, 'ingredient', term);
+      }
+      _loadIngredients(term);
+    });
+  }
+
+  Future<void> _createIngredient(String name) async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.mutate(MutationOptions(
+      document: gql(getOrCreateIngredientMutation),
+      variables: {
+        'input': {'name': name},
+      },
+    ));
+    final created = result.data?['getOrCreateIngredient'] as Map<String, dynamic>?;
+    if (!mounted || created == null) return;
+    setState(() {
+      _ingredients = [
+        created,
+        ..._ingredients.where((i) => i['id'] != created['id']),
+      ];
+      _ingredientId = created['id'] as String;
+    });
+    recordSelection(client, 'ingredient', created['id'] as String);
+  }
+
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    await _loadItems('');
+    await Future.wait([_loadItems(''), _loadIngredients('')]);
 
     if (widget.recipeId != null) {
       recordView(client, 'recipe', widget.recipeId!);
@@ -197,9 +277,16 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           _prepCtrl.text = recipe['prepTimeMinutes']?.toString() ?? '';
           _cookCtrl.text = recipe['cookTimeMinutes']?.toString() ?? '';
           _itemId = item?['item']?['id'] as String?;
+          _ingredientId = item?['ingredient']?['id'] as String?;
           final recipeItem = item?['item'] as Map<String, dynamic>?;
           if (recipeItem != null && !_items.any((i) => i['id'] == _itemId)) {
             _items = [recipeItem, ..._items];
+          }
+          final recipeIngredient =
+              item?['ingredient'] as Map<String, dynamic>?;
+          if (recipeIngredient != null &&
+              !_ingredients.any((i) => i['id'] == _ingredientId)) {
+            _ingredients = [recipeIngredient, ..._ingredients];
           }
           _qtyCtrl.text = item?['quantity']?.toString() ?? '';
           _unitCtrl.text = (item?['unit'] as String?) ?? '';
@@ -262,6 +349,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     _unitCtrl.dispose();
     _stepCtrl.dispose();
     _itemSearchCtrl.dispose();
+    _ingredientSearchCtrl.dispose();
     _debouncer.dispose();
     super.dispose();
   }
@@ -283,6 +371,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         'items': [
           {
             'itemId': _itemId,
+            'ingredientId': _ingredientId,
             'quantity': double.tryParse(_qtyCtrl.text) ?? 0,
             'unit': _unitCtrl.text,
             'notes': null,
@@ -315,7 +404,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_items.isEmpty) {
+    if (_items.isEmpty || _ingredients.isEmpty) {
       return Scaffold(
         appBar: AppBar(
           title:
@@ -368,6 +457,52 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             const Text('Ingredient',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             TextField(
+              controller: _ingredientSearchCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Search ingredients',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: _onIngredientSearchChanged,
+            ),
+            DropdownButtonFormField<String?>(
+              value: _ingredientId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Ingredient'),
+              items: [
+                ..._ingredients.map(
+                  (i) => DropdownMenuItem(
+                    value: i['id'] as String,
+                    child: Text(
+                      i['name'] as String,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                if (_ingredientSearchCtrl.text.trim().isNotEmpty)
+                  DropdownMenuItem(
+                    value: '__create__',
+                    child: Text(
+                      'Create "${_ingredientSearchCtrl.text.trim()}"',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (v) => setState(() {
+                if (v == '__create__') {
+                  _createIngredient(_ingredientSearchCtrl.text.trim());
+                  return;
+                }
+                _ingredientId = v;
+                if (v != null) {
+                  recordSelection(
+                      GraphQLProvider.of(context).value, 'ingredient', v);
+                }
+              }),
+            ),
+            const SizedBox(height: 8),
+            const Text('Preferred brand (optional)',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            TextField(
               controller: _itemSearchCtrl,
               decoration: const InputDecoration(
                 labelText: 'Search items',
@@ -378,7 +513,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             DropdownButtonFormField<String?>(
               value: _itemId,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Item'),
+              decoration:
+                  const InputDecoration(labelText: 'Preferred brand item'),
               items: _items
                   .map((i) => DropdownMenuItem(
                         value: i['id'] as String,

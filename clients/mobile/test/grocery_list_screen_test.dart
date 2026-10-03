@@ -72,6 +72,59 @@ void main() {
     });
   });
 
+  group('needsBrandPick', () {
+    Map<String, dynamic> line({
+      bool checked = false,
+      Map<String, dynamic>? item,
+      Map<String, dynamic>? ingredient,
+      Map<String, dynamic>? usual,
+    }) =>
+        {
+          'isChecked': checked,
+          'item': item,
+          'ingredient': ingredient,
+          'usualBrand': usual,
+        };
+
+    test('ingredient-only line with no usual needs the pick', () {
+      expect(
+        needsBrandPick(line(ingredient: {'id': '7', 'name': 'corn'})),
+        isTrue,
+      );
+    });
+
+    test('bound item line checks off normally', () {
+      expect(
+        needsBrandPick(line(
+          item: {'id': '5'},
+          ingredient: {'id': '7'},
+        )),
+        isFalse,
+      );
+    });
+
+    test('ingredient line with a usual brand checks off normally', () {
+      expect(
+        needsBrandPick(line(
+          ingredient: {'id': '7'},
+          usual: {'id': '42'},
+        )),
+        isFalse,
+      );
+    });
+
+    test('manual line checks off normally', () {
+      expect(needsBrandPick(line()), isFalse);
+    });
+
+    test('already-checked line unchecks normally', () {
+      expect(
+        needsBrandPick(line(checked: true, ingredient: {'id': '7'})),
+        isFalse,
+      );
+    });
+  });
+
   testWidgets('GroceryListScreen renders its app bar', (tester) async {
     await tester.pumpWidget(
       GraphQLProvider(

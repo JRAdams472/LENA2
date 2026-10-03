@@ -16,6 +16,11 @@ const String groceryRoutingQuery = r'''
           id
           item { id name }
           ingredient { id name }
+          usualBrand {
+            id
+            name
+            brand { id name }
+          }
           manualItemName
           quantityNeeded
           unitOfMeasure
@@ -32,6 +37,27 @@ const String toggleGroceryItemMutation = r'''
     toggleGroceryItemChecked(groceryListItemId: $groceryListItemId) {
       id
       isChecked
+    }
+  }
+''';
+
+const String checkGroceryItemWithBrandMutation = r'''
+  mutation CheckGroceryItemWithBrand($groceryListItemId: ID!, $itemId: ID!) {
+    checkGroceryItemWithBrand(groceryListItemId: $groceryListItemId, itemId: $itemId) {
+      id
+      isChecked
+    }
+  }
+''';
+
+const String itemsQuery = r'''
+  query Items($search: String) {
+    items(page: 1, pageSize: 25, search: $search) {
+      items {
+        id
+        name
+        brand { id name }
+      }
     }
   }
 ''';
@@ -117,6 +143,16 @@ List<Map<String, String?>> groceryReorderEntries(
   }).toList();
 }
 
+/// An unchecked ingredient-bound line with no brand item and no remembered
+/// usual needs a first-time brand pick so the check-off can credit a real
+/// item and record it as the household's usual brand.
+bool needsBrandPick(Map<String, dynamic> item) {
+  return (item['isChecked'] as bool? ?? false) == false &&
+      item['ingredient'] != null &&
+      item['item'] == null &&
+      item['usualBrand'] == null;
+}
+
 class GroceryListScreen extends StatefulWidget {
   final String listId;
 
@@ -133,15 +169,45 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
 
   Future<void> _toggle(
     BuildContext context,
-    String id,
+    Map<String, dynamic> item,
     VoidCallback? refetch,
   ) async {
     final client = GraphQLProvider.of(context).value;
+    final id = item['id'] as String;
+    // Ingredient-only line with no bound item and no remembered usual —
+    // ask which brand was bought so it becomes the household's usual.
+    if (needsBrandPick(item)) {
+      final picked = await _promptBrandPick(
+          context, item['ingredient']['name'] as String? ?? 'item', client);
+      if (picked == null) return;
+      await client.mutate(MutationOptions(
+        document: gql(checkGroceryItemWithBrandMutation),
+        variables: {'groceryListItemId': id, 'itemId': picked['id']},
+      ));
+      refetch?.call();
+      return;
+    }
     await client.mutate(MutationOptions(
       document: gql(toggleGroceryItemMutation),
       variables: {'groceryListItemId': id},
     ));
     refetch?.call();
+  }
+
+  /// First-time brand picker: searches catalog items and returns the pick
+  /// (credited to the line + recorded as the usual brand) or null on cancel.
+  Future<Map<String, dynamic>?> _promptBrandPick(
+    BuildContext context,
+    String ingredientName,
+    GraphQLClient client,
+  ) {
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => _BrandPickDialog(
+        ingredientName: ingredientName,
+        client: client,
+      ),
+    );
   }
 
   Future<void> _addItem(
@@ -427,6 +493,11 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     final quantity = item['quantityNeeded'] as num? ?? 0;
     final unit = item['unitOfMeasure'] as String? ?? '';
     final isChecked = item['isChecked'] as bool? ?? false;
+    final usual = item['usualBrand'] as Map<String, dynamic>?;
+    final usualBrandName = usual == null
+        ? null
+        : '${(usual['brand'] as Map?)?['name'] ?? ''} ${usual['name'] ?? ''}'
+            .trim();
 
     return CheckboxListTile(
       key: ValueKey('grocery-item-$id'),
@@ -443,9 +514,12 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
             ),
         ],
       ),
-      subtitle: Text('Source: ${item['source']}'),
+      subtitle: Text(
+        'Source: ${item['source']}'
+        '${usualBrandName != null && usualBrandName.isNotEmpty ? ' · usual: $usualBrandName' : ''}',
+      ),
       value: isChecked,
-      onChanged: (_) => _toggle(context, id, refetch),
+      onChanged: (_) => _toggle(context, item, refetch),
       secondary: storeAisles.isEmpty
           ? null
           : PopupMenuButton<String?>(
@@ -475,6 +549,109 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// Searchable item picker shown when an ingredient-only grocery line is
+/// checked off for the first time. Pops with the picked catalog item so the
+/// caller can credit the check-off and record it as the household's usual.
+class _BrandPickDialog extends StatefulWidget {
+  final String ingredientName;
+  final GraphQLClient client;
+
+  const _BrandPickDialog({required this.ingredientName, required this.client});
+
+  @override
+  State<_BrandPickDialog> createState() => _BrandPickDialogState();
+}
+
+class _BrandPickDialogState extends State<_BrandPickDialog> {
+  final _searchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.text = widget.ingredientName;
+    _search(widget.ingredientName);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search(String term) async {
+    setState(() => _loading = true);
+    final result = await widget.client.query(QueryOptions(
+      document: gql(itemsQuery),
+      variables: {'search': term.isEmpty ? null : term},
+      fetchPolicy: FetchPolicy.networkOnly,
+    ));
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _results = (result.data?['items']?['items'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Which ${widget.ingredientName} did you buy?'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Pick the brand you grabbed — we'll remember it as your usual "
+              'for ${widget.ingredientName}.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _searchCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Brand or item',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: _search,
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(),
+              )
+            else
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final it in _results)
+                      ListTile(
+                        title: Text(it['name'] as String? ?? ''),
+                        subtitle: (it['brand'] as Map?)?['name'] != null
+                            ? Text((it['brand'] as Map)['name'] as String)
+                            : null,
+                        onTap: () => Navigator.of(context).pop(it),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }

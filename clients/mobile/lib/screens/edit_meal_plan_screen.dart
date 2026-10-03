@@ -25,6 +25,10 @@ const String mealPlanQuery = r'''
             id
             name
           }
+          ingredient {
+            id
+            name
+          }
           quantity
           unit
           isFromRecipe
@@ -412,7 +416,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
             ...items.map((it) => ListTile(
                   dense: true,
                   title: Text(
-                      '${it['item']?['name'] ?? 'From recipe'} ${it['quantity']} ${it['unit']}'),
+                      '${it['item']?['name'] ?? it['ingredient']?['name'] ?? 'From recipe'} ${it['quantity']} ${it['unit']}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete),
                     onPressed: () => _removeSlotItem(it['id'] as String),
