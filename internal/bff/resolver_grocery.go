@@ -288,10 +288,16 @@ func expandPlanLines(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotIte
 			scale = float64(*slot.Servings) / float64(*rec.Servings)
 		}
 		for _, ri := range itemsByRecipe[rec.RecipeID] {
-			if overridden[ri.ItemID] {
+			// Ingredient-only lines (no branded item) are skipped here for
+			// now — ingredient-keyed aggregation lands with grocery
+			// adoption in the ingredient-layer phase 2.
+			if ri.ItemID == nil {
 				continue
 			}
-			lines = append(lines, planLine{itemID: ri.ItemID, unitID: ri.UnitID, qty: ri.Quantity * scale})
+			if overridden[*ri.ItemID] {
+				continue
+			}
+			lines = append(lines, planLine{itemID: *ri.ItemID, unitID: ri.UnitID, qty: ri.Quantity * scale})
 		}
 	}
 	return lines

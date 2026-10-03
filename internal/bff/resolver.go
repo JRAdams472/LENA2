@@ -894,7 +894,9 @@ func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipe
 	}
 	for _, items := range rc.itemsBy {
 		for _, ri := range items {
-			itemIDSet[ri.ItemID] = true
+			if ri.ItemID != nil {
+				itemIDSet[*ri.ItemID] = true
+			}
 		}
 	}
 	itemIDs := make([]int64, 0, len(itemIDSet))

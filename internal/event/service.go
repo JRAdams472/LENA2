@@ -446,7 +446,7 @@ func (s *Service) DeleteEventRecipeStep(ctx context.Context, eventRecipeStepID, 
 type EventRecipeItem struct {
 	EventRecipeItemID int64
 	EventRecipeID     int64
-	ItemID            int64
+	ItemID            *int64
 	IngredientID      *int64
 	Quantity          float64
 	UnitID            int64
@@ -518,7 +518,7 @@ func (s *Service) ReplaceEventRecipeItems(ctx context.Context, eventRecipeID, ho
 		}
 		if _, err := s.q.AddEventRecipeItem(ctx, sqlc.AddEventRecipeItemParams{
 			EventRecipeID: eventRecipeID,
-			ItemID:        it.ItemID,
+			ItemID:        optInt8(it.ItemID),
 			IngredientID:  optInt8(it.IngredientID),
 			Quantity:      qty,
 			UnitID:        it.UnitID,
@@ -558,7 +558,7 @@ func (s *Service) AddEventRecipeItem(ctx context.Context, arg EventRecipeItem, h
 	}
 	row, err := s.q.AddEventRecipeItem(ctx, sqlc.AddEventRecipeItemParams{
 		EventRecipeID: arg.EventRecipeID,
-		ItemID:        arg.ItemID,
+		ItemID:        optInt8(arg.ItemID),
 		IngredientID:  optInt8(arg.IngredientID),
 		Quantity:      qty,
 		UnitID:        arg.UnitID,
@@ -584,7 +584,7 @@ func (s *Service) UpdateEventRecipeItem(ctx context.Context, eventRecipeItemID, 
 	n, err := s.q.UpdateEventRecipeItem(ctx, sqlc.UpdateEventRecipeItemParams{
 		EventRecipeItemID: eventRecipeItemID,
 		HouseholdID:       householdID,
-		ItemID:            arg.ItemID,
+		ItemID:            optInt8(arg.ItemID),
 		IngredientID:      optInt8(arg.IngredientID),
 		Quantity:          qty,
 		UnitID:            arg.UnitID,
@@ -615,12 +615,15 @@ func toEventRecipeItem(row sqlc.EventEventRecipeItem) EventRecipeItem {
 	it := EventRecipeItem{
 		EventRecipeItemID: row.EventRecipeItemID,
 		EventRecipeID:     row.EventRecipeID,
-		ItemID:            row.ItemID,
 		UnitID:            row.UnitID,
 		SectionName:       row.SectionName.String,
 		DisplayOrder:      row.DisplayOrder,
 		Notes:             row.Notes.String,
 		IsOptional:        row.IsOptional,
+	}
+	if row.ItemID.Valid {
+		v := row.ItemID.Int64
+		it.ItemID = &v
 	}
 	if row.IngredientID.Valid {
 		v := row.IngredientID.Int64

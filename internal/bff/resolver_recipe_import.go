@@ -325,6 +325,17 @@ func (r *recipeImportReviewItemResolver) ItemID() *graphql.ID {
 	id := graphql.ID(r.item.ItemID)
 	return &id
 }
+
+// ItemKind reports which catalog the selected itemId belongs to — "item"
+// or "ingredient". Legacy rows without the field default to "item".
+func (r *recipeImportReviewItemResolver) ItemKind() *string {
+	kind := r.item.ItemKind
+	if kind == "" && r.item.ItemID != "" {
+		kind = "item"
+	}
+	return nilIfEmpty(kind)
+}
+
 func (r *recipeImportReviewItemResolver) ItemName() *string { return nilIfEmpty(r.item.ItemName) }
 func (r *recipeImportReviewItemResolver) Unit() *string     { return nilIfEmpty(r.item.Unit) }
 func (r *recipeImportReviewItemResolver) UnitID() *graphql.ID {
@@ -453,6 +464,7 @@ func (r recipeImportReviewInput) toReviewRecipe() (*ocrimport.ReviewRecipe, erro
 				IsOptional: it.IsOptional,
 			},
 			ItemID:      stringPtrID(it.ItemID),
+			ItemKind:    stringPtr(it.ItemKind),
 			ItemName:    stringPtr(it.ItemName),
 			Unit:        stringPtr(it.Unit),
 			UnitID:      stringPtrID(it.UnitID),
@@ -492,6 +504,7 @@ type recipeImportReviewItemInput struct {
 	Notes       *string
 	IsOptional  bool
 	ItemID      *graphql.ID
+	ItemKind    *string
 	ItemName    *string
 	UnitID      *graphql.ID
 	Confidence  *float64

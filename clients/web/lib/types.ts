@@ -655,6 +655,7 @@ export interface RecipeImportSuggestion {
 
 export interface RecipeImportReviewItem extends RecipeImportDraftItem {
   itemId: string | null;
+  itemKind: string | null;
   itemName: string | null;
   unitId: string | null;
   confidence: number;

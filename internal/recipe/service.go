@@ -287,15 +287,14 @@ func (s *Service) UpdateRecipeWithChildren(ctx context.Context, recipeID int64, 
 	})
 }
 
-// RecipeItem is one ingredient in a recipe. ItemID is the branded catalog
-// item; IngredientID optionally points at the brand-agnostic ingredient
-// abstraction and will eventually replace ItemID. SectionName groups items
-// (e.g. "crust", "filling"); DisplayOrder controls ordering within the
-// recipe.
+// RecipeItem is one ingredient in a recipe. IngredientID is the primary
+// reference (the brand-agnostic ingredient); ItemID is an optional
+// preferred-brand hint. SectionName groups items (e.g. "crust",
+// "filling"); DisplayOrder controls ordering within the recipe.
 type RecipeItem struct {
 	RecipeItemID int64
 	RecipeID     int64
-	ItemID       int64
+	ItemID       *int64
 	IngredientID *int64
 	Quantity     float64
 	UnitID       int64
@@ -314,13 +313,16 @@ func addRecipeItem(ctx context.Context, q sqlc.Querier, arg RecipeItem) error {
 	if arg.Quantity <= 0 {
 		return &domainerr.ValidationError{Msg: "recipe item quantity must be greater than zero"}
 	}
+	if arg.ItemID == nil && arg.IngredientID == nil {
+		return &domainerr.ValidationError{Msg: "recipe item requires an item or ingredient"}
+	}
 	qty, err := numericFromFloat64(arg.Quantity)
 	if err != nil {
 		return fmt.Errorf("add recipe item: %w", err)
 	}
 	return q.AddRecipeItem(ctx, sqlc.AddRecipeItemParams{
 		RecipeID:     arg.RecipeID,
-		ItemID:       arg.ItemID,
+		ItemID:       optInt8(arg.ItemID),
 		IngredientID: optInt8(arg.IngredientID),
 		Quantity:     qty,
 		UnitID:       arg.UnitID,
@@ -571,12 +573,15 @@ func toRecipeItem(row sqlc.RecipeRecipeItem) (RecipeItem, error) {
 	ri := RecipeItem{
 		RecipeItemID: row.RecipeItemID,
 		RecipeID:     row.RecipeID,
-		ItemID:       row.ItemID,
 		UnitID:       row.UnitID,
 		SectionName:  row.SectionName.String,
 		DisplayOrder: row.DisplayOrder,
 		Notes:        row.Notes.String,
 		IsOptional:   row.IsOptional,
+	}
+	if row.ItemID.Valid {
+		v := row.ItemID.Int64
+		ri.ItemID = &v
 	}
 	if row.IngredientID.Valid {
 		v := row.IngredientID.Int64

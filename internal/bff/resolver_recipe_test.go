@@ -54,7 +54,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 			{RecipeID: 9, Name: "Soup"},
 		}, nil)
 		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{9}).Return([]recipe.RecipeItem{
-			{RecipeItemID: 40, RecipeID: 9, ItemID: 3, Quantity: 2, UnitID: 3, Notes: "diced"},
+			{RecipeItemID: 40, RecipeID: 9, ItemID: ptrInt64(3), Quantity: 2, UnitID: 3, Notes: "diced"},
 		}, nil)
 		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{9}).Return([]recipe.RecipeStep{
 			{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"},
@@ -159,7 +159,7 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 		rec.EXPECT().ScaleRecipe(gomock.Any(), int64(9), int32(2)).Return(recipe.ScaledRecipe{
 			Recipe: recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: recInt32Ptr(2)},
 			Items: []recipe.RecipeItem{
-				{RecipeItemID: 40, RecipeID: 9, ItemID: 3, Quantity: 1, UnitID: 3, Notes: "diced"},
+				{RecipeItemID: 40, RecipeID: 9, ItemID: ptrInt64(3), Quantity: 1, UnitID: 3, Notes: "diced"},
 			},
 			Steps: []recipe.RecipeStep{
 				{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"},
@@ -521,7 +521,7 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 			IsActive: true,
 		}
 		expectedItems := []recipe.RecipeItem{
-			{ItemID: 3, Quantity: 2, UnitID: 3, Notes: "diced", IsOptional: true},
+			{ItemID: ptrInt64(3), Quantity: 2, UnitID: 3, Notes: "diced", IsOptional: true},
 		}
 		expectedSteps := []recipe.RecipeStep{
 			{StepNumber: 1, Instruction: "Boil"},
@@ -539,7 +539,7 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 				PrepTimeMinutes: recInt32Ptr(10),
 				CookTimeMinutes: recInt32Ptr(20),
 				Items: []recipeItemInput{
-					{ItemID: "3", Quantity: 2, Unit: "cups", Notes: recStrPtr("diced"), IsOptional: recBoolPtr(true)},
+					{ItemID: gqlIDPtr("3"), Quantity: 2, Unit: "cups", Notes: recStrPtr("diced"), IsOptional: recBoolPtr(true)},
 				},
 				Steps: []recipeStepInput{
 					{StepNumber: 1, Instruction: "Boil"},
@@ -573,7 +573,7 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 		_, err := r.CreateRecipe(recCtx(), struct{ Input createRecipeInput }{
 			Input: createRecipeInput{
 				Name:  "Soup",
-				Items: []recipeItemInput{{ItemID: "abc"}},
+				Items: []recipeItemInput{{ItemID: gqlIDPtr("abc")}},
 			},
 		})
 		require.Error(t, err)
@@ -591,6 +591,8 @@ func TestResolver_Recipe_CreateRecipe(t *testing.T) {
 }
 
 func recBoolPtr(b bool) *bool { return &b }
+
+func gqlIDPtr(s string) *graphql.ID { id := graphql.ID(s); return &id }
 
 func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 	t.Run("merges, dedupes, and sorts by score", func(t *testing.T) {
@@ -880,7 +882,7 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 			Name: "New", Description: "D", Servings: recInt32Ptr(6), IsActive: true,
 		}
 		expectedItems := []recipe.RecipeItem{
-			{ItemID: 3, Quantity: 1, UnitID: 3},
+			{ItemID: ptrInt64(3), Quantity: 1, UnitID: 3},
 		}
 		expectedSteps := []recipe.RecipeStep{
 			{StepNumber: 1, Instruction: "Stir"},
@@ -896,7 +898,7 @@ func TestResolver_Recipe_UpdateRecipe(t *testing.T) {
 			Input: createRecipeInput{
 				Name:     "New",
 				Servings: recInt32Ptr(6),
-				Items:    []recipeItemInput{{ItemID: "3", Quantity: 1, Unit: "cup"}},
+				Items:    []recipeItemInput{{ItemID: gqlIDPtr("3"), Quantity: 1, Unit: "cup"}},
 				Steps:    []recipeStepInput{{StepNumber: 1, Instruction: "Stir"}},
 			},
 		})

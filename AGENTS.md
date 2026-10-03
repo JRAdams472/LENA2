@@ -8,6 +8,16 @@
 - When a phase is complete, open a pull request against `main` and summarize the changes.
 - Only merge after the phase has been verified (build, tests, lint).
 
+## Linear Workflow (required)
+
+- Every plan gets a **parent Linear ticket** (team: `LEN`, MCP server: `linear`). Once planning is done and work begins, the parent moves to **In Progress**.
+- Every phase of the plan gets a **sub-issue** under that parent, named for its branch (e.g. `ingredient-layer-p1`), with a description of the phase's scope and acceptance criteria. **Mark the sub-issue In Progress when its phase starts.**
+- When a phase is complete, post **proof of completion** on its sub-issue before asking for merge approval:
+  - Relevant run logs (build/test/verification output).
+  - **Playwright screenshots** of any user-facing change (the `playwright` MCP server is configured — capture real screens, don't describe them).
+  - A link/summary of the **GitHub CI run** showing all checks green.
+- **No PR or phase merges without the user's explicit approval.** Present the PR link + proof, then wait — the user reviews the evidence and approves the merge.
+
 ## Plan Close-Out
 
 After the final phase of any plan merges, before starting the next:

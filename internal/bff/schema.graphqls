@@ -689,7 +689,7 @@ type RecipeRecommendation {
 
 type RecipeItem {
   id: ID!
-  item: Item!
+  item: Item
   ingredient: Ingredient
   quantity: Float!
   unit: String!
@@ -885,7 +885,7 @@ type EventRecipeStep {
 # the per-base-servings amount copied from the recipe.
 type EventRecipeItem {
   id: ID!
-  item: Item!
+  item: Item
   ingredient: Ingredient
   quantity: Float!
   baseQuantity: Float!
@@ -941,7 +941,7 @@ input EventRecipeStepInput {
 }
 
 input EventRecipeItemInput {
-  itemId: ID!
+  itemId: ID
   ingredientId: ID
   quantity: Float!
   unit: String!
@@ -1224,7 +1224,7 @@ input UpdateRecipeCategoryInput {
 }
 
 input RecipeItemInput {
-  itemId: ID!
+  itemId: ID
   ingredientId: ID
   quantity: Float!
   unit: String!
@@ -1426,6 +1426,7 @@ type RecipeImportReview {
 type RecipeImportReviewItem {
   draftItem: RecipeImportDraftItem!
   itemId: ID
+  itemKind: String
   itemName: String
   unit: String
   unitId: ID
@@ -1472,6 +1473,7 @@ input RecipeImportReviewItemInput {
   notes: String
   isOptional: Boolean!
   itemId: ID
+  itemKind: String
   itemName: String
   unitId: ID
   confidence: Float

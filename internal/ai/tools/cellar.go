@@ -196,10 +196,17 @@ func cocktailRows(ctx context.Context, recipes RecipeCatalog, items ItemNamer, l
 		return nil, fmt.Errorf("list cocktail ingredients: %w", err)
 	}
 	itemIDs := map[int64]bool{}
+	ingIDs := map[int64]bool{}
 	for _, ri := range recipeItems {
-		itemIDs[ri.ItemID] = true
+		if ri.ItemID != nil {
+			itemIDs[*ri.ItemID] = true
+		}
+		if ri.IngredientID != nil {
+			ingIDs[*ri.IngredientID] = true
+		}
 	}
 	itemNames := map[int64]string{}
+	ingNames := map[int64]string{}
 	if items != nil && len(itemIDs) > 0 {
 		idList := make([]int64, 0, len(itemIDs))
 		for id := range itemIDs {
@@ -211,9 +218,27 @@ func cocktailRows(ctx context.Context, recipes RecipeCatalog, items ItemNamer, l
 			}
 		}
 	}
+	if items != nil && len(ingIDs) > 0 {
+		idList := make([]int64, 0, len(ingIDs))
+		for id := range ingIDs {
+			idList = append(idList, id)
+		}
+		if list, err := items.GetIngredientsByIDs(ctx, idList); err == nil {
+			for _, g := range list {
+				ingNames[g.IngredientID] = g.Name
+			}
+		}
+	}
 	ingByRecipe := map[int64][]string{}
 	for _, ri := range recipeItems {
-		if n := itemNames[ri.ItemID]; n != "" {
+		var n string
+		if ri.IngredientID != nil {
+			n = ingNames[*ri.IngredientID]
+		}
+		if n == "" && ri.ItemID != nil {
+			n = itemNames[*ri.ItemID]
+		}
+		if n != "" {
 			ingByRecipe[ri.RecipeID] = append(ingByRecipe[ri.RecipeID], n)
 		}
 	}

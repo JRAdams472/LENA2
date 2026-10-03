@@ -168,8 +168,8 @@ func (s *Service) ingredientNames(ctx context.Context, items []recipe.RecipeItem
 	for _, ri := range items {
 		if ri.IngredientID != nil {
 			ingIDs[*ri.IngredientID] = true
-		} else {
-			itemIDs[ri.ItemID] = true
+		} else if ri.ItemID != nil {
+			itemIDs[*ri.ItemID] = true
 		}
 	}
 	names := map[int64]string{}
@@ -196,8 +196,8 @@ func (s *Service) ingredientNames(ctx context.Context, items []recipe.RecipeItem
 		var n string
 		if ri.IngredientID != nil {
 			n = names[*ri.IngredientID]
-		} else {
-			n = names[ri.ItemID]
+		} else if ri.ItemID != nil {
+			n = names[*ri.ItemID]
 		}
 		if n != "" {
 			out = append(out, n)

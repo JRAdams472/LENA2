@@ -257,13 +257,16 @@ func (r *Resolver) SemanticSearchAvailable(ctx context.Context) (bool, error) {
 func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
 	outItems := make([]recipe.RecipeItem, 0, len(items))
 	for _, ri := range items {
-		itemID, err := parseID(string(ri.ItemID))
+		itemID, err := optionalID(ri.ItemID)
 		if err != nil {
 			return nil, nil, err
 		}
 		ingredientID, err := optionalID(ri.IngredientID)
 		if err != nil {
 			return nil, nil, err
+		}
+		if itemID == nil && ingredientID == nil {
+			return nil, nil, badInputf("recipe item requires itemId or ingredientId")
 		}
 		unitID, err := resolveUnitID(ctx, inv, ri.Unit)
 		if err != nil {
@@ -1058,15 +1061,18 @@ func (r *recipeItemResolver) ID() graphql.ID {
 }
 
 func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
+	if r.item.ItemID == nil {
+		return nil, nil
+	}
 	if r.items != nil {
-		it, ok := r.items[r.item.ItemID]
+		it, ok := r.items[*r.item.ItemID]
 		if !ok {
 			return nil, nil
 		}
 		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
 	}
-	slog.Default().Warn("recipeItem.item missed preload; lazy-loading", "item_id", r.item.ItemID)
-	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
+	slog.Default().Warn("recipeItem.item missed preload; lazy-loading", "item_id", *r.item.ItemID)
+	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
@@ -1170,7 +1176,7 @@ type createRecipeInput struct {
 }
 
 type recipeItemInput struct {
-	ItemID       graphql.ID
+	ItemID       *graphql.ID
 	IngredientID *graphql.ID
 	Quantity     float64
 	Unit         string

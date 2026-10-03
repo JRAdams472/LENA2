@@ -19,6 +19,8 @@ import (
 
 var errDB = errors.New("db error")
 
+func ptrInt64(v int64) *int64 { return &v }
+
 func newService(t *testing.T) (*Service, *mock.MockQuerier) {
 	t.Helper()
 	mq := mock.NewMockQuerier(gomock.NewController(t))
@@ -349,7 +351,7 @@ func TestReplaceEventRecipeItems(t *testing.T) {
 	mq.EXPECT().DeleteEventRecipeItems(ctx, sqlc.DeleteEventRecipeItemsParams{EventRecipeID: 9, HouseholdID: 42}).Return(nil)
 	mq.EXPECT().AddEventRecipeItem(ctx, sqlc.AddEventRecipeItemParams{
 		EventRecipeID: 9,
-		ItemID:        50,
+		ItemID:        pgtype.Int8{Int64: 50, Valid: true},
 		Quantity:      qty,
 		UnitID:        3,
 		CreatedBy:     "tester",
@@ -362,7 +364,7 @@ func TestReplaceEventRecipeItems(t *testing.T) {
 	}).Return(int64(1), nil)
 
 	err = s.ReplaceEventRecipeItems(ctx, 9, 42, []EventRecipeItem{
-		{ItemID: 50, Quantity: 2, UnitID: 3},
+		{ItemID: ptrInt64(50), Quantity: 2, UnitID: 3},
 	}, &base, "tester")
 	require.NoError(t, err)
 }
@@ -385,14 +387,14 @@ func TestAddEventRecipeItem(t *testing.T) {
 		Return(sqlc.EventEventRecipe{EventRecipeID: 9, FoodEventID: 3}, nil)
 	mq.EXPECT().AddEventRecipeItem(ctx, sqlc.AddEventRecipeItemParams{
 		EventRecipeID: 9,
-		ItemID:        50,
+		ItemID:        pgtype.Int8{Int64: 50, Valid: true},
 		Quantity:      qty,
 		UnitID:        3,
 		CreatedBy:     "tester",
 		UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
-	}).Return(sqlc.EventEventRecipeItem{EventRecipeItemID: 60, EventRecipeID: 9, ItemID: 50, Quantity: qty, UnitID: 3}, nil)
+	}).Return(sqlc.EventEventRecipeItem{EventRecipeID: 9, EventRecipeItemID: 60, Quantity: qty}, nil)
 
-	got, err := s.AddEventRecipeItem(ctx, EventRecipeItem{EventRecipeID: 9, ItemID: 50, Quantity: 1.5, UnitID: 3}, 42, "tester")
+	got, err := s.AddEventRecipeItem(ctx, EventRecipeItem{EventRecipeID: 9, ItemID: ptrInt64(50), Quantity: 1.5, UnitID: 3}, 42, "tester")
 	require.NoError(t, err)
 	assert.Equal(t, int64(60), got.EventRecipeItemID)
 	assert.Equal(t, 1.5, got.Quantity)
@@ -405,11 +407,11 @@ func TestUpdateEventRecipeItem(t *testing.T) {
 		func(_ context.Context, p sqlc.UpdateEventRecipeItemParams) (int64, error) {
 			assert.Equal(t, int64(60), p.EventRecipeItemID)
 			assert.Equal(t, int64(42), p.HouseholdID)
-			assert.Equal(t, int64(50), p.ItemID)
+			assert.Equal(t, int64(50), p.ItemID.Int64)
 			return 1, nil
 		})
 
-	err := s.UpdateEventRecipeItem(ctx, 60, 42, EventRecipeItem{ItemID: 50, Quantity: 3, UnitID: 3}, "tester")
+	err := s.UpdateEventRecipeItem(ctx, 60, 42, EventRecipeItem{ItemID: ptrInt64(50), Quantity: 3, UnitID: 3}, "tester")
 	require.NoError(t, err)
 }
 

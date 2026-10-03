@@ -68,7 +68,7 @@ RETURNING event_recipe_item_id, event_recipe_id, item_id, ingredient_id, quantit
 
 type AddEventRecipeItemParams struct {
 	EventRecipeID int64          `json:"event_recipe_id"`
-	ItemID        int64          `json:"item_id"`
+	ItemID        pgtype.Int8    `json:"item_id"`
 	IngredientID  pgtype.Int8    `json:"ingredient_id"`
 	Quantity      pgtype.Numeric `json:"quantity"`
 	UnitID        int64          `json:"unit_id"`
@@ -901,7 +901,7 @@ WHERE eri.event_recipe_id = er.event_recipe_id
 type UpdateEventRecipeItemParams struct {
 	EventRecipeItemID int64          `json:"event_recipe_item_id"`
 	HouseholdID       int64          `json:"household_id"`
-	ItemID            int64          `json:"item_id"`
+	ItemID            pgtype.Int8    `json:"item_id"`
 	IngredientID      pgtype.Int8    `json:"ingredient_id"`
 	Quantity          pgtype.Numeric `json:"quantity"`
 	UnitID            int64          `json:"unit_id"`

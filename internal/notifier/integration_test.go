@@ -74,7 +74,7 @@ func TestIntegrationSweep(t *testing.T) {
 	rec, err := recipeSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{
 		Name: "IT Big Roast", Servings: intPtr4(4), IsActive: true,
 	}, []recipe.RecipeItem{{
-		ItemID: proteinItem.ItemID, Quantity: 4536, UnitID: grams,
+		ItemID: ptrInt64(proteinItem.ItemID), Quantity: 4536, UnitID: grams,
 	}}, []recipe.RecipeStep{{
 		StepNumber: 1, Instruction: "Brine three days", DurationMinutes: &threeDays,
 	}}, itBy)
@@ -173,6 +173,8 @@ func TestIntegrationSweep(t *testing.T) {
 }
 
 func intPtr4(v int32) *int32 { return &v }
+
+func ptrInt64(v int64) *int64 { return &v }
 
 func TestMain(m *testing.M) {
 	os.Exit(testutil.SharedDBTestMain(m))

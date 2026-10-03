@@ -656,3 +656,184 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 func TestMain(m *testing.M) {
 	os.Exit(testutil.SharedDBTestMain(m))
 }
+
+func TestIntegrationGetOrCreateIngredientDedupe(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc := newIntegrationService(t, ctx)
+
+	first, err := svc.GetOrCreateIngredient(ctx, "IT Dedupe Corn", nil, nil, itBy)
+	require.NoError(t, err)
+	require.NotZero(t, first.IngredientID)
+	assert.Equal(t, "it dedupe corn", first.Name, "stored name is canonical lowercase")
+
+	// Case/whitespace variants resolve to the same row — the normalized
+	// unique index backs this, GetOrCreate exercises it end to end.
+	for _, variant := range []string{"IT DEDUPE CORN", "  it   dedupe  corn ", "It Dedupe Corn"} {
+		again, err := svc.GetOrCreateIngredient(ctx, variant, nil, nil, itBy)
+		require.NoError(t, err, "variant %q", variant)
+		assert.Equal(t, first.IngredientID, again.IngredientID, "variant %q should dedupe", variant)
+	}
+
+	// Direct insert of a normalized duplicate is rejected by the index.
+	_, err = svc.CreateIngredient(ctx, Ingredient{Name: "it dedupe  corn", IsActive: true}, itBy)
+	assert.Error(t, err, "raw insert of a normalized duplicate must violate the index")
+}
+
+func TestIntegrationItemIngredientResolution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationServiceWithPool(t, ctx)
+
+	hh := testutil.MustHousehold(ctx, t, pool)
+	hhOther := testutil.MustHousehold(ctx, t, pool)
+	uid := testutil.MustUser(ctx, t, pool, "it-resolve@example.com")
+
+	cat, err := svc.CreateCategory(ctx, "IT Resolve Category", "", false, itBy)
+	require.NoError(t, err)
+	corn, err := svc.GetOrCreateIngredient(ctx, "it resolve corn", &cat.CategoryID, nil, itBy)
+	require.NoError(t, err)
+	alt, err := svc.GetOrCreateIngredient(ctx, "it resolve maize", &cat.CategoryID, nil, itBy)
+	require.NoError(t, err)
+
+	item, err := svc.CreateItem(ctx, Item{
+		Name: "IT Resolve Green Giant", CategoryID: cat.CategoryID,
+		UnitID: unitID(t, ctx, svc, "can"),
+	}, itBy)
+	require.NoError(t, err)
+	loose, err := svc.CreateItem(ctx, Item{
+		Name: "IT Resolve Loose", CategoryID: cat.CategoryID,
+		UnitID: unitID(t, ctx, svc, "can"),
+	}, itBy)
+	require.NoError(t, err)
+
+	// Unlinked item resolves to nil.
+	got, err := svc.ResolveItemIngredient(ctx, hh, loose.ItemID)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	// Catalog link resolves for every household.
+	require.NoError(t, svc.SetItemIngredient(ctx, item.ItemID, &corn.IngredientID, itBy))
+	got, err = svc.ResolveItemIngredient(ctx, hh, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, corn.IngredientID, *got)
+
+	// Household override remaps the item — only for that household.
+	require.NoError(t, svc.SetItemIngredientOverride(ctx, hh, item.ItemID, alt.IngredientID, itBy))
+	got, err = svc.ResolveItemIngredient(ctx, hh, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, alt.IngredientID, *got)
+	got, err = svc.ResolveItemIngredient(ctx, hhOther, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, corn.IngredientID, *got, "other households keep the catalog link")
+
+	// ResolveIngredientItems follows the same override-wins order.
+	items, err := svc.ResolveIngredientItems(ctx, hh, alt.IngredientID, uid)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, item.ItemID, items[0].ItemID)
+	items, err = svc.ResolveIngredientItems(ctx, hhOther, corn.IngredientID, uid)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	// Clearing the override restores catalog resolution.
+	require.NoError(t, svc.ClearItemIngredientOverride(ctx, hh, item.ItemID))
+	got, err = svc.ResolveItemIngredient(ctx, hh, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, corn.IngredientID, *got)
+
+	// Usual brand round-trips per household.
+	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, corn.IngredientID, item.ItemID, itBy))
+	u, err := svc.GetUsualItemForIngredient(ctx, hh, corn.IngredientID)
+	require.NoError(t, err)
+	require.NotNil(t, u)
+	assert.Equal(t, item.ItemID, u.ItemID)
+	u, err = svc.GetUsualItemForIngredient(ctx, hhOther, corn.IngredientID)
+	require.NoError(t, err)
+	assert.Nil(t, u, "usual brand is household-scoped")
+}
+
+func TestIntegrationMergeIngredients(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationServiceWithPool(t, ctx)
+
+	hh := testutil.MustHousehold(ctx, t, pool)
+	cat, err := svc.CreateCategory(ctx, "IT Merge Category", "", false, itBy)
+	require.NoError(t, err)
+	src, err := svc.GetOrCreateIngredient(ctx, "it merge source", &cat.CategoryID, nil, itBy)
+	require.NoError(t, err)
+	tgt, err := svc.GetOrCreateIngredient(ctx, "it merge target", &cat.CategoryID, nil, itBy)
+	require.NoError(t, err)
+
+	item, err := svc.CreateItem(ctx, Item{
+		Name: "IT Merge Item", CategoryID: cat.CategoryID,
+		UnitID: unitID(t, ctx, svc, "each"),
+	}, itBy)
+	require.NoError(t, err)
+	require.NoError(t, svc.SetItemIngredient(ctx, item.ItemID, &src.IngredientID, itBy))
+	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, src.IngredientID, item.ItemID, itBy))
+
+	// A recipe with two lines: one ingredient-only (src), one that already
+	// references the target. After merge the first repoints; a second
+	// source-ref line carrying item_id demotes to item-only instead of
+	// duplicating the target row.
+	var recipeID int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO recipe.recipe (name, created_by) VALUES ('it merge recipe', 'it') RETURNING recipe_id`).Scan(&recipeID))
+	unitID := unitID(t, ctx, svc, "each")
+	var lineA, lineB, lineC int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO recipe.recipe_item (recipe_id, ingredient_id, quantity, unit_id)
+		 VALUES ($1, $2, 1, $3) RETURNING recipe_item_id`, recipeID, src.IngredientID, unitID).Scan(&lineA))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO recipe.recipe_item (recipe_id, ingredient_id, quantity, unit_id)
+		 VALUES ($1, $2, 1, $3) RETURNING recipe_item_id`, recipeID, tgt.IngredientID, unitID).Scan(&lineB))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO recipe.recipe_item (recipe_id, item_id, ingredient_id, quantity, unit_id)
+		 VALUES ($1, $2, $3, 1, $4) RETURNING recipe_item_id`, recipeID, item.ItemID, src.IngredientID, unitID).Scan(&lineC))
+
+	require.NoError(t, svc.MergeIngredients(ctx, src.IngredientID, tgt.IngredientID))
+
+	// Item link and usual brand repoint.
+	got, err := svc.ResolveItemIngredient(ctx, hh, item.ItemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, tgt.IngredientID, *got)
+	u, err := svc.GetUsualItemForIngredient(ctx, hh, tgt.IngredientID)
+	require.NoError(t, err)
+	require.NotNil(t, u)
+	assert.Equal(t, item.ItemID, u.ItemID)
+
+	// lineA is a true duplicate of lineB post-merge (same recipe, same
+	// ingredient, no item hint) — deleted. lineC conflicts too but carries
+	// item_id, so it demotes to item-only and the brand hint survives.
+	err = pool.QueryRow(ctx,
+		`SELECT ingredient_id FROM recipe.recipe_item WHERE recipe_item_id = $1`, lineA).Scan(new(int64))
+	assert.Error(t, err, "duplicate line should be removed by merge")
+	var ing *int64
+	var itemRef *int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT ingredient_id, item_id FROM recipe.recipe_item WHERE recipe_item_id = $1`, lineC).Scan(&ing, &itemRef))
+	assert.Nil(t, ing)
+	require.NotNil(t, itemRef)
+	assert.Equal(t, item.ItemID, *itemRef)
+	var n int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM recipe.recipe_item WHERE ingredient_id = $1`, src.IngredientID).Scan(&n))
+	assert.Zero(t, n)
+
+	// Source row is gone.
+	_, err = svc.GetIngredientByID(ctx, src.IngredientID)
+	assert.Error(t, err)
+}

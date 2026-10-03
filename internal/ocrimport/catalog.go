@@ -86,8 +86,12 @@ type Suggestion struct {
 
 // MatchResult is the outcome of mapping one DraftItem against the catalog.
 type MatchResult struct {
-	DraftItem   DraftItem    `json:"draftItem"`
-	ItemID      string       `json:"itemId"`
+	DraftItem DraftItem `json:"draftItem"`
+	ItemID    string    `json:"itemId"`
+	// ItemKind records which catalog the selected ItemID belongs to:
+	// "item" (branded product) or "ingredient" (generic). Empty means
+	// "item" — reviews saved before the field existed only ever held items.
+	ItemKind    string       `json:"itemKind,omitempty"`
 	ItemName    string       `json:"itemName"`
 	Unit        string       `json:"unit"`
 	UnitID      string       `json:"unitId"`
@@ -266,6 +270,7 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		it := items[0]
 		return MatchResult{
 			ItemID:     it.ID(),
+			ItemKind:   "item",
 			ItemName:   it.Name(),
 			Confidence: 1.0,
 			Status:     "accepted",
@@ -328,6 +333,7 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		if best.score >= autoAccept && best.kind == "item" {
 			return MatchResult{
 				ItemID:     best.id,
+				ItemKind:   "item",
 				ItemName:   best.name,
 				Confidence: best.score,
 				Status:     "accepted",
@@ -350,6 +356,7 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 			result.Status = "suggested"
 			if best.kind == "item" {
 				result.ItemID = best.id
+				result.ItemKind = "item"
 				result.ItemName = best.name
 				result.Confidence = best.score
 			} else {

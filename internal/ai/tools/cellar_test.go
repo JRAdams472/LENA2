@@ -14,6 +14,8 @@ import (
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
 
+func ptrInt64(v int64) *int64 { return &v }
+
 type stubCellar struct {
 	bottles []userprefs.HouseholdBottle
 }
@@ -61,7 +63,7 @@ func cellarFixture() *Registry {
 		1: {{CategoryID: 90, Name: "Cocktail", GroupName: "Dish Type"}},
 		2: {{CategoryID: 1, Name: "Dinner", GroupName: "Dish Type"}},
 	}, items: []recipe.RecipeItem{
-		{RecipeItemID: 1, RecipeID: 1, ItemID: 100},
+		{RecipeItemID: 1, RecipeID: 1, ItemID: ptrInt64(100)},
 	}}
 	namer := &stubNamer{items: map[int64]inventory.Item{100: {ItemID: 100, Name: "Tequila"}}}
 	reg := New()

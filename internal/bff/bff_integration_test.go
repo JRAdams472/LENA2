@@ -1273,7 +1273,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	mkRecipe := func(name string, flourKg float64) recipe.Recipe {
 		rec, err := recipeSvc.CreateRecipeWithChildren(ctx,
 			recipe.Recipe{Name: name, IsActive: true, Servings: &servings},
-			[]recipe.RecipeItem{{ItemID: flour.ItemID, Quantity: flourKg, UnitID: kg.UnitID}},
+			[]recipe.RecipeItem{{ItemID: ptrInt64(flour.ItemID), Quantity: flourKg, UnitID: kg.UnitID}},
 			nil, "it")
 		require.NoError(t, err)
 		return rec

@@ -36,6 +36,7 @@ function emptyReviewItem(): RecipeImportReviewItem {
     notes: null,
     isOptional: false,
     itemId: null,
+    itemKind: null,
     itemName: null,
     unitId: null,
     confidence: 0,
@@ -99,8 +100,21 @@ function IngredientRow({
   const selectItem = (opt: ItemOption | null) => {
     onChange({
       itemId: opt?.id ?? null,
+      itemKind: opt === null ? null : "item",
       itemName: opt?.name ?? null,
       approved: opt !== null,
+    });
+  };
+
+  // Picking a generic ingredient binds ingredient_id — itemId carries the
+  // ingredient's id with kind "ingredient" so the backend can tell the two
+  // catalog namespaces apart.
+  const selectIngredient = (s: { id: string; name: string }) => {
+    onChange({
+      itemId: s.id,
+      itemKind: "ingredient",
+      itemName: s.name,
+      approved: true,
     });
   };
 
@@ -156,7 +170,12 @@ function IngredientRow({
           isOptionEqualToValue={(a, b) => a.id === b.id}
           value={
             item.itemId
-              ? { id: item.itemId, name: item.itemName ?? item.itemId }
+              ? {
+                  id: item.itemId,
+                  name:
+                    (item.itemName ?? item.itemId) +
+                    (item.itemKind === "ingredient" ? " (ingredient)" : ""),
+                }
               : null
           }
           inputValue={itemInput}
@@ -192,7 +211,7 @@ function IngredientRow({
               onClick={() =>
                 s.kind === "item"
                   ? selectItem({ id: s.id, name: s.name })
-                  : setItemInput(s.name)
+                  : selectIngredient(s)
               }
             />
           ))}

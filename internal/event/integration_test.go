@@ -333,7 +333,7 @@ func TestIntegrationEventRecipeItems(t *testing.T) {
 	rec, err := recipeSvc.CreateRecipeWithChildren(ctx, recipe.Recipe{
 		Name: "IT Item Snapshot Recipe", Servings: &servings, IsActive: true,
 	}, []recipe.RecipeItem{
-		{ItemID: item.ItemID, Quantity: 2, UnitID: unit.UnitID},
+		{ItemID: ptrInt64(item.ItemID), Quantity: 2, UnitID: unit.UnitID},
 	}, nil, itBy)
 	require.NoError(t, err)
 
@@ -381,14 +381,14 @@ func TestIntegrationEventRecipeItems(t *testing.T) {
 
 	// Editing the snapshot must not alter the shared recipe item.
 	require.NoError(t, svc.UpdateEventRecipeItem(ctx, got[0].EventRecipeItemID, hhA,
-		EventRecipeItem{ItemID: item.ItemID, Quantity: 5, UnitID: unit.UnitID}, itBy))
+		EventRecipeItem{ItemID: ptrInt64(item.ItemID), Quantity: 5, UnitID: unit.UnitID}, itBy))
 	orig, err := recipeSvc.ListRecipeItemsByRecipes(ctx, []int64{rec.RecipeID})
 	require.NoError(t, err)
 	assert.Equal(t, 2.0, orig[0].Quantity)
 
 	// Add a hand-entered item, then remove it.
 	added, err := svc.AddEventRecipeItem(ctx, EventRecipeItem{
-		EventRecipeID: slot.EventRecipeID, ItemID: item.ItemID, Quantity: 1, UnitID: unit.UnitID,
+		EventRecipeID: slot.EventRecipeID, ItemID: ptrInt64(item.ItemID), Quantity: 1, UnitID: unit.UnitID,
 	}, hhA, itBy)
 	require.NoError(t, err)
 	require.NoError(t, svc.DeleteEventRecipeItem(ctx, added.EventRecipeItemID, hhA))

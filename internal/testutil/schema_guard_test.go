@@ -20,6 +20,9 @@ import (
 //     mealplan.*, and identity.users (household fan-out) (ADR-001).
 //   - internal/app/recipeimport owns the recipe_import tables that live in
 //     the recipe schema (ADR-002).
+//   - internal/inventory owns the cross-schema ingredient merge: repointing
+//     a merged ingredient's references is one atomic operation across every
+//     schema that holds ingredient_id (ADR-004).
 var allowedSchemas = map[string][]string{
 	"analytics":        {"analytics", "recipe", "mealplan", "identity"},
 	"app/recipeimport": {"recipe"},
@@ -28,7 +31,7 @@ var allowedSchemas = map[string][]string{
 	"household":        {"household"},
 	"idempotency":      {"platform"},
 	"identity":         {"identity"},
-	"inventory":        {"inventory"},
+	"inventory":        {"inventory", "recipe", "mealplan", "event", "grocery", "userprefs"},
 	"mealplan":         {"mealplan"},
 	// notifier is the cross-domain scheduler: it writes household
 	// notifications and reads plan/recipe/pantry/identity inputs.

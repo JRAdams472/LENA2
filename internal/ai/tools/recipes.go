@@ -169,9 +169,15 @@ func attachIngredients(ctx context.Context, recipes RecipeCatalog, items ItemNam
 	}
 
 	itemIDs := map[int64]bool{}
+	ingIDs := map[int64]bool{}
 	unitIDs := map[int64]bool{}
 	for _, ri := range rItems {
-		itemIDs[ri.ItemID] = true
+		if ri.ItemID != nil {
+			itemIDs[*ri.ItemID] = true
+		}
+		if ri.IngredientID != nil {
+			ingIDs[*ri.IngredientID] = true
+		}
 		unitIDs[ri.UnitID] = true
 	}
 	iids := make([]int64, 0, len(itemIDs))
@@ -179,6 +185,7 @@ func attachIngredients(ctx context.Context, recipes RecipeCatalog, items ItemNam
 		iids = append(iids, id)
 	}
 	names := map[int64]string{}
+	ingNames := map[int64]string{}
 	if items != nil {
 		list, err := items.GetItemsByIDs(ctx, iids)
 		if err != nil {
@@ -186,6 +193,19 @@ func attachIngredients(ctx context.Context, recipes RecipeCatalog, items ItemNam
 		}
 		for _, it := range list {
 			names[it.ItemID] = it.Name
+		}
+		gids := make([]int64, 0, len(ingIDs))
+		for id := range ingIDs {
+			gids = append(gids, id)
+		}
+		if len(gids) > 0 {
+			gs, err := items.GetIngredientsByIDs(ctx, gids)
+			if err != nil {
+				return nil, fmt.Errorf("ingredient names: %w", err)
+			}
+			for _, g := range gs {
+				ingNames[g.IngredientID] = g.Name
+			}
 		}
 	}
 	units := map[int64]string{}
@@ -205,9 +225,18 @@ func attachIngredients(ctx context.Context, recipes RecipeCatalog, items ItemNam
 
 	byRecipe := map[int64][]recipeIngredientRow{}
 	for _, ri := range rItems {
-		name, ok := names[ri.ItemID]
-		if !ok {
-			name = fmt.Sprintf("item #%d", ri.ItemID)
+		var name string
+		if ri.IngredientID != nil {
+			name = ingNames[*ri.IngredientID]
+		}
+		if name == "" && ri.ItemID != nil {
+			var ok bool
+			if name, ok = names[*ri.ItemID]; !ok {
+				name = fmt.Sprintf("item #%d", *ri.ItemID)
+			}
+		}
+		if name == "" {
+			continue
 		}
 		byRecipe[ri.RecipeID] = append(byRecipe[ri.RecipeID], recipeIngredientRow{
 			Name:     name,

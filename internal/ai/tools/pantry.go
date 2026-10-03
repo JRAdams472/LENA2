@@ -21,6 +21,7 @@ type PantryReader interface {
 type ItemNamer interface {
 	GetItemsByIDs(ctx context.Context, itemIDs []int64) ([]inventory.Item, error)
 	GetUnitsByIDs(ctx context.Context, unitIDs []int64) ([]inventory.Unit, error)
+	GetIngredientsByIDs(ctx context.Context, ingredientIDs []int64) ([]inventory.Ingredient, error)
 }
 
 // pantryRow is the tool's output shape — compact, name-first, ISO dates.
