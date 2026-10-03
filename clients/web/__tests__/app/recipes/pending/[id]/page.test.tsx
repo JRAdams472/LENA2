@@ -263,21 +263,35 @@ describe("pending recipe detail page", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
     );
-    fireEvent.click(screen.getByRole("button", { name: /reject/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^reject$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yes, reject it/i }));
     await waitFor(() =>
       expect(getBodies().some((b) => b.query.includes("rejectRecipeImport"))).toBe(true)
     );
     expect(mockPush).toHaveBeenCalledWith("/recipes/pending");
   });
 
-  it("retries the import", async () => {
+  it("cancelling the reject dialog does not reject", async () => {
     mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation(() => Promise.resolve(gql({ recipeImport })));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^reject$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(getBodies().some((b) => b.query.includes("rejectRecipeImport"))).toBe(false);
+  });
+
+  it("retries a failed import", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    const failedImport = { ...recipeImport, status: "failed" };
     mockFetch.mockImplementation((_, init) => {
       const body = init ? JSON.parse((init as RequestInit).body as string) : { query: "" };
       if (body.query?.includes("retryRecipeImport")) {
-        return Promise.resolve(gql({ retryRecipeImport: { ...recipeImport, status: "pending" } }));
+        return Promise.resolve(gql({ retryRecipeImport: { ...failedImport, status: "pending" } }));
       }
-      return Promise.resolve(gql({ recipeImport }));
+      return Promise.resolve(gql({ recipeImport: failedImport }));
     });
     renderPage();
     await waitFor(() =>
@@ -287,6 +301,16 @@ describe("pending recipe detail page", () => {
     await waitFor(() =>
       expect(getBodies().some((b) => b.query.includes("retryRecipeImport"))).toBe(true)
     );
+  });
+
+  it("disables retry while the import is under review", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockFetch.mockImplementation(() => Promise.resolve(gql({ recipeImport })));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("button", { name: /retry/i })).toBeDisabled();
   });
 
   it("adds and removes ingredients and steps", async () => {

@@ -84,6 +84,32 @@ func TestGraphQLHandler_CostBudgetExceeded(t *testing.T) {
 	assert.True(t, found, "expected a cost-budget error, got %v", resp.Errors)
 }
 
+func TestGraphQLHandler_IntrospectionAdminOnly(t *testing.T) {
+	h, err := NewGraphQLHandler(&Resolver{}, 5*time.Second, 0, 0,
+		graphql.RestrictIntrospection(AllowIntrospectionForAdmins(false)))
+	require.NoError(t, err)
+	const introspect = `{ __schema { mutationType { fields { name } } } }`
+
+	// graphql-go drops __schema/__type selections when introspection is
+	// disallowed rather than erroring — members get empty data.
+	member := postGraphQLCtx(t, testutil.WithUser(context.Background(), 7, "m@example.com"), h, introspect)
+	assert.NotContains(t, string(member.Data), "mutationType")
+
+	admin := postGraphQLCtx(t, testutil.WithAdmin(context.Background(), 1, "a@example.com"), h, introspect)
+	require.Empty(t, admin.Errors)
+	assert.Contains(t, string(admin.Data), "mutationType")
+}
+
+func TestGraphQLHandler_IntrospectionDisableAll(t *testing.T) {
+	h, err := NewGraphQLHandler(&Resolver{}, 5*time.Second, 0, 0,
+		graphql.RestrictIntrospection(AllowIntrospectionForAdmins(true)))
+	require.NoError(t, err)
+
+	resp := postGraphQLCtx(t, testutil.WithAdmin(context.Background(), 1, "a@example.com"), h,
+		`{ __schema { queryType { name } } }`)
+	assert.NotContains(t, string(resp.Data), "queryType")
+}
+
 func TestGraphQLHandler_EnumRejectsInvalidValue(t *testing.T) {
 	h, err := NewGraphQLHandler(&Resolver{}, 5*time.Second, 0, 0)
 	require.NoError(t, err)

@@ -1,0 +1,50 @@
+# docker-compose.debug.yml — LOCAL/DEBUG overlay.
+#
+# Layer this over docker-compose.yml (which is the production-hardened
+# configuration) while developing or UAT-testing. It makes two classes of
+# change, both unsafe for production:
+#
+#   1. api/web are rebuilt with the `debug` Dockerfile target — alpine
+#      images that contain a shell and curl so `docker exec` works.
+#      Production targets are shell-less distroless.
+#   2. Direct loopback port forwards to api (8080), web (3000), and db
+#      (5432) so you can hit services without going through Caddy, and
+#      connect DB GUI tools. These bypass the edge proxy — including its
+#      XFF handling — so they must never be exposed beyond loopback.
+#
+# The security flags (no-new-privileges, cap_drop) intentionally stay on:
+# they don't impede debugging and keep the debug stack closer to prod.
+# read_only is lifted so tools can write scratch files.
+#
+# Usage (append -f docker-compose.debug.yml after the base file):
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml \
+#     -f docker-compose.import.yml -f docker-compose.logging.yml \
+#     -f docker-compose.telemetry.yml --profile import up -d --build
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: debug
+    image: lena2-api:debug
+    read_only: false
+    ports:
+      # Direct API access bypassing Caddy — loopback only.
+      - "127.0.0.1:8080:8080"
+
+  web:
+    build:
+      context: ./clients/web
+      dockerfile: Dockerfile
+      target: debug
+    image: lena2-web:debug
+    read_only: false
+    ports:
+      # Direct web access bypassing Caddy — loopback only.
+      - "127.0.0.1:3000:3000"
+
+  db:
+    ports:
+      # Direct Postgres for GUI tools / psql — loopback only.
+      - "127.0.0.1:5432:5432"

@@ -156,14 +156,20 @@ export async function createSession(
   return (await res.json()) as SessionBundle;
 }
 
+// refreshSessionRequest rotates the session. Browser clients omit the
+// token — the HttpOnly refresh cookie carries the credential; mobile
+// clients pass the stored token explicitly.
 export async function refreshSessionRequest(
-  refreshToken: string,
+  refreshToken?: string,
   device?: string
 ): Promise<SessionBundle | null> {
   const res = await fetch(sessionUrl("/auth/session/refresh"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken, device: device ?? "web" }),
+    body: JSON.stringify({
+      refreshToken: refreshToken ?? "",
+      device: device ?? "web",
+    }),
   });
   if (!res.ok) return null;
   return (await res.json()) as SessionBundle;
@@ -194,11 +200,13 @@ export async function createProviderSession(
 
 // revokeSession is best-effort sign-out — the session dies with the
 // refresh token's expiry regardless, so transport errors are ignored.
-export async function revokeSession(refreshToken: string): Promise<void> {
+// Browsers omit the token (the refresh cookie carries it); the server
+// always clears the cookie.
+export async function revokeSession(refreshToken?: string): Promise<void> {
   await fetch(sessionUrl("/auth/session/revoke"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({ refreshToken: refreshToken ?? "" }),
   }).catch(() => undefined);
 }
 
@@ -1201,8 +1209,11 @@ function toRecipeImportDraftItem(item: GqlRecipeImportDraftItem): RecipeImportDr
 }
 
 function toRecipeImportReviewItem(item: GqlRecipeImportReviewItem): RecipeImportReviewItem {
+  const draft = toRecipeImportDraftItem(item.draftItem);
   return {
-    ...toRecipeImportDraftItem(item.draftItem),
+    ...draft,
+    unit: item.unit,
+    notes: item.notes ?? draft.notes,
     itemId: item.itemId,
     itemName: item.itemName,
     unitId: item.unitId,
@@ -1245,7 +1256,10 @@ function toRecipeImportReview(review: GqlRecipeImportReview | null): RecipeImpor
 
 function toRecipeImport(r: GqlRecipeImport): RecipeImport {
   return {
-    ...audit(),
+    createdBy: r.createdBy,
+    createDate: r.createdAt,
+    lastUpdatedBy: null,
+    lastUpdatedDate: r.updatedAt,
     recipeImportID: num(r.id),
     status: r.status,
     sourceFilename: r.sourceFilename,
@@ -1278,6 +1292,8 @@ function toRecipeImportReviewInput(review: RecipeImportReview): Record<string, u
       itemId: it.itemId,
       itemName: it.itemName,
       unitId: it.unitId,
+      confidence: it.confidence,
+      suggestions: it.suggestions.map((s) => ({ id: s.id, name: s.name, kind: s.kind, score: s.score })),
       // "accepted" has no input field — carry it through as approved so a
       // save doesn't un-resolve rows the matcher already cleared.
       approved: it.approved || it.status === "accepted",

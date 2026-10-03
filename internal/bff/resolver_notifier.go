@@ -145,5 +145,5 @@ func (r *notificationPrefResolver) MutedUntil() *graphql.Time {
 	if r.p.MutedUntil == nil {
 		return nil
 	}
-	return &graphql.Time{Time: *r.p.MutedUntil}
+	return timeToGraphQL(r.p.MutedUntil)
 }

@@ -933,7 +933,7 @@ func (r *eventRecipeResolver) ID() graphql.ID {
 
 func (r *eventRecipeResolver) MealType() string { return r.er.MealType }
 
-func (r *eventRecipeResolver) TargetTime() graphql.Time { return graphql.Time{Time: r.er.TargetTime} }
+func (r *eventRecipeResolver) TargetTime() graphql.Time { return graphqlTime(r.er.TargetTime) }
 
 func (r *eventRecipeResolver) Servings() *int32 { return r.er.Servings }
 
@@ -1127,7 +1127,7 @@ func (r *eventTimelineRecipeResolver) EventRecipeID() graphql.ID {
 func (r *eventTimelineRecipeResolver) Name() string { return r.rt.Name }
 
 func (r *eventTimelineRecipeResolver) TargetTime() graphql.Time {
-	return graphql.Time{Time: r.rt.TargetTime}
+	return graphqlTime(r.rt.TargetTime)
 }
 
 func (r *eventTimelineRecipeResolver) Servings() *int32 { return r.rt.Servings }
@@ -1138,7 +1138,7 @@ func (r *eventTimelineRecipeResolver) StartBy() *graphql.Time {
 	if r.rt.StartBy == nil {
 		return nil
 	}
-	return &graphql.Time{Time: *r.rt.StartBy}
+	return timeToGraphQL(r.rt.StartBy)
 }
 
 func (r *eventTimelineRecipeResolver) Unschedulable() bool { return r.rt.Unschedulable }
@@ -1175,11 +1175,11 @@ func (r *timelineStepResolver) ScheduledMinutes() int32 { return r.st.ScheduledM
 func (r *timelineStepResolver) Estimated() bool { return r.st.Estimated }
 
 func (r *timelineStepResolver) StartTime() graphql.Time {
-	return graphql.Time{Time: r.st.Start}
+	return graphqlTime(r.st.Start)
 }
 
 func (r *timelineStepResolver) EndTime() graphql.Time {
-	return graphql.Time{Time: r.st.End}
+	return graphqlTime(r.st.End)
 }
 
 func (r *timelineStepResolver) Conflicts() []string { return r.st.Conflicts }

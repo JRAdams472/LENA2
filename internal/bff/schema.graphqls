@@ -1474,7 +1474,16 @@ input RecipeImportReviewItemInput {
   itemId: ID
   itemName: String
   unitId: ID
+  confidence: Float
+  suggestions: [RecipeImportSuggestionInput!]
   approved: Boolean!
+}
+
+input RecipeImportSuggestionInput {
+  id: ID!
+  name: String!
+  kind: String!
+  score: Float!
 }
 
 input RecipeImportReviewStepInput {

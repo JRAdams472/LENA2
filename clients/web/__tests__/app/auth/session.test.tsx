@@ -100,10 +100,11 @@ describe("AuthProvider sessions", () => {
     expect((init as RequestInit).headers).toEqual(
       expect.objectContaining({ Authorization: `Bearer ${googleToken}` })
     );
-    // The LENA access token becomes the bearer; the refresh token and
-    // user snapshot persist for restore.
+    // The LENA access token becomes the bearer; the refresh credential
+    // lives in the HttpOnly cookie so only the non-secret hint persists.
     expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
-    expect(localStorage.getItem("lena_refresh_token")).toBe("rt-1");
+    expect(localStorage.getItem("lena_session_hint")).toBe("1");
+    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
     expect(screen.getByTestId("email").textContent).toBe("test@example.com");
   });
 
@@ -133,7 +134,7 @@ describe("AuthProvider sessions", () => {
       expect.objectContaining({ code: "code-1", nonce: "nonce-1" })
     );
     expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
-    expect(localStorage.getItem("lena_refresh_token")).toBe("rt-discord");
+    expect(localStorage.getItem("lena_session_hint")).toBe("1");
     await waitFor(() => {
       expect(screen.getByTestId("email").textContent).toBe(
         "restored@example.com"
@@ -155,7 +156,7 @@ describe("AuthProvider sessions", () => {
       expect(mockFetch).toHaveBeenCalled();
     });
     expect(screen.getByTestId("auth").textContent).toBe("false");
-    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
+    expect(localStorage.getItem("lena_session_hint")).toBeNull();
   });
 
   it("falls back to the provider credential when sessions are disabled", async () => {
@@ -172,11 +173,11 @@ describe("AuthProvider sessions", () => {
       expect(screen.getByTestId("auth").textContent).toBe("true");
     });
     expect(sessionStorage.getItem("lena_id_token")).toBe(googleToken);
-    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
+    expect(localStorage.getItem("lena_session_hint")).toBeNull();
   });
 
-  it("restores a session from a stored refresh token", async () => {
-    localStorage.setItem("lena_refresh_token", "rt-stored");
+  it("restores a session from the session hint", async () => {
+    localStorage.setItem("lena_session_hint", "1");
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/auth/session/refresh"))
         return Promise.resolve(sessionOk("rt-rotated"));
@@ -197,15 +198,53 @@ describe("AuthProvider sessions", () => {
     await waitFor(() => {
       expect(screen.getByTestId("auth").textContent).toBe("true");
     });
-    // The old refresh token was rotated; the user snapshot was rebuilt
-    // via the me query since sessionStorage was empty.
-    expect(localStorage.getItem("lena_refresh_token")).toBe("rt-rotated");
+    // The refresh request carried no body token — the cookie supplies
+    // the credential. The user snapshot was rebuilt via the me query.
+    const refreshCall = mockFetch.mock.calls.find(([u]: [string]) =>
+      u.includes("/auth/session/refresh")
+    );
+    expect(refreshCall).toBeDefined();
+    expect(JSON.parse(refreshCall[1].body as string).refreshToken).toBe("");
+    expect(localStorage.getItem("lena_session_hint")).toBe("1");
     expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
     expect(screen.getByTestId("email").textContent).toBe("restored@example.com");
   });
 
-  it("clears a dead refresh token and stays signed out", async () => {
-    localStorage.setItem("lena_refresh_token", "rt-dead");
+  it("migrates a legacy localStorage refresh token", async () => {
+    localStorage.setItem("lena_refresh_token", "rt-stored");
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/auth/session/refresh"))
+        return Promise.resolve(sessionOk("rt-rotated"));
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { me: meData } }),
+      });
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth").textContent).toBe("true");
+    });
+    // The legacy token was sent in the body for the final rotation, then
+    // removed — the new credential exists only as the cookie.
+    const refreshCall = mockFetch.mock.calls.find(([u]: [string]) =>
+      u.includes("/auth/session/refresh")
+    );
+    expect(JSON.parse(refreshCall[1].body as string).refreshToken).toBe(
+      "rt-stored"
+    );
+    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
+    expect(localStorage.getItem("lena_session_hint")).toBe("1");
+  });
+
+  it("clears a dead session and stays signed out", async () => {
+    localStorage.setItem("lena_session_hint", "1");
     mockFetch.mockResolvedValue({ ok: false, status: 401, text: async () => "" });
 
     render(
@@ -218,10 +257,10 @@ describe("AuthProvider sessions", () => {
       expect(screen.getByTestId("restoring").textContent).toBe("false");
     });
     expect(screen.getByTestId("auth").textContent).toBe("false");
-    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
+    expect(localStorage.getItem("lena_session_hint")).toBeNull();
   });
 
-  it("revokes the refresh token on sign-out", async () => {
+  it("revokes the session on sign-out", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/auth/session")) return Promise.resolve(sessionOk());
       return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
@@ -246,8 +285,8 @@ describe("AuthProvider sessions", () => {
       u.includes("/auth/session/revoke")
     );
     expect(revokeCall).toBeDefined();
-    expect(JSON.parse(revokeCall[1].body as string).refreshToken).toBe("rt-1");
-    expect(localStorage.getItem("lena_refresh_token")).toBeNull();
+    expect(JSON.parse(revokeCall[1].body as string).refreshToken).toBe("");
+    expect(localStorage.getItem("lena_session_hint")).toBeNull();
     expect(sessionStorage.getItem("lena_id_token")).toBeNull();
   });
 });

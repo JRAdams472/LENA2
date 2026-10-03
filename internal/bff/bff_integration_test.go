@@ -789,8 +789,15 @@ func runHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.Test
 	idC := meID(tokC)
 	idD := meID(tokD)
 
-	// D is searchable by default; C finds them by term.
-	status, gr := doGraphQL(t, srv, tokC, `query Search($term: String!) {
+	// Searchability is opt-in: D must enable it before C can find them.
+	status, gr := doGraphQL(t, srv, tokD, `mutation OptIn {
+		updateMyProfile(input: {isSearchable: true}) { id isSearchable }
+	}`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// C finds the opted-in D by term.
+	status, gr = doGraphQL(t, srv, tokC, `query Search($term: String!) {
 		searchHouseholdUsers(term: $term) { id displayName }
 	}`, map[string]any{"term": "hh-d"})
 	require.Equal(t, http.StatusOK, status)

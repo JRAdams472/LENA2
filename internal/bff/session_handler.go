@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -18,6 +19,57 @@ import (
 // be reachable when the access token is already expired, and the GraphQL
 // route rejects unauthenticated requests in middleware. The refresh token
 // is itself the credential for refresh/revoke — no bearer required.
+//
+// Browser clients carry the refresh token in an HttpOnly SameSite=Strict
+// cookie (path-scoped to /auth/session) so XSS cannot exfiltrate it; the
+// token also stays in the JSON body for mobile clients that store it in
+// platform secure storage. A request supplies either form.
+const refreshCookieName = "lena_refresh"
+
+func refreshCookieSecure(c echo.Context) bool {
+	return c.IsTLS() ||
+		strings.EqualFold(c.Request().Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// setRefreshCookie writes the rotated refresh token as a browser cookie.
+// MaxAge mirrors the server-side session expiry so the cookie dies with
+// the credential instead of outliving it.
+func setRefreshCookie(c echo.Context, iss session.Issued) {
+	c.SetCookie(&http.Cookie{ //nolint:gosec // Secure is set dynamically — literal true would break the plain-HTTP dev stack
+		Name:     refreshCookieName,
+		Value:    iss.RefreshToken,
+		Path:     "/auth/session",
+		HttpOnly: true,
+		Secure:   refreshCookieSecure(c),
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   int(time.Until(iss.ExpiresAt).Seconds()),
+	})
+}
+
+func clearRefreshCookie(c echo.Context) {
+	c.SetCookie(&http.Cookie{ //nolint:gosec // Secure is set dynamically — literal true would break the plain-HTTP dev stack
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     "/auth/session",
+		HttpOnly: true,
+		Secure:   refreshCookieSecure(c),
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+}
+
+// requestRefreshToken reads the credential from the JSON body (mobile) or
+// the cookie (browser) — the body wins when both are present so a stale
+// cookie cannot shadow an explicit client credential.
+func requestRefreshToken(c echo.Context, req sessionTokenRequest) string {
+	if req.RefreshToken != "" {
+		return req.RefreshToken
+	}
+	if ck, err := c.Cookie(refreshCookieName); err == nil {
+		return ck.Value
+	}
+	return ""
+}
 
 // sessionIssuer is the subset of *session.Service the endpoints need;
 // an interface so tests can substitute a fake.
@@ -97,6 +149,7 @@ func (h *SessionHandler) Create(c echo.Context) error {
 	if err != nil {
 		return mapSessionError(err)
 	}
+	setRefreshCookie(c, iss)
 	return c.JSON(http.StatusOK, toSessionResponse(iss))
 }
 
@@ -108,22 +161,26 @@ func (h *SessionHandler) Refresh(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
 	}
 	var req sessionTokenRequest
-	if c.Request().ContentLength == 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "refreshToken is required")
+	if c.Request().ContentLength != 0 {
+		if err := c.Bind(&req); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+		}
 	}
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if req.RefreshToken == "" {
+	token := requestRefreshToken(c, req)
+	if token == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "refreshToken is required")
 	}
 	if utf8.RuneCountInString(req.Device) > maxDeviceLen {
 		return echo.NewHTTPError(http.StatusBadRequest, "device label too long")
 	}
-	iss, err := h.sessions.Refresh(c.Request().Context(), req.RefreshToken, req.Device)
+	iss, err := h.sessions.Refresh(c.Request().Context(), token, req.Device)
 	if err != nil {
+		// A rejected refresh credential is useless — drop the stale cookie
+		// so the browser stops replaying it.
+		clearRefreshCookie(c)
 		return mapSessionError(err)
 	}
+	setRefreshCookie(c, iss)
 	return c.JSON(http.StatusOK, toSessionResponse(iss))
 }
 
@@ -132,17 +189,21 @@ func (h *SessionHandler) Revoke(c echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
 	}
+	// The clear must run before the response is written — echo commits
+	// headers at NoContent/JSON time, so a deferred clear would never
+	// reach the client.
+	clearRefreshCookie(c)
 	var req sessionTokenRequest
-	if c.Request().ContentLength == 0 {
+	if c.Request().ContentLength != 0 {
+		if err := c.Bind(&req); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+		}
+	}
+	token := requestRefreshToken(c, req)
+	if token == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "refreshToken is required")
 	}
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if req.RefreshToken == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "refreshToken is required")
-	}
-	if err := h.sessions.Revoke(c.Request().Context(), req.RefreshToken); err != nil {
+	if err := h.sessions.Revoke(c.Request().Context(), token); err != nil {
 		return mapSessionError(err)
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -152,7 +213,7 @@ func toSessionResponse(iss session.Issued) sessionResponse {
 	return sessionResponse{
 		AccessToken:  iss.AccessToken,
 		RefreshToken: iss.RefreshToken,
-		ExpiresAt:    iss.ExpiresAt,
+		ExpiresAt:    iss.ExpiresAt.UTC(),
 	}
 }
 

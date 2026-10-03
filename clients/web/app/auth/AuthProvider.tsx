@@ -54,7 +54,10 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const TOKEN_KEY = "lena_id_token"; // sessionStorage — the active bearer
-const REFRESH_KEY = "lena_refresh_token"; // localStorage — survives tabs
+// The refresh credential itself lives in an HttpOnly cookie; this key is
+// only a non-secret "a session may exist" marker for restore-on-new-tab.
+const SESSION_HINT_KEY = "lena_session_hint";
+const LEGACY_REFRESH_KEY = "lena_refresh_token"; // pre-cookie sessions
 const USER_KEY = "lena_auth_user"; // sessionStorage — {email, sub} snapshot
 
 const DEVICE = "web";
@@ -77,17 +80,34 @@ function isTokenExpired(token: string): boolean {
   return payload.exp < Math.floor(Date.now() / 1000);
 }
 
-function getRefreshToken(): string | null {
+function getLegacyRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(REFRESH_KEY);
+  return window.localStorage.getItem(LEGACY_REFRESH_KEY);
 }
 
-function setRefreshToken(value: string | null) {
+function clearLegacyRefreshToken() {
   if (typeof window === "undefined") return;
-  if (value === null) {
-    window.localStorage.removeItem(REFRESH_KEY);
+  window.localStorage.removeItem(LEGACY_REFRESH_KEY);
+}
+
+// hasSessionHint reports whether a refresh credential may exist — the
+// cookie is HttpOnly so the marker is all JS can see. A lingering legacy
+// token counts too: it migrates into the cookie on the next refresh.
+function hasSessionHint(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.localStorage.getItem(SESSION_HINT_KEY) === "1" ||
+    getLegacyRefreshToken() !== null
+  );
+}
+
+function setSessionHint(hinted: boolean) {
+  if (typeof window === "undefined") return;
+  if (hinted) {
+    window.localStorage.setItem(SESSION_HINT_KEY, "1");
   } else {
-    window.localStorage.setItem(REFRESH_KEY, value);
+    window.localStorage.removeItem(SESSION_HINT_KEY);
+    clearLegacyRefreshToken();
   }
 }
 
@@ -139,10 +159,10 @@ const tokenStore = (() => {
       }
       const stored = window.sessionStorage.getItem(TOKEN_KEY);
       if (!stored) return null;
-      // An expired access token is still returned when a refresh token
-      // exists — the first request 401s, refreshes, and retries rather
-      // than bouncing to Google sign-in.
-      if (isTokenExpired(stored) && !getRefreshToken()) return null;
+      // An expired access token is still returned when a refresh
+      // credential exists — the first request 401s, refreshes, and
+      // retries rather than bouncing to Google sign-in.
+      if (isTokenExpired(stored) && !hasSessionHint()) return null;
       return stored;
     },
     setToken(value: string | null) {
@@ -175,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const tokenRef = useRef<string | null>(token);
   const [isRestoring, setIsRestoring] = useState(
-    () => !token && !!getRefreshToken()
+    () => !token && hasSessionHint()
   );
   // The display identity normally derives from the token or its stored
   // snapshot; a restored session may hydrate it via the me query *after*
@@ -187,11 +207,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // the 401 → refresh → retry path. User info survives via USER_KEY;
   // when it is missing (fresh tab) the me query rehydrates it.
   const refreshSessionNow = useCallback(async (): Promise<boolean> => {
-    const rt = getRefreshToken();
-    if (!rt) return false;
-    const bundle = await refreshSessionRequest(rt, DEVICE).catch(() => null);
+    const legacy = getLegacyRefreshToken();
+    const bundle = await refreshSessionRequest(
+      legacy ?? undefined,
+      DEVICE
+    ).catch(() => null);
     if (!bundle) return false;
-    setRefreshToken(bundle.refreshToken);
+    // The rotated credential now lives in the refresh cookie; the legacy
+    // localStorage copy was consumed and must not linger.
+    clearLegacyRefreshToken();
+    setSessionHint(true);
     tokenStore.setToken(bundle.accessToken);
     if (!getStoredUser()) {
       const me = await api.getMe().catch(() => null);
@@ -216,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((bundle) => {
         persistUser(userInfo);
         if (bundle) {
-          setRefreshToken(bundle.refreshToken);
+          setSessionHint(true);
           tokenStore.setToken(bundle.accessToken);
         } else {
           tokenStore.setToken(credential);
@@ -234,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithProvider = useCallback(
     async (provider: string, code: string, nonce?: string) => {
       const bundle = await createProviderSession(provider, code, nonce, DEVICE);
-      setRefreshToken(bundle.refreshToken);
+      setSessionHint(true);
       tokenStore.setToken(bundle.accessToken);
       const me = await api.getMe().catch(() => null);
       if (me?.email) {
@@ -247,11 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(() => {
-    const rt = getRefreshToken();
-    if (rt) {
-      setRefreshToken(null);
-      void revokeSession(rt);
-    }
+    setSessionHint(false);
+    void revokeSession();
     persistUser(null);
     setUserOverride(null);
     tokenRef.current = null;
@@ -274,9 +296,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restoredRef.current = true;
     // isRestoring initialized true only when this condition is false, so
     // the early return never needs to clear it.
-    if (tokenStore.getSnapshot() || !getRefreshToken()) return;
+    if (tokenStore.getSnapshot() || !hasSessionHint()) return;
     void refreshSessionNow().then((ok) => {
-      if (!ok) setRefreshToken(null);
+      if (!ok) setSessionHint(false);
       setIsRestoring(false);
     });
   }, [refreshSessionNow]);

@@ -56,6 +56,17 @@ func GraphQLRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
 	})
 }
 
+// GlobalRateLimiter returns a middleware that rate-limits requests against
+// a single shared bucket. It complements the per-IP limiter on endpoints
+// where the damage scales with total volume — provider code-exchange calls
+// make outbound requests to third-party token endpoints, so a distributed
+// flood of valid source IPs still hits one global ceiling.
+func GlobalRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
+	return newRateLimiter(perMinute, burst, func(echo.Context) (string, error) {
+		return "global", nil
+	})
+}
+
 // userRateLimiter throttles a per-user burst inside resolvers (upload
 // mutations) where middleware cannot distinguish the operation. Entries
 // idle longer than idleTTL are evicted on access so the map cannot grow

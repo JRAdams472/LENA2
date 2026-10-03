@@ -461,7 +461,15 @@ func timeToGraphQL(t *time.Time) *graphql.Time {
 	if t == nil {
 		return nil
 	}
-	return &graphql.Time{Time: *t}
+	gt := graphqlTime(*t)
+	return &gt
+}
+
+// graphqlTime normalizes timestamps emitted over GraphQL: pgx returns
+// timestamptz in the process-local zone, and normalizing to UTC keeps the
+// wire format deterministic ("Z" suffix) regardless of host TZ.
+func graphqlTime(t time.Time) graphql.Time {
+	return graphql.Time{Time: t.UTC()}
 }
 
 // Me resolves the current authenticated user. When the identity service
@@ -559,7 +567,7 @@ func (r *userResolver) LastLoginAt() *graphql.Time {
 	if r.u.LastLoginAt == nil {
 		return nil
 	}
-	return &graphql.Time{Time: *r.u.LastLoginAt}
+	return timeToGraphQL(r.u.LastLoginAt)
 }
 
 func (r *userResolver) IsSearchable() bool { return r.u.IsSearchable }
