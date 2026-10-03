@@ -54,6 +54,7 @@ import {
   NotificationCategoryPreference,
   NotificationKind,
   Unit,
+  Ingredient,
   RecipeImport,
   RecipeImportDraft,
   RecipeImportDraftItem,
@@ -368,6 +369,19 @@ interface GqlCategory {
   isProtein: boolean;
 }
 
+interface GqlIngredient {
+  id: string;
+  name: string;
+  category: GqlCategory | null;
+  defaultUnit: string | null;
+  isActive: boolean;
+}
+
+interface GqlIngredientPage {
+  items: GqlIngredient[];
+  pageInfo: GqlPageInfo;
+}
+
 interface GqlFlavorProfile {
   id: string;
   name: string;
@@ -398,6 +412,8 @@ interface GqlItem {
   upc14: string | null;
   category: GqlCategory;
   unit: string;
+  ingredient?: GqlIngredient | null;
+  householdIngredient?: GqlIngredient | null;
   nutrients: GqlFoodNutrient[];
   flavors: GqlFoodFlavor[];
   status: string;
@@ -428,7 +444,8 @@ interface GqlUserItemPage {
 }
 
 interface GqlRecipeItem {
-  item: GqlItem;
+  item: GqlItem | null;
+  ingredient?: GqlIngredient | null;
   quantity: number;
   unit: string;
   notes: string | null;
@@ -668,6 +685,7 @@ interface GqlVintage {
 interface GqlMealSlotItem {
   id: string;
   item: GqlItem | null;
+  ingredient?: GqlIngredient | null;
   quantity: number;
   unit: string;
   isFromRecipe: boolean;
@@ -754,6 +772,7 @@ interface GqlEventRecipeStep {
 interface GqlEventRecipeItem {
   id: string;
   item: { id: string; name: string } | null;
+  ingredient?: { id: string; name: string } | null;
   quantity: number;
   baseQuantity: number;
   unit: string;
@@ -831,7 +850,8 @@ interface GqlNutritionSummary {
 interface GqlGroceryListItem {
   id: string;
   item: GqlItem | null;
-  ingredient: { id: string; name: string } | null;
+  ingredient?: { id: string; name: string } | null;
+  usualBrand?: { id: string; name: string; brand: GqlBrand | null } | null;
   manualItemName: string | null;
   quantityNeeded: number;
   unitOfMeasure: string | null;
@@ -1090,6 +1110,16 @@ function toBrand(b: GqlBrand): Brand {
   };
 }
 
+function toIngredient(g: GqlIngredient): Ingredient {
+  return {
+    ingredientID: num(g.id),
+    name: g.name,
+    category: g.category ? toCategory(g.category) : null,
+    defaultUnit: g.defaultUnit,
+    isActive: g.isActive,
+  };
+}
+
 function toItem(i: GqlItem, ui?: GqlUserItem): Item {
   const itemID = num(i.id);
   return {
@@ -1100,6 +1130,8 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
     upc12: i.upc12,
     upc14: i.upc14,
     categoryID: num(i.category?.id),
+    ingredient: i.ingredient ? toIngredient(i.ingredient) : null,
+    householdIngredient: i.householdIngredient ? toIngredient(i.householdIngredient) : null,
     unit: i.unit,
     currentQuantity: ui?.currentQty ?? 0,
     minQuantity: ui?.minQty ?? null,
@@ -1129,7 +1161,9 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
 function toRecipeItem(recipeID: number, r: GqlRecipeItem): RecipeItem {
   return {
     recipeID,
-    itemID: num(r.item?.id),
+    itemID: r.item ? num(r.item.id) : null,
+    ingredientID: r.ingredient ? num(r.ingredient.id) : null,
+    ingredientName: r.ingredient?.name ?? null,
     quantity: r.quantity,
     unitOfMeasure: r.unit,
     notes: r.notes,
@@ -1138,6 +1172,7 @@ function toRecipeItem(recipeID: number, r: GqlRecipeItem): RecipeItem {
     itemBrand: r.item?.brand?.name ?? null,
     recipe: null,
     item: r.item ? toItem(r.item) : null,
+    ingredient: r.ingredient ? toIngredient(r.ingredient) : null,
   };
 }
 
@@ -1444,7 +1479,9 @@ function toMealSlotItem(slotID: number, i: GqlMealSlotItem): MealSlotItem {
     ...audit(),
     mealSlotItemID: num(i.id),
     mealSlotID: slotID,
-    itemID: num(i.item?.id),
+    itemID: i.item ? num(i.item.id) : null,
+    ingredientID: i.ingredient ? num(i.ingredient.id) : null,
+    ingredientName: i.ingredient?.name ?? null,
     quantity: i.quantity,
     unitOfMeasure: i.unit,
     isFromRecipe: i.isFromRecipe,
@@ -1529,7 +1566,8 @@ function toEventStepVariables(step: EventRecipeStepInput) {
 // ingredient — quantity is the unscaled (per-base-servings) amount, and
 // unit is a name or abbreviation resolved by the shared unit catalog.
 export interface EventRecipeItemInput {
-  itemID: number;
+  itemID?: number | null;
+  ingredientID?: number | null;
   quantity: number;
   unit: string;
   section?: string | null;
@@ -1540,8 +1578,8 @@ export interface EventRecipeItemInput {
 
 function toEventItemVariables(item: EventRecipeItemInput) {
   return {
-    itemId: String(item.itemID),
-    ingredientId: null,
+    itemId: item.itemID != null ? String(item.itemID) : null,
+    ingredientId: item.ingredientID != null ? String(item.ingredientID) : null,
     quantity: item.quantity,
     unit: item.unit,
     section: item.section ?? null,
@@ -1567,7 +1605,9 @@ function toEventRecipeStep(s: GqlEventRecipeStep): EventRecipeStep {
 function toEventRecipeItem(i: GqlEventRecipeItem): EventRecipeItem {
   return {
     eventRecipeItemID: num(i.id),
-    itemID: i.item ? num(i.item.id) : 0,
+    itemID: i.item ? num(i.item.id) : null,
+    ingredientID: i.ingredient ? num(i.ingredient.id) : null,
+    ingredientName: i.ingredient?.name ?? null,
     itemName: i.item?.name ?? null,
     quantity: i.quantity,
     baseQuantity: i.baseQuantity,
@@ -1647,6 +1687,10 @@ function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListIt
     itemName: i.item?.name ?? null,
     ingredientID: i.ingredient ? num(i.ingredient.id) : null,
     ingredientName: i.ingredient?.name ?? null,
+    usualBrandItemID: i.usualBrand ? num(i.usualBrand.id) : null,
+    usualBrandName: i.usualBrand
+      ? (i.usualBrand.brand ? `${i.usualBrand.brand.name} ${i.usualBrand.name}` : i.usualBrand.name)
+      : null,
     manualItemName: i.manualItemName,
     quantityNeeded: i.quantityNeeded,
     unitOfMeasure: i.unitOfMeasure,
@@ -1692,8 +1736,15 @@ const ITEM_FIELDS = `
   id name upc12 upc14 unit status submittedByMe selectionCount personalSelectionCount
   brand { ${BRAND_FIELDS} }
   category { id name description }
+  ingredient { id name }
+  householdIngredient { id name }
   nutrients { amount nutrient { id name unit } }
   flavors { intensity flavor { id name isActive } }
+`;
+
+const INGREDIENT_FIELDS = `
+  id name defaultUnit isActive
+  category { id name description isActive isProtein }
 `;
 
 const RECIPE_CATEGORY_FIELDS = `
@@ -1702,7 +1753,7 @@ const RECIPE_CATEGORY_FIELDS = `
 
 const RECIPE_FIELDS = `
   id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount myRating averageRating ratingCount
-  items { quantity unit notes isOptional item { ${ITEM_FIELDS} } }
+  items { quantity unit notes isOptional ingredient { id name } item { ${ITEM_FIELDS} } }
   steps { stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance }
   categories { ${RECIPE_CATEGORY_FIELDS} }
 `;
@@ -1739,6 +1790,7 @@ const EVENT_RECIPE_STEP_FIELDS = `
 const EVENT_RECIPE_ITEM_FIELDS = `
   id quantity baseQuantity unit section displayOrder notes isOptional
   item { id name }
+  ingredient { id name }
 `;
 
 const EVENT_RECIPE_FIELDS = `
@@ -1759,6 +1811,7 @@ const GROCERY_LIST_FIELDS = `
   items {
     id manualItemName quantityNeeded unitOfMeasure source isChecked
           ingredient { id name }
+          usualBrand { id name brand { id name } }
     item { ${ITEM_FIELDS} }
   }
 `;
@@ -2041,7 +2094,7 @@ export const api = {
     const data = await request<{
       addItemToCurrentGroceryList: GqlGroceryListItem;
     }>(
-      `mutation ($itemId: ID!) { addItemToCurrentGroceryList(itemId: $itemId) { id item { id name } manualItemName quantityNeeded unitOfMeasure source isChecked } }`,
+      `mutation ($itemId: ID!) { addItemToCurrentGroceryList(itemId: $itemId) { id item { id name } ingredient { id name } usualBrand { id name brand { id name } } manualItemName quantityNeeded unitOfMeasure source isChecked } }`,
       { itemId: String(itemID) }
     );
     // The returned row's list id isn't on the GraphQL type; the caller only
@@ -2301,6 +2354,99 @@ export const api = {
 
   setItemUPC14: (id: number, upc14: string): Promise<void> =>
     api.updateItem(id, { upc14 }).then(() => undefined),
+
+  // Generic ingredients — the semantic identity recipes and grocery needs
+  // key on; branded items are optional purchasing representatives.
+
+  getIngredients: async (page: number, pageSize: number, search?: string): Promise<PagedResult<Ingredient>> => {
+    const data = await request<{ ingredients: GqlIngredientPage }>(
+      `query ($page: Int, $pageSize: Int, $search: String) { ingredients(page: $page, pageSize: $pageSize, search: $search) { items { ${INGREDIENT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize, search: search || null }
+    );
+    return toPaged(data.ingredients.items.map(toIngredient), data.ingredients.pageInfo);
+  },
+
+  searchIngredients: async (search: string, pageSize = 20): Promise<Ingredient[]> => {
+    const page = await api.getIngredients(1, pageSize, search);
+    return page.items;
+  },
+
+  createIngredient: async (input: { name: string; categoryId?: number | null; defaultUnit?: string | null }): Promise<Ingredient> => {
+    const data = await request<{ createIngredient: GqlIngredient }>(
+      `mutation ($input: CreateIngredientInput!) { createIngredient(input: $input) { ${INGREDIENT_FIELDS} } }`,
+      {
+        input: {
+          name: input.name,
+          categoryId: input.categoryId != null ? String(input.categoryId) : null,
+          defaultUnit: input.defaultUnit ?? null,
+        },
+      }
+    );
+    return toIngredient(data.createIngredient);
+  },
+
+  updateIngredient: async (
+    id: number,
+    input: { name?: string; categoryId?: number | null; defaultUnit?: string | null; isActive?: boolean }
+  ): Promise<Ingredient> => {
+    const vars: Record<string, unknown> = {};
+    if (input.name !== undefined) vars.name = input.name;
+    if (input.categoryId !== undefined) vars.categoryId = input.categoryId != null ? String(input.categoryId) : null;
+    if (input.defaultUnit !== undefined) vars.defaultUnit = input.defaultUnit;
+    if (input.isActive !== undefined) vars.isActive = input.isActive;
+    const data = await request<{ updateIngredient: GqlIngredient }>(
+      `mutation ($id: ID!, $input: UpdateIngredientInput!) { updateIngredient(id: $id, input: $input) { ${INGREDIENT_FIELDS} } }`,
+      { id: String(id), input: vars }
+    );
+    return toIngredient(data.updateIngredient);
+  },
+
+  deleteIngredient: async (id: number): Promise<void> => {
+    await request<{ deleteIngredient: boolean }>(
+      `mutation ($id: ID!) { deleteIngredient(id: $id) }`,
+      { id: String(id) }
+    );
+  },
+
+  // Members can free-create here — the backend returns the existing row
+  // for a normalized-name match, so callers can't mint duplicates.
+  getOrCreateIngredient: async (input: { name: string; categoryId?: number | null; defaultUnit?: string | null }): Promise<Ingredient> => {
+    const data = await request<{ getOrCreateIngredient: GqlIngredient }>(
+      `mutation ($input: CreateIngredientInput!) { getOrCreateIngredient(input: $input) { ${INGREDIENT_FIELDS} } }`,
+      {
+        input: {
+          name: input.name,
+          categoryId: input.categoryId != null ? String(input.categoryId) : null,
+          defaultUnit: input.defaultUnit ?? null,
+        },
+      }
+    );
+    return toIngredient(data.getOrCreateIngredient);
+  },
+
+  // Admin dedupe: repoints every reference from fromId onto intoId.
+  mergeIngredient: async (fromId: number, intoId: number): Promise<void> => {
+    await request<{ mergeIngredient: boolean }>(
+      `mutation ($fromId: ID!, $intoId: ID!) { mergeIngredient(fromId: $fromId, intoId: $intoId) }`,
+      { fromId: String(fromId), intoId: String(intoId) }
+    );
+  },
+
+  // Admin: catalog-level item -> ingredient link (null clears).
+  setItemIngredient: async (itemId: number, ingredientId: number | null): Promise<void> => {
+    await request<{ setItemIngredient: boolean }>(
+      `mutation ($itemId: ID!, $ingredientId: ID) { setItemIngredient(itemId: $itemId, ingredientId: $ingredientId) }`,
+      { itemId: String(itemId), ingredientId: ingredientId != null ? String(ingredientId) : null }
+    );
+  },
+
+  // Household remap: "this item is a different ingredient for us".
+  setHouseholdItemIngredient: async (itemId: number, ingredientId: number | null): Promise<void> => {
+    await request<{ setHouseholdItemIngredient: boolean }>(
+      `mutation ($itemId: ID!, $ingredientId: ID) { setHouseholdItemIngredient(itemId: $itemId, ingredientId: $ingredientId) }`,
+      { itemId: String(itemId), ingredientId: ingredientId != null ? String(ingredientId) : null }
+    );
+  },
 
   adjustItemQuantity: async (
     id: number,
@@ -3246,17 +3392,19 @@ export const api = {
   getRecipeItems: async (recipeId: number): Promise<RecipeItem[]> =>
     (await api.getRecipe(recipeId)).recipeItems ?? [],
 
-  addRecipeItem: async (recipeId: number, item: { itemId: number; portion: number; unit: string | null; isOptional: boolean }): Promise<RecipeItem> => {
+  addRecipeItem: async (recipeId: number, item: { itemId?: number | null; ingredientId?: number | null; portion: number; unit: string | null; isOptional: boolean }): Promise<RecipeItem> => {
     const recipe = await api.getRecipe(recipeId);
     const items = (recipe.recipeItems ?? []).map((i) => ({
-      itemId: String(i.itemID),
+      itemId: i.itemID != null ? String(i.itemID) : null,
+      ingredientId: i.ingredientID != null ? String(i.ingredientID) : null,
       quantity: i.quantity,
       unit: i.unitOfMeasure ?? "",
       notes: i.notes,
       isOptional: i.isOptional,
     }));
     items.push({
-      itemId: String(item.itemId),
+      itemId: item.itemId != null ? String(item.itemId) : null,
+      ingredientId: item.ingredientId != null ? String(item.ingredientId) : null,
       quantity: item.portion,
       unit: item.unit ?? "",
       notes: null,
@@ -3264,9 +3412,12 @@ export const api = {
     });
     const updated = await api.updateRecipe(recipeId, recipeInputOverride(recipe, { items }));
     return (
-      (updated.recipeItems ?? []).find((i) => i.itemID === item.itemId) ?? {
+      (updated.recipeItems ?? []).find((i) =>
+        item.itemId != null ? i.itemID === item.itemId : i.ingredientID === item.ingredientId
+      ) ?? {
         recipeID: recipeId,
-        itemID: item.itemId,
+        itemID: item.itemId ?? null,
+        ingredientID: item.ingredientId ?? null,
         quantity: item.portion,
         unitOfMeasure: item.unit,
         notes: null,
@@ -3275,12 +3426,21 @@ export const api = {
     );
   },
 
-  removeRecipeItem: async (recipeId: number, itemId: number): Promise<void> => {
+  // Removes a line by whichever key it carries — a branded item or, on
+  // ingredient-only lines, the ingredient.
+  removeRecipeItem: async (
+    recipeId: number,
+    item: { itemID?: number | null; ingredientID?: number | null }
+  ): Promise<void> => {
     const recipe = await api.getRecipe(recipeId);
     const items = (recipe.recipeItems ?? [])
-      .filter((i) => i.itemID !== itemId)
+      .filter((i) => !(
+        (item.itemID != null && i.itemID === item.itemID) ||
+        (item.itemID == null && i.itemID == null && i.ingredientID === item.ingredientID)
+      ))
       .map((i) => ({
-        itemId: String(i.itemID),
+        itemId: i.itemID != null ? String(i.itemID) : null,
+        ingredientId: i.ingredientID != null ? String(i.ingredientID) : null,
         quantity: i.quantity,
         unit: i.unitOfMeasure ?? "",
         notes: i.notes,
@@ -3434,7 +3594,7 @@ export const api = {
         addMealSlot(input: $input) {
           id dayOfWeek mealType servings replacementNote
           recipe { ${RECIPE_FIELDS} }
-          items { id quantity unit isFromRecipe item { ${ITEM_FIELDS} } }
+          items { id quantity unit isFromRecipe ingredient { id name } item { ${ITEM_FIELDS} } }
         }
       }`,
       {
@@ -3501,12 +3661,13 @@ export const api = {
   addMealSlotItem: async (slotId: number, item: Omit<MealSlotItem, "mealSlotItemID" | "mealSlotID" | "mealSlot" | "item">): Promise<MealSlotItem> => {
     const data = await request<{ addMealSlotItem: GqlMealSlotItem }>(
       `mutation ($input: AddMealSlotItemInput!) {
-        addMealSlotItem(input: $input) { id quantity unit isFromRecipe item { ${ITEM_FIELDS} } }
+        addMealSlotItem(input: $input) { id quantity unit isFromRecipe ingredient { id name } item { ${ITEM_FIELDS} } }
       }`,
       {
         input: {
           slotId: String(slotId),
-          itemId: String(item.itemID),
+          itemId: item.itemID != null ? String(item.itemID) : null,
+          ingredientId: item.ingredientID != null ? String(item.ingredientID) : null,
           quantity: item.quantity,
           unit: item.unitOfMeasure ?? "",
           isFromRecipe: item.isFromRecipe,
@@ -3744,6 +3905,7 @@ export const api = {
         addGroceryItem(input: $input) {
           id manualItemName quantityNeeded unitOfMeasure source isChecked
           ingredient { id name }
+          usualBrand { id name brand { id name } }
           item { ${ITEM_FIELDS} }
         }
       }`,
@@ -3751,6 +3913,7 @@ export const api = {
         input: {
           groceryListId: String(listId),
           itemId: item.itemID != null ? String(item.itemID) : null,
+          ingredientId: item.ingredientID != null ? String(item.ingredientID) : null,
           manualItemName: item.manualItemName,
           quantity: item.quantityNeeded,
           unit: item.unitOfMeasure ?? "",
@@ -3767,12 +3930,28 @@ export const api = {
         toggleGroceryItemChecked(groceryListItemId: $groceryListItemId) {
           id manualItemName quantityNeeded unitOfMeasure source isChecked
           ingredient { id name }
+          usualBrand { id name brand { id name } }
           item { ${ITEM_FIELDS} }
         }
       }`,
       { groceryListItemId: String(id) }
     );
     return toGroceryListItem(0, data.toggleGroceryItemChecked);
+  },
+
+  checkGroceryItemWithBrand: async (id: number, itemId: number): Promise<GroceryListItem> => {
+    const data = await request<{ checkGroceryItemWithBrand: GqlGroceryListItem }>(
+      `mutation ($groceryListItemId: ID!, $itemId: ID!) {
+        checkGroceryItemWithBrand(groceryListItemId: $groceryListItemId, itemId: $itemId) {
+          id manualItemName quantityNeeded unitOfMeasure source isChecked
+          ingredient { id name }
+          usualBrand { id name brand { id name } }
+          item { ${ITEM_FIELDS} }
+        }
+      }`,
+      { groceryListItemId: String(id), itemId: String(itemId) }
+    );
+    return toGroceryListItem(0, data.checkGroceryItemWithBrand);
   },
 
   deleteGroceryListItem: async (id: number): Promise<void> => {
@@ -3800,7 +3979,7 @@ export const api = {
           items {
             suggested
             item { id manualItemName quantityNeeded unitOfMeasure source isChecked
-          ingredient { id name } item { ${ITEM_FIELDS} } }
+          ingredient { id name } usualBrand { id name brand { id name } } item { ${ITEM_FIELDS} } }
           }
         }
       }`,
@@ -4076,7 +4255,8 @@ interface RecipeInputShape {
   cookTimeMinutes: number | null;
   categoryIds: string[] | null;
   items: {
-    itemId: string;
+    itemId: string | null;
+    ingredientId: string | null;
     quantity: number;
     unit: string;
     notes: string | null;
@@ -4119,7 +4299,8 @@ function toRecipeInput(recipe: Partial<Recipe>): RecipeInputShape {
       ? recipe.categories.map((c) => String(c.categoryID))
       : null,
     items: (recipe.recipeItems ?? []).map((i) => ({
-      itemId: String(i.itemID),
+      itemId: i.itemID != null ? String(i.itemID) : null,
+      ingredientId: i.ingredientID != null ? String(i.ingredientID) : null,
       quantity: i.quantity,
       unit: i.unitOfMeasure ?? "",
       notes: i.notes ?? null,
@@ -4144,7 +4325,8 @@ function recipeInputOverride(
     cookTimeMinutes: input.cookTimeMinutes,
     recipeItems: input.items.map((i) => ({
       recipeID: recipe.recipeID,
-      itemID: num(i.itemId),
+      itemID: i.itemId != null ? num(i.itemId) : null,
+      ingredientID: i.ingredientId != null ? num(i.ingredientId) : null,
       quantity: i.quantity,
       unitOfMeasure: i.unit,
       notes: i.notes,

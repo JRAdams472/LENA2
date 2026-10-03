@@ -268,7 +268,9 @@ function SlotDialog({
 
   const neededItemIds = useMemo(() => {
     const ids = new Set<number>();
-    for (const oi of optionalItems) ids.add(oi.itemID);
+    for (const oi of optionalItems) {
+      if (oi.itemID != null) ids.add(oi.itemID);
+    }
     for (const a of adhoc) ids.add(a.itemID);
     for (const oid of selectedOptionalIds) ids.add(Number(oid));
     return [...ids].sort((a, b) => a - b);
@@ -405,9 +407,10 @@ function SlotDialog({
             >
               {optionalItems.map((oi) => {
                 const item = itemsQuery.data?.find((i) => i.itemID === oi.itemID);
+                const key = oi.itemID ?? `ing-${oi.ingredientID ?? "?"}`;
                 return (
-                  <MenuItem key={oi.itemID} value={String(oi.itemID)}>
-                    {item?.name ?? oi.itemID} ({fmtQty(oi.quantity)} {oi.unitOfMeasure})
+                  <MenuItem key={key} value={String(oi.itemID ?? oi.ingredientID)}>
+                    {item?.name ?? oi.ingredientName ?? oi.itemID} ({fmtQty(oi.quantity)} {oi.unitOfMeasure})
                   </MenuItem>
                 );
               })}
@@ -694,7 +697,9 @@ export default function MealPlanDetailPage({
   const planItemIds = useMemo(() => {
     const ids = new Set<number>();
     planQuery.data?.mealSlots?.forEach((s) =>
-      s.mealSlotItems?.forEach((i) => ids.add(i.itemID))
+      s.mealSlotItems?.forEach((i) => {
+        if (i.itemID != null) ids.add(i.itemID);
+      })
     );
     return [...ids].sort((a, b) => a - b);
   }, [planQuery.data]);
@@ -909,7 +914,7 @@ export default function MealPlanDetailPage({
                         {slot.mealSlotItems.map((it) => (
                           <Chip
                             key={it.mealSlotItemID}
-                            label={`${itemLabel(it.itemID)}${it.quantity ? ` - ${fmtQty(it.quantity)} ${it.unitOfMeasure ?? ""}`.trim() : ""}`}
+                            label={`${it.itemID != null ? itemLabel(it.itemID) : it.ingredientName ?? "Item"}${it.quantity ? ` - ${fmtQty(it.quantity)} ${it.unitOfMeasure ?? ""}`.trim() : ""}`}
                             size="small"
                             sx={{ mr: 0.5, mb: 0.5 }}
                           />

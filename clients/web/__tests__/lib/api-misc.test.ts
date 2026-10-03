@@ -274,7 +274,7 @@ describe("api client: meal plans and slots", () => {
     expect(slots[0].mealSlotItems?.[0].item?.name).toBe("Egg");
     expect(slots[0].mealSlotItems?.[0].isFromRecipe).toBe(true);
     expect(slots[0].mealSlotItems?.[1].item).toBeNull();
-    expect(slots[0].mealSlotItems?.[1].itemID).toBe(0);
+    expect(slots[0].mealSlotItems?.[1].itemID).toBeNull();
     // "3" parses numerically; "brunch" falls back to 0
     expect(slots[1].mealType).toBe(3);
     expect(slots[2].mealType).toBe(0);
@@ -553,6 +553,7 @@ describe("api client: meal plans and slots", () => {
       input: {
         slotId: "10",
         itemId: "5",
+        ingredientId: null,
         quantity: 2,
         unit: "ea",
         isFromRecipe: false,

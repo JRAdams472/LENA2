@@ -916,6 +916,7 @@ describe("api client: grocery list items", () => {
       input: {
         groceryListId: "1",
         itemId: null,
+        ingredientId: null,
         manualItemName: "Paper towels",
         quantity: 2,
         unit: "ea",
@@ -939,6 +940,29 @@ describe("api client: grocery list items", () => {
     expect(item.isChecked).toBe(true);
   });
 
+  it("checkGroceryItemWithBrand binds the chosen brand and checks off", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        checkGroceryItemWithBrand: {
+          ...gqlItem,
+          isChecked: true,
+          ingredient: { id: "9", name: "corn" },
+          usualBrand: { id: "42", name: "Whole Kernel Corn", brand: { id: "1", name: "Green Giant" } },
+        },
+      })
+    );
+
+    const item = await api.checkGroceryItemWithBrand(10, 42);
+    expect(lastRequestBody().variables).toEqual({
+      groceryListItemId: "10",
+      itemId: "42",
+    });
+    expect(item.isChecked).toBe(true);
+    expect(item.ingredientID).toBe(9);
+    expect(item.usualBrandName).toBe("Green Giant Whole Kernel Corn");
+    expect(item.usualBrandItemID).toBe(42);
+  });
+
   it("deleteGroceryListItem posts the item id", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({ deleteGroceryItem: true })
@@ -948,6 +972,91 @@ describe("api client: grocery list items", () => {
     expect(lastRequestBody().variables).toEqual({
       groceryListItemId: "10",
     });
+  });
+});
+
+describe("api client: ingredients", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    setAuthTokenGetter(() => null);
+  });
+
+  const gqlIngredient = {
+    id: "7",
+    name: "corn",
+    category: { id: "3", name: "Vegetables", description: null, isActive: true, isProtein: false },
+    defaultUnit: "cup",
+    isActive: true,
+  };
+
+  it("getIngredients pages and maps results", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        ingredients: {
+          items: [gqlIngredient],
+          pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+        },
+      })
+    );
+
+    const page = await api.getIngredients(1, 25, "cor");
+    const vars = lastRequestBody().variables;
+    expect(vars).toEqual({ page: 1, pageSize: 25, search: "cor" });
+    expect(page.totalCount).toBe(1);
+    expect(page.items[0].name).toBe("corn");
+    expect(page.items[0].category?.categoryName).toBe("Vegetables");
+    expect(page.items[0].defaultUnit).toBe("cup");
+  });
+
+  it("getOrCreateIngredient posts name and maps the result", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ getOrCreateIngredient: gqlIngredient })
+    );
+
+    const ing = await api.getOrCreateIngredient({ name: "Corn" });
+    const vars = lastRequestBody().variables;
+    expect(vars.input.name).toBe("Corn");
+    expect(vars.input.categoryId).toBeNull();
+    expect(ing.ingredientID).toBe(7);
+  });
+
+  it("updateIngredient sends only provided fields", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ updateIngredient: { ...gqlIngredient, isActive: false } })
+    );
+
+    const ing = await api.updateIngredient(7, { isActive: false });
+    const vars = lastRequestBody().variables;
+    expect(vars.id).toBe("7");
+    expect(vars.input).toEqual({ isActive: false });
+    expect(ing.isActive).toBe(false);
+  });
+
+  it("mergeIngredient posts fromId and intoId", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ mergeIngredient: true })
+    );
+
+    await api.mergeIngredient(7, 3);
+    expect(lastRequestBody().variables).toEqual({ fromId: "7", intoId: "3" });
+  });
+
+  it("setItemIngredient sends null to clear", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ setItemIngredient: true })
+    );
+
+    await api.setItemIngredient(42, null);
+    expect(lastRequestBody().variables).toEqual({ itemId: "42", ingredientId: null });
+  });
+
+  it("setHouseholdItemIngredient posts the override", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ setHouseholdItemIngredient: true })
+    );
+
+    await api.setHouseholdItemIngredient(42, 9);
+    expect(lastRequestBody().variables).toEqual({ itemId: "42", ingredientId: "9" });
   });
 });
 

@@ -522,7 +522,7 @@ describe("pending recipe detail page", () => {
       expect(screen.getByDisplayValue("Draft Pasta")).toBeInTheDocument()
     );
 
-    const itemInput = screen.getByLabelText("Catalog Item");
+    const itemInput = screen.getByLabelText("Catalog match");
     itemInput.focus();
     fireEvent.change(itemInput, { target: { value: "semo" } });
     const option = await screen.findByRole("option", { name: "Semolina Flour" }, { timeout: 3000 });

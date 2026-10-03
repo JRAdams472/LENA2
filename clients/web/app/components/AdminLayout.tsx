@@ -85,6 +85,7 @@ const CORE_NAV: NavEntry[] = [
     label: "Inventory",
     children: [
       { label: "Items", href: "/inventory/items" },
+      { label: "Ingredients", href: "/inventory/ingredients", adminOnly: true },
       { label: "Brands", href: "/inventory/brands" },
       { label: "Categories", href: "/inventory/categories" },
       { label: "Food Flavors", href: "/inventory/food-flavors" },
@@ -402,7 +403,7 @@ export default function AdminLayout({
             unmountOnExit
           >
             <List component="div" disablePadding>
-              {group.children.map((child) => (
+              {group.children.filter((child) => !child.adminOnly || isAdmin).map((child) => (
                 <ListItem key={child.href} disablePadding>
                   <ListItemButton
                     component={Link}

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
@@ -15,6 +15,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Autocomplete from "@mui/material/Autocomplete";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
@@ -32,13 +33,20 @@ import { fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { GroceryListItem, GroceryRouteGroup, Store, StoreAisle } from "@/lib/types";
 
 interface ManualForm {
-  manualItemName: string;
   quantityNeeded: string;
   unitOfMeasure: string;
 }
 
+// What the "Add" row resolved to — a catalog pick carries an id in the
+// right namespace; free text falls back to a manual line.
+type AddPick =
+  | { kind: "ingredient"; id: number; label: string }
+  | { kind: "item"; id: number; label: string };
+
+// The ingredient is the line's primary identity; a bound or usual brand
+// is secondary purchasing detail.
 function itemName(it: GroceryListItem): string {
-  return it.itemName ?? it.manualItemName ?? `Item ${it.itemID}`;
+  return it.ingredientName ?? it.itemName ?? it.manualItemName ?? `Item ${it.itemID}`;
 }
 
 // reorderEntries builds the mutation payload for the post-drop display
@@ -81,6 +89,81 @@ export function reorderEntries(
   }));
 }
 
+// BrandPickDialog asks which brand the household actually bought the
+// first time an ingredient-only line is checked off — the pick binds the
+// item and becomes the household's usual brand for that ingredient.
+function BrandPickDialog({
+  item,
+  onPick,
+  onSkip,
+  onClose,
+}: {
+  item: GroceryListItem;
+  onPick: (itemId: number) => void;
+  onSkip: () => void;
+  onClose: () => void;
+}) {
+  const [input, setInput] = useState("");
+  const [debounced, setDebounced] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(input), 300);
+    return () => clearTimeout(t);
+  }, [input]);
+
+  const searchQuery = useQuery({
+    queryKey: ["brand-pick-search", debounced],
+    queryFn: () => api.searchItems(debounced, undefined, 50),
+    enabled: debounced.trim().length >= 2,
+  });
+
+  // Items linked to the line's ingredient sort first — they're the
+  // likely picks — but any catalog item can be chosen.
+  const options = (searchQuery.data ?? []).slice().sort((a, b) => {
+    const aLinked =
+      (a.householdIngredient ?? a.ingredient)?.ingredientID === item.ingredientID ? 0 : 1;
+    const bLinked =
+      (b.householdIngredient ?? b.ingredient)?.ingredientID === item.ingredientID ? 0 : 1;
+    return aLinked - bLinked;
+  });
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Which {item.ingredientName ?? "item"} did you buy?</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Pick the brand you grabbed — we&apos;ll remember it as your usual
+          for {item.ingredientName ?? "this ingredient"}.
+        </Typography>
+        <Autocomplete
+          autoFocus
+          options={options}
+          getOptionLabel={(i) => `${i.brand ? `${i.brand} ` : ""}${i.name}`}
+          isOptionEqualToValue={(o, v) => o.itemID === v.itemID}
+          inputValue={input}
+          onInputChange={(_, v) => setInput(v)}
+          onChange={(_, v) => {
+            if (v) onPick(v.itemID);
+          }}
+          loading={searchQuery.isLoading}
+          noOptionsText={
+            debounced.trim().length < 2
+              ? "Type at least 2 characters"
+              : "No items found"
+          }
+          renderInput={(params) => (
+            <TextField {...params} label="Brand or item" autoFocus />
+          )}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onSkip}>Check off without a brand</Button>
+        <Button onClick={onClose}>Cancel</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export function ItemRow({
   item,
   listId,
@@ -102,14 +185,44 @@ export function ItemRow({
 }) {
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [brandPickOpen, setBrandPickOpen] = useState(false);
+
+  const refreshList = () => {
+    queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
+    queryClient.invalidateQueries({ queryKey: ["routeGroups", listId] });
+  };
 
   const toggleMutation = useMutation({
     mutationFn: () => api.toggleGroceryListItemChecked(item.groceryListItemID),
+    onSuccess: refreshList,
+  });
+
+  const brandCheckMutation = useMutation({
+    mutationFn: (itemId: number) =>
+      api.checkGroceryItemWithBrand(item.groceryListItemID, itemId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
-      queryClient.invalidateQueries({ queryKey: ["routeGroups", listId] });
+      setBrandPickOpen(false);
+      refreshList();
     },
   });
+
+  const handleCheck = () => {
+    if (item.isChecked) {
+      toggleMutation.mutate();
+      return;
+    }
+    // Ingredient-only line with no bound item and no remembered usual —
+    // ask which brand was bought so it becomes the household's usual.
+    if (
+      item.ingredientID != null &&
+      item.itemID == null &&
+      item.usualBrandItemID == null
+    ) {
+      setBrandPickOpen(true);
+      return;
+    }
+    toggleMutation.mutate();
+  };
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteGroceryListItem(item.groceryListItemID),
@@ -150,7 +263,7 @@ export function ItemRow({
         control={
           <Checkbox
             checked={item.isChecked}
-            onChange={() => toggleMutation.mutate()}
+            onChange={handleCheck}
           />
         }
         label={
@@ -173,6 +286,10 @@ export function ItemRow({
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {fmtQty(Number(item.quantityNeeded))} {item.unitOfMeasure}
+              {item.usualBrandName ? ` · usual: ${item.usualBrandName}` : ""}
+              {!item.usualBrandName && item.itemName && item.ingredientName
+                ? ` · ${item.itemName}`
+                : ""}
             </Typography>
           </Box>
         }
@@ -222,6 +339,22 @@ export function ItemRow({
       >
         <DeleteIcon fontSize="small" />
       </IconButton>
+      {brandPickOpen && (
+        <BrandPickDialog
+          item={item}
+          onPick={(itemId) => brandCheckMutation.mutate(itemId)}
+          onSkip={() => {
+            setBrandPickOpen(false);
+            toggleMutation.mutate();
+          }}
+          onClose={() => setBrandPickOpen(false)}
+        />
+      )}
+      {brandCheckMutation.error && (
+        <Alert severity="error" sx={{ ml: 4 }}>
+          {(brandCheckMutation.error as Error).message}
+        </Alert>
+      )}
     </Box>
   );
 }
@@ -431,30 +564,66 @@ export default function GroceryListDetailPage({
   });
 
   const [manual, setManual] = useState<ManualForm>({
-    manualItemName: "",
     quantityNeeded: "",
     unitOfMeasure: "",
   });
+  const [addPick, setAddPick] = useState<AddPick | null>(null);
+  const [addInput, setAddInput] = useState("");
+  const [debouncedAdd, setDebouncedAdd] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedAdd(addInput), 300);
+    return () => clearTimeout(t);
+  }, [addInput]);
+
+  // Ingredient-first add: the generic ingredient leads the option list;
+  // branded items follow; raw text still creates a manual line.
+  const addIngredientQuery = useQuery({
+    queryKey: ["grocery-add-ingredients", debouncedAdd],
+    queryFn: () => api.searchIngredients(debouncedAdd, 10),
+    enabled: debouncedAdd.trim().length >= 2,
+  });
+  const addItemQuery = useQuery({
+    queryKey: ["grocery-add-items", debouncedAdd],
+    queryFn: () => api.searchItems(debouncedAdd, undefined, 20),
+    enabled: debouncedAdd.trim().length >= 2,
+  });
+
+  const addOptions: AddPick[] = [
+    ...(addIngredientQuery.data ?? []).map((g) => ({
+      kind: "ingredient" as const,
+      id: g.ingredientID,
+      label: g.name,
+    })),
+    ...(addItemQuery.data ?? []).map((i) => ({
+      kind: "item" as const,
+      id: i.itemID,
+      label: `${i.brand ? `${i.brand} ` : ""}${i.name}`,
+    })),
+  ];
 
   const addManualMutation = useMutation({
     mutationFn: () =>
       api.addGroceryListItem(listId, {
-        itemID: null,
-        manualItemName: manual.manualItemName,
+        itemID: addPick?.kind === "item" ? addPick.id : null,
+        ingredientID: addPick?.kind === "ingredient" ? addPick.id : null,
+        manualItemName: addPick ? null : addInput,
         quantityNeeded: Number(manual.quantityNeeded),
         unitOfMeasure: manual.unitOfMeasure,
         source: "Manual",
         isChecked: false,
       } as Omit<GroceryListItem, "groceryListItemID" | "groceryListID" | "groceryList">),
     onSuccess: () => {
-      setManual({ manualItemName: "", quantityNeeded: "", unitOfMeasure: "" });
+      setManual({ quantityNeeded: "", unitOfMeasure: "" });
+      setAddPick(null);
+      setAddInput("");
       queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
       queryClient.invalidateQueries({ queryKey: ["routeGroups", listId] });
     },
   });
 
   const handleAddManual = () => {
-    if (manual.manualItemName.trim() !== "" && manual.quantityNeeded !== "") {
+    if ((addPick || addInput.trim() !== "") && manual.quantityNeeded !== "") {
       addManualMutation.mutate();
     }
   };
@@ -597,13 +766,48 @@ export default function GroceryListDetailPage({
           Jot something down
         </Typography>
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
-          <TextField
+          <Autocomplete<AddPick, false, false, true>
+            freeSolo
             size="small"
-            label="Item Name"
-            value={manual.manualItemName}
-            onChange={(e) =>
-              setManual((m) => ({ ...m, manualItemName: e.target.value }))
+            options={addOptions}
+            getOptionLabel={(o) => (typeof o === "string" ? o : o.label)}
+            isOptionEqualToValue={(o, v) =>
+              typeof o !== "string" && typeof v !== "string" && o.kind === v.kind && o.id === v.id
             }
+            inputValue={addInput}
+            onInputChange={(_, v) => {
+              setAddInput(v);
+              // Typing past a pick turns it back into free text.
+              setAddPick(null);
+            }}
+            value={addPick}
+            onChange={(_, v) => {
+              if (typeof v === "string") {
+                setAddPick(null);
+                setAddInput(v);
+              } else {
+                setAddPick(v);
+              }
+            }}
+            renderOption={(props, o) => {
+              const { key, ...liProps } = props;
+              return (
+                <li key={`${o.kind}-${o.id}`} {...liProps}>
+                  {o.label}
+                  {o.kind === "ingredient" ? " (ingredient)" : ""}
+                </li>
+              );
+            }}
+            loading={addIngredientQuery.isLoading || addItemQuery.isLoading}
+            noOptionsText={
+              debouncedAdd.trim().length < 2
+                ? "Type at least 2 characters — or just a name to add manually"
+                : "No matches — Add will create a manual line"
+            }
+            renderInput={(params) => (
+              <TextField {...params} label="Ingredient or item" />
+            )}
+            sx={{ minWidth: 260 }}
           />
           <TextField
             size="small"
@@ -626,7 +830,7 @@ export default function GroceryListDetailPage({
             variant="contained"
             onClick={handleAddManual}
             disabled={
-              manual.manualItemName.trim() === "" || manual.quantityNeeded === ""
+              (!addPick && addInput.trim() === "") || manual.quantityNeeded === ""
             }
           >
             Add

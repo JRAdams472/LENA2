@@ -162,10 +162,24 @@ export interface Item extends AuditableEntity {
   status: string;
   submittedByMe: boolean;
   category: Category | null;
+  // ingredient is the global catalog link; householdIngredient resolves
+  // the household override (falling through to the catalog link).
+  ingredient?: Ingredient | null;
+  householdIngredient?: Ingredient | null;
   foodNutrients: FoodNutrient[] | null;
   foodFlavors: FoodFlavor[] | null;
   selectionCount: number;
   personalSelectionCount: number;
+}
+
+// A generic ingredient ("corn") distinct from a branded catalog item
+// ("Green Giant corn"). Recipes and grocery needs key on ingredients.
+export interface Ingredient {
+  ingredientID: number;
+  name: string;
+  category: Category | null;
+  defaultUnit: string | null;
+  isActive: boolean;
 }
 
 export interface NutrientType {
@@ -326,7 +340,10 @@ export interface RecipeCategoryGroup {
 
 export interface RecipeItem {
   recipeID: number;
-  itemID: number;
+  // Null when the line is ingredient-only.
+  itemID: number | null;
+  ingredientID?: number | null;
+  ingredientName?: string | null;
   quantity: number;
   unitOfMeasure: string | null;
   notes: string | null;
@@ -335,6 +352,7 @@ export interface RecipeItem {
   itemBrand?: string | null;
   recipe?: Recipe | null;
   item?: Item | null;
+  ingredient?: Ingredient | null;
 }
 
 export interface RecipeStep extends AuditableEntity {
@@ -388,7 +406,10 @@ export interface EventRecipe {
 // copied from the recipe.
 export interface EventRecipeItem {
   eventRecipeItemID: number;
-  itemID: number;
+  // Null when the line is ingredient-only.
+  itemID: number | null;
+  ingredientID?: number | null;
+  ingredientName?: string | null;
   itemName: string | null;
   quantity: number;
   baseQuantity: number;
@@ -472,7 +493,10 @@ export interface MealSlot extends AuditableEntity {
 export interface MealSlotItem extends AuditableEntity {
   mealSlotItemID: number;
   mealSlotID: number;
-  itemID: number;
+  // Null when the line is ingredient-only.
+  itemID: number | null;
+  ingredientID?: number | null;
+  ingredientName?: string | null;
   quantity: number;
   unitOfMeasure: string | null;
   isFromRecipe: boolean;
@@ -613,6 +637,10 @@ export interface GroceryListItem extends AuditableEntity {
   itemName: string | null;
   ingredientID?: number | null;
   ingredientName?: string | null;
+  // The household's usual brand for the line's ingredient — recorded by
+  // brand-picked check-offs.
+  usualBrandItemID?: number | null;
+  usualBrandName?: string | null;
   manualItemName: string | null;
   quantityNeeded: number;
   unitOfMeasure: string | null;

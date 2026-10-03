@@ -287,7 +287,7 @@ describe("grocery list detail page", () => {
   it("adds a manual item", async () => {
     await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
     await waitFor(() => screen.getByText("Milk"));
-    fireEvent.change(screen.getByLabelText("Item Name"), { target: { value: "Flour" } });
+    fireEvent.change(screen.getByLabelText("Ingredient or item"), { target: { value: "Flour" } });
     fireEvent.change(screen.getByLabelText("Qty"), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "cup" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));

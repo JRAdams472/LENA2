@@ -3,6 +3,11 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ItemsPage from "@/app/inventory/items/page";
 
+jest.mock("../../../../app/auth/useMe");
+import { useMe } from "../../../../app/auth/useMe";
+
+const mockedUseMe = useMe as jest.Mock;
+
 const mockFetch = global.fetch as jest.Mock;
 
 function gql(data: object) {
@@ -58,6 +63,13 @@ describe("items page", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     jest.spyOn(window, "confirm").mockReturnValue(true);
+    mockedUseMe.mockReturnValue({
+      me: { userID: 1, role: "admin" },
+      isAdmin: true,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
 
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
