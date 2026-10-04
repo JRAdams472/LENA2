@@ -30,6 +30,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
+import { AllergyWarningsAlert, AllergenFlagsLine } from "@/app/components/AllergyWarning";
 import { api } from "@/lib/api";
 import { Ingredient, Item, PairingSuggestion, RecipeItem, RecipeStep } from "@/lib/types";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
@@ -321,6 +322,16 @@ export default function RecipeDetailPage() {
                 ))}
               </Box>
             )}
+            <AllergyWarningsAlert
+              warnings={recipeQuery.data.allergyWarnings}
+              sx={{ mt: 1 }}
+            />
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 1, flexWrap: "wrap" }}>
+              <Typography variant="caption" color="text.secondary">
+                Allergens:
+              </Typography>
+              <AllergenFlagsLine allergens={recipeQuery.data.allergens} />
+            </Box>
             {rateMutation.error && (
               <Alert severity="error" sx={{ mt: 1 }}>
                 {(rateMutation.error as Error).message}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../analytics/analytics.dart';
+import '../allergy.dart';
 
 const String mealPlanQuery = r'''
   query MealPlan($id: ID!) {
@@ -32,6 +33,16 @@ const String mealPlanQuery = r'''
           quantity
           unit
           isFromRecipe
+        }
+        allergyWarnings {
+          memberKind
+          entityKind
+          member { id displayName firstName lastName }
+          allergen { id name }
+        }
+        allergens {
+          kind
+          allergen { id name }
         }
       }
     }
@@ -408,7 +419,12 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               ],
             ),
             if (slot['recipe'] != null)
-              Text('Recipe: ${slot['recipe']['name']}'),
+              Row(
+                children: [
+                  Expanded(child: Text('Recipe: ${slot['recipe']['name']}')),
+                  AllergyWarningBadge(warnings: allergyWarningsOf(slot)),
+                ],
+              ),
             if (slot['servings'] != null) Text('Servings: ${slot['servings']}'),
             if (slot['replacementNote'] != null &&
                 (slot['replacementNote'] as String).isNotEmpty)

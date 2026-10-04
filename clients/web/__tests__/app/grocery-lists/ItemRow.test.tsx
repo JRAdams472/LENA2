@@ -208,4 +208,33 @@ describe("ItemRow brand-picked check-off", () => {
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("shows an allergy warning chip when the line conflicts", () => {
+    const item = baseGroceryItem({
+      manualItemName: "Peanut butter",
+      allergyWarnings: [
+        {
+          member: { userID: 8, displayName: "Ada", firstName: null, lastName: null },
+          allergen: { allergenID: 1, name: "Peanuts", description: null, isActive: true },
+          memberKind: "allergy",
+          entityKind: "contains",
+        },
+      ],
+    });
+
+    render(<ItemRow item={item} listId={1} />, { wrapper: Wrapper });
+
+    expect(screen.getByTestId("allergy-warning-chip")).toHaveTextContent(
+      "1 allergy warning"
+    );
+  });
+
+  it("renders no chip when the line has no warnings", () => {
+    render(
+      <ItemRow item={baseGroceryItem({ manualItemName: "Apples" })} listId={1} />,
+      { wrapper: Wrapper }
+    );
+
+    expect(screen.queryByTestId("allergy-warning-chip")).not.toBeInTheDocument();
+  });
 });

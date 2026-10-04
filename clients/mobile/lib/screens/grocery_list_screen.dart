@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../allergy.dart';
 
 const String groceryRoutingQuery = r'''
   query GroceryRouting($id: ID!) {
@@ -26,6 +27,16 @@ const String groceryRoutingQuery = r'''
           unitOfMeasure
           source
           isChecked
+          allergyWarnings {
+            memberKind
+            entityKind
+            member { id displayName firstName lastName }
+            allergen { id name }
+          }
+          allergens {
+            kind
+            allergen { id name }
+          }
         }
       }
     }
@@ -109,8 +120,8 @@ List<Map<String, String?>> groceryReorderEntries(
     }
   }
 
-  final from = flat.indexWhere(
-      (f) => ((f['item'] as Map)['id'] as String) == movedId);
+  final from =
+      flat.indexWhere((f) => ((f['item'] as Map)['id'] as String) == movedId);
   if (from == -1) return [];
   final moved = flat.removeAt(from);
 
@@ -320,7 +331,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
         document: gql(groceryRoutingQuery),
         variables: {'id': widget.listId},
       ),
-      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+      builder: (QueryResult result,
+          {VoidCallback? refetch, FetchMore? fetchMore}) {
         final list = result.data?['groceryList'] as Map<String, dynamic>?;
         final storeId = (list?['store'] as Map?)?['id'] as String?;
         return Scaffold(
@@ -342,8 +354,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     String? storeId,
     VoidCallback? refetch,
   ) {
-    final stores =
-        result.data?['groceryStores'] as List? ?? const [];
+    final stores = result.data?['groceryStores'] as List? ?? const [];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: DropdownButtonHideUnderline(
@@ -426,8 +437,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     for (final s in stores) {
       if ((s as Map)['id'] == storeId) {
         return ((s['aisles'] as List? ?? []).cast<Map<String, dynamic>>())
-          ..sort((a, b) =>
-              (a['position'] as num).compareTo(b['position'] as num));
+          ..sort(
+              (a, b) => (a['position'] as num).compareTo(b['position'] as num));
       }
     }
     return const [];
@@ -462,13 +473,13 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           onReorderItem: (oldIndex, newIndex) {
             // onReorderItem reports newIndex already adjusted for removal.
             if (newIndex == oldIndex) return;
-            final movedId =
-                (items[oldIndex]['item'] as Map)['id'] as String;
+            final movedId = (items[oldIndex]['item'] as Map)['id'] as String;
             _submitOrder(
                 context, groups, storeId, movedId, gi, newIndex, refetch);
           },
           children: [
-            for (final ri in items) _itemTile(context, ri, storeId, storeAisles, groups, refetch),
+            for (final ri in items)
+              _itemTile(context, ri, storeId, storeAisles, groups, refetch),
           ],
         ),
       ],
@@ -504,6 +515,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       title: Row(
         children: [
           Expanded(child: Text('$name — $quantity $unit')),
+          AllergyWarningBadge(warnings: allergyWarningsOf(item)),
           if (suggested)
             const Padding(
               padding: EdgeInsets.only(left: 4.0),
@@ -526,15 +538,14 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
               icon: const Icon(Icons.more_vert),
               tooltip: 'Move to aisle',
               onSelected: (aisleId) {
-                final target = groups.indexWhere(
-                    (g) => (g['aisle'] as Map?)?['id'] == aisleId);
-                final idx =
-                    target == -1 ? groups.length - 1 : target;
+                final target = groups
+                    .indexWhere((g) => (g['aisle'] as Map?)?['id'] == aisleId);
+                final idx = target == -1 ? groups.length - 1 : target;
                 final count = target == -1
                     ? 0
                     : (groups[idx]['items'] as List? ?? []).length;
-                _submitOrder(context, groups, storeId, id,
-                    idx < 0 ? 0 : idx, count, refetch);
+                _submitOrder(context, groups, storeId, id, idx < 0 ? 0 : idx,
+                    count, refetch);
               },
               itemBuilder: (_) => [
                 ...storeAisles.map(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../analytics/analytics.dart';
+import '../allergy.dart';
 
 const String itemsQuery = r'''
   query Items($search: String) {
@@ -74,6 +75,16 @@ const String recipeQuery = r'''
       steps {
         stepNumber
         instruction
+      }
+      allergyWarnings {
+        memberKind
+        entityKind
+        member { id displayName firstName lastName }
+        allergen { id name }
+      }
+      allergens {
+        kind
+        allergen { id name }
       }
     }
   }
@@ -156,6 +167,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _ingredients = [];
   List<Map<String, dynamic>> _categoryGroups = [];
+  List<Map<String, dynamic>> _allergyWarnings = [];
+  List<Map<String, dynamic>> _allergenFlags = [];
   final Set<String> _selectedCategoryIds = {};
 
   @override
@@ -233,7 +246,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         'input': {'name': name},
       },
     ));
-    final created = result.data?['getOrCreateIngredient'] as Map<String, dynamic>?;
+    final created =
+        result.data?['getOrCreateIngredient'] as Map<String, dynamic>?;
     if (!mounted || created == null) return;
     setState(() {
       _ingredients = [
@@ -282,8 +296,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           if (recipeItem != null && !_items.any((i) => i['id'] == _itemId)) {
             _items = [recipeItem, ..._items];
           }
-          final recipeIngredient =
-              item?['ingredient'] as Map<String, dynamic>?;
+          final recipeIngredient = item?['ingredient'] as Map<String, dynamic>?;
           if (recipeIngredient != null &&
               !_ingredients.any((i) => i['id'] == _ingredientId)) {
             _ingredients = [recipeIngredient, ..._ingredients];
@@ -296,6 +309,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             ..clear()
             ..addAll((recipe['categories'] as List? ?? [])
                 .map((c) => c['id'] as String));
+          _allergyWarnings = allergyWarningsOf(recipe);
+          _allergenFlags = allergenFlagsOf(recipe);
         });
       }
     }
@@ -430,6 +445,58 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
+            if (_allergyWarnings.isNotEmpty)
+              Card(
+                color: allergyWarningSevere(_allergyWarnings)
+                    ? Colors.red.shade50
+                    : Colors.orange.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AllergyWarningBadge(warnings: _allergyWarnings),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final w in _allergyWarnings)
+                              Text(allergyWarningText(w)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('Allergens:',
+                      style: TextStyle(fontSize: 12, color: Colors.black54)),
+                  if (_allergenFlags.isEmpty)
+                    const Text('No allergen information',
+                        style: TextStyle(
+                            fontSize: 12, fontStyle: FontStyle.italic))
+                  else
+                    for (final f in _allergenFlags)
+                      Chip(
+                        label: Text(
+                          f['kind'] == 'contains'
+                              ? '${(f['allergen'] as Map?)?['name']}'
+                              : '${(f['allergen'] as Map?)?['name']} (may contain)',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                ],
+              ),
+            ),
             TextField(
               controller: _nameCtrl,
               decoration: const InputDecoration(labelText: 'Name'),

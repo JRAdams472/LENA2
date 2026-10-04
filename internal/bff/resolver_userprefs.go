@@ -209,7 +209,7 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &userItemResolver{inv: r.InventoryService, item: updated, isFavorite: isFav}, nil
+	return &userItemResolver{inv: r.InventoryService, item: updated, isFavorite: isFav, as: r.allergySrc(u)}, nil
 }
 
 // SetItemFavorite toggles the current user's favorite flag for a pantry
@@ -253,7 +253,7 @@ func (r *Resolver) SetItemFavorite(ctx context.Context, args struct {
 	}); err != nil {
 		return nil, err
 	}
-	return &userItemResolver{inv: r.InventoryService, item: *item, isFavorite: args.IsFavorite}, nil
+	return &userItemResolver{inv: r.InventoryService, item: *item, isFavorite: args.IsFavorite, as: r.allergySrc(u)}, nil
 }
 
 // DeleteUserItem removes the household's pantry row by catalog item ID.
@@ -327,7 +327,7 @@ func (r *Resolver) IncrementUserItem(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &userItemResolver{inv: r.InventoryService, item: *result, isFavorite: isFav}, nil
+	return &userItemResolver{inv: r.InventoryService, item: *result, isFavorite: isFav, as: r.allergySrc(u)}, nil
 }
 
 // AdjustUserBottle updates the quantity of the household's wine cellar
@@ -447,6 +447,7 @@ type userItemResolver struct {
 	isFavorite bool
 	items      map[int64]inventory.Item
 	ch         *itemChildren
+	as         *allergySource
 }
 
 func (r *userItemResolver) ID() graphql.ID {
@@ -471,13 +472,13 @@ func (r *userItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: asOfItemChildren(r.ch)}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 	}
 	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it, as: asOfItemChildren(r.ch)}, nil
+	return &itemResolver{inv: r.inv, it: it, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 }
 
 type userItemPageResolver struct {

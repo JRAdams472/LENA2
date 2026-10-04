@@ -934,7 +934,7 @@ func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, erro
 	}
 	out := make([]*recipeItemResolver, len(items))
 	for i := range items {
-		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ingredients: ingredients, ch: ch, units: units}
+		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ingredients: ingredients, ch: ch, units: units, as: r.as}
 	}
 	return out, nil
 }
@@ -1024,7 +1024,7 @@ func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSection
 			byName[ri.SectionName] = sec
 			sections = append(sections, sec)
 		}
-		sec.items = append(sec.items, &recipeItemResolver{inv: r.inv, item: ri, items: itemsByID, ingredients: ingredients, ch: ch, units: units})
+		sec.items = append(sec.items, &recipeItemResolver{inv: r.inv, item: ri, items: itemsByID, ingredients: ingredients, ch: ch, units: units, as: r.as})
 	}
 	return sections, nil
 }
@@ -1139,6 +1139,7 @@ type recipeItemResolver struct {
 	ingredients map[int64]inventory.Ingredient
 	ch          *itemChildren
 	units       map[int64]inventory.Unit
+	as          *allergySource
 }
 
 func (r *recipeItemResolver) ID() graphql.ID {
@@ -1154,14 +1155,14 @@ func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: asOfItemChildren(r.ch)}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 	}
 	slog.Default().Warn("recipeItem.item missed preload; lazy-loading", "item_id", *r.item.ItemID)
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it, as: asOfItemChildren(r.ch)}, nil
+	return &itemResolver{inv: r.inv, it: it, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 }
 
 // Ingredient resolves the brand-agnostic ingredient linked to this recipe
@@ -1175,14 +1176,14 @@ func (r *recipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolve
 		if !ok {
 			return nil, nil
 		}
-		return &ingredientResolver{inv: r.inv, in: in, as: asOfItemChildren(r.ch)}, nil
+		return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 	}
 	slog.Default().Warn("recipeItem.ingredient missed preload; lazy-loading", "ingredient_id", *r.item.IngredientID)
 	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in, as: asOfItemChildren(r.ch)}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 }
 
 func (r *recipeItemResolver) Quantity() float64 { return r.item.Quantity }

@@ -31,7 +31,7 @@ func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp}, nil
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp, as: r.allergySrc(u)}, nil
 }
 
 // MealPlans resolves the current household's meal plans.
@@ -57,7 +57,7 @@ func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, slotsByPlan: slotsByPlan, slotItemsBySlot: slotItemsBySlot, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	return &mealPlanPageResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plans: plans, slotsByPlan: slotsByPlan, slotItemsBySlot: slotItemsBySlot, rc: rc, as: r.allergySrc(u), page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // loadMealPlanChildren batch-loads the slots, slot items, and shared
@@ -298,7 +298,7 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp}, nil
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp, as: r.allergySrc(u)}, nil
 }
 
 // UpdateMealPlan modifies an existing meal plan.
@@ -349,7 +349,7 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: updated}, nil
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: updated, as: r.allergySrc(u)}, nil
 }
 
 // DeleteMealPlan removes a meal plan owned by the current household.
@@ -495,7 +495,7 @@ func (r *Resolver) AddMealSlotItem(ctx context.Context, args struct{ Input addMe
 	if err != nil {
 		return nil, err
 	}
-	return &mealSlotItemResolver{inv: r.InventoryService, item: item}, nil
+	return &mealSlotItemResolver{inv: r.InventoryService, item: item, as: r.allergySrc(u)}, nil
 }
 
 // RemoveMealSlotItem removes an item from a slot.
@@ -527,6 +527,7 @@ type mealPlanResolver struct {
 	slots     []mealplan.MealSlot
 	slotItems map[int64][]mealplan.MealSlotItem
 	rc        *recipeChildren
+	as        *allergySource
 }
 
 func (r *mealPlanResolver) ID() graphql.ID {
@@ -552,7 +553,7 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 	}
 	out := make([]*mealSlotResolver, len(slots))
 	for i := range slots {
-		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i], items: r.slotItems[slots[i].SlotID], rc: r.rc, as: asOfRecipeChildren(r.rc)}
+		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i], items: r.slotItems[slots[i].SlotID], rc: r.rc, as: firstSource(asOfRecipeChildren(r.rc), r.as)}
 	}
 	return out, nil
 }
@@ -617,7 +618,7 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 	}
 	out := make([]*mealSlotItemResolver, len(items))
 	for i := range items {
-		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch, rc: r.rc}
+		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch, rc: r.rc, as: r.as}
 	}
 	return out, nil
 }
@@ -705,6 +706,7 @@ type mealSlotItemResolver struct {
 	items map[int64]inventory.Item
 	ch    *itemChildren
 	rc    *recipeChildren
+	as    *allergySource
 }
 
 func (r *mealSlotItemResolver) ID() graphql.ID {
@@ -733,7 +735,7 @@ func (r *mealSlotItemResolver) Ingredient(ctx context.Context) (*ingredientResol
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), asOfRecipeChildren(r.rc))}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), asOfRecipeChildren(r.rc), r.as)}, nil
 }
 
 func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) {
@@ -745,13 +747,13 @@ func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) 
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: asOfItemChildren(r.ch)}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 	}
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it, as: asOfItemChildren(r.ch)}, nil
+	return &itemResolver{inv: r.inv, it: it, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 }
 
 type mealPlanPageResolver struct {
@@ -764,6 +766,7 @@ type mealPlanPageResolver struct {
 	slotsByPlan     map[int64][]mealplan.MealSlot
 	slotItemsBySlot map[int64][]mealplan.MealSlotItem
 	rc              *recipeChildren
+	as              *allergySource
 	page            int32
 	pageSize        int32
 	total           int32
@@ -772,7 +775,7 @@ type mealPlanPageResolver struct {
 func (r *mealPlanPageResolver) Items() []*mealPlanResolver {
 	out := make([]*mealPlanResolver, len(r.plans))
 	for i := range r.plans {
-		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, plan: r.plans[i], slots: r.slotsByPlan[r.plans[i].MealPlanID], slotItems: r.slotItemsBySlot, rc: r.rc}
+		out[i] = &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, plan: r.plans[i], slots: r.slotsByPlan[r.plans[i].MealPlanID], slotItems: r.slotItemsBySlot, rc: r.rc, as: r.as}
 	}
 	return out
 }
