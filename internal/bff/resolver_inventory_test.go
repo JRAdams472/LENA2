@@ -290,6 +290,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(7), []int64{1, 2}).Return(map[int64]*int64{1: nil, 2: nil}, nil)
+		inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		r := &Resolver{InventoryService: inv, UserPrefsService: up}
 		res, err := r.Items(invCtx(), pageArgs{Page: 2, PageSize: 10})
 		require.NoError(t, err)
@@ -814,6 +815,7 @@ func TestResolver_Inventory_Ingredients(t *testing.T) {
 			{IngredientID: 2, Name: "Sugar", IsActive: true},
 		}, nil)
 		inv.EXPECT().CountSearchIngredients(gomock.Any(), "").Return(int64(42), nil)
+		inv.EXPECT().ListIngredientAllergensByIngredients(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.Ingredients(invCtx(), struct {
 			Page     int32
@@ -1075,6 +1077,7 @@ func TestResolver_PendingItems(t *testing.T) {
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{9}).Return(nil, nil)
 		// Admin browse resolves with household 0 — catalog link only.
 		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(0), []int64{9}).Return(map[int64]*int64{9: nil}, nil)
+		inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{9}).Return(nil, nil)
 		r := &Resolver{InventoryService: inv}
 		res, err := r.PendingItems(invCtx(), pageArgs{Page: 1, PageSize: 25})
 		require.NoError(t, err)

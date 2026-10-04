@@ -728,3 +728,81 @@ WHERE unit_id = ANY(sqlc.arg(unit_ids)::bigint[]);
 SELECT *
 FROM inventory.unit
 ORDER BY kind, name;
+
+-- ---------- allergen registry + entity flags ----------
+
+-- name: ListAllergens :many
+SELECT *
+FROM inventory.allergen
+ORDER BY name;
+
+-- name: GetAllergenByID :one
+SELECT *
+FROM inventory.allergen
+WHERE allergen_id = $1;
+
+-- name: GetAllergensByIDs :many
+SELECT *
+FROM inventory.allergen
+WHERE allergen_id = ANY(sqlc.arg(allergen_ids)::bigint[]);
+
+-- name: CreateAllergen :one
+INSERT INTO inventory.allergen (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: UpdateAllergen :one
+UPDATE inventory.allergen
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE allergen_id = $1
+RETURNING *;
+
+-- name: ListIngredientAllergens :many
+SELECT *
+FROM inventory.ingredient_allergen
+WHERE ingredient_id = $1;
+
+-- name: ListIngredientAllergensByIngredients :many
+SELECT *
+FROM inventory.ingredient_allergen
+WHERE ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);
+
+-- name: UpsertIngredientAllergen :execrows
+INSERT INTO inventory.ingredient_allergen (ingredient_id, allergen_id, kind, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (ingredient_id, allergen_id)
+    DO UPDATE SET
+        kind       = EXCLUDED.kind,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now();
+
+-- name: DeleteIngredientAllergen :execrows
+DELETE FROM inventory.ingredient_allergen
+WHERE ingredient_id = $1 AND allergen_id = $2;
+
+-- name: ListItemAllergens :many
+SELECT *
+FROM inventory.item_allergen
+WHERE item_id = $1;
+
+-- name: ListItemAllergensByItems :many
+SELECT *
+FROM inventory.item_allergen
+WHERE item_id = ANY(sqlc.arg(item_ids)::bigint[]);
+
+-- name: UpsertItemAllergen :execrows
+INSERT INTO inventory.item_allergen (item_id, allergen_id, kind, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (item_id, allergen_id)
+    DO UPDATE SET
+        kind       = EXCLUDED.kind,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now();
+
+-- name: DeleteItemAllergen :execrows
+DELETE FROM inventory.item_allergen
+WHERE item_id = $1 AND allergen_id = $2;

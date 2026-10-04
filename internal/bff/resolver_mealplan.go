@@ -85,9 +85,10 @@ func (r *Resolver) loadMealPlanChildren(ctx context.Context, u currentuser.User,
 	}
 	// Recipe children (favorites) stay per-user; only the plan rows
 	// themselves are household-scoped.
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID,
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID,
 		distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
-		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }))
+		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }),
+		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.IngredientID }))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -421,7 +422,7 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 			EntityID:   *slot.RecipeID,
 		})
 	}
-	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: slot}, nil
+	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: slot, as: r.allergySrc(u)}, nil
 }
 
 // RemoveMealSlot removes a slot from a meal plan.
@@ -551,7 +552,7 @@ func (r *mealPlanResolver) Slots(ctx context.Context) ([]*mealSlotResolver, erro
 	}
 	out := make([]*mealSlotResolver, len(slots))
 	for i := range slots {
-		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i], items: r.slotItems[slots[i].SlotID], rc: r.rc}
+		out[i] = &mealSlotResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, slot: slots[i], items: r.slotItems[slots[i].SlotID], rc: r.rc, as: asOfRecipeChildren(r.rc)}
 	}
 	return out, nil
 }
@@ -568,6 +569,7 @@ type mealSlotResolver struct {
 	slot  mealplan.MealSlot
 	items []mealplan.MealSlotItem
 	rc    *recipeChildren
+	as    *allergySource
 }
 
 func (r *mealSlotResolver) ID() graphql.ID { return graphql.ID(strconv.FormatInt(r.slot.SlotID, 10)) }
@@ -589,13 +591,13 @@ func (r *mealSlotResolver) Recipe(ctx context.Context) (*recipeResolver, error) 
 		if !ok {
 			return nil, nil
 		}
-		return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec, rc: r.rc}, nil
+		return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec, rc: r.rc, as: firstSource(asOfRecipeChildren(r.rc), r.as)}, nil
 	}
 	rec, err := r.rec.GetRecipeByID(ctx, *r.slot.RecipeID)
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec}, nil
+	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: rec, as: r.as}, nil
 }
 
 func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, error) {
@@ -618,6 +620,82 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 		out[i] = &mealSlotItemResolver{inv: r.inv, item: items[i], items: itemsByID, ch: ch, rc: r.rc}
 	}
 	return out, nil
+}
+
+// allergenSet unions the slot's own item overrides and — when a recipe is
+// linked — the recipe's lines, so a planned meal warns on everything it
+// actually contains.
+func (r *mealSlotResolver) allergenSet(ctx context.Context) (*allergyContext, map[int64]string, error) {
+	var slotItems []mealplan.MealSlotItem
+	var recipeItems []recipe.RecipeItem
+	var ac *allergyContext
+	if r.rc != nil && r.rc.itemChildren != nil && r.rc.itemChildren.ac != nil {
+		ac = r.rc.itemChildren.ac
+		slotItems = r.items
+		if r.slot.RecipeID != nil {
+			recipeItems = r.rc.itemsBy[*r.slot.RecipeID]
+		}
+	} else {
+		var err error
+		slotItems, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID, r.user.HouseholdID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if r.slot.RecipeID != nil {
+			recipeItems, err = r.rec.ListRecipeItems(ctx, *r.slot.RecipeID)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		var ingredientIDs, itemIDs []int64
+		for _, si := range slotItems {
+			if si.IngredientID != nil {
+				ingredientIDs = append(ingredientIDs, *si.IngredientID)
+			}
+			if si.ItemID != nil {
+				itemIDs = append(itemIDs, *si.ItemID)
+			}
+		}
+		for _, ri := range recipeItems {
+			if ri.IngredientID != nil {
+				ingredientIDs = append(ingredientIDs, *ri.IngredientID)
+			}
+			if ri.ItemID != nil {
+				itemIDs = append(itemIDs, *ri.ItemID)
+			}
+		}
+		ac, err = lazyAllergenCtx(ctx, r.as, ingredientIDs, itemIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	set := make(map[int64]string)
+	for _, si := range slotItems {
+		ac.addInto(set, si.IngredientID, si.ItemID)
+	}
+	for _, ri := range recipeItems {
+		ac.addInto(set, ri.IngredientID, ri.ItemID)
+	}
+	return ac, set, nil
+}
+
+// Allergens resolves the union of the slot's resolved allergen flags.
+func (r *mealSlotResolver) Allergens(ctx context.Context) ([]*allergenFlagResolver, error) {
+	ac, set, err := r.allergenSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.flagResolvers(set), nil
+}
+
+// AllergyWarnings resolves which household members conflict with this
+// slot's contents.
+func (r *mealSlotResolver) AllergyWarnings(ctx context.Context) ([]*allergyWarningResolver, error) {
+	ac, set, err := r.allergenSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.warningResolvers(set), nil
 }
 
 // mealSlotItemResolver resolves MealSlotItem fields.
@@ -655,7 +733,7 @@ func (r *mealSlotItemResolver) Ingredient(ctx context.Context) (*ingredientResol
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), asOfRecipeChildren(r.rc))}, nil
 }
 
 func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) {
@@ -667,13 +745,13 @@ func (r *mealSlotItemResolver) Item(ctx context.Context) (*itemResolver, error) 
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: asOfItemChildren(r.ch)}, nil
 	}
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it}, nil
+	return &itemResolver{inv: r.inv, it: it, as: asOfItemChildren(r.ch)}, nil
 }
 
 type mealPlanPageResolver struct {

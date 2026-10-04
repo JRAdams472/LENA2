@@ -43,6 +43,25 @@ Seq and Jaeger run locally in the compose stack and are both queryable over plai
     --data-urlencode 'query.start_time_max=2030-01-01T00:00:00Z'
   ```
 - **Raw fallback**: `docker logs lena2-api-1 --since 30m` when Seq's structured view isn't needed.
+- **SonarQube Community Build** (`http://localhost:9000`, project key `lena2`):
+  - Start: `docker compose -f docker-compose.sonarqube.yml up -d`; wait for `"status":"UP"` via `curl -s http://localhost:9000/api/system/status`.
+  - The `sonarqube` MCP server (`.devin/mcp_config.local.json`) exposes issues/hotspots/quality-gate/measures tools; the API is plain HTTP with token auth (`-u "$TOKEN:"`, token is the username, empty password).
+  - Rescan: mount source subdirs only — a whole-repo mount fails on `import/inbox` ACLs and crawls `node_modules`:
+    ```bash
+    docker run --rm \
+      -v "$PWD/internal:/usr/src/internal" -v "$PWD/cmd:/usr/src/cmd" \
+      -v "$PWD/clients/web/app:/usr/src/clients/web/app" -v "$PWD/clients/web/lib:/usr/src/clients/web/lib" \
+      -v "$PWD/clients/web/__tests__:/usr/src/clients/web/__tests__" -v "$PWD/clients/web/e2e:/usr/src/clients/web/e2e" \
+      -v "$PWD/clients/mobile/lib:/usr/src/clients/mobile/lib" -v "$PWD/clients/mobile/test:/usr/src/clients/mobile/test" \
+      -v "$PWD/migrations:/usr/src/migrations" -v "$PWD/tools:/usr/src/tools" -v "$PWD/scripts:/usr/src/scripts" \
+      -v "$PWD/coverage.out:/usr/src/coverage.out" -v "$PWD/clients/web/coverage/lcov.info:/usr/src/clients/web/coverage/lcov.info" \
+      -e SONAR_TOKEN="$TOKEN" sonarsource/sonar-scanner-cli \
+      -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.projectKey=lena2 \
+      -Dsonar.sources=. -Dsonar.exclusions='**/sqlc/**,**/mock/**,migrations/seed/**' \
+      -Dsonar.go.coverage.reportPaths=coverage.out \
+      -Dsonar.javascript.lcov.reportPaths=clients/web/coverage/lcov.info
+    ```
+    (On Git Bash use `"$(pwd -W)/internal:..."` for the mount paths.)
 - Linear attachments go through `prepare_attachment_upload` → PUT the file to the signed URL with its exact signed headers → `create_attachment_from_upload`. A `SignatureDoesNotMatch` means the headers drifted — request a fresh URL and PUT immediately (URLs expire in ~60s).
 
 ## Plan Close-Out
@@ -57,3 +76,22 @@ After the final phase of any plan merges, before starting the next:
 6. Review every doc listed in `README.md`'s **Documentation** section plus the touched client READMEs (`clients/web/README.md`, `clients/mobile/README.md`) for staleness — env vars, versions, workflow/job names, helper-package names, and endpoint lists drift fast.
 7. Update the GitHub wiki (`LENA2.wiki.git`) — it lives outside the repo, so clone it, add/refresh pages for what shipped, and push to `master`.
 8. Refresh wiki **screenshots** when user-facing screens changed: run the isolated `lena2shots` stack per `.devin/skills/wiki-screenshots` (`tools/wiki-shots/seed_demo.py` + `capture.mjs`), inspect every PNG for spinners, publish under `images/`, and embed them on the relevant wiki pages — no wiki page should ship prose-only when a screen exists. Evaluate mobile screenshots the same way; if no emulator is available, note that and keep it as a follow-up.
+
+## Code Size & Coverage Report (required on parent-ticket close-out)
+
+When a **top-level** Linear ticket closes (all phase sub-issues merged and verified), post a size-and-shape report as a comment on the parent ticket via `save_comment`. The goal is tracking how the app grows as features ship — report absolute numbers, and deltas vs. the previous report if one exists on an earlier ticket.
+
+Generate it as follows:
+
+1. **Per-language LOC** — tokei (installed via winget; if not on PATH it's at `%LOCALAPPDATA%\Microsoft\WinGet\Packages\XAMPPRocky.Tokei_*\tokei.exe`):
+   ```bash
+   tokei -e clients/web/node_modules -e clients/mobile/build -e migrations/seed internal cmd clients migrations
+   ```
+   Note tokei's counts include generated code (`internal/*/sqlc`, `*/mock`) — call that out separately in the report.
+2. **Source vs. test split** — bucket tracked files (`git ls-files`) by path: Go tests are `*_test.go`; web tests are `clients/web/__tests__`, `e2e`, `mocks`; mobile tests are `clients/mobile/test`; Go generated is `internal/*/sqlc` + `*/mock`. Everything else is source. Sum `wc -l` per bucket; "executable lines" = non-blank non-comment (`grep -cvE '^\s*(//|$)'` per file).
+3. **Test counts** — `grep -c '^func Test'` per Go package; count `it(|test(` in `clients/web/__tests__` + `e2e`; count `test(|testWidgets(` in `clients/mobile/test`.
+4. **Coverage** —
+   - Go: `go test ./internal/... ./cmd/... -count=1 -cover` — report the per-package table (runs testcontainers; note in the report if container-dependent tests were skipped/failed on environment grounds).
+   - Web: `npx jest --coverage` (or read `clients/web/coverage/lcov.info` — always note its date; stale reports must be flagged).
+   - Mobile: `flutter test --coverage` if coverage is configured; otherwise state "not measured" — do not estimate.
+5. **Post** — `save_comment` on the parent ticket with the report as a markdown table: LOC / executable / test LOC / test count / coverage per feature area, plus a one-line caveats section (generated code excluded, stale reports, skipped suites).

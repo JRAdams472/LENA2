@@ -34,14 +34,14 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	}
 	// Single-recipe reads preload the same child graph as list pages so
 	// nested field resolvers never fall back to a query per row.
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, []int64{id}, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, []int64{id}, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, rc); err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc, as: asOfRecipeChildren(rc)}, nil
 }
 
 // ScaledRecipe resolves a recipe with its ingredient quantities scaled to the
@@ -94,7 +94,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 
 	// Reuse the shared inventory-child loader so scaledRecipe.items.item
 	// and friends never degrade to per-row queries.
-	if err := loadRecipeInventoryChildren(ctx, r.InventoryService, rc, u.HouseholdID, nil); err != nil {
+	if err := loadRecipeInventoryChildren(ctx, r.InventoryService, r.IdentityService, r.UserPrefsService, rc, u.HouseholdID, nil, nil); err != nil {
 		return nil, err
 	}
 
@@ -105,6 +105,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		user:   u,
 		recipe: scaled.Recipe,
 		rc:     rc,
+		as:     asOfRecipeChildren(rc),
 	}, nil
 }
 
@@ -220,7 +221,7 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		}
 	}
 	recipeIDs := distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID })
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +389,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 	})
 	r.computeOverlapAsync(rec.RecipeID)
 	r.refreshEmbeddingAsync(rec.RecipeID)
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, as: r.allergySrc(u)}, nil
 }
 
 // UpdateRecipe modifies an existing recipe and replaces its items/steps
@@ -438,7 +439,7 @@ func (r *Resolver) UpdateRecipe(ctx context.Context, args struct {
 		return nil, err
 	}
 	r.refreshEmbeddingAsync(id)
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: updated}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: updated, as: r.allergySrc(u)}, nil
 }
 
 // recipeWriteError maps a service-layer write failure to a client-safe
@@ -545,7 +546,7 @@ func (r *Resolver) RateRecipe(ctx context.Context, args struct {
 	if err := loadRecipeRatings(ctx, r.RecipeService, u.UserID, []int64{id}, rc); err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc, as: asOfRecipeChildren(rc)}, nil
 }
 
 // courseCategoryName is the category group whose members double as meal
@@ -627,7 +628,7 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	}
 	recipeIDs, best := mergeRecommendations(sources, limit)
 
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -876,7 +877,7 @@ type recipeRecommendationResolver struct {
 }
 
 func (r *recipeRecommendationResolver) Recipe() *recipeResolver {
-	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipe, rc: r.rc}
+	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipe, rc: r.rc, as: asOfRecipeChildren(r.rc)}
 }
 
 func (r *recipeRecommendationResolver) Reason() string { return r.reason }
@@ -892,6 +893,7 @@ type recipeResolver struct {
 	user          currentuser.User
 	recipe        recipe.Recipe
 	rc            *recipeChildren
+	as            *allergySource
 	globalCount   int64
 	personalCount int64
 }
@@ -935,6 +937,59 @@ func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, erro
 		out[i] = &recipeItemResolver{inv: r.inv, item: items[i], items: itemsByID, ingredients: ingredients, ch: ch, units: units}
 	}
 	return out, nil
+}
+
+// allergenSet unions every recipe line's resolved flags.
+func (r *recipeResolver) allergenSet(ctx context.Context) (*allergyContext, map[int64]string, error) {
+	var ac *allergyContext
+	items := []recipe.RecipeItem(nil)
+	if r.rc != nil && r.rc.itemChildren != nil && r.rc.itemChildren.ac != nil {
+		ac = r.rc.itemChildren.ac
+		items = r.rc.itemsBy[r.recipe.RecipeID]
+	} else {
+		var err error
+		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
+		if err != nil {
+			return nil, nil, err
+		}
+		var ingredientIDs, itemIDs []int64
+		for _, ri := range items {
+			if ri.IngredientID != nil {
+				ingredientIDs = append(ingredientIDs, *ri.IngredientID)
+			}
+			if ri.ItemID != nil {
+				itemIDs = append(itemIDs, *ri.ItemID)
+			}
+		}
+		ac, err = lazyAllergenCtx(ctx, r.as, ingredientIDs, itemIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	set := make(map[int64]string)
+	for _, ri := range items {
+		ac.addInto(set, ri.IngredientID, ri.ItemID)
+	}
+	return ac, set, nil
+}
+
+// Allergens resolves the union of every recipe line's allergen flags.
+func (r *recipeResolver) Allergens(ctx context.Context) ([]*allergenFlagResolver, error) {
+	ac, set, err := r.allergenSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.flagResolvers(set), nil
+}
+
+// AllergyWarnings resolves which household members conflict with this
+// recipe.
+func (r *recipeResolver) AllergyWarnings(ctx context.Context) ([]*allergyWarningResolver, error) {
+	ac, set, err := r.allergenSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.warningResolvers(set), nil
 }
 
 // ItemSections groups the recipe's items by section name in display order.
@@ -1099,14 +1154,14 @@ func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: asOfItemChildren(r.ch)}, nil
 	}
 	slog.Default().Warn("recipeItem.item missed preload; lazy-loading", "item_id", *r.item.ItemID)
 	it, err := r.inv.GetItemByID(ctx, *r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it}, nil
+	return &itemResolver{inv: r.inv, it: it, as: asOfItemChildren(r.ch)}, nil
 }
 
 // Ingredient resolves the brand-agnostic ingredient linked to this recipe
@@ -1120,14 +1175,14 @@ func (r *recipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolve
 		if !ok {
 			return nil, nil
 		}
-		return &ingredientResolver{inv: r.inv, in: in}, nil
+		return &ingredientResolver{inv: r.inv, in: in, as: asOfItemChildren(r.ch)}, nil
 	}
 	slog.Default().Warn("recipeItem.ingredient missed preload; lazy-loading", "ingredient_id", *r.item.IngredientID)
 	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: asOfItemChildren(r.ch)}, nil
 }
 
 func (r *recipeItemResolver) Quantity() float64 { return r.item.Quantity }
@@ -1185,7 +1240,7 @@ type recipePageResolver struct {
 func (r *recipePageResolver) Items() []*recipeResolver {
 	out := make([]*recipeResolver, len(r.recipes))
 	for i := range r.recipes {
-		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipes[i], rc: r.rc}
+		out[i] = &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: r.user, recipe: r.recipes[i], rc: r.rc, as: asOfRecipeChildren(r.rc)}
 	}
 	return out
 }
@@ -1324,11 +1379,11 @@ func (r *Resolver) SetRecipeCategories(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.InventoryService, u.UserID, u.HouseholdID, []int64{recipeID}, nil)
+	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, []int64{recipeID}, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rcp, rc: rc}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rcp, rc: rc, as: asOfRecipeChildren(rc)}, nil
 }
 
 // CreateRecipeCategoryGroup adds a taxonomy group; admins only.

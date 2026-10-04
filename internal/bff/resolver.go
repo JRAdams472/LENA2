@@ -630,6 +630,11 @@ type itemChildren struct {
 	// resolved maps item_id -> effective ingredient (override wins).
 	ingredients map[int64]inventory.Ingredient
 	resolved    map[int64]*int64
+	// ac holds the batch-loaded allergen knowledge (flags, registry rows,
+	// member records); as is the lazy-load source for resolvers built
+	// without this preload.
+	ac *allergyContext
+	as *allergySource
 }
 
 // loadUnits fetches a set of units in one query, keyed by ID.
@@ -721,10 +726,13 @@ func loadItems(ctx context.Context, inv ItemReader, itemIDs []int64) (map[int64]
 }
 
 // loadItemChildren batch-loads the brand, category, nutrient, flavor and
-// ingredient rows referenced by items. householdID scopes the
-// override-aware item -> ingredient resolution (pass 0 for catalog-only
-// resolution, e.g. admin browse of another household's data).
-func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Item, householdID int64) (*itemChildren, error) {
+// ingredient rows referenced by items, plus the allergen knowledge needed
+// to render flags and warnings. householdID scopes the override-aware
+// item -> ingredient resolution and the member records (pass 0 — with nil
+// id/up — for catalog-only loads like admin browse). extraIngredientIDs
+// are entity-line ingredients not reachable through the items (recipe,
+// slot, grocery and event lines) so their flags batch-load too.
+func loadItemChildren(ctx context.Context, inv ItemReader, id IdentityService, up UserPrefsService, items []inventory.Item, householdID int64, extraIngredientIDs []int64) (*itemChildren, error) {
 	ch := &itemChildren{
 		brands:      make(map[int64]inventory.Brand),
 		categories:  make(map[int64]inventory.Category),
@@ -737,6 +745,14 @@ func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Ite
 		resolved:    make(map[int64]*int64),
 	}
 	if len(items) == 0 {
+		// Ingredient-only entity sets (e.g. a recipe whose lines are all
+		// ingredient-keyed) still need their flags and warnings.
+		ch.as = &allergySource{inv: inv, id: id, up: up, householdID: householdID}
+		var err error
+		ch.ac, err = ch.as.loadAllergyContext(ctx, extraIngredientIDs, nil, nil)
+		if err != nil {
+			return nil, err
+		}
 		return ch, nil
 	}
 	itemIDs := make([]int64, len(items))
@@ -821,11 +837,19 @@ func loadItemChildren(ctx context.Context, inv ItemReader, items []inventory.Ite
 			ingredientIDSet[*ingID] = true
 		}
 	}
+	for _, ingID := range extraIngredientIDs {
+		ingredientIDSet[ingID] = true
+	}
 	ingredientIDs := make([]int64, 0, len(ingredientIDSet))
 	for id := range ingredientIDSet {
 		ingredientIDs = append(ingredientIDs, id)
 	}
 	ch.ingredients, err = loadIngredients(ctx, inv, ingredientIDs)
+	if err != nil {
+		return nil, err
+	}
+	ch.as = &allergySource{inv: inv, id: id, up: up, householdID: householdID}
+	ch.ac, err = ch.as.loadAllergyContext(ctx, ingredientIDs, itemIDs, resolved)
 	if err != nil {
 		return nil, err
 	}
@@ -862,7 +886,9 @@ type recipeChildren struct {
 // callers can also resolve items referenced from elsewhere (e.g. meal slot
 // overrides) with the same maps. householdID scopes override-aware
 // item -> ingredient resolution inside the batch-loaded item children.
-func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, inv ItemReader, userID, householdID int64, recipeIDs, extraItemIDs []int64) (*recipeChildren, error) {
+// extraIngredientIDs are line ingredients outside recipe_item (slot/event
+// lines) so their allergen flags batch-load too.
+func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, id IdentityService, inv ItemReader, userID, householdID int64, recipeIDs, extraItemIDs, extraIngredientIDs []int64) (*recipeChildren, error) {
 	rc := &recipeChildren{
 		recipes:      make(map[int64]recipe.Recipe),
 		itemsBy:      make(map[int64][]recipe.RecipeItem),
@@ -913,16 +939,17 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 			return nil, err
 		}
 	}
-	if err := loadRecipeInventoryChildren(ctx, inv, rc, householdID, extraItemIDs); err != nil {
+	if err := loadRecipeInventoryChildren(ctx, inv, id, up, rc, householdID, extraItemIDs, extraIngredientIDs); err != nil {
 		return nil, err
 	}
 	return rc, nil
 }
 
 // loadRecipeInventoryChildren batch-loads the inventory-side children
-// referenced by rc.itemsBy (plus any extra item IDs): catalog items,
-// their children, recipe-item units, and brand-agnostic ingredients.
-func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipeChildren, householdID int64, extraItemIDs []int64) error {
+// referenced by rc.itemsBy (plus any extra item/ingredient IDs): catalog
+// items, their children, recipe-item units, and brand-agnostic
+// ingredients.
+func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, id IdentityService, up UserPrefsService, rc *recipeChildren, householdID int64, extraItemIDs, extraIngredientIDs []int64) error {
 	itemIDSet := make(map[int64]bool)
 	for _, id := range extraItemIDs {
 		itemIDSet[id] = true
@@ -951,7 +978,25 @@ func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, rc *recipe
 	for _, it := range items {
 		list = append(list, it)
 	}
-	ch, err := loadItemChildren(ctx, inv, list, householdID)
+	// Line ingredients (recipe lines plus caller extras like slot/event
+	// lines) feed the allergen flag load even when no item binds them.
+	extraIngredientIDSet := make(map[int64]bool, len(extraIngredientIDs))
+	for _, id := range extraIngredientIDs {
+		extraIngredientIDSet[id] = true
+	}
+	for _, items := range rc.itemsBy {
+		for _, ri := range items {
+			if ri.IngredientID != nil {
+				extraIngredientIDSet[*ri.IngredientID] = true
+			}
+		}
+	}
+	lineIngredientIDs := make([]int64, 0, len(extraIngredientIDSet))
+	for id := range extraIngredientIDSet {
+		lineIngredientIDs = append(lineIngredientIDs, id)
+	}
+	slices.Sort(lineIngredientIDs)
+	ch, err := loadItemChildren(ctx, inv, id, up, list, householdID, lineIngredientIDs)
 	if err != nil {
 		return err
 	}

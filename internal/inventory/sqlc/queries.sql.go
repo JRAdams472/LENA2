@@ -109,6 +109,42 @@ func (q *Queries) CountSearchItems(ctx context.Context, arg CountSearchItemsPara
 	return count, err
 }
 
+const createAllergen = `-- name: CreateAllergen :one
+INSERT INTO inventory.allergen (name, description, is_active, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING allergen_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type CreateAllergenParams struct {
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	CreatedBy   string      `json:"created_by"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) CreateAllergen(ctx context.Context, arg CreateAllergenParams) (InventoryAllergen, error) {
+	row := q.db.QueryRow(ctx, createAllergen,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i InventoryAllergen
+	err := row.Scan(
+		&i.AllergenID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createBrand = `-- name: CreateBrand :one
 INSERT INTO inventory.brand (name, status, created_by, updated_by)
 VALUES ($1, 'approved', $2, $2)
@@ -589,6 +625,24 @@ func (q *Queries) DeleteIngredient(ctx context.Context, ingredientID int64) erro
 	return err
 }
 
+const deleteIngredientAllergen = `-- name: DeleteIngredientAllergen :execrows
+DELETE FROM inventory.ingredient_allergen
+WHERE ingredient_id = $1 AND allergen_id = $2
+`
+
+type DeleteIngredientAllergenParams struct {
+	IngredientID int64 `json:"ingredient_id"`
+	AllergenID   int64 `json:"allergen_id"`
+}
+
+func (q *Queries) DeleteIngredientAllergen(ctx context.Context, arg DeleteIngredientAllergenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteIngredientAllergen, arg.IngredientID, arg.AllergenID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteIngredientRefsAisle = `-- name: DeleteIngredientRefsAisle :exec
 DELETE FROM grocery.aisle_assignment
 WHERE ingredient_id = $1
@@ -669,6 +723,24 @@ WHERE item_id = $1
 func (q *Queries) DeleteItem(ctx context.Context, itemID int64) error {
 	_, err := q.db.Exec(ctx, deleteItem, itemID)
 	return err
+}
+
+const deleteItemAllergen = `-- name: DeleteItemAllergen :execrows
+DELETE FROM inventory.item_allergen
+WHERE item_id = $1 AND allergen_id = $2
+`
+
+type DeleteItemAllergenParams struct {
+	ItemID     int64 `json:"item_id"`
+	AllergenID int64 `json:"allergen_id"`
+}
+
+func (q *Queries) DeleteItemAllergen(ctx context.Context, arg DeleteItemAllergenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteItemAllergen, arg.ItemID, arg.AllergenID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteItemIngredientOverride = `-- name: DeleteItemIngredientOverride :execrows
@@ -799,6 +871,63 @@ func (q *Queries) FindIngredientByNormalizedName(ctx context.Context, regexpRepl
 		&i.DefaultUnitID,
 	)
 	return i, err
+}
+
+const getAllergenByID = `-- name: GetAllergenByID :one
+SELECT allergen_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.allergen
+WHERE allergen_id = $1
+`
+
+func (q *Queries) GetAllergenByID(ctx context.Context, allergenID int64) (InventoryAllergen, error) {
+	row := q.db.QueryRow(ctx, getAllergenByID, allergenID)
+	var i InventoryAllergen
+	err := row.Scan(
+		&i.AllergenID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAllergensByIDs = `-- name: GetAllergensByIDs :many
+SELECT allergen_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.allergen
+WHERE allergen_id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetAllergensByIDs(ctx context.Context, allergenIds []int64) ([]InventoryAllergen, error) {
+	rows, err := q.db.Query(ctx, getAllergensByIDs, allergenIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryAllergen{}
+	for rows.Next() {
+		var i InventoryAllergen
+		if err := rows.Scan(
+			&i.AllergenID,
+			&i.Name,
+			&i.Description,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getBrandByID = `-- name: GetBrandByID :one
@@ -1340,6 +1469,43 @@ func (q *Queries) GetUsualItemForIngredient(ctx context.Context, arg GetUsualIte
 	return i, err
 }
 
+const listAllergens = `-- name: ListAllergens :many
+
+SELECT allergen_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+FROM inventory.allergen
+ORDER BY name
+`
+
+// ---------- allergen registry + entity flags ----------
+func (q *Queries) ListAllergens(ctx context.Context) ([]InventoryAllergen, error) {
+	rows, err := q.db.Query(ctx, listAllergens)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryAllergen{}
+	for rows.Next() {
+		var i InventoryAllergen
+		if err := rows.Scan(
+			&i.AllergenID,
+			&i.Name,
+			&i.Description,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listBrands = `-- name: ListBrands :many
 SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
@@ -1659,6 +1825,74 @@ func (q *Queries) ListFoodNutrientsByItems(ctx context.Context, itemIds []int64)
 	return items, nil
 }
 
+const listIngredientAllergens = `-- name: ListIngredientAllergens :many
+SELECT ingredient_id, allergen_id, kind, created_by, created_at, updated_by, updated_at
+FROM inventory.ingredient_allergen
+WHERE ingredient_id = $1
+`
+
+func (q *Queries) ListIngredientAllergens(ctx context.Context, ingredientID int64) ([]InventoryIngredientAllergen, error) {
+	rows, err := q.db.Query(ctx, listIngredientAllergens, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryIngredientAllergen{}
+	for rows.Next() {
+		var i InventoryIngredientAllergen
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.AllergenID,
+			&i.Kind,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngredientAllergensByIngredients = `-- name: ListIngredientAllergensByIngredients :many
+SELECT ingredient_id, allergen_id, kind, created_by, created_at, updated_by, updated_at
+FROM inventory.ingredient_allergen
+WHERE ingredient_id = ANY($1::bigint[])
+`
+
+func (q *Queries) ListIngredientAllergensByIngredients(ctx context.Context, ingredientIds []int64) ([]InventoryIngredientAllergen, error) {
+	rows, err := q.db.Query(ctx, listIngredientAllergensByIngredients, ingredientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryIngredientAllergen{}
+	for rows.Next() {
+		var i InventoryIngredientAllergen
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.AllergenID,
+			&i.Kind,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIngredients = `-- name: ListIngredients :many
 SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 FROM inventory.ingredient
@@ -1692,6 +1926,74 @@ func (q *Queries) ListIngredients(ctx context.Context, arg ListIngredientsParams
 			&i.UpdatedBy,
 			&i.UpdatedAt,
 			&i.DefaultUnitID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemAllergens = `-- name: ListItemAllergens :many
+SELECT item_id, allergen_id, kind, created_by, created_at, updated_by, updated_at
+FROM inventory.item_allergen
+WHERE item_id = $1
+`
+
+func (q *Queries) ListItemAllergens(ctx context.Context, itemID int64) ([]InventoryItemAllergen, error) {
+	rows, err := q.db.Query(ctx, listItemAllergens, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItemAllergen{}
+	for rows.Next() {
+		var i InventoryItemAllergen
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.AllergenID,
+			&i.Kind,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemAllergensByItems = `-- name: ListItemAllergensByItems :many
+SELECT item_id, allergen_id, kind, created_by, created_at, updated_by, updated_at
+FROM inventory.item_allergen
+WHERE item_id = ANY($1::bigint[])
+`
+
+func (q *Queries) ListItemAllergensByItems(ctx context.Context, itemIds []int64) ([]InventoryItemAllergen, error) {
+	rows, err := q.db.Query(ctx, listItemAllergensByItems, itemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItemAllergen{}
+	for rows.Next() {
+		var i InventoryItemAllergen
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.AllergenID,
+			&i.Kind,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -2658,6 +2960,47 @@ func (q *Queries) SetItemStatus(ctx context.Context, arg SetItemStatusParams) (i
 	return result.RowsAffected(), nil
 }
 
+const updateAllergen = `-- name: UpdateAllergen :one
+UPDATE inventory.allergen
+SET name        = $2,
+    description = $3,
+    is_active   = $4,
+    updated_by  = $5,
+    updated_at  = now()
+WHERE allergen_id = $1
+RETURNING allergen_id, name, description, is_active, created_by, created_at, updated_by, updated_at
+`
+
+type UpdateAllergenParams struct {
+	AllergenID  int64       `json:"allergen_id"`
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+	IsActive    bool        `json:"is_active"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpdateAllergen(ctx context.Context, arg UpdateAllergenParams) (InventoryAllergen, error) {
+	row := q.db.QueryRow(ctx, updateAllergen,
+		arg.AllergenID,
+		arg.Name,
+		arg.Description,
+		arg.IsActive,
+		arg.UpdatedBy,
+	)
+	var i InventoryAllergen
+	err := row.Scan(
+		&i.AllergenID,
+		&i.Name,
+		&i.Description,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateBrand = `-- name: UpdateBrand :one
 UPDATE inventory.brand
 SET name = $2
@@ -2927,6 +3270,70 @@ func (q *Queries) UpsertBrand(ctx context.Context, arg UpsertBrandParams) (Inven
 		&i.NameNormalized,
 	)
 	return i, err
+}
+
+const upsertIngredientAllergen = `-- name: UpsertIngredientAllergen :execrows
+INSERT INTO inventory.ingredient_allergen (ingredient_id, allergen_id, kind, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (ingredient_id, allergen_id)
+    DO UPDATE SET
+        kind       = EXCLUDED.kind,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+`
+
+type UpsertIngredientAllergenParams struct {
+	IngredientID int64       `json:"ingredient_id"`
+	AllergenID   int64       `json:"allergen_id"`
+	Kind         string      `json:"kind"`
+	CreatedBy    string      `json:"created_by"`
+	UpdatedBy    pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpsertIngredientAllergen(ctx context.Context, arg UpsertIngredientAllergenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertIngredientAllergen,
+		arg.IngredientID,
+		arg.AllergenID,
+		arg.Kind,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const upsertItemAllergen = `-- name: UpsertItemAllergen :execrows
+INSERT INTO inventory.item_allergen (item_id, allergen_id, kind, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (item_id, allergen_id)
+    DO UPDATE SET
+        kind       = EXCLUDED.kind,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+`
+
+type UpsertItemAllergenParams struct {
+	ItemID     int64       `json:"item_id"`
+	AllergenID int64       `json:"allergen_id"`
+	Kind       string      `json:"kind"`
+	CreatedBy  string      `json:"created_by"`
+	UpdatedBy  pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpsertItemAllergen(ctx context.Context, arg UpsertItemAllergenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertItemAllergen,
+		arg.ItemID,
+		arg.AllergenID,
+		arg.Kind,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertItemIngredientOverride = `-- name: UpsertItemIngredientOverride :exec

@@ -330,3 +330,28 @@ WHERE user_id = $1 AND recipe_id = $2;
 SELECT recipe_id
 FROM userprefs.user_recipe_preference
 WHERE user_id = $1 AND is_favorite = TRUE;
+
+-- ---------- member allergy / dietary records ----------
+
+-- name: ListUserAllergens :many
+SELECT *
+FROM userprefs.user_allergen
+WHERE user_id = $1;
+
+-- name: ListUserAllergensByUsers :many
+SELECT *
+FROM userprefs.user_allergen
+WHERE user_id = ANY(sqlc.arg(user_ids)::bigint[]);
+
+-- name: UpsertUserAllergen :execrows
+INSERT INTO userprefs.user_allergen (user_id, allergen_id, kind, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, allergen_id)
+    DO UPDATE SET
+        kind       = EXCLUDED.kind,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now();
+
+-- name: DeleteUserAllergen :execrows
+DELETE FROM userprefs.user_allergen
+WHERE user_id = $1 AND allergen_id = $2;

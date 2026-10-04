@@ -270,7 +270,7 @@ func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }
 	if err != nil {
 		return nil, fmt.Errorf("frequent items: %w", err)
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, items, u.HouseholdID)
+	ch, err := loadItemChildren(ctx, r.InventoryService, r.IdentityService, r.UserPrefsService, items, u.HouseholdID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func (r *Resolver) FrequentItems(ctx context.Context, args struct{ Limit int32 }
 	out := make([]*itemResolver, 0, len(ordered))
 	for _, id := range ordered {
 		if it, ok := itemByID[id]; ok {
-			out = append(out, &itemResolver{inv: r.InventoryService, it: it, ch: ch, globalCount: counts[id].global, personalCount: counts[id].personal})
+			out = append(out, &itemResolver{inv: r.InventoryService, it: it, ch: ch, as: asOfItemChildren(ch), globalCount: counts[id].global, personalCount: counts[id].personal})
 		}
 	}
 	return out, nil
@@ -417,7 +417,7 @@ func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*ite
 			return nil, err
 		}
 	}
-	return &itemResolver{inv: r.InventoryService, it: it, ch: ch}, nil
+	return &itemResolver{inv: r.InventoryService, it: it, ch: ch, as: asOfItemChildren(ch)}, nil
 }
 
 // Items resolves a paginated list of catalog items.
@@ -464,7 +464,7 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, items, u.HouseholdID)
+	ch, err := loadItemChildren(ctx, r.InventoryService, r.IdentityService, r.UserPrefsService, items, u.HouseholdID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +544,8 @@ func (r *Resolver) CreateNutrientType(ctx context.Context, args struct{ Input cr
 
 // Ingredient resolves a single generic ingredient by ID.
 func (r *Resolver) Ingredient(ctx context.Context, args struct{ ID graphql.ID }) (*ingredientResolver, error) {
-	if _, err := userFromContext(ctx); err != nil {
+	u, err := userFromContext(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
@@ -555,7 +556,7 @@ func (r *Resolver) Ingredient(ctx context.Context, args struct{ ID graphql.ID })
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+	return &ingredientResolver{inv: r.InventoryService, in: in, as: r.allergySrc(u)}, nil
 }
 
 // Ingredients resolves a paginated list of generic ingredients, ordered by
@@ -588,7 +589,18 @@ func (r *Resolver) Ingredients(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientPageResolver{inv: r.InventoryService, ingredients: ingredients, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	// One context for the page — flags + member records batch-load once so
+	// per-ingredient warnings never issue a query per row.
+	as := r.allergySrc(u)
+	ingredientIDs := make([]int64, len(ingredients))
+	for i, in := range ingredients {
+		ingredientIDs[i] = in.IngredientID
+	}
+	ac, err := as.loadAllergyContext(ctx, ingredientIDs, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &ingredientPageResolver{inv: r.InventoryService, ingredients: ingredients, as: as, ac: ac, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // CreateIngredient adds a new generic ingredient.
@@ -618,7 +630,7 @@ func (r *Resolver) CreateIngredient(ctx context.Context, args struct{ Input crea
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+	return &ingredientResolver{inv: r.InventoryService, in: in, as: r.allergySrc(u)}, nil
 }
 
 // UpdateIngredient modifies an existing ingredient.
@@ -674,7 +686,7 @@ func (r *Resolver) UpdateIngredient(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+	return &ingredientResolver{inv: r.InventoryService, in: in, as: r.allergySrc(u)}, nil
 }
 
 // DeleteIngredient removes an ingredient from the catalog.
@@ -716,7 +728,7 @@ func (r *Resolver) GetOrCreateIngredient(ctx context.Context, args struct{ Input
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.InventoryService, in: in}, nil
+	return &ingredientResolver{inv: r.InventoryService, in: in, as: r.allergySrc(u)}, nil
 }
 
 // MergeIngredient folds one ingredient into another — the admin dedupe
@@ -799,10 +811,13 @@ func (r *Resolver) SetHouseholdItemIngredient(ctx context.Context, args struct {
 	return true, nil
 }
 
-// ingredientResolver resolves Ingredient fields.
+// ingredientResolver resolves Ingredient fields. ac carries the page's
+// batch-loaded allergen context; as backs lazy loads when it is absent.
 type ingredientResolver struct {
 	inv ItemReader
 	in  inventory.Ingredient
+	as  *allergySource
+	ac  *allergyContext
 }
 
 func (r *ingredientResolver) ID() graphql.ID {
@@ -829,9 +844,37 @@ func (r *ingredientResolver) Category(ctx context.Context) (*categoryResolver, e
 	return &categoryResolver{c: c}, nil
 }
 
+func (r *ingredientResolver) allergenCtx(ctx context.Context) (*allergyContext, error) {
+	if r.ac != nil {
+		return r.ac, nil
+	}
+	return lazyAllergenCtx(ctx, r.as, []int64{r.in.IngredientID}, nil)
+}
+
+// Allergens resolves the ingredient's canonical allergen flags.
+func (r *ingredientResolver) Allergens(ctx context.Context) ([]*allergenFlagResolver, error) {
+	ac, err := r.allergenCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.flagResolvers(ac.ingredientSet(r.in.IngredientID)), nil
+}
+
+// AllergyWarnings resolves which household members conflict with this
+// ingredient's flags.
+func (r *ingredientResolver) AllergyWarnings(ctx context.Context) ([]*allergyWarningResolver, error) {
+	ac, err := r.allergenCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.warningResolvers(ac.ingredientSet(r.in.IngredientID)), nil
+}
+
 type ingredientPageResolver struct {
 	inv         ItemReader
 	ingredients []inventory.Ingredient
+	as          *allergySource
+	ac          *allergyContext
 	page        int32
 	pageSize    int32
 	total       int32
@@ -840,7 +883,7 @@ type ingredientPageResolver struct {
 func (r *ingredientPageResolver) Items() []*ingredientResolver {
 	out := make([]*ingredientResolver, len(r.ingredients))
 	for i := range r.ingredients {
-		out[i] = &ingredientResolver{inv: r.inv, in: r.ingredients[i]}
+		out[i] = &ingredientResolver{inv: r.inv, in: r.ingredients[i], as: r.as, ac: r.ac}
 	}
 	return out
 }
@@ -928,7 +971,7 @@ func (r *Resolver) CreateItem(ctx context.Context, args struct{ Input createItem
 	if err != nil {
 		return nil, itemWriteError(err)
 	}
-	return &itemResolver{inv: r.InventoryService, it: it}, nil
+	return &itemResolver{inv: r.InventoryService, it: it, as: r.allergySrc(u)}, nil
 }
 
 // ItemByUpc resolves a catalog item by barcode. Digit length selects the
@@ -964,7 +1007,7 @@ func (r *Resolver) ItemByUpc(ctx context.Context, args struct{ Code string }) (*
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.InventoryService, it: it}, nil
+	return &itemResolver{inv: r.InventoryService, it: it, as: r.allergySrc(u)}, nil
 }
 
 // PendingItems resolves the admin queue of user-submitted items awaiting
@@ -987,7 +1030,7 @@ func (r *Resolver) PendingItems(ctx context.Context, args struct {
 	}
 	// Admin browse is catalog-scoped — pass 0 so resolution ignores
 	// household overrides.
-	ch, err := loadItemChildren(ctx, r.InventoryService, items, 0)
+	ch, err := loadItemChildren(ctx, r.InventoryService, nil, nil, items, 0, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1031,7 +1074,7 @@ func (r *Resolver) SubmitItem(ctx context.Context, args struct{ Input createItem
 	if err != nil {
 		return nil, itemWriteError(err)
 	}
-	return &itemResolver{inv: r.InventoryService, it: it}, nil
+	return &itemResolver{inv: r.InventoryService, it: it, as: r.allergySrc(u)}, nil
 }
 
 // ApproveItem marks a pending item approved so it becomes visible to all
@@ -1062,7 +1105,7 @@ func (r *Resolver) setItemStatus(ctx context.Context, id graphql.ID, status stri
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.InventoryService, it: it}, nil
+	return &itemResolver{inv: r.InventoryService, it: it, as: r.allergySrc(u)}, nil
 }
 
 // SetItemNutrients replaces all nutrient values on an item in one
@@ -1098,7 +1141,7 @@ func (r *Resolver) SetItemNutrients(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+	return &itemResolver{inv: r.InventoryService, it: updated, as: r.allergySrc(u)}, nil
 }
 
 // parseNutrientEntries validates and converts GraphQL nutrient inputs,
@@ -1318,7 +1361,7 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.InventoryService, it: updated}, nil
+	return &itemResolver{inv: r.InventoryService, it: updated, as: r.allergySrc(u)}, nil
 }
 
 // mergeItemPatch applies a PATCH-style input over the existing item: nil
@@ -1373,6 +1416,7 @@ type itemResolver struct {
 	inv           ItemReader
 	it            inventory.Item
 	ch            *itemChildren
+	as            *allergySource
 	globalCount   int64
 	personalCount int64
 }
@@ -1544,12 +1588,41 @@ func (r *itemResolver) HouseholdIngredient(ctx context.Context) (*ingredientReso
 	return r.ingredientByID(ctx, *id)
 }
 
+// allergenCtx returns the preloaded context or builds one lazily — the
+// warnings fields never report an empty set when data could be loaded.
+func (r *itemResolver) allergenCtx(ctx context.Context) (*allergyContext, error) {
+	if r.ch != nil && r.ch.ac != nil {
+		return r.ch.ac, nil
+	}
+	return lazyAllergenCtx(ctx, r.as, nil, []int64{r.it.ItemID})
+}
+
+// Allergens resolves the item's merged allergen flags: the override-aware
+// ingredient's flags unioned with this product's own flags.
+func (r *itemResolver) Allergens(ctx context.Context) ([]*allergenFlagResolver, error) {
+	ac, err := r.allergenCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.flagResolvers(ac.itemSet(r.it)), nil
+}
+
+// AllergyWarnings resolves which household members conflict with this
+// item's allergen set.
+func (r *itemResolver) AllergyWarnings(ctx context.Context) ([]*allergyWarningResolver, error) {
+	ac, err := r.allergenCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.warningResolvers(ac.itemSet(r.it)), nil
+}
+
 // ingredientByID renders an ingredient from the preloaded map, falling
 // back to a lazy fetch when the preload missed it.
 func (r *itemResolver) ingredientByID(ctx context.Context, ingredientID int64) (*ingredientResolver, error) {
 	if r.ch != nil {
 		if in, ok := r.ch.ingredients[ingredientID]; ok {
-			return &ingredientResolver{inv: r.inv, in: in}, nil
+			return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 		}
 	}
 	in, err := r.inv.GetIngredientByID(ctx, ingredientID)
@@ -1559,7 +1632,7 @@ func (r *itemResolver) ingredientByID(ctx context.Context, ingredientID int64) (
 		}
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 }
 
 // requireItemModifiable loads the item and returns errForbidden unless the
@@ -1671,7 +1744,7 @@ type itemPageResolver struct {
 func (r *itemPageResolver) Items() []*itemResolver {
 	out := make([]*itemResolver, len(r.items))
 	for i := range r.items {
-		out[i] = &itemResolver{inv: r.inv, it: r.items[i], ch: r.ch}
+		out[i] = &itemResolver{inv: r.inv, it: r.items[i], ch: r.ch, as: asOfItemChildren(r.ch)}
 	}
 	return out
 }
