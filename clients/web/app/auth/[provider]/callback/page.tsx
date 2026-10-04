@@ -10,6 +10,7 @@ import {
   isOAuthProvider,
   oauthNonceKey,
   oauthStateKey,
+  oauthVerifierKey,
 } from "@/lib/oauth";
 
 // OAuth providers redirect here with ?code=...&state=... after
@@ -40,19 +41,21 @@ function OAuthCallback() {
     const expected = window.sessionStorage.getItem(oauthStateKey(provider));
     const nonce =
       window.sessionStorage.getItem(oauthNonceKey(provider)) ?? undefined;
+    const verifier = window.sessionStorage.getItem(oauthVerifierKey(provider));
     window.sessionStorage.removeItem(oauthStateKey(provider));
     window.sessionStorage.removeItem(oauthNonceKey(provider));
+    window.sessionStorage.removeItem(oauthVerifierKey(provider));
 
     if (params.get("error")) {
       fail("Sign-in was cancelled or denied.");
       return;
     }
-    if (!code || !state || !expected || state !== expected) {
+    if (!code || !state || !expected || state !== expected || !verifier) {
       fail("Invalid sign-in response. Please try again.");
       return;
     }
 
-    signInWithProvider(provider, code, nonce)
+    signInWithProvider(provider, code, nonce, verifier)
       .then(() => router.push("/"))
       .catch(() => setError("Sign-in failed. Please try again."));
   }, [provider, params, signInWithProvider, router, fail]);

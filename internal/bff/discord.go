@@ -51,22 +51,26 @@ func NewDiscordVerifier(clientID, clientSecret, redirectURI string) *DiscordVeri
 }
 
 // verify exchanges the authorization code and fetches /users/@me.
-// Discord has no id_token, so the nonce parameter is ignored.
-func (d *DiscordVerifier) verify(ctx context.Context, code, _ string) (providerIdentity, error) {
-	accessToken, err := d.exchange(ctx, code)
+// Discord has no id_token, so the nonce parameter is ignored; the PKCE
+// code_verifier is forwarded to the token exchange when present.
+func (d *DiscordVerifier) verify(ctx context.Context, code, _, codeVerifier string) (providerIdentity, error) {
+	accessToken, err := d.exchange(ctx, code, codeVerifier)
 	if err != nil {
 		return providerIdentity{}, err
 	}
 	return d.fetchUser(ctx, accessToken)
 }
 
-func (d *DiscordVerifier) exchange(ctx context.Context, code string) (string, error) {
+func (d *DiscordVerifier) exchange(ctx context.Context, code, codeVerifier string) (string, error) {
 	form := url.Values{
 		"client_id":     {d.clientID},
 		"client_secret": {d.clientSecret},
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"redirect_uri":  {d.redirectURI},
+	}
+	if codeVerifier != "" {
+		form.Set("code_verifier", codeVerifier)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.base+"/oauth2/token",
 		strings.NewReader(form.Encode()))

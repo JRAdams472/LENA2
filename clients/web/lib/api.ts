@@ -186,17 +186,20 @@ export async function refreshSessionRequest(
 // a code is not a bearer token, so this fails hard when the provider or
 // sessions are not configured on the server. nonce is the authorize-
 // request value the provider echoes in its id_token (Microsoft,
-// Facebook); providers without id_tokens ignore it.
+// Facebook); providers without id_tokens ignore it. codeVerifier is
+// the PKCE secret the server forwards to the token exchange — required
+// since the authorize redirect carried a code_challenge.
 export async function createProviderSession(
   provider: string,
   code: string,
   nonce?: string,
-  device?: string
+  device?: string,
+  codeVerifier?: string
 ): Promise<SessionBundle> {
   const res = await fetch(sessionUrl(`/auth/session/${provider}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, nonce, device: device ?? "web" }),
+    body: JSON.stringify({ code, nonce, device: device ?? "web", codeVerifier }),
   });
   if (!res.ok) {
     throw new Error(`${provider} sign-in failed (HTTP ${res.status})`);

@@ -102,8 +102,12 @@ its own session on top of the provider credential:
   providers whose credential can't be a bearer token: `discord`
   (`code` → `users/@me`), `microsoft` and `facebook` (`code` → OIDC
   `id_token`, verified by the §3 machinery; `nonce` binds the authorize
-  request to the token and is required for Facebook). Unauthenticated —
-  the code is the credential — IP-rate-limited, 8K body.
+  request to the token and is required for Facebook). The request must
+  also carry `codeVerifier` — the browser sends an S256 `code_challenge`
+  on the authorize redirect and the server forwards the verifier to the
+  token exchange, so an intercepted code alone cannot be redeemed
+  (PKCE, RFC 7636). Unauthenticated — the code + verifier are the
+  credential — IP-rate-limited, 8K body.
 
 **Access token** — HS256 JWT signed with `LENA_SESSION_SECRET`,
 `iss=lena`, `sub=<user_id>`, ~15 min TTL (`LENA_SESSION_ACCESS_TTL`).

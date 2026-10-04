@@ -46,7 +46,8 @@ interface AuthContextValue {
   signInWithProvider: (
     provider: string,
     code: string,
-    nonce?: string
+    nonce?: string,
+    codeVerifier?: string
   ) => Promise<void>;
   signOut: () => void;
 }
@@ -257,8 +258,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // session server-side, then `me` hydrates the display identity (a
   // code carries no readable claims).
   const signInWithProvider = useCallback(
-    async (provider: string, code: string, nonce?: string) => {
-      const bundle = await createProviderSession(provider, code, nonce, DEVICE);
+    async (provider: string, code: string, nonce?: string, codeVerifier?: string) => {
+      const bundle = await createProviderSession(provider, code, nonce, DEVICE, codeVerifier);
       setSessionHint(true);
       tokenStore.setToken(bundle.accessToken);
       const me = await api.getMe().catch(() => null);
