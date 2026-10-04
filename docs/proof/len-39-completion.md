@@ -1,6 +1,6 @@
 # LEN-39 — P5: Nonce-based CSP — Completion Proof
 
-PR: https://github.com/JRAdams472/LENA2/pull/TBD
+PR: https://github.com/JRAdams472/LENA2/pull/261
 Ticket: LEN-39 (parent LEN-29, OWASP Top 10 2021 remediation — finding 7)
 Branch: `len-39-p5-csp`
 
