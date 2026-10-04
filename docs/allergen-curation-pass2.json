@@ -1,0 +1,694 @@
+{
+  "generated_at": "2026-10-04T13:09:44.0462453Z",
+  "model": "qwen2.5:7b-instruct",
+  "mappings": [
+    {
+      "ingredient_id": 345,
+      "ingredient_name": "butterscotch chips",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        },
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Butterscotch chips often contain peanuts as a key ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 204,
+      "ingredient_name": "cajun seasoning",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cajun seasoning may contain wheat as a thickener or flavor enhancer. [reviewed]"
+    },
+    {
+      "ingredient_id": 109,
+      "ingredient_name": "canned corn",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Canned corn is inherently a source of corn. [reviewed]"
+    },
+    {
+      "ingredient_id": 103,
+      "ingredient_name": "chipotle peppers in adobo",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Chipotle peppers in adobo may contain wheat as a thickener or flavor enhancer. [reviewed]"
+    },
+    {
+      "ingredient_id": 343,
+      "ingredient_name": "chocolate chips",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        },
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Chocolate chips may contain milk in the coating and may contain wheat as a thickener or flavor enhancer. [reviewed]"
+    },
+    {
+      "ingredient_id": 406,
+      "ingredient_name": "clams",
+      "allergens": [
+        {
+          "name": "molluscs",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Clams are crustacean shellfish. [reviewed]"
+    },
+    {
+      "ingredient_id": 262,
+      "ingredient_name": "cocktail sauce",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cocktail sauce often contains mustard as a flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 309,
+      "ingredient_name": "couscous",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Couscous is made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 223,
+      "ingredient_name": "curry paste",
+      "allergens": [
+        {
+          "name": "crustacean shellfish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Curry paste often contains mustard as a flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 199,
+      "ingredient_name": "curry powder",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Curry powder often contains mustard as a flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 196,
+      "ingredient_name": "everything bagel seasoning",
+      "allergens": [
+        {
+          "name": "sesame",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Everything bagel seasoning often contains mustard as a flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 95,
+      "ingredient_name": "fruit cocktail",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Fruit cocktail often contains corn syrup as a preservative. [reviewed]"
+    },
+    {
+      "ingredient_id": 222,
+      "ingredient_name": "gochujang",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Gochujang is a Korean chili paste that often contains soybeans. [reviewed]"
+    },
+    {
+      "ingredient_id": 297,
+      "ingredient_name": "granola",
+      "allergens": [
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        },
+        {
+          "name": "tree nuts",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Granola can contain wheat, but this depends on the specific recipe. [reviewed]"
+    },
+    {
+      "ingredient_id": 132,
+      "ingredient_name": "gravy mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Gravy mix often contains wheat flour as a thickener. [reviewed]"
+    },
+    {
+      "ingredient_id": 307,
+      "ingredient_name": "grits",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Grits are made from ground corn. [reviewed]"
+    },
+    {
+      "ingredient_id": 401,
+      "ingredient_name": "ground beef",
+      "allergens": [
+        {
+          "name": "beef",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ground beef is not an allergen, but it can be processed with milk and wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 398,
+      "ingredient_name": "ground pork",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ground pork is not an allergen, but it can be processed with milk and wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 210,
+      "ingredient_name": "hot sauce",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hot sauce can contain wheat, but this is not inherent to all hot sauces. [reviewed]"
+    },
+    {
+      "ingredient_id": 256,
+      "ingredient_name": "italian dressing",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Italian dressing often contains soy sauce and wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 117,
+      "ingredient_name": "pie filling",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "may_contain"
+        },
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pie filling often contains corn and wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 31,
+      "ingredient_name": "pork chops",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pork chops are a source of pork. [reviewed]"
+    },
+    {
+      "ingredient_id": 390,
+      "ingredient_name": "pork loin",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pork loin is a source of pork. [reviewed]"
+    },
+    {
+      "ingredient_id": 389,
+      "ingredient_name": "pork shoulder",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pork shoulder is a source of pork. [reviewed]"
+    },
+    {
+      "ingredient_id": 127,
+      "ingredient_name": "potato chips",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Potato chips often contain wheat as an ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 126,
+      "ingredient_name": "pretzels",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pretzels often contain wheat as an ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 148,
+      "ingredient_name": "salami",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        },
+        {
+          "name": "beef",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Salami may contain milk as a binder or emulsifier, though this is not a common practice. [reviewed]"
+    },
+    {
+      "ingredient_id": 29,
+      "ingredient_name": "sirloin steak",
+      "allergens": [
+        {
+          "name": "beef",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sirloin steak is a cut of beef and does not inherently contain any of the known allergens. [reviewed]"
+    },
+    {
+      "ingredient_id": 271,
+      "ingredient_name": "sprinkles",
+      "allergens": [
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sprinkles may contain gluten as a stabilizer or thickener, though this is not a common practice. [reviewed]"
+    },
+    {
+      "ingredient_id": 385,
+      "ingredient_name": "steak",
+      "allergens": [
+        {
+          "name": "beef",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Steak is a cut of beef and does not inherently contain any of the known allergens. [reviewed]"
+    },
+    {
+      "ingredient_id": 124,
+      "ingredient_name": "stuffing mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Stuffing mix may contain wheat as an ingredient, though the specific formulation is not provided. [reviewed]"
+    },
+    {
+      "ingredient_id": 244,
+      "ingredient_name": "sweet chili sauce",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sweet chili sauce is typically made with fish sauce and does not inherently contain any of the known allergens, but fish is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 121,
+      "ingredient_name": "taco seasoning",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Taco seasoning may contain wheat as a hidden ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 242,
+      "ingredient_name": "tartar sauce",
+      "allergens": [
+        {
+          "name": "eggs",
+          "kind": "contains"
+        },
+        {
+          "name": "mustard",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Tartar sauce may contain eggs, fish, mustard, and soy as hidden ingredients. [reviewed]"
+    }
+  ],
+  "unresolved": [
+    {
+      "ingredient_id": 233,
+      "ingredient_name": "apple butter",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 319,
+      "ingredient_name": "applesauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 269,
+      "ingredient_name": "avocado oil",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 110,
+      "ingredient_name": "canned chicken",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 411,
+      "ingredient_name": "chicken breast",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 410,
+      "ingredient_name": "chicken drumsticks",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 409,
+      "ingredient_name": "chicken thighs",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 408,
+      "ingredient_name": "chicken wings",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 342,
+      "ingredient_name": "cocoa powder",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 101,
+      "ingredient_name": "cranberry sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 214,
+      "ingredient_name": "cream of tartar",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 98,
+      "ingredient_name": "crushed tomatoes",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 402,
+      "ingredient_name": "deli turkey",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 97,
+      "ingredient_name": "diced tomatoes",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 194,
+      "ingredient_name": "garlic powder",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 338,
+      "ingredient_name": "gluten-free flour",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 94,
+      "ingredient_name": "green olives",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 160,
+      "ingredient_name": "green onion",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 400,
+      "ingredient_name": "ground chicken",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 399,
+      "ingredient_name": "ground lamb",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 397,
+      "ingredient_name": "ground turkey",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 187,
+      "ingredient_name": "italian seasoning",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 59,
+      "ingredient_name": "jalapeno",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 232,
+      "ingredient_name": "jelly",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 255,
+      "ingredient_name": "ketchup",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 393,
+      "ingredient_name": "lamb chops",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 185,
+      "ingredient_name": "lemon pepper",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 322,
+      "ingredient_name": "marinara sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 182,
+      "ingredient_name": "onion powder",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 321,
+      "ingredient_name": "pizza sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 180,
+      "ingredient_name": "poultry seasoning",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 179,
+      "ingredient_name": "pumpkin pie spice",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 320,
+      "ingredient_name": "salsa",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 316,
+      "ingredient_name": "sauerkraut",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 176,
+      "ingredient_name": "seasoned salt",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 175,
+      "ingredient_name": "smoked paprika",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 174,
+      "ingredient_name": "steak seasoning",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 229,
+      "ingredient_name": "strawberry jam",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 8,
+      "ingredient_name": "sun-dried tomatoes",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 281,
+      "ingredient_name": "sunflower seeds",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 28,
+      "ingredient_name": "whole chicken",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 27,
+      "ingredient_name": "whole turkey",
+      "reason": "reviewer: no plausible allergen"
+    }
+  ]
+}
