@@ -58,6 +58,7 @@ Seq and Jaeger run locally in the compose stack and are both queryable over plai
       -e SONAR_TOKEN="$TOKEN" sonarsource/sonar-scanner-cli \
       -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.projectKey=lena2 \
       -Dsonar.sources=. -Dsonar.exclusions='**/sqlc/**,**/mock/**,migrations/seed/**' \
+      -Dsonar.tests=clients/web/__tests__,clients/web/e2e,clients/mobile/test -Dsonar.test.inclusions='**/*_test.go' \
       -Dsonar.go.coverage.reportPaths=coverage.out \
       -Dsonar.javascript.lcov.reportPaths=clients/web/coverage/lcov.info
     ```
