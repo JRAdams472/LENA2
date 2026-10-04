@@ -52,7 +52,7 @@ After the final phase of any plan merges, before starting the next:
 1. Delete merged phase branches locally and on GitHub (verify PR state with `gh` first).
 2. Ensure no new feature is left at zero test coverage — every new service, resolver, or page needs at least one unit or integration test.
 3. Re-walk corrected audit findings (`audit/summary.md`) for regressions.
-4. Note improvements or new features inspired by the completed work (e.g. `docs/newfeatures.md`).
+4. File Linear tickets (project **LENA**) for improvements or new features inspired by the completed work — `docs/newfeatures.md` is a shipped-feature history only, not the backlog.
 5. Update `README.md` so features and architecture reflect what shipped — including sweeping for stale claims (e.g. a "no refresh tokens" note surviving after sessions shipped).
 6. Review every doc listed in `README.md`'s **Documentation** section plus the touched client READMEs (`clients/web/README.md`, `clients/mobile/README.md`) for staleness — env vars, versions, workflow/job names, helper-package names, and endpoint lists drift fast.
 7. Update the GitHub wiki (`LENA2.wiki.git`) — it lives outside the repo, so clone it, add/refresh pages for what shipped, and push to `master`.
