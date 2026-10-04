@@ -939,14 +939,6 @@ func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, erro
 	return out, nil
 }
 
-// recipeItems returns the recipe's lines from the preload or a lazy fetch.
-func (r *recipeResolver) recipeItems(ctx context.Context) ([]recipe.RecipeItem, error) {
-	if r.rc != nil {
-		return r.rc.itemsBy[r.recipe.RecipeID], nil
-	}
-	return r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
-}
-
 // allergenSet unions every recipe line's resolved flags.
 func (r *recipeResolver) allergenSet(ctx context.Context) (*allergyContext, map[int64]string, error) {
 	var ac *allergyContext
