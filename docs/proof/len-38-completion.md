@@ -1,6 +1,6 @@
 # LEN-38 — LEN-29 P4 OAuth PKCE: proof of completion
 
-PR: https://github.com/JRAdams472/LENA2/pull/TBD
+PR: https://github.com/JRAdams472/LENA2/pull/260
 Parent: LEN-29 (OWASP Top 10 review). Finding: #4 (OAuth code flows lack PKCE and server-side state binding).
 
 ## What shipped
