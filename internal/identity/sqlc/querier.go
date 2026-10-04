@@ -30,6 +30,10 @@ type Querier interface {
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
 	ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]IdentityUser, error)
 	ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]IdentityUser, error)
+	// Deactivation kills every live refresh-token family for the user so the
+	// session cookie path dies immediately (access tokens still expire on
+	// their own TTL).
+	RevokeUserSessions(ctx context.Context, userID int64) error
 	// Household-invite candidate search: opt-in, active users only, caller and
 	// the caller's household members excluded. pattern is a pre-escaped LIKE
 	// pattern built by the service.

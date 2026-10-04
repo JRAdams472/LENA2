@@ -96,3 +96,38 @@ func TestValidateServer(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateServer_SessionSecret(t *testing.T) {
+	base := map[string]string{
+		"LENA_DATABASE_URL":   "postgres://x",
+		"LENA_AUTH_AUDIENCES": "aud",
+	}
+	cases := []struct {
+		name    string
+		secret  string
+		wantErr bool
+	}{
+		{"unset is allowed", "", false},
+		{"short secret rejected", "changeme", true},
+		{"31 bytes rejected", "e2e-session-secret-not-for-prod", true},
+		{"32 bytes accepted", "e2e-session-secret-not-for-prod!", false},
+		{"generated secret accepted", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range base {
+				t.Setenv(k, v)
+			}
+			t.Setenv("LENA_SESSION_SECRET", tc.secret)
+			cfg, err := Load()
+			require.NoError(t, err)
+			err = cfg.ValidateServer()
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "SESSION_SECRET")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

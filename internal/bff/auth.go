@@ -4,6 +4,8 @@ package bff
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -324,11 +326,8 @@ func hashSubject(subject string) string {
 	if subject == "" {
 		return ""
 	}
-	const limit = 16
-	if len(subject) <= limit {
-		return subject
-	}
-	return subject[:limit]
+	sum := sha256.Sum256([]byte(subject))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // authenticate routes on the token's issuer claim: LENA-issued session

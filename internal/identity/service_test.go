@@ -440,6 +440,8 @@ func TestAdminSetActive(t *testing.T) {
 				assert.Equal(t, pgtype.Text{String: "admin@b.com", Valid: true}, arg.UpdatedBy)
 				return 1, nil
 			})
+		// Deactivation revokes every live refresh-token family.
+		mq.EXPECT().RevokeUserSessions(ctx, int64(2)).Return(nil)
 
 		require.NoError(t, svc.AdminSetActive(ctx, 1, 2, false, "admin@b.com"))
 	})

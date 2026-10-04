@@ -594,18 +594,28 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 	if err := s.checkAdminMutation(actorID, target); err != nil {
 		return err
 	}
-	n, err := s.q.ConditionalSetUserActive(ctx, sqlc.ConditionalSetUserActiveParams{
-		UserID:    targetID,
-		IsActive:  active,
-		UpdatedBy: textOrNull(by),
+	return s.InTx(ctx, func(tx *Service) error {
+		n, err := tx.q.ConditionalSetUserActive(ctx, sqlc.ConditionalSetUserActiveParams{
+			UserID:    targetID,
+			IsActive:  active,
+			UpdatedBy: textOrNull(by),
+		})
+		if err != nil {
+			return fmt.Errorf("set user active: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("set user active: %w", domainerr.ErrLastAdmin)
+		}
+		// Deactivation kills every live refresh-token family so the session
+		// cookie path dies immediately; outstanding access tokens still
+		// expire on their own TTL.
+		if !active {
+			if err := tx.q.RevokeUserSessions(ctx, targetID); err != nil {
+				return fmt.Errorf("revoke user sessions: %w", err)
+			}
+		}
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("set user active: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("set user active: %w", domainerr.ErrLastAdmin)
-	}
-	return nil
 }
 
 // UpdateProfile stores the user's editable profile fields. Names are

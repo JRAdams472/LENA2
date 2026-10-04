@@ -83,6 +83,9 @@ func (r *Resolver) SetUserActive(ctx context.Context, args struct {
 	if err := r.IdentityService.AdminSetActive(ctx, actor.UserID, targetID, args.IsActive, actor.Email); err != nil {
 		return nil, mapAdminGuardError(err)
 	}
+	// Evict the cached identity so a ban applies on the target's next
+	// request instead of up to userCacheTTL later.
+	r.invalidateUserID(ctx, targetID)
 	slog.Default().Info("audit",
 		"action", "set_user_active",
 		"actor", actor.Email,

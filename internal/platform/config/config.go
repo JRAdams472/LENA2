@@ -264,5 +264,11 @@ func (c *Config) ValidateServer() error {
 		return fmt.Errorf("AUTH_AUDIENCES contains the placeholder value 'dummy'; set a real audience or configure a test issuer")
 	}
 
+	// A weak HS256 key can be brute-forced offline from a single captured
+	// access token, so anything under 32 bytes refuses to boot.
+	if c.SessionSecret != "" && len(c.SessionSecret) < 32 {
+		return fmt.Errorf("SESSION_SECRET must be at least 32 bytes when set; generate one with 'openssl rand -base64 48'")
+	}
+
 	return nil
 }
