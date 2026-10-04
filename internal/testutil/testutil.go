@@ -202,7 +202,7 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 // is assigned instead.
 func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email string) int64 {
 	svc := identity.NewService(pool)
-	u, err := svc.UpsertUser(ctx, "test-provider", email, email, "Test User")
+	u, err := svc.UpsertUser(ctx, testProvider, email, email, "Test User")
 	if err != nil {
 		t.Fatalf("create test user: %v", err)
 	}
@@ -289,7 +289,7 @@ func WithHousehold(ctx context.Context, userID, householdID int64, email string)
 func WithHouseholdRole(ctx context.Context, userID, householdID int64, role, email string) context.Context {
 	return currentuser.WithUser(ctx, currentuser.User{
 		UserID:        userID,
-		Provider:      "test-provider",
+		Provider:      testProvider,
 		Email:         email,
 		HouseholdID:   householdID,
 		HouseholdRole: role,
@@ -301,7 +301,7 @@ func WithHouseholdRole(ctx context.Context, userID, householdID int64, role, ema
 func WithAdmin(ctx context.Context, userID int64, email string) context.Context {
 	return currentuser.WithUser(ctx, currentuser.User{
 		UserID:      userID,
-		Provider:    "test-provider",
+		Provider:    testProvider,
 		Email:       email,
 		IsAdmin:     true,
 		HouseholdID: userID,
@@ -322,6 +322,9 @@ var (
 	copyLineRE   = regexp.MustCompile(`(?m)^\\copy\s+.*?;`)
 )
 
+// testProvider is the synthetic OIDC provider stamped on test identities.
+const testProvider = "test-provider"
+
 func execFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
 	path = filepath.Clean(path)
 	// #nosec G304 -- migration paths are globbed from the repo's migrations/ directory.
@@ -338,29 +341,25 @@ func execFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
 	text := string(content)
 	last := 0
 	for _, loc := range copyLineRE.FindAllStringIndex(text, -1) {
-		if loc[0] > last {
-			stmt := strings.TrimSpace(text[last:loc[0]])
-			if stmt != "" {
-				if _, err := pool.Exec(ctx, stmt); err != nil {
-					return err
-				}
-			}
+		if err := execPlain(ctx, pool, text[last:loc[0]]); err != nil {
+			return err
 		}
 		if err := runCopy(ctx, pool, root, text[loc[0]:loc[1]]); err != nil {
 			return err
 		}
 		last = loc[1]
 	}
+	return execPlain(ctx, pool, text[last:])
+}
 
-	if last < len(text) {
-		stmt := strings.TrimSpace(text[last:])
-		if stmt != "" {
-			if _, err := pool.Exec(ctx, stmt); err != nil {
-				return err
-			}
-		}
+// execPlain executes one non-\copy statement segment, skipping blanks.
+func execPlain(ctx context.Context, pool *pgxpool.Pool, seg string) error {
+	stmt := strings.TrimSpace(seg)
+	if stmt == "" {
+		return nil
 	}
-	return nil
+	_, err := pool.Exec(ctx, stmt)
+	return err
 }
 
 func runCopy(ctx context.Context, pool *pgxpool.Pool, root, stmt string) error {

@@ -125,48 +125,15 @@ func splitLeadingQuantity(line string) (*float64, string, []string, string) {
 		return r
 	}, s))
 
-	var qty float64
-	var extras []string
-	var unit string
-
-	if m := rangeRe.FindStringSubmatch(s); m != nil {
-		qty = parseDecimal(m[1])
-		extras = append(extras, fmt.Sprintf("range %s-%s", m[1], m[2]))
-		s = s[len(m[0]):]
-	} else if m := mixedRe.FindStringSubmatch(s); m != nil {
-		whole := parseDecimal(m[1])
-		num := parseDecimal(m[2])
-		den := parseDecimal(m[3])
-		if den == 0 {
-			return nil, "", nil, line
-		}
-		qty = whole + num/den
-		s = s[len(m[0]):]
-	} else if m := fractionRe.FindStringSubmatch(s); m != nil {
-		num := parseDecimal(m[1])
-		den := parseDecimal(m[2])
-		if den == 0 {
-			return nil, "", nil, line
-		}
-		qty = num / den
-		s = s[len(m[0]):]
-	} else if m := numberRe.FindStringSubmatch(s); m != nil {
-		qty = parseDecimal(m[1])
-		s = s[len(m[0]):]
-	} else if m := wordQtyRe.FindStringSubmatch(s); m != nil {
-		rest := strings.TrimSpace(s[len(m[0]):])
-		if tok, _ := nextToken(rest); vagueQtyWords[tok] {
-			return nil, "", nil, line // "a few carrots" — not a quantity
-		}
-		qty = 1
-		s = s[len(m[0]):]
-	} else {
+	qty, extras, s, ok := leadingQty(s)
+	if !ok {
 		return nil, "", nil, line
 	}
 
 	s = strings.TrimSpace(s)
 
 	// Optional package-size qualifier: "28-oz can", "750ml bottle".
+	var unit string
 	if m := sizeRe.FindStringSubmatch(s); m != nil {
 		rest := strings.TrimSpace(s[len(m[0]):])
 		if tok, n := nextToken(rest); containerWords[tok] {
@@ -179,42 +146,80 @@ func splitLeadingQuantity(line string) (*float64, string, []string, string) {
 	// Optional unit word ("fluid ounce" counts as one unit). May already be
 	// set by the package-size branch.
 	s = strings.TrimSpace(s)
-	if unit != "" {
-		rest := strings.TrimSpace(s)
-		if strings.HasPrefix(strings.ToLower(rest), "of ") {
-			rest = strings.TrimSpace(rest[3:])
-		}
-		return &qty, unit, extras, rest
+	if unit == "" {
+		unit, s = unitWord(s)
 	}
 
+	return &qty, unit, extras, stripLeadingOf(s)
+}
+
+// leadingQty parses the quantity prefix — range, mixed number, fraction,
+// decimal, or quantity word. ok=false means no quantity was present (the
+// caller returns the original line as the ingredient text).
+func leadingQty(s string) (qty float64, extras []string, rest string, ok bool) {
+	if m := rangeRe.FindStringSubmatch(s); m != nil {
+		return parseDecimal(m[1]), []string{fmt.Sprintf("range %s-%s", m[1], m[2])}, s[len(m[0]):], true
+	}
+	if m := mixedRe.FindStringSubmatch(s); m != nil {
+		whole := parseDecimal(m[1])
+		num := parseDecimal(m[2])
+		den := parseDecimal(m[3])
+		if den == 0 {
+			return 0, nil, "", false
+		}
+		return whole + num/den, nil, s[len(m[0]):], true
+	}
+	if m := fractionRe.FindStringSubmatch(s); m != nil {
+		num := parseDecimal(m[1])
+		den := parseDecimal(m[2])
+		if den == 0 {
+			return 0, nil, "", false
+		}
+		return num / den, nil, s[len(m[0]):], true
+	}
+	if m := numberRe.FindStringSubmatch(s); m != nil {
+		return parseDecimal(m[1]), nil, s[len(m[0]):], true
+	}
+	if m := wordQtyRe.FindStringSubmatch(s); m != nil {
+		rest := strings.TrimSpace(s[len(m[0]):])
+		if tok, _ := nextToken(rest); vagueQtyWords[tok] {
+			return 0, nil, "", false // "a few carrots" — not a quantity
+		}
+		return 1, nil, s[len(m[0]):], true
+	}
+	return 0, nil, "", false
+}
+
+// unitWord consumes a unit token ("fl oz"/"fluid ounce" count as one
+// unit), returning the unit and the remaining text.
+func unitWord(s string) (unit, rest string) {
 	tok, n := nextToken(s)
 	switch {
 	case tok == "fl":
-		if rest := strings.TrimSpace(s[n:]); len(rest) > 0 {
-			if t2, n2 := nextToken(rest); t2 == "oz" || t2 == "ounce" || t2 == "ounces" {
-				unit = "fl oz"
-				s = rest[n2:]
+		if r := strings.TrimSpace(s[n:]); len(r) > 0 {
+			if t2, n2 := nextToken(r); t2 == "oz" || t2 == "ounce" || t2 == "ounces" {
+				return "fl oz", r[n2:]
 			}
 		}
 	case tok == "fluid":
-		if rest := strings.TrimSpace(s[n:]); len(rest) > 0 {
-			if t2, n2 := nextToken(rest); t2 == "ounce" || t2 == "ounces" {
-				unit = "fluid ounce"
-				s = rest[n2:]
+		if r := strings.TrimSpace(s[n:]); len(r) > 0 {
+			if t2, n2 := nextToken(r); t2 == "ounce" || t2 == "ounces" {
+				return "fluid ounce", r[n2:]
 			}
 		}
 	case unitWords[tok]:
-		unit = tok
-		s = s[n:]
+		return tok, s[n:]
 	}
+	return "", s
+}
 
-	// "1 can of tomatoes" — drop a leading "of".
+// stripLeadingOf drops a leading "of" — "1 can of tomatoes".
+func stripLeadingOf(s string) string {
 	rest := strings.TrimSpace(s)
 	if strings.HasPrefix(strings.ToLower(rest), "of ") {
 		rest = strings.TrimSpace(rest[3:])
 	}
-
-	return &qty, unit, extras, rest
+	return rest
 }
 
 // nextToken returns the first space-or-punctuation-delimited word, lowercased

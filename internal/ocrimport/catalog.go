@@ -290,33 +290,80 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		}
 	}
 
-	// Fuzzy sweep over items and ingredients.
-	type scored struct {
-		id    string
-		name  string
-		kind  string
-		score float64
+	return s.fuzzyMatch(result, matchText, autoAccept, reviewThreshold)
+}
+
+// scoredCandidate is one fuzzy-match contender.
+type scoredCandidate struct {
+	id    string
+	name  string
+	kind  string
+	score float64
+}
+
+// fuzzyMatch sweeps items and ingredients sharing a content word with the
+// query, ranks them (generic ingredients get a small boost over same-scored
+// branded products), and maps the top hit to a status.
+func (s *CatalogSnapshot) fuzzyMatch(result MatchResult, matchText string, autoAccept, reviewThreshold float64) MatchResult {
+	candidates := s.fuzzyCandidates(matchText)
+	if len(candidates) == 0 {
+		return result
 	}
-	candidates := make([]scored, 0, len(s.Items)+len(s.Ingredients))
+	best := candidates[0]
+	if best.score >= autoAccept && best.kind == "item" {
+		return MatchResult{
+			ItemID:     best.id,
+			ItemKind:   "item",
+			ItemName:   best.name,
+			Confidence: best.score,
+			Status:     "accepted",
+		}
+	}
+
+	suggestions := make([]Suggestion, 0, 3)
+	for _, c := range candidates {
+		if c.score < reviewThreshold || len(suggestions) >= 3 {
+			break
+		}
+		suggestions = append(suggestions, Suggestion{ID: c.id, Name: c.name, Kind: c.kind, Score: c.score})
+	}
+	result.Suggestions = suggestions
+
+	if best.score < reviewThreshold {
+		result.Status = "unmatched"
+		return result
+	}
+	result.Status = "suggested"
+	if best.kind == "item" {
+		result.ItemID = best.id
+		result.ItemKind = "item"
+		result.ItemName = best.name
+		result.Confidence = best.score
+	} else {
+		result.Notes = fmt.Sprintf("matched generic ingredient %s; create or choose a catalog item", best.id)
+	}
+	return result
+}
+
+// fuzzyCandidates scores every item/ingredient that shares a content word
+// with the query, ranked by boosted score.
+func (s *CatalogSnapshot) fuzzyCandidates(matchText string) []scoredCandidate {
+	candidates := make([]scoredCandidate, 0, len(s.Items)+len(s.Ingredients))
 	queryWords := s.contentWords(matchText)
 
 	for _, it := range s.Items {
 		if !s.sharesContentWord(queryWords, it.Name()) {
 			continue
 		}
-		score := Similarity(matchText, it.Name())
-		candidates = append(candidates, scored{it.ID(), it.Name(), "item", score})
+		candidates = append(candidates, scoredCandidate{it.ID(), it.Name(), "item", Similarity(matchText, it.Name())})
 	}
 	for _, in := range s.Ingredients {
 		if !s.sharesContentWord(queryWords, in.Name()) {
 			continue
 		}
-		score := Similarity(matchText, in.Name())
-		candidates = append(candidates, scored{in.ID(), in.Name(), "ingredient", score})
+		candidates = append(candidates, scoredCandidate{in.ID(), in.Name(), "ingredient", Similarity(matchText, in.Name())})
 	}
 
-	// Rank by score, with a small ingredient-kind preference so generic
-	// ingredients outrank same-scored branded products.
 	sort.Slice(candidates, func(i, j int) bool {
 		si, sj := candidates[i].score, candidates[j].score
 		if candidates[i].kind == "ingredient" {
@@ -327,47 +374,7 @@ func (s *CatalogSnapshot) MatchItem(raw string, autoAccept, reviewThreshold floa
 		}
 		return si > sj
 	})
-
-	if len(candidates) > 0 {
-		best := candidates[0]
-		if best.score >= autoAccept && best.kind == "item" {
-			return MatchResult{
-				ItemID:     best.id,
-				ItemKind:   "item",
-				ItemName:   best.name,
-				Confidence: best.score,
-				Status:     "accepted",
-			}
-		}
-
-		suggestions := make([]Suggestion, 0, 3)
-		for _, c := range candidates {
-			if c.score < reviewThreshold {
-				break
-			}
-			if len(suggestions) >= 3 {
-				break
-			}
-			suggestions = append(suggestions, Suggestion{ID: c.id, Name: c.name, Kind: c.kind, Score: c.score})
-		}
-		result.Suggestions = suggestions
-
-		if best.score >= reviewThreshold {
-			result.Status = "suggested"
-			if best.kind == "item" {
-				result.ItemID = best.id
-				result.ItemKind = "item"
-				result.ItemName = best.name
-				result.Confidence = best.score
-			} else {
-				result.Notes = fmt.Sprintf("matched generic ingredient %s; create or choose a catalog item", best.id)
-			}
-		} else {
-			result.Status = "unmatched"
-		}
-	}
-
-	return result
+	return candidates
 }
 
 // MapDraftItem combines unit normalization and ingredient matching into a

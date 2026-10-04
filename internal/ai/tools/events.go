@@ -102,21 +102,9 @@ func buildEventTimeline(ctx context.Context, events EventTimelineReader, recipes
 	if err != nil {
 		return EventTimelineOut{}, fmt.Errorf("list event recipes: %w", err)
 	}
-	names := map[int64]string{}
-	var recipeIDs []int64
-	for _, er := range ers {
-		if er.RecipeID != nil {
-			recipeIDs = append(recipeIDs, *er.RecipeID)
-		}
-	}
-	if len(recipeIDs) > 0 && recipes != nil {
-		list, err := recipes.GetRecipesByIDs(ctx, recipeIDs)
-		if err != nil {
-			return EventTimelineOut{}, fmt.Errorf("recipe names: %w", err)
-		}
-		for _, r := range list {
-			names[r.RecipeID] = r.Name
-		}
+	names, err := eventRecipeNames(ctx, recipes, ers)
+	if err != nil {
+		return EventTimelineOut{}, err
 	}
 	steps, err := events.ListEventRecipeStepsForEvents(ctx, []int64{foodEventID}, householdID)
 	if err != nil {
@@ -129,39 +117,7 @@ func buildEventTimeline(ctx context.Context, events EventTimelineReader, recipes
 
 	slots := make([]event.TimelineRecipeInput, len(ers))
 	for i, er := range ers {
-		var in []event.TimelineStepInput
-		for _, s := range stepsBy[er.EventRecipeID] {
-			in = append(in, event.TimelineStepInput{
-				StepNumber:          s.StepNumber,
-				Instruction:         s.Instruction,
-				DurationMinutes:     s.DurationMinutes,
-				StepType:            s.StepType,
-				IsPassive:           s.IsPassive,
-				DependsOnStepNumber: s.DependsOnStepNumber,
-				Appliance:           s.Appliance,
-			})
-		}
-		name := ""
-		if er.RecipeID != nil {
-			name = names[*er.RecipeID]
-		}
-		if name == "" {
-			name = er.Notes
-		}
-		if name == "" {
-			name = er.MealType
-		}
-		if name == "" {
-			name = "Unnamed dish"
-		}
-		slots[i] = event.TimelineRecipeInput{
-			EventRecipeID: er.EventRecipeID,
-			Name:          name,
-			TargetTime:    er.TargetTime,
-			Servings:      er.Servings,
-			BaseServings:  er.BaseServings,
-			Steps:         in,
-		}
+		slots[i] = timelineSlot(er, stepsBy[er.EventRecipeID], names)
 	}
 
 	tl := event.BuildTimeline(ev, slots)
@@ -200,4 +156,64 @@ func buildEventTimeline(ctx context.Context, events EventTimelineReader, recipes
 		out.Recipes = append(out.Recipes, r)
 	}
 	return out, nil
+}
+
+// eventRecipeNames resolves display names for the event's linked recipes.
+func eventRecipeNames(ctx context.Context, recipes RecipeLookup, ers []event.EventRecipe) (map[int64]string, error) {
+	names := map[int64]string{}
+	var recipeIDs []int64
+	for _, er := range ers {
+		if er.RecipeID != nil {
+			recipeIDs = append(recipeIDs, *er.RecipeID)
+		}
+	}
+	if len(recipeIDs) == 0 || recipes == nil {
+		return names, nil
+	}
+	list, err := recipes.GetRecipesByIDs(ctx, recipeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("recipe names: %w", err)
+	}
+	for _, r := range list {
+		names[r.RecipeID] = r.Name
+	}
+	return names, nil
+}
+
+// timelineSlot converts one event recipe into a scheduling input, falling
+// back to notes/meal type for a name.
+func timelineSlot(er event.EventRecipe, steps []event.EventRecipeStep, names map[int64]string) event.TimelineRecipeInput {
+	in := make([]event.TimelineStepInput, 0, len(steps))
+	for _, s := range steps {
+		in = append(in, event.TimelineStepInput{
+			StepNumber:          s.StepNumber,
+			Instruction:         s.Instruction,
+			DurationMinutes:     s.DurationMinutes,
+			StepType:            s.StepType,
+			IsPassive:           s.IsPassive,
+			DependsOnStepNumber: s.DependsOnStepNumber,
+			Appliance:           s.Appliance,
+		})
+	}
+	name := ""
+	if er.RecipeID != nil {
+		name = names[*er.RecipeID]
+	}
+	if name == "" {
+		name = er.Notes
+	}
+	if name == "" {
+		name = er.MealType
+	}
+	if name == "" {
+		name = "Unnamed dish"
+	}
+	return event.TimelineRecipeInput{
+		EventRecipeID: er.EventRecipeID,
+		Name:          name,
+		TargetTime:    er.TargetTime,
+		Servings:      er.Servings,
+		BaseServings:  er.BaseServings,
+		Steps:         in,
+	}
 }

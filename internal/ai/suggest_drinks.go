@@ -237,22 +237,8 @@ func filterPairings(in []PairingSuggestion, cellar []tools.CellarBottleRow, maxC
 	seen := map[string]bool{}
 	out := make([]PairingSuggestion, 0, len(in))
 	for _, p := range in {
-		if p.BottleID != nil {
-			b, ok := cellarByID[*p.BottleID]
-			if !ok {
-				continue
-			}
-			name := b.Vineyard
-			if b.VintageYear > 0 {
-				name = fmt.Sprintf("%s %d", b.Vineyard, b.VintageYear)
-			}
-			p.Name = name
-			p.InCellar = true
-		} else {
-			p.Name = strings.TrimSpace(p.Name)
-			if p.Name == "" || len(p.Name) > 80 {
-				continue
-			}
+		if !resolvePairingName(&p, cellarByID) {
+			continue
 		}
 		var bottleKey int64
 		if p.BottleID != nil {
@@ -270,6 +256,27 @@ func filterPairings(in []PairingSuggestion, cellar []tools.CellarBottleRow, maxC
 		out = out[:maxCount]
 	}
 	return out
+}
+
+// resolvePairingName stamps the display name for a pairing pick: cellar
+// bottles get the "Vineyard Year" identity and InCellar; free-text picks
+// are trimmed and length-bounded. Returns false for unknown bottles and
+// empty/oversized names.
+func resolvePairingName(p *PairingSuggestion, cellarByID map[int64]tools.CellarBottleRow) bool {
+	if p.BottleID == nil {
+		p.Name = strings.TrimSpace(p.Name)
+		return p.Name != "" && len(p.Name) <= 80
+	}
+	b, ok := cellarByID[*p.BottleID]
+	if !ok {
+		return false
+	}
+	p.Name = b.Vineyard
+	if b.VintageYear > 0 {
+		p.Name = fmt.Sprintf("%s %d", b.Vineyard, b.VintageYear)
+	}
+	p.InCellar = true
+	return true
 }
 
 // filterCocktails drops picks for non-cocktail recipes, bounds strings,

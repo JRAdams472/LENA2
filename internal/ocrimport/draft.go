@@ -66,6 +66,34 @@ func ValidateDraft(d *RecipeDraft) error {
 	if d.ProfanityDetected {
 		return nil
 	}
+	if err := validateDraftScalars(d); err != nil {
+		return err
+	}
+	if len(d.Items) == 0 {
+		return errors.New("draft has no ingredients")
+	}
+	if len(d.Items) > maxDraftItems {
+		return fmt.Errorf("draft has %d items; maximum is %d", len(d.Items), maxDraftItems)
+	}
+	for i, it := range d.Items {
+		if err := validateDraftItem(i, it); err != nil {
+			return err
+		}
+	}
+	if len(d.Steps) > maxDraftSteps {
+		return fmt.Errorf("draft has %d steps; maximum is %d", len(d.Steps), maxDraftSteps)
+	}
+	for i, s := range d.Steps {
+		if err := validateDraftStep(i, s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateDraftScalars checks the top-level optional fields' presence and
+// bounds.
+func validateDraftScalars(d *RecipeDraft) error {
 	if d.Name == "" {
 		return errors.New("draft is missing a recipe name")
 	}
@@ -87,45 +115,43 @@ func ValidateDraft(d *RecipeDraft) error {
 	if d.CookTimeMinutes != nil && (*d.CookTimeMinutes < 0 || *d.CookTimeMinutes > maxDraftMinutes) {
 		return fmt.Errorf("cook time must be between 0 and %d minutes", maxDraftMinutes)
 	}
-	if len(d.Items) == 0 {
-		return errors.New("draft has no ingredients")
+	return nil
+}
+
+// validateDraftItem checks one ingredient line's required name and the
+// bounds on its optional fields.
+func validateDraftItem(i int, it DraftItem) error {
+	if it.Ingredient == "" {
+		return fmt.Errorf("item %d is missing an ingredient name", i)
 	}
-	if len(d.Items) > maxDraftItems {
-		return fmt.Errorf("draft has %d items; maximum is %d", len(d.Items), maxDraftItems)
+	if len(it.Ingredient) > maxDraftIngredientLen {
+		return fmt.Errorf("item %d ingredient exceeds %d characters", i, maxDraftIngredientLen)
 	}
-	for i, it := range d.Items {
-		if it.Ingredient == "" {
-			return fmt.Errorf("item %d is missing an ingredient name", i)
-		}
-		if len(it.Ingredient) > maxDraftIngredientLen {
-			return fmt.Errorf("item %d ingredient exceeds %d characters", i, maxDraftIngredientLen)
-		}
-		if it.Quantity != nil && (*it.Quantity <= 0 || *it.Quantity > maxDraftQuantity) {
-			return fmt.Errorf("item %d quantity must be between 0 and %g", i, maxDraftQuantity)
-		}
-		if it.Unit != nil && len(*it.Unit) > maxDraftTextLen {
-			return fmt.Errorf("item %d unit exceeds %d characters", i, maxDraftTextLen)
-		}
-		if it.Section != nil && len(*it.Section) > maxDraftTextLen {
-			return fmt.Errorf("item %d section exceeds %d characters", i, maxDraftTextLen)
-		}
-		if it.Notes != nil && len(*it.Notes) > maxDraftTextLen {
-			return fmt.Errorf("item %d notes exceeds %d characters", i, maxDraftTextLen)
-		}
+	if it.Quantity != nil && (*it.Quantity <= 0 || *it.Quantity > maxDraftQuantity) {
+		return fmt.Errorf("item %d quantity must be between 0 and %g", i, maxDraftQuantity)
 	}
-	if len(d.Steps) > maxDraftSteps {
-		return fmt.Errorf("draft has %d steps; maximum is %d", len(d.Steps), maxDraftSteps)
+	if it.Unit != nil && len(*it.Unit) > maxDraftTextLen {
+		return fmt.Errorf("item %d unit exceeds %d characters", i, maxDraftTextLen)
 	}
-	for i, s := range d.Steps {
-		if s.StepNumber <= 0 || s.StepNumber > maxDraftStepNumber {
-			return fmt.Errorf("step %d has an invalid step number", i)
-		}
-		if s.Instruction == "" {
-			return fmt.Errorf("step %d has an empty instruction", i)
-		}
-		if len(s.Instruction) > maxDraftInstructionLen {
-			return fmt.Errorf("step %d instruction exceeds %d characters", i, maxDraftInstructionLen)
-		}
+	if it.Section != nil && len(*it.Section) > maxDraftTextLen {
+		return fmt.Errorf("item %d section exceeds %d characters", i, maxDraftTextLen)
+	}
+	if it.Notes != nil && len(*it.Notes) > maxDraftTextLen {
+		return fmt.Errorf("item %d notes exceeds %d characters", i, maxDraftTextLen)
+	}
+	return nil
+}
+
+// validateDraftStep checks one instruction's number, presence, and length.
+func validateDraftStep(i int, s DraftStep) error {
+	if s.StepNumber <= 0 || s.StepNumber > maxDraftStepNumber {
+		return fmt.Errorf("step %d has an invalid step number", i)
+	}
+	if s.Instruction == "" {
+		return fmt.Errorf("step %d has an empty instruction", i)
+	}
+	if len(s.Instruction) > maxDraftInstructionLen {
+		return fmt.Errorf("step %d instruction exceeds %d characters", i, maxDraftInstructionLen)
 	}
 	return nil
 }

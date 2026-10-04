@@ -161,16 +161,7 @@ func timelineNeedsHelp(tl tools.EventTimelineOut) bool {
 // filterEventFixes drops model output violating the contract and stamps
 // the recipe name for display.
 func filterEventFixes(in []EventFix, tl tools.EventTimelineOut, maxCount int) []EventFix {
-	stepsByRecipe := map[int64]map[int32]bool{}
-	names := map[int64]string{}
-	for _, r := range tl.Recipes {
-		names[r.EventRecipeID] = r.Name
-		set := map[int32]bool{}
-		for _, st := range r.Steps {
-			set[st.StepNumber] = true
-		}
-		stepsByRecipe[r.EventRecipeID] = set
-	}
+	stepsByRecipe, names := eventStepIndex(tl)
 	gran := int64(tl.SlotGranularityMinutes)
 	if gran <= 0 {
 		gran = 15
@@ -180,31 +171,7 @@ func filterEventFixes(in []EventFix, tl tools.EventTimelineOut, maxCount int) []
 	out := make([]EventFix, 0, len(in))
 	for _, f := range in {
 		steps, known := stepsByRecipe[f.EventRecipeID]
-		if !known {
-			continue
-		}
-		switch f.Action {
-		case EventFixShiftServe:
-			if f.Minutes == nil || *f.Minutes == 0 || *f.Minutes > 480 || *f.Minutes < -480 ||
-				int64(*f.Minutes)%gran != 0 {
-				continue
-			}
-		case EventFixSetAppliance:
-			if f.StepNumber == nil || !steps[*f.StepNumber] || f.Appliance == nil ||
-				strings.TrimSpace(*f.Appliance) == "" || len(*f.Appliance) > 40 {
-				continue
-			}
-		case EventFixSetDuration:
-			if f.StepNumber == nil || !steps[*f.StepNumber] || f.DurationMin == nil ||
-				*f.DurationMin <= 0 || *f.DurationMin > 720 {
-				continue
-			}
-		case EventFixSetDependsOn:
-			if f.StepNumber == nil || !steps[*f.StepNumber] || f.DependsOn == nil ||
-				*f.DependsOn == *f.StepNumber || !steps[*f.DependsOn] {
-				continue
-			}
-		default:
+		if !known || !validEventFix(f, steps, gran) {
 			continue
 		}
 		step := int32(0)
@@ -224,4 +191,42 @@ func filterEventFixes(in []EventFix, tl tools.EventTimelineOut, maxCount int) []
 		out = out[:maxCount]
 	}
 	return out
+}
+
+// eventStepIndex indexes each timeline recipe's step numbers and display
+// names so a fix can be checked against the real schedule.
+func eventStepIndex(tl tools.EventTimelineOut) (map[int64]map[int32]bool, map[int64]string) {
+	stepsByRecipe := map[int64]map[int32]bool{}
+	names := map[int64]string{}
+	for _, r := range tl.Recipes {
+		names[r.EventRecipeID] = r.Name
+		set := map[int32]bool{}
+		for _, st := range r.Steps {
+			set[st.StepNumber] = true
+		}
+		stepsByRecipe[r.EventRecipeID] = set
+	}
+	return stepsByRecipe, names
+}
+
+// validEventFix enforces the per-action contract: bounds and granularity
+// for serve shifts, and a real step target plus valid payload for the
+// step mutations. Unknown actions are rejected.
+func validEventFix(f EventFix, steps map[int32]bool, gran int64) bool {
+	switch f.Action {
+	case EventFixShiftServe:
+		return f.Minutes != nil && *f.Minutes != 0 && *f.Minutes <= 480 && *f.Minutes >= -480 &&
+			int64(*f.Minutes)%gran == 0
+	case EventFixSetAppliance:
+		return f.StepNumber != nil && steps[*f.StepNumber] && f.Appliance != nil &&
+			strings.TrimSpace(*f.Appliance) != "" && len(*f.Appliance) <= 40
+	case EventFixSetDuration:
+		return f.StepNumber != nil && steps[*f.StepNumber] && f.DurationMin != nil &&
+			*f.DurationMin > 0 && *f.DurationMin <= 720
+	case EventFixSetDependsOn:
+		return f.StepNumber != nil && steps[*f.StepNumber] && f.DependsOn != nil &&
+			*f.DependsOn != *f.StepNumber && steps[*f.DependsOn]
+	default:
+		return false
+	}
 }

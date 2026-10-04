@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
+	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -172,20 +173,9 @@ func cocktailRows(ctx context.Context, recipes RecipeCatalog, items ItemNamer, l
 	if err != nil {
 		return nil, fmt.Errorf("list recipe categories: %w", err)
 	}
-	var cocktailIDs []int64
-	for _, r := range list {
-		for _, c := range catsByRecipe[r.RecipeID] {
-			if c.GroupName == "Dish Type" && c.Name == "Cocktail" {
-				cocktailIDs = append(cocktailIDs, r.RecipeID)
-				break
-			}
-		}
-	}
+	cocktailIDs := cocktailIDsFor(list, catsByRecipe, int(limit))
 	if len(cocktailIDs) == 0 {
 		return []CocktailRow{}, nil
-	}
-	if len(cocktailIDs) > int(limit) {
-		cocktailIDs = cocktailIDs[:limit]
 	}
 	nameByID := map[int64]string{}
 	for _, r := range list {
@@ -195,6 +185,37 @@ func cocktailRows(ctx context.Context, recipes RecipeCatalog, items ItemNamer, l
 	if err != nil {
 		return nil, fmt.Errorf("list cocktail ingredients: %w", err)
 	}
+	itemNames, ingNames := cocktailNameMaps(ctx, items, recipeItems)
+	ingByRecipe := cocktailIngredientNames(recipeItems, itemNames, ingNames)
+	out := make([]CocktailRow, 0, len(cocktailIDs))
+	for _, id := range cocktailIDs {
+		out = append(out, CocktailRow{ID: id, Name: nameByID[id], Ingredients: ingByRecipe[id]})
+	}
+	return out, nil
+}
+
+// cocktailIDsFor picks recipes categorized "Dish Type"/"Cocktail",
+// capped at limit.
+func cocktailIDsFor(list []recipe.Recipe, catsByRecipe map[int64][]recipe.Category, limit int) []int64 {
+	var ids []int64
+	for _, r := range list {
+		for _, c := range catsByRecipe[r.RecipeID] {
+			if c.GroupName == "Dish Type" && c.Name == "Cocktail" {
+				ids = append(ids, r.RecipeID)
+				break
+			}
+		}
+	}
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids
+}
+
+// cocktailNameMaps resolves item and generic-ingredient display names for
+// cocktail recipe lines. Lookup failures degrade to unnamed rows rather
+// than aborting the tool call.
+func cocktailNameMaps(ctx context.Context, items ItemNamer, recipeItems []recipe.RecipeItem) (map[int64]string, map[int64]string) {
 	itemIDs := map[int64]bool{}
 	ingIDs := map[int64]bool{}
 	for _, ri := range recipeItems {
@@ -207,29 +228,30 @@ func cocktailRows(ctx context.Context, recipes RecipeCatalog, items ItemNamer, l
 	}
 	itemNames := map[int64]string{}
 	ingNames := map[int64]string{}
-	if items != nil && len(itemIDs) > 0 {
-		idList := make([]int64, 0, len(itemIDs))
-		for id := range itemIDs {
-			idList = append(idList, id)
-		}
-		if list, err := items.GetItemsByIDs(ctx, idList); err == nil {
+	if items == nil {
+		return itemNames, ingNames
+	}
+	if len(itemIDs) > 0 {
+		if list, err := items.GetItemsByIDs(ctx, keysOf(itemIDs)); err == nil {
 			for _, it := range list {
 				itemNames[it.ItemID] = it.Name
 			}
 		}
 	}
-	if items != nil && len(ingIDs) > 0 {
-		idList := make([]int64, 0, len(ingIDs))
-		for id := range ingIDs {
-			idList = append(idList, id)
-		}
-		if list, err := items.GetIngredientsByIDs(ctx, idList); err == nil {
+	if len(ingIDs) > 0 {
+		if list, err := items.GetIngredientsByIDs(ctx, keysOf(ingIDs)); err == nil {
 			for _, g := range list {
 				ingNames[g.IngredientID] = g.Name
 			}
 		}
 	}
-	ingByRecipe := map[int64][]string{}
+	return itemNames, ingNames
+}
+
+// cocktailIngredientNames groups resolved ingredient names by recipe,
+// preferring the generic-ingredient name over the branded item name.
+func cocktailIngredientNames(recipeItems []recipe.RecipeItem, itemNames, ingNames map[int64]string) map[int64][]string {
+	byRecipe := map[int64][]string{}
 	for _, ri := range recipeItems {
 		var n string
 		if ri.IngredientID != nil {
@@ -239,12 +261,8 @@ func cocktailRows(ctx context.Context, recipes RecipeCatalog, items ItemNamer, l
 			n = itemNames[*ri.ItemID]
 		}
 		if n != "" {
-			ingByRecipe[ri.RecipeID] = append(ingByRecipe[ri.RecipeID], n)
+			byRecipe[ri.RecipeID] = append(byRecipe[ri.RecipeID], n)
 		}
 	}
-	out := make([]CocktailRow, 0, len(cocktailIDs))
-	for _, id := range cocktailIDs {
-		out = append(out, CocktailRow{ID: id, Name: nameByID[id], Ingredients: ingByRecipe[id]})
-	}
-	return out, nil
+	return byRecipe
 }

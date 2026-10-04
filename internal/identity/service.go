@@ -188,59 +188,81 @@ func (s *Service) IsProtected(provider, email string) bool {
 func (s *Service) UpsertUser(ctx context.Context, provider, subject, email, displayName string) (User, error) {
 	var out User
 	err := s.InTx(ctx, func(tx *Service) error {
-		row, err := tx.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
-			Provider:        provider,
-			ExternalSubject: subject,
-		})
-		switch {
-		case err == nil:
-			// Refresh the login's provider claims; the user row's
-			// email/display_name only follow its primary login.
-			if _, uerr := tx.q.UpsertLogin(ctx, upsertLoginParams(row.UserID, provider, subject, email, displayName)); uerr != nil {
-				return uerr
-			}
-			if row.Provider == provider && row.ExternalSubject == subject {
-				if _, uerr := tx.q.UpsertUser(ctx, upsertUserParams(provider, subject, email, displayName)); uerr != nil {
-					return uerr
-				}
-				row, err = tx.q.GetUserByID(ctx, row.UserID)
-				if err != nil {
-					return err
-				}
-			} else if _, terr := tx.q.TouchUserLogin(ctx, row.UserID); terr != nil {
-				return terr
-			}
-			out = toUser(row)
-			return nil
-		case errors.Is(err, pgx.ErrNoRows):
-			u, uerr := tx.q.UpsertUser(ctx, upsertUserParams(provider, subject, email, displayName))
-			if uerr != nil {
-				return uerr
-			}
-			if _, lerr := tx.q.UpsertLogin(ctx, upsertLoginParams(u.UserID, provider, subject, email, displayName)); lerr != nil {
-				return lerr
-			}
-			out = toUser(u)
-			return nil
-		default:
-			return err
-		}
+		u, err := tx.upsertLoginTx(ctx, provider, subject, email, displayName)
+		out = u
+		return err
 	})
 	if err != nil {
 		// A concurrent first sign-in can insert the login between our
 		// lookup and our insert; resolve the winner instead of failing.
 		if errors.Is(err, domainerr.ErrConflict) {
-			row, rerr := s.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
-				Provider:        provider,
-				ExternalSubject: subject,
-			})
-			if rerr == nil {
-				return toUser(row), nil
+			if u, ok := s.loginWinner(ctx, provider, subject); ok {
+				return u, nil
 			}
 		}
 		return User{}, fmt.Errorf("upsert user: %w", err)
 	}
 	return out, nil
+}
+
+// upsertLoginTx resolves the (provider, subject) login inside the
+// transaction: an existing login refreshes its claims (or touches the
+// owning user when linked), a new one creates user + login atomically.
+func (s *Service) upsertLoginTx(ctx context.Context, provider, subject, email, displayName string) (User, error) {
+	row, err := s.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
+		Provider:        provider,
+		ExternalSubject: subject,
+	})
+	switch {
+	case err == nil:
+		return s.refreshLoginTx(ctx, row, provider, subject, email, displayName)
+	case errors.Is(err, pgx.ErrNoRows):
+		u, err := s.q.UpsertUser(ctx, upsertUserParams(provider, subject, email, displayName))
+		if err != nil {
+			return User{}, err
+		}
+		if _, err := s.q.UpsertLogin(ctx, upsertLoginParams(u.UserID, provider, subject, email, displayName)); err != nil {
+			return User{}, err
+		}
+		return toUser(u), nil
+	default:
+		return User{}, err
+	}
+}
+
+// refreshLoginTx updates an existing login's provider claims. The user
+// row's email/display_name only follow its primary login; a login linked
+// to another user touches the owner instead.
+func (s *Service) refreshLoginTx(ctx context.Context, row sqlc.IdentityUser, provider, subject, email, displayName string) (User, error) {
+	if _, err := s.q.UpsertLogin(ctx, upsertLoginParams(row.UserID, provider, subject, email, displayName)); err != nil {
+		return User{}, err
+	}
+	if row.Provider == provider && row.ExternalSubject == subject {
+		if _, err := s.q.UpsertUser(ctx, upsertUserParams(provider, subject, email, displayName)); err != nil {
+			return User{}, err
+		}
+		row, err := s.q.GetUserByID(ctx, row.UserID)
+		if err != nil {
+			return User{}, err
+		}
+		return toUser(row), nil
+	}
+	if _, err := s.q.TouchUserLogin(ctx, row.UserID); err != nil {
+		return User{}, err
+	}
+	return toUser(row), nil
+}
+
+// loginWinner resolves the row a concurrent first sign-in inserted.
+func (s *Service) loginWinner(ctx context.Context, provider, subject string) (User, bool) {
+	row, err := s.q.GetUserByLogin(ctx, sqlc.GetUserByLoginParams{
+		Provider:        provider,
+		ExternalSubject: subject,
+	})
+	if err != nil {
+		return User{}, false
+	}
+	return toUser(row), true
 }
 
 func upsertUserParams(provider, subject, email, displayName string) sqlc.UpsertUserParams {

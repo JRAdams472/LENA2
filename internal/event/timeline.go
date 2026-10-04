@@ -124,14 +124,30 @@ func scheduleRecipe(granularity int16, slot TimelineRecipeInput) RecipeTimeline 
 	if g <= 0 {
 		g = 15
 	}
+	var estimated int
+	rt.Steps, estimated = placeSteps(slot, order, dependents, g)
+	sort.Slice(rt.Steps, func(i, j int) bool { return rt.Steps[i].Start.Before(rt.Steps[j].Start) })
+	earliest := rt.Steps[0].Start
+	rt.StartBy = &earliest
+	if estimated > 0 {
+		rt.Warnings = append(rt.Warnings, fmt.Sprintf("%d step(s) have no duration — estimated", estimated))
+	}
+	return rt
+}
+
+// placeSteps walks the dependency order in reverse — a step's dependents
+// are already placed, so each step ends at the earliest dependent start —
+// and returns the unsorted scheduled steps plus the count of durations
+// that had to be estimated.
+func placeSteps(slot TimelineRecipeInput, order []int32, dependents map[int32][]int32, granularity int64) ([]ScheduledStep, int) {
 	ends := make(map[int32]time.Time, len(order))
 	starts := make(map[int32]time.Time, len(order))
 	byNumber := make(map[int32]TimelineStepInput, len(slot.Steps))
 	for _, s := range slot.Steps {
 		byNumber[s.StepNumber] = s
 	}
+	steps := make([]ScheduledStep, 0, len(order))
 	var estimated int
-	// Reverse topo order guarantees a step's dependents are placed first.
 	for i := len(order) - 1; i >= 0; i-- {
 		num := order[i]
 		s := byNumber[num]
@@ -141,13 +157,13 @@ func scheduleRecipe(granularity int16, slot TimelineRecipeInput) RecipeTimeline 
 				end = starts[d]
 			}
 		}
-		mins, est := effectiveMinutes(s.DurationMinutes, g)
+		mins, est := effectiveMinutes(s.DurationMinutes, granularity)
 		if est {
 			estimated++
 		}
 		ends[num] = end
 		starts[num] = end.Add(-time.Duration(mins) * time.Minute)
-		rt.Steps = append(rt.Steps, ScheduledStep{
+		steps = append(steps, ScheduledStep{
 			StepNumber:     num,
 			Instruction:    s.Instruction,
 			StepType:       s.StepType,
@@ -161,13 +177,7 @@ func scheduleRecipe(granularity int16, slot TimelineRecipeInput) RecipeTimeline 
 			End:              ends[num],
 		})
 	}
-	sort.Slice(rt.Steps, func(i, j int) bool { return rt.Steps[i].Start.Before(rt.Steps[j].Start) })
-	earliest := rt.Steps[0].Start
-	rt.StartBy = &earliest
-	if estimated > 0 {
-		rt.Warnings = append(rt.Warnings, fmt.Sprintf("%d step(s) have no duration — estimated", estimated))
-	}
-	return rt
+	return steps, estimated
 }
 
 // topoOrder returns step numbers in dependency order (each step after its
@@ -175,6 +185,19 @@ func scheduleRecipe(granularity int16, slot TimelineRecipeInput) RecipeTimeline 
 // depends_on_step_number overrides it. A missing dependency is ignored
 // with a warning; a cycle marks the recipe unschedulable.
 func topoOrder(steps []TimelineStepInput, rt *RecipeTimeline) ([]int32, bool) {
+	indeg, next := depEdges(steps, rt)
+	order := drainTopoQueue(indeg, next)
+	if len(order) != len(steps) {
+		rt.Warnings = append(rt.Warnings, "step dependencies form a cycle — recipe cannot be scheduled")
+		return nil, false
+	}
+	return order, true
+}
+
+// depEdges builds the in-degree map and dependents adjacency for the
+// dependency graph. A default edge onto a non-contiguous numbering is
+// silently dropped; an explicit dep on a missing step is worth noting.
+func depEdges(steps []TimelineStepInput, rt *RecipeTimeline) (map[int32]int, map[int32][]int32) {
 	nums := make(map[int32]bool, len(steps))
 	for _, s := range steps {
 		nums[s.StepNumber] = true
@@ -190,8 +213,6 @@ func topoOrder(steps []TimelineStepInput, rt *RecipeTimeline) ([]int32, bool) {
 			continue
 		}
 		if !nums[d] {
-			// A default edge onto a non-contiguous numbering is silently
-			// dropped; an explicit dep on a missing step is worth noting.
 			if s.DependsOnStepNumber != nil {
 				rt.Warnings = append(rt.Warnings, fmt.Sprintf("step %d depends on missing step %d — ignored", s.StepNumber, d))
 			}
@@ -200,6 +221,12 @@ func topoOrder(steps []TimelineStepInput, rt *RecipeTimeline) ([]int32, bool) {
 		indeg[s.StepNumber]++
 		next[d] = append(next[d], s.StepNumber)
 	}
+	return indeg, next
+}
+
+// drainTopoQueue runs Kahn's algorithm, keeping the ready set sorted so
+// the emitted order is deterministic.
+func drainTopoQueue(indeg map[int32]int, next map[int32][]int32) []int32 {
 	var queue []int32
 	for n, deg := range indeg {
 		if deg == 0 {
@@ -224,11 +251,7 @@ func topoOrder(steps []TimelineStepInput, rt *RecipeTimeline) ([]int32, bool) {
 			sort.Slice(queue, func(i, j int) bool { return queue[i] < queue[j] })
 		}
 	}
-	if len(order) != len(steps) {
-		rt.Warnings = append(rt.Warnings, "step dependencies form a cycle — recipe cannot be scheduled")
-		return nil, false
-	}
-	return order, true
+	return order
 }
 
 // depOf returns the step's effective dependency: the explicit
@@ -261,44 +284,59 @@ func effectiveMinutes(d *int32, granularity int64) (int64, bool) {
 // same appliance and records the contention on both steps plus recipe and
 // event warnings.
 func markApplianceConflicts(tl *Timeline) {
-	type use struct {
-		recipe int
-		step   int
-	}
-	byAppliance := make(map[string][]use)
-	for i := range tl.Recipes {
-		for j := range tl.Recipes[i].Steps {
-			a := strings.ToLower(tl.Recipes[i].Steps[j].Appliance)
-			if a != "" {
-				byAppliance[a] = append(byAppliance[a], use{recipe: i, step: j})
-			}
-		}
-	}
+	byAppliance := applianceUses(tl)
 	seen := make(map[string]bool)
 	for appliance, uses := range byAppliance {
 		for i := 0; i < len(uses); i++ {
 			for j := i + 1; j < len(uses); j++ {
-				a := tl.Recipes[uses[i].recipe].Steps[uses[i].step]
-				b := tl.Recipes[uses[j].recipe].Steps[uses[j].step]
-				if !a.Start.Before(b.End) || !b.Start.Before(a.End) {
-					continue
-				}
-				msg := fmt.Sprintf("%s is needed by %q step %d and %q step %d at the same time",
-					appliance, tl.Recipes[uses[i].recipe].Name, a.StepNumber,
-					tl.Recipes[uses[j].recipe].Name, b.StepNumber)
-				a.Conflicts = append(a.Conflicts, msg)
-				b.Conflicts = append(b.Conflicts, msg)
-				tl.Recipes[uses[i].recipe].Steps[uses[i].step] = a
-				tl.Recipes[uses[j].recipe].Steps[uses[j].step] = b
-				if !seen[msg] {
-					seen[msg] = true
-					tl.Warnings = append(tl.Warnings, "appliance conflict: "+msg)
-					tl.Recipes[uses[i].recipe].Warnings = append(tl.Recipes[uses[i].recipe].Warnings, msg)
-					if uses[i].recipe != uses[j].recipe {
-						tl.Recipes[uses[j].recipe].Warnings = append(tl.Recipes[uses[j].recipe].Warnings, msg)
-					}
-				}
+				recordApplianceConflict(tl, appliance, uses[i], uses[j], seen)
 			}
 		}
+	}
+}
+
+// applianceUse identifies one scheduled step within the timeline.
+type applianceUse struct {
+	recipe int
+	step   int
+}
+
+// applianceUses indexes scheduled steps by lowercase appliance name.
+func applianceUses(tl *Timeline) map[string][]applianceUse {
+	byAppliance := make(map[string][]applianceUse)
+	for i := range tl.Recipes {
+		for j := range tl.Recipes[i].Steps {
+			a := strings.ToLower(tl.Recipes[i].Steps[j].Appliance)
+			if a != "" {
+				byAppliance[a] = append(byAppliance[a], applianceUse{recipe: i, step: j})
+			}
+		}
+	}
+	return byAppliance
+}
+
+// recordApplianceConflict flags one overlapping pair of steps that need
+// the same appliance, on both steps plus recipe and event warnings.
+func recordApplianceConflict(tl *Timeline, appliance string, ua, ub applianceUse, seen map[string]bool) {
+	a := tl.Recipes[ua.recipe].Steps[ua.step]
+	b := tl.Recipes[ub.recipe].Steps[ub.step]
+	if !a.Start.Before(b.End) || !b.Start.Before(a.End) {
+		return
+	}
+	msg := fmt.Sprintf("%s is needed by %q step %d and %q step %d at the same time",
+		appliance, tl.Recipes[ua.recipe].Name, a.StepNumber,
+		tl.Recipes[ub.recipe].Name, b.StepNumber)
+	a.Conflicts = append(a.Conflicts, msg)
+	b.Conflicts = append(b.Conflicts, msg)
+	tl.Recipes[ua.recipe].Steps[ua.step] = a
+	tl.Recipes[ub.recipe].Steps[ub.step] = b
+	if seen[msg] {
+		return
+	}
+	seen[msg] = true
+	tl.Warnings = append(tl.Warnings, "appliance conflict: "+msg)
+	tl.Recipes[ua.recipe].Warnings = append(tl.Recipes[ua.recipe].Warnings, msg)
+	if ua.recipe != ub.recipe {
+		tl.Recipes[ub.recipe].Warnings = append(tl.Recipes[ub.recipe].Warnings, msg)
 	}
 }

@@ -163,33 +163,9 @@ func (s *Service) EmbedQuery(ctx context.Context, query string) (string, error) 
 // ingredientNames resolves recipe items to display names — ingredient when
 // linked, item otherwise — preserving recipe order and skipping empties.
 func (s *Service) ingredientNames(ctx context.Context, items []recipe.RecipeItem) ([]string, error) {
-	itemIDs := map[int64]bool{}
-	ingIDs := map[int64]bool{}
-	for _, ri := range items {
-		if ri.IngredientID != nil {
-			ingIDs[*ri.IngredientID] = true
-		} else if ri.ItemID != nil {
-			itemIDs[*ri.ItemID] = true
-		}
-	}
-	names := map[int64]string{}
-	if ids := keys(ingIDs); len(ids) > 0 && s.namer != nil {
-		list, err := s.namer.GetIngredientsByIDs(ctx, ids)
-		if err != nil {
-			return nil, fmt.Errorf("load ingredient names: %w", err)
-		}
-		for _, g := range list {
-			names[g.IngredientID] = g.Name
-		}
-	}
-	if ids := keys(itemIDs); len(ids) > 0 && s.namer != nil {
-		list, err := s.namer.GetItemsByIDs(ctx, ids)
-		if err != nil {
-			return nil, fmt.Errorf("load item names: %w", err)
-		}
-		for _, it := range list {
-			names[it.ItemID] = it.Name
-		}
+	names, err := s.entityNames(ctx, items)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]string, 0, len(items))
 	for _, ri := range items {
@@ -204,6 +180,43 @@ func (s *Service) ingredientNames(ctx context.Context, items []recipe.RecipeItem
 		}
 	}
 	return out, nil
+}
+
+// entityNames resolves generic-ingredient and catalog-item names for the
+// recipe's lines. A nil namer yields an empty map (rows keep placeholders).
+func (s *Service) entityNames(ctx context.Context, items []recipe.RecipeItem) (map[int64]string, error) {
+	itemIDs := map[int64]bool{}
+	ingIDs := map[int64]bool{}
+	for _, ri := range items {
+		if ri.IngredientID != nil {
+			ingIDs[*ri.IngredientID] = true
+		} else if ri.ItemID != nil {
+			itemIDs[*ri.ItemID] = true
+		}
+	}
+	names := map[int64]string{}
+	if s.namer == nil {
+		return names, nil
+	}
+	if ids := keys(ingIDs); len(ids) > 0 {
+		list, err := s.namer.GetIngredientsByIDs(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("load ingredient names: %w", err)
+		}
+		for _, g := range list {
+			names[g.IngredientID] = g.Name
+		}
+	}
+	if ids := keys(itemIDs); len(ids) > 0 {
+		list, err := s.namer.GetItemsByIDs(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("load item names: %w", err)
+		}
+		for _, it := range list {
+			names[it.ItemID] = it.Name
+		}
+	}
+	return names, nil
 }
 
 // Sweep embeds every stale candidate once, in batches. Returns the number of
