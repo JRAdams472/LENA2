@@ -13,6 +13,7 @@
 ## Linear Workflow (required)
 
 - Every plan gets a **parent Linear ticket** (team: `LEN`, MCP server: `linear`). Once planning is done and work begins, the parent moves to **In Progress**.
+- **Attach the plan document to the parent ticket before creating any phase sub-issues** — the megaplan goes on the parent first, then the subtickets.
 - Every phase of the plan gets a **sub-issue** under that parent, named for its branch (e.g. `ingredient-layer-p1`), with a description of the phase's scope and acceptance criteria. **Mark the sub-issue In Progress when its phase starts.**
 - When a phase is complete, post **proof of completion** on its sub-issue before asking for merge approval:
   - Relevant run logs (build/test/verification output).
