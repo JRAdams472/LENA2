@@ -8,9 +8,21 @@ const SIZE_RE =
 
 /** Extract a pack-size token from an item name, falling back to the unit. */
 export function sizeBadge(name: string, unit: string): string | null {
-  const m = name.match(SIZE_RE);
+  const m = SIZE_RE.exec(name);
   if (m) return m[1];
   return unit && unit !== "each" ? unit : null;
+}
+
+const EDGE_CHARS = new Set([" ", "\t", "\n", "\r", "-", "–", "—", ","]);
+
+// Manual edge strip — equivalent to /^[<set>]+|[<set>]+$/g without a
+// regex the scanner flags as super-linear.
+function stripEdges(s: string): string {
+  let a = 0;
+  let b = s.length;
+  while (a < b && EDGE_CHARS.has(s[a])) a++;
+  while (b > a && EDGE_CHARS.has(s[b - 1])) b--;
+  return s.slice(a, b);
 }
 
 /** Strip an embedded size token and a duplicated brand prefix from an item name. */
@@ -24,8 +36,5 @@ export function stripSize(
   if (b && n.trim().toLowerCase().startsWith(b.toLowerCase())) {
     n = n.trim().slice(b.length);
   }
-  return n
-    .replace(/\s{2,}/g, " ")
-    .replace(/^[\s\-–—,]+|[\s\-–—,]+$/g, "")
-    .trim();
+  return stripEdges(n.replace(/\s{2,}/g, " ")).trim();
 }

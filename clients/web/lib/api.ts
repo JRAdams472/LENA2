@@ -239,6 +239,8 @@ function isMutation(query: string): boolean {
 // operation lets the server dedup retries, while a network-failure retry
 // below reuses the same key so the attempt that actually landed is
 // replayed rather than re-executed.
+let idempotencyCounter = 0;
+
 function newIdempotencyKey(): string {
   if (
     typeof crypto !== "undefined" &&
@@ -246,13 +248,14 @@ function newIdempotencyKey(): string {
   ) {
     return crypto.randomUUID();
   }
-  // Non-secure contexts (http on LAN dev hosts) lack crypto.randomUUID.
-  return (
-    Date.now().toString(36) +
-    "-" +
-    Math.random().toString(36).slice(2) +
-    Math.random().toString(36).slice(2)
-  );
+  // crypto.getRandomValues works in non-secure contexts (http on LAN dev
+  // hosts) where randomUUID is gated out.
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return `${Date.now().toString(36)}-${(++idempotencyCounter).toString(36)}`;
 }
 
 function sleep(ms: number): Promise<void> {

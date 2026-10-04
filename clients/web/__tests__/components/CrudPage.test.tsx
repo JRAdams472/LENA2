@@ -20,6 +20,8 @@ const rows: Row[] = [
   { id: 2, name: "Beta", isActive: false },
 ];
 
+let querySeq = 0;
+
 function renderPage(
   overrides: Partial<Parameters<typeof CrudPage<Row>>[0]> = {}
 ) {
@@ -28,7 +30,7 @@ function renderPage(
   });
   const props = {
     title: "Widgets",
-    queryKey: ["widgets", Math.random().toString()],
+    queryKey: ["widgets", `qk${++querySeq}`],
     listFn: jest.fn().mockResolvedValue(rows),
     fields,
     createFn: jest.fn().mockResolvedValue({}),
