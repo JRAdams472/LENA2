@@ -77,9 +77,13 @@ volumes:
 
 ## 3. Caddyfile
 
-The shipped `Caddyfile` is the source of truth — see it for the full
-security-header block (CSP, X-Frame-Options, Referrer-Policy,
-X-Content-Type-Options, Permissions-Policy, HSTS). Routing:
+The shipped `Caddyfile` is the source of truth — see it for the
+security-header block (X-Frame-Options, Referrer-Policy,
+X-Content-Type-Options, Permissions-Policy, HSTS). Content-Security-Policy
+is the exception: `clients/web/proxy.ts` issues it per-request with a
+nonce (`script-src 'self' 'nonce-…' 'strict-dynamic'`, `style-src` keeps
+`'unsafe-inline'` for Emotion/MUI) so Caddy must not set a static CSP —
+it would shadow or conflict. Routing:
 
 ```caddy
 {$CADDY_ADDR:-:80} {
