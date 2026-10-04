@@ -1,6 +1,6 @@
 # LEN-40 — P6: LEN-29 close-out — Completion Proof
 
-PR: https://github.com/JRAdams472/LENA2/pull/TBD
+PR: https://github.com/JRAdams472/LENA2/pull/262
 Ticket: LEN-40 (parent LEN-29, OWASP Top 10 2021 remediation)
 Branch: `len-40-p6-closeout`
 
