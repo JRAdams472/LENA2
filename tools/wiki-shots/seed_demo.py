@@ -442,4 +442,37 @@ if pantry_count == 0:
 else:
     print("pantry already stocked")
 
+# Allergen demo data — member records plus curated item flags so the warning
+# surfaces (recipe detail, meal plan, grocery list) and the profile allergy
+# editor have content. The set* mutations are upsert-shaped, so re-running
+# is a no-op.
+allergen_by_name = {
+    a["name"].lower(): a["id"]
+    for a in gql(ADMIN, "{ allergens { id name } }")["allergens"]
+}
+gql(
+    ADMIN,
+    "mutation($a: ID!, $k: MemberAllergyKind!, $on: Boolean!) { setMyAllergy(allergenId: $a, kind: $k, on: $on) }",
+    {"a": allergen_by_name["milk"], "k": "allergy", "on": True},
+)
+gql(
+    MEMBER,
+    "mutation($a: ID!, $k: MemberAllergyKind!, $on: Boolean!) { setMyAllergy(allergenId: $a, kind: $k, on: $on) }",
+    {"a": allergen_by_name["peanuts"], "k": "allergy", "on": True},
+)
+for kw, allergen, kind in [
+    ("milk", "milk", "contains"),
+    ("butter", "milk", "contains"),
+    ("cheese", "milk", "contains"),
+    ("pasta", "wheat", "contains"),
+    ("bread", "wheat", "may_contain"),
+]:
+    if kw in items:
+        gql(
+            ADMIN,
+            "mutation($i: ID!, $a: ID!, $k: AllergenFlagKind) { setItemAllergen(itemId: $i, allergenId: $a, kind: $k) }",
+            {"i": items[kw][0], "a": allergen_by_name[allergen], "k": kind},
+        )
+print("allergen demo data seeded")
+
 print(json.dumps({"planId": plan_id, "groceryListId": glist["id"], "eventId": ev_id}))

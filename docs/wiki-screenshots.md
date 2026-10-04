@@ -52,7 +52,9 @@ python tools/wiki-shots/seed_demo.py
 Creates: a second household member, three recipes **with timed steps**
 (required for a meaningful timeline), a meal plan starting today (so the
 dashboard shows a meal), a generated grocery list, a food event with three
-dish slots including a free-form one, two wine bottles, and pantry stock.
+dish slots including a free-form one, two wine bottles, pantry stock, and
+allergen demo data (member records + curated item flags so warning
+surfaces and the profile editor render).
 
 - Idempotent — re-running reuses entities by name.
 - Env overrides: `DEMO_API`, `DEMO_ISSUER`, `DEMO_DATE` (defaults: localhost,
@@ -74,7 +76,10 @@ SHOTS_OUT=/tmp/shots node tools/wiki-shots/capture.mjs
 
 The script mints a token, seeds `localStorage.lena_id_token` (same mechanism
 as `e2e/auth.setup.ts`), and shoots the canonical page list at
-1440×900 @ 2x. Edit the shot list for new pages.
+1440×900 @ 2x. Edit the shot list for new pages. It also `docker exec`s a
+small SQL insert into `lena2shots-db-1` to seed a pending allergen
+suggestion — that table has no non-AI write path and the e2e provider
+returns canned text.
 
 Hard-won details:
 

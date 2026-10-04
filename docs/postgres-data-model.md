@@ -251,6 +251,86 @@ CREATE TABLE inventory.unit (
 );
 ```
 
+### 4.2 Allergen tracking (migrations `0047_allergen`, `0048_allergen_suggestion`)
+
+```sql
+-- The registry every record and flag keys on — seeded with the EU-14 /
+-- FDA-9 core set plus dietary entries (corn, gelatin, pork, beef). No
+-- hard delete — removal is is_active=false so references stay resolvable.
+-- Names collide on whitespace-collapsed, case-folded normalization.
+CREATE TABLE inventory.allergen (
+    allergen_id BIGSERIAL PRIMARY KEY,
+    name        VARCHAR(200) NOT NULL,
+    description VARCHAR(500),
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by  VARCHAR(100) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by  VARCHAR(100),
+    updated_at  TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX idx_allergen_name_norm
+    ON inventory.allergen (lower(btrim(regexp_replace(name, '\s+', ' ', 'g'))));
+
+-- One member's record in userprefs. kind: 'allergy' (hard warning) |
+-- 'dietary' (advisory preference). Rows are personal — each member writes
+-- only their own via setMyAllergy; warnings name the member so the rest
+-- of the household sees the conflict label.
+CREATE TABLE userprefs.user_allergen (
+    user_id     BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    allergen_id BIGINT NOT NULL REFERENCES inventory.allergen(allergen_id) ON DELETE CASCADE,
+    kind        VARCHAR(20) NOT NULL CHECK (kind IN ('allergy', 'dietary')),
+    created_by  VARCHAR(100) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by  VARCHAR(100),
+    updated_at  TIMESTAMPTZ,
+    PRIMARY KEY (user_id, allergen_id)
+);
+
+-- Entity flags, kind 'contains' | 'may_contain'. inventory.item_allergen
+-- is the same shape keyed on item_id — product-level flags union with
+-- the resolved ingredient's rows, never replace them. An empty flag set
+-- means "no allergen information" — never "known safe".
+CREATE TABLE inventory.ingredient_allergen (
+    ingredient_id BIGINT NOT NULL REFERENCES inventory.ingredient(ingredient_id) ON DELETE CASCADE,
+    allergen_id   BIGINT NOT NULL REFERENCES inventory.allergen(allergen_id) ON DELETE CASCADE,
+    kind          VARCHAR(20) NOT NULL CHECK (kind IN ('contains', 'may_contain')),
+    created_by    VARCHAR(100) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by    VARCHAR(100),
+    updated_at    TIMESTAMPTZ,
+    PRIMARY KEY (ingredient_id, allergen_id)
+);
+
+-- AI flag proposals held for admin review. A partial unique index keeps
+-- one pending proposal per (target, allergen); accept writes the flag
+-- under reviewed_by_user_id's attribution in the same transaction.
+CREATE TABLE inventory.allergen_suggestion (
+    allergen_suggestion_id BIGSERIAL PRIMARY KEY,
+    recipe_id              BIGINT REFERENCES recipe.recipe(recipe_id) ON DELETE SET NULL,
+    target_kind            VARCHAR(10) NOT NULL CHECK (target_kind IN ('ingredient', 'item')),
+    ingredient_id          BIGINT REFERENCES inventory.ingredient(ingredient_id) ON DELETE CASCADE,
+    item_id                BIGINT REFERENCES inventory.item(item_id) ON DELETE CASCADE,
+    allergen_id            BIGINT NOT NULL REFERENCES inventory.allergen(allergen_id) ON DELETE CASCADE,
+    kind                   VARCHAR(20) NOT NULL CHECK (kind IN ('contains', 'may_contain')),
+    rationale              TEXT,
+    status                 VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'dismissed')),
+    source                 VARCHAR(20) NOT NULL DEFAULT 'llm' CHECK (source IN ('llm')),
+    suggested_by_user_id   BIGINT REFERENCES identity.users(user_id) ON DELETE SET NULL,
+    reviewed_by_user_id    BIGINT REFERENCES identity.users(user_id) ON DELETE SET NULL,
+    reviewed_at            TIMESTAMPTZ,
+    created_by             VARCHAR(100) NOT NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by             VARCHAR(100),
+    updated_at             TIMESTAMPTZ,
+    CHECK ((target_kind = 'ingredient' AND ingredient_id IS NOT NULL AND item_id IS NULL) OR
+           (target_kind = 'item' AND item_id IS NOT NULL AND ingredient_id IS NULL))
+);
+CREATE UNIQUE INDEX uq_allergen_suggestion_pending
+    ON inventory.allergen_suggestion (target_kind, COALESCE(ingredient_id, item_id), allergen_id)
+    WHERE status = 'pending';
+```
+
 ## 5. Wine (catalog + per-user)
 
 ```sql

@@ -68,14 +68,16 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 - `/inventory/food-flavors` — item-to-flavor associations.
 - `/inventory/food-nutrients` — item-to-nutrient associations.
 - `/inventory/nutrient-types` — nutrient reference data.
-- `/inventory/ingredients` — generic-ingredient catalog (admin): search, create, edit, deactivate, and merge (the dedupe safety valve).
+- `/inventory/ingredients` — generic-ingredient catalog (admin): search, create, edit, deactivate, and merge (the dedupe safety valve). Each ingredient and item carries `contains` / `may_contain` allergen flags, edited in the row dialogs.
+- `/inventory/allergens` — the allergen registry (admin). Member records and entity flags both key on these rows; removal is deactivation so references stay resolvable.
+- `/inventory/allergen-suggestions` — the AI flag review queue (admin): run the assistant over a recipe, then accept or dismiss each proposed flag. Nothing applies without an explicit accept.
 
 ### Recipes & planning
 
-- `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata). Category filters narrow the list server-side; assignments happen on the detail page. `/recipes/categories` is the admin's taxonomy manager (groups, exclusivity, display order, categories).
-- `/meal-plans` — weekly meal plans with daily slots and per-slot servings.
-- `/events` — food events: dish slots with granularity-snapped serve times, per-slot recipe snapshots (steps + ingredients copied per event so edits never touch the shared recipe), servings scaling, and a generated cooking timeline with conflict warnings.
-- `/grocery-lists` — shopping lists generated from meal plans, with check-off, plus a **Time to restock** section listing pantry items at or below their minimum, ranked by household engagement. Each list can be routed through a household-defined **store**: the server groups items into the store's ordered aisles, learns per-item positions from check-off order, and honors your manual arrangement (drag handles or the move-to menu) across regenerated lists. Web and mobile render the same server-computed order.
+- `/recipes` — recipe list, detail, and edit with ingredients and steps (including per-step timing metadata). Category filters narrow the list server-side; assignments happen on the detail page. `/recipes/categories` is the admin's taxonomy manager (groups, exclusivity, display order, categories). Recipes surface **allergy warnings** — a chip on list rows and an alert on the detail page naming which household member conflicts and how.
+- `/meal-plans` — weekly meal plans with daily slots and per-slot servings; slot rows carry the same allergy-warning chips.
+- `/events` — food events: dish slots with granularity-snapped serve times, per-slot recipe snapshots (steps + ingredients copied per event so edits never touch the shared recipe), servings scaling, and a generated cooking timeline with conflict warnings and allergy warnings.
+- `/grocery-lists` — shopping lists generated from meal plans, with check-off, plus a **Time to restock** section listing pantry items at or below their minimum, ranked by household engagement. Flagged rows show an allergy-warning chip. Each list can be routed through a household-defined **store**: the server groups items into the store's ordered aisles, learns per-item positions from check-off order, and honors your manual arrangement (drag handles or the move-to menu) across regenerated lists. Web and mobile render the same server-computed order.
 - **OCR recipe import** — bulk-import scanned cookbook pages, recipe cards, and photos using local OCR and a local LLM. Admin-only; see `docs/recipe-ocr-usage.md`.
 
 ### Wine cellar
@@ -87,8 +89,8 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 - `/users` — user management (admin only).
 - `/items/pending` — approve or reject user-submitted items (admin only).
-- `/household` — household members, roles, and invites.
-- `/profile` — current-user profile (name, backup email, discoverability).
+- `/household` — household members, roles, and invites; each member manages their own allergy/dietary records here.
+- `/profile` — current-user profile (name, backup email, discoverability, and your own allergy/dietary records).
 
 The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item. An hourly sweep also produces reminders: protein defrosting (scaled by weight — 48 hours up to 8 lbs, then 24 hours per additional 4 lbs), multi-day recipe prep (steps of 24h+), and pantry items nearing their expiry date. Expiry reminders include an **Add to list** action that drops a replacement onto the current grocery list.
 
@@ -108,7 +110,7 @@ The Flutter app (`clients/mobile`) is intended for quick, on-the-go actions:
 - **Events** — browse food events, manage dish slots (recipe or free-form, meal type, servings, serve time), and view the cooking timeline as a step-by-step checklist.
 - **Pantry** — view pantry quantities and minimums for tracked items.
 - **Scan** — use the camera to scan a barcode, look up the item by UPC, add or remove stock, or submit a missing item for admin approval.
-- **Household** — members, roles, and invites; the tab badge shows unread household notifications.
+- **Household** — members, roles, and invites; the tab badge shows unread household notifications. Your allergy/dietary records live here too — flag rows carry warning badges that open a detail dialog naming the conflict.
 - **Bottom navigation** — Dashboard, Grocery, Events, Scan, Pantry, Household.
 
 UPC normalization follows this rule: 12 digits go to `upc12`, 13 digits are left-padded with `0` and treated as `upc14`, and 14 digits go straight to `upc14`. Anything else is considered not found.
@@ -124,6 +126,7 @@ LENA can run a local LLM (Ollama) as an optional assistant. Set `LENA_AI_PROVIDE
 - **Suggest Fixes** (`/events` timeline) — proposes schedule fixes (shift serve time, reassign appliance, adjust duration/dependency) for timeline conflicts; applied through the existing event mutations.
 - **Sommelier & bartender** (`/recipes`) — wine pairings for a recipe and cocktail picks with an in-stock toggle. Both are gated server-side on a stored `birthdate` showing 21+.
 - **Semantic recipe search** (`/recipes`, plus Dot's `search_recipes_semantic` tool) — recipes ranked by pgvector cosine distance blended with engagement (favorites, household use, views), so "something cozy for a rainy night" works. Embeddings come from a small Ollama model (`LENA_AI_EMBED_MODEL`, default `nomic-embed-text`, 768 dims); a sweep keeps them fresh whenever recipes are saved or the model changes. No embedder configured → the web toggle hides and semantic mode returns `UNAVAILABLE`; keyword search is untouched.
+- **Allergen flag suggestions** (`/inventory/allergen-suggestions`, admin) — the assistant reads a recipe's flaggable lines and proposes `contains`/`may_contain` flags with rationale. Proposals land in a review queue (`inventory.allergen_suggestion`) and apply only when an admin accepts — the flag writes under the reviewer's attribution in the same transaction.
 
 The model never writes — every suggestion is advisory and applies only through the existing mutations. `internal/platform/llm` defines a provider-agnostic interface, so swapping Ollama for a commercial API is a config change plus a small adapter. `LENA_AI_PROVIDER=mock` gives a deterministic canned assistant for e2e.
 

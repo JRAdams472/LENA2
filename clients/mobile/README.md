@@ -153,6 +153,8 @@ gated artifacts.
 - `lib/screens/grocery_lists_screen.dart` + `grocery_list_screen.dart` — Grocery list list/detail; the detail screen renders the server's `groceryRouteGroups` verbatim (aisle-grouped, per-group `ReorderableListView`, "move to aisle" menu, store picker). Ingredient-only lines show a `usual:` caption once a brand is remembered; the first check-off opens a brand picker (`checkGroceryItemWithBrand`) that records the household's usual.
 - `lib/screens/pantry_screen.dart` — Pantry quantities.
 - `lib/screens/scan_screen.dart` — Barcode scan, UPC lookup, add/remove pantry, submit new items; UPC hits display the resolved ingredient (household override wins) with a link-ingredient prompt (`setHouseholdItemIngredient`).
+- `lib/screens/household_screen.dart` — members, roles, invites, and the caller's own allergy/dietary records (`setMyAllergy`). Warning badges on grocery rows, recipe details, meal-plan slots, and event dishes open a dialog naming the member + allergen + flag kind; an entity with no flags reports "No allergen information", never "safe".
+- `lib/allergy.dart` — shared warning model + badge/dialog widgets used by every surface.
 - `lib/scan/upc_utils.dart` — UPC digit normalization.
 - `lib/ai/` — Ask Dot local inference: `engine.dart`/`protocol.dart`/`agent.dart` (engine contract, JSON tool protocol, bounded agent loop), `gemma_engine.dart` + `gemma_binding.dart` (`flutter_gemma` seam for tests), `model_manager.dart` (download/delete + dart-define config), `controller.dart` (orchestration + SharedPreferences mode), `api.dart` (assistant GraphQL queries).
 
