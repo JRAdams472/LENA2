@@ -13,7 +13,7 @@ describe("proxy CSP", () => {
   it("issues a fresh nonce per request", () => {
     const a = responseCsp(proxy(makeReq()));
     const b = responseCsp(proxy(makeReq()));
-    const nonce = (h: string) => h.match(/'nonce-([^']+)'/)?.[1];
+    const nonce = (h: string) => /'nonce-([^']+)'/.exec(h)?.[1];
     expect(nonce(a)).toBeTruthy();
     expect(nonce(a)).not.toBe(nonce(b));
   });
@@ -59,7 +59,7 @@ describe("proxy CSP", () => {
     const reqCsp = res.headers.get(
       "x-middleware-request-content-security-policy"
     );
-    const resNonce = responseCsp(res).match(/'nonce-([^']+)'/)?.[1];
+    const resNonce = /'nonce-([^']+)'/.exec(responseCsp(res))?.[1];
     expect(reqNonce).toBe(resNonce);
     expect(reqCsp).toBe(responseCsp(res));
   });

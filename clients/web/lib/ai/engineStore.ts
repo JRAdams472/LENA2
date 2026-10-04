@@ -36,7 +36,7 @@ function serverOnly(): boolean {
 export async function engineForSuggestions(): Promise<LocalEngine | null> {
   if (engine) return engine;
   if (serverOnly()) return null;
-  if (probing) return probing;
+  if (probing !== null) return probing;
   probing = (async () => {
     if (detectLocalCapability() === "nano" && (await nanoAvailability()) === "available") {
       const created = await NanoEngine.create();

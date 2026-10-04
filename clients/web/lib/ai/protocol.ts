@@ -53,17 +53,28 @@ ${catalog}`;
 }
 
 // stripFences removes markdown code fences a model may wrap output in.
+// Written without regex so model output can't trigger backtracking.
 function stripFences(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  return m ? m[1].trim() : text.trim();
+  const start = text.indexOf("```");
+  if (start === -1) return text.trim();
+  const nl = text.indexOf("\n", start);
+  if (nl === -1) return text.trim();
+  // Only a bare ``` or ```json opening fence is stripped — other
+  // languages are left alone, matching the previous regex's contract.
+  if (!/^```(json)?$/.test(text.slice(start, nl).trim())) {
+    return text.trim();
+  }
+  const close = text.indexOf("```", nl);
+  if (close === -1) return text.trim();
+  return text.slice(nl + 1, close).trim();
 }
 
 // extractJsonObject finds a JSON object in possibly-noisy model output:
 // the whole reply first, then the widest brace span as a fallback.
-export function extractJsonObject(raw: string): unknown | undefined {
+export function extractJsonObject(raw: string): unknown {
   const text = stripFences(raw);
   for (const candidate of [text, text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)]) {
-    if (!candidate || !candidate.startsWith("{")) continue;
+    if (!candidate?.startsWith("{")) continue;
     try {
       return JSON.parse(candidate);
     } catch {

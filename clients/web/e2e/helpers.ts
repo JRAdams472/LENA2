@@ -1,4 +1,5 @@
 import { APIRequestContext, expect } from "@playwright/test";
+import { randomInt } from "node:crypto";
 
 const ISSUER_URL = process.env.E2E_ISSUER_URL ?? "http://localhost:8085";
 const API_URL = `${process.env.E2E_BASE_URL ?? "http://localhost"}/graphql`;
@@ -71,5 +72,5 @@ export function unique(prefix: string): string {
 /** Returns a unique two-letter code (e.g. for country iso_code, which is unique). */
 export function uniqueCode(): string {
   const a = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  return `X${a[Math.floor(Math.random() * a.length)]}`;
+  return `X${a[randomInt(a.length)]}`;
 }

@@ -7,6 +7,7 @@ boxes. PDFs are rasterised with pdf2image + poppler.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import tempfile
@@ -124,6 +125,12 @@ def _is_pdf(file: UploadFile) -> bool:
     return name.endswith(".pdf") or (file.content_type == "application/pdf")
 
 
+def _write_temp(contents: bytes, suffix: str) -> str:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(contents)
+        return tmp.name
+
+
 @app.post("/ocr")
 async def ocr(image: UploadFile = File(...), psm: int = DEFAULT_PSM) -> dict:
     # Streamed size limit: read at most MAX_UPLOAD_BYTES + 1 so a huge body
@@ -140,11 +147,10 @@ async def ocr(image: UploadFile = File(...), psm: int = DEFAULT_PSM) -> dict:
     page_results: list[dict[str, Any]] = []
 
     if _is_pdf(image):
-        # pdf2image needs a file path; write the uploaded PDF to a temp file.
+        # pdf2image needs a file path; write the uploaded PDF to a temp
+        # file off the event loop (sync file API in an async handler).
         suffix = os.path.splitext(image.filename or "upload.pdf")[1] or ".pdf"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(contents)
-            tmp_path = tmp.name
+        tmp_path = await asyncio.to_thread(_write_temp, contents, suffix)
         try:
             info = pdfinfo_from_path(tmp_path)
             page_count = int(info.get("Pages", 0))
