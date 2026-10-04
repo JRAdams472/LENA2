@@ -24,18 +24,18 @@ export function useMe() {
     isLoading: isAuthenticated,
     error: null,
   });
-  const requestId = useRef(0);
+  const requestIdRef = useRef(0);
 
   const load = useCallback(() => {
-    const id = ++requestId.current;
+    const id = ++requestIdRef.current;
     api
       .getMe()
       .then((u) => {
-        if (requestId.current === id)
+        if (requestIdRef.current === id)
           setState({ me: u, isLoading: false, error: null });
       })
       .catch((e: Error) => {
-        if (requestId.current === id)
+        if (requestIdRef.current === id)
           setState({ me: null, isLoading: false, error: e });
       });
   }, []);

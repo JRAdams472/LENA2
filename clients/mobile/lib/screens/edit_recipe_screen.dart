@@ -532,8 +532,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               onChanged: _onIngredientSearchChanged,
             ),
             DropdownButtonFormField<String?>(
-              value: _ingredientId,
               isExpanded: true,
+              value: _ingredientId,
               decoration: const InputDecoration(labelText: 'Ingredient'),
               items: [
                 ..._ingredients.map(
@@ -578,8 +578,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               onChanged: _onItemSearchChanged,
             ),
             DropdownButtonFormField<String?>(
-              value: _itemId,
               isExpanded: true,
+              value: _itemId,
               decoration:
                   const InputDecoration(labelText: 'Preferred brand item'),
               items: _items

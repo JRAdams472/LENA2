@@ -4,12 +4,12 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { runAgent } from "./agent";
 import { setLocalEngine } from "./engineStore";
-import { detectLocalCapability, nanoAvailability, type LocalCapability } from "./capabilities";
+import { detectLocalCapability, nanoAvailability } from "./capabilities";
 import { NanoEngine } from "./engines/nano";
 import { DEFAULT_WEBLLM_MODEL, WebLLMEngine, WEBLLM_MODELS, type DownloadProgress, type WebLLMModelKey } from "./engines/webllm";
 import type { AssistantResult, LocalEngine } from "./types";
@@ -23,6 +23,17 @@ function loadMode(): AssistantMode {
   if (typeof window === "undefined") return "auto";
   return window.localStorage.getItem(MODE_KEY) === "server" ? "server" : "auto";
 }
+
+// localStorage-backed stores read through useSyncExternalStore so the first
+// client render matches the server snapshot and updates hydrate safely.
+const modeListeners = new Set<() => void>();
+function subscribeMode(onChange: () => void) {
+  modeListeners.add(onChange);
+  return () => {
+    modeListeners.delete(onChange);
+  };
+}
+const subscribeCapability = () => () => {};
 
 function loadModel(): WebLLMModelKey {
   if (typeof window === "undefined") return DEFAULT_WEBLLM_MODEL;
@@ -61,30 +72,30 @@ export function useAssistant(): AssistantController {
   const { data: serverAI } = useQuery({ queryKey: ["aiAvailable"], queryFn: api.getAIAvailable });
   const { data: tools } = useQuery({ queryKey: ["assistantTools"], queryFn: api.getAssistantTools });
 
-  const [capability, setCapability] = useState<LocalCapability | null>(null);
+  const capability = useSyncExternalStore(subscribeCapability, detectLocalCapability, () => null);
+  const mode = useSyncExternalStore<AssistantMode>(subscribeMode, loadMode, () => "auto");
   const [nanoReady, setNanoReady] = useState<boolean | null>(null);
-  const [mode, setMode] = useState<AssistantMode>("auto");
   const [engine, setEngine] = useState<LocalEngine | null>(null);
   const [download, setDownload] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const engineRef = useRef<LocalEngine | null>(null);
   engineRef.current = engine;
 
-  // Probe capabilities once on mount.
+  // Probe nano availability once the capability snapshot is known.
   useEffect(() => {
-    setMode(loadMode());
-    const cap = detectLocalCapability();
-    setCapability(cap);
-    if (cap === "nano") {
-      nanoAvailability().then((a) => setNanoReady(a === "available"));
-    } else {
-      setNanoReady(null);
-    }
-  }, []);
+    if (capability !== "nano") return;
+    let live = true;
+    nanoAvailability().then((a) => {
+      if (live) setNanoReady(a === "available");
+    });
+    return () => {
+      live = false;
+    };
+  }, [capability]);
 
   const persistMode = (m: AssistantMode) => {
-    setMode(m);
     window.localStorage.setItem(MODE_KEY, m);
+    modeListeners.forEach((cb) => cb());
   };
 
   const setServerOnly = useCallback((serverOnly: boolean) => {

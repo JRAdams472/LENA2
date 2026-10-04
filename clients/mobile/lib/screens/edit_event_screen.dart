@@ -141,6 +141,7 @@ class _EditEventScreenState extends State<EditEventScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
+              isExpanded: true,
               value: _granularity,
               decoration: const InputDecoration(
                 labelText: 'Schedule granularity',

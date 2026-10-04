@@ -6,6 +6,7 @@
   - The mobile redesign used a self-describing named series instead: `mobile-redesign-p0` through `mobile-redesign-p5`.
 - **Ticket-prefixed names (required):** branches and PR titles must start with the Linear ticket number — `LEN-11-close-out` / `LEN-11: Close-out — docs, wiki, full UAT loop`. Every plan gets a Linear ticket and each phase a subticket; keep them linked.
 - Do not push commits directly to `main`.
+- Before opening a pull request, run `go mod tidy` and commit any `go.mod`/`go.sum` changes — CI fails the lint job when they are not tidy.
 - When a phase is complete, open a pull request against `main` and summarize the changes.
 - Only merge after the phase has been verified (build, tests, lint).
 
@@ -58,6 +59,7 @@ Seq and Jaeger run locally in the compose stack and are both queryable over plai
       -e SONAR_TOKEN="$TOKEN" sonarsource/sonar-scanner-cli \
       -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.projectKey=lena2 \
       -Dsonar.sources=. -Dsonar.exclusions='**/sqlc/**,**/mock/**,migrations/seed/**' \
+      -Dsonar.tests=clients/web/__tests__,clients/web/e2e,clients/mobile/test -Dsonar.test.inclusions='**/*_test.go' \
       -Dsonar.go.coverage.reportPaths=coverage.out \
       -Dsonar.javascript.lcov.reportPaths=clients/web/coverage/lcov.info
     ```

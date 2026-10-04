@@ -78,6 +78,17 @@ export default function DataTable<T extends object>({
   const [sortField, setSortField] = useState<Extract<keyof T, string> | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
+  // Entities all expose a *-ID field; JSON is the last-resort key so rows
+  // never key off their array index.
+  const rowKey = (row: T): string | number => {
+    const rec = row as Record<string, unknown>;
+    for (const k of Object.keys(rec)) {
+      const v = rec[k];
+      if ((k === "id" || k.endsWith("ID") || k.endsWith("Id")) && (typeof v === "string" || typeof v === "number")) return v;
+    }
+    return JSON.stringify(rec);
+  };
+
   const displayRows = useMemo(() => {
     if (!sortField) return rows;
     const sorted = [...rows];
@@ -166,8 +177,8 @@ export default function DataTable<T extends object>({
               </TableRow>
             </TableHead>
             <TableBody>
-              {displayRows.map((row, i) => (
-                <TableRow key={i}>
+              {displayRows.map((row) => (
+                <TableRow key={rowKey(row)}>
                   {columnDefs.map((col) => {
                     const value = (row as Record<string, unknown>)[col.key];
                     return (

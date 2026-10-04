@@ -50,6 +50,29 @@ function emptyReviewStep(): RecipeImportReviewStep {
   return { stepNumber: 1, instruction: "" };
 }
 
+type ReviewItemRow = RecipeImportReviewItem & { uiKey: string };
+type ReviewStepRow = RecipeImportReviewStep & { uiKey: string };
+type ReviewState = Omit<RecipeImportReview, "items" | "steps"> & {
+  items: ReviewItemRow[];
+  steps: ReviewStepRow[];
+};
+
+function withUiKeys(r: RecipeImportReview): ReviewState {
+  return {
+    ...r,
+    items: r.items.map((it) => ({ ...it, uiKey: crypto.randomUUID() })),
+    steps: r.steps.map((st) => ({ ...st, uiKey: crypto.randomUUID() })),
+  };
+}
+
+function toReviewPayload(r: ReviewState): RecipeImportReview {
+  return {
+    ...r,
+    items: r.items.map(({ uiKey: _ik, ...it }) => it),
+    steps: r.steps.map(({ uiKey: _sk, ...st }) => st),
+  };
+}
+
 interface ItemOption {
   id: string;
   name: string;
@@ -275,12 +298,12 @@ export default function PendingRecipeDetailPage() {
     enabled: isAdmin,
   });
 
-  const [review, setReview] = useState<RecipeImportReview | null>(null);
+  const [review, setReview] = useState<ReviewState | null>(null);
   const [zeroQtyIndex, setZeroQtyIndex] = useState<number | null>(null);
   const [confirmReject, setConfirmReject] = useState(false);
 
   if (recipeImport && !review) {
-    setReview(reviewFromImport(recipeImport));
+    setReview(withUiKeys(reviewFromImport(recipeImport)));
   }
 
   const updateMutation = useMutation({
@@ -357,7 +380,7 @@ export default function PendingRecipeDetailPage() {
   };
 
   const addItem = () => {
-    setReview((r) => (r ? { ...r, items: [...r.items, emptyReviewItem()] } : r));
+    setReview((r) => (r ? { ...r, items: [...r.items, { ...emptyReviewItem(), uiKey: crypto.randomUUID() }] } : r));
   };
 
   const updateStep = (index: number, instruction: string) => {
@@ -374,7 +397,7 @@ export default function PendingRecipeDetailPage() {
   };
 
   const addStep = () => {
-    setReview((r) => (r ? { ...r, steps: [...r.steps, { ...emptyReviewStep(), stepNumber: r.steps.length + 1 }] } : r));
+    setReview((r) => (r ? { ...r, steps: [...r.steps, { ...emptyReviewStep(), stepNumber: r.steps.length + 1, uiKey: crypto.randomUUID() }] } : r));
   };
 
   const anyLoading = updateMutation.isPending || approveMutation.isPending || rejectMutation.isPending || retryMutation.isPending;
@@ -440,7 +463,7 @@ export default function PendingRecipeDetailPage() {
           <Stack spacing={2}>
             {review.items.map((item, i) => (
               <IngredientRow
-                key={i}
+                key={item.uiKey}
                 item={item}
                 units={units}
                 onChange={(patch) => updateItem(i, patch)}
@@ -459,7 +482,7 @@ export default function PendingRecipeDetailPage() {
           </Typography>
           <Stack spacing={2}>
             {review.steps.map((step, i) => (
-              <Stack key={i} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Stack key={step.uiKey} direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <Typography sx={{ minWidth: 24 }}>{i + 1}.</Typography>
                 <TextField
                   value={step.instruction}
@@ -479,9 +502,9 @@ export default function PendingRecipeDetailPage() {
         </Paper>
 
         <ButtonGroup variant="contained" disabled={anyLoading}>
-          <Button onClick={() => updateMutation.mutate(review)}>Save Review</Button>
+          <Button onClick={() => updateMutation.mutate(toReviewPayload(review))}>Save Review</Button>
           <Button
-            onClick={() => updateMutation.mutate(review, { onSuccess: () => approveMutation.mutate() })}
+            onClick={() => updateMutation.mutate(toReviewPayload(review), { onSuccess: () => approveMutation.mutate() })}
             color="success"
           >
             Approve
