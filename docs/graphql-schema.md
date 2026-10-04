@@ -292,6 +292,20 @@ Ingredients (generic, unbranded):
 
 `Item.ingredient` is the catalog link; `Item.householdIngredient` is the override-aware resolved view. `itemId` is optional on `RecipeItemInput`, `AddMealSlotItemInput`, `EventRecipeItemInput`, and `AddGroceryItemInput` — all accept `ingredientId`, and at least one of the two is required.
 
+Allergens and dietary restrictions:
+
+- `allergens` (query) — `[Allergen!]!`, the registry rows.
+- `myAllergies` (query) — `[MemberAllergen!]!`, the caller's records (`kind: allergy | dietary`).
+- `setMyAllergy(allergenId: ID!, kind: MemberAllergyKind!, on: Boolean!): Boolean!` — set or clear one of the caller's own records.
+- `createAllergen`, `updateAllergen` (`@admin`) — registry management; deactivate instead of delete.
+- `setIngredientAllergen(ingredientId: ID!, allergenId: ID!, kind: AllergenFlagKind)` (`@admin`) — `contains`/`may_contain`, null clears.
+- `setItemAllergen(itemId: ID!, allergenId: ID!, kind: AllergenFlagKind)` (`@admin`) — same, at the product level.
+- `allergenSuggestions(status)` (`@admin`, query) — `[AllergenSuggestion!]!`, the AI review queue; `status` narrows to `pending`/`accepted`/`dismissed`.
+- `suggestRecipeAllergens(recipeId: ID!, maxSuggestions: Int)` (`@admin`, AI budget) — runs the suggester over the recipe and returns the rows actually created; duplicates of open suggestions or curated flags drop server-side.
+- `acceptAllergenSuggestion(id: ID!)` / `dismissAllergenSuggestion(id: ID!)` (`@admin`) — accept writes the real flag under the reviewer's attribution in the same transaction; both re-fetch and return the row.
+
+`allergens`/`allergyWarnings` fields exist on `Item`, `Ingredient`, `Recipe`, `MealSlot`, `EventRecipe`, and `GroceryListItem`. Warnings name the household member, their record kind, and the entity's strongest flag kind. An entity with no flags means *no allergen information* — never "known safe"; clients must not render it as safe. Household `ingredient` overrides win over the catalog link; `contains` outranks `may_contain`.
+
 Store routing — all household-scoped:
 
 - `createStore(name: String!): Store!`, `renameStore(storeId: ID!, name: String!): Store!`, `deleteStore(storeId: ID!): Boolean!`

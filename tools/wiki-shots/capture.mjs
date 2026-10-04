@@ -14,6 +14,7 @@
 
 import { createRequire } from "module";
 import { mkdirSync } from "fs";
+import { execSync } from "child_process";
 
 const require = createRequire(new URL("../../clients/web/package.json", import.meta.url));
 const { chromium, request } = require("playwright");
@@ -203,6 +204,47 @@ await page.screenshot({ path: `${OUT}/grocery-brand-picker.png` });
 console.log("shot: grocery-brand-picker");
 await page.keyboard.press("Escape");
 await shot("ingredients-admin", "/inventory/ingredients", "garlic");
+
+// Allergen admin pages. Member records + curated item flags come from
+// seed_demo.py; the suggestion queue has no non-AI write path and the e2e
+// provider returns canned text, so seed one pending proposal via SQL for
+// the queue shot.
+execSync("docker exec -i lena2shots-db-1 psql -U lena -d lena", {
+  input: `INSERT INTO inventory.allergen_suggestion
+    (recipe_id, target_kind, ingredient_id, allergen_id, kind, rationale, created_by)
+  SELECT r.recipe_id, 'ingredient', g.ingredient_id, a.allergen_id, 'may_contain',
+         'Ingredient may carry sulfites from processing or packaging.',
+         'e2e@example.com'
+  FROM recipe.recipe r, inventory.ingredient g, inventory.allergen a
+  WHERE r.name = 'Garlic Butter Pasta' AND g.name = 'garlic' AND a.name = 'sulfites'
+  ON CONFLICT DO NOTHING;`,
+});
+await shot("allergen-registry", "/inventory/allergens", "Milk");
+await shot(
+  "allergen-suggestions",
+  "/inventory/allergen-suggestions",
+  "Review queue"
+);
+// Element-shot the allergy card so the tri-state toggles (with the seeded
+// milk allergy selected) fill the frame.
+await page.goto(`${BASE}/profile`, { waitUntil: "domcontentloaded" });
+const allergyHeading = page.getByRole("heading", {
+  name: "Allergies & dietary restrictions",
+});
+await allergyHeading.waitFor({ timeout: 30000 });
+await allergyHeading
+  .locator("xpath=ancestor::div[contains(@class,'MuiPaper')][1]")
+  .screenshot({ path: `${OUT}/profile-allergies.png` });
+console.log("shot: profile-allergies");
+// The pasta recipe carries flagged items (butter/cheese → milk, pasta →
+// wheat) and the e2e admin records a milk allergy, so the detail page
+// renders the warning chip.
+await shot(
+  "recipe-allergy-warning",
+  `/recipes/${pastaId}`,
+  "milk (allergy; contains)"
+);
+
 await shot("events", "/events", "Autumn Dinner Party");
 await shot("event-detail", "/events/1", "Autumn Dinner Party");
 await shot("wine-bottles", "/wine/bottles", "Silver Oak");
