@@ -1,0 +1,2806 @@
+{
+  "generated_at": "2026-10-04T04:58:01.1479596Z",
+  "model": "qwen2.5:7b-instruct",
+  "mappings": [
+    {
+      "ingredient_id": 323,
+      "ingredient_name": "alfredo sauce",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Alfredo sauce may contain milk as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 350,
+      "ingredient_name": "all-purpose flour",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "All-purpose flour contains wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 234,
+      "ingredient_name": "almond butter",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Almond butter contains tree nuts."
+    },
+    {
+      "ingredient_id": 217,
+      "ingredient_name": "almond extract",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Almond extract contains tree nuts."
+    },
+    {
+      "ingredient_id": 349,
+      "ingredient_name": "almond flour",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Almond flour contains tree nuts."
+    },
+    {
+      "ingredient_id": 368,
+      "ingredient_name": "almond milk",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Almond milk may contain tree nuts as an allergen source."
+    },
+    {
+      "ingredient_id": 295,
+      "ingredient_name": "almonds",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Almonds contain tree nuts."
+    },
+    {
+      "ingredient_id": 172,
+      "ingredient_name": "american cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "American cheese may contain milk as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 116,
+      "ingredient_name": "anchovies",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Anchovies contain fish."
+    },
+    {
+      "ingredient_id": 151,
+      "ingredient_name": "bacon",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Bacon may contain pork as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 26,
+      "ingredient_name": "bagels",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Bagels contain wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 25,
+      "ingredient_name": "baguette",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Baguette contains wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 268,
+      "ingredient_name": "balsamic glaze",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Balsamic glaze may contain wheat as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 267,
+      "ingredient_name": "balsamic vinegar",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Balsamic vinegar may contain wheat as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 313,
+      "ingredient_name": "barley",
+      "allergens": [
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Barley contains gluten, which is a component of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 266,
+      "ingredient_name": "bbq sauce",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        },
+        {
+          "name": "fish",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "BBQ sauce may contain soy as a preservative or flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 5,
+      "ingredient_name": "beef bouillon",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        },
+        {
+          "name": "celery",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Beef bouillon contains wheat as an ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 318,
+      "ingredient_name": "beef broth",
+      "allergens": [
+        {
+          "name": "celery",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Beef broth contains wheat as an ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 348,
+      "ingredient_name": "biscuit mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Biscuit mix contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 380,
+      "ingredient_name": "blue cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Blue cheese contains milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 279,
+      "ingredient_name": "bread crumbs",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Bread crumbs contain wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 347,
+      "ingredient_name": "bread flour",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Bread flour contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 130,
+      "ingredient_name": "breadsticks",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Breadsticks contain wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 413,
+      "ingredient_name": "brisket",
+      "allergens": [
+        {
+          "name": "beef",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Brisket contains wheat as an ingredient in the marinade or processing. [reviewed]"
+    },
+    {
+      "ingredient_id": 138,
+      "ingredient_name": "brownie mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Brownie mix contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 265,
+      "ingredient_name": "buffalo sauce",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Buffalo sauce may contain soy as a preservative or flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 310,
+      "ingredient_name": "bulgur",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Bulgur contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 275,
+      "ingredient_name": "butter",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Butter contains milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 367,
+      "ingredient_name": "buttermilk",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Buttermilk contains milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 264,
+      "ingredient_name": "caesar dressing",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "contains"
+        },
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Caesar dressing typically contains wheat as an ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 344,
+      "ingredient_name": "cake flour",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cake flour is derived from wheat and contains gluten. [reviewed]"
+    },
+    {
+      "ingredient_id": 137,
+      "ingredient_name": "cake mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cake mix typically contains wheat, eggs, and milk as ingredients. [reviewed]"
+    },
+    {
+      "ingredient_id": 107,
+      "ingredient_name": "canned peaches",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Canned peaches may contain molluscs as a flavoring or preservative. [reviewed]"
+    },
+    {
+      "ingredient_id": 106,
+      "ingredient_name": "canned pears",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Canned pears may contain molluscs as a flavoring or preservative. [reviewed]"
+    },
+    {
+      "ingredient_id": 105,
+      "ingredient_name": "canned salmon",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Canned salmon is a fish product and contains fish."
+    },
+    {
+      "ingredient_id": 294,
+      "ingredient_name": "cashews",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cashews are tree nuts and are an inherent source of allergens."
+    },
+    {
+      "ingredient_id": 412,
+      "ingredient_name": "catfish",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Catfish is a fish product and contains fish."
+    },
+    {
+      "ingredient_id": 164,
+      "ingredient_name": "celery",
+      "allergens": [
+        {
+          "name": "celery",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Celery is an inherent source of allergens."
+    },
+    {
+      "ingredient_id": 201,
+      "ingredient_name": "celery salt",
+      "allergens": [
+        {
+          "name": "celery",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Celery salt is a seasoning that contains celery."
+    },
+    {
+      "ingredient_id": 299,
+      "ingredient_name": "cereal",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cereal is a processed grain product that typically contains wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 366,
+      "ingredient_name": "cheddar cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cheddar cheese is a dairy product and contains milk."
+    },
+    {
+      "ingredient_id": 4,
+      "ingredient_name": "chicken bouillon",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        },
+        {
+          "name": "celery",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Chicken bouillon is a seasoning that typically contains wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 317,
+      "ingredient_name": "chicken broth",
+      "allergens": [
+        {
+          "name": "celery",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Chicken broth may contain milk as a flavoring or emulsifier. [reviewed]"
+    },
+    {
+      "ingredient_id": 407,
+      "ingredient_name": "chorizo",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Chorizo may contain milk as a flavoring or emulsifier. [reviewed]"
+    },
+    {
+      "ingredient_id": 405,
+      "ingredient_name": "cod",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cod is a source of fish."
+    },
+    {
+      "ingredient_id": 67,
+      "ingredient_name": "corn",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Corn is not a source of known allergens. [reviewed]"
+    },
+    {
+      "ingredient_id": 339,
+      "ingredient_name": "corn syrup",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Corn syrup may contain sulfites as a preservative. [reviewed]"
+    },
+    {
+      "ingredient_id": 24,
+      "ingredient_name": "corn tortillas",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Corn tortillas are a source of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 136,
+      "ingredient_name": "cornbread mix",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cornbread mix is a source of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 340,
+      "ingredient_name": "cornmeal",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cornmeal is a source of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 273,
+      "ingredient_name": "cornstarch",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cornstarch is a source of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 365,
+      "ingredient_name": "cottage cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cottage cheese may contain milk as a source of protein. [reviewed]"
+    },
+    {
+      "ingredient_id": 404,
+      "ingredient_name": "crab meat",
+      "allergens": [
+        {
+          "name": "crustacean shellfish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Crab meat is a known source of crustacean shellfish allergens."
+    },
+    {
+      "ingredient_id": 129,
+      "ingredient_name": "crackers",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Crackers are inherently made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 379,
+      "ingredient_name": "cream cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cream cheese is a dairy product and contains milk."
+    },
+    {
+      "ingredient_id": 100,
+      "ingredient_name": "cream of chicken soup",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "celery",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cream of chicken soup typically contains milk as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 99,
+      "ingredient_name": "cream of mushroom soup",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Cream of mushroom soup typically contains milk as a base ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 23,
+      "ingredient_name": "croissants",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Croissants are inherently made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 298,
+      "ingredient_name": "croutons",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Croutons are inherently made from wheat bread. [reviewed]"
+    },
+    {
+      "ingredient_id": 403,
+      "ingredient_name": "deli ham",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Deli ham may contain trace amounts of peanuts, but is not inherently a source of peanuts. [reviewed]"
+    },
+    {
+      "ingredient_id": 260,
+      "ingredient_name": "dijon mustard",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Dijon mustard is inherently made from mustard seeds and may contain mustard allergens."
+    },
+    {
+      "ingredient_id": 145,
+      "ingredient_name": "dinner rolls",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Dinner rolls are inherently made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 375,
+      "ingredient_name": "egg noodles",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Egg noodles are inherently made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 33,
+      "ingredient_name": "eggs",
+      "allergens": [
+        {
+          "name": "eggs",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Eggs are a known source of egg allergens."
+    },
+    {
+      "ingredient_id": 374,
+      "ingredient_name": "elbow macaroni",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Elbow macaroni is inherently made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 144,
+      "ingredient_name": "english muffins",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "English muffins are typically made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 96,
+      "ingredient_name": "evaporated milk",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Evaporated milk is derived from milk. [reviewed]"
+    },
+    {
+      "ingredient_id": 308,
+      "ingredient_name": "farro",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Farro is a type of wheat grain. [reviewed]"
+    },
+    {
+      "ingredient_id": 378,
+      "ingredient_name": "feta cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Feta cheese is made from milk."
+    },
+    {
+      "ingredient_id": 373,
+      "ingredient_name": "fettuccine",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Fettuccine is a pasta made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 211,
+      "ingredient_name": "fish sauce",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Fish sauce is made from fish."
+    },
+    {
+      "ingredient_id": 21,
+      "ingredient_name": "flour tortillas",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Flour tortillas are made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 135,
+      "ingredient_name": "gelatin",
+      "allergens": [
+        {
+          "name": "gelatin",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Gelatin is derived from animal collagen, which can be a source of allergens."
+    },
+    {
+      "ingredient_id": 377,
+      "ingredient_name": "goat cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Goat cheese is made from milk."
+    },
+    {
+      "ingredient_id": 337,
+      "ingredient_name": "graham cracker crumbs",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Graham cracker crumbs are made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 128,
+      "ingredient_name": "graham crackers",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Graham crackers are made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 364,
+      "ingredient_name": "greek yogurt",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Greek yogurt is made from milk."
+    },
+    {
+      "ingredient_id": 363,
+      "ingredient_name": "half and half",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Half and half may contain milk, which is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 396,
+      "ingredient_name": "halibut",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Halibut contains fish."
+    },
+    {
+      "ingredient_id": 395,
+      "ingredient_name": "ham",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ham may contain pork, which is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 143,
+      "ingredient_name": "hamburger buns",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hamburger buns contain wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 221,
+      "ingredient_name": "harissa",
+      "allergens": [
+        {
+          "name": "sesame",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "medium",
+      "notes": "Harissa may contain sesame seeds, which is a common allergen."
+    },
+    {
+      "ingredient_id": 289,
+      "ingredient_name": "hazelnuts",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hazelnuts contain tree nuts."
+    },
+    {
+      "ingredient_id": 362,
+      "ingredient_name": "heavy cream",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Heavy cream may contain milk, which is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 259,
+      "ingredient_name": "hoisin sauce",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hoisin sauce may contain soy, which is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 257,
+      "ingredient_name": "honey mustard dressing",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Honey mustard dressing contains mustard. [reviewed]"
+    },
+    {
+      "ingredient_id": 120,
+      "ingredient_name": "hot cocoa mix",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hot cocoa mix may contain milk, which is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 142,
+      "ingredient_name": "hot dog buns",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hot dog buns contain wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 150,
+      "ingredient_name": "hot dogs",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Hot dogs may contain pork, which is a common allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 394,
+      "ingredient_name": "italian sausage",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Lupin is a known allergen and can be an ingredient in some types of Italian sausages. [reviewed]"
+    },
+    {
+      "ingredient_id": 277,
+      "ingredient_name": "kimchi",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Kimchi may contain fish sauce or other fish-derived ingredients and may also contain mustard as a flavoring agent. [reviewed]"
+    },
+    {
+      "ingredient_id": 7,
+      "ingredient_name": "lasagna noodles",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Lasagna noodles are typically made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 372,
+      "ingredient_name": "linguine",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Linguine is typically made from wheat flour. [reviewed]"
+    },
+    {
+      "ingredient_id": 32,
+      "ingredient_name": "lobster",
+      "allergens": [
+        {
+          "name": "crustacean shellfish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Lobster is a crustacean shellfish and is a known allergen."
+    },
+    {
+      "ingredient_id": 392,
+      "ingredient_name": "mahi mahi",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Mahi mahi is a type of fish and is a known allergen."
+    },
+    {
+      "ingredient_id": 15,
+      "ingredient_name": "maraschino cherries",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Maraschino cherries may contain traces of peanuts in the syrup used for preservation. [reviewed]"
+    },
+    {
+      "ingredient_id": 336,
+      "ingredient_name": "marshmallow creme",
+      "allergens": [
+        {
+          "name": "gelatin",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Marshmallow creme may contain milk or wheat-based ingredients. [reviewed]"
+    },
+    {
+      "ingredient_id": 335,
+      "ingredient_name": "marshmallows",
+      "allergens": [
+        {
+          "name": "gelatin",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Marshmallows may contain milk or wheat-based ingredients. [reviewed]"
+    },
+    {
+      "ingredient_id": 334,
+      "ingredient_name": "masa harina",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Masa harina is made from dried corn and may contain traces of gluten. [reviewed]"
+    },
+    {
+      "ingredient_id": 253,
+      "ingredient_name": "mayonnaise",
+      "allergens": [
+        {
+          "name": "eggs",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Mayonnaise may contain eggs and may contain wheat-based ingredients. [reviewed]"
+    },
+    {
+      "ingredient_id": 361,
+      "ingredient_name": "milk",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Milk is a known allergen and is an inherent source in this ingredient."
+    },
+    {
+      "ingredient_id": 219,
+      "ingredient_name": "mirin",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Muffin mix often contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 220,
+      "ingredient_name": "miso paste",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Miso paste is a fermented soy product."
+    },
+    {
+      "ingredient_id": 288,
+      "ingredient_name": "mixed nuts",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Mixed nuts inherently contain tree nuts."
+    },
+    {
+      "ingredient_id": 360,
+      "ingredient_name": "monterey jack cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Monterey jack cheese contains milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 359,
+      "ingredient_name": "mozzarella cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Mozzarella cheese contains milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 134,
+      "ingredient_name": "muffin mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Muffin mix often contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 391,
+      "ingredient_name": "mussels",
+      "allergens": [
+        {
+          "name": "molluscs",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Mussels are a type of mollusk."
+    },
+    {
+      "ingredient_id": 184,
+      "ingredient_name": "mustard powder",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Mustard powder is made from mustard seeds."
+    },
+    {
+      "ingredient_id": 20,
+      "ingredient_name": "naan",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Naan is a type of flatbread that often contains wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 3,
+      "ingredient_name": "nori",
+      "allergens": [
+        {
+          "name": "crustacean shellfish",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Nori is often processed on equipment that also processes wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 231,
+      "ingredient_name": "nutella",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        },
+        {
+          "name": "milk",
+          "kind": "contains"
+        },
+        {
+          "name": "soy",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Nutella contains hazelnuts, a type of tree nut. [reviewed]"
+    },
+    {
+      "ingredient_id": 358,
+      "ingredient_name": "oat milk",
+      "allergens": [
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Oat milk is typically made from oats, but cross-contact with wheat is a potential risk in processing. [reviewed]"
+    },
+    {
+      "ingredient_id": 183,
+      "ingredient_name": "old bay seasoning",
+      "allergens": [
+        {
+          "name": "celery",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Old Bay seasoning contains mustard as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 305,
+      "ingredient_name": "orzo",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Orzo is a type of pasta that contains wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 251,
+      "ingredient_name": "oyster sauce",
+      "allergens": [
+        {
+          "name": "molluscs",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Oyster sauce contains oysters, a type of crustacean shellfish. [reviewed]"
+    },
+    {
+      "ingredient_id": 333,
+      "ingredient_name": "pancake mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pancake mix often contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 276,
+      "ingredient_name": "panko breadcrumbs",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Panko breadcrumbs contain wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 357,
+      "ingredient_name": "parmesan cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Parmesan cheese contains milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 230,
+      "ingredient_name": "peanut butter",
+      "allergens": [
+        {
+          "name": "peanuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Peanut butter contains peanuts as a primary ingredient."
+    },
+    {
+      "ingredient_id": 250,
+      "ingredient_name": "peanut oil",
+      "allergens": [
+        {
+          "name": "peanuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Peanut oil is derived from peanuts."
+    },
+    {
+      "ingredient_id": 287,
+      "ingredient_name": "peanuts",
+      "allergens": [
+        {
+          "name": "peanuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Peanuts are a primary ingredient in this product."
+    },
+    {
+      "ingredient_id": 286,
+      "ingredient_name": "pecans",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pecans are a type of nut and may contain peanuts. [reviewed]"
+    },
+    {
+      "ingredient_id": 371,
+      "ingredient_name": "penne",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Penne is a pasta made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 356,
+      "ingredient_name": "pepper jack cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pepper jack cheese may contain milk and whey. [reviewed]"
+    },
+    {
+      "ingredient_id": 149,
+      "ingredient_name": "pepperoni",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        },
+        {
+          "name": "beef",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pepperoni may contain milk, wheat, and eggs. [reviewed]"
+    },
+    {
+      "ingredient_id": 249,
+      "ingredient_name": "pesto",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        },
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pesto typically contains pine nuts, which are a type of tree nut. [reviewed]"
+    },
+    {
+      "ingredient_id": 11,
+      "ingredient_name": "pickles",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pickles may contain milk, wheat, and eggs. [reviewed]"
+    },
+    {
+      "ingredient_id": 19,
+      "ingredient_name": "pie crust",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pie crust is made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 226,
+      "ingredient_name": "pine nuts",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pine nuts are a type of tree nut."
+    },
+    {
+      "ingredient_id": 285,
+      "ingredient_name": "pistachios",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pistachios are a type of tree nut."
+    },
+    {
+      "ingredient_id": 18,
+      "ingredient_name": "pita bread",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pita bread is made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 17,
+      "ingredient_name": "pizza dough",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Pizza dough is made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 304,
+      "ingredient_name": "polenta",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Polenta is made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 225,
+      "ingredient_name": "poppy seeds",
+      "allergens": [],
+      "confidence": "medium",
+      "notes": "Poppy seeds are a type of seed and may be present."
+    },
+    {
+      "ingredient_id": 332,
+      "ingredient_name": "powdered milk",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Powdered milk is made from milk. [reviewed]"
+    },
+    {
+      "ingredient_id": 171,
+      "ingredient_name": "provolone cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Provolone cheese is a dairy product and contains milk."
+    },
+    {
+      "ingredient_id": 141,
+      "ingredient_name": "puff pastry",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Puff pastry contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 376,
+      "ingredient_name": "queso fresco",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Queso fresco is a cheese and contains milk."
+    },
+    {
+      "ingredient_id": 131,
+      "ingredient_name": "ramen noodles",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ramen noodles contain wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 248,
+      "ingredient_name": "ranch dressing",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ranch dressing contains milk as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 122,
+      "ingredient_name": "ranch seasoning mix",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ranch seasoning mix may contain milk, but the base ingredient is not specified as an allergen."
+    },
+    {
+      "ingredient_id": 247,
+      "ingredient_name": "red wine vinegar",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Red wine vinegar may contain wheat as a clarifying agent during production. [reviewed]"
+    },
+    {
+      "ingredient_id": 30,
+      "ingredient_name": "ribeye steak",
+      "allergens": [
+        {
+          "name": "beef",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ribeye steak contains beef as a primary ingredient."
+    },
+    {
+      "ingredient_id": 355,
+      "ingredient_name": "ricotta cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Ricotta cheese is a dairy product and contains milk."
+    },
+    {
+      "ingredient_id": 302,
+      "ingredient_name": "rolled oats",
+      "allergens": [
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Rolled oats may contain wheat as a cross-contact risk during processing. [reviewed]"
+    },
+    {
+      "ingredient_id": 388,
+      "ingredient_name": "salmon",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Salmon is a known source of fish allergens."
+    },
+    {
+      "ingredient_id": 125,
+      "ingredient_name": "saltine crackers",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Saltine crackers are inherently made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 169,
+      "ingredient_name": "sandwich bread",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sandwich bread is inherently made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 147,
+      "ingredient_name": "sausage links",
+      "allergens": [
+        {
+          "name": "pork",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sausage links may contain pork, but this is not a known allergen. [reviewed]"
+    },
+    {
+      "ingredient_id": 387,
+      "ingredient_name": "scallops",
+      "allergens": [
+        {
+          "name": "molluscs",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Scallops are a known source of molluscs allergens."
+    },
+    {
+      "ingredient_id": 330,
+      "ingredient_name": "self-rising flour",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Self-rising flour is inherently made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 209,
+      "ingredient_name": "sesame oil",
+      "allergens": [
+        {
+          "name": "sesame",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sesame oil is inherently made from sesame seeds."
+    },
+    {
+      "ingredient_id": 224,
+      "ingredient_name": "sesame seeds",
+      "allergens": [
+        {
+          "name": "sesame",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sesame seeds are inherently made from sesame seeds."
+    },
+    {
+      "ingredient_id": 329,
+      "ingredient_name": "shredded coconut",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Shredded coconut may contain sesame, but this is not an inherent source. [reviewed]"
+    },
+    {
+      "ingredient_id": 386,
+      "ingredient_name": "shrimp",
+      "allergens": [
+        {
+          "name": "crustacean shellfish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Shrimp is a known source of crustacean shellfish allergens."
+    },
+    {
+      "ingredient_id": 354,
+      "ingredient_name": "sour cream",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sour cream is inherently made from milk. [reviewed]"
+    },
+    {
+      "ingredient_id": 168,
+      "ingredient_name": "sourdough bread",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sourdough bread is inherently made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 353,
+      "ingredient_name": "soy milk",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Soy milk is inherently made from soy."
+    },
+    {
+      "ingredient_id": 245,
+      "ingredient_name": "soy sauce",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Soy sauce is inherently made from wheat and soy. [reviewed]"
+    },
+    {
+      "ingredient_id": 369,
+      "ingredient_name": "spaghetti",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Spaghetti is inherently made from wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 208,
+      "ingredient_name": "sriracha",
+      "allergens": [
+        {
+          "name": "sulfites",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sriracha may contain soy, but this is not an inherent source. [reviewed]"
+    },
+    {
+      "ingredient_id": 87,
+      "ingredient_name": "sweetened condensed milk",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Sweetened condensed milk is an inherent source of milk. [reviewed]"
+    },
+    {
+      "ingredient_id": 170,
+      "ingredient_name": "swiss cheese",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Swiss cheese may contain milk as an inherent source. [reviewed]"
+    },
+    {
+      "ingredient_id": 218,
+      "ingredient_name": "tahini",
+      "allergens": [
+        {
+          "name": "sesame",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Tahini is an inherent source of sesame."
+    },
+    {
+      "ingredient_id": 243,
+      "ingredient_name": "tamari",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Tamari is an inherent source of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 241,
+      "ingredient_name": "teriyaki sauce",
+      "allergens": [
+        {
+          "name": "soy",
+          "kind": "contains"
+        },
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Teriyaki sauce is an inherent source of wheat and soy. [reviewed]"
+    },
+    {
+      "ingredient_id": 384,
+      "ingredient_name": "tilapia",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Trout is an inherent source of fish."
+    },
+    {
+      "ingredient_id": 123,
+      "ingredient_name": "tortilla chips",
+      "allergens": [
+        {
+          "name": "corn",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Tortilla chips are an inherent source of wheat. [reviewed]"
+    },
+    {
+      "ingredient_id": 383,
+      "ingredient_name": "trout",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Trout is an inherent source of fish."
+    },
+    {
+      "ingredient_id": 382,
+      "ingredient_name": "tuna steak",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Tuna steak is a type of fish."
+    },
+    {
+      "ingredient_id": 381,
+      "ingredient_name": "turkey breast",
+      "allergens": [
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "medium",
+      "notes": "Turkey breast may contain egg in the processing or binding process."
+    },
+    {
+      "ingredient_id": 315,
+      "ingredient_name": "vegetable broth",
+      "allergens": [
+        {
+          "name": "celery",
+          "kind": "may_contain"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Vegetable broth may contain molluscs as a hidden source. [reviewed]"
+    },
+    {
+      "ingredient_id": 326,
+      "ingredient_name": "waffle mix",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "milk",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Waffle mix contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 280,
+      "ingredient_name": "walnuts",
+      "allergens": [
+        {
+          "name": "tree nuts",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Walnuts are a type of tree nut."
+    },
+    {
+      "ingredient_id": 352,
+      "ingredient_name": "whipped cream",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Whipped cream contains milk as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 325,
+      "ingredient_name": "white chocolate chips",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "White chocolate chips contain milk as a primary ingredient."
+    },
+    {
+      "ingredient_id": 238,
+      "ingredient_name": "whole grain mustard",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Whole grain mustard contains mustard as a primary ingredient."
+    },
+    {
+      "ingredient_id": 324,
+      "ingredient_name": "whole wheat flour",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Whole wheat flour contains wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 119,
+      "ingredient_name": "wonton wrappers",
+      "allergens": [
+        {
+          "name": "wheat",
+          "kind": "contains"
+        },
+        {
+          "name": "eggs",
+          "kind": "may_contain"
+        },
+        {
+          "name": "gluten",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Wonton wrappers contain wheat as a primary ingredient. [reviewed]"
+    },
+    {
+      "ingredient_id": 207,
+      "ingredient_name": "worcestershire sauce",
+      "allergens": [
+        {
+          "name": "fish",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Worcestershire sauce contains fish as a hidden source."
+    },
+    {
+      "ingredient_id": 237,
+      "ingredient_name": "yellow mustard",
+      "allergens": [
+        {
+          "name": "mustard",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Yellow mustard contains mustard as a primary ingredient."
+    },
+    {
+      "ingredient_id": 351,
+      "ingredient_name": "yogurt",
+      "allergens": [
+        {
+          "name": "milk",
+          "kind": "contains"
+        }
+      ],
+      "confidence": "high",
+      "notes": "Yogurt contains milk as a primary ingredient."
+    }
+  ],
+  "unresolved": [
+    {
+      "ingredient_id": 83,
+      "ingredient_name": "coconut cream",
+      "reason": "no allergens"
+    },
+    {
+      "ingredient_id": 341,
+      "ingredient_name": "coconut flour",
+      "reason": "no allergens"
+    },
+    {
+      "ingredient_id": 102,
+      "ingredient_name": "coconut milk",
+      "reason": "no allergens"
+    },
+    {
+      "ingredient_id": 261,
+      "ingredient_name": "coconut oil",
+      "reason": "no allergens"
+    },
+    {
+      "ingredient_id": 223,
+      "ingredient_name": "curry paste",
+      "reason": "No plausible allergens found in the typical composition of curry paste."
+    },
+    {
+      "ingredient_id": 174,
+      "ingredient_name": "steak seasoning",
+      "reason": "Specific allergens in steak seasoning are not provided."
+    },
+    {
+      "ingredient_id": 124,
+      "ingredient_name": "stuffing mix",
+      "reason": "Specific allergens in stuffing mix are not provided."
+    },
+    {
+      "ingredient_id": 244,
+      "ingredient_name": "sweet chili sauce",
+      "reason": "Specific allergens in sweet chili sauce are not provided."
+    },
+    {
+      "ingredient_id": 121,
+      "ingredient_name": "taco seasoning",
+      "reason": "Specific allergens in taco seasoning are not provided."
+    },
+    {
+      "ingredient_id": 140,
+      "ingredient_name": "taco shells",
+      "reason": "Specific allergens in taco shells are not provided."
+    },
+    {
+      "ingredient_id": 242,
+      "ingredient_name": "tartar sauce",
+      "reason": "Specific allergens in tartar sauce are not provided."
+    },
+    {
+      "ingredient_id": 112,
+      "ingredient_name": "black olives",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 204,
+      "ingredient_name": "cajun seasoning",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 110,
+      "ingredient_name": "canned chicken",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 12,
+      "ingredient_name": "canned jalapenos",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 411,
+      "ingredient_name": "chicken breast",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 410,
+      "ingredient_name": "chicken drumsticks",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 409,
+      "ingredient_name": "chicken thighs",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 408,
+      "ingredient_name": "chicken wings",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 402,
+      "ingredient_name": "deli turkey",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 161,
+      "ingredient_name": "dill",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 338,
+      "ingredient_name": "gluten-free flour",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 210,
+      "ingredient_name": "hot sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 256,
+      "ingredient_name": "italian dressing",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 187,
+      "ingredient_name": "italian seasoning",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 232,
+      "ingredient_name": "jelly",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 255,
+      "ingredient_name": "ketchup",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 393,
+      "ingredient_name": "lamb chops",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 185,
+      "ingredient_name": "lemon pepper",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 322,
+      "ingredient_name": "marinara sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 181,
+      "ingredient_name": "paprika",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 117,
+      "ingredient_name": "pie filling",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 10,
+      "ingredient_name": "pimientos",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 91,
+      "ingredient_name": "pineapple chunks",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 321,
+      "ingredient_name": "pizza sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 127,
+      "ingredient_name": "potato chips",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 180,
+      "ingredient_name": "poultry seasoning",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 283,
+      "ingredient_name": "pumpkin seeds",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 303,
+      "ingredient_name": "quinoa",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 178,
+      "ingredient_name": "red pepper flakes",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 229,
+      "ingredient_name": "strawberry jam",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 281,
+      "ingredient_name": "sunflower seeds",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 235,
+      "ingredient_name": "tomato paste",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 86,
+      "ingredient_name": "tomato puree",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 85,
+      "ingredient_name": "tomato sauce",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 28,
+      "ingredient_name": "whole chicken",
+      "reason": "reviewer: no plausible allergen"
+    },
+    {
+      "ingredient_id": 27,
+      "ingredient_name": "whole turkey",
+      "reason": "reviewer: no plausible allergen"
+    }
+  ]
+}
