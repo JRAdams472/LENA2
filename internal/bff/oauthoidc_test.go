@@ -24,11 +24,14 @@ func (f *fakeOIDCTokenVerifier) verifyOIDCToken(_ context.Context, raw string) (
 }
 
 // tokenEndpoint stubs the provider's code-exchange endpoint: it asserts
-// the client credentials are posted and returns a canned id_token.
-func tokenEndpoint(t *testing.T, idToken string, status int) *httptest.Server {
+// the client credentials are posted, captures the submitted form for
+// PKCE assertions, and returns a canned id_token.
+func tokenEndpoint(t *testing.T, idToken string, status int) (*httptest.Server, *url.Values) {
 	t.Helper()
+	var gotForm url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
+		gotForm = r.Form
 		assert.Equal(t, "cid", r.Form.Get("client_id"))
 		assert.Equal(t, "secret", r.Form.Get("client_secret"))
 		assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
@@ -43,11 +46,11 @@ func tokenEndpoint(t *testing.T, idToken string, status int) *httptest.Server {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &gotForm
 }
 
 func TestOAuthOIDCVerifier(t *testing.T) {
-	srv := tokenEndpoint(t, "the-id-token", http.StatusOK)
+	srv, gotForm := tokenEndpoint(t, "the-id-token", http.StatusOK)
 	tokens := &fakeOIDCTokenVerifier{claims: oidcClaims{
 		issuer:        "https://login.microsoftonline.com/tid/v2.0",
 		subject:       "ms-sub",
@@ -59,8 +62,9 @@ func TestOAuthOIDCVerifier(t *testing.T) {
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens, false)
 	require.NotNil(t, v)
 
-	id, err := v.verify(t.Context(), "the-code", "n1")
+	id, err := v.verify(t.Context(), "the-code", "n1", "the-verifier")
 	require.NoError(t, err)
+	assert.Equal(t, "the-verifier", gotForm.Get("code_verifier"))
 	assert.Equal(t, "the-id-token", tokens.gotRaw)
 	assert.Equal(t, "https://login.microsoftonline.com/tid/v2.0", id.provider)
 	assert.Equal(t, "ms-sub", id.subject)
@@ -70,36 +74,45 @@ func TestOAuthOIDCVerifier(t *testing.T) {
 }
 
 func TestOAuthOIDCVerifier_Nonce(t *testing.T) {
-	srv := tokenEndpoint(t, "tok", http.StatusOK)
+	srv, _ := tokenEndpoint(t, "tok", http.StatusOK)
 
 	// requireNonce=true with an empty nonce fails before the exchange.
 	tokens := &fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s", nonce: "n1"}}
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens, true)
-	_, err := v.verify(t.Context(), "the-code", "")
+	_, err := v.verify(t.Context(), "the-code", "", "v1")
 	assert.ErrorIs(t, err, errOAuthCredential)
 	assert.Empty(t, tokens.gotRaw)
 
 	// A mismatched nonce is rejected.
-	_, err = v.verify(t.Context(), "the-code", "other")
+	_, err = v.verify(t.Context(), "the-code", "other", "v1")
 	assert.ErrorIs(t, err, errOAuthCredential)
 
 	// Matching nonce passes.
-	_, err = v.verify(t.Context(), "the-code", "n1")
+	_, err = v.verify(t.Context(), "the-code", "n1", "v1")
 	assert.NoError(t, err)
 
 	// requireNonce=false still verifies a nonce when one is supplied.
 	tokens2 := &fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s", nonce: "n1"}}
 	v2 := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens2, false)
-	_, err = v2.verify(t.Context(), "the-code", "wrong")
+	_, err = v2.verify(t.Context(), "the-code", "wrong", "v1")
 	assert.ErrorIs(t, err, errOAuthCredential)
-	_, err = v2.verify(t.Context(), "the-code", "")
+	_, err = v2.verify(t.Context(), "the-code", "", "v1")
 	assert.NoError(t, err)
 }
 
+func TestOAuthOIDCVerifier_NoVerifierOmitsFormField(t *testing.T) {
+	srv, gotForm := tokenEndpoint(t, "tok", http.StatusOK)
+	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL,
+		&fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s"}}, false)
+	_, err := v.verify(t.Context(), "the-code", "", "")
+	require.NoError(t, err)
+	assert.False(t, gotForm.Has("code_verifier"))
+}
+
 func TestOAuthOIDCVerifier_ExchangeFails(t *testing.T) {
-	srv := tokenEndpoint(t, "", http.StatusBadRequest)
+	srv, _ := tokenEndpoint(t, "", http.StatusBadRequest)
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, &fakeOIDCTokenVerifier{}, false)
-	_, err := v.verify(t.Context(), "the-code", "")
+	_, err := v.verify(t.Context(), "the-code", "", "v1")
 	assert.ErrorIs(t, err, errOAuthCredential)
 }
 

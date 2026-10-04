@@ -34,7 +34,7 @@ function Probe() {
       <button onClick={() => signIn(googleToken)}>in</button>
       <button
         onClick={() =>
-          signInWithProvider("discord", "code-1", "nonce-1").catch(
+          signInWithProvider("discord", "code-1", "nonce-1", "verifier-1").catch(
             () => undefined
           )
         }
@@ -131,7 +131,7 @@ describe("AuthProvider sessions", () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("http://localhost:5059/auth/session/discord");
     expect(JSON.parse((init as RequestInit).body as string)).toEqual(
-      expect.objectContaining({ code: "code-1", nonce: "nonce-1" })
+      expect.objectContaining({ code: "code-1", nonce: "nonce-1", codeVerifier: "verifier-1" })
     );
     expect(sessionStorage.getItem("lena_id_token")).toBe(lenaAccess);
     expect(localStorage.getItem("lena_session_hint")).toBe("1");

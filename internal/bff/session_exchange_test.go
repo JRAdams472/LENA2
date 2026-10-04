@@ -21,12 +21,13 @@ type fakeCodeVerifier struct {
 	id  providerIdentity
 	err error
 
-	gotCode  string
-	gotNonce string
+	gotCode     string
+	gotNonce    string
+	gotVerifier string
 }
 
-func (f *fakeCodeVerifier) verify(_ context.Context, code, nonce string) (providerIdentity, error) {
-	f.gotCode, f.gotNonce = code, nonce
+func (f *fakeCodeVerifier) verify(_ context.Context, code, nonce, codeVerifier string) (providerIdentity, error) {
+	f.gotCode, f.gotNonce, f.gotVerifier = code, nonce, codeVerifier
 	return f.id, f.err
 }
 
@@ -66,11 +67,12 @@ func TestProviderCreateSession(t *testing.T) {
 	}}
 	h := NewProviderSessionHandler(map[string]CodeVerifier{"discord": dv}, prov, sess)
 
-	c, rec := exchangeCtx(t, "discord", `{"code":"abc","nonce":"n1","device":"web"}`)
+	c, rec := exchangeCtx(t, "discord", `{"code":"abc","nonce":"n1","device":"web","codeVerifier":"v1"}`)
 	require.NoError(t, h.CreateSession(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "abc", dv.gotCode)
 	assert.Equal(t, "n1", dv.gotNonce)
+	assert.Equal(t, "v1", dv.gotVerifier)
 	assert.Equal(t, "discord", prov.provider)
 	assert.Equal(t, "123456789", prov.subject)
 	assert.Equal(t, "d@cord.com", prov.email)
@@ -82,7 +84,7 @@ func TestProviderCreateSession(t *testing.T) {
 func TestProviderCreateSession_UnknownProvider(t *testing.T) {
 	h := NewProviderSessionHandler(map[string]CodeVerifier{"discord": &fakeCodeVerifier{}},
 		&fakeProvisioner{}, &fakeSessionIssuer{enabled: true})
-	c, _ := exchangeCtx(t, "microsoft", `{"code":"abc"}`)
+	c, _ := exchangeCtx(t, "microsoft", `{"code":"abc","codeVerifier":"v1"}`)
 	err := h.CreateSession(c)
 	var he *echo.HTTPError
 	require.ErrorAs(t, err, &he)
@@ -92,7 +94,7 @@ func TestProviderCreateSession_UnknownProvider(t *testing.T) {
 func TestProviderCreateSession_Disabled(t *testing.T) {
 	// Provider absent from the registry (not configured) → 503.
 	h := NewProviderSessionHandler(nil, &fakeProvisioner{}, &fakeSessionIssuer{enabled: true})
-	c, _ := exchangeCtx(t, "discord", `{"code":"abc"}`)
+	c, _ := exchangeCtx(t, "discord", `{"code":"abc","codeVerifier":"v1"}`)
 	err := h.CreateSession(c)
 	var he *echo.HTTPError
 	require.ErrorAs(t, err, &he)
@@ -101,7 +103,7 @@ func TestProviderCreateSession_Disabled(t *testing.T) {
 	// Sessions disabled → 503 even with the provider configured.
 	h = NewProviderSessionHandler(map[string]CodeVerifier{"discord": &fakeCodeVerifier{}},
 		&fakeProvisioner{}, &fakeSessionIssuer{enabled: false})
-	c, _ = exchangeCtx(t, "discord", `{"code":"abc"}`)
+	c, _ = exchangeCtx(t, "discord", `{"code":"abc","codeVerifier":"v1"}`)
 	err = h.CreateSession(c)
 	require.ErrorAs(t, err, &he)
 	assert.Equal(t, http.StatusServiceUnavailable, he.Code)
@@ -117,10 +119,11 @@ func TestProviderCreateSession_Errors(t *testing.T) {
 		code      int
 	}{
 		{"missing code", `{}`, nil, nil, nil, http.StatusBadRequest},
-		{"bad code", `{"code":"x"}`, errDiscordCredential, nil, nil, http.StatusUnauthorized},
-		{"provision failure", `{"code":"x"}`, nil, errors.New("banned"), nil, http.StatusUnauthorized},
-		{"issue failure", `{"code":"x"}`, nil, nil, errors.New("db"), http.StatusInternalServerError},
-		{"sessions unavailable", `{"code":"x"}`, nil, nil, session.ErrUnavailable, http.StatusServiceUnavailable},
+		{"missing verifier", `{"code":"x"}`, nil, nil, nil, http.StatusBadRequest},
+		{"bad code", `{"code":"x","codeVerifier":"v1"}`, errDiscordCredential, nil, nil, http.StatusUnauthorized},
+		{"provision failure", `{"code":"x","codeVerifier":"v1"}`, nil, errors.New("banned"), nil, http.StatusUnauthorized},
+		{"issue failure", `{"code":"x","codeVerifier":"v1"}`, nil, nil, errors.New("db"), http.StatusInternalServerError},
+		{"sessions unavailable", `{"code":"x","codeVerifier":"v1"}`, nil, nil, session.ErrUnavailable, http.StatusServiceUnavailable},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

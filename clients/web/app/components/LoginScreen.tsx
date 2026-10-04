@@ -134,7 +134,11 @@ export default function LoginScreen() {
               key={provider}
               variant="contained"
               startIcon={meta.icon}
-              onClick={() => startOAuthSignIn(provider)}
+              onClick={() =>
+                void startOAuthSignIn(provider).catch(() =>
+                  setError("Could not start sign-in. Please try again.")
+                )
+              }
               sx={{
                 bgcolor: meta.color,
                 "&:hover": { bgcolor: meta.hover },

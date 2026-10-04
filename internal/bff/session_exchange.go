@@ -46,6 +46,10 @@ type providerSessionRequest struct {
 	Code   string `json:"code"`
 	Nonce  string `json:"nonce"`
 	Device string `json:"device"`
+	// CodeVerifier is the PKCE secret matching the code_challenge the
+	// browser sent to the provider's authorize endpoint. Required: an
+	// intercepted code alone must not be exchangeable (LEN-29 finding 4).
+	CodeVerifier string `json:"codeVerifier"`
 }
 
 // CreateSession exchanges a provider authorization code for a LENA
@@ -60,12 +64,15 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 	if c.Request().ContentLength == 0 || c.Bind(&req) != nil || req.Code == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "code is required")
 	}
+	if req.CodeVerifier == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "codeVerifier is required")
+	}
 	if utf8Len(req.Device) > maxDeviceLen {
 		return echo.NewHTTPError(http.StatusBadRequest, "device label too long")
 	}
 
 	ctx := c.Request().Context()
-	ident, err := verifier.verify(ctx, req.Code, req.Nonce)
+	ident, err := verifier.verify(ctx, req.Code, req.Nonce, req.CodeVerifier)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid "+name+" credential")
 	}

@@ -37,9 +37,11 @@ type providerIdentity struct {
 // CodeVerifier exchanges an OAuth2 authorization code for the provider
 // identity it proves. nonce is the value the client sent in its
 // authorize request; providers that echo it in the id_token have it
-// verified, others ignore it.
+// verified, others ignore it. codeVerifier is the PKCE secret matching
+// the code_challenge sent to the provider's authorize endpoint; it is
+// forwarded to the token exchange verbatim (LEN-29 finding 4).
 type CodeVerifier interface {
-	verify(ctx context.Context, code, nonce string) (providerIdentity, error)
+	verify(ctx context.Context, code, nonce, codeVerifier string) (providerIdentity, error)
 }
 
 // MicrosoftIssuer maps a configured tenant to the issuer claim Entra

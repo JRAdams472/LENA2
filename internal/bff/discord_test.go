@@ -4,21 +4,22 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestDiscord(t *testing.T, exchangeStatus int, meStatus int) (*DiscordVerifier, *httptest.Server, *string) {
+func newTestDiscord(t *testing.T, exchangeStatus int, meStatus int) (*DiscordVerifier, *httptest.Server, *url.Values) {
 	t.Helper()
-	var gotCode string
+	var gotForm url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/oauth2/token":
 			require.NoError(t, r.ParseForm())
-			gotCode = r.Form.Get("code")
+			gotForm = r.Form
 			assert.Equal(t, "cid", r.Form.Get("client_id"))
 			assert.Equal(t, "secret", r.Form.Get("client_secret"))
 			assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
@@ -47,29 +48,37 @@ func newTestDiscord(t *testing.T, exchangeStatus int, meStatus int) (*DiscordVer
 	t.Cleanup(srv.Close)
 	d := NewDiscordVerifier("cid", "secret", "http://localhost/cb")
 	d.base = srv.URL
-	return d, srv, &gotCode
+	return d, srv, &gotForm
 }
 
 func TestDiscordVerify(t *testing.T) {
-	d, _, gotCode := newTestDiscord(t, http.StatusOK, http.StatusOK)
-	id, err := d.verify(t.Context(), "auth-code", "")
+	d, _, gotForm := newTestDiscord(t, http.StatusOK, http.StatusOK)
+	id, err := d.verify(t.Context(), "auth-code", "", "the-verifier")
 	require.NoError(t, err)
-	assert.Equal(t, "auth-code", *gotCode)
+	assert.Equal(t, "auth-code", gotForm.Get("code"))
+	assert.Equal(t, "the-verifier", gotForm.Get("code_verifier"))
 	assert.Equal(t, "123456789", id.subject)
 	assert.Equal(t, "d@cord.com", id.email)
 	assert.True(t, id.emailVerified)
 	assert.Equal(t, "Cord", id.name)
 }
 
+func TestDiscordVerify_NoVerifierOmitsFormField(t *testing.T) {
+	d, _, gotForm := newTestDiscord(t, http.StatusOK, http.StatusOK)
+	_, err := d.verify(t.Context(), "auth-code", "", "")
+	require.NoError(t, err)
+	assert.False(t, gotForm.Has("code_verifier"))
+}
+
 func TestDiscordVerify_ExchangeRejected(t *testing.T) {
 	d, _, _ := newTestDiscord(t, http.StatusBadRequest, http.StatusOK)
-	_, err := d.verify(t.Context(), "used-code", "")
+	_, err := d.verify(t.Context(), "used-code", "", "")
 	assert.ErrorIs(t, err, errDiscordCredential)
 }
 
 func TestDiscordVerify_MeRejected(t *testing.T) {
 	d, _, _ := newTestDiscord(t, http.StatusOK, http.StatusUnauthorized)
-	_, err := d.verify(t.Context(), "code", "")
+	_, err := d.verify(t.Context(), "code", "", "")
 	assert.ErrorIs(t, err, errDiscordCredential)
 }
 

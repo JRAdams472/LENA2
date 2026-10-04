@@ -53,8 +53,9 @@ func NewLinkHandler(v linkVerifier, providers map[string]CodeVerifier, id linkSt
 // verifyCredential verifies a provider credential by name: an empty or
 // "oidc" provider means an OIDC ID token; any other name looks up a
 // code-exchange verifier. nonce is the authorize-request value echoed
-// in the id_token for providers that use one.
-func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential, nonce string) (prov, subject, email, name string, err error) {
+// in the id_token for providers that use one; codeVerifier is the
+// optional PKCE secret forwarded to the token exchange.
+func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential, nonce, codeVerifier string) (prov, subject, email, name string, err error) {
 	switch provider {
 	case "", "oidc":
 		return h.verifier.VerifyProviderCredential(ctx, credential)
@@ -63,7 +64,7 @@ func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential
 		if !ok || cv == nil {
 			return "", "", "", "", fmt.Errorf("unknown provider %q", provider)
 		}
-		me, err := cv.verify(ctx, credential, nonce)
+		me, err := cv.verify(ctx, credential, nonce, codeVerifier)
 		if err != nil {
 			return "", "", "", "", err
 		}
@@ -131,6 +132,11 @@ type linkRequest struct {
 	Provider   string `json:"provider"`
 	Credential string `json:"credential"`
 	Nonce      string `json:"nonce"`
+	// CodeVerifier carries the PKCE secret when the credential is an
+	// authorization code obtained with a code_challenge. Optional here —
+	// older clients may not send one — but required on the sign-in
+	// exchange (see providerSessionRequest).
+	CodeVerifier string `json:"codeVerifier"`
 	// CurrentProvider/CurrentCredential provide step-up authentication
 	// when the bearer is a LENA session token: a fresh provider credential
 	// that must resolve to the caller's own account, so a stolen access
@@ -138,6 +144,9 @@ type linkRequest struct {
 	CurrentProvider   string `json:"currentProvider"`
 	CurrentCredential string `json:"currentCredential"`
 	CurrentNonce      string `json:"currentNonce"`
+	// CurrentCodeVerifier is the PKCE secret for a code-exchange
+	// currentCredential, mirroring CodeVerifier.
+	CurrentCodeVerifier string `json:"currentCodeVerifier"`
 }
 
 // Link verifies the supplied provider credential and binds it to the
@@ -157,7 +166,7 @@ func (h *LinkHandler) Link(c echo.Context) error {
 		if req.CurrentCredential == "" {
 			return echo.NewHTTPError(http.StatusForbidden, "fresh provider credential required to link sign-ins")
 		}
-		cp, cs, _, _, err := h.verifyCredential(ctx, req.CurrentProvider, req.CurrentCredential, req.CurrentNonce)
+		cp, cs, _, _, err := h.verifyCredential(ctx, req.CurrentProvider, req.CurrentCredential, req.CurrentNonce, req.CurrentCodeVerifier)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusUnauthorized, "invalid current credential")
 		}
@@ -166,7 +175,7 @@ func (h *LinkHandler) Link(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, "current credential does not match this account")
 		}
 	}
-	prov, subject, email, name, err := h.verifyCredential(ctx, req.Provider, req.Credential, req.Nonce)
+	prov, subject, email, name, err := h.verifyCredential(ctx, req.Provider, req.Credential, req.Nonce, req.CodeVerifier)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credential")
 	}

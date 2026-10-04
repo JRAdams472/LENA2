@@ -60,11 +60,11 @@ func NewOAuthOIDCVerifier(clientID, clientSecret, redirectURI, tokenEndpoint str
 // verify exchanges the code, verifies the returned id_token, and checks
 // the nonce when the flow uses one. The provider key is the token's
 // issuer claim — identical to what a bearer-token sign-in produces.
-func (v *OAuthOIDCVerifier) verify(ctx context.Context, code, nonce string) (providerIdentity, error) {
+func (v *OAuthOIDCVerifier) verify(ctx context.Context, code, nonce, codeVerifier string) (providerIdentity, error) {
 	if v.requireNonce && nonce == "" {
 		return providerIdentity{}, fmt.Errorf("%w: nonce is required", errOAuthCredential)
 	}
-	raw, err := v.exchange(ctx, code)
+	raw, err := v.exchange(ctx, code, codeVerifier)
 	if err != nil {
 		return providerIdentity{}, err
 	}
@@ -85,14 +85,18 @@ func (v *OAuthOIDCVerifier) verify(ctx context.Context, code, nonce string) (pro
 }
 
 // exchange posts the authorization code to the provider's token
-// endpoint and returns the id_token field of the response.
-func (v *OAuthOIDCVerifier) exchange(ctx context.Context, code string) (string, error) {
+// endpoint and returns the id_token field of the response. A non-empty
+// codeVerifier is forwarded as the PKCE code_verifier parameter.
+func (v *OAuthOIDCVerifier) exchange(ctx context.Context, code, codeVerifier string) (string, error) {
 	form := url.Values{
 		"client_id":     {v.clientID},
 		"client_secret": {v.clientSecret},
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"redirect_uri":  {v.redirectURI},
+	}
+	if codeVerifier != "" {
+		form.Set("code_verifier", codeVerifier)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, v.tokenEndpoint,
 		strings.NewReader(form.Encode()))
