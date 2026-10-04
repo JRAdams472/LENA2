@@ -181,8 +181,9 @@ type GroceryList {
 
 type GroceryListItem {
   id: ID!
-  item: Item
+  item: Item            # bound brand (optional preferred brand / check-off pick)
   ingredient: Ingredient
+  usualBrand: Item      # household's remembered usual item for `ingredient`
   manualItemName: String
   quantityNeeded: Float!
   unitOfMeasure: String
@@ -278,7 +279,18 @@ type GroceryRouteItem {
 - `removeMealSlot(slotId: ID!): Boolean!`
 - `generateGroceryList(mealPlanId: ID!): GroceryList!`
 - `toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!`
+- `checkGroceryItemWithBrand(groceryListItemId: ID!, itemId: ID!): GroceryListItem!` — first-time check-off of an ingredient-only line: binds the picked item, marks checked, credits stock, and records it as the household's usual brand for that ingredient
 - `deleteGroceryItem(groceryListItemId: ID!): Boolean!`
+
+Ingredients (generic, unbranded):
+
+- `ingredients(page: Int = 1, pageSize: Int = 25, search: String): IngredientPage!` (query)
+- `getOrCreateIngredient(input: CreateIngredientInput!): Ingredient!` — member free-create with normalized-name dedupe; returns the existing row on conflict
+- `mergeIngredient(fromId: ID!, intoId: ID!): Boolean!` (`@admin`) — repoints every FK to `intoId`, then deactivates `fromId` (the dedupe safety valve)
+- `setItemIngredient(itemId: ID!, ingredientId: ID): Boolean!` (`@admin`) — catalog-level item→ingredient link; null clears
+- `setHouseholdItemIngredient(itemId: ID!, ingredientId: ID): Boolean!` — household override of the catalog link; null clears; wins over `item.ingredient_id` everywhere
+
+`Item.ingredient` is the catalog link; `Item.householdIngredient` is the override-aware resolved view. `itemId` is optional on `RecipeItemInput`, `AddMealSlotItemInput`, `EventRecipeItemInput`, and `AddGroceryItemInput` — all accept `ingredientId`, and at least one of the two is required.
 
 Store routing — all household-scoped:
 

@@ -4,6 +4,7 @@
 
 - Each major rewrite phase is developed on its own branch named `phase-<N>` (e.g. `phase-5`).
   - The mobile redesign used a self-describing named series instead: `mobile-redesign-p0` through `mobile-redesign-p5`.
+- **Ticket-prefixed names (required):** branches and PR titles must start with the Linear ticket number — `LEN-11-close-out` / `LEN-11: Close-out — docs, wiki, full UAT loop`. Every plan gets a Linear ticket and each phase a subticket; keep them linked.
 - Do not push commits directly to `main`.
 - When a phase is complete, open a pull request against `main` and summarize the changes.
 - Only merge after the phase has been verified (build, tests, lint).

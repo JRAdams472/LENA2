@@ -98,6 +98,35 @@ def ri(kw, qty, unit, optional=None):
     return item
 
 
+def get_ing(name):
+    page = gql(
+        ADMIN,
+        "query($s: String) { ingredients(page: 1, pageSize: 10, search: $s) { items { id name } } }",
+        {"s": name},
+    )
+    hit = next(
+        (i for i in page["ingredients"]["items"] if i["name"].lower() == name.lower()),
+        None,
+    )
+    if hit:
+        return hit["id"]
+    return gql(
+        ADMIN,
+        "mutation($i: CreateIngredientInput!) { getOrCreateIngredient(input: $i) { id } }",
+        {"i": {"name": name}},
+    )["getOrCreateIngredient"]["id"]
+
+
+def ing(name, qty, unit, optional=None, brand=None):
+    # Ingredient-keyed recipe line; `brand` also binds a preferred catalog item.
+    line = {"ingredientId": get_ing(name), "quantity": qty, "unit": unit}
+    if brand:
+        line["itemId"] = items[brand][0]
+    if optional:
+        line["isOptional"] = True
+    return line
+
+
 def step(n, instr, dur=None, typ=None, passive=None, dep=None, appl=None):
     s = {"stepNumber": n, "instruction": instr}
     if dur is not None:
@@ -145,7 +174,7 @@ roast = get_or_create_recipe(
                 ri("potato", 2, "lb"),
                 ri("carrot", 1, "lb"),
                 ri("onion", 1, "each"),
-                ri("olive oil", 3, "tbsp"),
+                ing("olive oil", 3, "tbsp"),
                 ri("salt", 1, "tsp"),
                 ri("garlic", 4, "each", optional=True),
             ],
@@ -169,9 +198,9 @@ pasta = get_or_create_recipe(
             "items": [
                 ri("pasta", 1, "lb"),
                 ri("butter", 4, "tbsp"),
-                ri("garlic", 3, "each"),
+                ing("garlic", 3, "each"),
                 ri("cheese", 0.5, "cup"),
-                ri("salt", 1, "tsp"),
+                ing("salt", 1, "tsp", brand="salt"),
             ],
             "steps": [
                 step(1, "Boil salted water and cook the pasta", 12, "cook", True, None, "stovetop"),
@@ -320,6 +349,21 @@ if glist["id"]:
             ident,
         )
     print("list routed:", len(rows), "items")
+
+    # Usual-brand fixture — check off the ingredient-only garlic line with a
+    # branded catalog item so the row shows a remembered "usual:" brand.
+    garlic_ing = get_ing("garlic")
+    garlic_row = next(
+        (r for r in rows if (r.get("ingredient") or {}).get("id") == garlic_ing),
+        None,
+    )
+    if garlic_row and items.get("garlic"):
+        gql(
+            ADMIN,
+            "mutation($id: ID!, $itemId: ID!) { checkGroceryItemWithBrand(groceryListItemId: $id, itemId: $itemId) { id isChecked } }",
+            {"id": garlic_row["id"], "itemId": items["garlic"][0]},
+        )
+        print("usual brand: garlic ->", items["garlic"][1])
 
 # Food event on today's date — targetTime's date must match eventDate.
 existing_events = gql(ADMIN, "{ foodEvents(page:1,pageSize:50){ items { id name } } }")["foodEvents"]["items"]

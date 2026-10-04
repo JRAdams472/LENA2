@@ -59,6 +59,7 @@ async function recipeId(name) {
 }
 
 const roastId = await recipeId("Herb Roast Chicken with Vegetables");
+const pastaId = await recipeId("Garlic Butter Pasta");
 
 async function shot(name, path, waitFor) {
   // NOTE: "networkidle" never settles — the app polls notifications.
@@ -128,6 +129,16 @@ for (const kw of ["milk", "flour", "butter"]) {
 await shot("dashboard", "/", "Time to restock");
 await shot("recipes", "/recipes", "Herb Roast Chicken");
 await shot("recipe-detail", `/recipes/${roastId}`, "Herb Roast Chicken");
+// Ingredient-keyed lines + preferred brand — the pasta recipe carries both.
+// Element-shot the Ingredients paper; it's below the categories panel and
+// scrollIntoView is unreliable on this page.
+await page.goto(`${BASE}/recipes/${pastaId}`, { waitUntil: "domcontentloaded" });
+const ingHeading = page.getByRole("heading", { name: "Ingredients" });
+await ingHeading.waitFor();
+await ingHeading
+  .locator("xpath=ancestor::div[contains(@class,'MuiPaper')][1]")
+  .screenshot({ path: `${OUT}/recipe-detail-ingredients.png` });
+console.log("shot: recipe-detail-ingredients");
 await shot("recipe-categories-admin", "/recipes/categories", "Cuisine");
 await shot("notification-settings", "/notifications", "Expiring pantry items");
 await shot("inventory-categories", "/inventory/categories", "Meat");
@@ -175,13 +186,31 @@ const listId = await gql(
       d.groceryLists.items[0]).id
 );
 await shot("grocery-list", `/grocery-lists/${listId}`, "Time to restock");
+
+// First-time check-off of an ingredient-only line opens the brand picker —
+// shoot the dialog, then cancel so the row stays unchecked.
+await page.goto(`${BASE}/grocery-lists/${listId}`, { waitUntil: "domcontentloaded" });
+await page.getByText("olive oil", { exact: false }).first().waitFor({ timeout: 30000 });
+const oliveRow = page
+  .locator("div")
+  .filter({ has: page.getByRole("checkbox") })
+  .filter({ hasText: "olive oil" })
+  .last();
+await oliveRow.getByRole("checkbox").click();
+await page.getByText("did you buy", { exact: false }).first().waitFor({ timeout: 15000 });
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${OUT}/grocery-brand-picker.png` });
+console.log("shot: grocery-brand-picker");
+await page.keyboard.press("Escape");
+await shot("ingredients-admin", "/inventory/ingredients", "garlic");
 await shot("events", "/events", "Autumn Dinner Party");
 await shot("event-detail", "/events/1", "Autumn Dinner Party");
 await shot("wine-bottles", "/wine/bottles", "Silver Oak");
 await shot("household", "/household", "E2E Member");
-// The items page pages the whole catalog client-side — give it time.
+// The items page is server-paginated — wait for the first page's rows
+// rather than a specific catalog name.
 await page.goto(`${BASE}/inventory/items`, { waitUntil: "domcontentloaded" });
-await page.getByText("Potato Chips", { exact: false }).first().waitFor({ timeout: 180000 });
+await page.getByText("ADD TO INVENTORY", { exact: false }).first().waitFor({ timeout: 120000 });
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${OUT}/inventory-items.png` });
 console.log("shot: inventory-items");
