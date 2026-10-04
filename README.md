@@ -18,7 +18,7 @@ LENA2 is a personal, privacy-first household management system. It replaces scat
 - **Add items on the go** — use the mobile app to scan a UPC barcode, look up catalog items, and submit missing products for approval.
 - **Share a household** — invite family members; recipes, plans, lists, events, pantry, and cellar are household-scoped, and changes notify the other members.
 
-Authentication is handled by Google sign-in via OpenID Connect or Discord OAuth2; a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar, and accepting a household invite merges the new member's existing plans, lists, and events into the shared household.
+Authentication is handled by Google sign-in via OpenID Connect or Discord/Microsoft/Facebook OAuth2 (authorization-code flows use PKCE S256); a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar, and accepting a household invite merges the new member's existing plans, lists, and events into the shared household.
 
 ---
 
@@ -45,7 +45,7 @@ It is a single-tenant application: you run your own instance and your data lives
 | **Database** | PostgreSQL 18 with schema-per-domain, pgvector for recipe embeddings |
 | **Reverse proxy** | Caddy 2 |
 | **Dev / deploy** | Docker Compose |
-| **Authentication** | Google OIDC + Discord OAuth2, exchanged for LENA session tokens |
+| **Authentication** | Google OIDC + Discord/Microsoft/Facebook OAuth2 (PKCE), exchanged for LENA session tokens |
 
 The web and mobile clients talk to a single **GraphQL Backend-for-Frontend (BFF)** exposed at `/graphql`. The Go backend uses `sqlc` for type-safe SQL queries and `testcontainers` for integration tests.
 
@@ -203,7 +203,7 @@ LENA2 uses Google OIDC ID tokens:
 3. The backend validates the token against the configured issuer and audience.
 4. The user record is upserted in the `identity.users` table and a `user_id` is placed in the request context.
 
-**Sessions.** Set `LENA_SESSION_SECRET` and sign-in exchanges the Google credential for a LENA session: a short-lived signed access token (`iss=lena`, ~15 min) plus a rotating refresh token (~30 days, stored only as a hash). Clients refresh instead of re-signing in with Google; replaying a rotated token revokes the whole session family. Unset keeps OIDC-only mode. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
+**Sessions.** Set `LENA_SESSION_SECRET` (≥32 bytes; the API refuses to boot with a weaker one) and sign-in exchanges the provider credential for a LENA session: a short-lived signed access token (`iss=lena`, ~15 min) plus a rotating refresh token (~30 days, stored only as a hash). Clients refresh instead of re-signing in with a provider; replaying a rotated token revokes the whole session family, and admin deactivation revokes a user's sessions immediately. Unset keeps OIDC-only mode. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
 
 Initial admins are promoted by adding their email to `LENA_ADMIN_EMAILS`. Protected admins can be listed in `LENA_PROTECTED_EMAILS` so they cannot be banned or demoted.
 
@@ -304,6 +304,7 @@ flutter test
 - **Grocery sync** — checking a grocery item off can increase `inventory.user_item` stock by the quantity needed; unchecking decreases it.
 - **Ingredients vs items** — recipes, meal slots, grocery lines, and import reviews reference generic `inventory.ingredient` rows ("corn"); `item_id` is an optional preferred brand. Stock rollups and check-offs resolve ingredient→brand via the catalog link (`item.ingredient_id`), a per-household override, and a remembered "usual brand" (`household_ingredient_item`) — the first check-off of an ingredient line asks which brand you bought and remembers it. Unlinked items still work as pantry inventory, they just don't satisfy ingredient-level rollups. See `docs/ingredient-layer-plan.md`.
 - **Rotating sessions** — provider credentials exchange for a LENA session (short-lived `iss=lena` access token + ~30-day rotating refresh token); replaying a rotated token revokes the whole family.
+- **Nonce CSP** — the web tier issues a per-request Content-Security-Policy nonce (`clients/web/proxy.ts`): `script-src 'self' 'nonce-…' 'strict-dynamic'` with no `unsafe-inline`; `style-src` keeps `unsafe-inline` for Emotion/MUI. Caddy carries every other security header (XFO, XCTO, Referrer-Policy, Permissions-Policy, HSTS).
 
 ---
 

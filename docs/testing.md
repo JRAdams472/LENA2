@@ -154,9 +154,11 @@ Key points:
 
 - `.github/workflows/test.yml` — one workflow, per-layer jobs: `go` (build,
   vet, gofmt, tests + `GO_COVERAGE_MIN` gate), `lint` (golangci-lint incl.
-  `gosec`; see `.golangci.yml`), `ocr-import`, `web` (tsc, eslint, Jest,
-  next build), `mobile` (`flutter analyze` + `flutter test`), `docker`
-  (image builds), `e2e` (Playwright + report artifacts).
+  `gosec`; see `.golangci.yml`), `ocr-import` (incl. a `pip-audit` gate on
+  `tools/ocr/requirements.txt` — pinned OCR deps must not carry known
+  CVEs), `web` (tsc, eslint, Jest, next build), `mobile` (`flutter
+  analyze` + `flutter test`), `docker` (image builds), `e2e` (Playwright
+  + report artifacts).
 - `.github/workflows/cleanup.yml` — scheduled purge of old workflow
   artifacts.
 
