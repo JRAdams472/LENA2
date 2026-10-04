@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -696,4 +698,17 @@ func TestMiddleware_SessionAuthMarked(t *testing.T) {
 	})
 	require.NoError(t, h(c))
 	assert.True(t, sawSession, "session-authenticated request must carry the marker")
+}
+
+func TestHashSubject(t *testing.T) {
+	assert.Equal(t, "", hashSubject(""))
+	// The logged identifier is a real digest — the raw subject (or a
+	// prefix of it) must never appear.
+	got := hashSubject("123456789012345678901")
+	want := "84ed10bcfb6360d8" // hex(sha256(subject))[:16]
+	sum := sha256.Sum256([]byte("123456789012345678901"))
+	assert.Equal(t, hex.EncodeToString(sum[:])[:16], got)
+	assert.Equal(t, want, got)
+	assert.Equal(t, 16, len(got))
+	assert.NotContains(t, got, "1234567890123456")
 }

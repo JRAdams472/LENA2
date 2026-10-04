@@ -476,6 +476,21 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 	return items, nil
 }
 
+const revokeUserSessions = `-- name: RevokeUserSessions :exec
+UPDATE identity.session
+SET revoked_at = now()
+WHERE user_id = $1
+  AND revoked_at IS NULL
+`
+
+// Deactivation kills every live refresh-token family for the user so the
+// session cookie path dies immediately (access tokens still expire on
+// their own TTL).
+func (q *Queries) RevokeUserSessions(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, revokeUserSessions, userID)
+	return err
+}
+
 const searchUsers = `-- name: SearchUsers :many
 SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
 FROM identity.users

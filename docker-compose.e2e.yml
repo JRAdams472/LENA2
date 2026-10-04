@@ -42,7 +42,7 @@ services:
       # real LLM.
       LENA_AI_PROVIDER: mock
       # Fixed session key so refresh-token specs can run; throwaway stack.
-      LENA_SESSION_SECRET: e2e-session-secret-not-for-prod
+      LENA_SESSION_SECRET: e2e-session-secret-not-for-production
     depends_on:
       db-seed:
         condition: service_completed_successfully

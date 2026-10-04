@@ -232,3 +232,12 @@ WHERE is_active
   )
 ORDER BY display_name NULLS LAST, email
 LIMIT sqlc.arg(row_limit);
+
+-- name: RevokeUserSessions :exec
+-- Deactivation kills every live refresh-token family for the user so the
+-- session cookie path dies immediately (access tokens still expire on
+-- their own TTL).
+UPDATE identity.session
+SET revoked_at = now()
+WHERE user_id = $1
+  AND revoked_at IS NULL;

@@ -267,7 +267,8 @@ func TestResolver_SetUserActive(t *testing.T) {
 		identity.User{UserID: 1, Email: "admin@example.com", Role: identity.RoleAdmin, IsActive: true},
 		identity.User{UserID: 2, Email: "member@example.com", Role: identity.RoleMember, IsActive: true},
 	)
-	r := &Resolver{IdentityService: svc}
+	auth := &fakeAuthInvalidator{}
+	r := &Resolver{IdentityService: svc, AuthInvalidator: auth}
 	args := func(id string, active bool) struct {
 		UserID   graphql.ID
 		IsActive bool
@@ -281,6 +282,8 @@ func TestResolver_SetUserActive(t *testing.T) {
 	got, err := r.SetUserActive(adminCtx(), args("2", false))
 	require.NoError(t, err)
 	assert.False(t, got.IsActive())
+	// The ban evicts the target's cached identity so it applies immediately.
+	assert.Equal(t, []int64{2}, auth.userIDs)
 
 	svc.activeErr = identity.ErrProtectedUser
 	_, err = r.SetUserActive(adminCtx(), args("2", true))
