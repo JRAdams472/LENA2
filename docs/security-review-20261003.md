@@ -37,10 +37,14 @@ Referrer-Policy, XCTO, Permissions-Policy, or HSTS.
 
 **Fix**: `header` block in the Caddyfile adds the full set. CSP allows
 `accounts.google.com/gsi/` in script/style/connect/frame-src for Google
-Identity Services; `script-src` keeps `unsafe-inline` because the
-nonstandard Next.js build emits inline bootstrap scripts. `Server` and
-`X-Powered-By` are stripped. HSTS is emitted unconditionally (browsers
-ignore it on plain HTTP; it activates under TLS).
+Identity Services. `Server` and `X-Powered-By` are stripped. HSTS is
+emitted unconditionally (browsers ignore it on plain HTTP; it activates
+under TLS).
+
+**Update (LEN-39)**: CSP moved from the Caddyfile to
+`clients/web/proxy.ts`, which issues a per-request nonce —
+`script-src 'self' 'nonce-…' 'strict-dynamic'` replaced `'unsafe-inline'`;
+`style-src` keeps `'unsafe-inline'` for Emotion/MUI.
 
 ### F3 — GraphQL introspection open to all authenticated users (fixed)
 
@@ -109,8 +113,9 @@ cookie-only refresh returns 200 + rotated cookie; revoke returns 204 +
 - **TLS by default**: local dev runs plain HTTP; production must set
   `CADDY_ADDR=<domain>` for automatic Let's Encrypt (cookie `Secure` and
   effective HSTS depend on it).
-- **`script-src 'unsafe-inline'`** in CSP is required by the current
-  Next.js build; a nonce/hashed-script build would allow removing it.
+- ~~**`script-src 'unsafe-inline'`** in CSP~~ — resolved by LEN-39:
+  `clients/web/proxy.ts` issues a per-request nonce with
+  `'strict-dynamic'`; Caddy no longer sets a static page CSP.
 - **Searchability backfill is one-way**: opting out every existing user
   is privacy-correct but means re-opt-in is required for invite search.
 - **Member test account** (`member@lena.local`, id 2, household 2) exists

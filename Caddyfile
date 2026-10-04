@@ -34,7 +34,9 @@
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
         Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+        # CSP is owned by the web tier (clients/web/proxy.ts) — it issues a
+        # per-request nonce instead of 'unsafe-inline'. Setting a static
+        # policy here would shadow or conflict with that header.
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
 }
