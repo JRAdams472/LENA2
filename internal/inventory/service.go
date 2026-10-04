@@ -1988,6 +1988,183 @@ func (s *Service) ClearItemAllergen(ctx context.Context, itemID, allergenID int6
 	return nil
 }
 
+// ---------- allergen flag suggestions (LEN-23 review queue) ----------
+
+// AllergenSuggestion is one reviewable flag proposal — accepted rows write
+// a real ingredient/item flag; dismissed rows keep the audit trail.
+type AllergenSuggestion struct {
+	AllergenSuggestionID int64
+	RecipeID             *int64
+	RecipeName           string
+	TargetKind           string // "ingredient" | "item"
+	IngredientID         *int64
+	IngredientName       string
+	ItemID               *int64
+	ItemName             string
+	AllergenID           int64
+	AllergenName         string
+	Kind                 string // "contains" | "may_contain"
+	Rationale            string
+	Status               string // "pending" | "accepted" | "dismissed"
+	SuggestedByUserID    *int64
+	ReviewedByUserID     *int64
+	ReviewedAt           *time.Time
+}
+
+// NewAllergenSuggestion is one proposal to enqueue.
+type NewAllergenSuggestion struct {
+	RecipeID    *int64
+	TargetKind  string
+	TargetID    int64
+	AllergenID  int64
+	Kind        string
+	Rationale   string
+	SuggestedBy *int64
+}
+
+// CreateAllergenSuggestions enqueues proposals. Duplicates of a still-open
+// suggestion for the same target+allergen are dropped by the partial
+// unique index (ON CONFLICT DO NOTHING returns pgx.ErrNoRows) — callers
+// get only the rows that were actually created.
+func (s *Service) CreateAllergenSuggestions(ctx context.Context, proposals []NewAllergenSuggestion, by string) ([]AllergenSuggestion, error) {
+	out := make([]AllergenSuggestion, 0, len(proposals))
+	for _, p := range proposals {
+		if !validAllergenFlagKind(p.Kind) {
+			return nil, fmt.Errorf("create allergen suggestion: invalid kind %q", p.Kind)
+		}
+		arg := sqlc.CreateAllergenSuggestionParams{
+			TargetKind: p.TargetKind,
+			AllergenID: p.AllergenID,
+			Kind:       p.Kind,
+			Rationale:  textOrNull(p.Rationale),
+			CreatedBy:  by,
+		}
+		if p.RecipeID != nil {
+			arg.RecipeID = pgtype.Int8{Int64: *p.RecipeID, Valid: true}
+		}
+		switch p.TargetKind {
+		case "ingredient":
+			arg.IngredientID = pgtype.Int8{Int64: p.TargetID, Valid: true}
+		case "item":
+			arg.ItemID = pgtype.Int8{Int64: p.TargetID, Valid: true}
+		default:
+			return nil, fmt.Errorf("create allergen suggestion: invalid target %q", p.TargetKind)
+		}
+		if p.SuggestedBy != nil {
+			arg.SuggestedByUserID = pgtype.Int8{Int64: *p.SuggestedBy, Valid: true}
+		}
+		row, err := s.q.CreateAllergenSuggestion(ctx, arg)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue // pending duplicate — skipped by the partial index
+		}
+		if err != nil {
+			return nil, fmt.Errorf("create allergen suggestion: %w", domainerr.FromStorage(err))
+		}
+		out = append(out, AllergenSuggestion{AllergenSuggestionID: row.AllergenSuggestionID})
+	}
+	return out, nil
+}
+
+// ListAllergenSuggestions returns queue rows newest-last; empty status
+// returns every row, otherwise "pending", "accepted", or "dismissed".
+func (s *Service) ListAllergenSuggestions(ctx context.Context, status string) ([]AllergenSuggestion, error) {
+	var st pgtype.Text
+	if status != "" {
+		st = pgtype.Text{String: status, Valid: true}
+	}
+	rows, err := s.q.ListAllergenSuggestions(ctx, st)
+	if err != nil {
+		return nil, fmt.Errorf("list allergen suggestions: %w", err)
+	}
+	out := make([]AllergenSuggestion, len(rows))
+	for i, r := range rows {
+		out[i] = toAllergenSuggestion(sqlc.GetAllergenSuggestionRow(r))
+	}
+	return out, nil
+}
+
+// GetAllergenSuggestion loads one queue row.
+func (s *Service) GetAllergenSuggestion(ctx context.Context, id int64) (AllergenSuggestion, error) {
+	r, err := s.q.GetAllergenSuggestion(ctx, id)
+	if err != nil {
+		return AllergenSuggestion{}, fmt.Errorf("get allergen suggestion: %w", domainerr.FromStorage(err))
+	}
+	return toAllergenSuggestion(r), nil
+}
+
+// AcceptAllergenSuggestion writes the proposed flag under the reviewer's
+// attribution and marks the suggestion accepted — one transaction so a
+// flag can never land without its audit row.
+func (s *Service) AcceptAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error {
+	return dbtx.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		txs := s.WithTx(tx)
+		row, err := txs.q.SetAllergenSuggestionStatus(ctx, sqlc.SetAllergenSuggestionStatusParams{
+			AllergenSuggestionID: id,
+			Status:               "accepted",
+			ReviewedByUserID:     pgtype.Int8{Int64: reviewerUserID, Valid: true},
+			UpdatedBy:            textOrNull(by),
+		})
+		if err != nil {
+			return fmt.Errorf("accept allergen suggestion: %w", domainerr.FromStorage(err))
+		}
+		switch row.TargetKind {
+		case "ingredient":
+			return txs.SetIngredientAllergen(ctx, row.IngredientID.Int64, row.AllergenID, row.Kind, by)
+		default:
+			return txs.SetItemAllergen(ctx, row.ItemID.Int64, row.AllergenID, row.Kind, by)
+		}
+	})
+}
+
+// DismissAllergenSuggestion marks a pending row dismissed; a row already
+// reviewed fails the WHERE status check and reports not-found.
+func (s *Service) DismissAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error {
+	_, err := s.q.SetAllergenSuggestionStatus(ctx, sqlc.SetAllergenSuggestionStatusParams{
+		AllergenSuggestionID: id,
+		Status:               "dismissed",
+		ReviewedByUserID:     pgtype.Int8{Int64: reviewerUserID, Valid: true},
+		UpdatedBy:            textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("dismiss allergen suggestion: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+func toAllergenSuggestion(r sqlc.GetAllergenSuggestionRow) AllergenSuggestion {
+	out := AllergenSuggestion{
+		AllergenSuggestionID: r.AllergenSuggestionID,
+		TargetKind:           r.TargetKind,
+		AllergenID:           r.AllergenID,
+		AllergenName:         r.AllergenName,
+		Kind:                 r.Kind,
+		Rationale:            r.Rationale.String,
+		Status:               r.Status,
+		IngredientName:       r.IngredientName.String,
+		ItemName:             r.ItemName.String,
+		RecipeName:           r.RecipeName.String,
+	}
+	if r.RecipeID.Valid {
+		out.RecipeID = &r.RecipeID.Int64
+	}
+	if r.IngredientID.Valid {
+		out.IngredientID = &r.IngredientID.Int64
+	}
+	if r.ItemID.Valid {
+		out.ItemID = &r.ItemID.Int64
+	}
+	if r.SuggestedByUserID.Valid {
+		out.SuggestedByUserID = &r.SuggestedByUserID.Int64
+	}
+	if r.ReviewedByUserID.Valid {
+		out.ReviewedByUserID = &r.ReviewedByUserID.Int64
+	}
+	if r.ReviewedAt.Valid {
+		out.ReviewedAt = &r.ReviewedAt.Time
+	}
+	return out
+}
+
 func toAllergen(row sqlc.InventoryAllergen) Allergen {
 	return Allergen{
 		AllergenID:  row.AllergenID,

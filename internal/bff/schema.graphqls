@@ -108,6 +108,10 @@ type Query {
   allergens: [Allergen!]!
   # The caller's own allergy/dietary records.
   myAllergies: [MemberAllergen!]!
+  # The allergen-flag suggestion review queue — AI-proposed flags an
+  # admin accepts or dismisses. status filters to pending/accepted/
+  # dismissed; unset returns the whole queue.
+  allergenSuggestions(status: String): [AllergenSuggestion!]! @admin
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
@@ -430,6 +434,12 @@ type Mutation {
   # Admin curation of entity flags; null kind clears the flag.
   setIngredientAllergen(ingredientId: ID!, allergenId: ID!, kind: AllergenFlagKind): Boolean! @admin
   setItemAllergen(itemId: ID!, allergenId: ID!, kind: AllergenFlagKind): Boolean! @admin
+  # Runs the AI flag suggester over one recipe and enqueues validated
+  # proposals — nothing is applied until an admin accepts.
+  suggestRecipeAllergens(recipeId: ID!, maxSuggestions: Int): [AllergenSuggestion!]! @admin
+  # Writes the proposed flag under the reviewer's attribution.
+  acceptAllergenSuggestion(id: ID!): AllergenSuggestion! @admin
+  dismissAllergenSuggestion(id: ID!): AllergenSuggestion! @admin
 }
 
 input UpdateProfileInput {
@@ -695,6 +705,26 @@ type AllergenFlag {
 type MemberAllergen {
   allergen: Allergen!
   kind: MemberAllergyKind!
+}
+
+# One proposed flag in the review queue. Proposals are AI-generated and
+# can be wrong in both directions — accepting writes the flag under the
+# reviewer's attribution; dismissing keeps the audit trail.
+type AllergenSuggestion {
+  id: ID!
+  recipeId: ID
+  recipeName: String
+  # "ingredient" or "item" — which id field identifies the flag target.
+  targetKind: String!
+  ingredientId: ID
+  ingredientName: String
+  itemId: ID
+  itemName: String
+  allergen: Allergen!
+  kind: AllergenFlagKind!
+  rationale: String
+  status: String!
+  reviewedAt: String
 }
 
 # A conflict between an entity's allergen set and one household member's

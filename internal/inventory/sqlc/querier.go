@@ -19,6 +19,8 @@ type Querier interface {
 	CountSearchIngredients(ctx context.Context, search pgtype.Text) (int64, error)
 	CountSearchItems(ctx context.Context, arg CountSearchItemsParams) (int64, error)
 	CreateAllergen(ctx context.Context, arg CreateAllergenParams) (InventoryAllergen, error)
+	// ---------- allergen flag suggestions (LEN-23 review queue) ----------
+	CreateAllergenSuggestion(ctx context.Context, arg CreateAllergenSuggestionParams) (InventoryAllergenSuggestion, error)
 	// Admin-only fast path: brand is immediately approved.
 	CreateBrand(ctx context.Context, arg CreateBrandParams) (InventoryBrand, error)
 	// User-submitted brand: starts pending, visible only to the submitter
@@ -69,6 +71,7 @@ type Querier interface {
 	// "Carrots", " carrots  ", and "CARROTS" all resolve to the same row.
 	FindIngredientByNormalizedName(ctx context.Context, regexpReplace string) (InventoryIngredient, error)
 	GetAllergenByID(ctx context.Context, allergenID int64) (InventoryAllergen, error)
+	GetAllergenSuggestion(ctx context.Context, allergenSuggestionID int64) (GetAllergenSuggestionRow, error)
 	GetAllergensByIDs(ctx context.Context, allergenIds []int64) ([]InventoryAllergen, error)
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
 	GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error)
@@ -94,6 +97,7 @@ type Querier interface {
 	GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error)
 	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
 	GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
+	ListAllergenSuggestions(ctx context.Context, status pgtype.Text) ([]ListAllergenSuggestionsRow, error)
 	// ---------- allergen registry + entity flags ----------
 	ListAllergens(ctx context.Context) ([]InventoryAllergen, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
@@ -165,6 +169,7 @@ type Querier interface {
 	// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
 	// large catalog.
 	SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error)
+	SetAllergenSuggestionStatus(ctx context.Context, arg SetAllergenSuggestionStatusParams) (InventoryAllergenSuggestion, error)
 	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) (int64, error)
 	// Writes the catalog-level item -> ingredient link.
 	SetItemIngredient(ctx context.Context, arg SetItemIngredientParams) (int64, error)

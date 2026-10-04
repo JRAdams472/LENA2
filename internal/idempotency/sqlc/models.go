@@ -303,6 +303,26 @@ type InventoryAllergen struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type InventoryAllergenSuggestion struct {
+	AllergenSuggestionID int64              `json:"allergen_suggestion_id"`
+	RecipeID             pgtype.Int8        `json:"recipe_id"`
+	TargetKind           string             `json:"target_kind"`
+	IngredientID         pgtype.Int8        `json:"ingredient_id"`
+	ItemID               pgtype.Int8        `json:"item_id"`
+	AllergenID           int64              `json:"allergen_id"`
+	Kind                 string             `json:"kind"`
+	Rationale            pgtype.Text        `json:"rationale"`
+	Status               string             `json:"status"`
+	Source               string             `json:"source"`
+	SuggestedByUserID    pgtype.Int8        `json:"suggested_by_user_id"`
+	ReviewedByUserID     pgtype.Int8        `json:"reviewed_by_user_id"`
+	ReviewedAt           pgtype.Timestamptz `json:"reviewed_at"`
+	CreatedBy            string             `json:"created_by"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedBy            pgtype.Text        `json:"updated_by"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
 type InventoryBrand struct {
 	BrandID           int64              `json:"brand_id"`
 	Name              string             `json:"name"`

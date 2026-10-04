@@ -228,6 +228,26 @@ export interface NutrientType {
   unitOfMeasure: string;
 }
 
+// One AI-proposed flag in the admin review queue. Accepting writes a real
+// flag under the reviewer's attribution; dismissing keeps the audit row.
+export type AllergenSuggestionStatus = "pending" | "accepted" | "dismissed";
+
+export interface AllergenSuggestion {
+  id: number;
+  recipeId: number | null;
+  recipeName: string | null;
+  targetKind: "ingredient" | "item";
+  ingredientId: number | null;
+  ingredientName: string | null;
+  itemId: number | null;
+  itemName: string | null;
+  allergen: Allergen;
+  kind: AllergenFlagKind;
+  rationale: string | null;
+  status: AllergenSuggestionStatus;
+  reviewedAt: string | null;
+}
+
 export interface Brand {
   brandID: number;
   brandName: string;

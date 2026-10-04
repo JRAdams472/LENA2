@@ -166,6 +166,7 @@ func TestUsesAIProvider(t *testing.T) {
 		`{ suggestPairings(recipeId: "3") { bottle { id } } }`:                 true,
 		`{ suggestCocktails { recipe { id } } }`:                               true,
 		`{ suggestEventFixes(foodEventId: "2") { action } }`:                   true,
+		`{ suggestRecipeAllergens(recipeId: "4") { id } }`:                     true,
 		`{ me { id email } }`:                                                  false,
 		`{ aiAvailable assistantTools { name } }`:                              false,
 		`{ prepareAssistantRequest(name: "suggest-meals") { prompt } }`:        false,

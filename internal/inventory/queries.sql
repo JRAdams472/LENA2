@@ -806,3 +806,53 @@ ON CONFLICT (item_id, allergen_id)
 -- name: DeleteItemAllergen :execrows
 DELETE FROM inventory.item_allergen
 WHERE item_id = $1 AND allergen_id = $2;
+
+
+-- ---------- allergen flag suggestions (LEN-23 review queue) ----------
+
+-- name: CreateAllergenSuggestion :one
+INSERT INTO inventory.allergen_suggestion
+    (recipe_id, target_kind, ingredient_id, item_id, allergen_id, kind,
+     rationale, suggested_by_user_id, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (target_kind, COALESCE(ingredient_id, item_id), allergen_id)
+    WHERE status = 'pending'
+    DO NOTHING
+RETURNING *;
+
+-- name: ListAllergenSuggestions :many
+SELECT s.*,
+       a.name  AS allergen_name,
+       i.name  AS ingredient_name,
+       it.name AS item_name,
+       r.name  AS recipe_name
+FROM inventory.allergen_suggestion s
+JOIN inventory.allergen a ON a.allergen_id = s.allergen_id
+LEFT JOIN inventory.ingredient i ON i.ingredient_id = s.ingredient_id
+LEFT JOIN inventory.item it ON it.item_id = s.item_id
+LEFT JOIN recipe.recipe r ON r.recipe_id = s.recipe_id
+WHERE (sqlc.narg(status)::varchar IS NULL OR s.status = sqlc.narg(status)::varchar)
+ORDER BY s.allergen_suggestion_id;
+
+-- name: GetAllergenSuggestion :one
+SELECT s.*,
+       a.name  AS allergen_name,
+       i.name  AS ingredient_name,
+       it.name AS item_name,
+       r.name  AS recipe_name
+FROM inventory.allergen_suggestion s
+JOIN inventory.allergen a ON a.allergen_id = s.allergen_id
+LEFT JOIN inventory.ingredient i ON i.ingredient_id = s.ingredient_id
+LEFT JOIN inventory.item it ON it.item_id = s.item_id
+LEFT JOIN recipe.recipe r ON r.recipe_id = s.recipe_id
+WHERE s.allergen_suggestion_id = $1;
+
+-- name: SetAllergenSuggestionStatus :one
+UPDATE inventory.allergen_suggestion
+SET status              = $2,
+    reviewed_by_user_id = $3,
+    reviewed_at         = CASE WHEN $2::varchar = 'pending' THEN NULL ELSE now() END,
+    updated_by          = $4,
+    updated_at          = now()
+WHERE allergen_suggestion_id = $1 AND status = 'pending'
+RETURNING *;
