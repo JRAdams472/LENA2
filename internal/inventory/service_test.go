@@ -1638,3 +1638,154 @@ func TestMergeIngredients(t *testing.T) {
 		assert.Error(t, s.MergeIngredients(ctx, 1, 2))
 	})
 }
+
+// ---------- allergen suggestion review queue (LEN-23) ----------
+
+func TestCreateAllergenSuggestions(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates ingredient and item rows", func(t *testing.T) {
+		s, q := newTestService(t)
+		rid := int64(10)
+		uid := int64(7)
+		q.EXPECT().CreateAllergenSuggestion(ctx, sqlc.CreateAllergenSuggestionParams{
+			RecipeID:          pgtype.Int8{Int64: 10, Valid: true},
+			TargetKind:        "ingredient",
+			IngredientID:      pgtype.Int8{Int64: 51, Valid: true},
+			AllergenID:        2,
+			Kind:              "contains",
+			Rationale:         pgtype.Text{String: "flour", Valid: true},
+			SuggestedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+			CreatedBy:         "admin@example.com",
+		}).Return(sqlc.InventoryAllergenSuggestion{AllergenSuggestionID: 100}, nil)
+		q.EXPECT().CreateAllergenSuggestion(ctx, sqlc.CreateAllergenSuggestionParams{
+			RecipeID:          pgtype.Int8{Int64: 10, Valid: true},
+			TargetKind:        "item",
+			ItemID:            pgtype.Int8{Int64: 200, Valid: true},
+			AllergenID:        1,
+			Kind:              "may_contain",
+			SuggestedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+			CreatedBy:         "admin@example.com",
+		}).Return(sqlc.InventoryAllergenSuggestion{AllergenSuggestionID: 101}, nil)
+
+		got, err := s.CreateAllergenSuggestions(ctx, []NewAllergenSuggestion{
+			{RecipeID: &rid, TargetKind: "ingredient", TargetID: 51, AllergenID: 2, Kind: "contains", Rationale: "flour", SuggestedBy: &uid},
+			{RecipeID: &rid, TargetKind: "item", TargetID: 200, AllergenID: 1, Kind: "may_contain", SuggestedBy: &uid},
+		}, "admin@example.com")
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, int64(100), got[0].AllergenSuggestionID)
+		assert.Equal(t, int64(101), got[1].AllergenSuggestionID)
+	})
+
+	t.Run("pending duplicate skipped", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().CreateAllergenSuggestion(ctx, gomock.Any()).Return(sqlc.InventoryAllergenSuggestion{}, pgx.ErrNoRows)
+		got, err := s.CreateAllergenSuggestions(ctx, []NewAllergenSuggestion{
+			{TargetKind: "ingredient", TargetID: 51, AllergenID: 2, Kind: "contains"},
+		}, "admin@example.com")
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("invalid kind rejected before insert", func(t *testing.T) {
+		s, _ := newTestService(t)
+		_, err := s.CreateAllergenSuggestions(ctx, []NewAllergenSuggestion{
+			{TargetKind: "ingredient", TargetID: 51, AllergenID: 2, Kind: "bogus"},
+		}, "admin@example.com")
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid target rejected", func(t *testing.T) {
+		s, _ := newTestService(t)
+		_, err := s.CreateAllergenSuggestions(ctx, []NewAllergenSuggestion{
+			{TargetKind: "recipe", TargetID: 51, AllergenID: 2, Kind: "contains"},
+		}, "admin@example.com")
+		assert.Error(t, err)
+	})
+}
+
+func TestAcceptAllergenSuggestion(t *testing.T) {
+	ctx := context.Background()
+	pending := func() sqlc.InventoryAllergenSuggestion {
+		return sqlc.InventoryAllergenSuggestion{
+			AllergenSuggestionID: 5,
+			TargetKind:           "ingredient",
+			IngredientID:         pgtype.Int8{Int64: 51, Valid: true},
+			AllergenID:           2,
+			Kind:                 "contains",
+			Status:               "pending",
+		}
+	}
+
+	t.Run("ingredient flag + status in one tx", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().SetAllergenSuggestionStatus(ctx, sqlc.SetAllergenSuggestionStatusParams{
+			AllergenSuggestionID: 5,
+			Status:               "accepted",
+			ReviewedByUserID:     pgtype.Int8{Int64: 9, Valid: true},
+			UpdatedBy:            pgtype.Text{String: "admin@example.com", Valid: true},
+		}).Return(pending(), nil)
+		q.EXPECT().UpsertIngredientAllergen(ctx, sqlc.UpsertIngredientAllergenParams{
+			IngredientID: 51,
+			AllergenID:   2,
+			Kind:         "contains",
+			CreatedBy:    "admin@example.com",
+			UpdatedBy:    pgtype.Text{String: "admin@example.com", Valid: true},
+		}).Return(int64(1), nil)
+		require.NoError(t, s.AcceptAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
+	})
+
+	t.Run("item flag path", func(t *testing.T) {
+		s, q := newTestService(t)
+		row := pending()
+		row.TargetKind = "item"
+		row.IngredientID = pgtype.Int8{}
+		row.ItemID = pgtype.Int8{Int64: 200, Valid: true}
+		q.EXPECT().SetAllergenSuggestionStatus(ctx, gomock.Any()).Return(row, nil)
+		q.EXPECT().UpsertItemAllergen(ctx, sqlc.UpsertItemAllergenParams{
+			ItemID:     200,
+			AllergenID: 2,
+			Kind:       "contains",
+			CreatedBy:  "admin@example.com",
+			UpdatedBy:  pgtype.Text{String: "admin@example.com", Valid: true},
+		}).Return(int64(1), nil)
+		require.NoError(t, s.AcceptAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
+	})
+
+	t.Run("already reviewed returns error", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().SetAllergenSuggestionStatus(ctx, gomock.Any()).
+			Return(sqlc.InventoryAllergenSuggestion{}, pgx.ErrNoRows)
+		assert.Error(t, s.AcceptAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
+	})
+
+	t.Run("flag write failure rolls back", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().SetAllergenSuggestionStatus(ctx, gomock.Any()).Return(pending(), nil)
+		q.EXPECT().UpsertIngredientAllergen(ctx, gomock.Any()).Return(int64(0), errBoom)
+		assert.Error(t, s.AcceptAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
+	})
+}
+
+func TestDismissAllergenSuggestion(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("marks dismissed", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().SetAllergenSuggestionStatus(ctx, sqlc.SetAllergenSuggestionStatusParams{
+			AllergenSuggestionID: 5,
+			Status:               "dismissed",
+			ReviewedByUserID:     pgtype.Int8{Int64: 9, Valid: true},
+			UpdatedBy:            pgtype.Text{String: "admin@example.com", Valid: true},
+		}).Return(sqlc.InventoryAllergenSuggestion{AllergenSuggestionID: 5, Status: "dismissed"}, nil)
+		require.NoError(t, s.DismissAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
+	})
+
+	t.Run("already reviewed errors", func(t *testing.T) {
+		s, q := newTestService(t)
+		q.EXPECT().SetAllergenSuggestionStatus(ctx, gomock.Any()).
+			Return(sqlc.InventoryAllergenSuggestion{}, pgx.ErrNoRows)
+		assert.Error(t, s.DismissAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
+	})
+}

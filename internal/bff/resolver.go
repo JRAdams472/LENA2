@@ -1229,7 +1229,7 @@ var errQueryTimeout = errors.New("graphql request timed out")
 // model. A stray match inside a string literal only widens a deadline, so
 // the cheap text scan is safe.
 var aiProviderFieldPattern = regexp.MustCompile(
-	`\b(?:askAssistant|suggestMeals|suggestEventFixes|suggestPairings|suggestCocktails)\b`)
+	`\b(?:askAssistant|suggestMeals|suggestEventFixes|suggestPairings|suggestCocktails|suggestRecipeAllergens)\b`)
 
 // usesAIProvider reports whether the query touches an LLM-backed field and
 // therefore deserves the AI budget instead of the interactive one.

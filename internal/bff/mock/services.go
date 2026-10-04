@@ -1936,6 +1936,20 @@ func (m *MockCatalogAdmin) EXPECT() *MockCatalogAdminMockRecorder {
 	return m.recorder
 }
 
+// AcceptAllergenSuggestion mocks base method.
+func (m *MockCatalogAdmin) AcceptAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcceptAllergenSuggestion", ctx, id, reviewerUserID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcceptAllergenSuggestion indicates an expected call of AcceptAllergenSuggestion.
+func (mr *MockCatalogAdminMockRecorder) AcceptAllergenSuggestion(ctx, id, reviewerUserID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptAllergenSuggestion", reflect.TypeOf((*MockCatalogAdmin)(nil).AcceptAllergenSuggestion), ctx, id, reviewerUserID, by)
+}
+
 // ClearIngredientAllergen mocks base method.
 func (m *MockCatalogAdmin) ClearIngredientAllergen(ctx context.Context, ingredientID, allergenID int64) error {
 	m.ctrl.T.Helper()
@@ -2007,6 +2021,21 @@ func (m *MockCatalogAdmin) CreateAllergen(ctx context.Context, name, description
 func (mr *MockCatalogAdminMockRecorder) CreateAllergen(ctx, name, description, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAllergen", reflect.TypeOf((*MockCatalogAdmin)(nil).CreateAllergen), ctx, name, description, by)
+}
+
+// CreateAllergenSuggestions mocks base method.
+func (m *MockCatalogAdmin) CreateAllergenSuggestions(ctx context.Context, proposals []inventory.NewAllergenSuggestion, by string) ([]inventory.AllergenSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateAllergenSuggestions", ctx, proposals, by)
+	ret0, _ := ret[0].([]inventory.AllergenSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateAllergenSuggestions indicates an expected call of CreateAllergenSuggestions.
+func (mr *MockCatalogAdminMockRecorder) CreateAllergenSuggestions(ctx, proposals, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAllergenSuggestions", reflect.TypeOf((*MockCatalogAdmin)(nil).CreateAllergenSuggestions), ctx, proposals, by)
 }
 
 // CreateBrand mocks base method.
@@ -2241,6 +2270,50 @@ func (mr *MockCatalogAdminMockRecorder) DeleteNutrientType(ctx, nutrientID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNutrientType", reflect.TypeOf((*MockCatalogAdmin)(nil).DeleteNutrientType), ctx, nutrientID)
 }
 
+// DismissAllergenSuggestion mocks base method.
+func (m *MockCatalogAdmin) DismissAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DismissAllergenSuggestion", ctx, id, reviewerUserID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DismissAllergenSuggestion indicates an expected call of DismissAllergenSuggestion.
+func (mr *MockCatalogAdminMockRecorder) DismissAllergenSuggestion(ctx, id, reviewerUserID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DismissAllergenSuggestion", reflect.TypeOf((*MockCatalogAdmin)(nil).DismissAllergenSuggestion), ctx, id, reviewerUserID, by)
+}
+
+// GetAllergenSuggestion mocks base method.
+func (m *MockCatalogAdmin) GetAllergenSuggestion(ctx context.Context, id int64) (inventory.AllergenSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllergenSuggestion", ctx, id)
+	ret0, _ := ret[0].(inventory.AllergenSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllergenSuggestion indicates an expected call of GetAllergenSuggestion.
+func (mr *MockCatalogAdminMockRecorder) GetAllergenSuggestion(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllergenSuggestion", reflect.TypeOf((*MockCatalogAdmin)(nil).GetAllergenSuggestion), ctx, id)
+}
+
+// ListAllergenSuggestions mocks base method.
+func (m *MockCatalogAdmin) ListAllergenSuggestions(ctx context.Context, status string) ([]inventory.AllergenSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAllergenSuggestions", ctx, status)
+	ret0, _ := ret[0].([]inventory.AllergenSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAllergenSuggestions indicates an expected call of ListAllergenSuggestions.
+func (mr *MockCatalogAdminMockRecorder) ListAllergenSuggestions(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAllergenSuggestions", reflect.TypeOf((*MockCatalogAdmin)(nil).ListAllergenSuggestions), ctx, status)
+}
+
 // ListPendingBrands mocks base method.
 func (m *MockCatalogAdmin) ListPendingBrands(ctx context.Context, limit, offset int32) ([]inventory.Brand, error) {
 	m.ctrl.T.Helper()
@@ -2455,6 +2528,20 @@ func (m *MockInventoryService) EXPECT() *MockInventoryServiceMockRecorder {
 	return m.recorder
 }
 
+// AcceptAllergenSuggestion mocks base method.
+func (m *MockInventoryService) AcceptAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcceptAllergenSuggestion", ctx, id, reviewerUserID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcceptAllergenSuggestion indicates an expected call of AcceptAllergenSuggestion.
+func (mr *MockInventoryServiceMockRecorder) AcceptAllergenSuggestion(ctx, id, reviewerUserID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptAllergenSuggestion", reflect.TypeOf((*MockInventoryService)(nil).AcceptAllergenSuggestion), ctx, id, reviewerUserID, by)
+}
+
 // ApplyNutritionLabel mocks base method.
 func (m *MockInventoryService) ApplyNutritionLabel(ctx context.Context, itemID int64, parsed []nutritionparse.Nutrient, by string) error {
 	m.ctrl.T.Helper()
@@ -2599,6 +2686,21 @@ func (m *MockInventoryService) CreateAllergen(ctx context.Context, name, descrip
 func (mr *MockInventoryServiceMockRecorder) CreateAllergen(ctx, name, description, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAllergen", reflect.TypeOf((*MockInventoryService)(nil).CreateAllergen), ctx, name, description, by)
+}
+
+// CreateAllergenSuggestions mocks base method.
+func (m *MockInventoryService) CreateAllergenSuggestions(ctx context.Context, proposals []inventory.NewAllergenSuggestion, by string) ([]inventory.AllergenSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateAllergenSuggestions", ctx, proposals, by)
+	ret0, _ := ret[0].([]inventory.AllergenSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateAllergenSuggestions indicates an expected call of CreateAllergenSuggestions.
+func (mr *MockInventoryServiceMockRecorder) CreateAllergenSuggestions(ctx, proposals, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAllergenSuggestions", reflect.TypeOf((*MockInventoryService)(nil).CreateAllergenSuggestions), ctx, proposals, by)
 }
 
 // CreateBrand mocks base method.
@@ -2833,6 +2935,20 @@ func (mr *MockInventoryServiceMockRecorder) DeleteNutrientType(ctx, nutrientID a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNutrientType", reflect.TypeOf((*MockInventoryService)(nil).DeleteNutrientType), ctx, nutrientID)
 }
 
+// DismissAllergenSuggestion mocks base method.
+func (m *MockInventoryService) DismissAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DismissAllergenSuggestion", ctx, id, reviewerUserID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DismissAllergenSuggestion indicates an expected call of DismissAllergenSuggestion.
+func (mr *MockInventoryServiceMockRecorder) DismissAllergenSuggestion(ctx, id, reviewerUserID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DismissAllergenSuggestion", reflect.TypeOf((*MockInventoryService)(nil).DismissAllergenSuggestion), ctx, id, reviewerUserID, by)
+}
+
 // GetAllergenByID mocks base method.
 func (m *MockInventoryService) GetAllergenByID(ctx context.Context, allergenID int64) (inventory.Allergen, error) {
 	m.ctrl.T.Helper()
@@ -2846,6 +2962,21 @@ func (m *MockInventoryService) GetAllergenByID(ctx context.Context, allergenID i
 func (mr *MockInventoryServiceMockRecorder) GetAllergenByID(ctx, allergenID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllergenByID", reflect.TypeOf((*MockInventoryService)(nil).GetAllergenByID), ctx, allergenID)
+}
+
+// GetAllergenSuggestion mocks base method.
+func (m *MockInventoryService) GetAllergenSuggestion(ctx context.Context, id int64) (inventory.AllergenSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllergenSuggestion", ctx, id)
+	ret0, _ := ret[0].(inventory.AllergenSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllergenSuggestion indicates an expected call of GetAllergenSuggestion.
+func (mr *MockInventoryServiceMockRecorder) GetAllergenSuggestion(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllergenSuggestion", reflect.TypeOf((*MockInventoryService)(nil).GetAllergenSuggestion), ctx, id)
 }
 
 // GetAllergensByIDs mocks base method.
@@ -3131,6 +3262,21 @@ func (m *MockInventoryService) GetUsualItemsForIngredients(ctx context.Context, 
 func (mr *MockInventoryServiceMockRecorder) GetUsualItemsForIngredients(ctx, householdID, ingredientIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsualItemsForIngredients", reflect.TypeOf((*MockInventoryService)(nil).GetUsualItemsForIngredients), ctx, householdID, ingredientIDs)
+}
+
+// ListAllergenSuggestions mocks base method.
+func (m *MockInventoryService) ListAllergenSuggestions(ctx context.Context, status string) ([]inventory.AllergenSuggestion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAllergenSuggestions", ctx, status)
+	ret0, _ := ret[0].([]inventory.AllergenSuggestion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAllergenSuggestions indicates an expected call of ListAllergenSuggestions.
+func (mr *MockInventoryServiceMockRecorder) ListAllergenSuggestions(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAllergenSuggestions", reflect.TypeOf((*MockInventoryService)(nil).ListAllergenSuggestions), ctx, status)
 }
 
 // ListAllergens mocks base method.
@@ -10768,6 +10914,21 @@ func (m *MockAIService) Prompt(name string) (string, bool) {
 func (mr *MockAIServiceMockRecorder) Prompt(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prompt", reflect.TypeOf((*MockAIService)(nil).Prompt), name)
+}
+
+// SuggestAllergens mocks base method.
+func (m *MockAIService) SuggestAllergens(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]ai.AllergenFlagProposal, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestAllergens", ctx, userID, householdID, recipeID, maxSuggestions)
+	ret0, _ := ret[0].([]ai.AllergenFlagProposal)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SuggestAllergens indicates an expected call of SuggestAllergens.
+func (mr *MockAIServiceMockRecorder) SuggestAllergens(ctx, userID, householdID, recipeID, maxSuggestions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestAllergens", reflect.TypeOf((*MockAIService)(nil).SuggestAllergens), ctx, userID, householdID, recipeID, maxSuggestions)
 }
 
 // SuggestCocktails mocks base method.

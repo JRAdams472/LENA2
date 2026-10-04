@@ -57,6 +57,7 @@ import {
   Ingredient,
   Allergen,
   AllergenFlag,
+  AllergenSuggestion,
   AllergyWarning,
   MemberAllergen,
   RecipeImport,
@@ -410,6 +411,22 @@ interface GqlAllergyWarning {
 interface GqlMemberAllergen {
   kind: string;
   allergen: GqlAllergen;
+}
+
+interface GqlAllergenSuggestion {
+  id: string;
+  recipeId: string | null;
+  recipeName: string | null;
+  targetKind: string;
+  ingredientId: string | null;
+  ingredientName: string | null;
+  itemId: string | null;
+  itemName: string | null;
+  allergen: GqlAllergen;
+  kind: string;
+  rationale: string | null;
+  status: string;
+  reviewedAt: string | null;
 }
 
 interface GqlFlavorProfile {
@@ -1172,6 +1189,25 @@ const toAllergyWarning = (w: GqlAllergyWarning): AllergyWarning => ({
 const toMemberAllergen = (m: GqlMemberAllergen): MemberAllergen => ({
   allergen: toAllergen(m.allergen),
   kind: m.kind === "allergy" ? "allergy" : "dietary",
+});
+
+const ALLERGEN_SUGGESTION_FIELDS = `id recipeId recipeName targetKind ingredientId ingredientName itemId itemName
+  allergen { id name description isActive } kind rationale status reviewedAt`;
+
+const toAllergenSuggestion = (s: GqlAllergenSuggestion): AllergenSuggestion => ({
+  id: num(s.id),
+  recipeId: s.recipeId ? num(s.recipeId) : null,
+  recipeName: s.recipeName,
+  targetKind: s.targetKind === "item" ? "item" : "ingredient",
+  ingredientId: s.ingredientId ? num(s.ingredientId) : null,
+  ingredientName: s.ingredientName,
+  itemId: s.itemId ? num(s.itemId) : null,
+  itemName: s.itemName,
+  allergen: toAllergen(s.allergen),
+  kind: s.kind === "contains" ? "contains" : "may_contain",
+  rationale: s.rationale,
+  status: (s.status as AllergenSuggestion["status"]) || "pending",
+  reviewedAt: s.reviewedAt,
 });
 
 function toIngredient(g: GqlIngredient): Ingredient {
@@ -2610,6 +2646,42 @@ export const api = {
       `mutation ($itemId: ID!, $allergenId: ID!, $kind: AllergenFlagKind) { setItemAllergen(itemId: $itemId, allergenId: $allergenId, kind: $kind) }`,
       { itemId: String(itemId), allergenId: String(allergenId), kind }
     );
+  },
+
+  /* -------------------- allergen flag review queue -------------------- */
+
+  getAllergenSuggestions: async (status?: "pending" | "accepted" | "dismissed"): Promise<AllergenSuggestion[]> => {
+    const data = await request<{ allergenSuggestions: GqlAllergenSuggestion[] }>(
+      `query ($status: String) { allergenSuggestions(status: $status) { ${ALLERGEN_SUGGESTION_FIELDS} } }`,
+      { status: status ?? null }
+    );
+    return (data.allergenSuggestions ?? []).map(toAllergenSuggestion);
+  },
+
+  // Admin: run the AI suggester over one recipe and enqueue the validated
+  // proposals. Returns the rows actually created (dupes drop server-side).
+  suggestRecipeAllergens: async (recipeId: number, maxSuggestions?: number): Promise<AllergenSuggestion[]> => {
+    const data = await request<{ suggestRecipeAllergens: GqlAllergenSuggestion[] }>(
+      `mutation ($recipeId: ID!, $max: Int) { suggestRecipeAllergens(recipeId: $recipeId, maxSuggestions: $max) { ${ALLERGEN_SUGGESTION_FIELDS} } }`,
+      { recipeId: String(recipeId), max: maxSuggestions ?? null }
+    );
+    return (data.suggestRecipeAllergens ?? []).map(toAllergenSuggestion);
+  },
+
+  acceptAllergenSuggestion: async (id: number): Promise<AllergenSuggestion> => {
+    const data = await request<{ acceptAllergenSuggestion: GqlAllergenSuggestion }>(
+      `mutation ($id: ID!) { acceptAllergenSuggestion(id: $id) { ${ALLERGEN_SUGGESTION_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toAllergenSuggestion(data.acceptAllergenSuggestion);
+  },
+
+  dismissAllergenSuggestion: async (id: number): Promise<AllergenSuggestion> => {
+    const data = await request<{ dismissAllergenSuggestion: GqlAllergenSuggestion }>(
+      `mutation ($id: ID!) { dismissAllergenSuggestion(id: $id) { ${ALLERGEN_SUGGESTION_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toAllergenSuggestion(data.dismissAllergenSuggestion);
   },
 
   adjustItemQuantity: async (

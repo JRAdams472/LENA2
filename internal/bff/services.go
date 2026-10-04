@@ -205,6 +205,13 @@ type CatalogAdmin interface {
 	ClearIngredientAllergen(ctx context.Context, ingredientID, allergenID int64) error
 	SetItemAllergen(ctx context.Context, itemID, allergenID int64, kind, by string) error
 	ClearItemAllergen(ctx context.Context, itemID, allergenID int64) error
+	// Allergen suggestion review queue (LEN-23): proposals are written by
+	// the suggester, and accept applies the flag under the reviewer's name.
+	CreateAllergenSuggestions(ctx context.Context, proposals []inventory.NewAllergenSuggestion, by string) ([]inventory.AllergenSuggestion, error)
+	ListAllergenSuggestions(ctx context.Context, status string) ([]inventory.AllergenSuggestion, error)
+	GetAllergenSuggestion(ctx context.Context, id int64) (inventory.AllergenSuggestion, error)
+	AcceptAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error
+	DismissAllergenSuggestion(ctx context.Context, id, reviewerUserID int64, by string) error
 }
 
 // InventoryService is the subset of *inventory.Service used by the resolver.
@@ -646,6 +653,9 @@ type AIService interface {
 	// service itself stays household-scoped and read-only.
 	SuggestPairings(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]ai.PairingSuggestion, error)
 	SuggestCocktails(ctx context.Context, userID, householdID int64, maxSuggestions int, inStockOnly bool) ([]ai.CocktailSuggestion, error)
+	// Allergen flag proposals — validated against the recipe context and
+	// registry; the resolver persists them to the review queue.
+	SuggestAllergens(ctx context.Context, userID, householdID, recipeID int64, maxSuggestions int) ([]ai.AllergenFlagProposal, error)
 	// Client-side inference surface: the same read-only tool catalog and
 	// prompts the server provider sees, for on-device agents. CallTool and
 	// PrepareRequest stay household-scoped and read-only.

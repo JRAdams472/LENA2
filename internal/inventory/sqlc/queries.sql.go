@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -137,6 +138,66 @@ func (q *Queries) CreateAllergen(ctx context.Context, arg CreateAllergenParams) 
 		&i.Name,
 		&i.Description,
 		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createAllergenSuggestion = `-- name: CreateAllergenSuggestion :one
+
+INSERT INTO inventory.allergen_suggestion
+    (recipe_id, target_kind, ingredient_id, item_id, allergen_id, kind,
+     rationale, suggested_by_user_id, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (target_kind, COALESCE(ingredient_id, item_id), allergen_id)
+    WHERE status = 'pending'
+    DO NOTHING
+RETURNING allergen_suggestion_id, recipe_id, target_kind, ingredient_id, item_id, allergen_id, kind, rationale, status, source, suggested_by_user_id, reviewed_by_user_id, reviewed_at, created_by, created_at, updated_by, updated_at
+`
+
+type CreateAllergenSuggestionParams struct {
+	RecipeID          pgtype.Int8 `json:"recipe_id"`
+	TargetKind        string      `json:"target_kind"`
+	IngredientID      pgtype.Int8 `json:"ingredient_id"`
+	ItemID            pgtype.Int8 `json:"item_id"`
+	AllergenID        int64       `json:"allergen_id"`
+	Kind              string      `json:"kind"`
+	Rationale         pgtype.Text `json:"rationale"`
+	SuggestedByUserID pgtype.Int8 `json:"suggested_by_user_id"`
+	CreatedBy         string      `json:"created_by"`
+}
+
+// ---------- allergen flag suggestions (LEN-23 review queue) ----------
+func (q *Queries) CreateAllergenSuggestion(ctx context.Context, arg CreateAllergenSuggestionParams) (InventoryAllergenSuggestion, error) {
+	row := q.db.QueryRow(ctx, createAllergenSuggestion,
+		arg.RecipeID,
+		arg.TargetKind,
+		arg.IngredientID,
+		arg.ItemID,
+		arg.AllergenID,
+		arg.Kind,
+		arg.Rationale,
+		arg.SuggestedByUserID,
+		arg.CreatedBy,
+	)
+	var i InventoryAllergenSuggestion
+	err := row.Scan(
+		&i.AllergenSuggestionID,
+		&i.RecipeID,
+		&i.TargetKind,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.AllergenID,
+		&i.Kind,
+		&i.Rationale,
+		&i.Status,
+		&i.Source,
+		&i.SuggestedByUserID,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
@@ -895,6 +956,73 @@ func (q *Queries) GetAllergenByID(ctx context.Context, allergenID int64) (Invent
 	return i, err
 }
 
+const getAllergenSuggestion = `-- name: GetAllergenSuggestion :one
+SELECT s.allergen_suggestion_id, s.recipe_id, s.target_kind, s.ingredient_id, s.item_id, s.allergen_id, s.kind, s.rationale, s.status, s.source, s.suggested_by_user_id, s.reviewed_by_user_id, s.reviewed_at, s.created_by, s.created_at, s.updated_by, s.updated_at,
+       a.name  AS allergen_name,
+       i.name  AS ingredient_name,
+       it.name AS item_name,
+       r.name  AS recipe_name
+FROM inventory.allergen_suggestion s
+JOIN inventory.allergen a ON a.allergen_id = s.allergen_id
+LEFT JOIN inventory.ingredient i ON i.ingredient_id = s.ingredient_id
+LEFT JOIN inventory.item it ON it.item_id = s.item_id
+LEFT JOIN recipe.recipe r ON r.recipe_id = s.recipe_id
+WHERE s.allergen_suggestion_id = $1
+`
+
+type GetAllergenSuggestionRow struct {
+	AllergenSuggestionID int64              `json:"allergen_suggestion_id"`
+	RecipeID             pgtype.Int8        `json:"recipe_id"`
+	TargetKind           string             `json:"target_kind"`
+	IngredientID         pgtype.Int8        `json:"ingredient_id"`
+	ItemID               pgtype.Int8        `json:"item_id"`
+	AllergenID           int64              `json:"allergen_id"`
+	Kind                 string             `json:"kind"`
+	Rationale            pgtype.Text        `json:"rationale"`
+	Status               string             `json:"status"`
+	Source               string             `json:"source"`
+	SuggestedByUserID    pgtype.Int8        `json:"suggested_by_user_id"`
+	ReviewedByUserID     pgtype.Int8        `json:"reviewed_by_user_id"`
+	ReviewedAt           pgtype.Timestamptz `json:"reviewed_at"`
+	CreatedBy            string             `json:"created_by"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedBy            pgtype.Text        `json:"updated_by"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	AllergenName         string             `json:"allergen_name"`
+	IngredientName       pgtype.Text        `json:"ingredient_name"`
+	ItemName             pgtype.Text        `json:"item_name"`
+	RecipeName           pgtype.Text        `json:"recipe_name"`
+}
+
+func (q *Queries) GetAllergenSuggestion(ctx context.Context, allergenSuggestionID int64) (GetAllergenSuggestionRow, error) {
+	row := q.db.QueryRow(ctx, getAllergenSuggestion, allergenSuggestionID)
+	var i GetAllergenSuggestionRow
+	err := row.Scan(
+		&i.AllergenSuggestionID,
+		&i.RecipeID,
+		&i.TargetKind,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.AllergenID,
+		&i.Kind,
+		&i.Rationale,
+		&i.Status,
+		&i.Source,
+		&i.SuggestedByUserID,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.AllergenName,
+		&i.IngredientName,
+		&i.ItemName,
+		&i.RecipeName,
+	)
+	return i, err
+}
+
 const getAllergensByIDs = `-- name: GetAllergensByIDs :many
 SELECT allergen_id, name, description, is_active, created_by, created_at, updated_by, updated_at
 FROM inventory.allergen
@@ -1467,6 +1595,87 @@ func (q *Queries) GetUsualItemForIngredient(ctx context.Context, arg GetUsualIte
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listAllergenSuggestions = `-- name: ListAllergenSuggestions :many
+SELECT s.allergen_suggestion_id, s.recipe_id, s.target_kind, s.ingredient_id, s.item_id, s.allergen_id, s.kind, s.rationale, s.status, s.source, s.suggested_by_user_id, s.reviewed_by_user_id, s.reviewed_at, s.created_by, s.created_at, s.updated_by, s.updated_at,
+       a.name  AS allergen_name,
+       i.name  AS ingredient_name,
+       it.name AS item_name,
+       r.name  AS recipe_name
+FROM inventory.allergen_suggestion s
+JOIN inventory.allergen a ON a.allergen_id = s.allergen_id
+LEFT JOIN inventory.ingredient i ON i.ingredient_id = s.ingredient_id
+LEFT JOIN inventory.item it ON it.item_id = s.item_id
+LEFT JOIN recipe.recipe r ON r.recipe_id = s.recipe_id
+WHERE ($1::varchar IS NULL OR s.status = $1::varchar)
+ORDER BY s.allergen_suggestion_id
+`
+
+type ListAllergenSuggestionsRow struct {
+	AllergenSuggestionID int64              `json:"allergen_suggestion_id"`
+	RecipeID             pgtype.Int8        `json:"recipe_id"`
+	TargetKind           string             `json:"target_kind"`
+	IngredientID         pgtype.Int8        `json:"ingredient_id"`
+	ItemID               pgtype.Int8        `json:"item_id"`
+	AllergenID           int64              `json:"allergen_id"`
+	Kind                 string             `json:"kind"`
+	Rationale            pgtype.Text        `json:"rationale"`
+	Status               string             `json:"status"`
+	Source               string             `json:"source"`
+	SuggestedByUserID    pgtype.Int8        `json:"suggested_by_user_id"`
+	ReviewedByUserID     pgtype.Int8        `json:"reviewed_by_user_id"`
+	ReviewedAt           pgtype.Timestamptz `json:"reviewed_at"`
+	CreatedBy            string             `json:"created_by"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedBy            pgtype.Text        `json:"updated_by"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	AllergenName         string             `json:"allergen_name"`
+	IngredientName       pgtype.Text        `json:"ingredient_name"`
+	ItemName             pgtype.Text        `json:"item_name"`
+	RecipeName           pgtype.Text        `json:"recipe_name"`
+}
+
+func (q *Queries) ListAllergenSuggestions(ctx context.Context, status pgtype.Text) ([]ListAllergenSuggestionsRow, error) {
+	rows, err := q.db.Query(ctx, listAllergenSuggestions, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllergenSuggestionsRow{}
+	for rows.Next() {
+		var i ListAllergenSuggestionsRow
+		if err := rows.Scan(
+			&i.AllergenSuggestionID,
+			&i.RecipeID,
+			&i.TargetKind,
+			&i.IngredientID,
+			&i.ItemID,
+			&i.AllergenID,
+			&i.Kind,
+			&i.Rationale,
+			&i.Status,
+			&i.Source,
+			&i.SuggestedByUserID,
+			&i.ReviewedByUserID,
+			&i.ReviewedAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.AllergenName,
+			&i.IngredientName,
+			&i.ItemName,
+			&i.RecipeName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAllergens = `-- name: ListAllergens :many
@@ -2871,6 +3080,54 @@ func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemai
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAllergenSuggestionStatus = `-- name: SetAllergenSuggestionStatus :one
+UPDATE inventory.allergen_suggestion
+SET status              = $2,
+    reviewed_by_user_id = $3,
+    reviewed_at         = CASE WHEN $2::varchar = 'pending' THEN NULL ELSE now() END,
+    updated_by          = $4,
+    updated_at          = now()
+WHERE allergen_suggestion_id = $1 AND status = 'pending'
+RETURNING allergen_suggestion_id, recipe_id, target_kind, ingredient_id, item_id, allergen_id, kind, rationale, status, source, suggested_by_user_id, reviewed_by_user_id, reviewed_at, created_by, created_at, updated_by, updated_at
+`
+
+type SetAllergenSuggestionStatusParams struct {
+	AllergenSuggestionID int64       `json:"allergen_suggestion_id"`
+	Status               string      `json:"status"`
+	ReviewedByUserID     pgtype.Int8 `json:"reviewed_by_user_id"`
+	UpdatedBy            pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) SetAllergenSuggestionStatus(ctx context.Context, arg SetAllergenSuggestionStatusParams) (InventoryAllergenSuggestion, error) {
+	row := q.db.QueryRow(ctx, setAllergenSuggestionStatus,
+		arg.AllergenSuggestionID,
+		arg.Status,
+		arg.ReviewedByUserID,
+		arg.UpdatedBy,
+	)
+	var i InventoryAllergenSuggestion
+	err := row.Scan(
+		&i.AllergenSuggestionID,
+		&i.RecipeID,
+		&i.TargetKind,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.AllergenID,
+		&i.Kind,
+		&i.Rationale,
+		&i.Status,
+		&i.Source,
+		&i.SuggestedByUserID,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const setBrandStatus = `-- name: SetBrandStatus :execrows
