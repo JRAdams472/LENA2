@@ -20,6 +20,12 @@ import (
 // push past it.
 const maxHouseholdMembers = 10
 
+// msgCannotInvite is the single rejection InviteHouseholdMember returns
+// for unknown, inactive, unsearchable, already-a-mate, or
+// duplicate-pending targets — one generic message keeps the endpoint from
+// enumerating user IDs.
+const msgCannotInvite = "cannot invite this user"
+
 // MyHousehold resolves the caller's household with its members; nil when
 // the caller has none (should not occur once the authenticator ensures a
 // default household, but the query must not error on it).
@@ -166,15 +172,15 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 	target, err := r.IdentityService.GetByID(ctx, targetID)
 	if err != nil {
 		if errors.Is(err, domainerr.ErrNotFound) {
-			return nil, badInputf("cannot invite this user")
+			return nil, badInputf(msgCannotInvite)
 		}
 		return nil, err
 	}
 	if !target.IsActive || !target.IsSearchable {
-		return nil, badInputf("cannot invite this user")
+		return nil, badInputf(msgCannotInvite)
 	}
 	if target.HouseholdID != nil && *target.HouseholdID == u.HouseholdID {
-		return nil, badInputf("cannot invite this user")
+		return nil, badInputf(msgCannotInvite)
 	}
 	if n, err := r.IdentityService.CountUsersByHousehold(ctx, u.HouseholdID); err != nil {
 		return nil, err
@@ -194,7 +200,7 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 		// A duplicate pending invite is target-side state — fold it into
 		// the generic rejection rather than leaking CONFLICT.
 		if errors.Is(err, domainerr.ErrConflict) {
-			return nil, badInputf("cannot invite this user")
+			return nil, badInputf(msgCannotInvite)
 		}
 		return nil, err
 	}
@@ -264,42 +270,60 @@ func (r *Resolver) acceptInvite(ctx context.Context, u currentuser.User, inv hou
 		if _, err := r.HouseholdService.TransitionInvite(ctx, inv.InviteID, household.StatusAccepted, u.Email); err != nil {
 			return err
 		}
-		if target.HouseholdID != nil && *target.HouseholdID != inv.HouseholdID {
-			if err := r.UserPrefsService.MergeHouseholdStock(ctx, *target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
-				return err
-			}
-			if err := r.MealPlanService.ReassignHousehold(ctx, *target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
-				return err
-			}
-			if err := r.GroceryService.ReassignHousehold(ctx, *target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
-				return err
-			}
-			if r.EventService != nil {
-				if err := r.EventService.ReassignHousehold(ctx, *target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
-					return err
-				}
-			}
+		if err := r.mergeIntoHousehold(ctx, target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
+			return err
 		}
 		if err := r.IdentityService.SetUserHousehold(ctx, u.UserID, inv.HouseholdID, identity.HouseholdRoleMember, target.HouseholdID); err != nil {
 			return err
 		}
-		if err := r.notify(ctx, []int64{inv.FromUserID}, household.KindInviteAccepted, inv.HouseholdID, u.UserID, &inv.InviteID); err != nil {
-			return err
-		}
-		// Other members learn that someone joined; the inviter's accept
-		// notification above already covers them.
-		members, err := r.IdentityService.ListUsersByHousehold(ctx, inv.HouseholdID)
-		if err != nil {
-			return err
-		}
-		var others []int64
-		for _, m := range members {
-			if m.UserID != u.UserID && m.UserID != inv.FromUserID {
-				others = append(others, m.UserID)
-			}
-		}
-		return r.notify(ctx, others, household.KindMemberJoined, inv.HouseholdID, u.UserID, nil)
+		return r.notifyJoin(ctx, u, inv)
 	})
+}
+
+// mergeIntoHousehold moves a joining member's previous-household stock,
+// meal plan, grocery and event data into the household they're accepting
+// into. No-op when the member had no household or already belongs to the
+// target (re-accept of an own-household invite).
+func (r *Resolver) mergeIntoHousehold(ctx context.Context, fromHouseholdID *int64, toHouseholdID int64, email string) error {
+	if fromHouseholdID == nil || *fromHouseholdID == toHouseholdID {
+		return nil
+	}
+	from := *fromHouseholdID
+	if err := r.UserPrefsService.MergeHouseholdStock(ctx, from, toHouseholdID, email); err != nil {
+		return err
+	}
+	if err := r.MealPlanService.ReassignHousehold(ctx, from, toHouseholdID, email); err != nil {
+		return err
+	}
+	if err := r.GroceryService.ReassignHousehold(ctx, from, toHouseholdID, email); err != nil {
+		return err
+	}
+	if r.EventService != nil {
+		if err := r.EventService.ReassignHousehold(ctx, from, toHouseholdID, email); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// notifyJoin tells the inviter their invite was accepted, then every other
+// member that someone joined — the inviter's accept notification already
+// covers them.
+func (r *Resolver) notifyJoin(ctx context.Context, u currentuser.User, inv household.Invite) error {
+	if err := r.notify(ctx, []int64{inv.FromUserID}, household.KindInviteAccepted, inv.HouseholdID, u.UserID, &inv.InviteID); err != nil {
+		return err
+	}
+	members, err := r.IdentityService.ListUsersByHousehold(ctx, inv.HouseholdID)
+	if err != nil {
+		return err
+	}
+	var others []int64
+	for _, m := range members {
+		if m.UserID != u.UserID && m.UserID != inv.FromUserID {
+			others = append(others, m.UserID)
+		}
+	}
+	return r.notify(ctx, others, household.KindMemberJoined, inv.HouseholdID, u.UserID, nil)
 }
 
 // DeclineHouseholdInvite marks a received invite declined. Only the
@@ -393,31 +417,12 @@ func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if fresh.HouseholdRole == identity.HouseholdRoleOwner && len(members) > 1 {
-			successor := firstMemberWithRole(members, u.UserID, identity.HouseholdRoleAdmin)
-			if successor == 0 {
-				successor = firstMemberWithRole(members, u.UserID, identity.HouseholdRoleMember)
-			}
-			if successor != 0 {
-				if err := r.IdentityService.SetUserHouseholdRole(ctx, successor, oldHouseholdID, identity.HouseholdRoleOwner, u.Email); err != nil {
-					return err
-				}
-				promoted = successor
-				if err := r.notify(ctx, []int64{successor}, household.KindRoleChanged, oldHouseholdID, u.UserID, nil); err != nil {
-					return err
-				}
-			}
-		}
-		// Pending invites the caller sent for this household can no longer
-		// be accepted against it — cancel and tell the recipients.
-		cancelled, err := r.HouseholdService.CancelPendingInvitesFrom(ctx, u.UserID, oldHouseholdID, u.Email)
+		promoted, err = r.promoteSuccessor(ctx, u, fresh, members, oldHouseholdID)
 		if err != nil {
 			return err
 		}
-		for _, c := range cancelled {
-			if err := r.notify(ctx, []int64{c.ToUserID}, household.KindInviteCancelled, oldHouseholdID, u.UserID, &c.InviteID); err != nil {
-				return err
-			}
+		if err := r.cancelPendingInvitesFromUser(ctx, u, oldHouseholdID); err != nil {
+			return err
 		}
 		hh, err := r.HouseholdService.CreateHousehold(ctx, u.Email)
 		if err != nil {
@@ -442,6 +447,46 @@ func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
 		r.invalidateUserID(ctx, promoted)
 	}
 	return true, nil
+}
+
+// promoteSuccessor hands ownership to the earliest admin (else the
+// earliest member) when the caller leaving was the owner of a multi-member
+// household. Returns the promoted member's ID, or 0 when no promotion was
+// needed/possible.
+func (r *Resolver) promoteSuccessor(ctx context.Context, u currentuser.User, fresh identity.User, members []identity.User, householdID int64) (int64, error) {
+	if fresh.HouseholdRole != identity.HouseholdRoleOwner || len(members) <= 1 {
+		return 0, nil
+	}
+	successor := firstMemberWithRole(members, u.UserID, identity.HouseholdRoleAdmin)
+	if successor == 0 {
+		successor = firstMemberWithRole(members, u.UserID, identity.HouseholdRoleMember)
+	}
+	if successor == 0 {
+		return 0, nil
+	}
+	if err := r.IdentityService.SetUserHouseholdRole(ctx, successor, householdID, identity.HouseholdRoleOwner, u.Email); err != nil {
+		return 0, err
+	}
+	if err := r.notify(ctx, []int64{successor}, household.KindRoleChanged, householdID, u.UserID, nil); err != nil {
+		return 0, err
+	}
+	return successor, nil
+}
+
+// cancelPendingInvitesFromUser cancels the caller's pending invites for the
+// household they're leaving — they can no longer be accepted against it —
+// and notifies each recipient.
+func (r *Resolver) cancelPendingInvitesFromUser(ctx context.Context, u currentuser.User, householdID int64) error {
+	cancelled, err := r.HouseholdService.CancelPendingInvitesFrom(ctx, u.UserID, householdID, u.Email)
+	if err != nil {
+		return err
+	}
+	for _, c := range cancelled {
+		if err := r.notify(ctx, []int64{c.ToUserID}, household.KindInviteCancelled, householdID, u.UserID, &c.InviteID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RenameHousehold sets or clears the caller's household display name.

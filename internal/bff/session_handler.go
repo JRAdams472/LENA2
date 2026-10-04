@@ -38,7 +38,7 @@ func setRefreshCookie(c echo.Context, iss session.Issued) {
 	c.SetCookie(&http.Cookie{ //nolint:gosec // Secure is set dynamically — literal true would break the plain-HTTP dev stack
 		Name:     refreshCookieName,
 		Value:    iss.RefreshToken,
-		Path:     "/auth/session",
+		Path:     sessionPath,
 		HttpOnly: true,
 		Secure:   refreshCookieSecure(c),
 		SameSite: http.SameSiteStrictMode,
@@ -50,7 +50,7 @@ func clearRefreshCookie(c echo.Context) {
 	c.SetCookie(&http.Cookie{ //nolint:gosec // Secure is set dynamically — literal true would break the plain-HTTP dev stack
 		Name:     refreshCookieName,
 		Value:    "",
-		Path:     "/auth/session",
+		Path:     sessionPath,
 		HttpOnly: true,
 		Secure:   refreshCookieSecure(c),
 		SameSite: http.SameSiteStrictMode,
@@ -96,7 +96,7 @@ func NewSessionHandler(sessions sessionIssuer) *SessionHandler {
 // ID token — is what gets exchanged); refresh/revoke are unauthenticated
 // but IP-rate-limited because the refresh token is the credential.
 func (h *SessionHandler) RegisterRoutes(e *echo.Echo, authMW, ipLimit echo.MiddlewareFunc) {
-	g := e.Group("/auth/session", middleware.BodyLimit("8K"))
+	g := e.Group(sessionPath, middleware.BodyLimit("8K"))
 	g.POST("", h.Create, ipLimit, authMW)
 	g.POST("/refresh", h.Refresh, ipLimit)
 	g.POST("/revoke", h.Revoke, ipLimit)
@@ -120,13 +120,19 @@ type sessionResponse struct {
 // maxDeviceLen mirrors identity.session.device VARCHAR(200).
 const maxDeviceLen = 200
 
+const (
+	sessionPath            = "/auth/session"
+	msgSessionsUnavailable = "sessions are not configured"
+	msgInvalidRequestBody  = "invalid request body"
+)
+
 // Create exchanges the caller's provider credential (validated by the
 // auth middleware) for a LENA session. Requests authenticated by a LENA
 // access token are rejected — a stolen short-lived token must not be
 // able to mint fresh refresh tokens.
 func (h *SessionHandler) Create(c echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
+		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	}
 	ctx := c.Request().Context()
 	if isSessionAuth(ctx) {
@@ -139,7 +145,7 @@ func (h *SessionHandler) Create(c echo.Context) error {
 	var req sessionCreateRequest
 	if c.Request().ContentLength != 0 {
 		if err := c.Bind(&req); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+			return echo.NewHTTPError(http.StatusBadRequest, msgInvalidRequestBody)
 		}
 	}
 	if utf8.RuneCountInString(req.Device) > maxDeviceLen {
@@ -158,12 +164,12 @@ func (h *SessionHandler) Create(c echo.Context) error {
 // expired, so this endpoint is intentionally unauthenticated.
 func (h *SessionHandler) Refresh(c echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
+		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	}
 	var req sessionTokenRequest
 	if c.Request().ContentLength != 0 {
 		if err := c.Bind(&req); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+			return echo.NewHTTPError(http.StatusBadRequest, msgInvalidRequestBody)
 		}
 	}
 	token := requestRefreshToken(c, req)
@@ -187,7 +193,7 @@ func (h *SessionHandler) Refresh(c echo.Context) error {
 // Revoke ends a session (sign-out). The refresh token is the credential.
 func (h *SessionHandler) Revoke(c echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
+		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	}
 	// The clear must run before the response is written — echo commits
 	// headers at NoContent/JSON time, so a deferred clear would never
@@ -196,7 +202,7 @@ func (h *SessionHandler) Revoke(c echo.Context) error {
 	var req sessionTokenRequest
 	if c.Request().ContentLength != 0 {
 		if err := c.Bind(&req); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+			return echo.NewHTTPError(http.StatusBadRequest, msgInvalidRequestBody)
 		}
 	}
 	token := requestRefreshToken(c, req)
@@ -225,7 +231,7 @@ func mapSessionError(err error) error {
 	case errors.Is(err, session.ErrInvalidSession), errors.Is(err, session.ErrSessionReuse):
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
 	case errors.Is(err, session.ErrUnavailable):
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
+		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	default:
 		return echo.NewHTTPError(http.StatusInternalServerError, "session error")
 	}

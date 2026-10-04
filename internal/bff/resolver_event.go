@@ -46,7 +46,7 @@ func (r *Resolver) FoodEvent(ctx context.Context, args struct{ ID graphql.ID }) 
 	for _, its := range itemsBy {
 		snapshotItems = append(snapshotItems, its...)
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID,
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID,
 		distinctIDs(recipes, func(er event.EventRecipe) *int64 { return er.RecipeID }),
 		distinctIDs(snapshotItems, func(it event.EventRecipeItem) *int64 { return it.ItemID }),
 		distinctIDs(snapshotItems, func(it event.EventRecipeItem) *int64 { return it.IngredientID }))
@@ -194,7 +194,7 @@ func (r *Resolver) CreateFoodEvent(ctx context.Context, args struct{ Input creat
 	if err != nil {
 		return nil, err
 	}
-	d, err := time.Parse("2006-01-02", args.Input.EventDate)
+	d, err := time.Parse(time.DateOnly, args.Input.EventDate)
 	if err != nil {
 		return nil, badInputf("invalid eventDate %q, want YYYY-MM-DD", args.Input.EventDate)
 	}
@@ -245,7 +245,7 @@ func (r *Resolver) UpdateFoodEvent(ctx context.Context, args struct {
 	}
 	day := existing.EventDate
 	if args.Input.EventDate != nil {
-		if d, err := time.Parse("2006-01-02", *args.Input.EventDate); err == nil {
+		if d, err := time.Parse(time.DateOnly, *args.Input.EventDate); err == nil {
 			day = d
 		} else {
 			return nil, badInputf("invalid eventDate %q, want YYYY-MM-DD", *args.Input.EventDate)
@@ -296,7 +296,7 @@ func (r *Resolver) UpdateFoodEvent(ctx context.Context, args struct {
 	for _, its := range itemsBy {
 		snapshotItems = append(snapshotItems, its...)
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID,
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID,
 		distinctIDs(recipes, func(er event.EventRecipe) *int64 { return er.RecipeID }),
 		distinctIDs(snapshotItems, func(it event.EventRecipeItem) *int64 { return it.ItemID }),
 		distinctIDs(snapshotItems, func(it event.EventRecipeItem) *int64 { return it.IngredientID }))
@@ -350,7 +350,7 @@ func (r *Resolver) AddEventRecipe(ctx context.Context, args struct{ Input addEve
 		recipeID = &rid
 	}
 	if args.Input.Servings != nil && *args.Input.Servings <= 0 {
-		return nil, badInputf("servings must be positive")
+		return nil, badInputf(msgServingsPositive)
 	}
 	ev, err := r.EventService.GetFoodEventByID(ctx, foodEventID, u.HouseholdID)
 	if err != nil {
@@ -440,7 +440,7 @@ func (r *Resolver) UpdateEventRecipe(ctx context.Context, args struct {
 	servings := existing.Servings
 	if args.Input.Servings != nil {
 		if *args.Input.Servings <= 0 {
-			return nil, badInputf("servings must be positive")
+			return nil, badInputf(msgServingsPositive)
 		}
 		servings = args.Input.Servings
 	}
@@ -858,8 +858,8 @@ func checkedGranularity(v *int32) (int16, error) {
 // checkTargetTime rejects serve times that do not fall on the event's
 // granularity boundary or its date.
 func checkTargetTime(ev event.FoodEvent, t time.Time) error {
-	if t.Format("2006-01-02") != ev.EventDate.Format("2006-01-02") {
-		return badInputf("targetTime must fall on the event date %s", ev.EventDate.Format("2006-01-02"))
+	if t.Format(time.DateOnly) != ev.EventDate.Format(time.DateOnly) {
+		return badInputf("targetTime must fall on the event date %s", ev.EventDate.Format(time.DateOnly))
 	}
 	if ev.SlotGranularityMinutes > 0 && t.Minute()%int(ev.SlotGranularityMinutes) != 0 {
 		return badInputf("targetTime must fall on a %d-minute boundary", ev.SlotGranularityMinutes)
@@ -899,7 +899,7 @@ func (r *foodEventResolver) ID() graphql.ID {
 
 func (r *foodEventResolver) Name() string { return r.event.Name }
 
-func (r *foodEventResolver) EventDate() string { return r.event.EventDate.Format("2006-01-02") }
+func (r *foodEventResolver) EventDate() string { return r.event.EventDate.Format(time.DateOnly) }
 
 func (r *foodEventResolver) SlotGranularityMinutes() int32 {
 	return int32(r.event.SlotGranularityMinutes)

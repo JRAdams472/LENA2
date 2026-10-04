@@ -170,79 +170,116 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 	var list grocery.GroceryList
 	var needs []groceryNeed
 	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
-		// Regenerate-in-place: a second generation for the same plan
-		// replaces the latest list's generated lines instead of stacking
-		// up a duplicate list.
-		regenerate := true
-		existing, lerr := r.GroceryService.GetLatestGroceryListByPlan(ctx, mealPlanID, u.HouseholdID)
-		switch {
-		case lerr == nil:
-			list = existing
-		case errors.Is(lerr, domainerr.ErrNotFound):
-			regenerate = false
-			created, err := r.GroceryService.CreateGroceryList(ctx, u.HouseholdID, &mealPlanID, u.Email)
-			if err != nil {
-				return err
-			}
-			list = created
-		default:
-			return lerr
-		}
-
-		slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, u.HouseholdID)
-		if err != nil {
-			return err
-		}
-		slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, u.HouseholdID)
-		if err != nil {
-			return err
-		}
-
-		recipes, recipeItems, err := r.planRecipes(ctx, slots)
-		if err != nil {
-			return err
-		}
-		needs = aggregateGroceryNeeds(slots, slotItems, recipes, recipeItems)
-		if len(needs) == 0 {
-			if regenerate {
-				// The plan now contributes nothing — still clear the
-				// previously generated lines so the list reflects it.
-				_, err := r.GroceryService.ReplaceGeneratedItems(ctx, list.GroceryListID, u.HouseholdID, nil, u.Email)
-				return err
-			}
-			return nil
-		}
-
-		stock, err := r.householdPantryStock(ctx, u.HouseholdID)
-		if err != nil {
-			return err
-		}
-		unitSet := make(map[int64]bool)
-		for _, n := range needs {
-			unitSet[n.unitID] = true
-		}
-		for _, e := range stock {
-			unitSet[e.unitID] = true
-		}
-		unitIDs := make([]int64, 0, len(unitSet))
-		for id := range unitSet {
-			unitIDs = append(unitIDs, id)
-		}
-		unitsByID, err := loadUnits(ctx, r.InventoryService, unitIDs)
-		if err != nil {
-			return err
-		}
-
-		lines := groceryNeedLines(list.GroceryListID, needs, stock, unitsByID)
-		if regenerate {
-			_, err = r.GroceryService.ReplaceGeneratedItems(ctx, list.GroceryListID, u.HouseholdID, lines, u.Email)
-		} else {
-			_, err = r.GroceryService.AddGroceryListItems(ctx, lines, u.HouseholdID, u.Email)
-		}
+		var err error
+		list, needs, err = r.generateGroceryListTx(ctx, u, mealPlanID)
 		return err
 	}); err != nil {
 		return nil, err
 	}
+	r.recordGroceryNeedEvents(u, needs)
+	// Preload the freshly generated list's children so nested resolvers
+	// never fall back to per-row queries.
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{list.GroceryListID})
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[list.GroceryListID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, usualItems: gc.usualItems, ch: gc.ch}, nil
+}
+
+// generateGroceryListTx is the transactional core of GenerateGroceryList:
+// resolve or create the plan's list, expand it into needs, subtract pantry
+// stock and write the generated lines.
+func (r *Resolver) generateGroceryListTx(ctx context.Context, u currentuser.User, mealPlanID int64) (grocery.GroceryList, []groceryNeed, error) {
+	// Regenerate-in-place: a second generation for the same plan replaces
+	// the latest list's generated lines instead of stacking up a duplicate
+	// list.
+	list, regenerate, err := r.planListTarget(ctx, u, mealPlanID)
+	if err != nil {
+		return grocery.GroceryList{}, nil, err
+	}
+	needs, err := r.planGroceryNeeds(ctx, mealPlanID, u.HouseholdID)
+	if err != nil {
+		return grocery.GroceryList{}, nil, err
+	}
+	if len(needs) == 0 {
+		if regenerate {
+			// The plan now contributes nothing — still clear the
+			// previously generated lines so the list reflects it.
+			_, err = r.GroceryService.ReplaceGeneratedItems(ctx, list.GroceryListID, u.HouseholdID, nil, u.Email)
+			return list, nil, err
+		}
+		return list, nil, nil
+	}
+	if err := r.writeGeneratedLines(ctx, list, u, needs, regenerate); err != nil {
+		return grocery.GroceryList{}, nil, err
+	}
+	return list, needs, nil
+}
+
+// planListTarget returns the plan's existing latest list (in-place
+// regeneration) or creates a fresh one linked to the plan.
+func (r *Resolver) planListTarget(ctx context.Context, u currentuser.User, mealPlanID int64) (grocery.GroceryList, bool, error) {
+	existing, err := r.GroceryService.GetLatestGroceryListByPlan(ctx, mealPlanID, u.HouseholdID)
+	switch {
+	case err == nil:
+		return existing, true, nil
+	case errors.Is(err, domainerr.ErrNotFound):
+		created, cerr := r.GroceryService.CreateGroceryList(ctx, u.HouseholdID, &mealPlanID, u.Email)
+		return created, false, cerr
+	default:
+		return grocery.GroceryList{}, false, err
+	}
+}
+
+// planGroceryNeeds expands the plan's slots into aggregated buy needs.
+func (r *Resolver) planGroceryNeeds(ctx context.Context, mealPlanID, householdID int64) ([]groceryNeed, error) {
+	slots, err := r.MealPlanService.ListMealSlotsForPlan(ctx, mealPlanID, householdID)
+	if err != nil {
+		return nil, err
+	}
+	slotItems, err := r.MealPlanService.ListMealSlotItemsByPlan(ctx, mealPlanID, householdID)
+	if err != nil {
+		return nil, err
+	}
+	recipes, recipeItems, err := r.planRecipes(ctx, slots)
+	if err != nil {
+		return nil, err
+	}
+	return aggregateGroceryNeeds(slots, slotItems, recipes, recipeItems), nil
+}
+
+// writeGeneratedLines subtracts pantry stock from needs — each entry
+// converted into the need's unit when the kinds allow — and writes the
+// remaining quantities as generated lines, replacing the list's prior
+// generated lines on regeneration or appending on a fresh list.
+func (r *Resolver) writeGeneratedLines(ctx context.Context, list grocery.GroceryList, u currentuser.User, needs []groceryNeed, regenerate bool) error {
+	stock, err := r.householdPantryStock(ctx, u.HouseholdID)
+	if err != nil {
+		return err
+	}
+	unitSet := make(map[int64]bool)
+	for _, n := range needs {
+		unitSet[n.unitID] = true
+	}
+	for _, e := range stock {
+		unitSet[e.unitID] = true
+	}
+	unitsByID, err := loadUnits(ctx, r.InventoryService, sortedIDs(unitSet))
+	if err != nil {
+		return err
+	}
+	lines := groceryNeedLines(list.GroceryListID, needs, stock, unitsByID)
+	if regenerate {
+		_, err = r.GroceryService.ReplaceGeneratedItems(ctx, list.GroceryListID, u.HouseholdID, lines, u.Email)
+	} else {
+		_, err = r.GroceryService.AddGroceryListItems(ctx, lines, u.HouseholdID, u.Email)
+	}
+	return err
+}
+
+// recordGroceryNeedEvents logs a grocery signal per generated line's
+// entity — ingredient first, else the preferred brand item.
+func (r *Resolver) recordGroceryNeedEvents(u currentuser.User, needs []groceryNeed) {
 	// Generated lines are planned usage — each entity on the list is a
 	// grocery signal for ranking.
 	for _, n := range needs {
@@ -259,13 +296,6 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 		}
 		r.recordEventAsync(u.UserID, u.Email, e)
 	}
-	// Preload the freshly generated list's children so nested resolvers
-	// never fall back to per-row queries.
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{list.GroceryListID})
-	if err != nil {
-		return nil, err
-	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[list.GroceryListID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, usualItems: gc.usualItems, ch: gc.ch}, nil
 }
 
 // planLine is one expanded plan contribution: a quantity in a specific
@@ -295,63 +325,94 @@ func lineKey(l planLine) int64 {
 // the recipe's own line for that ingredient (or item when brand-only),
 // and recipe contributions scale by the slot's servings ratio. Shared by
 // grocery generation and nutrition aggregation.
-func expandPlanLines(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []planLine {
-	itemsBySlot := make(map[int64][]mealplan.MealSlotItem)
-	for _, si := range slotItems {
-		itemsBySlot[si.SlotID] = append(itemsBySlot[si.SlotID], si)
-	}
-	recipesByID := make(map[int64]recipe.Recipe, len(recipes))
-	for _, rec := range recipes {
-		recipesByID[rec.RecipeID] = rec
-	}
-	itemsByRecipe := make(map[int64][]recipe.RecipeItem)
-	for _, ri := range recipeItems {
-		itemsByRecipe[ri.RecipeID] = append(itemsByRecipe[ri.RecipeID], ri)
-	}
+// planExpansion indexes the plan's inputs for expansion: slot items by
+// slot, recipes by ID, and recipe items by recipe.
+type planExpansion struct {
+	itemsBySlot   map[int64][]mealplan.MealSlotItem
+	recipesByID   map[int64]recipe.Recipe
+	itemsByRecipe map[int64][]recipe.RecipeItem
+}
 
+func newPlanExpansion(slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) planExpansion {
+	e := planExpansion{
+		itemsBySlot:   make(map[int64][]mealplan.MealSlotItem),
+		recipesByID:   make(map[int64]recipe.Recipe, len(recipes)),
+		itemsByRecipe: make(map[int64][]recipe.RecipeItem),
+	}
+	for _, si := range slotItems {
+		e.itemsBySlot[si.SlotID] = append(e.itemsBySlot[si.SlotID], si)
+	}
+	for _, rec := range recipes {
+		e.recipesByID[rec.RecipeID] = rec
+	}
+	for _, ri := range recipeItems {
+		e.itemsByRecipe[ri.RecipeID] = append(e.itemsByRecipe[ri.RecipeID], ri)
+	}
+	return e
+}
+
+// expandSlotItems returns the slot's explicit lines plus the recipe-line
+// keys those lines override (is_from_recipe slot items replace the
+// recipe's own line for that ingredient or item).
+func expandSlotItems(items []mealplan.MealSlotItem) (lines []planLine, overridden map[int64]bool) {
+	overridden = make(map[int64]bool)
+	for _, si := range items {
+		l := planLine{itemID: si.ItemID, ingredientID: si.IngredientID, unitID: si.UnitID, qty: si.Quantity}
+		if l.itemID == nil && l.ingredientID == nil {
+			continue
+		}
+		lines = append(lines, l)
+		if si.IsFromRecipe {
+			// Suppress the recipe line by both keys: a brand-only
+			// override still covers an ingredient-keyed recipe line
+			// naming the same preferred item, and vice versa.
+			overridden[lineKey(l)] = true
+			if l.itemID != nil {
+				overridden[*l.itemID] = true
+			}
+			if l.ingredientID != nil {
+				overridden[-*l.ingredientID] = true
+			}
+		}
+	}
+	return lines, overridden
+}
+
+// expandSlotRecipeLines scales the slot's recipe lines by the servings
+// ratio and drops lines overridden by explicit slot items.
+func (e planExpansion) expandSlotRecipeLines(slot mealplan.MealSlot, overridden map[int64]bool) []planLine {
+	if slot.RecipeID == nil {
+		return nil
+	}
+	rec, ok := e.recipesByID[*slot.RecipeID]
+	if !ok || rec.Servings == nil || *rec.Servings <= 0 {
+		return nil
+	}
+	scale := 1.0
+	if slot.Servings != nil {
+		scale = float64(*slot.Servings) / float64(*rec.Servings)
+	}
+	var lines []planLine
+	for _, ri := range e.itemsByRecipe[rec.RecipeID] {
+		l := planLine{itemID: ri.ItemID, ingredientID: ri.IngredientID, unitID: ri.UnitID, qty: ri.Quantity * scale}
+		if l.itemID == nil && l.ingredientID == nil {
+			continue
+		}
+		if overridden[lineKey(l)] || (l.itemID != nil && overridden[*l.itemID]) {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	return lines
+}
+
+func expandPlanLines(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []planLine {
+	e := newPlanExpansion(slotItems, recipes, recipeItems)
 	var lines []planLine
 	for _, slot := range slots {
-		overridden := make(map[int64]bool)
-		for _, si := range itemsBySlot[slot.SlotID] {
-			l := planLine{itemID: si.ItemID, ingredientID: si.IngredientID, unitID: si.UnitID, qty: si.Quantity}
-			if l.itemID == nil && l.ingredientID == nil {
-				continue
-			}
-			lines = append(lines, l)
-			if si.IsFromRecipe {
-				// Suppress the recipe line by both keys: a brand-only
-				// override still covers an ingredient-keyed recipe line
-				// naming the same preferred item, and vice versa.
-				overridden[lineKey(l)] = true
-				if l.itemID != nil {
-					overridden[*l.itemID] = true
-				}
-				if l.ingredientID != nil {
-					overridden[-*l.ingredientID] = true
-				}
-			}
-		}
-		if slot.RecipeID == nil {
-			continue
-		}
-		rec, ok := recipesByID[*slot.RecipeID]
-		if !ok || rec.Servings == nil || *rec.Servings <= 0 {
-			continue
-		}
-		scale := 1.0
-		if slot.Servings != nil {
-			scale = float64(*slot.Servings) / float64(*rec.Servings)
-		}
-		for _, ri := range itemsByRecipe[rec.RecipeID] {
-			l := planLine{itemID: ri.ItemID, ingredientID: ri.IngredientID, unitID: ri.UnitID, qty: ri.Quantity * scale}
-			if l.itemID == nil && l.ingredientID == nil {
-				continue
-			}
-			if overridden[lineKey(l)] || (l.itemID != nil && overridden[*l.itemID]) {
-				continue
-			}
-			lines = append(lines, l)
-		}
+		slotLines, overridden := expandSlotItems(e.itemsBySlot[slot.SlotID])
+		lines = append(lines, slotLines...)
+		lines = append(lines, e.expandSlotRecipeLines(slot, overridden)...)
 	}
 	return lines
 }
@@ -369,34 +430,45 @@ type groceryNeed struct {
 // or item, unit) totals in deterministic order. Ingredient-keyed lines
 // merge regardless of preferred brand; the first preferred brand seen
 // rides along as the line's item hint.
-func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []groceryNeed {
-	type key struct {
-		ingredientID int64 // 0 when the need is brand-only
-		itemID       int64
-		unitID       int64
+// groceryNeedKey identifies one aggregated need bucket: ingredient-keyed
+// when any contributing line carried an ingredient (ingredientID != 0),
+// else brand-only.
+type groceryNeedKey struct {
+	ingredientID int64
+	itemID       int64
+	unitID       int64
+}
+
+// groceryNeedKeyFor maps a plan line onto its aggregation bucket.
+func groceryNeedKeyFor(l planLine) groceryNeedKey {
+	if l.ingredientID != nil {
+		return groceryNeedKey{ingredientID: *l.ingredientID, unitID: l.unitID}
 	}
-	totals := make(map[key]float64)
-	preferred := make(map[key]*int64)
-	for _, l := range expandPlanLines(slots, slotItems, recipes, recipeItems) {
-		var k key
-		if l.ingredientID != nil {
-			k = key{ingredientID: *l.ingredientID, unitID: l.unitID}
-			if l.itemID != nil {
-				if _, ok := preferred[k]; !ok {
-					v := *l.itemID
-					preferred[k] = &v
-				}
+	return groceryNeedKey{itemID: *l.itemID, unitID: l.unitID}
+}
+
+// accumulateGroceryNeeds folds expanded lines into per-bucket totals.
+// Ingredient-keyed lines merge regardless of preferred brand; the first
+// preferred brand seen rides along as the line's item hint.
+func accumulateGroceryNeeds(lines []planLine) (map[groceryNeedKey]float64, map[groceryNeedKey]*int64) {
+	totals := make(map[groceryNeedKey]float64)
+	preferred := make(map[groceryNeedKey]*int64)
+	for _, l := range lines {
+		k := groceryNeedKeyFor(l)
+		if l.ingredientID != nil && l.itemID != nil {
+			if _, ok := preferred[k]; !ok {
+				v := *l.itemID
+				preferred[k] = &v
 			}
-		} else {
-			k = key{itemID: *l.itemID, unitID: l.unitID}
 		}
 		totals[k] += l.qty
 	}
+	return totals, preferred
+}
 
-	keys := make([]key, 0, len(totals))
-	for k := range totals {
-		keys = append(keys, k)
-	}
+// sortGroceryNeedKeys orders the buckets deterministically: ingredient,
+// then item, then unit.
+func sortGroceryNeedKeys(keys []groceryNeedKey) {
 	sort.Slice(keys, func(i, j int) bool {
 		if keys[i].ingredientID != keys[j].ingredientID {
 			return keys[i].ingredientID < keys[j].ingredientID
@@ -406,18 +478,32 @@ func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealS
 		}
 		return keys[i].unitID < keys[j].unitID
 	})
+}
+
+// groceryNeedFor materializes one need from a bucket.
+func groceryNeedFor(k groceryNeedKey, totals map[groceryNeedKey]float64, preferred map[groceryNeedKey]*int64) groceryNeed {
+	n := groceryNeed{unitID: k.unitID, qty: totals[k]}
+	if k.ingredientID != 0 {
+		v := k.ingredientID
+		n.ingredientID = &v
+		n.itemID = preferred[k]
+	} else {
+		v := k.itemID
+		n.itemID = &v
+	}
+	return n
+}
+
+func aggregateGroceryNeeds(slots []mealplan.MealSlot, slotItems []mealplan.MealSlotItem, recipes []recipe.Recipe, recipeItems []recipe.RecipeItem) []groceryNeed {
+	totals, preferred := accumulateGroceryNeeds(expandPlanLines(slots, slotItems, recipes, recipeItems))
+	keys := make([]groceryNeedKey, 0, len(totals))
+	for k := range totals {
+		keys = append(keys, k)
+	}
+	sortGroceryNeedKeys(keys)
 	out := make([]groceryNeed, 0, len(keys))
 	for _, k := range keys {
-		n := groceryNeed{unitID: k.unitID, qty: totals[k]}
-		if k.ingredientID != 0 {
-			v := k.ingredientID
-			n.ingredientID = &v
-			n.itemID = preferred[k]
-		} else {
-			v := k.itemID
-			n.itemID = &v
-		}
-		out = append(out, n)
+		out = append(out, groceryNeedFor(k, totals, preferred))
 	}
 	return out
 }
@@ -483,30 +569,43 @@ func (r *Resolver) householdPantryStock(ctx context.Context, householdID int64) 
 // as grocery list rows. Ingredient needs draw from every stocked brand
 // resolving to that ingredient; brand-only needs match the item itself.
 // Fully covered needs produce no line.
+// stockCoversNeed reports whether a pantry entry can satisfy the need:
+// ingredient needs draw from every stocked brand resolving to that
+// ingredient; brand-only needs match the item itself.
+func stockCoversNeed(n groceryNeed, e pantryStockEntry) bool {
+	if n.ingredientID != nil {
+		return e.ingredientID != nil && *e.ingredientID == *n.ingredientID
+	}
+	return n.itemID != nil && e.itemID == *n.itemID
+}
+
+// pantryCover subtracts matching stock — each entry converted into the
+// need's unit when the kinds allow — and returns the uncovered remainder.
+func pantryCover(n groceryNeed, stock []pantryStockEntry, units map[int64]inventory.Unit) float64 {
+	remaining := n.qty
+	for _, e := range stock {
+		if remaining <= 0 {
+			break
+		}
+		if !stockCoversNeed(n, e) {
+			continue
+		}
+		from, okFrom := units[e.unitID]
+		to, okTo := units[n.unitID]
+		if !okFrom || !okTo {
+			continue
+		}
+		if converted, ok := inventory.ConvertQuantity(e.qty, from, to); ok {
+			remaining -= converted
+		}
+	}
+	return remaining
+}
+
 func groceryNeedLines(listID int64, needs []groceryNeed, stock []pantryStockEntry, units map[int64]inventory.Unit) []grocery.GroceryListItem {
 	out := make([]grocery.GroceryListItem, 0, len(needs))
 	for _, n := range needs {
-		remaining := n.qty
-		for _, e := range stock {
-			if remaining <= 0 {
-				break
-			}
-			if n.ingredientID != nil {
-				if e.ingredientID == nil || *e.ingredientID != *n.ingredientID {
-					continue
-				}
-			} else if n.itemID == nil || e.itemID != *n.itemID {
-				continue
-			}
-			from, okFrom := units[e.unitID]
-			to, okTo := units[n.unitID]
-			if !okFrom || !okTo {
-				continue
-			}
-			if converted, ok := inventory.ConvertQuantity(e.qty, from, to); ok {
-				remaining -= converted
-			}
-		}
+		remaining := pantryCover(n, stock, units)
 		if remaining <= 0 {
 			continue
 		}
@@ -1028,7 +1127,23 @@ func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
 	}
 	limit := clamp(args.Limit, 1, 50)
 
-	pantry, err := r.UserPrefsService.ListHouseholdItems(ctx, u.HouseholdID, 5000, 0)
+	candidateIDs, err := r.restockCandidates(ctx, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	engaged := r.engagementRanked(ctx, u.HouseholdID, candidateIDs)
+	if int(limit) < len(engaged) {
+		engaged = engaged[:int(limit)]
+	}
+	if len(engaged) == 0 {
+		return []*itemResolver{}, nil
+	}
+	return r.approvedItemResolvers(ctx, u, engaged)
+}
+
+// lowStockItemIDs returns pantry items at or below their minimum quantity.
+func (r *Resolver) lowStockItemIDs(ctx context.Context, householdID int64) ([]int64, error) {
+	pantry, err := r.UserPrefsService.ListHouseholdItems(ctx, householdID, 5000, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1038,19 +1153,24 @@ func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
 			lowIDs = append(lowIDs, hi.ItemID)
 		}
 	}
-	if len(lowIDs) == 0 {
-		return []*itemResolver{}, nil
-	}
+	return lowIDs, nil
+}
 
-	// The latest list is "active" — anything already on it is being
-	// shopped for, so it isn't a suggestion.
-	onList := map[int64]bool{}
-	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, 1, 0)
+// restockCandidates drops low-stock items already on the household's
+// latest grocery list — the latest list is "active", so anything on it is
+// being shopped for and isn't a suggestion.
+func (r *Resolver) restockCandidates(ctx context.Context, householdID int64) ([]int64, error) {
+	lowIDs, err := r.lowStockItemIDs(ctx, householdID)
+	if err != nil || len(lowIDs) == 0 {
+		return nil, err
+	}
+	lists, err := r.GroceryService.ListGroceryLists(ctx, householdID, 1, 0)
 	if err != nil {
 		return nil, err
 	}
+	onList := map[int64]bool{}
 	if len(lists) > 0 {
-		listItems, err := r.GroceryService.ListGroceryListItems(ctx, lists[0].GroceryListID, u.HouseholdID)
+		listItems, err := r.GroceryService.ListGroceryListItems(ctx, lists[0].GroceryListID, householdID)
 		if err != nil {
 			return nil, err
 		}
@@ -1060,24 +1180,29 @@ func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
 			}
 		}
 	}
-
 	var candidateIDs []int64
 	for _, id := range lowIDs {
 		if !onList[id] {
 			candidateIDs = append(candidateIDs, id)
 		}
 	}
-	if len(candidateIDs) == 0 {
-		return []*itemResolver{}, nil
-	}
+	return candidateIDs, nil
+}
 
+// engagementRanked keeps candidates with household selection signal,
+// sorted by signal strength with an ID tiebreak. An analytics failure
+// degrades to an empty result rather than failing the query.
+func (r *Resolver) engagementRanked(ctx context.Context, householdID int64, candidateIDs []int64) []int64 {
+	if len(candidateIDs) == 0 {
+		return nil
+	}
 	counts := map[int64]int64{}
 	if r.AnalyticsService != nil {
-		if c, err := r.AnalyticsService.HouseholdSelectionCounts(ctx, u.HouseholdID, analytics.EntityItem, candidateIDs); err == nil {
+		if c, err := r.AnalyticsService.HouseholdSelectionCounts(ctx, householdID, analytics.EntityItem, candidateIDs); err == nil {
 			counts = c
 		}
 	}
-	engaged := candidateIDs[:0]
+	var engaged []int64
 	for _, id := range candidateIDs {
 		if counts[id] > 0 {
 			engaged = append(engaged, id)
@@ -1089,14 +1214,13 @@ func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
 		}
 		return engaged[i] < engaged[j]
 	})
-	if int(limit) < len(engaged) {
-		engaged = engaged[:int(limit)]
-	}
-	if len(engaged) == 0 {
-		return []*itemResolver{}, nil
-	}
+	return engaged
+}
 
-	items, err := r.InventoryService.GetItemsByIDs(ctx, engaged)
+// approvedItemResolvers loads the candidates and keeps only approved
+// catalog rows — pending/rejected submissions aren't restock suggestions.
+func (r *Resolver) approvedItemResolvers(ctx context.Context, u currentuser.User, ids []int64) ([]*itemResolver, error) {
+	items, err := r.InventoryService.GetItemsByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -1104,10 +1228,8 @@ func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
 	for _, it := range items {
 		byID[it.ItemID] = it
 	}
-	out := make([]*itemResolver, 0, len(engaged))
-	for _, id := range engaged {
-		// Only approved catalog items — pending/rejected submissions
-		// shouldn't be restock suggestions.
+	out := make([]*itemResolver, 0, len(ids))
+	for _, id := range ids {
 		if it, ok := byID[id]; ok && it.Status == inventory.ItemStatusApproved {
 			out = append(out, &itemResolver{inv: r.InventoryService, it: it, as: r.allergySrc(u)})
 		}

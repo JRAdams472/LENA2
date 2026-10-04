@@ -94,8 +94,8 @@ var errNoAllergyContext = errors.New("allergy context unavailable")
 // when nil it is resolved here for itemIDs. householdID 0 (or nil id/up
 // services) yields flags with no member records — valid for admin catalog
 // browsing where warnings do not apply.
-func (s *allergySource) loadAllergyContext(ctx context.Context, ingredientIDs, itemIDs []int64, resolved map[int64]*int64) (*allergyContext, error) {
-	ac := &allergyContext{
+func newAllergyContext() *allergyContext {
+	return &allergyContext{
 		resolved:          make(map[int64]*int64),
 		items:             make(map[int64]inventory.Item),
 		flagsByIngredient: make(map[int64][]entityFlag),
@@ -103,116 +103,150 @@ func (s *allergySource) loadAllergyContext(ctx context.Context, ingredientIDs, i
 		allergens:         make(map[int64]inventory.Allergen),
 		members:           make(map[int64]identity.User),
 	}
-	if s == nil || s.inv == nil {
-		return ac, nil
+}
+
+// resolveContextItems fills ac.resolved (and the item-row fallback when
+// the caller did not supply a complete resolution) for the item ids.
+func (s *allergySource) resolveContextItems(ctx context.Context, ac *allergyContext, itemIDs []int64, resolved map[int64]*int64) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	if resolved != nil {
+		ac.resolved = resolved
+		return nil
+	}
+	r, err := s.inv.ResolveItemIngredients(ctx, s.householdID, itemIDs)
+	if err != nil {
+		return err
+	}
+	ac.resolved = r
+	// Item rows back the catalog-link fallback for entities whose
+	// item is missing from the resolved map — only needed when the
+	// caller did not supply a complete resolution.
+	items, err := s.inv.GetItemsByIDs(ctx, itemIDs)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		ac.items[it.ItemID] = it
+	}
+	return nil
+}
+
+// flagIngredientIDs unions the caller's ingredient ids with everything
+// the resolved item map points at — an entity bound only by item still
+// pulls the override-aware ingredient flags.
+func flagIngredientIDs(ingredientIDs []int64, resolved map[int64]*int64) []int64 {
+	set := make(map[int64]bool, len(ingredientIDs))
+	for _, id := range ingredientIDs {
+		set[id] = true
+	}
+	for _, v := range resolved {
+		if v != nil {
+			set[*v] = true
+		}
+	}
+	return sortedIDs(set)
+}
+
+// loadFlagRows fetches the ingredient- and item-keyed allergen flag rows.
+func (s *allergySource) loadFlagRows(ctx context.Context, ingredientIDs, itemIDs []int64) (byIng, byItem map[int64][]inventory.EntityAllergen, err error) {
+	if len(ingredientIDs) > 0 {
+		byIng, err = s.inv.ListIngredientAllergensByIngredients(ctx, ingredientIDs)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if len(itemIDs) > 0 {
-		if resolved != nil {
-			ac.resolved = resolved
-		} else {
-			r, err := s.inv.ResolveItemIngredients(ctx, s.householdID, itemIDs)
-			if err != nil {
-				return nil, err
-			}
-			ac.resolved = r
-			// Item rows back the catalog-link fallback for entities whose
-			// item is missing from the resolved map — only needed when the
-			// caller did not supply a complete resolution.
-			items, err := s.inv.GetItemsByIDs(ctx, itemIDs)
-			if err != nil {
-				return nil, err
-			}
-			for _, it := range items {
-				ac.items[it.ItemID] = it
-			}
-		}
-	}
-	ingredientIDSet := make(map[int64]bool, len(ingredientIDs))
-	for _, id := range ingredientIDs {
-		ingredientIDSet[id] = true
-	}
-	// Resolved ingredient ids count toward the flag set too — an entity
-	// bound only by item still pulls the override-aware ingredient flags.
-	for _, v := range ac.resolved {
-		if v != nil {
-			ingredientIDSet[*v] = true
-		}
-	}
-	allIngredientIDs := make([]int64, 0, len(ingredientIDSet))
-	for id := range ingredientIDSet {
-		allIngredientIDs = append(allIngredientIDs, id)
-	}
-	slices.Sort(allIngredientIDs)
-	byIng := map[int64][]inventory.EntityAllergen{}
-	if len(allIngredientIDs) > 0 {
-		var err error
-		byIng, err = s.inv.ListIngredientAllergensByIngredients(ctx, allIngredientIDs)
+		byItem, err = s.inv.ListItemAllergensByItems(ctx, itemIDs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
+	return byIng, byItem, nil
+}
+
+// populateFlagMaps folds the raw flag rows into ac's entityFlag maps and
+// returns the allergen ID set covering every flag.
+func populateFlagMaps(ac *allergyContext, byIng, byItem map[int64][]inventory.EntityAllergen) map[int64]bool {
+	allergenIDSet := make(map[int64]bool)
 	for ingredientID, flags := range byIng {
 		for _, f := range flags {
 			ac.flagsByIngredient[ingredientID] = append(ac.flagsByIngredient[ingredientID], entityFlag{allergenID: f.AllergenID, kind: f.Kind})
-		}
-	}
-	byItem := map[int64][]inventory.EntityAllergen{}
-	if len(itemIDs) > 0 {
-		var err error
-		byItem, err = s.inv.ListItemAllergensByItems(ctx, itemIDs)
-		if err != nil {
-			return nil, err
+			allergenIDSet[f.AllergenID] = true
 		}
 	}
 	for itemID, flags := range byItem {
 		for _, f := range flags {
 			ac.flagsByItem[itemID] = append(ac.flagsByItem[itemID], entityFlag{allergenID: f.AllergenID, kind: f.Kind})
-		}
-	}
-	allergenIDSet := make(map[int64]bool)
-	for _, flags := range byIng {
-		for _, f := range flags {
 			allergenIDSet[f.AllergenID] = true
 		}
 	}
-	for _, flags := range byItem {
-		for _, f := range flags {
-			allergenIDSet[f.AllergenID] = true
-		}
+	return allergenIDSet
+}
+
+// loadMemberRecords fills ac.members/ac.records for warning labels — the
+// full household roster loads once here rather than per entity — and adds
+// the records' allergen ids into allergenIDSet. No-op without both
+// services and a household (admin catalog browsing).
+func (s *allergySource) loadMemberRecords(ctx context.Context, ac *allergyContext, allergenIDSet map[int64]bool) error {
+	if s.id == nil || s.up == nil || s.householdID == 0 {
+		return nil
 	}
-	// Member roster + records — warnings label which member conflicts, so
-	// the full household list loads once here rather than per entity.
-	if s.id != nil && s.up != nil && s.householdID != 0 {
-		members, err := s.id.ListUsersByHousehold(ctx, s.householdID)
-		if err != nil {
-			return nil, err
-		}
-		userIDs := make([]int64, 0, len(members))
-		for _, m := range members {
-			ac.members[m.UserID] = m
-			userIDs = append(userIDs, m.UserID)
-		}
-		slices.Sort(userIDs)
-		records, err := s.up.ListUserAllergensByUsers(ctx, userIDs)
-		if err != nil {
-			return nil, err
-		}
-		ac.records = records
-		for _, r := range records {
-			allergenIDSet[r.AllergenID] = true
-		}
+	members, err := s.id.ListUsersByHousehold(ctx, s.householdID)
+	if err != nil {
+		return err
 	}
-	allergenIDs := make([]int64, 0, len(allergenIDSet))
-	for id := range allergenIDSet {
-		allergenIDs = append(allergenIDs, id)
+	userIDs := make([]int64, 0, len(members))
+	for _, m := range members {
+		ac.members[m.UserID] = m
+		userIDs = append(userIDs, m.UserID)
 	}
-	slices.Sort(allergenIDs)
-	if len(allergenIDs) > 0 {
-		allergens, err := s.inv.GetAllergensByIDs(ctx, allergenIDs)
-		if err != nil {
-			return nil, err
-		}
-		ac.allergens = allergens
+	slices.Sort(userIDs)
+	records, err := s.up.ListUserAllergensByUsers(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+	ac.records = records
+	for _, r := range records {
+		allergenIDSet[r.AllergenID] = true
+	}
+	return nil
+}
+
+// loadAllergenRegistry resolves every allergen id seen on flags or member
+// records into ac.allergens.
+func (s *allergySource) loadAllergenRegistry(ctx context.Context, ac *allergyContext, allergenIDSet map[int64]bool) error {
+	allergenIDs := sortedIDs(allergenIDSet)
+	if len(allergenIDs) == 0 {
+		return nil
+	}
+	allergens, err := s.inv.GetAllergensByIDs(ctx, allergenIDs)
+	if err != nil {
+		return err
+	}
+	ac.allergens = allergens
+	return nil
+}
+
+func (s *allergySource) loadAllergyContext(ctx context.Context, ingredientIDs, itemIDs []int64, resolved map[int64]*int64) (*allergyContext, error) {
+	ac := newAllergyContext()
+	if s == nil || s.inv == nil {
+		return ac, nil
+	}
+	if err := s.resolveContextItems(ctx, ac, itemIDs, resolved); err != nil {
+		return nil, err
+	}
+	byIng, byItem, err := s.loadFlagRows(ctx, flagIngredientIDs(ingredientIDs, ac.resolved), itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	allergenIDSet := populateFlagMaps(ac, byIng, byItem)
+	if err := s.loadMemberRecords(ctx, ac, allergenIDSet); err != nil {
+		return nil, err
+	}
+	if err := s.loadAllergenRegistry(ctx, ac, allergenIDSet); err != nil {
+		return nil, err
 	}
 	return ac, nil
 }

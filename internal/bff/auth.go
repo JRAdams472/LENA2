@@ -419,26 +419,9 @@ func (a *Authenticator) verifyOIDCToken(ctx context.Context, raw string) (oidcCl
 		return oidcClaims{}, fmt.Errorf("%w: issuer %q is not allowed", errTokenInvalid, issuer)
 	}
 
-	keySet, err := a.keySetForIssuer(ctx, issuer, false)
+	token, err := a.parseVerifiedToken(ctx, issuer, raw)
 	if err != nil {
-		return oidcClaims{}, fmt.Errorf("%w: load jwks for issuer %q: %w", errKeyDiscovery, issuer, err)
-	}
-
-	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
-	if err != nil {
-		// The issuer may have rotated signing keys inside our cache window.
-		// Only a token whose kid is absent from the cached set can be fixed
-		// by re-fetching keys; any other failure (expiry, bad claims) is not
-		// worth a refresh. The forced refresh is rate-limited inside
-		// keySetForIssuer.
-		if kid := signingKeyID(raw); kid == "" || !a.cachedSetHasKey(issuer, kid) {
-			if refreshed, refErr := a.keySetForIssuer(ctx, issuer, true); refErr == nil {
-				token, err = jwt.Parse([]byte(raw), jwt.WithKeySet(refreshed), jwt.WithValidate(true))
-			}
-		}
-		if err != nil {
-			return oidcClaims{}, fmt.Errorf("%w: verify token: %w", errTokenInvalid, err)
-		}
+		return oidcClaims{}, err
 	}
 
 	audience, ok := token.Audience()
@@ -481,6 +464,31 @@ func (a *Authenticator) verifyOIDCToken(ctx context.Context, raw string) (oidcCl
 		nonce:         nonce,
 		exp:           exp,
 	}, nil
+}
+
+// parseVerifiedToken validates the token signature against the issuer's
+// JWKS, retrying once with refreshed keys when the kid is absent from the
+// cached set — the issuer may have rotated signing keys inside our cache
+// window. Only a token whose kid is missing can be fixed by re-fetching;
+// any other failure (expiry, bad claims) is not worth a refresh. The
+// forced refresh is rate-limited inside keySetForIssuer.
+func (a *Authenticator) parseVerifiedToken(ctx context.Context, issuer, raw string) (jwt.Token, error) {
+	keySet, err := a.keySetForIssuer(ctx, issuer, false)
+	if err != nil {
+		return nil, fmt.Errorf("%w: load jwks for issuer %q: %w", errKeyDiscovery, issuer, err)
+	}
+	token, err := jwt.Parse([]byte(raw), jwt.WithKeySet(keySet), jwt.WithValidate(true))
+	if err != nil {
+		if kid := signingKeyID(raw); kid == "" || !a.cachedSetHasKey(issuer, kid) {
+			if refreshed, refErr := a.keySetForIssuer(ctx, issuer, true); refErr == nil {
+				token, err = jwt.Parse([]byte(raw), jwt.WithKeySet(refreshed), jwt.WithValidate(true))
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: verify token: %w", errTokenInvalid, err)
+		}
+	}
+	return token, nil
 }
 
 // VerifyProviderCredential validates a provider credential without

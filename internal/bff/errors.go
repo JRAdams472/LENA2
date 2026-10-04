@@ -27,6 +27,11 @@ const (
 	codeUnavailable     = "UNAVAILABLE"
 )
 
+// Client-facing validation messages repeated across resolvers.
+const (
+	msgServingsPositive = "servings must be positive"
+)
+
 // clientError is a resolver error whose message is safe to return to the
 // client verbatim. Any other resolver error is replaced with a generic
 // "internal server error" before serialization so pgx/Postgres details
