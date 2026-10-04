@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -134,9 +135,11 @@ func (r *Resolver) SearchHouseholdUsers(ctx context.Context, args struct {
 }
 
 // InviteHouseholdMember creates a pending invite from the caller to the
-// target user. Requires owner or admin; self-invites, existing household
-// mates, and full households are rejected; a duplicate pending invite
-// surfaces as CONFLICT.
+// target user. Requires owner or admin; self-invites and full households
+// are rejected with distinct errors, but every target-side rejection —
+// unknown, inactive, non-searchable, already a household mate, duplicate
+// pending invite — returns the same generic error so the endpoint cannot
+// enumerate accounts or discoverability state (LEN-29 finding 3).
 func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 	UserID graphql.ID
 }) (*householdInviteResolver, error) {
@@ -146,6 +149,9 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 	}
 	if err := requireHouseholdRole(u, identity.HouseholdRoleOwner, identity.HouseholdRoleAdmin); err != nil {
 		return nil, err
+	}
+	if !r.inviteLimiter().allow(u.UserID) {
+		return nil, &clientError{msg: "too many invites; try again later", code: codeBusy}
 	}
 	targetID, err := parseID(string(args.UserID))
 	if err != nil {
@@ -159,10 +165,16 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 	}
 	target, err := r.IdentityService.GetByID(ctx, targetID)
 	if err != nil {
+		if errors.Is(err, domainerr.ErrNotFound) {
+			return nil, badInputf("cannot invite this user")
+		}
 		return nil, err
 	}
+	if !target.IsActive || !target.IsSearchable {
+		return nil, badInputf("cannot invite this user")
+	}
 	if target.HouseholdID != nil && *target.HouseholdID == u.HouseholdID {
-		return nil, badInputf("user is already in your household")
+		return nil, badInputf("cannot invite this user")
 	}
 	if n, err := r.IdentityService.CountUsersByHousehold(ctx, u.HouseholdID); err != nil {
 		return nil, err
@@ -179,6 +191,11 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 		return r.notify(ctx, []int64{targetID}, household.KindInviteReceived, u.HouseholdID, u.UserID, &inv.InviteID)
 	})
 	if err != nil {
+		// A duplicate pending invite is target-side state — fold it into
+		// the generic rejection rather than leaking CONFLICT.
+		if errors.Is(err, domainerr.ErrConflict) {
+			return nil, badInputf("cannot invite this user")
+		}
 		return nil, err
 	}
 	out, err := r.hydrateInvites(ctx, []household.Invite{inv})

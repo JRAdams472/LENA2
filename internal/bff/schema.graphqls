@@ -320,7 +320,7 @@ type Mutation {
   deleteRecipe(id: ID!): Boolean! @admin
   setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
   rateRecipe(recipeId: ID!, rating: Int!): Recipe!
-  setRecipeCategories(recipeId: ID!, categoryIds: [ID!]!): Recipe!
+  setRecipeCategories(recipeId: ID!, categoryIds: [ID!]!): Recipe! @admin
   createRecipeCategoryGroup(input: CreateRecipeCategoryGroupInput!): RecipeCategoryGroup! @admin
   updateRecipeCategoryGroup(id: ID!, input: UpdateRecipeCategoryGroupInput!): RecipeCategoryGroup! @admin
   deleteRecipeCategoryGroup(id: ID!): Boolean! @admin

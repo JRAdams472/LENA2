@@ -66,6 +66,8 @@ ADMIN = token("e2e-user-1", "e2e@example.com", "E2E User")
 MEMBER = token("e2e-user-3", "e2e-member@example.com", "E2E Member")
 gql(MEMBER, "{ me { id } }")
 me2 = gql(MEMBER, "{ me { id } }")["me"]["id"]
+# Invites require the target to be discoverable (LEN-29 finding 3).
+gql(MEMBER, "mutation { updateMyProfile(input: {isSearchable: true}) { id } }")
 try:
     invite = gql(
         ADMIN,
@@ -79,7 +81,7 @@ try:
     )
     print("household: member joined")
 except RuntimeError as e:
-    if "already in your household" in str(e):
+    if "cannot invite this user" in str(e):
         print("household: member already joined")
     else:
         raise

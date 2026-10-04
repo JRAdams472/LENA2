@@ -79,6 +79,7 @@ type Resolver struct {
 	uploads     *userRateLimiter
 	aiCalls     *userRateLimiter
 	aiToolCalls *userRateLimiter
+	invites     *userRateLimiter
 }
 
 // asyncWorkerCap bounds the number of in-flight background tasks.
@@ -149,6 +150,7 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
 		IdemStore:              opts.Idempotency,
 		uploads:                newUserRateLimiter(uploadRate),
+		invites:                newUserRateLimiter(10),
 	}
 }
 
@@ -209,6 +211,18 @@ func (r *Resolver) uploadLimiter() *userRateLimiter {
 		r.uploads = newUserRateLimiter(12)
 	}
 	return r.uploads
+}
+
+// inviteLimiter returns the per-user invite rate limiter, lazily built so
+// Resolver literals in tests still work. Throttles household-invite
+// creation so sequential user-ID probing (LEN-29 finding 3) is bounded.
+func (r *Resolver) inviteLimiter() *userRateLimiter {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.invites == nil {
+		r.invites = newUserRateLimiter(10)
+	}
+	return r.invites
 }
 
 // Shutdown drains in-flight background work before returning: it waits

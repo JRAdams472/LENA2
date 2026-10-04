@@ -508,4 +508,15 @@ describe("recipe categories", () => {
       ).toBe(true);
     });
   });
+
+  it("shows members read-only chips and never fetches the picker taxonomy", async () => {
+    mockedUseMe.mockReturnValue({ me: { role: "member" }, isAdmin: false, isLoading: false });
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => expect(screen.getByText("Cuisine: Italian")).toBeInTheDocument());
+    expect(screen.queryByText(/pick one/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Mexican")).not.toBeInTheDocument();
+    expect(
+      getBodies().every((b) => !b.query.includes("recipeCategoryGroups"))
+    ).toBe(true);
+  });
 });

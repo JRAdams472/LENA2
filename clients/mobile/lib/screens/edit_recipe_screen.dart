@@ -318,6 +318,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   Future<void> _setCategories(Set<String> next) async {
     if (widget.recipeId == null) return;
+    final previous = Set<String>.from(_selectedCategoryIds);
     setState(() {
       _selectedCategoryIds
         ..clear()
@@ -325,13 +326,30 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       _isSavingCategories = true;
     });
     try {
-      await GraphQLProvider.of(context).value.mutate(MutationOptions(
+      final result = await GraphQLProvider.of(context).value.mutate(
+          MutationOptions(
             document: gql(setRecipeCategoriesMutation),
             variables: {
               'recipeId': widget.recipeId,
               'categoryIds': _selectedCategoryIds.toList(),
             },
           ));
+      if (result.hasException) {
+        throw result.exception ?? Exception('setRecipeCategories failed');
+      }
+    } catch (_) {
+      // setRecipeCategories is admin-only; on rejection the optimistic
+      // toggle must roll back instead of showing an unsaved selection.
+      if (mounted) {
+        setState(() {
+          _selectedCategoryIds
+            ..clear()
+            ..addAll(previous);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update categories')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSavingCategories = false);
     }

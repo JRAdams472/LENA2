@@ -985,7 +985,14 @@ func runHouseholdManagementTests(t *testing.T, srv *httptest.Server, issuer *tes
 	idE, idF, idG := meID(tokE), meID(tokF), meID(tokG)
 
 	inviteAndAccept := func(ownerTok, memberTok, memberID string) {
-		status, gr := doGraphQL(t, srv, ownerTok, `mutation Invite($userId: ID!) {
+		// Invites require the target to be discoverable (LEN-29 finding 3);
+		// the invitee opts in exactly as a real user would.
+		status, gr := doGraphQL(t, srv, memberTok, `mutation OptIn {
+			updateMyProfile(input: {isSearchable: true}) { id }
+		}`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+		status, gr = doGraphQL(t, srv, ownerTok, `mutation Invite($userId: ID!) {
 			inviteHouseholdMember(userId: $userId) { id }
 		}`, map[string]any{"userId": memberID})
 		require.Equal(t, http.StatusOK, status)
@@ -1494,8 +1501,14 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 	}
 	idI := meID(tokI)
 
-	// H invites I; I accepts. J stays in a household of one.
-	status, gr := doGraphQL(t, srv, tokH, `mutation Invite($userId: ID!) {
+	// H invites I; I accepts. J stays in a household of one. Invites
+	// require the target to be discoverable, so I opts in first.
+	status, gr := doGraphQL(t, srv, tokI, `mutation OptIn {
+		updateMyProfile(input: {isSearchable: true}) { id }
+	}`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	status, gr = doGraphQL(t, srv, tokH, `mutation Invite($userId: ID!) {
 		inviteHouseholdMember(userId: $userId) { id }
 	}`, map[string]any{"userId": idI})
 	require.Equal(t, http.StatusOK, status)

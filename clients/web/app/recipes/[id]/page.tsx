@@ -61,7 +61,7 @@ export default function RecipeDetailPage() {
   const [itemSearch, setItemSearch] = useState("");
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
 
-  const { me } = useMe();
+  const { me, isAdmin } = useMe();
 
   const localAIReady = useLocalEngineReady();
   const aiQuery = useQuery({
@@ -87,6 +87,7 @@ export default function RecipeDetailPage() {
     queryKey: ["recipe-category-groups"],
     queryFn: api.getRecipeCategoryGroups,
     staleTime: 60_000,
+    enabled: isAdmin,
   });
 
   useEffect(() => {
@@ -376,6 +377,7 @@ export default function RecipeDetailPage() {
         )}
       </Paper>
 
+      {isAdmin && (
       <Paper sx={{ p: 3 }}>
         <Typography variant="h5" gutterBottom>
           Categories
@@ -454,6 +456,7 @@ export default function RecipeDetailPage() {
           </Box>
         )}
       </Paper>
+      )}
 
       <Paper sx={{ p: 3 }}>
         <Typography variant="h5" gutterBottom>
