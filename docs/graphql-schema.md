@@ -30,8 +30,10 @@ This document describes the public GraphQL API exposed by the BFF at `/graphql`.
 
 - `users(page: Int, pageSize: Int): UserPage!` — **admin only.** Paged list of all users (`UserPage { items: [User!]!, pageInfo: PageInfo! }`).
 - `setUserRole(userId: ID!, role: String!): User!` — **admin only.** `role` must be `member` or `admin`. Rejects self-modification, protected admins, and demoting the last active admin (`FORBIDDEN`).
-- `setUserActive(userId: ID!, isActive: Boolean!): User!` — **admin only.** `isActive: false` bans the user: every subsequent request is rejected with 401 until unbanned. Same guards as `setUserRole`.
-- `updateMyProfile(input: UpdateProfileInput!): User!` — any authenticated user, own record only. `UpdateProfileInput { firstName, lastName, backupEmail }`; omitted fields are unchanged, empty strings clear the field. `backupEmail` must be a valid address (`BAD_USER_INPUT` otherwise).
+- `setUserActive(userId: ID!, isActive: Boolean!): User!` — **admin only.** `isActive: false` bans the user and takes effect immediately: the cached identity is evicted (no 2-minute window) and every refresh-token session for the user is revoked in the same transaction. Same guards as `setUserRole`.
+- `updateMyProfile(input: UpdateProfileInput!): User!` — any authenticated user, own record only. `UpdateProfileInput { firstName, lastName, backupEmail, birthdate, isSearchable }`; omitted fields are unchanged, empty strings clear the field. `backupEmail` must be a valid address (`BAD_USER_INPUT` otherwise). `isSearchable` is the discoverability opt-in — users are invisible to `searchUsers` and household invites until they set it true.
+- `inviteHouseholdMember(userId: ID!): HouseholdInvite!` — invites a user into the caller's household. Target must be active **and** `isSearchable`; unknown, inactive, unsearchable, already-a-member, and pending-duplicate targets all return the identical `BAD_USER_INPUT: cannot invite this user` (no user enumeration). Rate-limited 10/min per caller.
+- `acceptHouseholdInvite(inviteId: ID!): Household!` — the invitee accepts; their plans, lists, and events merge into the shared household.
 
 ### Catalog — `Brand`, `Category`, `Item`
 
@@ -257,9 +259,10 @@ type GroceryRouteItem {
 
 ### Recipes
 
-- `createRecipe(input: CreateRecipeInput!): Recipe!`
-- `updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!`
-- `deleteRecipe(id: ID!): Boolean!`
+- `createRecipe(input: CreateRecipeInput!): Recipe!` — **admin only** (`@admin`); the recipe catalog is global across households.
+- `updateRecipe(id: ID!, input: CreateRecipeInput!): Recipe!` — **admin only.**
+- `deleteRecipe(id: ID!): Boolean!` — **admin only.**
+- `setRecipeCategories(recipeId: ID!, categoryIds: [ID!]!): Recipe!` — **admin only.** Members see category chips read-only.
 - `setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!`
 
 ### User pantry and cellar

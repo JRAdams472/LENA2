@@ -58,9 +58,10 @@ A Next.js (App Router) TypeScript frontend for LENA.
 ## Sign-in providers
 
 Google sign-in uses the OIDC ID token as the bearer directly. Discord,
-Microsoft, and Facebook are OAuth2 redirect flows: the browser collects a
-`code` at `/auth/{provider}/callback` and the server exchanges it
-(server-side `client_secret`) for a LENA session. Each button renders only
+Microsoft, and Facebook are OAuth2 redirect flows with PKCE (S256): the
+browser collects a `code` at `/auth/{provider}/callback` and the server
+exchanges it (server-side `client_secret` + `code_verifier`) for a LENA
+session. Each button renders only
 when its `NEXT_PUBLIC_*_CLIENT_ID` build-time env is set; see
 `.env.example` and `lib/oauth.ts`. Facebook additionally requires the
 `nonce` round-trip — handled automatically.
