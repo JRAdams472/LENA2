@@ -451,6 +451,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String?>(
+                    isExpanded: true,
                     value: _itemSelections[slotId],
                     decoration: const InputDecoration(labelText: 'Item'),
                     items: _items
@@ -548,6 +549,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               ),
               if (_categoryGroups.isNotEmpty)
                 DropdownButtonFormField<String?>(
+                  isExpanded: true,
                   value: _categoryFilter,
                   decoration: const InputDecoration(
                       labelText: 'Filter recipes by category'),
@@ -564,6 +566,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                   onChanged: (v) => setState(() => _categoryFilter = v),
                 ),
               DropdownButtonFormField<String?>(
+                isExpanded: true,
                 value: _recipeSelection,
                 decoration:
                     const InputDecoration(labelText: 'Recipe (optional)'),

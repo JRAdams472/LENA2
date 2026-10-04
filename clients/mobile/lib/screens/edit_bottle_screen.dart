@@ -237,6 +237,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
         child: ListView(
           children: [
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               value: _typeId,
               decoration: const InputDecoration(labelText: 'Type'),
               items: _types
@@ -248,6 +249,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
               onChanged: (v) => setState(() => _typeId = v),
             ),
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               value: _countryId,
               decoration: const InputDecoration(labelText: 'Country'),
               items: _countries
@@ -265,6 +267,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
               },
             ),
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               value: _regionId,
               decoration: const InputDecoration(labelText: 'Region'),
               items: _regions

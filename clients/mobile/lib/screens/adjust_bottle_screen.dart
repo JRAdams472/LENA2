@@ -52,11 +52,13 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
 
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(document: gql(bottlesQuery)));
+    final result =
+        await client.query(QueryOptions(document: gql(bottlesQuery)));
     setState(() {
       _bottles = (result.data?['bottles']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
-      _bottleId = widget.bottleId ?? (_bottles.isNotEmpty ? _bottles.first['id'] as String : null);
+      _bottleId = widget.bottleId ??
+          (_bottles.isNotEmpty ? _bottles.first['id'] as String : null);
     });
     if (widget.quantity != null) {
       _quantityCtrl.text = widget.quantity.toString();
@@ -103,6 +105,7 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
         child: ListView(
           children: [
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               value: _bottleId,
               decoration: const InputDecoration(labelText: 'Bottle'),
               items: _bottles

@@ -214,6 +214,7 @@ class _EditItemScreenState extends State<EditItemScreen> {
               decoration: const InputDecoration(labelText: 'Unit'),
             ),
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               value: _categoryId,
               decoration: const InputDecoration(labelText: 'Category'),
               items: _categories
@@ -233,6 +234,7 @@ class _EditItemScreenState extends State<EditItemScreen> {
               onChanged: _onBrandSearchChanged,
             ),
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               value: _brandId,
               decoration: const InputDecoration(labelText: 'Brand (optional)'),
               items: [
