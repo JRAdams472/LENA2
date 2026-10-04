@@ -18,6 +18,7 @@ import { useAssistant } from "@/lib/ai/useAssistant";
 import type { AssistantResult } from "@/lib/ai/types";
 
 interface ChatMessage {
+  id: string;
   role: "user" | "assistant";
   text: string;
   tools?: string[];
@@ -49,7 +50,7 @@ export default function AssistantPage() {
     onSuccess: (answer: AssistantResult) => {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: answer.answer, tools: answer.tools },
+        { id: crypto.randomUUID(), role: "assistant", text: answer.answer, tools: answer.tools },
       ]);
       setError(null);
       inputRef.current?.focus();
@@ -62,7 +63,7 @@ export default function AssistantPage() {
   const send = (question: string) => {
     const q = question.trim();
     if (!q || ask.isPending) return;
-    setMessages((prev) => [...prev, { role: "user", text: q }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: q }]);
     setInput("");
     ask.mutate(q);
   };
@@ -167,9 +168,9 @@ export default function AssistantPage() {
       )}
 
       <Stack spacing={1.5} sx={{ mb: 2 }}>
-        {messages.map((m, i) => (
+        {messages.map((m) => (
           <Box
-            key={i}
+            key={m.id}
             sx={{
               alignSelf: m.role === "user" ? "flex-end" : "flex-start",
               maxWidth: "85%",

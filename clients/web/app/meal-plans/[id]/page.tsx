@@ -165,9 +165,10 @@ function SlotDialog({
   const [replacementNote, setReplacementNote] = useState(
     slot?.replacementNote ?? ""
   );
-  const [adhoc, setAdhoc] = useState<{ itemID: number; quantity: string; unit: string }[]>(
+  const [adhoc, setAdhoc] = useState<{ keyId: string; itemID: number; quantity: string; unit: string }[]>(
     () =>
       (slot?.mealSlotItems?.filter((i) => !i.isFromRecipe) ?? []).map((i) => ({
+        keyId: crypto.randomUUID(),
         itemID: i.itemID ?? 0,
         quantity: String(i.quantity),
         unit: i.unitOfMeasure ?? "",
@@ -287,7 +288,7 @@ function SlotDialog({
     if (newItemId !== "" && newQty !== "") {
       setAdhoc((prev) => [
         ...prev,
-        { itemID: Number(newItemId), quantity: newQty, unit: newUnit },
+        { keyId: crypto.randomUUID(), itemID: Number(newItemId), quantity: newQty, unit: newUnit },
       ]);
       setNewItemId("");
       setNewQty("");
@@ -539,7 +540,7 @@ function SlotDialog({
             : `Item ${a.itemID}`;
           return (
             <Box
-              key={i}
+              key={a.keyId}
               sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
             >
               <Typography variant="body2">
@@ -877,15 +878,15 @@ export default function MealPlanDetailPage({
             </Box>
           ))}
 
-          {Array.from({ length: 7 }).map((_, day) => (
-            <Fragment key={day}>
+          {DAY_NAMES.map((name, day) => (
+            <Fragment key={name}>
               <Box sx={{ fontWeight: 700 }}>{DAY_NAMES[day]}</Box>
               {MEAL_TYPE_IDS.map((mt) => {
                 const slot = findSlot(day, mt);
                 const nut = mealNutrition(day, mt);
                 return (
                   <Paper
-                    key={`${day}-${mt}`}
+                    key={`${name}-${mt}`}
                     sx={{
                       p: 1,
                       minHeight: 100,
