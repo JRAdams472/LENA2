@@ -1,6 +1,6 @@
 # LEN-37 — LEN-29 P3 authz gaps: proof of completion
 
-PR: https://github.com/JRAdams472/LENA2/pull/TBD
+PR: https://github.com/JRAdams472/LENA2/pull/259
 Parent: LEN-29 (OWASP Top 10 review). Findings: #2 (recipe category authz), #3 (invite targeting).
 
 ## What shipped
