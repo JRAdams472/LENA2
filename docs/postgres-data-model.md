@@ -120,6 +120,11 @@ CREATE TABLE inventory.item (
     upc14       VARCHAR(14),
     category_id BIGINT NOT NULL REFERENCES inventory.category(category_id),
     unit_id     BIGINT NOT NULL REFERENCES inventory.unit(unit_id),
+    -- Catalog-level link to the generic ingredient this item satisfies
+    -- (e.g. Green Giant corn → corn). Households can override per item
+    -- via userprefs.household_item_ingredient; resolution order is
+    -- override → this column → unlinked.
+    ingredient_id BIGINT REFERENCES inventory.ingredient(ingredient_id),
     created_by  VARCHAR(100) NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by  VARCHAR(100),
@@ -146,6 +151,33 @@ CREATE TABLE inventory.user_item (
     UNIQUE (user_id, item_id)
 );
 CREATE INDEX idx_user_item_item_id ON inventory.user_item (item_id);
+
+-- Per-household override of an item's catalog ingredient link
+-- ("this item is actually X for us"). Wins over item.ingredient_id.
+CREATE TABLE userprefs.household_item_ingredient (
+    household_id  BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
+    item_id       BIGINT NOT NULL REFERENCES inventory.item(item_id) ON DELETE CASCADE,
+    ingredient_id BIGINT NOT NULL REFERENCES inventory.ingredient(ingredient_id) ON DELETE CASCADE,
+    created_by    VARCHAR(100) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by    VARCHAR(100),
+    updated_at    TIMESTAMPTZ,
+    PRIMARY KEY (household_id, item_id)
+);
+
+-- "Usual brand" — the item a household reaches for per ingredient,
+-- written on brand-picked grocery check-offs.
+CREATE TABLE userprefs.household_ingredient_item (
+    household_id  BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
+    ingredient_id BIGINT NOT NULL REFERENCES inventory.ingredient(ingredient_id) ON DELETE CASCADE,
+    item_id       BIGINT NOT NULL REFERENCES inventory.item(item_id) ON DELETE CASCADE,
+    last_used_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by    VARCHAR(100) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by    VARCHAR(100),
+    updated_at    TIMESTAMPTZ,
+    PRIMARY KEY (household_id, ingredient_id)
+);
 ```
 
 ### 4.1 Inventory reference tables
@@ -188,8 +220,8 @@ CREATE TABLE inventory.food_nutrient (
 
 -- Brand-agnostic generic ingredient (e.g. "all-purpose flour"). Branded
 -- items exist for barcode scanning; recipes, meal slots and grocery lists
--- can reference an ingredient instead. Scaffolding only — nothing
--- populates this data yet.
+-- can reference an ingredient instead — ingredient_id is the primary ref
+-- on those line tables, with item_id kept as an optional preferred brand.
 CREATE TABLE inventory.ingredient (
     ingredient_id   BIGSERIAL PRIMARY KEY,
     name            VARCHAR(200) NOT NULL UNIQUE,
@@ -354,7 +386,11 @@ CREATE TABLE recipe.recipe (
 CREATE TABLE recipe.recipe_item (
     recipe_item_id BIGSERIAL PRIMARY KEY,
     recipe_id      BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
-    item_id        BIGINT NOT NULL REFERENCES inventory.item(item_id),
+    -- ingredient_id is the primary ref going forward; item_id is the
+    -- optional preferred-brand hint. Both nullable during the transition —
+    -- writes require ≥1 (enforced in code); ingredient_id becomes NOT NULL
+    -- once the curation backfill is applied (0048, deferred).
+    item_id        BIGINT REFERENCES inventory.item(item_id),
     ingredient_id  BIGINT REFERENCES inventory.ingredient(ingredient_id),
     quantity       NUMERIC(10,4) NOT NULL,
     unit_id        BIGINT NOT NULL REFERENCES inventory.unit(unit_id),

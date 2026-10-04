@@ -1,5 +1,20 @@
 # Generic Ingredient Layer — Recipes & Lists on Unbranded Items, Inventory Stays Branded
 
+> **Status: SHIPPED** (2026-10-04). All five phases merged to `main`:
+>
+> | Phase | Ticket | PR | Merge commit |
+> |---|---|---|---|
+> | P1 Schema + data | LEN-7 | #244 | `c5f28a3` |
+> | P2 Backend adoption | LEN-8 | #245 | `9069480` |
+> | P3 Web | LEN-9 | #246 | `82cb32e` |
+> | P4 Mobile | LEN-10 | #247 | `427451e` |
+> | P5 Close-out | LEN-11 | — | (this PR) |
+>
+> Deviations from the plan as written:
+> - Admin ingredients screen shipped at `/inventory/ingredients` (catalog-admin convention), not `/admin/ingredients`.
+> - Curation artifact (`docs/ingredient-curation.json`) was generated and dry-run-reviewed in P1 but **not applied** — the 106k-item catalog remains unlinked except links made via scan/edit/check-off flows. Apply is a deliberate user decision.
+> - Branches shipped as `ingredient-layer-p<N>`; from P5 the repo convention switched to ticket-prefixed names (`LEN-11-close-out`).
+
 Adopt the scaffolded-but-empty `inventory.ingredient` abstraction as the primary reference for recipes, meal plans, grocery lists, and imports; link branded items to ingredients via a global FK plus household overrides; seed the ingredient catalog via an LLM-assisted curation pass; rework backend, web, and mobile UX so recipes stop requiring brand matches while pantry stock/check-off flows resolve ingredient→brand.
 
 ## Objective

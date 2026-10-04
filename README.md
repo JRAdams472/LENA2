@@ -68,6 +68,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 - `/inventory/food-flavors` — item-to-flavor associations.
 - `/inventory/food-nutrients` — item-to-nutrient associations.
 - `/inventory/nutrient-types` — nutrient reference data.
+- `/inventory/ingredients` — generic-ingredient catalog (admin): search, create, edit, deactivate, and merge (the dedupe safety valve).
 
 ### Recipes & planning
 
@@ -298,6 +299,7 @@ flutter test
 - **UPC lookup** — mobile and web can query `itemByUpc` to find an item by UPC before adding it to pantry.
 - **Item submission** — non-admin users can `submitItem` for items not yet in the catalog. Submitted items are visible only to their creator until an admin approves them.
 - **Grocery sync** — checking a grocery item off can increase `inventory.user_item` stock by the quantity needed; unchecking decreases it.
+- **Ingredients vs items** — recipes, meal slots, grocery lines, and import reviews reference generic `inventory.ingredient` rows ("corn"); `item_id` is an optional preferred brand. Stock rollups and check-offs resolve ingredient→brand via the catalog link (`item.ingredient_id`), a per-household override, and a remembered "usual brand" (`household_ingredient_item`) — the first check-off of an ingredient line asks which brand you bought and remembers it. Unlinked items still work as pantry inventory, they just don't satisfy ingredient-level rollups. See `docs/ingredient-layer-plan.md`.
 - **Rotating sessions** — provider credentials exchange for a LENA session (short-lived `iss=lena` access token + ~30-day rotating refresh token); replaying a rotated token revokes the whole family.
 
 ---
