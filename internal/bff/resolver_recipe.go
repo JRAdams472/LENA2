@@ -1355,13 +1355,14 @@ func (r *recipeResolver) Categories() []*recipeCategoryResolver {
 	return out
 }
 
-// SetRecipeCategories replaces a recipe's category set; any authenticated
-// household member may categorize recipes (admins curate the taxonomy).
+// SetRecipeCategories replaces a recipe's category set. Admin-only:
+// recipes are a shared global catalog, so member edits would change what
+// every other household sees (LEN-29 finding 2).
 func (r *Resolver) SetRecipeCategories(ctx context.Context, args struct {
 	RecipeID    graphql.ID
 	CategoryIDs []graphql.ID
 }) (*recipeResolver, error) {
-	u, err := userFromContext(ctx)
+	u, err := requireAdmin(ctx)
 	if err != nil {
 		return nil, err
 	}

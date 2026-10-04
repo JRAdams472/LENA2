@@ -96,7 +96,7 @@ Recipe.categories: [RecipeCategory!]!
 Query.recipeCategoryGroups: [RecipeCategoryGroup!]!
 Query.recipes(page, pageSize, search, categoryIds, isFavorite): RecipePage!
 
-Mutation.setRecipeCategories(recipeId, categoryIds): Recipe!            # member-level
+Mutation.setRecipeCategories(recipeId, categoryIds): Recipe!            # @admin (see note below)
 Mutation.createRecipeCategoryGroup / updateRecipeCategoryGroup / deleteRecipeCategoryGroup  # @admin
 Mutation.createRecipeCategory / updateRecipeCategory / deleteRecipeCategory                 # @admin
 Mutation.recordView(entityType, entityId): Boolean!
@@ -186,6 +186,9 @@ signal strength so position doubles as the in-tier tiebreaker), then name.
   catalog (per the admins-curate/members-assign decision). Assignment UI
   lives in the recipe edit form (admin); `setRecipeCategories` stays
   member-permitted at the API for future surfaces.
+  *Superseded by LEN-29 finding 2 / LEN-37: `setRecipeCategories` is now
+  `@admin` — a member-visible global write was the audit finding this
+  paragraph predicted.*
 - **View ≠ selection:** `recordView` deliberately doesn't bump
   `user_selection_count`; in-tier ordering uses per-event-type counts from
   `interaction_event`.

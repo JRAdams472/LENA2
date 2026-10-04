@@ -82,7 +82,7 @@ func TestResolver_Recipe_Categories(t *testing.T) {
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 
 		r := &Resolver{RecipeService: rec}
-		res, err := r.SetRecipeCategories(recUserCtx(), struct {
+		res, err := r.SetRecipeCategories(recCtx(), struct {
 			RecipeID    graphql.ID
 			CategoryIDs []graphql.ID
 		}{RecipeID: "9", CategoryIDs: []graphql.ID{"21", "40"}})
@@ -96,7 +96,7 @@ func TestResolver_Recipe_Categories(t *testing.T) {
 			Return(&domainerr.ValidationError{Field: "categoryIds", Msg: `a recipe can't be both "Mexican" and "Italian" (Cuisine)`})
 
 		r := &Resolver{RecipeService: rec}
-		_, err := r.SetRecipeCategories(recUserCtx(), struct {
+		_, err := r.SetRecipeCategories(recCtx(), struct {
 			RecipeID    graphql.ID
 			CategoryIDs []graphql.ID
 		}{RecipeID: "9", CategoryIDs: []graphql.ID{"21", "22"}})
@@ -104,23 +104,15 @@ func TestResolver_Recipe_Categories(t *testing.T) {
 		assert.ErrorContains(t, err, "Mexican")
 	})
 
-	t.Run("setRecipeCategories works for non-admin members", func(t *testing.T) {
-		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().SetRecipeCategories(gomock.Any(), int64(9), []int64{21}, recTestEmail).Return(nil)
-		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).Return(recipe.Recipe{RecipeID: 9}, nil)
-		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{9}).Return([]recipe.Recipe{{RecipeID: 9}}, nil)
-		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
-		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
-		rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
-		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
-		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
-
-		r := &Resolver{RecipeService: rec}
+	t.Run("setRecipeCategories rejects non-admin members", func(t *testing.T) {
+		// Recipes are a global catalog — member categorization would leak
+		// across households (LEN-29 finding 2). No store call is made.
+		r := &Resolver{}
 		_, err := r.SetRecipeCategories(recUserCtx(), struct {
 			RecipeID    graphql.ID
 			CategoryIDs []graphql.ID
 		}{RecipeID: "9", CategoryIDs: []graphql.ID{"21"}})
-		require.NoError(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("createRecipe honors input categoryIds", func(t *testing.T) {

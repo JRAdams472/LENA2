@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -124,7 +125,7 @@ func TestResolver_InviteHouseholdMember(t *testing.T) {
 
 	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &otherHH}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
 	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).Return(int64(2), nil)
 	h.EXPECT().CreateInvite(gomock.Any(), hhUserID, int64(9), hhUserID, hhEmail).
 		Return(household.Invite{InviteID: 30, FromUserID: hhUserID, ToUserID: 9, HouseholdID: hhUserID, Status: household.StatusPending}, nil)
@@ -148,12 +149,13 @@ func TestResolver_InviteHouseholdMember_Guards(t *testing.T) {
 	_, err := r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "7"})
 	assert.Error(t, err)
 
-	// Already in the caller's household.
+	// Already in the caller's household: same generic error as every
+	// other target-side rejection (no enumeration signal).
 	sameHH := hhUserID
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &sameHH}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &sameHH, IsActive: true, IsSearchable: true}, nil)
 	_, err = r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
-	assert.ErrorContains(t, err, "already in your household")
+	assert.ErrorContains(t, err, "cannot invite this user")
 }
 
 func TestResolver_AcceptHouseholdInvite(t *testing.T) {
@@ -327,7 +329,7 @@ func TestResolver_InviteHouseholdMember_RoleGate(t *testing.T) {
 	adminCtx := testutil.WithHouseholdRole(context.Background(), hhUserID, hhUserID, "admin", hhEmail)
 	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &otherHH}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
 	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).Return(int64(2), nil)
 	h.EXPECT().CreateInvite(gomock.Any(), hhUserID, int64(9), hhUserID, hhEmail).
 		Return(household.Invite{InviteID: 30, FromUserID: hhUserID, ToUserID: 9, HouseholdID: hhUserID, Status: household.StatusPending}, nil)
@@ -346,12 +348,63 @@ func TestResolver_InviteHouseholdMember_Full(t *testing.T) {
 
 	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &otherHH}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
 	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).
 		Return(int64(maxHouseholdMembers), nil)
 
 	_, err := r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
 	assert.ErrorContains(t, err, "household is full")
+}
+
+func TestResolver_InviteHouseholdMember_GenericTargetErrors(t *testing.T) {
+	// Every target-side rejection returns the identical generic error so
+	// the endpoint cannot enumerate accounts or discoverability state
+	// (LEN-29 finding 3).
+	otherHH := int64(50)
+	cases := []struct {
+		name  string
+		setup func(idSvc *mock.MockIdentityService, h *mock.MockHouseholdService)
+	}{
+		{"unknown user", func(idSvc *mock.MockIdentityService, _ *mock.MockHouseholdService) {
+			idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
+				Return(identity.User{}, fmt.Errorf("get user by id: %w", domainerr.ErrNotFound))
+		}},
+		{"inactive user", func(idSvc *mock.MockIdentityService, _ *mock.MockHouseholdService) {
+			idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
+				Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: false, IsSearchable: true}, nil)
+		}},
+		{"unsearchable user", func(idSvc *mock.MockIdentityService, _ *mock.MockHouseholdService) {
+			idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
+				Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: false}, nil)
+		}},
+		{"duplicate pending invite", func(idSvc *mock.MockIdentityService, h *mock.MockHouseholdService) {
+			idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
+				Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
+			idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).Return(int64(2), nil)
+			h.EXPECT().CreateInvite(gomock.Any(), hhUserID, int64(9), hhUserID, hhEmail).
+				Return(household.Invite{}, fmt.Errorf("create invite: %w", domainerr.ErrConflict))
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			h := mock.NewMockHouseholdService(ctrl)
+			idSvc := mock.NewMockIdentityService(ctrl)
+			r := &Resolver{HouseholdService: h, IdentityService: idSvc}
+			tc.setup(idSvc, h)
+			_, err := r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
+			assert.EqualError(t, err, "cannot invite this user")
+		})
+	}
+}
+
+func TestResolver_InviteHouseholdMember_RateLimited(t *testing.T) {
+	r := &Resolver{invites: newUserRateLimiter(1)}
+	// Drain the single token; the next invite attempt is throttled before
+	// any store call, so no mocks are needed.
+	r.inviteLimiter().allow(hhUserID)
+	_, err := r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
+	assert.ErrorContains(t, err, "too many invites")
 }
 
 func TestResolver_AcceptHouseholdInvite_Full(t *testing.T) {
