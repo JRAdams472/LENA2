@@ -13,6 +13,14 @@ import (
 	"github.com/graph-gophers/graphql-go"
 )
 
+// Client-facing messages repeated across the assistant resolvers.
+const (
+	msgAIUnavailable      = "the AI assistant is not configured on this deployment"
+	msgAIRateLimited      = "assistant rate limit reached — try again shortly"
+	msgMaxSuggestions     = "maxSuggestions must be 1-10"
+	msgAIToolsUnavailable = "assistant tools are not configured on this deployment"
+)
+
 // AIAvailable reports whether the assistant is configured. Clients use it
 // to hide AI entry points instead of erroring on first use.
 func (r *Resolver) AIAvailable(ctx context.Context) (bool, error) {
@@ -31,16 +39,16 @@ func (r *Resolver) AskAssistant(ctx context.Context, args struct{ Question strin
 		return nil, err
 	}
 	if r.AIService == nil || !r.AIService.Available() {
-		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		return nil, errUnavailablef(msgAIUnavailable)
 	}
 	if !r.aiLimiter().allow(u.UserID) {
-		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+		return nil, errUnavailablef(msgAIRateLimited)
 	}
 	ans, err := r.AIService.Ask(ctx, u.UserID, u.HouseholdID, args.Question)
 	if err != nil {
 		switch {
 		case errors.Is(err, ai.ErrUnavailable):
-			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+			return nil, errUnavailablef(msgAIUnavailable)
 		case errors.Is(err, ai.ErrInvalidQuestion):
 			return nil, badInputf("question must be 1-2000 characters")
 		default:
@@ -65,10 +73,10 @@ func (r *Resolver) SuggestMeals(ctx context.Context, args struct {
 		return nil, err
 	}
 	if r.AIService == nil || !r.AIService.Available() {
-		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		return nil, errUnavailablef(msgAIUnavailable)
 	}
 	if !r.aiLimiter().allow(u.UserID) {
-		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+		return nil, errUnavailablef(msgAIRateLimited)
 	}
 	mealPlanID, err := parseID(string(args.MealPlanID))
 	if err != nil {
@@ -76,12 +84,12 @@ func (r *Resolver) SuggestMeals(ctx context.Context, args struct {
 	}
 	limit := int(args.MaxSuggestions)
 	if limit < 1 || limit > 10 {
-		return nil, badInputf("maxSuggestions must be 1-10")
+		return nil, badInputf(msgMaxSuggestions)
 	}
 	suggs, err := r.AIService.SuggestMeals(ctx, u.UserID, u.HouseholdID, mealPlanID, limit)
 	if err != nil {
 		if errors.Is(err, ai.ErrUnavailable) {
-			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+			return nil, errUnavailablef(msgAIUnavailable)
 		}
 		return nil, err
 	}
@@ -103,10 +111,10 @@ func (r *Resolver) SuggestEventFixes(ctx context.Context, args struct {
 		return nil, err
 	}
 	if r.AIService == nil || !r.AIService.Available() {
-		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		return nil, errUnavailablef(msgAIUnavailable)
 	}
 	if !r.aiLimiter().allow(u.UserID) {
-		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+		return nil, errUnavailablef(msgAIRateLimited)
 	}
 	foodEventID, err := parseID(string(args.FoodEventID))
 	if err != nil {
@@ -114,12 +122,12 @@ func (r *Resolver) SuggestEventFixes(ctx context.Context, args struct {
 	}
 	limit := int(args.MaxSuggestions)
 	if limit < 1 || limit > 10 {
-		return nil, badInputf("maxSuggestions must be 1-10")
+		return nil, badInputf(msgMaxSuggestions)
 	}
 	fixes, err := r.AIService.SuggestEventFixes(ctx, u.UserID, u.HouseholdID, foodEventID, limit)
 	if err != nil {
 		if errors.Is(err, ai.ErrUnavailable) {
-			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+			return nil, errUnavailablef(msgAIUnavailable)
 		}
 		return nil, err
 	}
@@ -167,10 +175,10 @@ func (r *Resolver) SuggestPairings(ctx context.Context, args struct {
 		return nil, err
 	}
 	if r.AIService == nil || !r.AIService.Available() {
-		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		return nil, errUnavailablef(msgAIUnavailable)
 	}
 	if !r.aiLimiter().allow(u.UserID) {
-		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+		return nil, errUnavailablef(msgAIRateLimited)
 	}
 	if err := r.requireDrinkingAge(ctx, u.UserID); err != nil {
 		return nil, err
@@ -181,12 +189,12 @@ func (r *Resolver) SuggestPairings(ctx context.Context, args struct {
 	}
 	limit := int(args.MaxSuggestions)
 	if limit < 1 || limit > 10 {
-		return nil, badInputf("maxSuggestions must be 1-10")
+		return nil, badInputf(msgMaxSuggestions)
 	}
 	pairings, err := r.AIService.SuggestPairings(ctx, u.UserID, u.HouseholdID, recipeID, limit)
 	if err != nil {
 		if errors.Is(err, ai.ErrUnavailable) {
-			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+			return nil, errUnavailablef(msgAIUnavailable)
 		}
 		return nil, err
 	}
@@ -208,22 +216,22 @@ func (r *Resolver) SuggestCocktails(ctx context.Context, args struct {
 		return nil, err
 	}
 	if r.AIService == nil || !r.AIService.Available() {
-		return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+		return nil, errUnavailablef(msgAIUnavailable)
 	}
 	if !r.aiLimiter().allow(u.UserID) {
-		return nil, errUnavailablef("assistant rate limit reached — try again shortly")
+		return nil, errUnavailablef(msgAIRateLimited)
 	}
 	if err := r.requireDrinkingAge(ctx, u.UserID); err != nil {
 		return nil, err
 	}
 	limit := int(args.MaxSuggestions)
 	if limit < 1 || limit > 10 {
-		return nil, badInputf("maxSuggestions must be 1-10")
+		return nil, badInputf(msgMaxSuggestions)
 	}
 	suggs, err := r.AIService.SuggestCocktails(ctx, u.UserID, u.HouseholdID, limit, args.InStockOnly)
 	if err != nil {
 		if errors.Is(err, ai.ErrUnavailable) {
-			return nil, errUnavailablef("the AI assistant is not configured on this deployment")
+			return nil, errUnavailablef(msgAIUnavailable)
 		}
 		return nil, err
 	}
@@ -294,7 +302,7 @@ func (r *Resolver) CallAssistantTool(ctx context.Context, args struct {
 		return "", err
 	}
 	if r.AIService == nil {
-		return "", errUnavailablef("assistant tools are not configured on this deployment")
+		return "", errUnavailablef(msgAIToolsUnavailable)
 	}
 	if !r.aiToolLimiter().allow(u.UserID) {
 		return "", errUnavailablef("assistant tool rate limit reached — try again shortly")
@@ -302,7 +310,7 @@ func (r *Resolver) CallAssistantTool(ctx context.Context, args struct {
 	out, err := r.AIService.CallTool(ctx, u.UserID, u.HouseholdID, args.Name, json.RawMessage(args.Arguments))
 	if err != nil {
 		if errors.Is(err, ai.ErrUnavailable) {
-			return "", errUnavailablef("assistant tools are not configured on this deployment")
+			return "", errUnavailablef(msgAIToolsUnavailable)
 		}
 		return "", err
 	}
@@ -337,7 +345,7 @@ func (r *Resolver) PrepareAssistantRequest(ctx context.Context, args struct {
 		return nil, err
 	}
 	if r.AIService == nil {
-		return nil, errUnavailablef("assistant tools are not configured on this deployment")
+		return nil, errUnavailablef(msgAIToolsUnavailable)
 	}
 	// The alcohol-gated features keep their age gate on the server even
 	// when inference moves to the client.
@@ -353,7 +361,7 @@ func (r *Resolver) PrepareAssistantRequest(ctx context.Context, args struct {
 	if err != nil {
 		switch {
 		case errors.Is(err, ai.ErrUnavailable):
-			return nil, errUnavailablef("assistant tools are not configured on this deployment")
+			return nil, errUnavailablef(msgAIToolsUnavailable)
 		case errors.Is(err, ai.ErrUnknownRequest), errors.Is(err, ai.ErrBadParams):
 			return nil, badInputf("%s", err)
 		default:

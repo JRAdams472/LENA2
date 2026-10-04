@@ -117,45 +117,21 @@ func (r *Resolver) UpdateMyProfile(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	first, last, backup := current.FirstName, current.LastName, current.BackupEmail
-	if args.Input.FirstName != nil {
-		first = strings.TrimSpace(*args.Input.FirstName)
-		if len(first) > 100 {
-			return nil, badInputf("firstName must be at most 100 characters")
-		}
+	first, err := profileNameField(args.Input.FirstName, current.FirstName, "firstName")
+	if err != nil {
+		return nil, err
 	}
-	if args.Input.LastName != nil {
-		last = strings.TrimSpace(*args.Input.LastName)
-		if len(last) > 100 {
-			return nil, badInputf("lastName must be at most 100 characters")
-		}
+	last, err := profileNameField(args.Input.LastName, current.LastName, "lastName")
+	if err != nil {
+		return nil, err
 	}
-	if args.Input.BackupEmail != nil {
-		backup = strings.TrimSpace(*args.Input.BackupEmail)
-		if backup != "" {
-			if len(backup) > 320 {
-				return nil, badInputf("backupEmail must be at most 320 characters")
-			}
-			if _, err := mail.ParseAddress(backup); err != nil {
-				return nil, badInputf("backupEmail is not a valid email address")
-			}
-		}
+	backup, err := profileBackupEmail(args.Input.BackupEmail, current.BackupEmail)
+	if err != nil {
+		return nil, err
 	}
-	birthdate := current.Birthdate
-	if args.Input.Birthdate != nil {
-		raw := strings.TrimSpace(*args.Input.Birthdate)
-		if raw == "" {
-			birthdate = nil
-		} else {
-			bd, err := time.Parse("2006-01-02", raw)
-			if err != nil || bd.Format("2006-01-02") != raw {
-				return nil, badInputf("birthdate must be YYYY-MM-DD")
-			}
-			if bd.After(time.Now()) || bd.Year() < 1900 {
-				return nil, badInputf("birthdate is out of range")
-			}
-			birthdate = &bd
-		}
+	birthdate, err := profileBirthdate(args.Input.Birthdate, current.Birthdate)
+	if err != nil {
+		return nil, err
 	}
 	if err := r.IdentityService.UpdateProfile(ctx, actor.UserID, first, last, backup, birthdate, actor.Email); err != nil {
 		return nil, err
@@ -170,6 +146,58 @@ func (r *Resolver) UpdateMyProfile(ctx context.Context, args struct {
 		r.invalidateUser(ctx, actor)
 	}
 	return r.userByID(ctx, actor.UserID)
+}
+
+// profileNameField normalizes an optional name override; a nil input keeps
+// the stored value.
+func profileNameField(input *string, current, field string) (string, error) {
+	if input == nil {
+		return current, nil
+	}
+	v := strings.TrimSpace(*input)
+	if len(v) > 100 {
+		return "", badInputf("%s must be at most 100 characters", field)
+	}
+	return v, nil
+}
+
+// profileBackupEmail normalizes an optional backup-email override; a nil
+// input keeps the stored value and an empty string clears it.
+func profileBackupEmail(input *string, current string) (string, error) {
+	if input == nil {
+		return current, nil
+	}
+	v := strings.TrimSpace(*input)
+	if v == "" {
+		return v, nil
+	}
+	if len(v) > 320 {
+		return "", badInputf("backupEmail must be at most 320 characters")
+	}
+	if _, err := mail.ParseAddress(v); err != nil {
+		return "", badInputf("backupEmail is not a valid email address")
+	}
+	return v, nil
+}
+
+// profileBirthdate parses an optional birthdate override; a nil input
+// keeps the stored value and an empty string clears it.
+func profileBirthdate(input *string, current *time.Time) (*time.Time, error) {
+	if input == nil {
+		return current, nil
+	}
+	raw := strings.TrimSpace(*input)
+	if raw == "" {
+		return nil, nil
+	}
+	bd, err := time.Parse(time.DateOnly, raw)
+	if err != nil || bd.Format(time.DateOnly) != raw {
+		return nil, badInputf("birthdate must be YYYY-MM-DD")
+	}
+	if bd.After(time.Now()) || bd.Year() < 1900 {
+		return nil, badInputf("birthdate is out of range")
+	}
+	return &bd, nil
 }
 
 // userByID reloads a user and wraps it in a resolver, marking protected

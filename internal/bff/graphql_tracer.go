@@ -66,7 +66,9 @@ func (t *graphQLTracer) TraceField(ctx context.Context, _, typeName, fieldName s
 		l.add()
 	}
 	if trivial {
-		return ctx, func(*gqlerrors.QueryError) {}
+		return ctx, func(*gqlerrors.QueryError) {
+			// Trivial fields have no span to finish.
+		}
 	}
 	opType, _ := ctx.Value(opTypeContextKey{}).(string)
 	switch typeName {

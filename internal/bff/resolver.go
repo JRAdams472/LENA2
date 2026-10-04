@@ -23,7 +23,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
-	"github.com/JRAdams472/LENA2/internal/idempotency"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/async"
@@ -567,7 +566,7 @@ func (r *userResolver) Birthdate() *string {
 	if r.u.Birthdate == nil {
 		return nil
 	}
-	s := r.u.Birthdate.Format("2006-01-02")
+	s := r.u.Birthdate.Format(time.DateOnly)
 	return &s
 }
 
@@ -739,15 +738,19 @@ func loadItems(ctx context.Context, inv ItemReader, itemIDs []int64) (map[int64]
 	return items, nil
 }
 
-// loadItemChildren batch-loads the brand, category, nutrient, flavor and
-// ingredient rows referenced by items, plus the allergen knowledge needed
-// to render flags and warnings. householdID scopes the override-aware
-// item -> ingredient resolution and the member records (pass 0 — with nil
-// id/up — for catalog-only loads like admin browse). extraIngredientIDs
-// are entity-line ingredients not reachable through the items (recipe,
-// slot, grocery and event lines) so their flags batch-load too.
-func loadItemChildren(ctx context.Context, inv ItemReader, id IdentityService, up UserPrefsService, items []inventory.Item, householdID int64, extraIngredientIDs []int64) (*itemChildren, error) {
-	ch := &itemChildren{
+// sortedIDs returns m's keys in ascending order so the batch lookups that
+// follow always see a deterministic input list.
+func sortedIDs[V any](m map[int64]V) []int64 {
+	ids := make([]int64, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func newItemChildren() *itemChildren {
+	return &itemChildren{
 		brands:      make(map[int64]inventory.Brand),
 		categories:  make(map[int64]inventory.Category),
 		nutrients:   make(map[int64][]inventory.FoodNutrient),
@@ -758,6 +761,108 @@ func loadItemChildren(ctx context.Context, inv ItemReader, id IdentityService, u
 		ingredients: make(map[int64]inventory.Ingredient),
 		resolved:    make(map[int64]*int64),
 	}
+}
+
+// itemIDSets holds the sorted ID collections derived from a set of
+// catalog items for the child batch loads.
+type itemIDSets struct {
+	itemIDs     []int64
+	brandIDs    []int64
+	categoryIDs []int64
+	unitIDs     []int64
+}
+
+func collectItemIDSets(items []inventory.Item) itemIDSets {
+	itemIDs := make([]int64, len(items))
+	unitSet := make(map[int64]bool)
+	brandSet := make(map[int64]bool)
+	categorySet := make(map[int64]bool)
+	for i, it := range items {
+		itemIDs[i] = it.ItemID
+		if it.BrandID != nil {
+			brandSet[*it.BrandID] = true
+		}
+		categorySet[it.CategoryID] = true
+		if it.UnitID != 0 {
+			unitSet[it.UnitID] = true
+		}
+	}
+	slices.Sort(itemIDs)
+	return itemIDSets{
+		itemIDs:     itemIDs,
+		brandIDs:    sortedIDs(brandSet),
+		categoryIDs: sortedIDs(categorySet),
+		unitIDs:     sortedIDs(unitSet),
+	}
+}
+
+// loadCatalogRows batch-loads the item children keyed off the items' own
+// foreign keys: brands, categories, nutrients, flavors and units.
+func (ch *itemChildren) loadCatalogRows(ctx context.Context, inv ItemReader, sets itemIDSets) error {
+	if len(sets.brandIDs) > 0 {
+		brands, err := inv.GetBrandsByIDs(ctx, sets.brandIDs)
+		if err != nil {
+			return err
+		}
+		for _, b := range brands {
+			ch.brands[b.BrandID] = b
+		}
+	}
+	categories, err := inv.GetCategoriesByIDs(ctx, sets.categoryIDs)
+	if err != nil {
+		return err
+	}
+	for _, c := range categories {
+		ch.categories[c.CategoryID] = c
+	}
+	nutrients, err := inv.ListFoodNutrientsByItems(ctx, sets.itemIDs)
+	if err != nil {
+		return err
+	}
+	for _, n := range nutrients {
+		ch.nutrients[n.ItemID] = append(ch.nutrients[n.ItemID], n)
+	}
+	flavors, err := inv.ListFoodFlavorsByItems(ctx, sets.itemIDs)
+	if err != nil {
+		return err
+	}
+	for _, f := range flavors {
+		ch.flavors[f.ItemID] = append(ch.flavors[f.ItemID], f)
+	}
+	ch.units, err = loadUnits(ctx, inv, sets.unitIDs)
+	return err
+}
+
+// mergedIngredientIDs unions each item's catalog link, the override-aware
+// resolved ingredient, and caller-supplied extras into the sorted ID list
+// the ingredient and flag batch loads share.
+func mergedIngredientIDs(items []inventory.Item, resolved map[int64]*int64, extra []int64) []int64 {
+	set := make(map[int64]bool)
+	for _, it := range items {
+		if it.IngredientID != nil {
+			set[*it.IngredientID] = true
+		}
+	}
+	for _, ingID := range resolved {
+		if ingID != nil {
+			set[*ingID] = true
+		}
+	}
+	for _, ingID := range extra {
+		set[ingID] = true
+	}
+	return sortedIDs(set)
+}
+
+// loadItemChildren batch-loads the brand, category, nutrient, flavor and
+// ingredient rows referenced by items, plus the allergen knowledge needed
+// to render flags and warnings. householdID scopes the override-aware
+// item -> ingredient resolution and the member records (pass 0 — with nil
+// id/up — for catalog-only loads like admin browse). extraIngredientIDs
+// are entity-line ingredients not reachable through the items (recipe,
+// slot, grocery and event lines) so their flags batch-load too.
+func loadItemChildren(ctx context.Context, inv ItemReader, id IdentityService, up UserPrefsService, items []inventory.Item, householdID int64, extraIngredientIDs []int64) (*itemChildren, error) {
+	ch := newItemChildren()
 	if len(items) == 0 {
 		// Ingredient-only entity sets (e.g. a recipe whose lines are all
 		// ingredient-keyed) still need their flags and warnings.
@@ -769,101 +874,24 @@ func loadItemChildren(ctx context.Context, inv ItemReader, id IdentityService, u
 		}
 		return ch, nil
 	}
-	itemIDs := make([]int64, len(items))
-	unitIDSet := make(map[int64]bool)
-	brandIDSet := make(map[int64]bool)
-	categoryIDSet := make(map[int64]bool)
-	for i, it := range items {
-		itemIDs[i] = it.ItemID
-		if it.BrandID != nil {
-			brandIDSet[*it.BrandID] = true
-		}
-		categoryIDSet[it.CategoryID] = true
-		if it.UnitID != 0 {
-			unitIDSet[it.UnitID] = true
-		}
-	}
-	brandIDs := make([]int64, 0, len(brandIDSet))
-	for id := range brandIDSet {
-		brandIDs = append(brandIDs, id)
-	}
-	slices.Sort(brandIDs)
-	categoryIDs := make([]int64, 0, len(categoryIDSet))
-	for id := range categoryIDSet {
-		categoryIDs = append(categoryIDs, id)
-	}
-	slices.Sort(categoryIDs)
-	slices.Sort(itemIDs)
-	if len(brandIDs) > 0 {
-		brands, err := inv.GetBrandsByIDs(ctx, brandIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, b := range brands {
-			ch.brands[b.BrandID] = b
-		}
-	}
-	categories, err := inv.GetCategoriesByIDs(ctx, categoryIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, c := range categories {
-		ch.categories[c.CategoryID] = c
-	}
-	nutrients, err := inv.ListFoodNutrientsByItems(ctx, itemIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, n := range nutrients {
-		ch.nutrients[n.ItemID] = append(ch.nutrients[n.ItemID], n)
-	}
-	flavors, err := inv.ListFoodFlavorsByItems(ctx, itemIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range flavors {
-		ch.flavors[f.ItemID] = append(ch.flavors[f.ItemID], f)
-	}
-	unitIDs := make([]int64, 0, len(unitIDSet))
-	for id := range unitIDSet {
-		unitIDs = append(unitIDs, id)
-	}
-	slices.Sort(unitIDs)
-	ch.units, err = loadUnits(ctx, inv, unitIDs)
-	if err != nil {
+	sets := collectItemIDSets(items)
+	if err := ch.loadCatalogRows(ctx, inv, sets); err != nil {
 		return nil, err
 	}
 	// Resolved (override-aware) ingredients plus the catalog link itself —
 	// the union feeds both the ingredient and householdIngredient fields.
-	resolved, err := inv.ResolveItemIngredients(ctx, householdID, itemIDs)
+	resolved, err := inv.ResolveItemIngredients(ctx, householdID, sets.itemIDs)
 	if err != nil {
 		return nil, err
 	}
 	ch.resolved = resolved
-	ingredientIDSet := make(map[int64]bool)
-	for _, it := range items {
-		if it.IngredientID != nil {
-			ingredientIDSet[*it.IngredientID] = true
-		}
-	}
-	for _, ingID := range resolved {
-		if ingID != nil {
-			ingredientIDSet[*ingID] = true
-		}
-	}
-	for _, ingID := range extraIngredientIDs {
-		ingredientIDSet[ingID] = true
-	}
-	ingredientIDs := make([]int64, 0, len(ingredientIDSet))
-	for id := range ingredientIDSet {
-		ingredientIDs = append(ingredientIDs, id)
-	}
+	ingredientIDs := mergedIngredientIDs(items, resolved, extraIngredientIDs)
 	ch.ingredients, err = loadIngredients(ctx, inv, ingredientIDs)
 	if err != nil {
 		return nil, err
 	}
 	ch.as = &allergySource{inv: inv, id: id, up: up, householdID: householdID}
-	ch.ac, err = ch.as.loadAllergyContext(ctx, ingredientIDs, itemIDs, resolved)
+	ch.ac, err = ch.as.loadAllergyContext(ctx, ingredientIDs, sets.itemIDs, resolved)
 	if err != nil {
 		return nil, err
 	}
@@ -894,16 +922,21 @@ type recipeChildren struct {
 	summaries    map[int64]recipe.RatingSummary
 }
 
-// loadRecipeChildren batch-loads the recipes, their items and steps, the
-// current user's favorite flags, and the catalog rows for every item those
-// recipes reference. The returned itemID set is merged into extraItemIDs so
-// callers can also resolve items referenced from elsewhere (e.g. meal slot
-// overrides) with the same maps. householdID scopes override-aware
-// item -> ingredient resolution inside the batch-loaded item children.
-// extraIngredientIDs are line ingredients outside recipe_item (slot/event
-// lines) so their allergen flags batch-load too.
-func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsService, id IdentityService, inv ItemReader, userID, householdID int64, recipeIDs, extraItemIDs, extraIngredientIDs []int64) (*recipeChildren, error) {
-	rc := &recipeChildren{
+// recipeChildLoaders bundles the domain services the recipe child loaders
+// read through, keeping the loader signatures short.
+type recipeChildLoaders struct {
+	rec RecipeService
+	up  UserPrefsService
+	id  IdentityService
+	inv ItemReader
+}
+
+func (r *Resolver) childLoaders() recipeChildLoaders {
+	return recipeChildLoaders{rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService, inv: r.InventoryService}
+}
+
+func newRecipeChildren() *recipeChildren {
+	return &recipeChildren{
 		recipes:      make(map[int64]recipe.Recipe),
 		itemsBy:      make(map[int64][]recipe.RecipeItem),
 		stepsBy:      make(map[int64][]recipe.RecipeStep),
@@ -913,77 +946,129 @@ func loadRecipeChildren(ctx context.Context, rec RecipeService, up UserPrefsServ
 		myRatings:    make(map[int64]int16),
 		summaries:    make(map[int64]recipe.RatingSummary),
 	}
+}
+
+// loadRecipeRows fills the recipe-side maps (recipes, items, steps,
+// categories, favorites, ratings) for the given recipe IDs.
+func (rc *recipeChildren) loadRecipeRows(ctx context.Context, l recipeChildLoaders, userID int64, recipeIDs []int64) error {
+	recipes, err := l.rec.GetRecipesByIDs(ctx, recipeIDs)
+	if err != nil {
+		return err
+	}
+	for _, rcp := range recipes {
+		rc.recipes[rcp.RecipeID] = rcp
+	}
+	items, err := l.rec.ListRecipeItemsByRecipes(ctx, recipeIDs)
+	if err != nil {
+		return err
+	}
+	for _, ri := range items {
+		rc.itemsBy[ri.RecipeID] = append(rc.itemsBy[ri.RecipeID], ri)
+	}
+	steps, err := l.rec.ListRecipeStepsByRecipes(ctx, recipeIDs)
+	if err != nil {
+		return err
+	}
+	for _, s := range steps {
+		rc.stepsBy[s.RecipeID] = append(rc.stepsBy[s.RecipeID], s)
+	}
+	cats, err := l.rec.ListCategoriesForRecipes(ctx, recipeIDs)
+	if err != nil {
+		return err
+	}
+	rc.categoriesBy = cats
+	if l.up != nil {
+		favs, err := l.up.ListRecipeFavorites(ctx, userID, recipeIDs)
+		if err != nil {
+			return err
+		}
+		for _, f := range favs {
+			rc.favorites[f.RecipeID] = f.IsFavorite
+		}
+	}
+	return loadRecipeRatings(ctx, l.rec, userID, recipeIDs, rc)
+}
+
+// loadRecipeChildren batch-loads the recipes, their items and steps, the
+// current user's favorite flags, and the catalog rows for every item those
+// recipes reference. The returned itemID set is merged into extraItemIDs so
+// callers can also resolve items referenced from elsewhere (e.g. meal slot
+// overrides) with the same maps. householdID scopes override-aware
+// item -> ingredient resolution inside the batch-loaded item children.
+// extraIngredientIDs are line ingredients outside recipe_item (slot/event
+// lines) so their allergen flags batch-load too.
+func loadRecipeChildren(ctx context.Context, l recipeChildLoaders, userID, householdID int64, recipeIDs, extraItemIDs, extraIngredientIDs []int64) (*recipeChildren, error) {
+	rc := newRecipeChildren()
 	if len(recipeIDs) > 0 {
-		recipes, err := rec.GetRecipesByIDs(ctx, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, rcp := range recipes {
-			rc.recipes[rcp.RecipeID] = rcp
-		}
-		items, err := rec.ListRecipeItemsByRecipes(ctx, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, ri := range items {
-			rc.itemsBy[ri.RecipeID] = append(rc.itemsBy[ri.RecipeID], ri)
-		}
-		steps, err := rec.ListRecipeStepsByRecipes(ctx, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range steps {
-			rc.stepsBy[s.RecipeID] = append(rc.stepsBy[s.RecipeID], s)
-		}
-		cats, err := rec.ListCategoriesForRecipes(ctx, recipeIDs)
-		if err != nil {
-			return nil, err
-		}
-		rc.categoriesBy = cats
-		if up != nil {
-			favs, err := up.ListRecipeFavorites(ctx, userID, recipeIDs)
-			if err != nil {
-				return nil, err
-			}
-			for _, f := range favs {
-				rc.favorites[f.RecipeID] = f.IsFavorite
-			}
-		}
-		if err := loadRecipeRatings(ctx, rec, userID, recipeIDs, rc); err != nil {
+		if err := rc.loadRecipeRows(ctx, l, userID, recipeIDs); err != nil {
 			return nil, err
 		}
 	}
-	if err := loadRecipeInventoryChildren(ctx, inv, id, up, rc, householdID, extraItemIDs, extraIngredientIDs); err != nil {
+	if err := loadRecipeInventoryChildren(ctx, l, rc, householdID, extraItemIDs, extraIngredientIDs); err != nil {
 		return nil, err
 	}
 	return rc, nil
+}
+
+// recipeItemIDs returns the sorted union of extra IDs and every recipe
+// item's ItemID.
+func recipeItemIDs(itemsBy map[int64][]recipe.RecipeItem, extra []int64) []int64 {
+	set := make(map[int64]bool, len(extra))
+	for _, id := range extra {
+		set[id] = true
+	}
+	for _, items := range itemsBy {
+		for _, ri := range items {
+			if ri.ItemID != nil {
+				set[*ri.ItemID] = true
+			}
+		}
+	}
+	return sortedIDs(set)
+}
+
+// recipeItemIngredientIDs returns the sorted union of extra IDs and every
+// recipe item's IngredientID — the line ingredients that feed the allergen
+// flag load even when no item binds them.
+func recipeItemIngredientIDs(itemsBy map[int64][]recipe.RecipeItem, extra []int64) []int64 {
+	set := make(map[int64]bool, len(extra))
+	for _, id := range extra {
+		set[id] = true
+	}
+	for _, items := range itemsBy {
+		for _, ri := range items {
+			if ri.IngredientID != nil {
+				set[*ri.IngredientID] = true
+			}
+		}
+	}
+	return sortedIDs(set)
+}
+
+// recipeItemUnitIDs returns the sorted set of unit IDs carried by the
+// recipe items themselves so unit display never issues a query per row.
+func recipeItemUnitIDs(itemsBy map[int64][]recipe.RecipeItem) []int64 {
+	set := make(map[int64]bool)
+	for _, items := range itemsBy {
+		for _, ri := range items {
+			if ri.UnitID != 0 {
+				set[ri.UnitID] = true
+			}
+		}
+	}
+	return sortedIDs(set)
 }
 
 // loadRecipeInventoryChildren batch-loads the inventory-side children
 // referenced by rc.itemsBy (plus any extra item/ingredient IDs): catalog
 // items, their children, recipe-item units, and brand-agnostic
 // ingredients.
-func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, id IdentityService, up UserPrefsService, rc *recipeChildren, householdID int64, extraItemIDs, extraIngredientIDs []int64) error {
-	itemIDSet := make(map[int64]bool)
-	for _, id := range extraItemIDs {
-		itemIDSet[id] = true
-	}
-	for _, items := range rc.itemsBy {
-		for _, ri := range items {
-			if ri.ItemID != nil {
-				itemIDSet[*ri.ItemID] = true
-			}
-		}
-	}
-	itemIDs := make([]int64, 0, len(itemIDSet))
-	for id := range itemIDSet {
-		itemIDs = append(itemIDs, id)
-	}
-	slices.Sort(itemIDs)
-	if inv == nil {
+func loadRecipeInventoryChildren(ctx context.Context, l recipeChildLoaders, rc *recipeChildren, householdID int64, extraItemIDs, extraIngredientIDs []int64) error {
+	if l.inv == nil {
 		return nil
 	}
-	items, err := loadItems(ctx, inv, itemIDs)
+	itemIDs := recipeItemIDs(rc.itemsBy, extraItemIDs)
+	items, err := loadItems(ctx, l.inv, itemIDs)
 	if err != nil {
 		return err
 	}
@@ -992,68 +1077,19 @@ func loadRecipeInventoryChildren(ctx context.Context, inv ItemReader, id Identit
 	for _, it := range items {
 		list = append(list, it)
 	}
-	// Line ingredients (recipe lines plus caller extras like slot/event
-	// lines) feed the allergen flag load even when no item binds them.
-	extraIngredientIDSet := make(map[int64]bool, len(extraIngredientIDs))
-	for _, id := range extraIngredientIDs {
-		extraIngredientIDSet[id] = true
-	}
-	for _, items := range rc.itemsBy {
-		for _, ri := range items {
-			if ri.IngredientID != nil {
-				extraIngredientIDSet[*ri.IngredientID] = true
-			}
-		}
-	}
-	lineIngredientIDs := make([]int64, 0, len(extraIngredientIDSet))
-	for id := range extraIngredientIDSet {
-		lineIngredientIDs = append(lineIngredientIDs, id)
-	}
-	slices.Sort(lineIngredientIDs)
-	ch, err := loadItemChildren(ctx, inv, id, up, list, householdID, lineIngredientIDs)
+	ch, err := loadItemChildren(ctx, l.inv, l.id, l.up, list, householdID, recipeItemIngredientIDs(rc.itemsBy, extraIngredientIDs))
 	if err != nil {
 		return err
 	}
 	rc.itemChildren = ch
-	// Recipe items carry their own unit_id; preload them alongside the
-	// catalog-item units so unit display never issues a query per row.
-	unitIDSet := make(map[int64]bool)
-	for _, items := range rc.itemsBy {
-		for _, ri := range items {
-			if ri.UnitID != 0 {
-				unitIDSet[ri.UnitID] = true
-			}
-		}
-	}
-	unitIDs := make([]int64, 0, len(unitIDSet))
-	for id := range unitIDSet {
-		unitIDs = append(unitIDs, id)
-	}
-	slices.Sort(unitIDs)
-	rc.units, err = loadUnits(ctx, inv, unitIDs)
+	rc.units, err = loadUnits(ctx, l.inv, recipeItemUnitIDs(rc.itemsBy))
 	if err != nil {
 		return err
 	}
 	// Recipe items may reference brand-agnostic ingredients; batch-load
 	// them so nested ingredient resolvers never issue a query per row.
-	ingredientIDSet := make(map[int64]bool)
-	for _, items := range rc.itemsBy {
-		for _, ri := range items {
-			if ri.IngredientID != nil {
-				ingredientIDSet[*ri.IngredientID] = true
-			}
-		}
-	}
-	ingredientIDs := make([]int64, 0, len(ingredientIDSet))
-	for id := range ingredientIDSet {
-		ingredientIDs = append(ingredientIDs, id)
-	}
-	slices.Sort(ingredientIDs)
-	rc.ingredients, err = loadIngredients(ctx, inv, ingredientIDs)
-	if err != nil {
-		return err
-	}
-	return nil
+	rc.ingredients, err = loadIngredients(ctx, l.inv, recipeItemIngredientIDs(rc.itemsBy, nil))
+	return err
 }
 
 // loadItemSelectionCounts populates the per-user and global selection count
@@ -1290,58 +1326,24 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, aiTimeout time.Durati
 		timeout = 10 * time.Second
 	}
 	return func(c echo.Context) error {
-		// Read the body once up front: the dedup layer hashes the exact
-		// bytes, so they must be captured before decoding.
-		body, err := io.ReadAll(c.Request().Body)
-		var req struct {
-			Query         string                 `json:"query"`
-			Variables     map[string]interface{} `json:"variables"`
-			OperationName string                 `json:"operationName"`
-		}
-		if err != nil || json.Unmarshal(body, &req) != nil {
+		req, body, ok := decodeGraphQLRequest(c)
+		if !ok {
 			// Return bind failures in GraphQL error shape so clients get a
 			// consistent contract instead of an Echo HTML error page.
-			return c.JSON(http.StatusOK, map[string]any{
-				"errors": []map[string]any{{
-					"message":    "invalid request body",
-					"extensions": map[string]any{"code": codeBadUserInput},
-				}},
-			})
+			return c.JSON(http.StatusOK, badRequestErrorBody())
 		}
 
 		// Mutation dedup: a replayed response skips execution entirely, and
 		// a held claim caches the response for the next identical retry.
-		var claim *idemClaim
-		if r.IdemStore != nil && isMutationOperation(req.Query) {
-			if u, uerr := userFromContext(c.Request().Context()); uerr == nil {
-				var stored *idempotency.Stored
-				var rej *idemRejection
-				claim, stored, rej = r.beginDedup(c, u.UserID, body)
-				if rej != nil {
-					return c.JSON(http.StatusOK, idemErrorBody(rej.msg, rej.code))
-				}
-				if stored != nil {
-					c.Response().Header().Set(headerIdempotencyReplayed, "true")
-					return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, stored.Body)
-				}
-				if claim != nil {
-					defer claim.abandonIfPending()
-				}
-			}
+		claim, handled, err := r.dedupMutation(c, req, body)
+		if handled || err != nil {
+			return err
+		}
+		if claim != nil {
+			defer claim.abandonIfPending()
 		}
 
-		execTimeout := timeout
-		if aiTimeout > timeout && usesAIProvider(req.Query) {
-			execTimeout = aiTimeout
-		}
-		ctx, cancel := context.WithTimeoutCause(c.Request().Context(), execTimeout, errQueryTimeout)
-		limiter := &costLimiter{max: maxCost, fire: cancel}
-		ctx = context.WithValue(ctx, costLimiterContextKey{}, limiter)
-
-		resp := parsed.Exec(ctx, req.Query, req.OperationName, req.Variables)
-		cancel()
-		sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
-		applyLimitErrors(ctx, resp, limiter)
+		resp := execGraphQL(c, parsed, req, timeout, aiTimeout, maxCost)
 		out, err := json.Marshal(resp)
 		if err != nil {
 			return err
@@ -1351,6 +1353,73 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, aiTimeout time.Durati
 		}
 		return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, out)
 	}, nil
+}
+
+// graphQLRequest is the decoded GraphQL request body.
+type graphQLRequest struct {
+	Query         string                 `json:"query"`
+	Variables     map[string]interface{} `json:"variables"`
+	OperationName string                 `json:"operationName"`
+}
+
+// decodeGraphQLRequest reads the body once up front — the dedup layer
+// hashes the exact bytes, so they must be captured before decoding — and
+// returns the parsed request. ok is false on read/bind failure.
+func decodeGraphQLRequest(c echo.Context) (graphQLRequest, []byte, bool) {
+	body, err := io.ReadAll(c.Request().Body)
+	var req graphQLRequest
+	ok := err == nil && json.Unmarshal(body, &req) == nil
+	return req, body, ok
+}
+
+// badRequestErrorBody is the GraphQL error payload for a malformed body.
+func badRequestErrorBody() map[string]any {
+	return map[string]any{
+		"errors": []map[string]any{{
+			"message":    "invalid request body",
+			"extensions": map[string]any{"code": codeBadUserInput},
+		}},
+	}
+}
+
+// dedupMutation runs the mutation dedup gate. handled reports whether the
+// response was already written (rejected or replayed), in which case err
+// carries the write result.
+func (r *Resolver) dedupMutation(c echo.Context, req graphQLRequest, body []byte) (*idemClaim, bool, error) {
+	if r.IdemStore == nil || !isMutationOperation(req.Query) {
+		return nil, false, nil
+	}
+	u, uerr := userFromContext(c.Request().Context())
+	if uerr != nil {
+		return nil, false, nil
+	}
+	claim, stored, rej := r.beginDedup(c, u.UserID, body)
+	if rej != nil {
+		return nil, true, c.JSON(http.StatusOK, idemErrorBody(rej.msg, rej.code))
+	}
+	if stored != nil {
+		c.Response().Header().Set(headerIdempotencyReplayed, "true")
+		return nil, true, c.Blob(http.StatusOK, echo.MIMEApplicationJSON, stored.Body)
+	}
+	return claim, false, nil
+}
+
+// execGraphQL executes the request under the time/cost budgets and
+// sanitizes the response errors.
+func execGraphQL(c echo.Context, parsed *graphql.Schema, req graphQLRequest, timeout, aiTimeout time.Duration, maxCost int) *graphql.Response {
+	execTimeout := timeout
+	if aiTimeout > timeout && usesAIProvider(req.Query) {
+		execTimeout = aiTimeout
+	}
+	ctx, cancel := context.WithTimeoutCause(c.Request().Context(), execTimeout, errQueryTimeout)
+	limiter := &costLimiter{max: maxCost, fire: cancel}
+	ctx = context.WithValue(ctx, costLimiterContextKey{}, limiter)
+
+	resp := parsed.Exec(ctx, req.Query, req.OperationName, req.Variables)
+	cancel()
+	sanitizeQueryErrors(resp.Errors, c.Response().Header().Get(echo.HeaderXRequestID))
+	applyLimitErrors(ctx, resp, limiter)
+	return resp
 }
 
 // applyLimitErrors appends the deadline/cost GraphQL error when the

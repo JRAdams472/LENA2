@@ -34,7 +34,7 @@ func (r *Resolver) Recipe(ctx context.Context, args struct{ ID graphql.ID }) (*r
 	}
 	// Single-recipe reads preload the same child graph as list pages so
 	// nested field resolvers never fall back to a query per row.
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, []int64{id}, nil, nil)
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID, []int64{id}, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		return nil, err
 	}
 	if args.Servings <= 0 {
-		return nil, badInputf("servings must be positive")
+		return nil, badInputf(msgServingsPositive)
 	}
 
 	scaled, err := r.RecipeService.ScaleRecipe(ctx, id, args.Servings)
@@ -94,7 +94,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 
 	// Reuse the shared inventory-child loader so scaledRecipe.items.item
 	// and friends never degrade to per-row queries.
-	if err := loadRecipeInventoryChildren(ctx, r.InventoryService, r.IdentityService, r.UserPrefsService, rc, u.HouseholdID, nil, nil); err != nil {
+	if err := loadRecipeInventoryChildren(ctx, r.childLoaders(), rc, u.HouseholdID, nil, nil); err != nil {
 		return nil, err
 	}
 
@@ -146,9 +146,29 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		search.CategoryIDs = ids
 	}
 
-	// Engagement ranking inputs — analytics IDs arrive pre-sorted by signal
-	// strength so array_position doubles as the in-tier tiebreaker. Failures
-	// degrade to name order rather than failing the listing.
+	r.applyEngagementFilters(ctx, u, &search, args.MealType, args.IsFavorite)
+
+	recipes, total, err := r.runRecipeSearch(ctx, search, recipeSearchMode(args.SearchMode))
+	if err != nil {
+		return nil, err
+	}
+	recipeIDs := distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID })
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID, recipeIDs, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, recipeIDs, rc); err != nil {
+		return nil, err
+	}
+	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// applyEngagementFilters folds the caller's analytics, favorites and
+// meal-type signals into the search. Engagement ranking inputs arrive
+// pre-sorted by signal strength so array_position doubles as the in-tier
+// tiebreaker; service failures degrade to name order rather than failing
+// the listing.
+func (r *Resolver) applyEngagementFilters(ctx context.Context, u currentuser.User, search *recipe.RecipeSearch, mealType *string, isFavorite *bool) {
 	if r.AnalyticsService != nil {
 		if eng, err := r.AnalyticsService.RecipeEngagementSets(ctx, u.UserID, u.HouseholdID); err == nil {
 			search.UsedIDs = eng.UsedIDs
@@ -163,72 +183,69 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 		}
 	}
 	search.FavoriteIDs = favoriteIDs
-	if args.MealType != nil {
-		if id, err := r.courseCategoryID(ctx, *args.MealType); err == nil && id != nil {
+	if mealType != nil {
+		if id, err := r.courseCategoryID(ctx, *mealType); err == nil && id != nil {
 			search.CourseBoostID = id
 		}
 	}
-	if args.IsFavorite != nil {
-		if *args.IsFavorite {
+	if isFavorite != nil {
+		if *isFavorite {
 			search.IncludeIDs = favoriteIDs
 		} else {
 			search.ExcludeIDs = favoriteIDs
 		}
 	}
+}
 
-	var recipes []recipe.Recipe
-	var total int64
-	if recipeSearchMode(args.SearchMode) == recipeSearchModeSemantic && search.Search != "" {
-		semantic := recipe.SemanticSearch{
-			Active:      search.Active,
-			CategoryIDs: search.CategoryIDs,
-			IncludeIDs:  search.IncludeIDs,
-			ExcludeIDs:  search.ExcludeIDs,
-			FavoriteIDs: search.FavoriteIDs,
-			UsedIDs:     search.UsedIDs,
-			ViewedIDs:   search.ViewedIDs,
-			Limit:       search.Limit,
-			Offset:      search.Offset,
-		}
-		if r.RecipeEmbedder == nil {
-			return nil, errUnavailablef("semantic search isn't available on this deployment")
-		}
-		vec, err := r.RecipeEmbedder.EmbedQuery(ctx, search.Search)
+// runRecipeSearch dispatches to embedding-ranked semantic search or the
+// keyword path, returning page rows plus the total hit count.
+func (r *Resolver) runRecipeSearch(ctx context.Context, search recipe.RecipeSearch, mode string) ([]recipe.Recipe, int64, error) {
+	if mode != recipeSearchModeSemantic || search.Search == "" {
+		recipes, err := r.RecipeService.SearchRecipes(ctx, search)
 		if err != nil {
-			return nil, errUnavailablef("semantic search isn't available on this deployment")
+			return nil, 0, err
 		}
-		semantic.QueryVector = vec
-		results, err := r.RecipeService.SearchRecipesSemantic(ctx, semantic)
-		if err != nil {
-			return nil, err
-		}
-		recipes = make([]recipe.Recipe, len(results))
-		for i, res := range results {
-			recipes[i] = res.Recipe
-		}
-		total, err = r.RecipeService.CountSearchRecipesSemantic(ctx, semantic)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		recipes, err = r.RecipeService.SearchRecipes(ctx, search)
-		if err != nil {
-			return nil, err
-		}
-		total, err = r.RecipeService.CountSearchRecipes(ctx, search)
-		if err != nil {
-			return nil, err
-		}
+		total, err := r.RecipeService.CountSearchRecipes(ctx, search)
+		return recipes, total, err
 	}
-	recipeIDs := distinctIDs(recipes, func(rp recipe.Recipe) *int64 { return &rp.RecipeID })
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil, nil)
+	return r.runSemanticSearch(ctx, search)
+}
+
+// runSemanticSearch embeds the search text and ranks by cosine distance
+// blended with the engagement bump.
+func (r *Resolver) runSemanticSearch(ctx context.Context, search recipe.RecipeSearch) ([]recipe.Recipe, int64, error) {
+	if r.RecipeEmbedder == nil {
+		return nil, 0, errUnavailablef("semantic search isn't available on this deployment")
+	}
+	vec, err := r.RecipeEmbedder.EmbedQuery(ctx, search.Search)
 	if err != nil {
-		return nil, err
+		return nil, 0, errUnavailablef("semantic search isn't available on this deployment")
 	}
-	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, recipeIDs, rc); err != nil {
-		return nil, err
+	semantic := recipe.SemanticSearch{
+		Active:      search.Active,
+		CategoryIDs: search.CategoryIDs,
+		IncludeIDs:  search.IncludeIDs,
+		ExcludeIDs:  search.ExcludeIDs,
+		FavoriteIDs: search.FavoriteIDs,
+		UsedIDs:     search.UsedIDs,
+		ViewedIDs:   search.ViewedIDs,
+		Limit:       search.Limit,
+		Offset:      search.Offset,
+		QueryVector: vec,
 	}
-	return &recipePageResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipes: recipes, rc: rc, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	results, err := r.RecipeService.SearchRecipesSemantic(ctx, semantic)
+	if err != nil {
+		return nil, 0, err
+	}
+	recipes := make([]recipe.Recipe, len(results))
+	for i, res := range results {
+		recipes[i] = res.Recipe
+	}
+	total, err := r.RecipeService.CountSearchRecipesSemantic(ctx, semantic)
+	if err != nil {
+		return nil, 0, err
+	}
+	return recipes, total, nil
 }
 
 // recipeSearchModeSemantic is the schema enum value that switches the
@@ -255,59 +272,63 @@ func (r *Resolver) SemanticSearchAvailable(ctx context.Context) (bool, error) {
 // types so the service can persist them inside one transaction. Unit names
 // are resolved to unit IDs via the shared unit catalog; unknown units are
 // rejected.
-func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
-	itemIDs := make([]*int64, len(items))
-	ingredientIDs := make([]*int64, len(items))
-	var brandOnly []int64
+// parseRecipeItemIDs extracts the optional item/ingredient IDs from each
+// input line — at least one is required per line — and lists the
+// brand-only item IDs for ingredient resolution.
+func parseRecipeItemIDs(items []recipeItemInput) (itemIDs, ingredientIDs []*int64, brandOnly []int64, err error) {
+	itemIDs = make([]*int64, len(items))
+	ingredientIDs = make([]*int64, len(items))
 	for i, ri := range items {
-		var err error
 		itemIDs[i], err = optionalID(ri.ItemID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		ingredientIDs[i], err = optionalID(ri.IngredientID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if itemIDs[i] == nil && ingredientIDs[i] == nil {
-			return nil, nil, badInputf("recipe item requires itemId or ingredientId")
+			return nil, nil, nil, badInputf("recipe item requires itemId or ingredientId")
 		}
 		if ingredientIDs[i] == nil {
 			brandOnly = append(brandOnly, *itemIDs[i])
 		}
 	}
-	// Brand-only inputs resolve to their linked ingredient in one batch so
-	// grocery aggregation keys them correctly. Unlinked items stay
-	// brand-only — the link may not exist yet.
-	var resolved map[int64]*int64
-	if len(brandOnly) > 0 && inv != nil {
-		householdID := int64(0)
-		if u, ok := currentuser.FromContext(ctx); ok {
-			householdID = u.HouseholdID
-		}
-		var err error
-		resolved, err = inv.ResolveItemIngredients(ctx, householdID, brandOnly)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
+	return itemIDs, ingredientIDs, brandOnly, nil
+}
 
-	outItems := make([]recipe.RecipeItem, 0, len(items))
+// resolveBrandOnlyIngredients batch-resolves brand-only inputs to their
+// linked ingredient so grocery aggregation keys them correctly. Unlinked
+// items stay brand-only — the link may not exist yet.
+func resolveBrandOnlyIngredients(ctx context.Context, inv ItemReader, brandOnly []int64) (map[int64]*int64, error) {
+	if len(brandOnly) == 0 || inv == nil {
+		return nil, nil
+	}
+	householdID := int64(0)
+	if u, ok := currentuser.FromContext(ctx); ok {
+		householdID = u.HouseholdID
+	}
+	return inv.ResolveItemIngredients(ctx, householdID, brandOnly)
+}
+
+// buildRecipeItems materializes the service rows, filling brand-only
+// ingredient links from the resolved map.
+func buildRecipeItems(ctx context.Context, inv ItemReader, items []recipeItemInput, itemIDs, ingredientIDs []*int64, resolved map[int64]*int64) ([]recipe.RecipeItem, error) {
+	out := make([]recipe.RecipeItem, 0, len(items))
 	for i, ri := range items {
-		itemID := itemIDs[i]
 		ingredientID := ingredientIDs[i]
 		if ingredientID == nil {
-			ingredientID = resolved[*itemID]
+			ingredientID = resolved[*itemIDs[i]]
 		}
 		unitID, err := resolveUnitID(ctx, inv, ri.Unit)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if ri.Quantity <= 0 {
-			return nil, nil, badInputf("item quantity must be positive")
+			return nil, badInputf("item quantity must be positive")
 		}
-		outItems = append(outItems, recipe.RecipeItem{
-			ItemID:       itemID,
+		out = append(out, recipe.RecipeItem{
+			ItemID:       itemIDs[i],
 			IngredientID: ingredientID,
 			Quantity:     ri.Quantity,
 			UnitID:       unitID,
@@ -317,12 +338,18 @@ func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItem
 			IsOptional:   boolValue(ri.IsOptional),
 		})
 	}
-	outSteps := make([]recipe.RecipeStep, 0, len(steps))
+	return out, nil
+}
+
+// buildRecipeSteps materializes the service rows, rejecting negative
+// durations.
+func buildRecipeSteps(steps []recipeStepInput) ([]recipe.RecipeStep, error) {
+	out := make([]recipe.RecipeStep, 0, len(steps))
 	for _, rs := range steps {
 		if rs.DurationMinutes != nil && *rs.DurationMinutes < 0 {
-			return nil, nil, badInputf("step %d durationMinutes must not be negative", rs.StepNumber)
+			return nil, badInputf("step %d durationMinutes must not be negative", rs.StepNumber)
 		}
-		outSteps = append(outSteps, recipe.RecipeStep{
+		out = append(out, recipe.RecipeStep{
 			StepNumber:          rs.StepNumber,
 			Instruction:         rs.Instruction,
 			DurationMinutes:     rs.DurationMinutes,
@@ -331,6 +358,26 @@ func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItem
 			DependsOnStepNumber: rs.DependsOnStepNumber,
 			Appliance:           derefString(rs.Appliance),
 		})
+	}
+	return out, nil
+}
+
+func parseRecipeChildren(ctx context.Context, inv ItemReader, items []recipeItemInput, steps []recipeStepInput) ([]recipe.RecipeItem, []recipe.RecipeStep, error) {
+	itemIDs, ingredientIDs, brandOnly, err := parseRecipeItemIDs(items)
+	if err != nil {
+		return nil, nil, err
+	}
+	resolved, err := resolveBrandOnlyIngredients(ctx, inv, brandOnly)
+	if err != nil {
+		return nil, nil, err
+	}
+	outItems, err := buildRecipeItems(ctx, inv, items, itemIDs, ingredientIDs, resolved)
+	if err != nil {
+		return nil, nil, err
+	}
+	outSteps, err := buildRecipeSteps(steps)
+	if err != nil {
+		return nil, nil, err
 	}
 	return outItems, outSteps, nil
 }
@@ -350,7 +397,7 @@ func (r *Resolver) CreateRecipe(ctx context.Context, args struct{ Input createRe
 		return nil, err
 	}
 	if s := args.Input.Servings; s != nil && *s <= 0 {
-		return nil, badInputf("servings must be positive")
+		return nil, badInputf(msgServingsPositive)
 	}
 	items, steps, err := parseRecipeChildren(ctx, r.InventoryService, args.Input.Items, args.Input.Steps)
 	if err != nil {
@@ -464,7 +511,7 @@ func mergeRecipePatch(existing recipe.Recipe, in createRecipeInput) (recipe.Reci
 	patch.CookTimeMinutes = coalescePtr(existing.CookTimeMinutes, in.CookTimeMinutes)
 	if in.Servings != nil {
 		if *in.Servings <= 0 {
-			return patch, badInputf("servings must be positive")
+			return patch, badInputf(msgServingsPositive)
 		}
 		patch.Servings = in.Servings
 	}
@@ -628,7 +675,7 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	}
 	recipeIDs, best := mergeRecommendations(sources, limit)
 
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, recipeIDs, nil, nil)
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID, recipeIDs, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1381,7 +1428,7 @@ func (r *Resolver) SetRecipeCategories(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID, []int64{recipeID}, nil, nil)
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID, []int64{recipeID}, nil, nil)
 	if err != nil {
 		return nil, err
 	}

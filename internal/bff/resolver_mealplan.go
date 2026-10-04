@@ -85,7 +85,7 @@ func (r *Resolver) loadMealPlanChildren(ctx context.Context, u currentuser.User,
 	}
 	// Recipe children (favorites) stay per-user; only the plan rows
 	// themselves are household-scoped.
-	rc, err := loadRecipeChildren(ctx, r.RecipeService, r.UserPrefsService, r.IdentityService, r.InventoryService, u.UserID, u.HouseholdID,
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID,
 		distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID }),
 		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.ItemID }),
 		distinctIDs(slotItems, func(si mealplan.MealSlotItem) *int64 { return si.IngredientID }))
@@ -277,7 +277,7 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 	if err != nil {
 		return nil, err
 	}
-	d, err := time.Parse("2006-01-02", args.Input.WeekStartDate)
+	d, err := time.Parse(time.DateOnly, args.Input.WeekStartDate)
 	if err != nil {
 		return nil, badInputf("invalid weekStartDate %q, want YYYY-MM-DD", args.Input.WeekStartDate)
 	}
@@ -324,7 +324,7 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 	}
 	weekStart := existing.WeekStartDate
 	if args.Input.WeekStartDate != "" {
-		if d, err := time.Parse("2006-01-02", args.Input.WeekStartDate); err == nil {
+		if d, err := time.Parse(time.DateOnly, args.Input.WeekStartDate); err == nil {
 			weekStart = d
 		} else {
 			return nil, badInputf("invalid weekStartDate %q, want YYYY-MM-DD", args.Input.WeekStartDate)
@@ -402,7 +402,7 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 		return nil, err
 	}
 	if s := args.Input.Servings; s != nil && *s <= 0 {
-		return nil, badInputf("servings must be positive")
+		return nil, badInputf(msgServingsPositive)
 	}
 	slot, err := r.MealPlanService.AddMealSlot(ctx, mealplan.MealSlot{
 		MealPlanID:      mealPlanID,
@@ -536,7 +536,7 @@ func (r *mealPlanResolver) ID() graphql.ID {
 
 func (r *mealPlanResolver) Name() string { return r.plan.Name }
 
-func (r *mealPlanResolver) WeekStartDate() string { return r.plan.WeekStartDate.Format("2006-01-02") }
+func (r *mealPlanResolver) WeekStartDate() string { return r.plan.WeekStartDate.Format(time.DateOnly) }
 
 func (r *mealPlanResolver) IsActive() bool { return r.plan.IsActive }
 
@@ -623,52 +623,60 @@ func (r *mealSlotResolver) Items(ctx context.Context) ([]*mealSlotItemResolver, 
 	return out, nil
 }
 
+// allergenInputs returns the slot's own items plus — when a recipe is
+// linked — the recipe's lines, together with an allergen context covering
+// them. It prefers the batch-loaded recipe children and lazy-loads only
+// when the plan page was not preloaded.
+func (r *mealSlotResolver) allergenInputs(ctx context.Context) (*allergyContext, []mealplan.MealSlotItem, []recipe.RecipeItem, error) {
+	if r.rc != nil && r.rc.itemChildren != nil && r.rc.itemChildren.ac != nil {
+		var recipeItems []recipe.RecipeItem
+		if r.slot.RecipeID != nil {
+			recipeItems = r.rc.itemsBy[*r.slot.RecipeID]
+		}
+		return r.rc.itemChildren.ac, r.items, recipeItems, nil
+	}
+	slotItems, err := r.mp.ListMealSlotItems(ctx, r.slot.SlotID, r.user.HouseholdID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var recipeItems []recipe.RecipeItem
+	if r.slot.RecipeID != nil {
+		recipeItems, err = r.rec.ListRecipeItems(ctx, *r.slot.RecipeID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	var ingredientIDs, itemIDs []int64
+	for _, si := range slotItems {
+		if si.IngredientID != nil {
+			ingredientIDs = append(ingredientIDs, *si.IngredientID)
+		}
+		if si.ItemID != nil {
+			itemIDs = append(itemIDs, *si.ItemID)
+		}
+	}
+	for _, ri := range recipeItems {
+		if ri.IngredientID != nil {
+			ingredientIDs = append(ingredientIDs, *ri.IngredientID)
+		}
+		if ri.ItemID != nil {
+			itemIDs = append(itemIDs, *ri.ItemID)
+		}
+	}
+	ac, err := lazyAllergenCtx(ctx, r.as, ingredientIDs, itemIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return ac, slotItems, recipeItems, nil
+}
+
 // allergenSet unions the slot's own item overrides and — when a recipe is
 // linked — the recipe's lines, so a planned meal warns on everything it
 // actually contains.
 func (r *mealSlotResolver) allergenSet(ctx context.Context) (*allergyContext, map[int64]string, error) {
-	var slotItems []mealplan.MealSlotItem
-	var recipeItems []recipe.RecipeItem
-	var ac *allergyContext
-	if r.rc != nil && r.rc.itemChildren != nil && r.rc.itemChildren.ac != nil {
-		ac = r.rc.itemChildren.ac
-		slotItems = r.items
-		if r.slot.RecipeID != nil {
-			recipeItems = r.rc.itemsBy[*r.slot.RecipeID]
-		}
-	} else {
-		var err error
-		slotItems, err = r.mp.ListMealSlotItems(ctx, r.slot.SlotID, r.user.HouseholdID)
-		if err != nil {
-			return nil, nil, err
-		}
-		if r.slot.RecipeID != nil {
-			recipeItems, err = r.rec.ListRecipeItems(ctx, *r.slot.RecipeID)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-		var ingredientIDs, itemIDs []int64
-		for _, si := range slotItems {
-			if si.IngredientID != nil {
-				ingredientIDs = append(ingredientIDs, *si.IngredientID)
-			}
-			if si.ItemID != nil {
-				itemIDs = append(itemIDs, *si.ItemID)
-			}
-		}
-		for _, ri := range recipeItems {
-			if ri.IngredientID != nil {
-				ingredientIDs = append(ingredientIDs, *ri.IngredientID)
-			}
-			if ri.ItemID != nil {
-				itemIDs = append(itemIDs, *ri.ItemID)
-			}
-		}
-		ac, err = lazyAllergenCtx(ctx, r.as, ingredientIDs, itemIDs)
-		if err != nil {
-			return nil, nil, err
-		}
+	ac, slotItems, recipeItems, err := r.allergenInputs(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 	set := make(map[int64]string)
 	for _, si := range slotItems {
