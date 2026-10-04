@@ -16,6 +16,14 @@ const String itemByUpcQuery = r'''
         id
         name
       }
+      ingredient {
+        id
+        name
+      }
+      householdIngredient {
+        id
+        name
+      }
       nutrients {
         amount
         nutrient {
@@ -25,6 +33,23 @@ const String itemByUpcQuery = r'''
         }
       }
     }
+  }
+''';
+
+const String ingredientsQuery = r'''
+  query Ingredients($search: String) {
+    ingredients(page: 1, pageSize: 25, search: $search) {
+      items {
+        id
+        name
+      }
+    }
+  }
+''';
+
+const String setHouseholdItemIngredientMutation = r'''
+  mutation SetHouseholdItemIngredient($itemId: ID!, $ingredientId: ID) {
+    setHouseholdItemIngredient(itemId: $itemId, ingredientId: $ingredientId)
   }
 ''';
 
@@ -54,6 +79,13 @@ const String setItemNutrientsMutation = r'''
     }
   }
 ''';
+
+/// Resolved ingredient for a catalog item: the household override wins over
+/// the catalog link, matching the backend's resolution order.
+Map<String, dynamic>? resolvedIngredientOf(Map<String, dynamic> item) {
+  return (item['householdIngredient'] as Map<String, dynamic>?) ??
+      (item['ingredient'] as Map<String, dynamic>?);
+}
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -353,12 +385,117 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  Map<String, dynamic>? _resolvedIngredient() {
+    final item = _foundItem;
+    if (item == null) return null;
+    return resolvedIngredientOf(item);
+  }
+
+  /// Post-scan link prompt: when a UPC hit has no resolved ingredient, offer
+  /// to bind one via the household override so recipes and grocery lists can
+  /// talk about the generic ingredient instead of this brand.
+  Future<void> _promptIngredientLink() async {
+    if (_foundItem == null) return;
+    final client = GraphQLProvider.of(context).value;
+    final searchCtrl = TextEditingController();
+    List<Map<String, dynamic>> results = [];
+
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> search(String term) async {
+            final result = await client.query(QueryOptions(
+              document: gql(ingredientsQuery),
+              variables: {'search': term.isEmpty ? null : term},
+            ));
+            setDialogState(() {
+              results = (result.data?['ingredients']?['items'] as List? ?? [])
+                  .cast<Map<String, dynamic>>();
+            });
+          }
+
+          if (results.isEmpty && searchCtrl.text.isEmpty) {
+            search('');
+          }
+
+          return AlertDialog(
+            title: const Text('Link ingredient'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'What generic ingredient is this item? Recipes and '
+                    'grocery lists will group it accordingly.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Search ingredients',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: search,
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final ing in results)
+                          ListTile(
+                            title: Text(ing['name'] as String? ?? ''),
+                            onTap: () => Navigator.of(dialogContext).pop(ing),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    searchCtrl.dispose();
+
+    if (picked == null || !mounted) return;
+
+    final itemId = _foundItem!['id'] as String;
+    final result = await client.mutate(MutationOptions(
+      document: gql(setHouseholdItemIngredientMutation),
+      variables: {'itemId': itemId, 'ingredientId': picked['id']},
+    ));
+    if (!mounted) return;
+    if (result.hasException) {
+      setState(() => _error = result.exception.toString());
+      return;
+    }
+    setState(() {
+      _foundItem = {
+        ..._foundItem!,
+        'householdIngredient': picked,
+      };
+      _message = "Linked to ${picked['name']}.";
+    });
+  }
+
   Widget _foundView() {
     final item = _foundItem!;
     final name = item['name'] as String? ?? 'Unknown';
     final brand = item['brand'] as String?;
     final unit = item['unit'] as String? ?? '';
     final upc = item['upc12'] as String? ?? item['upc14'] as String? ?? _upc ?? '';
+    final resolved = _resolvedIngredient();
+    final isOverride = item['householdIngredient'] != null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -370,6 +507,18 @@ class _ScanScreenState extends State<ScanScreen> {
             Text('Brand: $brand'),
           Text('Unit: $unit'),
           Text('UPC: $upc'),
+          const SizedBox(height: 8),
+          if (resolved != null)
+            Text(
+              'Ingredient: ${resolved['name']}${isOverride ? ' (household)' : ''}',
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
+            )
+          else
+            TextButton.icon(
+              onPressed: _promptIngredientLink,
+              icon: const Icon(Icons.link),
+              label: const Text('Link ingredient'),
+            ),
           const SizedBox(height: 24),
           TextField(
             controller: _qtyCtrl,
