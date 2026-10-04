@@ -749,3 +749,86 @@ func (s *Service) ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]in
 	}
 	return ids, nil
 }
+
+// Member allergy record kinds. "allergy" is a medical allergy; "dietary"
+// is a preference or restriction (e.g. pork-free). Warnings label the
+// kind so the household can judge severity.
+const (
+	MemberAllergyKindAllergy = "allergy"
+	MemberAllergyKindDietary = "dietary"
+)
+
+// UserAllergen is one member's allergy or dietary record for an allergen.
+type UserAllergen struct {
+	UserID     int64
+	AllergenID int64
+	Kind       string
+}
+
+func validMemberAllergyKind(kind string) bool {
+	return kind == MemberAllergyKindAllergy || kind == MemberAllergyKindDietary
+}
+
+// ListUserAllergens returns one member's records.
+func (s *Service) ListUserAllergens(ctx context.Context, userID int64) ([]UserAllergen, error) {
+	rows, err := s.q.ListUserAllergens(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user allergens: %w", err)
+	}
+	out := make([]UserAllergen, len(rows))
+	for i, r := range rows {
+		out[i] = UserAllergen{UserID: r.UserID, AllergenID: r.AllergenID, Kind: r.Kind}
+	}
+	return out, nil
+}
+
+// ListUserAllergensByUsers batch-loads records for a set of members —
+// feeds the household-wide warning computation without a query per member.
+func (s *Service) ListUserAllergensByUsers(ctx context.Context, userIDs []int64) ([]UserAllergen, error) {
+	out := []UserAllergen{}
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.ListUserAllergensByUsers(ctx, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list user allergens by users: %w", err)
+	}
+	for _, r := range rows {
+		out = append(out, UserAllergen{UserID: r.UserID, AllergenID: r.AllergenID, Kind: r.Kind})
+	}
+	return out, nil
+}
+
+// SetUserAllergen upserts a member's record; kind must be "allergy" or
+// "dietary".
+func (s *Service) SetUserAllergen(ctx context.Context, userID, allergenID int64, kind, by string) error {
+	if !validMemberAllergyKind(kind) {
+		return fmt.Errorf("set user allergen: invalid kind %q", kind)
+	}
+	n, err := s.q.UpsertUserAllergen(ctx, sqlc.UpsertUserAllergenParams{
+		UserID:     userID,
+		AllergenID: allergenID,
+		Kind:       kind,
+		CreatedBy:  by,
+		UpdatedBy:  textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set user allergen: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set user allergen: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// ClearUserAllergen removes a member's record.
+func (s *Service) ClearUserAllergen(ctx context.Context, userID, allergenID int64) error {
+	n, err := s.q.DeleteUserAllergen(ctx, sqlc.DeleteUserAllergenParams{UserID: userID, AllergenID: allergenID})
+	if err != nil {
+		return fmt.Errorf("clear user allergen: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("clear user allergen: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}

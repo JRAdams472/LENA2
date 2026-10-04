@@ -44,7 +44,7 @@ func (r *Resolver) GroceryRouteGroups(ctx context.Context, args struct{ GroceryL
 	}
 	// Batch-load catalog children for every routed item so nested
 	// item/ingredient resolvers never issue per-row queries.
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, []int64{listID})
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{listID})
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (r *Resolver) SetGroceryListStore(ctx context.Context, args struct {
 	}); err != nil {
 		return nil, err
 	}
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, []int64{listID})
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{listID})
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ type routeItemResolver struct {
 }
 
 func (r *routeItemResolver) Item() *groceryListItemResolver {
-	return &groceryListItemResolver{inv: r.inv, item: r.item, items: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch}
+	return &groceryListItemResolver{inv: r.inv, item: r.item, items: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch, as: asOfItemChildren(r.ch)}
 }
 
 func (r *routeItemResolver) Suggested() bool { return r.suggested }

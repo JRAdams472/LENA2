@@ -137,6 +137,15 @@ type ItemReader interface {
 	GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*inventory.UsualItem, error)
 	GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]inventory.UsualItem, error)
 	RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*inventory.Item, error)
+	// Allergen registry + entity flags — batch variants feed the preload
+	// helpers; singles serve lazy fallbacks.
+	ListAllergens(ctx context.Context) ([]inventory.Allergen, error)
+	GetAllergenByID(ctx context.Context, allergenID int64) (inventory.Allergen, error)
+	GetAllergensByIDs(ctx context.Context, allergenIDs []int64) (map[int64]inventory.Allergen, error)
+	ListIngredientAllergens(ctx context.Context, ingredientID int64) ([]inventory.EntityAllergen, error)
+	ListIngredientAllergensByIngredients(ctx context.Context, ingredientIDs []int64) (map[int64][]inventory.EntityAllergen, error)
+	ListItemAllergens(ctx context.Context, itemID int64) ([]inventory.EntityAllergen, error)
+	ListItemAllergensByItems(ctx context.Context, itemIDs []int64) (map[int64][]inventory.EntityAllergen, error)
 }
 
 // IngredientLinker is the write side of the item↔ingredient link: the
@@ -190,6 +199,12 @@ type CatalogAdmin interface {
 	DeleteFoodNutrient(ctx context.Context, itemID, nutrientID int64) error
 	CreateFoodFlavor(ctx context.Context, itemID, flavorID int64, intensity int16, by string) (inventory.FoodFlavor, error)
 	DeleteFoodFlavor(ctx context.Context, itemID, flavorID int64) error
+	CreateAllergen(ctx context.Context, name, description, by string) (inventory.Allergen, error)
+	UpdateAllergen(ctx context.Context, allergenID int64, name, description string, isActive bool, by string) (inventory.Allergen, error)
+	SetIngredientAllergen(ctx context.Context, ingredientID, allergenID int64, kind, by string) error
+	ClearIngredientAllergen(ctx context.Context, ingredientID, allergenID int64) error
+	SetItemAllergen(ctx context.Context, itemID, allergenID int64, kind, by string) error
+	ClearItemAllergen(ctx context.Context, itemID, allergenID int64) error
 }
 
 // InventoryService is the subset of *inventory.Service used by the resolver.
@@ -410,11 +425,22 @@ type FavoriteStore interface {
 	ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error)
 }
 
+// AllergyStore is the per-member allergy/dietary record surface of
+// userprefs. Warning computation batch-loads records for every member of
+// the caller's household; member mutations touch only the caller's rows.
+type AllergyStore interface {
+	ListUserAllergens(ctx context.Context, userID int64) ([]userprefs.UserAllergen, error)
+	ListUserAllergensByUsers(ctx context.Context, userIDs []int64) ([]userprefs.UserAllergen, error)
+	SetUserAllergen(ctx context.Context, userID, allergenID int64, kind, by string) error
+	ClearUserAllergen(ctx context.Context, userID, allergenID int64) error
+}
+
 // UserPrefsService is the subset of *userprefs.Service used by the resolver.
 type UserPrefsService interface {
 	PantryStore
 	CellarStore
 	FavoriteStore
+	AllergyStore
 	MergeHouseholdStock(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error
 }
 

@@ -18,6 +18,7 @@ type Querier interface {
 	CountPendingItems(ctx context.Context) (int64, error)
 	CountSearchIngredients(ctx context.Context, search pgtype.Text) (int64, error)
 	CountSearchItems(ctx context.Context, arg CountSearchItemsParams) (int64, error)
+	CreateAllergen(ctx context.Context, arg CreateAllergenParams) (InventoryAllergen, error)
 	// Admin-only fast path: brand is immediately approved.
 	CreateBrand(ctx context.Context, arg CreateBrandParams) (InventoryBrand, error)
 	// User-submitted brand: starts pending, visible only to the submitter
@@ -39,6 +40,7 @@ type Querier interface {
 	DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error
 	DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) error
 	DeleteIngredient(ctx context.Context, ingredientID int64) error
+	DeleteIngredientAllergen(ctx context.Context, arg DeleteIngredientAllergenParams) (int64, error)
 	DeleteIngredientRefsAisle(ctx context.Context, ingredientID pgtype.Int8) error
 	DeleteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
 	DeleteIngredientRefsGroceryLine(ctx context.Context, ingredientID pgtype.Int8) error
@@ -49,6 +51,7 @@ type Querier interface {
 	DeleteIngredientRefsRoute(ctx context.Context, ingredientID pgtype.Int8) error
 	DeleteIngredientRefsUsual(ctx context.Context, ingredientID int64) error
 	DeleteItem(ctx context.Context, itemID int64) error
+	DeleteItemAllergen(ctx context.Context, arg DeleteItemAllergenParams) (int64, error)
 	DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error)
 	DeleteNutrientType(ctx context.Context, nutrientID int64) error
 	DemoteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
@@ -65,6 +68,8 @@ type Querier interface {
 	// Free-create dedupe: matches the normalized unique index expression so
 	// "Carrots", " carrots  ", and "CARROTS" all resolve to the same row.
 	FindIngredientByNormalizedName(ctx context.Context, regexpReplace string) (InventoryIngredient, error)
+	GetAllergenByID(ctx context.Context, allergenID int64) (InventoryAllergen, error)
+	GetAllergensByIDs(ctx context.Context, allergenIds []int64) ([]InventoryAllergen, error)
 	GetBrandByID(ctx context.Context, brandID int64) (InventoryBrand, error)
 	GetBrandsByIDs(ctx context.Context, brandIds []int64) ([]InventoryBrand, error)
 	GetCategoriesByIDs(ctx context.Context, categoryIds []int64) ([]InventoryCategory, error)
@@ -89,6 +94,8 @@ type Querier interface {
 	GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error)
 	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
 	GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
+	// ---------- allergen registry + entity flags ----------
+	ListAllergens(ctx context.Context) ([]InventoryAllergen, error)
 	ListBrands(ctx context.Context) ([]InventoryBrand, error)
 	// Brands are visible when approved, or when the caller submitted them.
 	ListBrandsVisible(ctx context.Context, arg ListBrandsVisibleParams) ([]InventoryBrand, error)
@@ -98,9 +105,13 @@ type Querier interface {
 	ListFoodFlavorsByItems(ctx context.Context, itemIds []int64) ([]ListFoodFlavorsByItemsRow, error)
 	ListFoodNutrientsByItem(ctx context.Context, foodID int64) ([]ListFoodNutrientsByItemRow, error)
 	ListFoodNutrientsByItems(ctx context.Context, itemIds []int64) ([]ListFoodNutrientsByItemsRow, error)
+	ListIngredientAllergens(ctx context.Context, ingredientID int64) ([]InventoryIngredientAllergen, error)
+	ListIngredientAllergensByIngredients(ctx context.Context, ingredientIds []int64) ([]InventoryIngredientAllergen, error)
 	// Plain alphabetical paging for internal consumers (recipe import); ranked
 	// listing goes through SearchIngredients.
 	ListIngredients(ctx context.Context, arg ListIngredientsParams) ([]InventoryIngredient, error)
+	ListItemAllergens(ctx context.Context, itemID int64) ([]InventoryItemAllergen, error)
+	ListItemAllergensByItems(ctx context.Context, itemIds []int64) ([]InventoryItemAllergen, error)
 	// Items are visible when approved, or when the caller submitted them.
 	// Plain alphabetical paging for internal consumers (recipe import); ranked
 	// listing goes through SearchItems.
@@ -158,6 +169,7 @@ type Querier interface {
 	// Writes the catalog-level item -> ingredient link.
 	SetItemIngredient(ctx context.Context, arg SetItemIngredientParams) (int64, error)
 	SetItemStatus(ctx context.Context, arg SetItemStatusParams) (int64, error)
+	UpdateAllergen(ctx context.Context, arg UpdateAllergenParams) (InventoryAllergen, error)
 	UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (InventoryCategory, error)
 	UpdateFlavorProfile(ctx context.Context, arg UpdateFlavorProfileParams) (InventoryFlavorProfile, error)
@@ -167,6 +179,8 @@ type Querier interface {
 	// Race-free submit: if an approved or own-pending normalized name already
 	// exists, return the existing row; otherwise create a new pending brand.
 	UpsertBrand(ctx context.Context, arg UpsertBrandParams) (InventoryBrand, error)
+	UpsertIngredientAllergen(ctx context.Context, arg UpsertIngredientAllergenParams) (int64, error)
+	UpsertItemAllergen(ctx context.Context, arg UpsertItemAllergenParams) (int64, error)
 	// Household-level remap: "this product is a different ingredient for us."
 	UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error
 	// "Usual brand" record — updated each time a check-off credits stock so

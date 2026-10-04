@@ -174,6 +174,7 @@ func TestResolver_GroceryList_ItemsSubResolver(t *testing.T) {
 	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{42}).Return(nil, nil)
 	inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{42}).Return(nil, nil)
 	inv.EXPECT().ResolveItemIngredients(gomock.Any(), grocUserID, []int64{42}).Return(map[int64]*int64{42: nil}, nil)
+	inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{42}).Return(nil, nil)
 
 	listRes, err := r.GroceryList(grocCtx(), struct{ ID graphql.ID }{ID: "11"})
 	require.NoError(t, err)

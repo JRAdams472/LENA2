@@ -425,7 +425,7 @@ func (s *mealSuggestionResolver) Recipe(ctx context.Context) (*recipeResolver, e
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: s.r.InventoryService, rec: s.r.RecipeService, up: s.r.UserPrefsService, user: s.user, recipe: rec}, nil
+	return &recipeResolver{inv: s.r.InventoryService, rec: s.r.RecipeService, up: s.r.UserPrefsService, user: s.user, recipe: rec, as: s.r.allergySrc(s.user)}, nil
 }
 
 // DayOfWeek is the open cell's day (0=Sunday … 6=Saturday).
@@ -503,7 +503,7 @@ func (c *cocktailResolver) Recipe(ctx context.Context) (*recipeResolver, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: c.r.InventoryService, rec: c.r.RecipeService, up: c.r.UserPrefsService, user: c.user, recipe: rec}, nil
+	return &recipeResolver{inv: c.r.InventoryService, rec: c.r.RecipeService, up: c.r.UserPrefsService, user: c.user, recipe: rec, as: c.r.allergySrc(c.user)}, nil
 }
 
 func (c *cocktailResolver) Reason() string { return c.sugg.Reason }

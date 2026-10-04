@@ -215,6 +215,24 @@ func (q *Queries) DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavo
 	return err
 }
 
+const deleteUserAllergen = `-- name: DeleteUserAllergen :execrows
+DELETE FROM userprefs.user_allergen
+WHERE user_id = $1 AND allergen_id = $2
+`
+
+type DeleteUserAllergenParams struct {
+	UserID     int64 `json:"user_id"`
+	AllergenID int64 `json:"allergen_id"`
+}
+
+func (q *Queries) DeleteUserAllergen(ctx context.Context, arg DeleteUserAllergenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserAllergen, arg.UserID, arg.AllergenID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteUserBottleFavorite = `-- name: DeleteUserBottleFavorite :exec
 DELETE FROM userprefs.user_bottle_favorite
 WHERE user_id = $1 AND bottle_id = $2
@@ -608,6 +626,76 @@ func (q *Queries) ListRecipeFavorites(ctx context.Context, arg ListRecipeFavorit
 			&i.UserID,
 			&i.RecipeID,
 			&i.IsFavorite,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserAllergens = `-- name: ListUserAllergens :many
+
+SELECT user_id, allergen_id, kind, created_by, created_at, updated_by, updated_at
+FROM userprefs.user_allergen
+WHERE user_id = $1
+`
+
+// ---------- member allergy / dietary records ----------
+func (q *Queries) ListUserAllergens(ctx context.Context, userID int64) ([]UserprefsUserAllergen, error) {
+	rows, err := q.db.Query(ctx, listUserAllergens, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsUserAllergen{}
+	for rows.Next() {
+		var i UserprefsUserAllergen
+		if err := rows.Scan(
+			&i.UserID,
+			&i.AllergenID,
+			&i.Kind,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserAllergensByUsers = `-- name: ListUserAllergensByUsers :many
+SELECT user_id, allergen_id, kind, created_by, created_at, updated_by, updated_at
+FROM userprefs.user_allergen
+WHERE user_id = ANY($1::bigint[])
+`
+
+func (q *Queries) ListUserAllergensByUsers(ctx context.Context, userIds []int64) ([]UserprefsUserAllergen, error) {
+	rows, err := q.db.Query(ctx, listUserAllergensByUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsUserAllergen{}
+	for rows.Next() {
+		var i UserprefsUserAllergen
+		if err := rows.Scan(
+			&i.UserID,
+			&i.AllergenID,
+			&i.Kind,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
@@ -1208,4 +1296,36 @@ func (q *Queries) UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavo
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const upsertUserAllergen = `-- name: UpsertUserAllergen :execrows
+INSERT INTO userprefs.user_allergen (user_id, allergen_id, kind, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, allergen_id)
+    DO UPDATE SET
+        kind       = EXCLUDED.kind,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+`
+
+type UpsertUserAllergenParams struct {
+	UserID     int64       `json:"user_id"`
+	AllergenID int64       `json:"allergen_id"`
+	Kind       string      `json:"kind"`
+	CreatedBy  string      `json:"created_by"`
+	UpdatedBy  pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) UpsertUserAllergen(ctx context.Context, arg UpsertUserAllergenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertUserAllergen,
+		arg.UserID,
+		arg.AllergenID,
+		arg.Kind,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

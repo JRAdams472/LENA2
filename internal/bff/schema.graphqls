@@ -66,6 +66,21 @@ enum ReviewItemStatus {
   unmatched
 }
 
+# Whether an entity actually contains the allergen or only carries a
+# cross-contamination advisory.
+enum AllergenFlagKind {
+  contains
+  may_contain
+}
+
+# Whether a member's record is a medical allergy or a dietary
+# restriction — warnings label the kind so the household can judge
+# severity.
+enum MemberAllergyKind {
+  allergy
+  dietary
+}
+
 type Query {
   me: User!
   brand(id: ID!): Brand
@@ -88,6 +103,11 @@ type Query {
   frequentItems(limit: Int = 10): [Item!]!
   ingredient(id: ID!): Ingredient
   ingredients(page: Int = 1, pageSize: Int = 25, search: String): IngredientPage!
+  # The allergen registry — admin-curated; every entry a member can
+  # record an allergy or dietary restriction against.
+  allergens: [Allergen!]!
+  # The caller's own allergy/dietary records.
+  myAllergies: [MemberAllergen!]!
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
@@ -402,6 +422,14 @@ type Mutation {
   updateEventRecipeItem(id: ID!, input: EventRecipeItemInput!): EventRecipeItem!
   removeEventRecipeItem(id: ID!): Boolean!
   syncEventRecipe(eventRecipeId: ID!): EventRecipe!
+  # Records (on=true) or clears (on=false) one of the caller's
+  # allergy/dietary records.
+  setMyAllergy(allergenId: ID!, kind: MemberAllergyKind!, on: Boolean!): Boolean!
+  createAllergen(input: CreateAllergenInput!): Allergen! @admin
+  updateAllergen(id: ID!, input: UpdateAllergenInput!): Allergen! @admin
+  # Admin curation of entity flags; null kind clears the flag.
+  setIngredientAllergen(ingredientId: ID!, allergenId: ID!, kind: AllergenFlagKind): Boolean! @admin
+  setItemAllergen(itemId: ID!, allergenId: ID!, kind: AllergenFlagKind): Boolean! @admin
 }
 
 input UpdateProfileInput {
@@ -611,6 +639,13 @@ type Item {
   # Override-aware view: the household's remap when set, else the catalog
   # link. This is what stock rollups and recipe matching actually use.
   householdIngredient: Ingredient
+  # Resolved allergen flags: the override-aware ingredient's flags unioned
+  # with this product's own flags. Empty means "no allergen data" — not
+  # "known safe".
+  allergens: [AllergenFlag!]!
+  # Household members whose allergy/dietary records conflict with this
+  # item's allergen set.
+  allergyWarnings: [AllergyWarning!]!
 }
 
 input ItemNutrientEntryInput {
@@ -632,6 +667,44 @@ type Ingredient {
   category: Category
   defaultUnit: String
   isActive: Boolean!
+  # Canonical allergen flags for the ingredient. Empty means "no allergen
+  # data" — not "known safe".
+  allergens: [AllergenFlag!]!
+  # Household members whose records conflict with this ingredient.
+  allergyWarnings: [AllergyWarning!]!
+}
+
+# One allergen registry entry a member can record an allergy or dietary
+# restriction against.
+type Allergen {
+  id: ID!
+  name: String!
+  description: String
+  isActive: Boolean!
+}
+
+# One allergen flag on an entity — the union of the resolved ingredient's
+# flags and any bound item's product-level flags; "contains" wins when
+# both kinds appear for the same allergen.
+type AllergenFlag {
+  allergen: Allergen!
+  kind: AllergenFlagKind!
+}
+
+# One member's allergy/dietary record — returned by myAllergies.
+type MemberAllergen {
+  allergen: Allergen!
+  kind: MemberAllergyKind!
+}
+
+# A conflict between an entity's allergen set and one household member's
+# records. member names the member; memberKind is their record kind;
+# entityKind is the strongest flag the entity carries for that allergen.
+type AllergyWarning {
+  member: HouseholdUser!
+  allergen: Allergen!
+  memberKind: MemberAllergyKind!
+  entityKind: AllergenFlagKind!
 }
 
 type IngredientPage {
@@ -682,6 +755,11 @@ type Recipe {
   averageRating: Float
   ratingCount: Int!
   categories: [RecipeCategory!]!
+  # Union of every recipe line's resolved allergen flags. Empty means
+  # "no allergen data" — not "known safe".
+  allergens: [AllergenFlag!]!
+  # Household members whose records conflict with this recipe.
+  allergyWarnings: [AllergyWarning!]!
 }
 
 # RecipeCategoryGroup is a typed bucket of categories (Course, Cuisine,
@@ -838,6 +916,11 @@ type MealSlot {
   servings: Int
   replacementNote: String
   items: [MealSlotItem!]!
+  # Union of the slot's own items' and the linked recipe's resolved
+  # allergen flags. Empty means "no allergen data" — not "known safe".
+  allergens: [AllergenFlag!]!
+  # Household members whose records conflict with this slot's contents.
+  allergyWarnings: [AllergyWarning!]!
 }
 
 type MealSlotItem {
@@ -883,6 +966,11 @@ type EventRecipe {
   recipe: Recipe
   steps: [EventRecipeStep!]!
   items: [EventRecipeItem!]!
+  # Union of the slot snapshot's resolved allergen flags. Empty means
+  # "no allergen data" — not "known safe".
+  allergens: [AllergenFlag!]!
+  # Household members whose records conflict with this slot's contents.
+  allergyWarnings: [AllergyWarning!]!
 }
 
 # EventRecipeStep is one step in an event slot's recipe snapshot. It is
@@ -1063,6 +1151,11 @@ type GroceryListItem {
   # The household's usual brand for this line's ingredient — recorded by
   # brand-picked check-offs. Null when the household has never picked one.
   usualBrand: Item
+  # Resolved allergen flags for the line's ingredient and bound item.
+  # Empty means "no allergen data" — not "known safe".
+  allergens: [AllergenFlag!]!
+  # Household members whose records conflict with this grocery line.
+  allergyWarnings: [AllergyWarning!]!
 }
 
 input AddGroceryItemInput {
@@ -1118,6 +1211,17 @@ input UpdateCategoryInput {
   description: String
   isActive: Boolean
   isProtein: Boolean
+}
+
+input CreateAllergenInput {
+  name: String!
+  description: String
+}
+
+input UpdateAllergenInput {
+  name: String
+  description: String
+  isActive: Boolean
 }
 
 input UpdateFlavorProfileInput {

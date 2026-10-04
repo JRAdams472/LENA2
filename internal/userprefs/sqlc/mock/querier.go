@@ -188,6 +188,21 @@ func (mr *MockQuerierMockRecorder) DeleteRecipeFavorite(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecipeFavorite", reflect.TypeOf((*MockQuerier)(nil).DeleteRecipeFavorite), ctx, arg)
 }
 
+// DeleteUserAllergen mocks base method.
+func (m *MockQuerier) DeleteUserAllergen(ctx context.Context, arg sqlc.DeleteUserAllergenParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUserAllergen", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteUserAllergen indicates an expected call of DeleteUserAllergen.
+func (mr *MockQuerierMockRecorder) DeleteUserAllergen(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserAllergen", reflect.TypeOf((*MockQuerier)(nil).DeleteUserAllergen), ctx, arg)
+}
+
 // DeleteUserBottleFavorite mocks base method.
 func (m *MockQuerier) DeleteUserBottleFavorite(ctx context.Context, arg sqlc.DeleteUserBottleFavoriteParams) error {
 	m.ctrl.T.Helper()
@@ -381,6 +396,36 @@ func (mr *MockQuerierMockRecorder) ListRecipeFavorites(ctx, arg any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeFavorites", reflect.TypeOf((*MockQuerier)(nil).ListRecipeFavorites), ctx, arg)
 }
 
+// ListUserAllergens mocks base method.
+func (m *MockQuerier) ListUserAllergens(ctx context.Context, userID int64) ([]sqlc.UserprefsUserAllergen, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUserAllergens", ctx, userID)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserAllergen)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUserAllergens indicates an expected call of ListUserAllergens.
+func (mr *MockQuerierMockRecorder) ListUserAllergens(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserAllergens", reflect.TypeOf((*MockQuerier)(nil).ListUserAllergens), ctx, userID)
+}
+
+// ListUserAllergensByUsers mocks base method.
+func (m *MockQuerier) ListUserAllergensByUsers(ctx context.Context, userIds []int64) ([]sqlc.UserprefsUserAllergen, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUserAllergensByUsers", ctx, userIds)
+	ret0, _ := ret[0].([]sqlc.UserprefsUserAllergen)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUserAllergensByUsers indicates an expected call of ListUserAllergensByUsers.
+func (mr *MockQuerierMockRecorder) ListUserAllergensByUsers(ctx, userIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserAllergensByUsers", reflect.TypeOf((*MockQuerier)(nil).ListUserAllergensByUsers), ctx, userIds)
+}
+
 // ListUserBottleFavorites mocks base method.
 func (m *MockQuerier) ListUserBottleFavorites(ctx context.Context, arg sqlc.ListUserBottleFavoritesParams) ([]sqlc.UserprefsUserBottleFavorite, error) {
 	m.ctrl.T.Helper()
@@ -570,4 +615,19 @@ func (m *MockQuerier) UpsertRecipeFavorite(ctx context.Context, arg sqlc.UpsertR
 func (mr *MockQuerierMockRecorder) UpsertRecipeFavorite(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertRecipeFavorite", reflect.TypeOf((*MockQuerier)(nil).UpsertRecipeFavorite), ctx, arg)
+}
+
+// UpsertUserAllergen mocks base method.
+func (m *MockQuerier) UpsertUserAllergen(ctx context.Context, arg sqlc.UpsertUserAllergenParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertUserAllergen", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertUserAllergen indicates an expected call of UpsertUserAllergen.
+func (mr *MockQuerierMockRecorder) UpsertUserAllergen(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUserAllergen", reflect.TypeOf((*MockQuerier)(nil).UpsertUserAllergen), ctx, arg)
 }

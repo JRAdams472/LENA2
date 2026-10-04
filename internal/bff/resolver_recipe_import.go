@@ -27,7 +27,7 @@ func (r *Resolver) RecipeImport(ctx context.Context, args struct{ ID graphql.ID 
 	if err != nil {
 		return nil, err
 	}
-	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService}, nil
+	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService}, nil
 }
 
 // RecipeImports returns a paged list of recipe imports, optionally filtered by status.
@@ -54,7 +54,7 @@ func (r *Resolver) RecipeImports(ctx context.Context, args struct {
 	}
 	return &recipeImportPageResolver{
 		items: items, page: page, pageSize: pageSize, total: total,
-		inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService,
+		inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService,
 	}, nil
 }
 
@@ -77,7 +77,7 @@ func (r *Resolver) PendingRecipeImports(ctx context.Context, args struct {
 	}
 	return &recipeImportPageResolver{
 		items: items, page: page, pageSize: pageSize, total: total,
-		inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService,
+		inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService,
 	}, nil
 }
 
@@ -102,7 +102,7 @@ func (r *Resolver) UpdateRecipeImport(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &recipeImportResolver{ri: updated, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService}, nil
+	return &recipeImportResolver{ri: updated, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService}, nil
 }
 
 // ApproveRecipeImport persists the approved review as a catalog recipe.
@@ -119,7 +119,7 @@ func (r *Resolver) ApproveRecipeImport(ctx context.Context, args struct{ ID grap
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: *recipe}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: *recipe, as: r.allergySrc(u)}, nil
 }
 
 // RejectRecipeImport rejects a recipe import.
@@ -138,7 +138,7 @@ func (r *Resolver) RejectRecipeImport(ctx context.Context, args struct{ ID graph
 	if err != nil {
 		return nil, err
 	}
-	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService}, nil
+	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService}, nil
 }
 
 // RetryRecipeImport resets and re-enqueues a recipe import.
@@ -157,7 +157,7 @@ func (r *Resolver) RetryRecipeImport(ctx context.Context, args struct{ ID graphq
 	if err != nil {
 		return nil, err
 	}
-	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService}, nil
+	return &recipeImportResolver{ri: ri, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, id: r.IdentityService}, nil
 }
 
 type recipeImportResolver struct {
@@ -165,6 +165,7 @@ type recipeImportResolver struct {
 	inv ItemReader
 	rec RecipeService
 	up  UserPrefsService
+	id  IdentityService
 }
 
 func (r *recipeImportResolver) ID() graphql.ID          { return graphql.ID(strconv.FormatInt(r.ri.ID, 10)) }
@@ -222,11 +223,11 @@ func (r *recipeImportResolver) Recipe(ctx context.Context) (*recipeResolver, err
 	u, _ := currentuser.FromContext(ctx)
 	// Preload the child graph so nested fields (items, favorites, ratings)
 	// resolve from the batch maps instead of a query per row.
-	rc, err := loadRecipeChildren(ctx, r.rec, r.up, r.inv, u.UserID, u.HouseholdID, []int64{recipe.RecipeID}, nil)
+	rc, err := loadRecipeChildren(ctx, r.rec, r.up, r.id, r.inv, u.UserID, u.HouseholdID, []int64{recipe.RecipeID}, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: u, recipe: recipe, rc: rc}, nil
+	return &recipeResolver{inv: r.inv, rec: r.rec, up: r.up, user: u, recipe: recipe, rc: rc, as: asOfRecipeChildren(rc)}, nil
 }
 
 type recipeImportDraftResolver struct{ draft ocrimport.RecipeDraft }
@@ -386,12 +387,13 @@ type recipeImportPageResolver struct {
 	inv      ItemReader
 	rec      RecipeService
 	up       UserPrefsService
+	id       IdentityService
 }
 
 func (r *recipeImportPageResolver) Items() []*recipeImportResolver {
 	out := make([]*recipeImportResolver, len(r.items))
 	for i := range r.items {
-		out[i] = &recipeImportResolver{ri: &r.items[i], inv: r.inv, rec: r.rec, up: r.up}
+		out[i] = &recipeImportResolver{ri: &r.items[i], inv: r.inv, rec: r.rec, up: r.up, id: r.id}
 	}
 	return out
 }

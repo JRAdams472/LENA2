@@ -1760,6 +1760,243 @@ func toItem(row sqlc.InventoryItem) Item {
 	return it
 }
 
+// Allergen flag kinds shared by ingredient- and item-level allergen rows.
+// "contains" marks a known presence; "may_contain" records a
+// cross-contamination advisory. Warnings prefer over-warning, so a union
+// that mixes both keeps "contains" for that allergen.
+const (
+	AllergenFlagContains   = "contains"
+	AllergenFlagMayContain = "may_contain"
+)
+
+// Allergen is one registry entry a member can be allergic to or restrict
+// by diet (peanuts, gluten, pork, ...).
+type Allergen struct {
+	AllergenID  int64
+	Name        string
+	Description string
+	IsActive    bool
+}
+
+// EntityAllergen is one flag on an ingredient or item: which allergen and
+// whether it is a confirmed contains or a may-contain advisory.
+type EntityAllergen struct {
+	AllergenID int64
+	Kind       string
+}
+
+func validAllergenFlagKind(kind string) bool {
+	return kind == AllergenFlagContains || kind == AllergenFlagMayContain
+}
+
+// ListAllergens returns every registry entry, including inactive ones so
+// admin tooling can reactivate them.
+func (s *Service) ListAllergens(ctx context.Context) ([]Allergen, error) {
+	rows, err := s.q.ListAllergens(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list allergens: %w", err)
+	}
+	out := make([]Allergen, len(rows))
+	for i := range rows {
+		out[i] = toAllergen(rows[i])
+	}
+	return out, nil
+}
+
+// GetAllergenByID returns one registry entry.
+func (s *Service) GetAllergenByID(ctx context.Context, allergenID int64) (Allergen, error) {
+	row, err := s.q.GetAllergenByID(ctx, allergenID)
+	if err != nil {
+		return Allergen{}, fmt.Errorf("get allergen by id: %w", domainerr.FromStorage(err))
+	}
+	return toAllergen(row), nil
+}
+
+// GetAllergensByIDs batch-loads registry entries keyed by ID — feeds the
+// preload helpers so warnings never issue a query per allergen.
+func (s *Service) GetAllergensByIDs(ctx context.Context, allergenIDs []int64) (map[int64]Allergen, error) {
+	out := make(map[int64]Allergen, len(allergenIDs))
+	if len(allergenIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.GetAllergensByIDs(ctx, allergenIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get allergens by ids: %w", err)
+	}
+	for _, r := range rows {
+		out[r.AllergenID] = toAllergen(r)
+	}
+	return out, nil
+}
+
+// CreateAllergen adds a registry entry.
+func (s *Service) CreateAllergen(ctx context.Context, name, description, by string) (Allergen, error) {
+	row, err := s.q.CreateAllergen(ctx, sqlc.CreateAllergenParams{
+		Name:        name,
+		Description: textOrNull(description),
+		IsActive:    true,
+		CreatedBy:   by,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Allergen{}, fmt.Errorf("create allergen: %w", domainerr.FromStorage(err))
+	}
+	return toAllergen(row), nil
+}
+
+// UpdateAllergen renames, redescribes, or activates/deactivates a registry
+// entry.
+func (s *Service) UpdateAllergen(ctx context.Context, allergenID int64, name, description string, isActive bool, by string) (Allergen, error) {
+	row, err := s.q.UpdateAllergen(ctx, sqlc.UpdateAllergenParams{
+		AllergenID:  allergenID,
+		Name:        name,
+		Description: textOrNull(description),
+		IsActive:    isActive,
+		UpdatedBy:   textOrNull(by),
+	})
+	if err != nil {
+		return Allergen{}, fmt.Errorf("update allergen: %w", domainerr.FromStorage(err))
+	}
+	return toAllergen(row), nil
+}
+
+// ListIngredientAllergens returns the flags on one ingredient.
+func (s *Service) ListIngredientAllergens(ctx context.Context, ingredientID int64) ([]EntityAllergen, error) {
+	rows, err := s.q.ListIngredientAllergens(ctx, ingredientID)
+	if err != nil {
+		return nil, fmt.Errorf("list ingredient allergens: %w", err)
+	}
+	out := make([]EntityAllergen, len(rows))
+	for i, r := range rows {
+		out[i] = EntityAllergen{AllergenID: r.AllergenID, Kind: r.Kind}
+	}
+	return out, nil
+}
+
+// ListIngredientAllergensByIngredients batch-loads flags keyed by
+// ingredient ID for the preload helpers.
+func (s *Service) ListIngredientAllergensByIngredients(ctx context.Context, ingredientIDs []int64) (map[int64][]EntityAllergen, error) {
+	out := make(map[int64][]EntityAllergen, len(ingredientIDs))
+	if len(ingredientIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.ListIngredientAllergensByIngredients(ctx, ingredientIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list ingredient allergens by ingredients: %w", err)
+	}
+	for _, r := range rows {
+		out[r.IngredientID] = append(out[r.IngredientID], EntityAllergen{AllergenID: r.AllergenID, Kind: r.Kind})
+	}
+	return out, nil
+}
+
+// SetIngredientAllergen upserts one ingredient flag; kind must be
+// "contains" or "may_contain".
+func (s *Service) SetIngredientAllergen(ctx context.Context, ingredientID, allergenID int64, kind, by string) error {
+	if !validAllergenFlagKind(kind) {
+		return fmt.Errorf("set ingredient allergen: invalid kind %q", kind)
+	}
+	n, err := s.q.UpsertIngredientAllergen(ctx, sqlc.UpsertIngredientAllergenParams{
+		IngredientID: ingredientID,
+		AllergenID:   allergenID,
+		Kind:         kind,
+		CreatedBy:    by,
+		UpdatedBy:    textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set ingredient allergen: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set ingredient allergen: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// ClearIngredientAllergen removes one ingredient flag.
+func (s *Service) ClearIngredientAllergen(ctx context.Context, ingredientID, allergenID int64) error {
+	n, err := s.q.DeleteIngredientAllergen(ctx, sqlc.DeleteIngredientAllergenParams{IngredientID: ingredientID, AllergenID: allergenID})
+	if err != nil {
+		return fmt.Errorf("clear ingredient allergen: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("clear ingredient allergen: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// ListItemAllergens returns the product-level flags on one item.
+func (s *Service) ListItemAllergens(ctx context.Context, itemID int64) ([]EntityAllergen, error) {
+	rows, err := s.q.ListItemAllergens(ctx, itemID)
+	if err != nil {
+		return nil, fmt.Errorf("list item allergens: %w", err)
+	}
+	out := make([]EntityAllergen, len(rows))
+	for i, r := range rows {
+		out[i] = EntityAllergen{AllergenID: r.AllergenID, Kind: r.Kind}
+	}
+	return out, nil
+}
+
+// ListItemAllergensByItems batch-loads product-level flags keyed by item
+// ID for the preload helpers.
+func (s *Service) ListItemAllergensByItems(ctx context.Context, itemIDs []int64) (map[int64][]EntityAllergen, error) {
+	out := make(map[int64][]EntityAllergen, len(itemIDs))
+	if len(itemIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.ListItemAllergensByItems(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list item allergens by items: %w", err)
+	}
+	for _, r := range rows {
+		out[r.ItemID] = append(out[r.ItemID], EntityAllergen{AllergenID: r.AllergenID, Kind: r.Kind})
+	}
+	return out, nil
+}
+
+// SetItemAllergen upserts one product-level flag; kind must be
+// "contains" or "may_contain".
+func (s *Service) SetItemAllergen(ctx context.Context, itemID, allergenID int64, kind, by string) error {
+	if !validAllergenFlagKind(kind) {
+		return fmt.Errorf("set item allergen: invalid kind %q", kind)
+	}
+	n, err := s.q.UpsertItemAllergen(ctx, sqlc.UpsertItemAllergenParams{
+		ItemID:     itemID,
+		AllergenID: allergenID,
+		Kind:       kind,
+		CreatedBy:  by,
+		UpdatedBy:  textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set item allergen: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set item allergen: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// ClearItemAllergen removes one product-level flag.
+func (s *Service) ClearItemAllergen(ctx context.Context, itemID, allergenID int64) error {
+	n, err := s.q.DeleteItemAllergen(ctx, sqlc.DeleteItemAllergenParams{ItemID: itemID, AllergenID: allergenID})
+	if err != nil {
+		return fmt.Errorf("clear item allergen: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("clear item allergen: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+func toAllergen(row sqlc.InventoryAllergen) Allergen {
+	return Allergen{
+		AllergenID:  row.AllergenID,
+		Name:        row.Name,
+		Description: row.Description.String,
+		IsActive:    row.IsActive,
+	}
+}
+
 func textOrNull(s string) pgtype.Text {
 	if s == "" {
 		return pgtype.Text{}

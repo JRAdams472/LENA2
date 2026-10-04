@@ -133,7 +133,7 @@ func (r *Resolver) UserItems(ctx context.Context, args struct {
 	for _, it := range itemsByID {
 		itemList = append(itemList, it)
 	}
-	ch, err := loadItemChildren(ctx, r.InventoryService, itemList, u.HouseholdID)
+	ch, err := loadItemChildren(ctx, r.InventoryService, r.IdentityService, r.UserPrefsService, itemList, u.HouseholdID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -471,13 +471,13 @@ func (r *userItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: asOfItemChildren(r.ch)}, nil
 	}
 	it, err := r.inv.GetItemByID(ctx, r.item.ItemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it}, nil
+	return &itemResolver{inv: r.inv, it: it, as: asOfItemChildren(r.ch)}, nil
 }
 
 type userItemPageResolver struct {

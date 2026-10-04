@@ -70,6 +70,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
 		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(11), []int64{3}).Return(map[int64]*int64{3: nil}, nil)
+		inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 
 		r := &Resolver{RecipeService: rec, InventoryService: inv, UserPrefsService: up}
 		res, err := r.Recipe(recCtx(), struct{ ID graphql.ID }{ID: "9"})
@@ -173,6 +174,7 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 		inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil).Times(2)
 		inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(11), []int64{3}).Return(map[int64]*int64{3: nil}, nil)
+		inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{3}).Return(nil, nil)
 		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).Return(nil, nil)
 

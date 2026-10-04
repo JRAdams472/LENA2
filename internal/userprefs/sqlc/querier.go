@@ -23,6 +23,7 @@ type Querier interface {
 	// Drop source rows that were folded into a target row.
 	DeleteMergedHouseholdItems(ctx context.Context, arg DeleteMergedHouseholdItemsParams) error
 	DeleteRecipeFavorite(ctx context.Context, arg DeleteRecipeFavoriteParams) error
+	DeleteUserAllergen(ctx context.Context, arg DeleteUserAllergenParams) (int64, error)
 	DeleteUserBottleFavorite(ctx context.Context, arg DeleteUserBottleFavoriteParams) error
 	DeleteUserItemFavorite(ctx context.Context, arg DeleteUserItemFavoriteParams) error
 	GetHouseholdBottleByBottle(ctx context.Context, arg GetHouseholdBottleByBottleParams) (UserprefsHouseholdBottle, error)
@@ -47,6 +48,9 @@ type Querier interface {
 	// listing goes through SearchHouseholdItems.
 	ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error)
+	// ---------- member allergy / dietary records ----------
+	ListUserAllergens(ctx context.Context, userID int64) ([]UserprefsUserAllergen, error)
+	ListUserAllergensByUsers(ctx context.Context, userIds []int64) ([]UserprefsUserAllergen, error)
 	ListUserBottleFavorites(ctx context.Context, arg ListUserBottleFavoritesParams) ([]UserprefsUserBottleFavorite, error)
 	ListUserItemFavorites(ctx context.Context, arg ListUserItemFavoritesParams) ([]UserprefsUserItemFavorite, error)
 	MergeHouseholdBottleConflicts(ctx context.Context, arg MergeHouseholdBottleConflictsParams) error
@@ -76,6 +80,7 @@ type Querier interface {
 	UpsertHouseholdItem(ctx context.Context, arg UpsertHouseholdItemParams) (UserprefsHouseholdItem, error)
 	// ---------- recipe favorites (unchanged, per-user) ----------
 	UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
+	UpsertUserAllergen(ctx context.Context, arg UpsertUserAllergenParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

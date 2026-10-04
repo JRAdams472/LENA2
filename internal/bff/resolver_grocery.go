@@ -34,7 +34,7 @@ type groceryChildren struct {
 // loadGroceryChildren batch-loads list items and every catalog row they
 // reference — items, units, ingredients, usual brands, and per-item
 // children.
-func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, householdID int64, listIDs []int64) (*groceryChildren, error) {
+func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, id IdentityService, up UserPrefsService, householdID int64, listIDs []int64) (*groceryChildren, error) {
 	gc := &groceryChildren{
 		itemsByList: make(map[int64][]grocery.GroceryListItem),
 		items:       make(map[int64]inventory.Item),
@@ -91,7 +91,7 @@ func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, 
 	for _, it := range gc.items {
 		itemList = append(itemList, it)
 	}
-	gc.ch, err = loadItemChildren(ctx, inv, itemList, householdID)
+	gc.ch, err = loadItemChildren(ctx, inv, id, up, itemList, householdID, ingredientIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }
 	}
 	// Single-list reads preload the same children as the list page so
 	// nested resolvers never fall back to per-row queries.
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, []int64{id})
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{id})
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID }))
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, distinctIDs(lists, func(l grocery.GroceryList) *int64 { return &l.GroceryListID }))
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPla
 	}
 	// Preload the freshly generated list's children so nested resolvers
 	// never fall back to per-row queries.
-	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, u.HouseholdID, []int64{list.GroceryListID})
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{list.GroceryListID})
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +592,7 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 	if updated.IsChecked {
 		r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemChecked, updated))
 	}
-	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: updated}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: updated, as: r.allergySrc(u)}, nil
 }
 
 // CheckGroceryItemWithBrand is the first-time brand pick for an ingredient
@@ -653,7 +653,7 @@ func (r *Resolver) CheckGroceryItemWithBrand(ctx context.Context, args struct {
 	if updated.IsChecked {
 		r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemChecked, updated))
 	}
-	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: updated}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: updated, as: r.allergySrc(u)}, nil
 }
 
 // groceryEntityEvent maps a grocery line to an analytics event: catalog
@@ -705,7 +705,7 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 		return nil, err
 	}
 	r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemAdded, it))
-	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: it}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: it, as: r.allergySrc(u)}, nil
 }
 
 // parseGroceryItemInput validates a grocery-item input and converts it to
@@ -811,7 +811,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 	}
 	out := make([]*groceryListItemResolver, len(items))
 	for i := range items {
-		out[i] = &groceryListItemResolver{inv: r.inv, householdID: r.householdID, item: items[i], items: r.catItems, units: r.units, ingredients: r.ingredients, usualItems: r.usualItems, ch: r.ch}
+		out[i] = &groceryListItemResolver{inv: r.inv, householdID: r.householdID, item: items[i], items: r.catItems, units: r.units, ingredients: r.ingredients, usualItems: r.usualItems, ch: r.ch, as: asOfItemChildren(r.ch)}
 	}
 	return out, nil
 }
@@ -826,6 +826,7 @@ type groceryListItemResolver struct {
 	ingredients map[int64]inventory.Ingredient
 	usualItems  map[int64]int64
 	ch          *itemChildren
+	as          *allergySource
 }
 
 func (r *groceryListItemResolver) ID() graphql.ID {
@@ -856,14 +857,14 @@ func (r *groceryListItemResolver) Ingredient(ctx context.Context) (*ingredientRe
 		if !ok {
 			return nil, nil
 		}
-		return &ingredientResolver{inv: r.inv, in: in}, nil
+		return &ingredientResolver{inv: r.inv, in: in, as: r.lazySource()}, nil
 	}
 	slog.Default().Warn("groceryListItem.ingredient missed preload; lazy-loading", "ingredient_id", *r.item.IngredientID)
 	in, err := r.inv.GetIngredientByID(ctx, *r.item.IngredientID)
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: r.lazySource()}, nil
 }
 
 func (r *groceryListItemResolver) Item(ctx context.Context) (*itemResolver, error) {
@@ -903,6 +904,12 @@ func (r *groceryListItemResolver) UsualBrand(ctx context.Context) (*itemResolver
 	return r.catalogItem(ctx, itemID)
 }
 
+// lazySource prefers the preloaded source and falls back to the resolver's
+// own for children built lazily.
+func (r *groceryListItemResolver) lazySource() *allergySource {
+	return firstSource(asOfItemChildren(r.ch), r.as)
+}
+
 // catalogItem renders an item ID through the preloaded maps, falling back
 // to a lazy fetch when the preload missed it.
 func (r *groceryListItemResolver) catalogItem(ctx context.Context, itemID *int64) (*itemResolver, error) {
@@ -914,14 +921,57 @@ func (r *groceryListItemResolver) catalogItem(ctx context.Context, itemID *int64
 		if !ok {
 			return nil, nil
 		}
-		return &itemResolver{inv: r.inv, it: it, ch: r.ch}, nil
+		return &itemResolver{inv: r.inv, it: it, ch: r.ch, as: r.lazySource()}, nil
 	}
 	slog.Default().Warn("groceryListItem.item missed preload; lazy-loading", "item_id", *itemID)
 	it, err := r.inv.GetItemByID(ctx, *itemID)
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it}, nil
+	return &itemResolver{inv: r.inv, it: it, as: r.lazySource()}, nil
+}
+
+// allergenCtx returns the preloaded context or builds one for this line.
+func (r *groceryListItemResolver) allergenCtx(ctx context.Context) (*allergyContext, error) {
+	if r.ch != nil && r.ch.ac != nil {
+		return r.ch.ac, nil
+	}
+	var ingredientIDs, itemIDs []int64
+	if r.item.IngredientID != nil {
+		ingredientIDs = append(ingredientIDs, *r.item.IngredientID)
+	}
+	if r.item.ItemID != nil {
+		itemIDs = append(itemIDs, *r.item.ItemID)
+	}
+	return lazyAllergenCtx(ctx, r.lazySource(), ingredientIDs, itemIDs)
+}
+
+func (r *groceryListItemResolver) allergenSet(ctx context.Context) (*allergyContext, map[int64]string, error) {
+	ac, err := r.allergenCtx(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ac, ac.lineSet(r.item.IngredientID, r.item.ItemID), nil
+}
+
+// Allergens resolves the line's merged flags: its ingredient's flags
+// unioned with the bound item's product-level flags.
+func (r *groceryListItemResolver) Allergens(ctx context.Context) ([]*allergenFlagResolver, error) {
+	ac, set, err := r.allergenSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.flagResolvers(set), nil
+}
+
+// AllergyWarnings resolves which household members conflict with this
+// grocery line.
+func (r *groceryListItemResolver) AllergyWarnings(ctx context.Context) ([]*allergyWarningResolver, error) {
+	ac, set, err := r.allergenSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ac.warningResolvers(set), nil
 }
 
 type groceryListPageResolver struct {
@@ -1059,7 +1109,7 @@ func (r *Resolver) SuggestedRestockItems(ctx context.Context, args struct {
 		// Only approved catalog items — pending/rejected submissions
 		// shouldn't be restock suggestions.
 		if it, ok := byID[id]; ok && it.Status == inventory.ItemStatusApproved {
-			out = append(out, &itemResolver{inv: r.InventoryService, it: it})
+			out = append(out, &itemResolver{inv: r.InventoryService, it: it, as: r.allergySrc(u)})
 		}
 	}
 	return out, nil

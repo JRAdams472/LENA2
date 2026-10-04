@@ -57,6 +57,7 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{42, 43}).Return(nil, nil)
 	inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{42, 43}).Return(nil, nil)
 	inv.EXPECT().ResolveItemIngredients(gomock.Any(), upUserID, []int64{42, 43}).Return(map[int64]*int64{42: nil, 43: nil}, nil)
+	inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{42, 43}).Return(nil, nil)
 
 	res, err := r.UserItems(upCtx(), struct {
 		Page     int32

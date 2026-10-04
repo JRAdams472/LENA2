@@ -292,6 +292,17 @@ type IdentityUserLogin struct {
 	CreatedAt       time.Time          `json:"created_at"`
 }
 
+type InventoryAllergen struct {
+	AllergenID  int64              `json:"allergen_id"`
+	Name        string             `json:"name"`
+	Description pgtype.Text        `json:"description"`
+	IsActive    bool               `json:"is_active"`
+	CreatedBy   string             `json:"created_by"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type InventoryBrand struct {
 	BrandID           int64              `json:"brand_id"`
 	Name              string             `json:"name"`
@@ -358,6 +369,16 @@ type InventoryIngredient struct {
 	DefaultUnitID pgtype.Int8        `json:"default_unit_id"`
 }
 
+type InventoryIngredientAllergen struct {
+	IngredientID int64              `json:"ingredient_id"`
+	AllergenID   int64              `json:"allergen_id"`
+	Kind         string             `json:"kind"`
+	CreatedBy    string             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedBy    pgtype.Text        `json:"updated_by"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type InventoryItem struct {
 	ItemID            int64              `json:"item_id"`
 	Name              string             `json:"name"`
@@ -377,6 +398,16 @@ type InventoryItem struct {
 	NetWeight         pgtype.Numeric     `json:"net_weight"`
 	IsMetric          bool               `json:"is_metric"`
 	IngredientID      pgtype.Int8        `json:"ingredient_id"`
+}
+
+type InventoryItemAllergen struct {
+	ItemID     int64              `json:"item_id"`
+	AllergenID int64              `json:"allergen_id"`
+	Kind       string             `json:"kind"`
+	CreatedBy  string             `json:"created_by"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedBy  pgtype.Text        `json:"updated_by"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type InventoryNutrientType struct {
@@ -618,6 +649,16 @@ type UserprefsNotificationPref struct {
 	Enabled    bool               `json:"enabled"`
 	MutedUntil pgtype.Timestamptz `json:"muted_until"`
 	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type UserprefsUserAllergen struct {
+	UserID     int64              `json:"user_id"`
+	AllergenID int64              `json:"allergen_id"`
+	Kind       string             `json:"kind"`
+	CreatedBy  string             `json:"created_by"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedBy  pgtype.Text        `json:"updated_by"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
