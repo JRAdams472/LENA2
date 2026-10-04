@@ -86,6 +86,7 @@ const CORE_NAV: NavEntry[] = [
     children: [
       { label: "Items", href: "/inventory/items" },
       { label: "Ingredients", href: "/inventory/ingredients", adminOnly: true },
+      { label: "Allergens", href: "/inventory/allergens", adminOnly: true },
       { label: "Brands", href: "/inventory/brands" },
       { label: "Categories", href: "/inventory/categories" },
       { label: "Food Flavors", href: "/inventory/food-flavors" },

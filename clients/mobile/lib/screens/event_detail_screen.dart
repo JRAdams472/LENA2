@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../analytics/analytics.dart';
+import '../allergy.dart';
 import 'edit_event_screen.dart';
 import 'event_timeline_screen.dart';
 
@@ -23,6 +24,16 @@ const String foodEventQuery = r'''
         recipe {
           id
           name
+        }
+        allergyWarnings {
+          memberKind
+          entityKind
+          member { id displayName firstName lastName }
+          allergen { id name }
+        }
+        allergens {
+          kind
+          allergen { id name }
         }
       }
     }
@@ -321,7 +332,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-        title: Text(name),
+        title: Row(
+          children: [
+            Expanded(child: Text(name)),
+            AllergyWarningBadge(warnings: allergyWarningsOf(slot)),
+          ],
+        ),
         subtitle: Text(
           'serve ${hhmmOf(slot['targetTime'] as String?)} · '
           '${slot['mealType']}'

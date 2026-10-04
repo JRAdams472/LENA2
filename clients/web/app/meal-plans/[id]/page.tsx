@@ -23,6 +23,7 @@ import Autocomplete from "@mui/material/Autocomplete";
 import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, asEntity } from "@/lib/api";
+import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { fmtQty } from "@/lib/format";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import {
@@ -904,6 +905,9 @@ export default function MealPlanDetailPage({
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {recipeName(slot?.recipeID ?? null)}
                     </Typography>
+                    {slot && (
+                      <AllergyWarningChip warnings={slot.allergyWarnings} sx={{ mb: 0.5 }} />
+                    )}
                     {slot?.replacementNote && (
                       <Typography variant="caption" color="text.secondary">
                         {slot.replacementNote}

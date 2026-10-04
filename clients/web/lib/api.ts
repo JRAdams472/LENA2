@@ -55,6 +55,10 @@ import {
   NotificationKind,
   Unit,
   Ingredient,
+  Allergen,
+  AllergenFlag,
+  AllergyWarning,
+  MemberAllergen,
   RecipeImport,
   RecipeImportDraft,
   RecipeImportDraftItem,
@@ -375,11 +379,37 @@ interface GqlIngredient {
   category: GqlCategory | null;
   defaultUnit: string | null;
   isActive: boolean;
+  allergens?: GqlAllergenFlag[];
+  allergyWarnings?: GqlAllergyWarning[];
 }
 
 interface GqlIngredientPage {
   items: GqlIngredient[];
   pageInfo: GqlPageInfo;
+}
+
+interface GqlAllergen {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+interface GqlAllergenFlag {
+  kind: string;
+  allergen: GqlAllergen;
+}
+
+interface GqlAllergyWarning {
+  memberKind: string;
+  entityKind: string;
+  member: GqlHouseholdUser;
+  allergen: GqlAllergen;
+}
+
+interface GqlMemberAllergen {
+  kind: string;
+  allergen: GqlAllergen;
 }
 
 interface GqlFlavorProfile {
@@ -420,6 +450,8 @@ interface GqlItem {
   submittedByMe: boolean;
   selectionCount: number;
   personalSelectionCount: number;
+  allergens?: GqlAllergenFlag[];
+  allergyWarnings?: GqlAllergyWarning[];
 }
 
 interface GqlItemPage {
@@ -492,6 +524,8 @@ interface GqlRecipe {
   averageRating: number | null;
   ratingCount: number;
   categories: GqlRecipeCategory[] | null;
+  allergens?: GqlAllergenFlag[];
+  allergyWarnings?: GqlAllergyWarning[];
 }
 
 interface GqlRecipePage {
@@ -699,6 +733,8 @@ interface GqlMealSlot {
   servings: number | null;
   replacementNote: string | null;
   items: GqlMealSlotItem[];
+  allergens?: GqlAllergenFlag[];
+  allergyWarnings?: GqlAllergyWarning[];
 }
 
 interface GqlMealPlan {
@@ -793,6 +829,8 @@ interface GqlEventRecipe {
   recipe: GqlRecipe | null;
   steps: GqlEventRecipeStep[];
   items: GqlEventRecipeItem[];
+  allergens?: GqlAllergenFlag[];
+  allergyWarnings?: GqlAllergyWarning[];
 }
 
 interface GqlFoodEvent {
@@ -857,6 +895,8 @@ interface GqlGroceryListItem {
   unitOfMeasure: string | null;
   source: string;
   isChecked: boolean;
+  allergens?: GqlAllergenFlag[];
+  allergyWarnings?: GqlAllergyWarning[];
 }
 
 interface GqlStoreAisle {
@@ -1110,6 +1150,30 @@ function toBrand(b: GqlBrand): Brand {
   };
 }
 
+const toAllergen = (a: GqlAllergen): Allergen => ({
+  allergenID: num(a.id),
+  name: a.name,
+  description: a.description ?? null,
+  isActive: a.isActive !== false,
+});
+
+const toAllergenFlag = (f: GqlAllergenFlag): AllergenFlag => ({
+  allergen: toAllergen(f.allergen),
+  kind: f.kind === "contains" ? "contains" : "may_contain",
+});
+
+const toAllergyWarning = (w: GqlAllergyWarning): AllergyWarning => ({
+  member: toHouseholdUser(w.member),
+  allergen: toAllergen(w.allergen),
+  memberKind: w.memberKind === "allergy" ? "allergy" : "dietary",
+  entityKind: w.entityKind === "contains" ? "contains" : "may_contain",
+});
+
+const toMemberAllergen = (m: GqlMemberAllergen): MemberAllergen => ({
+  allergen: toAllergen(m.allergen),
+  kind: m.kind === "allergy" ? "allergy" : "dietary",
+});
+
 function toIngredient(g: GqlIngredient): Ingredient {
   return {
     ingredientID: num(g.id),
@@ -1117,6 +1181,8 @@ function toIngredient(g: GqlIngredient): Ingredient {
     category: g.category ? toCategory(g.category) : null,
     defaultUnit: g.defaultUnit,
     isActive: g.isActive,
+    allergens: (g.allergens ?? []).map(toAllergenFlag),
+    allergyWarnings: (g.allergyWarnings ?? []).map(toAllergyWarning),
   };
 }
 
@@ -1155,6 +1221,8 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
     foodFlavors: (i.flavors ?? []).map((f) => toFoodFlavor(itemID, f)),
     selectionCount: i.selectionCount ?? 0,
     personalSelectionCount: i.personalSelectionCount ?? 0,
+    allergens: (i.allergens ?? []).map(toAllergenFlag),
+    allergyWarnings: (i.allergyWarnings ?? []).map(toAllergyWarning),
   };
 }
 
@@ -1212,6 +1280,8 @@ function toRecipe(r: GqlRecipe): Recipe {
     averageRating: r.averageRating ?? null,
     ratingCount: r.ratingCount ?? 0,
     categories: (r.categories ?? []).map(toRecipeCategory),
+    allergens: (r.allergens ?? []).map(toAllergenFlag),
+    allergyWarnings: (r.allergyWarnings ?? []).map(toAllergyWarning),
   };
 }
 
@@ -1524,6 +1594,8 @@ function toMealSlot(planID: number, s: GqlMealSlot): MealSlot {
     mealPlan: null,
     recipe: s.recipe ? toRecipe(s.recipe) : null,
     mealSlotItems: (s.items ?? []).map((i) => toMealSlotItem(slotID, i)),
+    allergens: (s.allergens ?? []).map(toAllergenFlag),
+    allergyWarnings: (s.allergyWarnings ?? []).map(toAllergyWarning),
   };
 }
 
@@ -1633,6 +1705,8 @@ function toEventRecipe(foodEventID: number, er: GqlEventRecipe): EventRecipe {
     recipe: er.recipe ? toRecipe(er.recipe) : null,
     steps: (er.steps ?? []).map(toEventRecipeStep),
     items: (er.items ?? []).map(toEventRecipeItem),
+    allergens: (er.allergens ?? []).map(toAllergenFlag),
+    allergyWarnings: (er.allergyWarnings ?? []).map(toAllergyWarning),
   };
 }
 
@@ -1697,6 +1771,8 @@ function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListIt
     source: i.source,
     isChecked: i.isChecked,
     groceryList: null,
+    allergens: (i.allergens ?? []).map(toAllergenFlag),
+    allergyWarnings: (i.allergyWarnings ?? []).map(toAllergyWarning),
   };
 }
 
@@ -1728,6 +1804,24 @@ function toGroceryList(g: GqlGroceryList): GroceryList {
 /* Shared selection sets                                               */
 /* ------------------------------------------------------------------ */
 
+const ALLERGEN_FLAG_FIELDS = `
+  kind
+  allergen { id name description isActive }
+`;
+
+const ALLERGY_WARNING_FIELDS = `
+  memberKind entityKind
+  member { id displayName firstName lastName }
+  allergen { id name }
+`;
+
+// Entity allergen flags + household-member conflicts. Empty allergens
+// means "no allergen data recorded" — never render it as "known safe".
+const ALLERGY_FIELDS = `
+  allergens { ${ALLERGEN_FLAG_FIELDS} }
+  allergyWarnings { ${ALLERGY_WARNING_FIELDS} }
+`;
+
 const BRAND_FIELDS = `
   id name selectionCount personalSelectionCount
 `;
@@ -1740,11 +1834,13 @@ const ITEM_FIELDS = `
   householdIngredient { id name }
   nutrients { amount nutrient { id name unit } }
   flavors { intensity flavor { id name isActive } }
+  ${ALLERGY_FIELDS}
 `;
 
 const INGREDIENT_FIELDS = `
   id name defaultUnit isActive
   category { id name description isActive isProtein }
+  ${ALLERGY_FIELDS}
 `;
 
 const RECIPE_CATEGORY_FIELDS = `
@@ -1756,6 +1852,7 @@ const RECIPE_FIELDS = `
   items { quantity unit notes isOptional ingredient { id name } item { ${ITEM_FIELDS} } }
   steps { stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance }
   categories { ${RECIPE_CATEGORY_FIELDS} }
+  ${ALLERGY_FIELDS}
 `;
 
 const RECIPE_IMPORT_FIELDS = `
@@ -1779,6 +1876,7 @@ const MEAL_PLAN_FIELDS = `
     id dayOfWeek mealType servings replacementNote
     recipe { ${RECIPE_FIELDS} }
     items { id quantity unit isFromRecipe item { ${ITEM_FIELDS} } }
+    ${ALLERGY_FIELDS}
   }
 `;
 
@@ -1798,6 +1896,7 @@ const EVENT_RECIPE_FIELDS = `
   recipe { ${RECIPE_FIELDS} }
   steps { ${EVENT_RECIPE_STEP_FIELDS} }
   items { ${EVENT_RECIPE_ITEM_FIELDS} }
+  ${ALLERGY_FIELDS}
 `;
 
 const FOOD_EVENT_FIELDS = `
@@ -1813,6 +1912,7 @@ const GROCERY_LIST_FIELDS = `
           ingredient { id name }
           usualBrand { id name brand { id name } }
     item { ${ITEM_FIELDS} }
+    ${ALLERGY_FIELDS}
   }
 `;
 
@@ -2445,6 +2545,70 @@ export const api = {
     await request<{ setHouseholdItemIngredient: boolean }>(
       `mutation ($itemId: ID!, $ingredientId: ID) { setHouseholdItemIngredient(itemId: $itemId, ingredientId: $ingredientId) }`,
       { itemId: String(itemId), ingredientId: ingredientId != null ? String(ingredientId) : null }
+    );
+  },
+
+  /* ------------------------------ allergens ------------------------------ */
+
+  getAllergens: async (): Promise<Allergen[]> => {
+    const data = await request<{ allergens: GqlAllergen[] }>(
+      `query { allergens { id name description isActive } }`
+    );
+    return (data.allergens ?? []).map(toAllergen);
+  },
+
+  getMyAllergies: async (): Promise<MemberAllergen[]> => {
+    const data = await request<{ myAllergies: GqlMemberAllergen[] }>(
+      `query { myAllergies { kind allergen { id name description isActive } } }`
+    );
+    return (data.myAllergies ?? []).map(toMemberAllergen);
+  },
+
+  // Set or clear one of the caller's records. kind is "allergy" (avoid
+  // always) or "dietary" (preference); on=false removes the record.
+  setMyAllergy: async (allergenId: number, kind: "allergy" | "dietary", on: boolean): Promise<void> => {
+    await request<{ setMyAllergy: boolean }>(
+      `mutation ($allergenId: ID!, $kind: MemberAllergyKind!, $on: Boolean!) { setMyAllergy(allergenId: $allergenId, kind: $kind, on: $on) }`,
+      { allergenId: String(allergenId), kind, on }
+    );
+  },
+
+  createAllergen: async (input: { name: string; description?: string | null }): Promise<Allergen> => {
+    const data = await request<{ createAllergen: GqlAllergen }>(
+      `mutation ($input: CreateAllergenInput!) { createAllergen(input: $input) { id name description isActive } }`,
+      { input: { name: input.name, description: input.description ?? null } }
+    );
+    return toAllergen(data.createAllergen);
+  },
+
+  updateAllergen: async (
+    id: number,
+    input: { name?: string; description?: string | null; isActive?: boolean }
+  ): Promise<Allergen> => {
+    const vars: Record<string, unknown> = {};
+    if (input.name !== undefined) vars.name = input.name;
+    if (input.description !== undefined) vars.description = input.description;
+    if (input.isActive !== undefined) vars.isActive = input.isActive;
+    const data = await request<{ updateAllergen: GqlAllergen }>(
+      `mutation ($id: ID!, $input: UpdateAllergenInput!) { updateAllergen(id: $id, input: $input) { id name description isActive } }`,
+      { id: String(id), input: vars }
+    );
+    return toAllergen(data.updateAllergen);
+  },
+
+  // Admin curation: set an ingredient/item flag ("contains" or
+  // "may_contain"); null kind clears the flag.
+  setIngredientAllergen: async (ingredientId: number, allergenId: number, kind: "contains" | "may_contain" | null): Promise<void> => {
+    await request<{ setIngredientAllergen: boolean }>(
+      `mutation ($ingredientId: ID!, $allergenId: ID!, $kind: AllergenFlagKind) { setIngredientAllergen(ingredientId: $ingredientId, allergenId: $allergenId, kind: $kind) }`,
+      { ingredientId: String(ingredientId), allergenId: String(allergenId), kind }
+    );
+  },
+
+  setItemAllergen: async (itemId: number, allergenId: number, kind: "contains" | "may_contain" | null): Promise<void> => {
+    await request<{ setItemAllergen: boolean }>(
+      `mutation ($itemId: ID!, $allergenId: ID!, $kind: AllergenFlagKind) { setItemAllergen(itemId: $itemId, allergenId: $allergenId, kind: $kind) }`,
+      { itemId: String(itemId), allergenId: String(allergenId), kind }
     );
   },
 
@@ -3979,7 +4143,8 @@ export const api = {
           items {
             suggested
             item { id manualItemName quantityNeeded unitOfMeasure source isChecked
-          ingredient { id name } usualBrand { id name brand { id name } } item { ${ITEM_FIELDS} } }
+          ingredient { id name } usualBrand { id name brand { id name } } item { ${ITEM_FIELDS} }
+          ${ALLERGY_FIELDS} }
           }
         }
       }`,

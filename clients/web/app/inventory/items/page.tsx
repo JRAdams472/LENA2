@@ -14,7 +14,8 @@ import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import QuantityDialog from "@/app/components/QuantityDialog";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
-import { Item, Brand, Ingredient } from "@/lib/types";
+import AllergenFlagsEditor from "@/app/components/AllergenFlagsEditor";
+import { AllergenFlag, Item, Brand, Ingredient } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
 const itemFields = [
@@ -430,6 +431,23 @@ export default function ItemsPage() {
               }
               onChange={setDialogHouseholdIng}
             />
+            {isAdmin && (
+              <AllergenFlagsEditor
+                key={isCreate ? "new" : (dialogData.itemID as number)}
+                flags={dialogData.allergens as AllergenFlag[] | undefined}
+                disabledReason={
+                  isCreate ? "Save the item first to set allergen flags." : undefined
+                }
+                onSet={async (allergenID, kind) => {
+                  await api.setItemAllergen(
+                    dialogData.itemID as number,
+                    allergenID,
+                    kind
+                  );
+                  void queryClient.invalidateQueries({ queryKey: ["items"] });
+                }}
+              />
+            )}
           </>
         }
         onClose={() => setDialogOpen(false)}

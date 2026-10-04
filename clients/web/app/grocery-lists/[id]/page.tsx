@@ -29,6 +29,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import { api } from "@/lib/api";
+import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { GroceryListItem, GroceryRouteGroup, Store, StoreAisle } from "@/lib/types";
 
@@ -268,22 +269,24 @@ export function ItemRow({
         }
         label={
           <Box>
-            <Typography
-              variant="body1"
-              sx={{
-                textDecoration: item.isChecked ? "line-through" : "none",
-              }}
-            >
-              {itemName(item)}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography
+                variant="body1"
+                sx={{
+                  textDecoration: item.isChecked ? "line-through" : "none",
+                }}
+              >
+                {itemName(item)}
+              </Typography>
               {suggested && (
                 <Chip
                   label="suggested aisle"
                   size="small"
                   variant="outlined"
-                  sx={{ ml: 1 }}
                 />
               )}
-            </Typography>
+              <AllergyWarningChip warnings={item.allergyWarnings} />
+            </Box>
             <Typography variant="caption" color="text.secondary">
               {fmtQty(Number(item.quantityNeeded))} {item.unitOfMeasure}
               {item.usualBrandName ? ` · usual: ${item.usualBrandName}` : ""}

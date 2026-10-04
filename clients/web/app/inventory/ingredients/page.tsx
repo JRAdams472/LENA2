@@ -15,7 +15,8 @@ import { api } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
-import { Category, Ingredient } from "@/lib/types";
+import AllergenFlagsEditor from "@/app/components/AllergenFlagsEditor";
+import { AllergenFlag, Category, Ingredient } from "@/lib/types";
 
 const ingredientFields: FieldDef<Ingredient>[] = [
   { key: "name", label: "Name" },
@@ -190,21 +191,38 @@ export default function IngredientsPage() {
         values={dialogData}
         error={dialogError}
         extraFields={
-          <Autocomplete<Category>
-            size="small"
-            options={categoriesQuery.data ?? []}
-            getOptionLabel={(c) => c.categoryName}
-            isOptionEqualToValue={(o, v) => o.categoryID === v.categoryID}
-            value={
-              dialogCategory !== undefined
-                ? dialogCategory
-                : ((dialogData.category as Category | null) ?? null)
-            }
-            onChange={(_, v) => setDialogCategory(v)}
-            renderInput={(params) => (
-              <TextField {...params} label="Category" margin="dense" fullWidth />
-            )}
-          />
+          <>
+            <Autocomplete<Category>
+              size="small"
+              options={categoriesQuery.data ?? []}
+              getOptionLabel={(c) => c.categoryName}
+              isOptionEqualToValue={(o, v) => o.categoryID === v.categoryID}
+              value={
+                dialogCategory !== undefined
+                  ? dialogCategory
+                  : ((dialogData.category as Category | null) ?? null)
+              }
+              onChange={(_, v) => setDialogCategory(v)}
+              renderInput={(params) => (
+                <TextField {...params} label="Category" margin="dense" fullWidth />
+              )}
+            />
+            <AllergenFlagsEditor
+              key={isCreate ? "new" : (dialogData.ingredientID as number)}
+              flags={dialogData.allergens as AllergenFlag[] | undefined}
+              disabledReason={
+                isCreate ? "Save the ingredient first to set allergen flags." : undefined
+              }
+              onSet={async (allergenID, kind) => {
+                await api.setIngredientAllergen(
+                  dialogData.ingredientID as number,
+                  allergenID,
+                  kind
+                );
+                void refresh();
+              }}
+            />
+          </>
         }
         onClose={() => setDialogOpen(false)}
         onSave={(values) => saveMutation.mutate(values)}

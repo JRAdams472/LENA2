@@ -170,6 +170,8 @@ export interface Item extends AuditableEntity {
   foodFlavors: FoodFlavor[] | null;
   selectionCount: number;
   personalSelectionCount: number;
+  allergens?: AllergenFlag[];
+  allergyWarnings?: AllergyWarning[];
 }
 
 // A generic ingredient ("corn") distinct from a branded catalog item
@@ -180,6 +182,44 @@ export interface Ingredient {
   category: Category | null;
   defaultUnit: string | null;
   isActive: boolean;
+  allergens?: AllergenFlag[];
+  allergyWarnings?: AllergyWarning[];
+}
+
+// An allergen from the registry — the taxonomy member records and
+// entity flags both key on.
+export interface Allergen {
+  allergenID: number;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+// An entity's declared allergen flag. "contains" is confirmed;
+// "may_contain" is advisory (cross-contamination, ingredient ambiguity).
+export type AllergenFlagKind = "contains" | "may_contain";
+
+export interface AllergenFlag {
+  allergen: Allergen;
+  kind: AllergenFlagKind;
+}
+
+// A member's own allergy or dietary-restriction record.
+export type MemberAllergyKind = "allergy" | "dietary";
+
+export interface MemberAllergen {
+  allergen: Allergen;
+  kind: MemberAllergyKind;
+}
+
+// A conflict between an entity's allergen set and one household member's
+// records. memberKind is the member's record kind; entityKind is the
+// strongest flag the entity carries for that allergen.
+export interface AllergyWarning {
+  member: HouseholdUser;
+  allergen: Allergen;
+  memberKind: MemberAllergyKind;
+  entityKind: AllergenFlagKind;
 }
 
 export interface NutrientType {
@@ -316,6 +356,8 @@ export interface Recipe extends AuditableEntity {
   averageRating: number | null;
   ratingCount: number;
   categories?: RecipeCategory[];
+  allergens?: AllergenFlag[];
+  allergyWarnings?: AllergyWarning[];
 }
 
 export interface RecipeRecommendation {
@@ -399,6 +441,8 @@ export interface EventRecipe {
   // never touch the original recipe.
   steps?: EventRecipeStep[];
   items?: EventRecipeItem[];
+  allergens?: AllergenFlag[];
+  allergyWarnings?: AllergyWarning[];
 }
 
 // One ingredient in a slot's snapshot. quantity is already scaled by the
@@ -488,6 +532,8 @@ export interface MealSlot extends AuditableEntity {
   mealPlan?: MealPlan | null;
   recipe?: Recipe | null;
   mealSlotItems?: MealSlotItem[];
+  allergens?: AllergenFlag[];
+  allergyWarnings?: AllergyWarning[];
 }
 
 export interface MealSlotItem extends AuditableEntity {
@@ -647,6 +693,8 @@ export interface GroceryListItem extends AuditableEntity {
   source: string;
   isChecked: boolean;
   groceryList?: GroceryList | null;
+  allergens?: AllergenFlag[];
+  allergyWarnings?: AllergyWarning[];
 }
 
 export interface RecipeImportDraftItem {

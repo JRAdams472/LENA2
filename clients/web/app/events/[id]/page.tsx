@@ -34,6 +34,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
+import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { fmtQty } from "@/lib/format";
 import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
 
@@ -470,7 +471,10 @@ export default function EventDetailPage({
                     <TableRow>
                       <TableCell>{hhmmOf(r.targetTime)}</TableCell>
                       <TableCell>{r.mealType}</TableCell>
-                      <TableCell>{recipeName(r) ?? <em>Free-form</em>}</TableCell>
+                      <TableCell>
+                        {recipeName(r) ?? <em>Free-form</em>}
+                        <AllergyWarningChip warnings={r.allergyWarnings} sx={{ ml: 1 }} />
+                      </TableCell>
                       <TableCell>
                         <Button
                           size="small"

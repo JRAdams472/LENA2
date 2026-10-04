@@ -28,6 +28,7 @@ import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, asEntity, ApiError } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
+import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { CocktailSuggestion, Recipe } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 import { isOfDrinkingAge } from "@/lib/age";
@@ -41,6 +42,7 @@ function toRow(recipe: Recipe) {
     prepTimeMinutes: recipe.prepTimeMinutes,
     cookTimeMinutes: recipe.cookTimeMinutes,
     isActive: recipe.isActive,
+    allergyWarnings: recipe.allergyWarnings,
   };
 }
 
@@ -49,6 +51,11 @@ type RecipeRow = ReturnType<typeof toRow>;
 const recipeTableFields: FieldDef<RecipeRow>[] = [
   { key: "recipeName", label: "Name" },
   { key: "description", label: "Description" },
+  {
+    key: "allergyWarnings",
+    label: "Warnings",
+    render: (row) => <AllergyWarningChip warnings={row.allergyWarnings} />,
+  },
   { key: "prepTimeMinutes", label: "Prep Time", type: "number" },
   { key: "cookTimeMinutes", label: "Cook Time", type: "number" },
   { key: "isActive", label: "Active", type: "boolean" },
