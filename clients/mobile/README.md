@@ -156,6 +156,8 @@ gated artifacts.
 - `lib/screens/household_screen.dart` — members, roles, invites, and the caller's own allergy/dietary records (`setMyAllergy`). Warning badges on grocery rows, recipe details, meal-plan slots, and event dishes open a dialog naming the member + allergen + flag kind; an entity with no flags reports "No allergen information", never "safe".
 - `lib/allergy.dart` — shared warning model + badge/dialog widgets used by every surface.
 - `lib/scan/upc_utils.dart` — UPC digit normalization.
+- `lib/format.dart` — shared display helpers (localized dates, brand-prefix dedupe, weekday names, grocery-source copy).
+- `lib/widgets/skeleton.dart` — `SkeletonList`/`SkeletonCard`/`SkeletonForm` loading placeholders and the `LenaSplash` boot screen.
 - `lib/ai/` — Ask Dot local inference: `engine.dart`/`protocol.dart`/`agent.dart` (engine contract, JSON tool protocol, bounded agent loop), `gemma_engine.dart` + `gemma_binding.dart` (`flutter_gemma` seam for tests), `model_manager.dart` (download/delete + dart-define config), `controller.dart` (orchestration + SharedPreferences mode), `api.dart` (assistant GraphQL queries).
 
 ## Testing
@@ -164,3 +166,21 @@ gated artifacts.
 flutter analyze
 flutter test
 ```
+
+### Screenshot walk
+
+`integration_test/screenshot_test.dart` drives every reachable screen on an
+emulator against the seeded `lena2shots` stack and writes PNGs to
+`mobile-shots/` when the test completes:
+
+```bash
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/screenshot_test.dart -d emulator-5554 \
+  --dart-define=LENA_API_URL=http://10.0.2.2/graphql \
+  --dart-define=LENA_DEBUG_ID_TOKEN=<test-issuer token>
+```
+
+Mint the token with
+`http://localhost:8085/token?sub=e2e-user-1&email=e2e@example.com&name=E2E%20User`
+—the seeded demo data belongs to `e2e-user-1`, and tokens expire after one
+hour.

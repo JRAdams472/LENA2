@@ -150,6 +150,33 @@ Key points:
 - CI runs the suite on `ubuntu-latest` inside the `e2e` job and uploads the
   HTML report (always) and `test-results/` on failure.
 
+## Mobile screenshot walk
+
+`clients/mobile/integration_test/screenshot_test.dart` drives every reachable
+screen on an emulator against the seeded `lena2shots` stack and writes PNGs to
+`mobile-shots/` when the test completes:
+
+```sh
+cd clients/mobile
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/screenshot_test.dart -d <emulator> \
+  --dart-define=LENA_API_URL=http://10.0.2.2/graphql \
+  --dart-define=LENA_DEBUG_ID_TOKEN=<test-issuer token>
+```
+
+- Mint the token from the same test issuer the e2e suite uses:
+  `http://localhost:8085/token?sub=e2e-user-1&email=e2e@example.com&name=E2E%20User`
+  — the seeded demo data belongs to `e2e-user-1`, and tokens expire after one
+  hour.
+- Screenshots buffer in `reportData` and flush to the driver only when the
+  test finishes — a mid-run failure produces no files. The walk therefore
+  gates back/dismiss pops on a successful tap (a missed tap can pop the app's
+  root route) and pumps frames during waits so route transitions aren't
+  frozen mid-fade.
+- Every tab with a `FloatingActionButton` needs a unique `heroTag` — visited
+  tabs stay alive in `MainScreen`'s `IndexedStack`, so two default-tag FABs
+  crash route pushes with a duplicate-hero assert.
+
 ## CI layout
 
 - `.github/workflows/test.yml` — one workflow, per-layer jobs: `go` (build,

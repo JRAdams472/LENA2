@@ -33,6 +33,7 @@ String fmtIso(String? iso) {
 String brandedName(String? brand, String? name) {
   final n = (name ?? '').trim();
   final b = (brand ?? '').trim();
+  if (n.isEmpty) return b;
   if (b.isEmpty || n.toLowerCase().startsWith(b.toLowerCase())) return n;
   return '$b $n';
 }

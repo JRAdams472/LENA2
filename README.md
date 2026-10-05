@@ -255,6 +255,20 @@ flutter analyze
 flutter test
 ```
 
+A screenshot walk (`integration_test/screenshot_test.dart`) captures all 27
+reachable screens on an emulator against the seeded `lena2shots` stack —
+mint a token from the test issuer and pass it as `LENA_DEBUG_ID_TOKEN`:
+
+```bash
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/screenshot_test.dart -d emulator-5554 \
+  --dart-define=LENA_API_URL=http://10.0.2.2/graphql \
+  --dart-define=LENA_DEBUG_ID_TOKEN=<token>
+```
+
+PNGs land in `clients/mobile/mobile-shots/` when the walk completes.
+
+
 ---
 
 ## CI
