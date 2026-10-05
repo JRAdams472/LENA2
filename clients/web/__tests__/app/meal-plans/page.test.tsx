@@ -104,7 +104,9 @@ describe("meal plans page", () => {
   it("lists meal plans", async () => {
     renderPage(<MealPlansPage />);
     await waitFor(() => expect(screen.getByText("Plan 1")).toBeInTheDocument());
-    expect(screen.getByText("2024-01-01")).toBeInTheDocument();
+    expect(
+      screen.getByText(new Date(2024, 0, 1).toLocaleDateString())
+    ).toBeInTheDocument();
   });
 
   it("creates a meal plan", async () => {
@@ -209,7 +211,9 @@ describe("meal plan detail page", () => {
   it("renders the meal plan", async () => {
     await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
     await waitFor(() => expect(screen.getByText("Plan 1")).toBeInTheDocument());
-    expect(screen.getByText(/2024-01-01/)).toBeInTheDocument();
+    expect(screen.getByText(/Week starting/).textContent).toContain(
+      new Date(2024, 0, 1).toLocaleDateString()
+    );
     expect(screen.getByText("Weekly Grid")).toBeInTheDocument();
   });
 

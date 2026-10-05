@@ -12,6 +12,7 @@ import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
+import Skeleton from "@mui/material/Skeleton";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import LunchDiningIcon from "@mui/icons-material/LunchDining";
 import DinnerDiningIcon from "@mui/icons-material/DinnerDining";
@@ -19,7 +20,7 @@ import LocalCafeIcon from "@mui/icons-material/LocalCafe";
 import CakeIcon from "@mui/icons-material/Cake";
 import SetMealIcon from "@mui/icons-material/SetMeal";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
-import { alpha, styled, useTheme } from "@mui/material/styles";
+import { alpha, styled, useTheme, Theme } from "@mui/material/styles";
 import { Recipe } from "@/lib/types";
 import { sizeBadge, stripSize } from "@/lib/format";
 
@@ -39,12 +40,21 @@ function reasonLabel(reason: string) {
   return REASON_LABELS[reason] ?? "Recommended for you";
 }
 
+// design.md --accent-terracotta / --accent-wheat: the two warm accents that
+// don't have a MUI palette slot. Sage/olive come from theme tokens.
+const TERRACOTTA = "#C0876B";
+const WHEAT = "#D9B26A";
+
 // Deterministic accent per recipe so suggestion tiles differentiate
 // without real photos: sage, olive, terracotta, wheat.
-const ACCENT_COLORS = ["#7C9473", "#8A9A5B", "#C0876B", "#D9B26A"];
-
-function accentFor(recipeID: number) {
-  return ACCENT_COLORS[Math.abs(recipeID) % ACCENT_COLORS.length];
+function accentFor(theme: Theme, recipeID: number) {
+  const accents = [
+    theme.palette.primary.main,
+    theme.palette.success.main,
+    TERRACOTTA,
+    WHEAT,
+  ];
+  return accents[Math.abs(recipeID) % accents.length];
 }
 
 // Category/dish-type keywords drive the suggestion tile icon.
@@ -85,6 +95,41 @@ const PlanMealLink = styled(Link)(({ theme }) => ({
   textDecoration: "none",
   "&:hover": { backgroundColor: alpha(theme.palette.primary.main, 0.08) },
 }));
+
+function DashboardSkeleton() {
+  return (
+    <Box>
+      <Skeleton variant="text" width={220} height={40} />
+      <Skeleton variant="text" width={320} height={28} sx={{ mb: 2 }} />
+      <Paper sx={{ p: 2 }}>
+        <Skeleton variant="text" width={140} height={28} />
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" },
+            gap: 2,
+            mt: 1,
+          }}
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} variant="rounded" height={80} />
+          ))}
+        </Box>
+      </Paper>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          gap: 3,
+          mt: 3,
+        }}
+      >
+        <Skeleton variant="rounded" height={220} />
+        <Skeleton variant="rounded" height={160} />
+      </Box>
+    </Box>
+  );
+}
 
 function isDateInRange(date: Date, weekStartDate: string) {
   const start = new Date(weekStartDate);
@@ -169,17 +214,18 @@ export default function Dashboard() {
   }, [planQuery.data, todayDay]);
 
   const recipeName = (recipeId: number | null) => {
-    if (!recipeId) return "Blank";
+    if (!recipeId) return "Nothing planned";
     return (
       recipesQuery.data?.find((r) => r.recipeID === recipeId)?.recipeName ??
       `Recipe ${recipeId}`
     );
   };
 
-  if (plansQuery.isLoading) return <CircularProgress />;
+  if (plansQuery.isLoading) return <DashboardSkeleton />;
   if (plansQuery.error)
     return <Alert severity="error">{(plansQuery.error as Error).message}</Alert>;
-  if (planQuery.isLoading || recipesQuery.isLoading) return <CircularProgress />;
+  if (planQuery.isLoading || recipesQuery.isLoading)
+    return <DashboardSkeleton />;
   if (planQuery.error)
     return <Alert severity="error">{(planQuery.error as Error).message}</Alert>;
   if (recipesQuery.error)
@@ -374,8 +420,8 @@ export default function Dashboard() {
                         width: 48,
                         height: 48,
                         borderRadius: 2,
-                        bgcolor: accentFor(s.recipe.recipeID),
-                        color: "#FFFDF8",
+                        bgcolor: accentFor(theme, s.recipe.recipeID),
+                        color: theme.palette.background.paper,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -446,7 +492,7 @@ export default function Dashboard() {
                         flexShrink: 0,
                       }}
                     />
-                    <Typography variant="body2">
+                    <Typography variant="body2" sx={{ minWidth: 0 }}>
                       {stripSize(it.name, size, it.brand)}
                       {it.brand && (
                         <Typography

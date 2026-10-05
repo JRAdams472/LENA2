@@ -204,7 +204,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 520 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 520, mx: "auto" }}>
       <Paper sx={{ p: 3 }}>
         <Typography variant="h5" gutterBottom>
           Profile

@@ -15,13 +15,20 @@ const generateFields: FieldDef<GroceryList>[] = [
   { key: "mealPlanID", label: "Meal Plan ID (optional)", type: "number" },
 ];
 
-function toRow(list: GroceryList) {
-  return {
-    groceryListID: list.groceryListID,
-    generatedDate: list.generatedDate?.split("T")[0] ?? "",
-    mealPlanID: list.mealPlanID ?? "",
-  };
-}
+type ListRow = {
+  groceryListID: number;
+  name: string;
+  generatedDate: string;
+  store: string;
+  itemCount: string;
+};
+
+const listTableFields: FieldDef<ListRow>[] = [
+  { key: "name", label: "List" },
+  { key: "generatedDate", label: "Generated", type: "date" },
+  { key: "store", label: "Store" },
+  { key: "itemCount", label: "Items" },
+];
 
 export default function GroceryListsPage() {
   const queryClient = useQueryClient();
@@ -32,6 +39,17 @@ export default function GroceryListsPage() {
   const listQuery = useQuery({
     queryKey: ["groceryLists"],
     queryFn: () => api.getGroceryLists(),
+  });
+
+  const toRow = (list: GroceryList): ListRow => ({
+    groceryListID: list.groceryListID,
+    name: `List #${list.groceryListID}`,
+    generatedDate: list.generatedDate?.split("T")[0] ?? "",
+    store: list.store?.name ?? "—",
+    itemCount:
+      list.groceryListItems === undefined
+        ? "—"
+        : `${list.groceryListItems.length} items`,
   });
 
   const generateMutation = useMutation({
@@ -55,7 +73,7 @@ export default function GroceryListsPage() {
     setDialogOpen(false);
   };
 
-  const extraActions = (row: Record<string, unknown>) => (
+  const extraActions = (row: ListRow) => (
     <Button
       size="small"
       component={Link}
@@ -70,11 +88,10 @@ export default function GroceryListsPage() {
       <DataTable
         title="Grocery Lists"
         rows={(listQuery.data ?? []).map(toRow)}
+        fields={listTableFields}
         isLoading={listQuery.isLoading}
         error={listQuery.error as Error | null}
         onCreate={handleCreate}
-        onEdit={() => {}}
-        onDelete={() => {}}
         extraActions={extraActions}
       />
       <CrudDialog

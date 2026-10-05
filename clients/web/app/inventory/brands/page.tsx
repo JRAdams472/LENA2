@@ -8,7 +8,7 @@ export default function BrandsPage() {
     <CrudPage
       title="Brands"
       queryKey={["brands"]}
-      listFn={api.getBrandList}
+      pagedListFn={api.getBrandsPaged}
       fields={[{ key: "brandName", label: "Brand Name" }]}
       createFn={(row) => api.createBrand(asEntity(row))}
       updateFn={(row) =>

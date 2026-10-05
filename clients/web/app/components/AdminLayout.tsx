@@ -573,18 +573,30 @@ export default function AdminLayout({
                 href="/assistant"
                 color="inherit"
                 startIcon={<AutoAwesomeIcon />}
+                aria-label="Ask Dot"
                 aria-current={pathname === "/assistant" ? "page" : undefined}
                 sx={{
                   textTransform: "none",
                   fontWeight: 600,
                   borderRadius: 999,
                   mr: 0.5,
+                  minWidth: { xs: 0, sm: 64 },
+                  px: { xs: 1, sm: 2 },
+                  "& .MuiButton-startIcon": {
+                    mr: { xs: 0, sm: 1 },
+                    ml: { xs: 0, sm: -0.5 },
+                  },
                   ...(pathname === "/assistant" && {
                     bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
                   }),
                 }}
               >
-                Ask Dot
+                <Box
+                  component="span"
+                  sx={{ display: { xs: "none", sm: "inline" } }}
+                >
+                  Ask Dot
+                </Box>
               </Button>
             </Box>
           </Box>

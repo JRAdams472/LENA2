@@ -30,12 +30,11 @@ import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import { api } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
-import { fmtQty, sizeBadge, stripSize } from "@/lib/format";
+import { brandedName, fmtDate, fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { GroceryListItem, GroceryRouteGroup, Store, StoreAisle } from "@/lib/types";
 
 function brandItemLabel(item: { name: string; brand?: string | null }): string {
-  const brand = item.brand ? `${item.brand} ` : "";
-  return `${brand}${item.name}`;
+  return brandedName(item.brand, item.name);
 }
 
 interface ManualForm {
@@ -277,6 +276,7 @@ export function ItemRow({
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Typography
                 variant="body1"
+                color={item.isChecked ? "text.secondary" : "text.primary"}
                 sx={{
                   textDecoration: item.isChecked ? "line-through" : "none",
                 }}
@@ -292,7 +292,11 @@ export function ItemRow({
               )}
               <AllergyWarningChip warnings={item.allergyWarnings} />
             </Box>
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ opacity: item.isChecked ? 0.6 : 1 }}
+            >
               {fmtQty(Number(item.quantityNeeded))} {item.unitOfMeasure}
               {item.usualBrandName ? ` · usual: ${item.usualBrandName}` : ""}
               {!item.usualBrandName && item.itemName && item.ingredientName
@@ -673,7 +677,7 @@ export default function GroceryListDetailPage({
               Grocery List
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Generated {list.generatedDate?.split("T")[0]}
+              Generated {fmtDate(list.generatedDate)}
               {list.mealPlanID ? ` for Meal Plan ${list.mealPlanID}` : ""}
             </Typography>
           </Box>

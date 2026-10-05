@@ -89,12 +89,18 @@ describe("grocery lists page", () => {
 
   it("lists grocery lists", async () => {
     renderPage(<GroceryListsPage />);
-    await waitFor(() => expect(screen.getByText("2024-01-01")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(new Date(2024, 0, 1).toLocaleDateString())
+      ).toBeInTheDocument()
+    );
   });
 
   it("generates a grocery list", async () => {
     renderPage(<GroceryListsPage />);
-    await waitFor(() => screen.getByText("2024-01-01"));
+    await waitFor(() =>
+      screen.getByText(new Date(2024, 0, 1).toLocaleDateString())
+    );
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     fireEvent.change(screen.getByLabelText("Meal Plan ID (optional)"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

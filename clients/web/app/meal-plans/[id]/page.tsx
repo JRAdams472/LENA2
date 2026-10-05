@@ -16,6 +16,8 @@ import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CloseIcon from "@mui/icons-material/Close";
@@ -24,7 +26,7 @@ import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, asEntity } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
-import { fmtQty } from "@/lib/format";
+import { brandedName, brandSuffix, fmtDate, fmtQty } from "@/lib/format";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import {
   AuditableEntity,
@@ -50,7 +52,7 @@ const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_TYPE_IDS = [0, 1, 2];
 
 function brandItemName(item: { name: string; brand?: string | null }): string {
-  return item.brand ? `${item.brand} — ${item.name}` : item.name;
+  return brandedName(item.brand, item.name, " — ");
 }
 
 function itemSearchEmptyText(brandId: number | null, search: string): string {
@@ -315,7 +317,16 @@ function SlotDialog({
 
   return (
     <>
-      <Paper sx={{ p: 3, minWidth: 400, maxWidth: 600 }}>
+      <Paper
+        sx={{
+          p: 3,
+          minWidth: { xs: 0, sm: 400 },
+          width: "min(600px, calc(100vw - 16px))",
+          maxWidth: 600,
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
         <Typography variant="h6" gutterBottom>
           {DAY_NAMES[day]} - {MEAL_TYPES[mealType]}
         </Typography>
@@ -363,7 +374,7 @@ function SlotDialog({
               }}
             >
               <MenuItem value="">
-                <em>Blank</em>
+                <em>No recipe</em>
               </MenuItem>
               {(recipesQuery.data ?? [])
                 .filter(
@@ -509,7 +520,7 @@ function SlotDialog({
               return (
                 <li key={item.itemID} {...liProps}>
                   {item.name}
-                  {item.brand ? ` — ${item.brand}` : ""}
+                  {brandSuffix(item.brand, item.name)}
                 </li>
               );
             }}
@@ -733,12 +744,75 @@ export default function MealPlanDetailPage({
 
   const recipeName = (rid: number | null) =>
     recipesQuery.data?.find((r) => r.recipeID === rid)?.recipeName ??
-    (rid ? `Recipe ${rid}` : "Blank");
+    (rid ? `Recipe ${rid}` : "");
 
   const mealNutrition = (day: number, mealType: number) =>
     nutritionQuery.data?.meals.find(
       (m) => m.dayOfWeek === day && m.mealType === mealType
     );
+
+  const theme = useTheme();
+  const isNarrow = useMediaQuery(theme.breakpoints.down("sm"));
+
+  const renderSlotCell = (day: number, mt: number) => {
+    const slot = findSlot(day, mt);
+    const nut = mealNutrition(day, mt);
+    return (
+      <Paper
+        key={`${day}-${mt}`}
+        sx={{
+          p: 1,
+          minHeight: 100,
+          flex: 1,
+          cursor: "pointer",
+          border: slot ? "1px solid" : "1px dashed",
+          borderColor: slot ? "primary.main" : "divider",
+        }}
+        onClick={() =>
+          setSlotDialog({ open: true, day, mealType: mt, slot })
+        }
+      >
+        {slot?.recipeID ? (
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {recipeName(slot.recipeID)}
+          </Typography>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Nothing planned — tap to add
+          </Typography>
+        )}
+        {slot && (
+          <AllergyWarningChip warnings={slot.allergyWarnings} sx={{ mb: 0.5 }} />
+        )}
+        {slot?.replacementNote && (
+          <Typography variant="caption" color="text.secondary">
+            {slot.replacementNote}
+          </Typography>
+        )}
+        {slot?.mealSlotItems && slot.mealSlotItems.length > 0 && (
+          <Box sx={{ mt: 0.5 }}>
+            {slot.mealSlotItems.map((it) => (
+              <Chip
+                key={it.mealSlotItemID}
+                label={slotItemChipLabel(it)}
+                size="small"
+                sx={{ mr: 0.5, mb: 0.5 }}
+              />
+            ))}
+          </Box>
+        )}
+        {nut && nut.nutrients.length > 0 && (
+          <Box sx={{ mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              {nut.nutrients
+                .map((n) => `${n.nutrientName}: ${Number(n.amount).toFixed(1)}`)
+                .join(", ")}
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+    );
+  };
 
   if (planQuery.isLoading) return <CircularProgress />;
   if (planQuery.error)
@@ -763,11 +837,18 @@ export default function MealPlanDetailPage({
               {plan.planName}
             </Typography>
             <Typography variant="body1" color="text.secondary" gutterBottom>
-              Week starting {plan.weekStartDate?.split("T")[0]} (
+              Week starting {fmtDate(plan.weekStartDate)} (
               {DAY_NAMES[plan.weekStartDayOfWeek]})
             </Typography>
           </Box>
-          <Box sx={{ display: "flex", gap: 1 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              gap: 1,
+              justifyContent: { sm: "flex-end" },
+            }}
+          >
             {aiAvailable && (
               <Button
                 variant="outlined"
@@ -878,77 +959,56 @@ export default function MealPlanDetailPage({
         <Typography variant="h5" gutterBottom>
           Weekly Grid
         </Typography>
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 1 }}>
-          <Box sx={{ fontWeight: 700 }}></Box>
-          {MEAL_TYPE_IDS.map((mt) => (
-            <Box key={mt} sx={{ textAlign: "center", fontWeight: 700 }}>
-              {MEAL_TYPES[mt]}
-            </Box>
-          ))}
-
-          {DAY_NAMES.map((name, day) => (
-            <Fragment key={name}>
-              <Box sx={{ fontWeight: 700 }}>{DAY_NAMES[day]}</Box>
-              {MEAL_TYPE_IDS.map((mt) => {
-                const slot = findSlot(day, mt);
-                const nut = mealNutrition(day, mt);
-                return (
-                  <Paper
-                    key={`${name}-${mt}`}
+        {isNarrow ? (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {DAY_NAMES.map((name, day) => (
+              <Paper key={name} variant="outlined" sx={{ p: 1.5 }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ fontWeight: 700, mb: 1 }}
+                >
+                  {name}
+                </Typography>
+                {MEAL_TYPE_IDS.map((mt) => (
+                  <Box
+                    key={mt}
                     sx={{
-                      p: 1,
-                      minHeight: 100,
-                      cursor: "pointer",
-                      border: slot ? "1px solid" : "1px dashed",
-                      borderColor: slot ? "primary.main" : "divider",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 1,
+                      mb: 1,
                     }}
-                    onClick={() =>
-                      setSlotDialog({
-                        open: true,
-                        day,
-                        mealType: mt,
-                        slot,
-                      })
-                    }
                   >
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {recipeName(slot?.recipeID ?? null)}
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ width: 64, pt: 1.5, flexShrink: 0 }}
+                    >
+                      {MEAL_TYPES[mt]}
                     </Typography>
-                    {slot && (
-                      <AllergyWarningChip warnings={slot.allergyWarnings} sx={{ mb: 0.5 }} />
-                    )}
-                    {slot?.replacementNote && (
-                      <Typography variant="caption" color="text.secondary">
-                        {slot.replacementNote}
-                      </Typography>
-                    )}
-                    {slot?.mealSlotItems && slot.mealSlotItems.length > 0 && (
-                      <Box sx={{ mt: 0.5 }}>
-                        {slot.mealSlotItems.map((it) => (
-                          <Chip
-                            key={it.mealSlotItemID}
-                            label={slotItemChipLabel(it)}
-                            size="small"
-                            sx={{ mr: 0.5, mb: 0.5 }}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                    {nut && nut.nutrients.length > 0 && (
-                      <Box sx={{ mt: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {nut.nutrients
-                            .map((n) => `${n.nutrientName}: ${Number(n.amount).toFixed(1)}`)
-                            .join(", ")}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                );
-              })}
-            </Fragment>
-          ))}
-        </Box>
+                    {renderSlotCell(day, mt)}
+                  </Box>
+                ))}
+              </Paper>
+            ))}
+          </Box>
+        ) : (
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 1 }}>
+            <Box sx={{ fontWeight: 700 }}></Box>
+            {MEAL_TYPE_IDS.map((mt) => (
+              <Box key={mt} sx={{ textAlign: "center", fontWeight: 700 }}>
+                {MEAL_TYPES[mt]}
+              </Box>
+            ))}
+
+            {DAY_NAMES.map((name, day) => (
+              <Fragment key={name}>
+                <Box sx={{ fontWeight: 700 }}>{DAY_NAMES[day]}</Box>
+                {MEAL_TYPE_IDS.map((mt) => renderSlotCell(day, mt))}
+              </Fragment>
+            ))}
+          </Box>
+        )}
       </Paper>
 
       {nutritionQuery.data && (

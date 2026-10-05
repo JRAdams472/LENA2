@@ -97,7 +97,12 @@ function PrefRow({ pref }: { pref: NotificationCategoryPreference }) {
               onDelete={() => clearMute.mutate()}
             />
           )}
-          <Button size="small" onClick={(e) => setMenuAnchor(e.currentTarget)}>
+          <Button
+            size="small"
+            aria-haspopup="menu"
+            title="Pause notifications for a while"
+            onClick={(e) => setMenuAnchor(e.currentTarget)}
+          >
             Mute
           </Button>
           {!isAll && (
@@ -105,6 +110,7 @@ function PrefRow({ pref }: { pref: NotificationCategoryPreference }) {
               edge="end"
               checked={pref.enabled}
               onChange={(e) => toggle.mutate(e.target.checked)}
+              title="Turn delivery on or off"
               slotProps={{ input: { "aria-label": `Enable ${pref.label}` } }}
             />
           )}

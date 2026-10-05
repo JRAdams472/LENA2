@@ -133,6 +133,7 @@ export default function LoginScreen() {
             <Button
               key={provider}
               variant="contained"
+              fullWidth
               startIcon={meta.icon}
               onClick={() =>
                 void startOAuthSignIn(provider).catch(() =>

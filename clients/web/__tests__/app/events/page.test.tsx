@@ -97,7 +97,7 @@ describe("EventsPage", () => {
 
     renderPage(<EventsPage />);
     await waitFor(() => screen.getByText("Friendsgiving"));
-    expect(screen.getByText("30")).toBeInTheDocument();
+    expect(screen.getByText("30 min")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     fireEvent.change(screen.getByLabelText("Name"), {

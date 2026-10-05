@@ -217,7 +217,7 @@ describe("items page", () => {
     renderPage();
     await waitFor(() => screen.getByText("Milk"));
     const row = screen.getByText("Milk").closest("tr")!;
-    fireEvent.click(within(row).getByRole("button", { name: "5" }));
+    fireEvent.click(within(row).getByRole("button", { name: "5 gallon" }));
 
     const input = await screen.findByLabelText("Quantity");
     expect(input).toHaveValue("5");

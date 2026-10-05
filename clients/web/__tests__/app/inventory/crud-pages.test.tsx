@@ -363,14 +363,16 @@ describe("food nutrients page", () => {
 
   it("lists food nutrients", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => expect(screen.getByText("10")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("10 g")).toBeInTheDocument());
+    expect(screen.getByText("Yogurt")).toBeInTheDocument();
+    expect(screen.getByText("Sugar")).toBeInTheDocument();
     const bodies = getBodies();
     expect(bodies.some((b) => b.query.includes("items"))).toBe(true);
   });
 
   it("creates a food nutrient", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => screen.getByText("10"));
+    await waitFor(() => screen.getByText("10 g"));
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     fireEvent.change(screen.getByLabelText("Food ID"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Nutrient ID"), { target: { value: "1" } });
@@ -383,8 +385,8 @@ describe("food nutrients page", () => {
 
   it("edits a food nutrient", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => screen.getByText("10"));
-    const row = screen.getByText("10").closest("tr")!;
+    await waitFor(() => screen.getByText("10 g"));
+    const row = screen.getByText("10 g").closest("tr")!;
     fireEvent.click(row.querySelectorAll("button")[0]);
     fireEvent.change(await screen.findByLabelText("Amount per Serving"), { target: { value: "15" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -397,8 +399,8 @@ describe("food nutrients page", () => {
 
   it("deletes a food nutrient", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => screen.getByText("10"));
-    const row = screen.getByText("10").closest("tr")!;
+    await waitFor(() => screen.getByText("10 g"));
+    const row = screen.getByText("10 g").closest("tr")!;
     const buttons = row.querySelectorAll("button");
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => {

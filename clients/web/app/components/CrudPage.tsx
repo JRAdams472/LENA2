@@ -27,6 +27,9 @@ interface CrudPageProps<T extends object> {
   activeOnlyFn?: () => Promise<T[]>;
   filterBy?: FilterDef<T>;
   fields: FieldDef<T>[];
+  // Table columns when they should differ from the dialog's form fields
+  // (e.g. show item/nutrient names while the form keeps ID inputs).
+  tableFields?: FieldDef<T>[];
   createFn: (row: Record<string, unknown>) => Promise<unknown>;
   updateFn: (row: Record<string, unknown>) => Promise<unknown>;
   deleteFn: (row: T) => Promise<unknown>;
@@ -41,6 +44,7 @@ export default function CrudPage<T extends object>({
   activeOnlyFn,
   filterBy,
   fields,
+  tableFields,
   createFn,
   updateFn,
   deleteFn,
@@ -190,7 +194,7 @@ export default function CrudPage<T extends object>({
       <DataTable
         title={title}
         rows={rows}
-        fields={fields}
+        fields={tableFields ?? fields}
         isLoading={listQuery.isLoading}
         error={tableError || (listQuery.error as Error | null)}
         onCreate={handleCreate}

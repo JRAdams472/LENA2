@@ -34,7 +34,7 @@ import { AllergyWarningsAlert, AllergenFlagsLine } from "@/app/components/Allerg
 import { api } from "@/lib/api";
 import { Ingredient, Item, PairingSuggestion, RecipeItem, RecipeStep } from "@/lib/types";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
-import { fmtQty } from "@/lib/format";
+import { brandedName, brandSuffix, fmtQty } from "@/lib/format";
 import { isOfDrinkingAge } from "@/lib/age";
 import { useMe } from "@/app/auth/useMe";
 
@@ -45,8 +45,7 @@ function ratingSummary(average: number | null, count: number): string {
 }
 
 function brandItemLabel(item: { name: string; brand?: string | null }): string {
-  const brand = item.brand ? `${item.brand} ` : "";
-  return `${brand}${item.name}`;
+  return brandedName(item.brand, item.name);
 }
 
 // Generic ingredients render alone or with their resolved brand item;
@@ -54,8 +53,7 @@ function brandItemLabel(item: { name: string; brand?: string | null }): string {
 function recipeItemLabel(ri: RecipeItem): string {
   if (ri.ingredientName) {
     if (!ri.itemName) return ri.ingredientName;
-    const brand = ri.itemBrand ? `${ri.itemBrand} ` : "";
-    return `${ri.ingredientName} — ${brand}${ri.itemName}`;
+    return `${ri.ingredientName} — ${brandedName(ri.itemBrand, ri.itemName)}`;
   }
   if (ri.itemBrand) return `${ri.itemBrand} — ${ri.itemName ?? ri.itemID}`;
   return String(ri.itemName ?? ri.itemID);
@@ -527,7 +525,7 @@ export default function RecipeDetailPage() {
               return (
                 <li key={item.itemID} {...liProps}>
                   {item.name}
-                  {item.brand ? ` — ${item.brand}` : ""}
+                  {brandSuffix(item.brand, item.name)}
                 </li>
               );
             }}

@@ -143,6 +143,7 @@ export interface FoodNutrient {
   nutrientId: number;
   amountPerServing: number;
   nutrientType: NutrientType | null;
+  item?: Item | null;
 }
 
 export interface Item extends AuditableEntity {

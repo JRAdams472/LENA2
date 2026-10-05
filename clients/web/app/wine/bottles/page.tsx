@@ -14,8 +14,19 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
-import CrudDialog from "@/app/components/CrudDialog";
+import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import { Bottle, PagedResult } from "@/lib/types";
+
+const bottleTableFields: FieldDef<Bottle>[] = [
+  { key: "vineyard", label: "Vineyard", render: (r) => r.vineyard ?? "—" },
+  { key: "vintageYear", label: "Vintage", type: "number" },
+  { key: "type", label: "Type", render: (r) => r.type?.typeName ?? "—" },
+  { key: "country", label: "Country", render: (r) => r.country?.countryName ?? "—" },
+  { key: "region", label: "Region", render: (r) => r.region?.regionName ?? "—" },
+  { key: "bottleSize", label: "Size" },
+  { key: "quantity", label: "Qty", type: "number" },
+  { key: "location", label: "Location", render: (r) => r.location ?? "—" },
+];
 
 const bottleFields = [
   { key: "bottleNumber", label: "Bottle Number", type: "number" as const },
@@ -291,6 +302,7 @@ export default function BottlesPage() {
       <DataTable
         title="Bottles"
         rows={rows}
+        fields={bottleTableFields}
         isLoading={listQuery.isLoading}
         error={listQuery.error as Error | null}
         onCreate={handleCreate}

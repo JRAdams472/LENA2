@@ -198,7 +198,7 @@ export default function HouseholdPage() {
   };
 
   return (
-    <Box sx={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box sx={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 3, mx: "auto" }}>
       <Typography variant="h4">Household</Typography>
       {error && <Alert severity="error">{error}</Alert>}
 
