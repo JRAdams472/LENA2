@@ -30,16 +30,26 @@ class _MainScreenState extends State<MainScreen> {
   Timer? _poll;
   GraphQLClient? _client;
 
-  final _screens = const [
-    DashboardScreen(),
-    GroceryListsScreen(),
-    EventsScreen(),
-    ScanScreen(),
-    PantryScreen(),
-    HouseholdScreen(),
-    AssistantScreen(),
-    MoreScreen(),
+  // Tabs build lazily on first visit — an eager IndexedStack mounts
+  // ScanScreen at launch, which requests CAMERA permission before the
+  // user ever touches Scan. Placeholders keep unvisited tabs unbuilt.
+  static final _builders = <Widget Function()>[
+    () => const DashboardScreen(),
+    () => const GroceryListsScreen(),
+    () => const EventsScreen(),
+    () => const ScanScreen(),
+    () => const PantryScreen(),
+    () => const HouseholdScreen(),
+    () => const AssistantScreen(),
+    () => const MoreScreen(),
   ];
+  final List<Widget?> _screens = List.filled(8, null);
+  final Set<int> _visited = {0};
+
+  Widget _tab(int i) {
+    if (!_visited.contains(i)) return const SizedBox.shrink();
+    return _screens[i] ??= _builders[i]();
+  }
 
   @override
   void didChangeDependencies() {
@@ -73,21 +83,28 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: _screens,
+        children: [for (var i = 0; i < _builders.length; i++) _tab(i)],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: (i) {
-          setState(() => _index = i);
+          setState(() {
+            _index = i;
+            _visited.add(i);
+          });
           // Opening the Household tab auto-marks notifications read;
           // re-poll so the badge clears without waiting for the interval.
           _loadUnread();
         },
         type: BottomNavigationBarType.fixed,
+        // Eight fixed destinations can't fit full labels — show the
+        // selected label only and keep every label ≤7 chars.
+        showUnselectedLabels: false,
+        selectedFontSize: 12,
         items: [
           const BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
-            label: 'Dashboard',
+            label: 'Home',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
@@ -111,7 +128,7 @@ class _MainScreenState extends State<MainScreen> {
               label: Text('$_unreadNotifications'),
               child: const Icon(Icons.group),
             ),
-            label: 'Household',
+            label: 'People',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.auto_awesome),

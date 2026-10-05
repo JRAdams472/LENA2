@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 
 import 'dashboard_content.dart';
 
@@ -118,7 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _body(
       BuildContext context, QueryResult result, VoidCallback? refetch) {
     if (result.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (result.hasException) {
       return SingleChildScrollView(

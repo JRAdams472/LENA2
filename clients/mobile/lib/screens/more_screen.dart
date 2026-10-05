@@ -68,8 +68,7 @@ class _MoreTile extends StatelessWidget {
           child: Icon(icon,
               color: Theme.of(context).colorScheme.onPrimaryContainer),
         ),
-        title: Text(title,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: () =>

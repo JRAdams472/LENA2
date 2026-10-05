@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 
 const String bottlesQuery = r'''
   query Bottles {
@@ -94,7 +95,7 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
     if (_bottles.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Adjust Holding')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const SkeletonForm(),
       );
     }
 

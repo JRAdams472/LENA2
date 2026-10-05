@@ -151,6 +151,9 @@ ThemeData lenaTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: lenaPaper,
+      // Async-populated fields (edit screens) never re-float the label
+      // after the value lands — always-float keeps labels off the text.
+      floatingLabelBehavior: FloatingLabelBehavior.always,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: lenaDivider),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
+import '../format.dart';
 
 const String mealPlanQuery = r'''
   query MealPlan($id: ID!) {
@@ -147,8 +149,8 @@ class EditMealPlanScreen extends StatefulWidget {
 class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   final _nameCtrl = TextEditingController();
   final _dateCtrl = TextEditingController();
-  final _dayCtrl = TextEditingController(text: '0');
-  final _dayCtrlNew = TextEditingController(text: '0');
+  int _weekStartDay = 0;
+  int _slotDay = 0;
   final _mealTypeCtrl = TextEditingController();
   final _servingsCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
@@ -236,7 +238,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
           _plan = plan;
           _nameCtrl.text = (plan['name'] as String?) ?? '';
           _dateCtrl.text = (plan['weekStartDate'] as String?) ?? '';
-          _dayCtrl.text = (plan['weekStartDayOfWeek']?.toString()) ?? '0';
+          _weekStartDay = (plan['weekStartDayOfWeek'] as num?)?.toInt() ?? 0;
         });
       }
     }
@@ -277,7 +279,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
       final input = <String, dynamic>{
         'name': _nameCtrl.text,
         'weekStartDate': _dateCtrl.text,
-        'weekStartDayOfWeek': int.tryParse(_dayCtrl.text) ?? 0,
+        'weekStartDayOfWeek': _weekStartDay,
       };
       if (widget.mealPlanId == null) {
         await client.mutate(MutationOptions(
@@ -308,7 +310,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
         variables: {
           'input': {
             'mealPlanId': widget.mealPlanId,
-            'dayOfWeek': int.tryParse(_dayCtrlNew.text) ?? 0,
+            'dayOfWeek': _slotDay,
             'mealType': _mealTypeCtrl.text,
             'recipeId': recipeId,
             'servings': _servingsCtrl.text.isEmpty
@@ -378,8 +380,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _dateCtrl.dispose();
-    _dayCtrl.dispose();
-    _dayCtrlNew.dispose();
+
     _mealTypeCtrl.dispose();
     _servingsCtrl.dispose();
     _noteCtrl.dispose();
@@ -408,8 +409,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Day ${slot['dayOfWeek']} - ${slot['mealType']}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    '${weekdayName(slot['dayOfWeek'] as int?)} — ${slot['mealType']}',
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
                 IconButton(
@@ -515,11 +516,18 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               decoration: const InputDecoration(
                   labelText: 'Week start date (YYYY-MM-DD)'),
             ),
-            TextField(
-              controller: _dayCtrl,
-              decoration:
-                  const InputDecoration(labelText: 'Week start day (0-6)'),
-              keyboardType: TextInputType.number,
+            DropdownButtonFormField<int>(
+              isExpanded: true,
+              initialValue: _weekStartDay,
+              decoration: const InputDecoration(
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                labelText: 'Week starts on',
+              ),
+              items: [
+                for (var d = 0; d < 7; d++)
+                  DropdownMenuItem(value: d, child: Text(weekdayName(d))),
+              ],
+              onChanged: (v) => setState(() => _weekStartDay = v ?? 0),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -534,12 +542,19 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
             ),
             if (widget.mealPlanId != null) ...[
               const Divider(height: 32),
-              const Text('Add Slot',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              TextField(
-                controller: _dayCtrlNew,
-                decoration: const InputDecoration(labelText: 'Day (0-6)'),
-                keyboardType: TextInputType.number,
+              Text('Add Slot', style: Theme.of(context).textTheme.titleMedium),
+              DropdownButtonFormField<int>(
+                isExpanded: true,
+                initialValue: _slotDay,
+                decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Day',
+                ),
+                items: [
+                  for (var d = 0; d < 7; d++)
+                    DropdownMenuItem(value: d, child: Text(weekdayName(d))),
+                ],
+                onChanged: (v) => setState(() => _slotDay = v ?? 0),
               ),
               TextField(
                 controller: _mealTypeCtrl,
@@ -605,8 +620,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                     : const Text('Add Slot'),
               ),
               const Divider(height: 32),
-              const Text('Slots',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text('Slots', style: Theme.of(context).textTheme.titleMedium),
               ...slots.map((s) => _slotCard(s)),
             ],
           ],

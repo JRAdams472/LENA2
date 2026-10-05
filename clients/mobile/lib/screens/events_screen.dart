@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import 'edit_event_screen.dart';
 import 'event_detail_screen.dart';
 
@@ -41,6 +42,7 @@ class _EventsScreenState extends State<EventsScreen> {
           appBar: AppBar(title: const Text('Events')),
           body: _body(result, refetch),
           floatingActionButton: FloatingActionButton(
+            heroTag: 'fab-events',
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const EditEventScreen()),
@@ -54,7 +56,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
   Widget _body(QueryResult result, VoidCallback? refetch) {
     if (result.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (result.hasException) {
       return Center(child: Text('Error: ${result.exception.toString()}'));

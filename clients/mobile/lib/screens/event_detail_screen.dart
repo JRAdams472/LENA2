@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
 import 'edit_event_screen.dart';
@@ -242,6 +243,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       floatingActionButton: event == null
           ? null
           : FloatingActionButton.extended(
+              heroTag: 'fab-event-detail',
               onPressed: () => _openSlotEditor(),
               icon: const Icon(Icons.add),
               label: const Text('Add dish'),
@@ -251,7 +253,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Widget _body() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (_error != null) {
       return Center(

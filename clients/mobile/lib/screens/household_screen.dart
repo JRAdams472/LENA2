@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 
 import '../allergy.dart';
 import 'edit_recipe_screen.dart';
@@ -431,7 +432,21 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
       builder: (result, {refetch, fetchMore}) {
         _refetch = refetch;
         return Scaffold(
-          appBar: AppBar(title: const Text('Household')),
+          appBar: AppBar(
+            title: const Text('Household'),
+            actions: [
+              IconButton(
+                tooltip: 'Notification settings',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationSettingsScreen(),
+                  ),
+                ),
+              ),
+            ],
+          ),
           body: _body(context, result),
         );
       },
@@ -440,7 +455,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
 
   Widget _body(BuildContext context, QueryResult result) {
     if (result.isLoading && result.data == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (result.hasException && result.data == null) {
       return Center(child: Text('Error: ${result.exception}'));
@@ -506,16 +521,19 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                     child: TextField(
                       controller: _nameCtrl,
                       maxLength: 100,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Household name',
                         counterText: '',
+                        // Inline save — a floating trailing icon detached
+                        // from the field read as unconnected.
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.save),
+                          tooltip: 'Save household name',
+                          onPressed: () =>
+                              _mutate(renameMutation, {'name': _nameCtrl.text}),
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.save),
-                    onPressed: () =>
-                        _mutate(renameMutation, {'name': _nameCtrl.text}),
                   ),
                 ],
               ),
@@ -542,16 +560,6 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                   label: Text('$unread'),
                   child: const Icon(Icons.notifications),
                 ),
-                IconButton(
-                  tooltip: 'Notification settings',
-                  icon: const Icon(Icons.settings_outlined),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationSettingsScreen(),
-                    ),
-                  ),
-                ),
               ],
             ),
             ...notifications.map((n) {
@@ -561,24 +569,28 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               final title = n['title'] as String? ?? _notificationText(n);
               final body = n['body'] as String? ?? '';
               final itemId = n['itemId'] as String?;
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.notifications_outlined),
-                title: Text(title),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (body.isNotEmpty) Text(body),
-                    if (ago.isNotEmpty) Text(ago),
-                  ],
+              return Card(
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.notifications_outlined),
+                  title: Text(title),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Server-rendered bodies sometimes repeat the title
+                      // verbatim — don't print it twice.
+                      if (body.isNotEmpty && body != title) Text(body),
+                      if (ago.isNotEmpty) Text(ago),
+                    ],
+                  ),
+                  trailing: n['kind'] == 'ITEM_EXPIRING' && itemId != null
+                      ? TextButton(
+                          onPressed: () => _addReplacement(itemId),
+                          child: const Text('Add to list'),
+                        )
+                      : null,
+                  onTap: _notificationLink(n),
                 ),
-                trailing: n['kind'] == 'ITEM_EXPIRING' && itemId != null
-                    ? TextButton(
-                        onPressed: () => _addReplacement(itemId),
-                        child: const Text('Add to list'),
-                      )
-                    : null,
-                onTap: _notificationLink(n),
               );
             }),
             const SizedBox(height: 8),
@@ -608,16 +620,16 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
             'Allergies & dietary restrictions',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const Text(
+          Text(
             'Warnings on recipes, meal plans, events, and grocery lists '
             'fire for every household member\'s records.',
-            style: TextStyle(fontSize: 12, color: Colors.black54),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           Query(
             options: QueryOptions(document: gql(myAllergiesQuery)),
             builder: (aResult, {refetch, fetchMore}) {
               if (aResult.isLoading && aResult.data == null) {
-                return const Center(child: CircularProgressIndicator());
+                return const SkeletonCard();
               }
               final allergens = ((aResult.data?['allergens'] as List? ?? [])
                       .cast<Map<String, dynamic>>())
@@ -672,10 +684,11 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
           ),
           if (members.length > 1)
             TextButton.icon(
-              icon: const Icon(Icons.logout, color: Colors.red),
-              label: const Text(
+              icon: Icon(Icons.logout,
+                  color: Theme.of(context).colorScheme.error),
+              label: Text(
                 'Leave household',
-                style: TextStyle(color: Colors.red),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               onPressed: () => _mutate(
                 leaveMutation,
@@ -710,14 +723,16 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                     spacing: 8,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.check, color: Colors.green),
+                        icon: Icon(Icons.check,
+                            color: Theme.of(context).colorScheme.primary),
                         onPressed: () => _mutate(
                           acceptInviteMutation,
                           {'inviteId': inv['id']},
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.red),
+                        icon: Icon(Icons.close,
+                            color: Theme.of(context).colorScheme.error),
                         onPressed: () => _mutate(
                           declineInviteMutation,
                           {'inviteId': inv['id']},
