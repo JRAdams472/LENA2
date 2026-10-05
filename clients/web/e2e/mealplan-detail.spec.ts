@@ -33,8 +33,8 @@ test.describe("meal plan detail", () => {
         page.getByRole("heading", { name: planName })
       ).toBeVisible();
       await expect(
-        page.getByText(/Week starting 2026-09-07/)
-      ).toBeVisible();
+        page.getByText(/Week starting/).first()
+      ).toContainText(new Date(2026, 8, 7).toLocaleDateString());
       await expect(
         page.getByRole("heading", { name: "Weekly Grid" })
       ).toBeVisible();
@@ -42,9 +42,10 @@ test.describe("meal plan detail", () => {
         page.getByRole("button", { name: "Generate Grocery List" })
       ).toBeVisible();
 
-      // Empty cells show "Blank"; open the first one (Sun - Breakfast).
-      // The slot editor is a custom overlay, not a role=dialog.
-      await page.getByText("Blank", { exact: true }).first().click();
+      // Empty cells show a soft empty label; open the first one
+      // (Sun - Breakfast). The slot editor is a custom overlay, not a
+      // role=dialog.
+      await page.getByText(/Nothing planned/).first().click();
       await expect(page.getByText("Sun - Breakfast")).toBeVisible();
 
       // Save a slot with a replacement note.

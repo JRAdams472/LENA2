@@ -8,7 +8,25 @@ export default function FoodNutrientsPage() {
     <CrudPage
       title="Food Nutrients"
       queryKey={["food-nutrients"]}
-      listFn={api.getFoodNutrients}
+      pagedListFn={api.getFoodNutrientsPaged}
+      tableFields={[
+        {
+          key: "foodId",
+          label: "Item",
+          render: (r) => r.item?.name ?? `#${r.foodId}`,
+        },
+        {
+          key: "nutrientId",
+          label: "Nutrient",
+          render: (r) => r.nutrientType?.nutrientName ?? `#${r.nutrientId}`,
+        },
+        {
+          key: "amountPerServing",
+          label: "Amount per Serving",
+          render: (r) =>
+            `${r.amountPerServing} ${r.nutrientType?.unitOfMeasure ?? ""}`.trim(),
+        },
+      ]}
       fields={[
         { key: "foodId", label: "Food ID", type: "number" },
         { key: "nutrientId", label: "Nutrient ID", type: "number" },

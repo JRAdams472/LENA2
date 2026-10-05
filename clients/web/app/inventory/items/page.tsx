@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Link from "@mui/material/Link";
+import Chip from "@mui/material/Chip";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import Switch from "@mui/material/Switch";
@@ -256,7 +256,7 @@ export default function ItemsPage() {
   };
 
   const itemColumns: FieldDef<Item>[] = [
-    { key: "name", label: "Name" },
+    { key: "name", label: "Name", minWidth: 220 },
     { key: "brand", label: "Brand" },
     {
       key: "ingredient",
@@ -265,19 +265,20 @@ export default function ItemsPage() {
     },
     {
       key: "currentQuantity",
-      label: "Current Quantity",
+      label: "Qty",
       type: "number",
       render: (row) => (
-        <Link
-          component="button"
-          variant="body2"
+        <Chip
+          size="small"
+          variant="outlined"
+          clickable
+          label={`${row.currentQuantity} ${row.unit}`}
           onClick={() => setQtyEditItem(row)}
-        >
-          {row.currentQuantity}
-        </Link>
+          title="Adjust quantity"
+        />
       ),
     },
-    { key: "minQuantity", label: "Min Quantity", type: "number" },
+    { key: "minQuantity", label: "Min Qty", type: "number" },
     { key: "purchaseDate", label: "Purchase Date" },
     { key: "expiryDate", label: "Expiry Date" },
     { key: "notes", label: "Notes" },
@@ -285,13 +286,14 @@ export default function ItemsPage() {
       key: "isFavorite",
       label: "Favorite",
       render: (row) => (
-        <Link
-          component="button"
-          variant="body2"
+        <Chip
+          size="small"
+          variant="outlined"
+          clickable
+          label={row.isFavorite ? "Yes" : "No"}
           onClick={() => setFavEditItem(row)}
-        >
-          {row.isFavorite ? "Yes" : "No"}
-        </Link>
+          title="Toggle favorite"
+        />
       ),
     },
   ];

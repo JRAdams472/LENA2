@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import FormControl from "@mui/material/FormControl";
@@ -9,6 +9,7 @@ import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Switch from "@mui/material/Switch";
+import TextField from "@mui/material/TextField";
 import { PagedResult } from "@/lib/types";
 import DataTable from "./DataTable";
 import CrudDialog, { FieldDef } from "./CrudDialog";
@@ -25,8 +26,14 @@ interface CrudPageProps<T extends object> {
   listFn?: () => Promise<T[]>;
   pagedListFn?: (page: number, pageSize: number) => Promise<PagedResult<T>>;
   activeOnlyFn?: () => Promise<T[]>;
+  // Server-side text search — required for paged catalogs too large to
+  // browse (e.g. ~9k brands): results replace the paged list un-paginated.
+  searchFn?: (term: string) => Promise<T[]>;
   filterBy?: FilterDef<T>;
   fields: FieldDef<T>[];
+  // Table columns when they should differ from the dialog's form fields
+  // (e.g. show item/nutrient names while the form keeps ID inputs).
+  tableFields?: FieldDef<T>[];
   createFn: (row: Record<string, unknown>) => Promise<unknown>;
   updateFn: (row: Record<string, unknown>) => Promise<unknown>;
   deleteFn: (row: T) => Promise<unknown>;
@@ -39,8 +46,10 @@ export default function CrudPage<T extends object>({
   listFn,
   pagedListFn,
   activeOnlyFn,
+  searchFn,
   filterBy,
   fields,
+  tableFields,
   createFn,
   updateFn,
   deleteFn,
@@ -56,12 +65,21 @@ export default function CrudPage<T extends object>({
   const [tableError, setTableError] = useState<Error | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  const searching = !!searchFn && debouncedSearch !== "";
 
   const listQuery = useQuery<T[] | PagedResult<T>>({
-    queryKey: [...queryKey, activeOnly, filterId, ...(pagedListFn ? [page, pageSize] : [])],
+    queryKey: [...queryKey, activeOnly, filterId, debouncedSearch, ...(pagedListFn ? [page, pageSize] : [])],
     queryFn: () => {
       if (activeOnly && activeOnlyFn) return activeOnlyFn();
       if (filterBy && filterId) return filterBy.filterFn(Number(filterId));
+      if (searching) return searchFn!(debouncedSearch);
       if (pagedListFn) return pagedListFn(page, pageSize);
       return listFn!();
     },
@@ -156,6 +174,17 @@ export default function CrudPage<T extends object>({
 
   return (
     <Box>
+      {searchFn && (
+        <TextField
+          label="Search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          size="small"
+          fullWidth
+          sx={{ mb: 2 }}
+        />
+      )}
+
       {filterBy && (
         <FormControl fullWidth sx={{ mb: 2 }}>
           <InputLabel>{filterBy.label}</InputLabel>
@@ -190,14 +219,14 @@ export default function CrudPage<T extends object>({
       <DataTable
         title={title}
         rows={rows}
-        fields={fields}
+        fields={tableFields ?? fields}
         isLoading={listQuery.isLoading}
         error={tableError || (listQuery.error as Error | null)}
         onCreate={handleCreate}
         onEdit={handleEdit}
         onDelete={handleDelete}
         pagination={
-          isPaged
+          isPaged && !searching
             ? {
                 pageNumber: page,
                 pageSize,

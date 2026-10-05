@@ -67,6 +67,7 @@ import {
   RecipeImportReviewItem,
   PagedResult,
 } from "./types";
+import { brandedName } from "./format";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "/graphql";
@@ -1798,7 +1799,7 @@ function usualBrandLabel(
   b: NonNullable<GqlGroceryListItem["usualBrand"]> | null | undefined
 ): string | null {
   if (!b) return null;
-  return b.brand ? `${b.brand.name} ${b.name}` : b.name;
+  return brandedName(b.brand?.name, b.name);
 }
 
 function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListItem {
@@ -2763,19 +2764,23 @@ export const api = {
     return null;
   },
 
+  getBrandsPaged: async (page: number, pageSize: number): Promise<PagedResult<Brand>> => {
+    const data = await request<{
+      brands: { items: GqlBrand[]; pageInfo: GqlPageInfo };
+    }>(
+      `query ($page: Int!, $pageSize: Int!) { brands(page: $page, pageSize: $pageSize) { items { ${BRAND_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
+    );
+    return toPaged(data.brands.items.map(toBrand), data.brands.pageInfo);
+  },
+
   getBrandList: async (): Promise<Brand[]> => {
     const out: Brand[] = [];
     const pageSize = 100;
     for (let page = 1; ; page++) {
-      const data = await request<{
-        brands: { items: GqlBrand[]; pageInfo: { totalCount: number } };
-      }>(
-        `query ($page: Int!, $pageSize: Int!) { brands(page: $page, pageSize: $pageSize) { items { ${BRAND_FIELDS} } pageInfo { totalCount } } }`,
-        { page, pageSize }
-      );
-      const items = data.brands.items.map(toBrand);
-      out.push(...items);
-      if (items.length < pageSize) break;
+      const result = await api.getBrandsPaged(page, pageSize);
+      out.push(...result.items);
+      if (result.items.length < pageSize) break;
     }
     return out;
   },
@@ -2855,6 +2860,22 @@ export const api = {
     );
   },
 
+  // Flavors hang off items, so paging is over items — a page's row count
+  // varies with how many flavors each item carries.
+  getFoodFlavorsPaged: async (page: number, pageSize: number): Promise<PagedResult<FoodFlavor>> => {
+    const data = await request<{ items: GqlItemPage }>(
+      `query ($page: Int, $pageSize: Int) { items(page: $page, pageSize: $pageSize) { items { ${ITEM_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
+    );
+    const rows = data.items.items.flatMap((i) =>
+      (i.flavors ?? []).map((f) => ({
+        ...toFoodFlavor(num(i.id), f),
+        item: toItem(i),
+      }))
+    );
+    return toPaged(rows, data.items.pageInfo);
+  },
+
   createFoodFlavor: async (foodFlavor: Omit<FoodFlavor, keyof AuditableEntity>): Promise<FoodFlavor> => {
     const data = await request<{ addFoodFlavor: GqlFoodFlavor }>(
       `mutation ($input: AddFoodFlavorInput!) {
@@ -2903,6 +2924,22 @@ export const api = {
     (await fetchAllItems()).flatMap((i) =>
       (i.nutrients ?? []).map((n) => toFoodNutrient(num(i.id), n))
     ),
+
+  // Nutrients hang off items — paging is over items, so a page's row
+  // count varies with how many nutrients each item carries.
+  getFoodNutrientsPaged: async (page: number, pageSize: number): Promise<PagedResult<FoodNutrient>> => {
+    const data = await request<{ items: GqlItemPage }>(
+      `query ($page: Int, $pageSize: Int) { items(page: $page, pageSize: $pageSize) { items { ${ITEM_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
+    );
+    const rows = data.items.items.flatMap((i) =>
+      (i.nutrients ?? []).map((n) => ({
+        ...toFoodNutrient(num(i.id), n),
+        item: toItem(i),
+      }))
+    );
+    return toPaged(rows, data.items.pageInfo);
+  },
 
   createFoodNutrient: async (foodNutrient: Omit<FoodNutrient, keyof AuditableEntity>): Promise<FoodNutrient> => {
     const data = await request<{ addFoodNutrient: GqlFoodNutrient }>(

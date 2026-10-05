@@ -56,8 +56,19 @@ const recipeTableFields: FieldDef<RecipeRow>[] = [
     label: "Warnings",
     render: (row) => <AllergyWarningChip warnings={row.allergyWarnings} />,
   },
-  { key: "prepTimeMinutes", label: "Prep Time", type: "number" },
-  { key: "cookTimeMinutes", label: "Cook Time", type: "number" },
+  {
+    key: "prepTimeMinutes",
+    label: "Prep Time",
+    // type drives the dialog input; render drives the table cell.
+    type: "number",
+    render: (r) => (r.prepTimeMinutes == null ? "—" : `${r.prepTimeMinutes} min`),
+  },
+  {
+    key: "cookTimeMinutes",
+    label: "Cook Time",
+    type: "number",
+    render: (r) => (r.cookTimeMinutes == null ? "—" : `${r.cookTimeMinutes} min`),
+  },
   { key: "isActive", label: "Active", type: "boolean" },
 ];
 
@@ -254,13 +265,21 @@ export default function RecipesPage() {
           )}
         </Alert>
       )}
-      <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}>
+      <Box
+        sx={{
+          display: "flex",
+          gap: 2,
+          alignItems: "center",
+          flexWrap: "wrap",
+          mb: 2,
+        }}
+      >
         <TextField
           size="small"
           label="Search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ minWidth: 260 }}
+          sx={{ minWidth: 200, flexGrow: { xs: 1, sm: 0 } }}
         />
         <FormControlLabel
           control={

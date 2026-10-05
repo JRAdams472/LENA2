@@ -1,5 +1,8 @@
+"use client";
+
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import { useTheme } from "@mui/material/styles";
 
 interface LenaLogoProps {
   size?: number;
@@ -10,10 +13,13 @@ interface LenaLogoProps {
 
 export default function LenaLogo({
   size = 28,
-  iconColor = "#5F7A57",
-  textColor = "#3E3E34",
+  iconColor,
+  textColor,
   showWordmark = true,
 }: LenaLogoProps) {
+  const theme = useTheme();
+  const resolvedIconColor = iconColor ?? theme.palette.primary.dark;
+  const resolvedTextColor = textColor ?? theme.palette.text.primary;
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
       <Box
@@ -24,7 +30,7 @@ export default function LenaLogo({
         strokeWidth={2.5}
         strokeLinecap="round"
         strokeLinejoin="round"
-        sx={{ width: size, height: size, color: iconColor, flexShrink: 0 }}
+        sx={{ width: size, height: size, color: resolvedIconColor, flexShrink: 0 }}
       >
         <path d="M2 20h20" />
         <path d="M20 16A8 8 0 0 0 4 16v0" />
@@ -38,7 +44,7 @@ export default function LenaLogo({
             fontWeight: 600,
             letterSpacing: "0.05em",
             fontSize: size * 0.72,
-            color: textColor,
+            color: resolvedTextColor,
             lineHeight: 1,
           }}
         >

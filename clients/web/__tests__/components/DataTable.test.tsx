@@ -272,7 +272,7 @@ describe("DataTable", () => {
     expect(screen.queryByText("itemID")).not.toBeInTheDocument();
     expect(screen.queryByText("createdBy")).not.toBeInTheDocument();
     expect(screen.queryByText("createDate")).not.toBeInTheDocument();
-    expect(screen.getByText("name")).toBeInTheDocument();
+    expect(screen.getByText("Name")).toBeInTheDocument();
   });
 
   it("renders extraActions per row", () => {
@@ -308,7 +308,51 @@ describe("DataTable", () => {
       />
     );
 
-    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.queryByText("Nothing here yet")).not.toBeInTheDocument();
+  });
+
+  it("renders booleans and ISO dates as friendly text", () => {
+    render(
+      <DataTable
+        title="Items"
+        rows={[
+          {
+            itemID: 1,
+            name: "Milk",
+            isActive: true,
+            expires: "2026-10-07T01:11:18Z",
+          },
+        ]}
+        isLoading={false}
+        error={null}
+        onCreate={jest.fn()}
+        fields={[
+          { key: "name", label: "Name" },
+          { key: "isActive", label: "Active", type: "boolean" },
+          { key: "expires", label: "Expires" },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Yes")).toBeInTheDocument();
+    expect(screen.queryByText("true")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(new Date(2026, 9, 7).toLocaleDateString())
+    ).toBeInTheDocument();
+  });
+
+  it("humanizes inferred column headers when fields are omitted", () => {
+    render(
+      <DataTable
+        title="Items"
+        rows={[{ itemID: 1, weekStartDate: "2026-01-05" }]}
+        isLoading={false}
+        error={null}
+        onCreate={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText("Week Start Date")).toBeInTheDocument();
   });
 });

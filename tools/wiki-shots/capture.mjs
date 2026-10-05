@@ -343,10 +343,11 @@ await mctx.addInitScript(
 const mpage = await mctx.newPage();
 async function mshot(name, path, waitFor) {
   await mpage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
-  await mpage
-    .getByText(waitFor, { exact: false })
-    .first()
-    .waitFor({ timeout: 60000 });
+  const ready =
+    typeof waitFor === "function"
+      ? waitFor(mpage)
+      : mpage.getByText(waitFor, { exact: false }).first();
+  await ready.waitFor({ timeout: 60000 });
   await mpage.waitForTimeout(1000);
   await mpage.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
   console.log("shot:", name);
@@ -356,7 +357,9 @@ await mshot("recipes-mobile", "/recipes", "Herb Roast Chicken");
 await mshot("recipe-detail-mobile", `/recipes/${roastId}`, "Herb Roast Chicken");
 await mshot("meal-plan-week-mobile", `/meal-plans/${planId}`, "Week of");
 await mshot("grocery-list-mobile", `/grocery-lists/${listId}`, "Time to restock");
-await mshot("assistant-mobile", "/assistant", "Ask Dot");
+await mshot("assistant-mobile", "/assistant", (p) =>
+  p.getByPlaceholder("Ask Dot")
+);
 await mshot("household-mobile", "/household", "E2E Member");
 await mpage.goto(`${BASE}/inventory/items`, { waitUntil: "domcontentloaded" });
 await mpage

@@ -17,6 +17,8 @@ export interface FieldDef<T = Record<string, unknown>> {
   type?: "text" | "number" | "boolean" | "date";
   sortable?: boolean;
   render?: (row: T) => ReactNode;
+  // Table-only hints — ignored by the dialog.
+  minWidth?: number;
 }
 
 interface CrudDialogProps<T> {

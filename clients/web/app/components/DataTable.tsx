@@ -2,9 +2,9 @@
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
+import Skeleton from "@mui/material/Skeleton";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -19,6 +19,8 @@ import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { ReactNode, useMemo, useState } from "react";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import { FieldDef } from "./CrudDialog";
@@ -29,8 +31,8 @@ interface DataTableProps<T extends object> {
   isLoading: boolean;
   error: Error | null;
   onCreate: () => void;
-  onEdit: (row: T) => void;
-  onDelete: (row: T) => void;
+  onEdit?: (row: T) => void;
+  onDelete?: (row: T) => void;
   extraActions?: (row: T) => ReactNode;
   page?: number;
   pageSize?: number;
@@ -56,6 +58,52 @@ function cellText(value: unknown): string {
   return String(value as string | number | boolean);
 }
 
+// Type-aware display value: booleans and ISO date/datetime strings get
+// human text instead of raw JSON wire forms.
+function displayText(value: unknown, type?: FieldDef<object>["type"]): string {
+  if (value === null || value === undefined) return "";
+  if (type === "boolean" || typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  // Date components ("2024-01-01" or ISO timestamps) render as a local
+  // date — Date.parse treats date-only strings as UTC and would shift the
+  // rendered day back in western timezones.
+  if (typeof value === "string") {
+    const dm = /^(\d{4})-(\d{2})-(\d{2})(?:T\d{2}:\d{2})?/.exec(value);
+    if (dm && (type === "date" || value.includes("T"))) {
+      return new Date(
+        Number(dm[1]),
+        Number(dm[2]) - 1,
+        Number(dm[3])
+      ).toLocaleDateString();
+    }
+  }
+  return cellText(value);
+}
+
+function TableSkeleton({ columns, actions }: { columns: number; actions: boolean }) {
+  const cols = columns + (actions ? 1 : 0);
+  return (
+    <TableContainer component={Paper} role="status" aria-label="Loading rows">
+      <Table size="small">
+        <TableBody>
+          {Array.from({ length: 5 }).map((_, i) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- placeholder rows have no identity
+            <TableRow key={i}>
+              {Array.from({ length: cols }).map((__, j) => (
+                // eslint-disable-next-line @eslint-react/no-array-index-key -- placeholder cells have no identity
+                <TableCell key={j}>
+                  <Skeleton variant="text" width={j === 0 ? "60%" : "80%"} />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
 export default function DataTable<T extends object>({
   title,
   rows,
@@ -73,18 +121,35 @@ export default function DataTable<T extends object>({
   pagination,
   fields,
 }: DataTableProps<T>) {
+  // Last-resort header text when a page doesn't pass fields: "weekStartDate"
+  // → "Week Start Date". Pages should pass fields for real labels.
+  const humanize = (key: string) =>
+    key
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/^./, (c) => c.toUpperCase());
+
   let columnDefs: FieldDef<T>[] = [];
   if (fields && fields.length > 0) {
+    // Explicit fields are already curated — keys like "foodId" often back a
+    // render that shows a related entity's name, so never hide them.
     columnDefs = fields;
   } else if (rows.length > 0) {
-    columnDefs = (Object.keys(rows[0]) as Extract<keyof T, string>[]).map(
-      (key) => ({ key, label: key, sortable: true })
-    );
+    // Inferred columns: hide raw ID/audit fields, humanize the rest.
+    const hiddenKeys = new Set([
+      "createdBy",
+      "createDate",
+      "lastUpdatedBy",
+      "lastUpdatedDate",
+    ]);
+    const idRegex = /id$/i;
+    columnDefs = (Object.keys(rows[0]) as Extract<keyof T, string>[])
+      .filter((key) => !hiddenKeys.has(key) && !idRegex.test(key))
+      .map((key) => ({ key, label: humanize(key), sortable: true }));
   }
 
-  const hiddenKeys = new Set(["createdBy", "createDate"]);
-  const idRegex = /id$/i;
-  columnDefs = columnDefs.filter((col) => !hiddenKeys.has(col.key) && !idRegex.test(col.key));
+  const theme = useTheme();
+  const isNarrow = useMediaQuery(theme.breakpoints.down("sm"));
+  const hasActions = !!(onEdit || onDelete || extraActions);
 
   const [sortField, setSortField] = useState<Extract<keyof T, string> | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -159,18 +224,95 @@ export default function DataTable<T extends object>({
         </Button>
       </Box>
 
-      {isLoading && <CircularProgress />}
+      {isLoading && (
+        <TableSkeleton
+          columns={Math.max(columnDefs.length, 3)}
+          actions={hasActions}
+        />
+      )}
       {error && <Alert severity="error">{error.message}</Alert>}
       {!isLoading && !error && rows.length === 0 && (
-        <Typography color="text.secondary">Nothing here yet</Typography>
+        <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
+          {(totalCount ?? pagination?.totalCount) ? (
+            // Server-paged tables can legitimately return an empty page —
+            // e.g. food flavors page over items, and this page's items have
+            // none. Don't claim the dataset is empty.
+            <Typography color="text.secondary">
+              No results on this page — try another page.
+            </Typography>
+          ) : (
+            <>
+              <Typography color="text.secondary" gutterBottom>
+                Nothing here yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Create the first {title.toLowerCase().replace(/s$/, "")} to get
+                started.
+              </Typography>
+            </>
+          )}
+        </Paper>
       )}
-      {!isLoading && !error && rows.length > 0 && (
+      {!isLoading && !error && rows.length > 0 && isNarrow && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          {displayRows.map((row) => (
+            <Paper key={rowKey(row)} variant="outlined" sx={{ p: 2 }}>
+              {columnDefs.map((col) => {
+                const value = (row as Record<string, unknown>)[col.key];
+                return (
+                  <Box
+                    key={col.key}
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 2,
+                      py: 0.5,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {col.label}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      component="div"
+                      sx={{ textAlign: "right" }}
+                    >
+                      {col.render ? col.render(row) : displayText(value, col.type)}
+                    </Typography>
+                  </Box>
+                );
+              })}
+              {hasActions && (
+                <Box
+                  sx={{ display: "flex", justifyContent: "flex-end", gap: 1, mt: 1 }}
+                >
+                  {onEdit && (
+                    <IconButton onClick={() => onEdit(row)} size="small" aria-label="Edit" data-testid="row-edit-button">
+                      <EditIcon />
+                    </IconButton>
+                  )}
+                  {onDelete && (
+                    <IconButton onClick={() => onDelete(row)} size="small" aria-label="Delete" data-testid="row-delete-button">
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                  {extraActions?.(row)}
+                </Box>
+              )}
+            </Paper>
+          ))}
+        </Box>
+      )}
+      {!isLoading && !error && rows.length > 0 && !isNarrow && (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 {columnDefs.map((col) => (
-                  <TableCell key={col.key}>
+                  <TableCell
+                    key={col.key}
+                    sx={col.minWidth ? { minWidth: col.minWidth } : undefined}
+                  >
                     {col.sortable !== false ? (
                       <TableSortLabel
                         active={sortField === col.key}
@@ -184,7 +326,7 @@ export default function DataTable<T extends object>({
                     )}
                   </TableCell>
                 ))}
-                <TableCell>Actions</TableCell>
+                {hasActions && <TableCell>Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -193,20 +335,49 @@ export default function DataTable<T extends object>({
                   {columnDefs.map((col) => {
                     const value = (row as Record<string, unknown>)[col.key];
                     return (
-                      <TableCell key={col.key}>
-                        {col.render ? col.render(row) : cellText(value)}
+                      <TableCell
+                        key={col.key}
+                        sx={col.minWidth ? { minWidth: col.minWidth } : undefined}
+                      >
+                        <Box
+                          // Long names clamp at two lines instead of ballooning
+                          // the row height (W-24).
+                          sx={{
+                            display: "-webkit-box",
+                            WebkitBoxOrient: "vertical",
+                            WebkitLineClamp: 2,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {col.render ? col.render(row) : displayText(value, col.type)}
+                        </Box>
                       </TableCell>
                     );
                   })}
-                  <TableCell>
-                    <IconButton onClick={() => onEdit(row)} size="small" aria-label="Edit" data-testid="row-edit-button">
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton onClick={() => onDelete(row)} size="small" aria-label="Delete" data-testid="row-delete-button">
-                      <DeleteIcon />
-                    </IconButton>
-                    {extraActions?.(row)}
-                  </TableCell>
+                  {hasActions && (
+                    <TableCell>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexWrap: "nowrap",
+                          alignItems: "center",
+                          gap: 0.5,
+                        }}
+                      >
+                        {onEdit && (
+                          <IconButton onClick={() => onEdit(row)} size="small" aria-label="Edit" data-testid="row-edit-button">
+                            <EditIcon />
+                          </IconButton>
+                        )}
+                        {onDelete && (
+                          <IconButton onClick={() => onDelete(row)} size="small" aria-label="Delete" data-testid="row-delete-button">
+                            <DeleteIcon />
+                          </IconButton>
+                        )}
+                        {extraActions?.(row)}
+                      </Box>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

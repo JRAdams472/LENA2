@@ -110,6 +110,38 @@ describe("brands page", () => {
       expect(getBodies().some((b) => b.query.includes("deleteBrand") && b.variables.id === "1")).toBe(true);
     });
   });
+
+  it("searches brands via searchBrands instead of the paged query", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("searchBrands")) {
+        return Promise.resolve(
+          gql({ searchBrands: [{ id: "9", name: "Zevia" }] })
+        );
+      }
+      return Promise.resolve(
+        gql({
+          brands: {
+            items: [{ id: "1", name: "Nike" }],
+            pageInfo: { totalCount: 1 },
+          },
+        })
+      );
+    });
+
+    renderPage(<BrandsPage />);
+    await waitFor(() => screen.getByText("Nike"));
+    fireEvent.change(screen.getByLabelText("Search"), {
+      target: { value: "Zevia" },
+    });
+    await waitFor(() => expect(screen.getByText("Zevia")).toBeInTheDocument());
+    const bodies = getBodies();
+    expect(
+      bodies.some(
+        (b) => b.query.includes("searchBrands") && b.variables.term === "Zevia"
+      )
+    ).toBe(true);
+  });
 });
 
 describe("flavor profiles page", () => {
@@ -363,14 +395,16 @@ describe("food nutrients page", () => {
 
   it("lists food nutrients", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => expect(screen.getByText("10")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("10 g")).toBeInTheDocument());
+    expect(screen.getByText("Yogurt")).toBeInTheDocument();
+    expect(screen.getByText("Sugar")).toBeInTheDocument();
     const bodies = getBodies();
     expect(bodies.some((b) => b.query.includes("items"))).toBe(true);
   });
 
   it("creates a food nutrient", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => screen.getByText("10"));
+    await waitFor(() => screen.getByText("10 g"));
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     fireEvent.change(screen.getByLabelText("Food ID"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Nutrient ID"), { target: { value: "1" } });
@@ -383,8 +417,8 @@ describe("food nutrients page", () => {
 
   it("edits a food nutrient", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => screen.getByText("10"));
-    const row = screen.getByText("10").closest("tr")!;
+    await waitFor(() => screen.getByText("10 g"));
+    const row = screen.getByText("10 g").closest("tr")!;
     fireEvent.click(row.querySelectorAll("button")[0]);
     fireEvent.change(await screen.findByLabelText("Amount per Serving"), { target: { value: "15" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -397,8 +431,8 @@ describe("food nutrients page", () => {
 
   it("deletes a food nutrient", async () => {
     renderPage(<FoodNutrientsPage />);
-    await waitFor(() => screen.getByText("10"));
-    const row = screen.getByText("10").closest("tr")!;
+    await waitFor(() => screen.getByText("10 g"));
+    const row = screen.getByText("10 g").closest("tr")!;
     const buttons = row.querySelectorAll("button");
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => {

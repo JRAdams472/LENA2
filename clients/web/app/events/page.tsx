@@ -19,7 +19,21 @@ import Switch from "@mui/material/Switch";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
+import { FieldDef } from "@/app/components/CrudDialog";
 import { FoodEvent } from "@/lib/types";
+
+type EventRow = ReturnType<typeof toRow>;
+
+const eventTableFields: FieldDef<EventRow>[] = [
+  { key: "name", label: "Name" },
+  { key: "eventDate", label: "Event Date", type: "date" },
+  {
+    key: "slotGranularityMinutes",
+    label: "Time Slots",
+    render: (row) => `${row.slotGranularityMinutes} min`,
+  },
+  { key: "isActive", label: "Active", type: "boolean" },
+];
 
 interface EventFormState {
   foodEventID: number | null;
@@ -130,6 +144,7 @@ export default function EventsPage() {
       <DataTable
         title="Food Events"
         rows={(listQuery.data?.items ?? []).map(toRow)}
+        fields={eventTableFields}
         isLoading={listQuery.isLoading}
         error={listQuery.error as Error | null}
         onCreate={handleCreate}

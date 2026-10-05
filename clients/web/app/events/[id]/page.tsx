@@ -35,7 +35,7 @@ import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
-import { fmtQty } from "@/lib/format";
+import { fmtDate, fmtQty } from "@/lib/format";
 import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
@@ -410,7 +410,8 @@ export default function EventDetailPage({
               {event.name}
             </Typography>
             <Typography color="text.secondary">
-              {event.eventDate} · {event.slotGranularityMinutes}-minute slots
+              {fmtDate(event.eventDate)} · {event.slotGranularityMinutes}-minute
+              slots
               {!event.isActive && " · inactive"}
             </Typography>
           </Box>
@@ -497,7 +498,8 @@ export default function EventDetailPage({
                             color="text.secondary"
                             sx={{ display: "block" }}
                           >
-                            ×{fmtQty(r.scalingFactor)} of {r.baseServings}
+                            scaled ×{fmtQty(r.scalingFactor)} — recipe serves{" "}
+                            {r.baseServings}
                           </Typography>
                         )}
                       </TableCell>
@@ -1086,11 +1088,15 @@ function TimelineRecipeCard({ recipe }: { recipe: EventTimelineRecipe }) {
           {recipe.startBy && ` · start by ${hhmmOf(recipe.startBy)}`}
         </Typography>
       </Typography>
-      {recipe.warnings.map((w) => (
-        <Alert severity="warning" key={w} sx={{ my: 1 }}>
-          {w}
-        </Alert>
-      ))}
+      {recipe.warnings
+        // The unschedulable line below already explains "no recipe steps" —
+        // skip the matching banner so the two don't say the same thing.
+        .filter((w) => !recipe.unschedulable || !/no recipe steps/i.test(w))
+        .map((w) => (
+          <Alert severity="warning" key={w} sx={{ my: 1 }}>
+            {w}
+          </Alert>
+        ))}
       {recipe.unschedulable ? (
         <Typography color="text.secondary">
           This dish cannot be scheduled (no recipe steps).

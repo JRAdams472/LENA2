@@ -8,7 +8,20 @@ export default function FoodFlavorsPage() {
     <CrudPage
       title="Food Flavors"
       queryKey={["food-flavors"]}
-      listFn={api.getFoodFlavors}
+      pagedListFn={api.getFoodFlavorsPaged}
+      tableFields={[
+        {
+          key: "foodId",
+          label: "Item",
+          render: (r) => r.item?.name ?? `#${r.foodId}`,
+        },
+        {
+          key: "flavorId",
+          label: "Flavor",
+          render: (r) => r.flavorProfile?.flavorName ?? `#${r.flavorId}`,
+        },
+        { key: "intensityScore", label: "Intensity Score", type: "number" },
+      ]}
       fields={[
         { key: "foodId", label: "Food ID", type: "number" },
         { key: "flavorId", label: "Flavor ID", type: "number" },

@@ -132,8 +132,8 @@ describe("recipes page", () => {
   it("lists recipes", async () => {
     renderPage(<RecipesPage />);
     await waitFor(() => expect(screen.getByText("Pasta")).toBeInTheDocument());
-    expect(screen.getByText("10")).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
+    expect(screen.getByText("10 min")).toBeInTheDocument();
+    expect(screen.getByText("20 min")).toBeInTheDocument();
   });
 
   it("creates a recipe", async () => {

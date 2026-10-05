@@ -10,10 +10,33 @@ import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import { MealPlan } from "@/lib/types";
 
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
 const planFields: FieldDef<MealPlan>[] = [
   { key: "planName", label: "Plan Name" },
   { key: "weekStartDate", label: "Week Start Date", type: "date" },
   { key: "weekStartDayOfWeek", label: "Week Start Day (0=Sun)", type: "number" },
+  { key: "isActive", label: "Active", type: "boolean" },
+];
+
+type PlanRow = ReturnType<typeof toRow>;
+
+const planTableFields: FieldDef<PlanRow>[] = [
+  { key: "planName", label: "Plan Name" },
+  { key: "weekStartDate", label: "Week Of", type: "date" },
+  {
+    key: "weekStartDayOfWeek",
+    label: "Week Starts On",
+    render: (row) => WEEKDAYS[row.weekStartDayOfWeek] ?? "—",
+  },
   { key: "isActive", label: "Active", type: "boolean" },
 ];
 
@@ -101,6 +124,7 @@ export default function MealPlansPage() {
       <DataTable
         title="Meal Plans"
         rows={(listQuery.data?.items ?? []).map(toRow)}
+        fields={planTableFields}
         isLoading={listQuery.isLoading}
         error={listQuery.error as Error | null}
         onCreate={handleCreate}
