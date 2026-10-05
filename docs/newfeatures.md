@@ -126,3 +126,8 @@ Signals to rank by should include but not be limited to:
 - **Session hardening.** `LENA_SESSION_SECRET` must be ≥32 bytes or the API refuses to boot; admin deactivation evicts the cached identity and revokes all refresh-token families in the same transaction (immediate ban, no 2-min window).
 - **Authorization gaps.** `setRecipeCategories` is admin-only (global catalog); household invites require an active, searchable target with enumeration-proof identical errors and a 10/min per-caller rate limit.
 - **Dependency/config.** All 65 OCR image CVEs cleared with a `pip-audit` CI gate preventing regression; grpc bumped (GO-2026-6443); SonarQube bound to localhost.
+
+## SonarQube hygiene (LEN-28)
+✅ Done — all 194 open SonarQube findings remediated to zero across six phases (PRs #263–#268; per-phase proofs in `docs/proof/`):
+- Zero bugs, vulnerabilities, or security hotspots; every Go and TypeScript function refactored to cognitive complexity ≤15; Python, Docker, and dev-tool findings cleared; one accepted `wontfix` remains (`capture.mjs` PATH search — local screenshot tool).
+- Process additions in `AGENTS.md`: a **boy-scout rule** (fix trivial low/info findings in any file being modified) and a **close-out rescan gate** (zero new open issues beyond the wontfix list before a plan may close).
