@@ -213,7 +213,9 @@ describe("grocery list detail page", () => {
   it("renders the grocery list", async () => {
     await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
     await waitFor(() => expect(screen.getByText("Grocery List")).toBeInTheDocument());
-    expect(screen.getByText(/2024-01-01/)).toBeInTheDocument();
+    expect(screen.getByText(/Generated/).textContent).toContain(
+      new Date(2024, 0, 1).toLocaleDateString()
+    );
     expect(screen.getByText("Milk")).toBeInTheDocument();
   });
 
