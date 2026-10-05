@@ -110,6 +110,38 @@ describe("brands page", () => {
       expect(getBodies().some((b) => b.query.includes("deleteBrand") && b.variables.id === "1")).toBe(true);
     });
   });
+
+  it("searches brands via searchBrands instead of the paged query", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("searchBrands")) {
+        return Promise.resolve(
+          gql({ searchBrands: [{ id: "9", name: "Zevia" }] })
+        );
+      }
+      return Promise.resolve(
+        gql({
+          brands: {
+            items: [{ id: "1", name: "Nike" }],
+            pageInfo: { totalCount: 1 },
+          },
+        })
+      );
+    });
+
+    renderPage(<BrandsPage />);
+    await waitFor(() => screen.getByText("Nike"));
+    fireEvent.change(screen.getByLabelText("Search"), {
+      target: { value: "Zevia" },
+    });
+    await waitFor(() => expect(screen.getByText("Zevia")).toBeInTheDocument());
+    const bodies = getBodies();
+    expect(
+      bodies.some(
+        (b) => b.query.includes("searchBrands") && b.variables.term === "Zevia"
+      )
+    ).toBe(true);
+  });
 });
 
 describe("flavor profiles page", () => {

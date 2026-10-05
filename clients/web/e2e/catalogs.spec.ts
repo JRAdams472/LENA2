@@ -12,6 +12,8 @@ interface Catalog {
   fields: FieldFill[];
   /** Text expected to appear in the created row. */
   rowText: string;
+  /** Large paged catalogs require a search to surface the created row. */
+  search?: boolean;
 }
 
 const catalogs: Catalog[] = [
@@ -20,6 +22,7 @@ const catalogs: Catalog[] = [
     url: "/inventory/brands",
     fields: [{ label: "Brand Name", value: unique("E2E Brand") }],
     rowText: "",
+    search: true,
   },
   {
     name: "Categories",
@@ -120,6 +123,8 @@ for (const catalog of catalogs) {
     ).toBeVisible();
 
     await createViaDialog(page, catalog.fields);
+    // Server-paged catalogs sort the new row off page 1 — search it.
+    if (catalog.search) await page.getByLabel("Search").fill(expected);
     await expectRowVisible(page, expected);
 
     await deleteRow(page, expected);

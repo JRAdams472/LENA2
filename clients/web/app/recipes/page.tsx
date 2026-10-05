@@ -59,11 +59,14 @@ const recipeTableFields: FieldDef<RecipeRow>[] = [
   {
     key: "prepTimeMinutes",
     label: "Prep Time",
+    // type drives the dialog input; render drives the table cell.
+    type: "number",
     render: (r) => (r.prepTimeMinutes == null ? "—" : `${r.prepTimeMinutes} min`),
   },
   {
     key: "cookTimeMinutes",
     label: "Cook Time",
+    type: "number",
     render: (r) => (r.cookTimeMinutes == null ? "—" : `${r.cookTimeMinutes} min`),
   },
   { key: "isActive", label: "Active", type: "boolean" },

@@ -9,6 +9,7 @@ export default function BrandsPage() {
       title="Brands"
       queryKey={["brands"]}
       pagedListFn={api.getBrandsPaged}
+      searchFn={api.getBrands}
       fields={[{ key: "brandName", label: "Brand Name" }]}
       createFn={(row) => api.createBrand(asEntity(row))}
       updateFn={(row) =>
