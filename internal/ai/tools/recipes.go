@@ -180,61 +180,19 @@ func attachIngredients(ctx context.Context, recipes RecipeCatalog, items ItemNam
 		}
 		unitIDs[ri.UnitID] = true
 	}
-	iids := make([]int64, 0, len(itemIDs))
-	for id := range itemIDs {
-		iids = append(iids, id)
+
+	names, ingNames, err := ingredientNameMaps(ctx, items, itemIDs, ingIDs)
+	if err != nil {
+		return nil, err
 	}
-	names := map[int64]string{}
-	ingNames := map[int64]string{}
-	if items != nil {
-		list, err := items.GetItemsByIDs(ctx, iids)
-		if err != nil {
-			return nil, fmt.Errorf("item names: %w", err)
-		}
-		for _, it := range list {
-			names[it.ItemID] = it.Name
-		}
-		gids := make([]int64, 0, len(ingIDs))
-		for id := range ingIDs {
-			gids = append(gids, id)
-		}
-		if len(gids) > 0 {
-			gs, err := items.GetIngredientsByIDs(ctx, gids)
-			if err != nil {
-				return nil, fmt.Errorf("ingredient names: %w", err)
-			}
-			for _, g := range gs {
-				ingNames[g.IngredientID] = g.Name
-			}
-		}
-	}
-	units := map[int64]string{}
-	if len(unitIDs) > 0 {
-		uids := make([]int64, 0, len(unitIDs))
-		for id := range unitIDs {
-			uids = append(uids, id)
-		}
-		list, err := items.GetUnitsByIDs(ctx, uids)
-		if err != nil {
-			return nil, fmt.Errorf("unit names: %w", err)
-		}
-		for _, u := range list {
-			units[u.UnitID] = u.Abbreviation
-		}
+	units, err := unitAbbreviations(ctx, items, unitIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	byRecipe := map[int64][]recipeIngredientRow{}
 	for _, ri := range rItems {
-		var name string
-		if ri.IngredientID != nil {
-			name = ingNames[*ri.IngredientID]
-		}
-		if name == "" && ri.ItemID != nil {
-			var ok bool
-			if name, ok = names[*ri.ItemID]; !ok {
-				name = fmt.Sprintf("item #%d", *ri.ItemID)
-			}
-		}
+		name := recipeItemName(ri, names, ingNames)
 		if name == "" {
 			continue
 		}
@@ -254,4 +212,63 @@ func attachIngredients(ctx context.Context, recipes RecipeCatalog, items ItemNam
 		out[i] = RecipeDetailRow{RecipeRow: r, Ingredients: ing}
 	}
 	return out, nil
+}
+
+// ingredientNameMaps resolves catalog item and generic-ingredient names
+// for recipe lines.
+func ingredientNameMaps(ctx context.Context, items ItemNamer, itemIDs, ingIDs map[int64]bool) (map[int64]string, map[int64]string, error) {
+	names := map[int64]string{}
+	ingNames := map[int64]string{}
+	if items == nil {
+		return names, ingNames, nil
+	}
+	list, err := items.GetItemsByIDs(ctx, keysOf(itemIDs))
+	if err != nil {
+		return nil, nil, fmt.Errorf("item names: %w", err)
+	}
+	for _, it := range list {
+		names[it.ItemID] = it.Name
+	}
+	if len(ingIDs) > 0 {
+		gs, err := items.GetIngredientsByIDs(ctx, keysOf(ingIDs))
+		if err != nil {
+			return nil, nil, fmt.Errorf("ingredient names: %w", err)
+		}
+		for _, g := range gs {
+			ingNames[g.IngredientID] = g.Name
+		}
+	}
+	return names, ingNames, nil
+}
+
+// unitAbbreviations resolves unit ids to their display abbreviations.
+func unitAbbreviations(ctx context.Context, items ItemNamer, unitIDs map[int64]bool) (map[int64]string, error) {
+	units := map[int64]string{}
+	if len(unitIDs) == 0 {
+		return units, nil
+	}
+	list, err := items.GetUnitsByIDs(ctx, keysOf(unitIDs))
+	if err != nil {
+		return nil, fmt.Errorf("unit names: %w", err)
+	}
+	for _, u := range list {
+		units[u.UnitID] = u.Abbreviation
+	}
+	return units, nil
+}
+
+// recipeItemName picks the display name for a recipe line: the generic
+// ingredient when linked, else the catalog item name or a placeholder.
+func recipeItemName(ri recipe.RecipeItem, names, ingNames map[int64]string) string {
+	var name string
+	if ri.IngredientID != nil {
+		name = ingNames[*ri.IngredientID]
+	}
+	if name == "" && ri.ItemID != nil {
+		var ok bool
+		if name, ok = names[*ri.ItemID]; !ok {
+			name = fmt.Sprintf("item #%d", *ri.ItemID)
+		}
+	}
+	return name
 }

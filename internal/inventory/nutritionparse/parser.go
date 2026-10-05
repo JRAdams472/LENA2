@@ -81,33 +81,34 @@ func Parse(text string) []Nutrient {
 		if line == "" {
 			continue
 		}
-		matches := numberRE.FindAllStringSubmatchIndex(line, -1)
-		if len(matches) == 0 {
-			continue
-		}
-
-		for _, m := range matches {
-			label, amount, unit := extract(line, m)
-			if label == "" {
-				continue
-			}
-
-			canonical, canonicalUnit, matched := matchAlias(line)
-			if matched {
-				label = canonical
-				if canonicalUnit != "" {
-					unit = canonicalUnit
-				}
-			} else if unit == "" {
-				// Unknown nutrients must carry a recognized unit token.
-				continue
-			}
-
-			out = append(out, Nutrient{Label: label, Amount: amount, Unit: unit})
-			break
+		if n, ok := lineNutrient(line); ok {
+			out = append(out, n)
 		}
 	}
 	return out
+}
+
+// lineNutrient parses the first usable number match on a normalized line.
+// When a known alias matches, the canonical label and unit win; otherwise
+// a recognized unit token is required for unknown nutrients.
+func lineNutrient(line string) (Nutrient, bool) {
+	for _, m := range numberRE.FindAllStringSubmatchIndex(line, -1) {
+		label, amount, unit := extract(line, m)
+		if label == "" {
+			continue
+		}
+		canonical, canonicalUnit, matched := matchAlias(line)
+		if matched {
+			label = canonical
+			if canonicalUnit != "" {
+				unit = canonicalUnit
+			}
+		} else if unit == "" {
+			continue
+		}
+		return Nutrient{Label: label, Amount: amount, Unit: unit}, true
+	}
+	return Nutrient{}, false
 }
 
 func normalize(s string) string {

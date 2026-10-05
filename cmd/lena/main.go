@@ -178,48 +178,99 @@ func run() int {
 // newServer builds the Echo instance and GraphQL resolver. A nil tel is
 // supported for tests and disables /metrics and HTTP metrics middleware;
 // telemetry.Setup never returns (nil, nil) in production.
+// serverServices groups the long-lived components newServer wires into
+// the resolver and route handlers so each construction stage stays small.
+type serverServices struct {
+	IdentitySvc      *identity.Service
+	AnalyticsSvc     *analytics.Service
+	GrocerySvc       *grocery.Service
+	HouseholdSvc     *household.Service
+	InventorySvc     *inventory.Service
+	EventSvc         *event.Service
+	MealPlanSvc      *mealplan.Service
+	NotifierSvc      *notifier.Service
+	RecipeSvc        *recipe.Service
+	UserPrefsSvc     *userprefs.Service
+	WineSvc          *wine.Service
+	OCRClient        *ocrclient.Client
+	IdempotencyStore *idempotency.Store
+	RecipeImportSvc  *recipeimport.Service
+	AISvc            *ai.Service
+	RecipeEmbedder   bff.RecipeEmbedder
+	SessionSvc       *session.Service
+	Authenticator    *bff.Authenticator
+}
+
+// newServer builds the Echo instance and GraphQL resolver. A nil tel is
+// supported for tests and disables /metrics and HTTP metrics middleware;
+// telemetry.Setup never returns (nil, nil) in production.
 func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *telemetry.Telemetry) (*echo.Echo, *bff.Resolver, error) {
-	identitySvc := identity.NewService(pool).
-		WithProtectedEmails(splitAndTrim(cfg.ProtectedEmails))
-	analyticsSvc := analytics.NewService(pool, analytics.Config{
-		DecayInterval: cfg.AnalyticsDecayInterval,
-		HalfLifeDays:  cfg.AnalyticsHalfLifeDays,
-	})
-	grocerySvc := grocery.NewService(pool)
-	householdSvc := household.NewService(pool)
-	inventorySvc := inventory.NewService(pool)
-	eventSvc := event.NewService(pool)
-	mealPlanSvc := mealplan.NewService(pool)
-	notifierSvc := notifier.NewService(pool, notifier.Config{
-		SweepInterval: cfg.NotificationSweepInterval,
-		NotifyHour:    cfg.NotificationHour,
-		ExpiryDays:    cfg.NotificationExpiryDays,
-	})
+	s := newDomainServices(cfg, pool)
+	s.wireAI(cfg, pool, log)
+	if err := s.wireAuth(cfg, pool, log); err != nil {
+		return nil, nil, err
+	}
+	e, err := newEcho(cfg, log, tel, pool, s.Authenticator)
+	if err != nil {
+		return nil, nil, err
+	}
+	resolver, err := registerAPIRoutes(e, cfg, pool, s)
+	if err != nil {
+		return nil, nil, err
+	}
+	return e, resolver, nil
+}
+
+// newDomainServices builds the pool-backed domain services, the stateless
+// OCR client, and the dedup store, then starts their background workers.
+func newDomainServices(cfg config.Config, pool *pgxpool.Pool) *serverServices {
+	s := &serverServices{
+		IdentitySvc: identity.NewService(pool).
+			WithProtectedEmails(splitAndTrim(cfg.ProtectedEmails)),
+		AnalyticsSvc: analytics.NewService(pool, analytics.Config{
+			DecayInterval: cfg.AnalyticsDecayInterval,
+			HalfLifeDays:  cfg.AnalyticsHalfLifeDays,
+		}),
+		GrocerySvc:   grocery.NewService(pool),
+		HouseholdSvc: household.NewService(pool),
+		InventorySvc: inventory.NewService(pool),
+		EventSvc:     event.NewService(pool),
+		MealPlanSvc:  mealplan.NewService(pool),
+		NotifierSvc: notifier.NewService(pool, notifier.Config{
+			SweepInterval: cfg.NotificationSweepInterval,
+			NotifyHour:    cfg.NotificationHour,
+			ExpiryDays:    cfg.NotificationExpiryDays,
+		}),
+		RecipeSvc:    recipe.NewService(pool),
+		UserPrefsSvc: userprefs.NewService(pool),
+		WineSvc:      wine.NewService(pool),
+		OCRClient:    ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout),
+	}
 	// Opt-outs apply to event-driven notifications too, not just sweep
 	// reminders — the gate is checked at write time.
-	householdSvc.WithNotifyGate(notifierSvc)
+	s.HouseholdSvc.WithNotifyGate(s.NotifierSvc)
 	// Reminder sweep runs until Resolver.Shutdown calls Stop.
-	notifierSvc.Start(context.Background())
+	s.NotifierSvc.Start(context.Background())
 	// Decayed-score rebuild feeds analytics-driven search ranking; same
 	// lifecycle as the sweep.
-	analyticsSvc.Start(context.Background())
-	recipeSvc := recipe.NewService(pool)
-	userPrefsSvc := userprefs.NewService(pool)
-	wineSvc := wine.NewService(pool)
-	ocrClient := ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout)
-
+	s.AnalyticsSvc.Start(context.Background())
 	// The dedup store is a plain pool-backed component, not a domain
 	// service: its writes must commit immediately and never join a
 	// request's transaction.
-	var idemStore *idempotency.Store
 	if cfg.IdempotencyEnabled {
-		idemStore = idempotency.NewStore(pool, idempotency.Config{
+		s.IdempotencyStore = idempotency.NewStore(pool, idempotency.Config{
 			KeyTTL:      cfg.IdempotencyKeyTTL,
 			AutoTTL:     cfg.IdempotencyAutoTTL,
 			InFlightTTL: cfg.IdempotencyInFlightTTL,
 			WaitTimeout: cfg.IdempotencyWaitTimeout,
 		})
 	}
+	return s
+}
+
+// wireAI configures the OCR→draft import pipeline and the assistant's
+// provider, tool registry, and embedding service.
+func (s *serverServices) wireAI(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) {
 
 	// Kept as the interface so a missing URL yields an untyped nil —
 	// recipeimport checks `ollama == nil` to disable the draft stage.
@@ -239,17 +290,17 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		ollamaClient = p
 	}
 	profanityDetector := profanity.New(cfg.ProfanityExtraTerms)
-	recipeImportSvc := recipeimport.NewService(
+	s.RecipeImportSvc = recipeimport.NewService(
 		pool,
-		ocrClient,
+		s.OCRClient,
 		ollamaClient,
-		inventorySvc,
-		recipeSvc,
+		s.InventorySvc,
+		s.RecipeSvc,
 		profanityDetector,
 		recipeimport.ConfigFromPlatform(&cfg),
 	)
 	// Re-enqueue jobs orphaned by a previous shutdown before serving traffic.
-	if err := recipeImportSvc.Start(context.Background()); err != nil {
+	if err := s.RecipeImportSvc.Start(context.Background()); err != nil {
 		log.Warn("recipe import recovery failed", "error", err)
 	}
 
@@ -280,14 +331,14 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		mp.Handler = cannedMockHandler
 	}
 	aiTools := tools.New()
-	tools.RegisterPantryTools(aiTools, userPrefsSvc, inventorySvc)
-	tools.RegisterMealPlanTools(aiTools, mealPlanSvc, recipeSvc)
-	tools.RegisterRecipeTools(aiTools, recipeSvc, inventorySvc)
-	tools.RegisterTasteTools(aiTools, analyticsSvc, recipeSvc)
-	tools.RegisterEventTools(aiTools, eventSvc, recipeSvc)
-	tools.RegisterCellarTools(aiTools, userPrefsSvc, wineSvc, recipeSvc, inventorySvc)
-	tools.RegisterAllergenTools(aiTools, recipeSvc, inventorySvc, inventorySvc)
-	aiSvc := ai.NewService(aiProvider, aiTools, ai.Config{
+	tools.RegisterPantryTools(aiTools, s.UserPrefsSvc, s.InventorySvc)
+	tools.RegisterMealPlanTools(aiTools, s.MealPlanSvc, s.RecipeSvc)
+	tools.RegisterRecipeTools(aiTools, s.RecipeSvc, s.InventorySvc)
+	tools.RegisterTasteTools(aiTools, s.AnalyticsSvc, s.RecipeSvc)
+	tools.RegisterEventTools(aiTools, s.EventSvc, s.RecipeSvc)
+	tools.RegisterCellarTools(aiTools, s.UserPrefsSvc, s.WineSvc, s.RecipeSvc, s.InventorySvc)
+	tools.RegisterAllergenTools(aiTools, s.RecipeSvc, s.InventorySvc, s.InventorySvc)
+	s.AISvc = ai.NewService(aiProvider, aiTools, ai.Config{
 		MaxToolRounds: cfg.AIMaxToolRounds,
 	})
 
@@ -296,27 +347,31 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	// e2e deterministic.
 	var embedSvc *recipeembed.Service
 	if cfg.AIProvider == "mock" {
-		embedSvc = recipeembed.NewService(llm.NewMockEmbedder(), cfg.AIEmbedModel, recipeSvc, inventorySvc, recipeembed.WithLogger(log))
+		embedSvc = recipeembed.NewService(llm.NewMockEmbedder(), cfg.AIEmbedModel, s.RecipeSvc, s.InventorySvc, recipeembed.WithLogger(log))
 	} else if cfg.OllamaURL != "" {
 		embedSvc = recipeembed.NewService(
 			llm.NewOllamaEmbedder(cfg.OllamaURL, cfg.AIEmbedModel, cfg.AIEmbedTimeout, "", ""),
-			cfg.AIEmbedModel, recipeSvc, inventorySvc, recipeembed.WithLogger(log))
+			cfg.AIEmbedModel, s.RecipeSvc, s.InventorySvc, recipeembed.WithLogger(log))
 	}
 	// RecipeEmbedder is an interface: assign only when configured so a nil
 	// *Service never slips through as a non-nil interface.
-	var recipeEmbedder bff.RecipeEmbedder
 	if embedSvc != nil {
-		recipeEmbedder = embedSvc
-		recipeImportSvc.SetEmbedder(embedSvc)
+		s.RecipeEmbedder = embedSvc
+		s.RecipeImportSvc.SetEmbedder(embedSvc)
 		// The model only sees the semantic tool when an embedder can
 		// actually run it.
-		tools.RegisterSemanticSearchTool(aiTools, recipeSvc, embedSvc)
+		tools.RegisterSemanticSearchTool(aiTools, s.RecipeSvc, embedSvc)
 		embedSvc.Start()
 	}
+}
+
+// wireAuth builds the session service and the OIDC authenticator, adding
+// trusted issuers/audiences for the code-exchange providers.
+func (s *serverServices) wireAuth(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) error {
 
 	// Refresh-token sessions: an empty secret leaves the service disabled
 	// (Enabled() == false), preserving OIDC-only auth.
-	sessionSvc := session.NewService(pool, session.Config{
+	s.SessionSvc = session.NewService(pool, session.Config{
 		Secret:     cfg.SessionSecret,
 		AccessTTL:  cfg.SessionAccessTTL,
 		RefreshTTL: cfg.SessionRefreshTTL,
@@ -341,12 +396,18 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		Issuers:     issuers,
 		Audiences:   audiences,
 		AdminEmails: splitAndTrim(cfg.AdminEmails),
-	}, identitySvc, householdSvc)
+	}, s.IdentitySvc, s.HouseholdSvc)
 	if err != nil {
-		return nil, nil, fmt.Errorf("auth config: %w", err)
+		return fmt.Errorf("auth config: %w", err)
 	}
-	authenticator.SetSessions(sessionSvc)
+	authenticator.SetSessions(s.SessionSvc)
+	s.Authenticator = authenticator
+	return nil
+}
 
+// newEcho builds the Echo instance with timeouts, middleware, health
+// probes, and (when telemetry is enabled) the guarded /metrics route.
+func newEcho(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry, pool *pgxpool.Pool, auth *bff.Authenticator) (*echo.Echo, error) {
 	e := echo.New()
 	e.HideBanner = true
 	// The API sits behind Caddy, which appends X-Forwarded-For. Only
@@ -419,38 +480,43 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	if tel != nil {
 		httpMetrics, err := telemetry.HTTPMetrics()
 		if err != nil {
-			return nil, nil, fmt.Errorf("http metrics middleware: %w", err)
+			return nil, fmt.Errorf("http metrics middleware: %w", err)
 		}
 		e.Use(httpMetrics)
 		// /metrics requires the same bearer token as /graphql: unauthenticated
 		// exposure would leak operational data. Scrapers must present a token
 		// from a trusted issuer.
-		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), authenticator.Middleware())
+		e.GET("/metrics", echo.WrapHandler(tel.MetricsHandler()), auth.Middleware())
 	}
+	return e, nil
+}
 
+// registerAPIRoutes mounts the GraphQL endpoint and the auth/session HTTP
+// routes, then returns the resolver for lifecycle shutdown.
+func registerAPIRoutes(e *echo.Echo, cfg config.Config, pool *pgxpool.Pool, s *serverServices) (*bff.Resolver, error) {
 	resolver := bff.NewResolver(pool,
 		bff.Services{
-			Analytics:      analyticsSvc,
-			Grocery:        grocerySvc,
-			Inventory:      inventorySvc,
-			MealPlan:       mealPlanSvc,
-			Event:          eventSvc,
-			Recipe:         recipeSvc,
-			UserPrefs:      userPrefsSvc,
-			Wine:           wineSvc,
-			Identity:       identitySvc,
-			RecipeImport:   recipeImportSvc,
-			Household:      householdSvc,
-			Notifier:       notifierSvc,
-			Auth:           authenticator,
-			AI:             aiSvc,
-			OCR:            ocrClient,
-			RecipeEmbedder: recipeEmbedder,
+			Analytics:      s.AnalyticsSvc,
+			Grocery:        s.GrocerySvc,
+			Inventory:      s.InventorySvc,
+			MealPlan:       s.MealPlanSvc,
+			Event:          s.EventSvc,
+			Recipe:         s.RecipeSvc,
+			UserPrefs:      s.UserPrefsSvc,
+			Wine:           s.WineSvc,
+			Identity:       s.IdentitySvc,
+			RecipeImport:   s.RecipeImportSvc,
+			Household:      s.HouseholdSvc,
+			Notifier:       s.NotifierSvc,
+			Auth:           s.Authenticator,
+			AI:             s.AISvc,
+			OCR:            s.OCRClient,
+			RecipeEmbedder: s.RecipeEmbedder,
 		},
 		bff.Options{
 			NutritionPhotoMaxBytes: cfg.NutritionPhotoMaxBytes,
 			RecipeScanMaxBytes:     cfg.RecipeScanMaxBytes,
-			Idempotency:            idemStore,
+			Idempotency:            s.IdempotencyStore,
 		})
 	// Introspection is admin-only: members still get full API operation
 	// support, but cannot enumerate the schema (including admin mutations).
@@ -463,7 +529,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		graphql.MaxQueryLength(cfg.GraphQLMaxQueryLength),
 		graphql.RestrictIntrospection(bff.AllowIntrospectionForAdmins(cfg.GraphQLDisableIntrospection)))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// Middleware order matters: the body limit runs first (cheapest drop),
 	// then the IP-keyed limiter throttles unauthenticated floods before
@@ -473,7 +539,7 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	// disabled.
 	graphqlMW := []echo.MiddlewareFunc{
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst),
-		authenticator.Middleware(),
+		s.Authenticator.Middleware(),
 		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst),
 	}
 	if cfg.GraphQLBodyLimit != "" {
@@ -485,10 +551,16 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	// access token is already expired, which the /graphql auth middleware
 	// would reject. Refresh/revoke are unauthenticated (the refresh token
 	// is the credential) and IP-rate-limited; create runs behind auth.
-	bff.NewSessionHandler(sessionSvc).RegisterRoutes(e,
-		authenticator.Middleware(),
+	bff.NewSessionHandler(s.SessionSvc).RegisterRoutes(e,
+		s.Authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
+	registerAuthRoutes(e, cfg, s)
+	return resolver, nil
+}
 
+// registerAuthRoutes mounts the provider code-exchange sign-in and the
+// account link/unlink endpoints.
+func registerAuthRoutes(e *echo.Echo, cfg config.Config, s *serverServices) {
 	// Code-exchange providers: the authorization code is the credential,
 	// exchanged server-side (client_secret never leaves the server).
 	// Discord is plain OAuth2; Microsoft and Facebook return an OIDC
@@ -501,31 +573,30 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 		if v := bff.NewOAuthOIDCVerifier(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret,
 			cfg.MicrosoftRedirectURI,
 			"https://login.microsoftonline.com/"+cfg.MicrosoftTenant+"/oauth2/v2.0/token",
-			authenticator, false); v != nil {
+			s.Authenticator, false); v != nil {
 			codeVerifiers[bff.MicrosoftProvider] = v
 		}
 	}
 	if v := bff.NewOAuthOIDCVerifier(cfg.FacebookClientID, cfg.FacebookClientSecret,
 		cfg.FacebookRedirectURI, "https://graph.facebook.com/v21.0/oauth/access_token",
-		authenticator, true); v != nil {
+		s.Authenticator, true); v != nil {
 		codeVerifiers[bff.FacebookProvider] = v
 	}
 
 	// Account linking: list/link/unlink provider identities. Link is a
 	// step-up operation — an OIDC bearer is fresh proof, while a session
 	// bearer must be accompanied by a fresh provider credential.
-	bff.NewLinkHandler(authenticator, codeVerifiers, identitySvc).RegisterRoutes(e,
-		authenticator.Middleware(),
+	bff.NewLinkHandler(s.Authenticator, codeVerifiers, s.IdentitySvc).RegisterRoutes(e,
+		s.Authenticator.Middleware(),
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst))
 
 	// Provider code-exchange sign-in (POST /auth/session/{provider}). The
 	// per-IP limiter alone cannot bound a distributed flood because every
 	// attempt also makes an outbound call to the provider's token endpoint;
 	// the global bucket caps total exchange volume regardless of source.
-	bff.NewProviderSessionHandler(codeVerifiers, authenticator, sessionSvc).RegisterRoutes(e,
+	bff.NewProviderSessionHandler(codeVerifiers, s.Authenticator, s.SessionSvc).RegisterRoutes(e,
 		bff.IPRateLimiter(cfg.IPRateLimitPerMinute, cfg.IPRateLimitBurst),
 		bff.GlobalRateLimiter(cfg.AuthCodeExchangeRateLimitPerMinute, cfg.AuthCodeExchangeRateLimitBurst))
-	return e, resolver, nil
 }
 
 // buildCORSConfig builds the CORS middleware config. When origins are

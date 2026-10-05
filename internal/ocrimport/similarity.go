@@ -75,26 +75,37 @@ func jaroWinkler(s1, s2 string, boostThreshold, prefixScale float64) float64 {
 		return 0.0
 	}
 
+	s1Matches, s2Matches, matches := jaroMatches(s1, s2)
+	if matches == 0 {
+		return 0.0
+	}
+
+	transpositions := jaroTranspositions(s1, s2, s1Matches, s2Matches)
+	jaro := (float64(matches)/float64(len(s1)) +
+		float64(matches)/float64(len(s2)) +
+		(float64(matches)-float64(transpositions)/2.0)/float64(matches)) / 3.0
+
+	jw := jaro
+	if jaro > boostThreshold {
+		jw = jaro + float64(commonPrefix(s1, s2))*prefixScale*(1.0-jaro)
+	}
+	return max(0.0, min(1.0, jw))
+}
+
+// jaroMatches flags matched positions in both strings and returns the match
+// count: each s1 byte pairs with the first unmatched s2 byte inside the
+// match window.
+func jaroMatches(s1, s2 string) ([]bool, []bool, int) {
 	matchWindow := max(len(s1), len(s2))/2 - 1
 	if matchWindow < 0 {
 		matchWindow = 0
 	}
-
 	s1Matches := make([]bool, len(s1))
 	s2Matches := make([]bool, len(s2))
-
 	matches := 0
-	transpositions := 0
-
 	for i := range s1 {
-		start := i - matchWindow
-		if start < 0 {
-			start = 0
-		}
-		end := i + matchWindow + 1
-		if end > len(s2) {
-			end = len(s2)
-		}
+		start := max(i-matchWindow, 0)
+		end := min(i+matchWindow+1, len(s2))
 		for j := start; j < end; j++ {
 			if s2Matches[j] || s1[i] != s2[j] {
 				continue
@@ -105,11 +116,12 @@ func jaroWinkler(s1, s2 string, boostThreshold, prefixScale float64) float64 {
 			break
 		}
 	}
+	return s1Matches, s2Matches, matches
+}
 
-	if matches == 0 {
-		return 0.0
-	}
-
+// jaroTranspositions counts order disagreements among matched positions.
+func jaroTranspositions(s1, s2 string, s1Matches, s2Matches []bool) int {
+	transpositions := 0
 	k := 0
 	for i := range s1 {
 		if !s1Matches[i] {
@@ -123,31 +135,14 @@ func jaroWinkler(s1, s2 string, boostThreshold, prefixScale float64) float64 {
 		}
 		k++
 	}
+	return transpositions
+}
 
-	jaro := (float64(matches)/float64(len(s1)) +
-		float64(matches)/float64(len(s2)) +
-		(float64(matches)-float64(transpositions)/2.0)/float64(matches)) / 3.0
-
+// commonPrefix counts shared leading bytes, capped at 4.
+func commonPrefix(s1, s2 string) int {
 	prefix := 0
-	for i := 0; i < min(4, len(s1), len(s2)); i++ {
-		if s1[i] == s2[i] {
-			prefix++
-		} else {
-			break
-		}
+	for i := 0; i < min(4, len(s1), len(s2)) && s1[i] == s2[i]; i++ {
+		prefix++
 	}
-
-	var jw float64
-	if jaro > boostThreshold {
-		jw = jaro + float64(prefix)*prefixScale*(1.0-jaro)
-	} else {
-		jw = jaro
-	}
-	if jw > 1.0 {
-		return 1.0
-	}
-	if jw < 0.0 {
-		return 0.0
-	}
-	return jw
+	return prefix
 }

@@ -154,11 +154,8 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, device string) (Iss
 		return Issued{}, fmt.Errorf("lookup session: %w", err)
 	}
 	// Reuse of a rotated/revoked token is a theft signal: kill the family.
-	if row.RevokedAt.Valid || row.ReplacedBy.Valid {
-		if rerr := s.q.RevokeSessionFamily(ctx, row.FamilyID); rerr != nil {
-			return Issued{}, fmt.Errorf("revoke session family: %w", rerr)
-		}
-		return Issued{}, ErrSessionReuse
+	if err := s.rejectReused(ctx, row); err != nil {
+		return Issued{}, err
 	}
 	if !row.ExpiresAt.After(s.now()) {
 		return Issued{}, ErrInvalidSession
@@ -172,37 +169,10 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, device string) (Iss
 		if err != nil {
 			return fmt.Errorf("lock session: %w", err)
 		}
-		if cur.RevokedAt.Valid || cur.ReplacedBy.Valid {
-			if rerr := tx.q.RevokeSessionFamily(ctx, cur.FamilyID); rerr != nil {
-				return fmt.Errorf("revoke session family: %w", rerr)
-			}
-			return ErrSessionReuse
-		}
-		raw, hash, err := newRefreshToken()
-		if err != nil {
+		if err := tx.rejectReused(ctx, cur); err != nil {
 			return err
 		}
-		next, err := tx.q.InsertRotatedSession(ctx, sqlc.InsertRotatedSessionParams{
-			UserID:      cur.UserID,
-			FamilyID:    cur.FamilyID,
-			RefreshHash: hash,
-			Device:      optText(device),
-			ExpiresAt:   s.now().Add(s.refreshTTL),
-		})
-		if err != nil {
-			return fmt.Errorf("rotate session: %w", err)
-		}
-		n, err := tx.q.MarkSessionReplaced(ctx, sqlc.MarkSessionReplacedParams{
-			SessionID:  cur.SessionID,
-			ReplacedBy: pgtype.Int8{Int64: next.SessionID, Valid: true},
-		})
-		if err != nil {
-			return fmt.Errorf("replace session: %w", err)
-		}
-		if n == 0 {
-			return ErrSessionReuse
-		}
-		iss, err := tx.bundle(next, raw)
+		iss, err := tx.rotateSessionTx(ctx, cur, device, s.now().Add(s.refreshTTL))
 		if err != nil {
 			return err
 		}
@@ -213,6 +183,48 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, device string) (Iss
 		return Issued{}, err
 	}
 	return out, nil
+}
+
+// rejectReused revokes the session family and reports ErrSessionReuse when
+// the presented token was already rotated or revoked.
+func (s *Service) rejectReused(ctx context.Context, row sqlc.IdentitySession) error {
+	if !row.RevokedAt.Valid && !row.ReplacedBy.Valid {
+		return nil
+	}
+	if err := s.q.RevokeSessionFamily(ctx, row.FamilyID); err != nil {
+		return fmt.Errorf("revoke session family: %w", err)
+	}
+	return ErrSessionReuse
+}
+
+// rotateSessionTx inserts the successor session and marks the current row
+// replaced. A zero-row mark means a concurrent rotation won — reuse.
+func (s *Service) rotateSessionTx(ctx context.Context, cur sqlc.IdentitySession, device string, expiresAt time.Time) (Issued, error) {
+	raw, hash, err := newRefreshToken()
+	if err != nil {
+		return Issued{}, err
+	}
+	next, err := s.q.InsertRotatedSession(ctx, sqlc.InsertRotatedSessionParams{
+		UserID:      cur.UserID,
+		FamilyID:    cur.FamilyID,
+		RefreshHash: hash,
+		Device:      optText(device),
+		ExpiresAt:   expiresAt,
+	})
+	if err != nil {
+		return Issued{}, fmt.Errorf("rotate session: %w", err)
+	}
+	n, err := s.q.MarkSessionReplaced(ctx, sqlc.MarkSessionReplacedParams{
+		SessionID:  cur.SessionID,
+		ReplacedBy: pgtype.Int8{Int64: next.SessionID, Valid: true},
+	})
+	if err != nil {
+		return Issued{}, fmt.Errorf("replace session: %w", err)
+	}
+	if n == 0 {
+		return Issued{}, ErrSessionReuse
+	}
+	return s.bundle(next, raw)
 }
 
 // Revoke ends a single session (sign-out).

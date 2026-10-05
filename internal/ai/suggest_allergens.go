@@ -142,32 +142,7 @@ func filterAllergenProposals(props []AllergenFlagProposal, rec *tools.AllergenCa
 	for _, a := range cand.Allergens {
 		registry[a.ID] = true
 	}
-	// target -> already-flagged allergen ids
-	type target struct {
-		kind string
-		id   int64
-	}
-	targets := map[target]map[int64]bool{}
-	for _, it := range rec.Items {
-		if it.IngredientID != nil {
-			t := target{"ingredient", *it.IngredientID}
-			if targets[t] == nil {
-				targets[t] = map[int64]bool{}
-			}
-			for _, f := range it.Flags {
-				targets[t][f.AllergenID] = true
-			}
-		}
-		if it.ItemID != nil {
-			t := target{"item", *it.ItemID}
-			if targets[t] == nil {
-				targets[t] = map[int64]bool{}
-			}
-			for _, f := range it.Flags {
-				targets[t][f.AllergenID] = true
-			}
-		}
-	}
+	targets := flaggedTargets(rec)
 
 	type proposalKey struct {
 		kind       string
@@ -180,18 +155,7 @@ func filterAllergenProposals(props []AllergenFlagProposal, rec *tools.AllergenCa
 		if len(out) >= limit {
 			break
 		}
-		if p.TargetKind != "ingredient" && p.TargetKind != "item" {
-			continue
-		}
-		if p.Kind != "contains" && p.Kind != "may_contain" {
-			continue
-		}
-		if !registry[p.AllergenID] {
-			continue
-		}
-		t := target{p.TargetKind, p.TargetID}
-		flagged, exists := targets[t]
-		if !exists || flagged[p.AllergenID] {
+		if !validAllergenProposal(p, registry, targets) {
 			continue
 		}
 		key := proposalKey{p.TargetKind, p.TargetID, p.AllergenID}
@@ -202,4 +166,50 @@ func filterAllergenProposals(props []AllergenFlagProposal, rec *tools.AllergenCa
 		out = append(out, p)
 	}
 	return out
+}
+
+// allergenTarget identifies one flaggable row — an ingredient or an item.
+type allergenTarget struct {
+	kind string
+	id   int64
+}
+
+// flaggedTargets indexes each flaggable target's already-flagged allergen
+// ids so a proposal duplicating an existing flag can be dropped.
+func flaggedTargets(rec *tools.AllergenCandidateRecipe) map[allergenTarget]map[int64]bool {
+	targets := map[allergenTarget]map[int64]bool{}
+	add := func(t allergenTarget, flags []tools.AllergenFlagRow) {
+		if targets[t] == nil {
+			targets[t] = map[int64]bool{}
+		}
+		for _, f := range flags {
+			targets[t][f.AllergenID] = true
+		}
+	}
+	for _, it := range rec.Items {
+		if it.IngredientID != nil {
+			add(allergenTarget{"ingredient", *it.IngredientID}, it.Flags)
+		}
+		if it.ItemID != nil {
+			add(allergenTarget{"item", *it.ItemID}, it.Flags)
+		}
+	}
+	return targets
+}
+
+// validAllergenProposal enforces the proposal contract: known target kind,
+// valid flag kind, registered allergen, and a target that exists and is
+// not already flagged with that allergen.
+func validAllergenProposal(p AllergenFlagProposal, registry map[int64]bool, targets map[allergenTarget]map[int64]bool) bool {
+	if p.TargetKind != "ingredient" && p.TargetKind != "item" {
+		return false
+	}
+	if p.Kind != "contains" && p.Kind != "may_contain" {
+		return false
+	}
+	if !registry[p.AllergenID] {
+		return false
+	}
+	flagged, exists := targets[allergenTarget{p.TargetKind, p.TargetID}]
+	return exists && !flagged[p.AllergenID]
 }

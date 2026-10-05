@@ -86,32 +86,15 @@ func (s *Service) SuggestMeals(ctx context.Context, userID, householdID, mealPla
 // server provider or a client-side engine. Returns (nil, nil) when there
 // are no recipe candidates to pick from.
 func (s *Service) prepareMeals(ctx context.Context, scope tools.Scope, mealPlanID int64, maxSuggestions int) (*prepared[[]MealSuggestion], error) {
-	if maxSuggestions <= 0 {
-		maxSuggestions = 6
-	}
-	if maxSuggestions > 10 {
-		maxSuggestions = 10
-	}
+	maxSuggestions = clampInt(maxSuggestions, 6, 10)
 
-	planAny, err := s.reg.Call(ctx, scope, "get_meal_plan", jsonArgs(map[string]any{"mealPlanId": mealPlanID}))
+	plan, err := s.mealPlanContext(ctx, scope, mealPlanID)
 	if err != nil {
 		return nil, err
 	}
-	plan, ok := planAny.(tools.MealPlanOut)
-	if !ok {
-		return nil, fmt.Errorf("get_meal_plan returned %T", planAny)
-	}
-	if plan.MealPlanID == 0 {
-		return nil, errors.New("meal plan not found")
-	}
-
-	candAny, err := s.reg.Call(ctx, scope, "list_recipes", jsonArgs(map[string]any{"limit": 200}))
+	candidates, err := s.recipeCandidates(ctx, scope)
 	if err != nil {
 		return nil, err
-	}
-	candidates, ok := candAny.([]tools.RecipeRow)
-	if !ok {
-		return nil, fmt.Errorf("list_recipes returned %T", candAny)
 	}
 	if len(candidates) == 0 {
 		return nil, nil
@@ -130,16 +113,7 @@ func (s *Service) prepareMeals(ctx context.Context, scope tools.Scope, mealPlanI
 		return nil, err
 	}
 
-	occupied := map[string]bool{}
-	occupiedList := make([]string, 0, len(plan.Slots))
-	for _, slot := range plan.Slots {
-		if slot.RecipeID == nil {
-			continue
-		}
-		key := cellKey(slot.DayOfWeek, slot.MealType)
-		occupied[key] = true
-		occupiedList = append(occupiedList, key)
-	}
+	occupied, occupiedList := occupiedSlotKeys(plan)
 
 	reqBody, err := json.Marshal(suggestRequest{
 		Plan:           plan,
@@ -174,6 +148,62 @@ func (s *Service) prepareMeals(ctx context.Context, scope tools.Scope, mealPlanI
 			return filterSuggestions(parsed.Suggestions, valid, occupied, limit), nil
 		},
 	}, nil
+}
+
+// clampInt bounds n to [lo, hi], substituting lo when n is non-positive.
+func clampInt(n, lo, hi int) int {
+	if n <= 0 {
+		return lo
+	}
+	if n > hi {
+		return hi
+	}
+	return n
+}
+
+// mealPlanContext loads and type-checks the plan slot data.
+func (s *Service) mealPlanContext(ctx context.Context, scope tools.Scope, mealPlanID int64) (tools.MealPlanOut, error) {
+	planAny, err := s.reg.Call(ctx, scope, "get_meal_plan", jsonArgs(map[string]any{"mealPlanId": mealPlanID}))
+	if err != nil {
+		return tools.MealPlanOut{}, err
+	}
+	plan, ok := planAny.(tools.MealPlanOut)
+	if !ok {
+		return tools.MealPlanOut{}, fmt.Errorf("get_meal_plan returned %T", planAny)
+	}
+	if plan.MealPlanID == 0 {
+		return tools.MealPlanOut{}, errors.New("meal plan not found")
+	}
+	return plan, nil
+}
+
+// recipeCandidates loads the recipes the model may pick from.
+func (s *Service) recipeCandidates(ctx context.Context, scope tools.Scope) ([]tools.RecipeRow, error) {
+	candAny, err := s.reg.Call(ctx, scope, "list_recipes", jsonArgs(map[string]any{"limit": 200}))
+	if err != nil {
+		return nil, err
+	}
+	candidates, ok := candAny.([]tools.RecipeRow)
+	if !ok {
+		return nil, fmt.Errorf("list_recipes returned %T", candAny)
+	}
+	return candidates, nil
+}
+
+// occupiedSlotKeys indexes filled plan cells for both membership checks
+// and prompt serialization.
+func occupiedSlotKeys(plan tools.MealPlanOut) (map[string]bool, []string) {
+	occupied := map[string]bool{}
+	occupiedList := make([]string, 0, len(plan.Slots))
+	for _, slot := range plan.Slots {
+		if slot.RecipeID == nil {
+			continue
+		}
+		key := cellKey(slot.DayOfWeek, slot.MealType)
+		occupied[key] = true
+		occupiedList = append(occupiedList, key)
+	}
+	return occupied, occupiedList
 }
 
 // filterSuggestions drops model output that violates the contract:

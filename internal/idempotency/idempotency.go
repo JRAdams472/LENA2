@@ -166,33 +166,46 @@ func (s *Store) resolveConflict(ctx context.Context, userID int64, key string, h
 		if err != nil {
 			return nil, false, err
 		}
-		if row.Status == "completed" {
-			if !bytes.Equal(row.RequestHash, hash) {
-				return nil, false, ErrKeyReused
-			}
-			status := 200
-			if row.ResponseStatus.Valid {
-				status = int(row.ResponseStatus.Int32)
-			}
-			return &Stored{Status: status, Body: row.Response}, false, nil
+		stored, retry, err := s.checkConflictRow(ctx, row, hash, waitUntil)
+		if stored != nil || !retry || err != nil {
+			return stored, retry, err
 		}
-		// in_progress: reclaim if stale, otherwise wait for the twin.
-		if time.Since(row.CreatedAt) > s.cfg.InFlightTTL {
-			if err := s.q.ReclaimStale(ctx, time.Now().Add(-s.cfg.InFlightTTL)); err != nil {
-				return nil, false, err
-			}
-			return nil, true, nil
+	}
+}
+
+// checkConflictRow resolves one fetched row after a failed claim:
+// completed rows return the stored response (or ErrKeyReused on a hash
+// mismatch), stale in-progress rows are reclaimed for a reclaim-retry,
+// and live twins are awaited until waitUntil. retry=true tells the caller
+// to re-fetch.
+func (s *Store) checkConflictRow(ctx context.Context, row sqlc.PlatformIdempotencyKey, hash []byte, waitUntil time.Time) (*Stored, bool, error) {
+	if row.Status == "completed" {
+		if !bytes.Equal(row.RequestHash, hash) {
+			return nil, false, ErrKeyReused
 		}
-		if time.Now().After(waitUntil) {
-			return nil, false, ErrInFlight
+		status := 200
+		if row.ResponseStatus.Valid {
+			status = int(row.ResponseStatus.Int32)
 		}
-		timer := time.NewTimer(s.cfg.PollInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, false, ctx.Err()
-		case <-timer.C:
+		return &Stored{Status: status, Body: row.Response}, false, nil
+	}
+	// in_progress: reclaim if stale, otherwise wait for the twin.
+	if time.Since(row.CreatedAt) > s.cfg.InFlightTTL {
+		if err := s.q.ReclaimStale(ctx, time.Now().Add(-s.cfg.InFlightTTL)); err != nil {
+			return nil, false, err
 		}
+		return nil, true, nil
+	}
+	if time.Now().After(waitUntil) {
+		return nil, false, ErrInFlight
+	}
+	timer := time.NewTimer(s.cfg.PollInterval)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return nil, false, ctx.Err()
+	case <-timer.C:
+		return nil, true, nil
 	}
 }
 

@@ -594,17 +594,9 @@ func (s *Service) SearchItems(ctx context.Context, userID int64, term string, br
 
 	// Resolve the prior-search-term tier to IDs only when the user has
 	// recorded terms — it costs a catalog scan otherwise.
-	var searchedIDs []int64
-	if len(rank.SearchTerms) > 0 {
-		ids, err := s.q.MatchItemIDsByTerms(ctx, sqlc.MatchItemIDsByTermsParams{
-			SubmittedByUserID: user,
-			Search:            search,
-			SearchTerms:       rank.SearchTerms,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("match searched item ids: %w", err)
-		}
-		searchedIDs = ids
+	searchedIDs, err := s.searchedItemIDs(ctx, user, search, rank.SearchTerms)
+	if err != nil {
+		return nil, err
 	}
 
 	// Union of every engaged ID — the ranked fetch set and the remainder's
@@ -639,24 +631,51 @@ func (s *Service) SearchItems(ctx context.Context, userID int64, term string, br
 
 	// Fill the rest of the page from the index-ordered remainder.
 	if intToInt32(len(out)) < limit {
-		remOffset := offset - intToInt32(len(ranked))
-		if remOffset < 0 {
-			remOffset = 0
-		}
-		rows, err := s.q.SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
-			SubmittedByUserID: user,
-			Search:            search,
-			BrandID:           brand,
-			EngagedIds:        engagedIDs,
-			Limit:             limit - intToInt32(len(out)),
-			Offset:            remOffset,
-		})
+		rem, err := s.remainderItems(ctx, user, search, brand, engagedIDs, limit-intToInt32(len(out)), offset-intToInt32(len(ranked)))
 		if err != nil {
-			return nil, fmt.Errorf("search items: %w", err)
+			return nil, err
 		}
-		for i := range rows {
-			out = append(out, toItem(rows[i]))
-		}
+		out = append(out, rem...)
+	}
+	return out, nil
+}
+
+// searchedItemIDs resolves the prior-search-term tier to item IDs. An
+// empty term list skips the catalog scan entirely.
+func (s *Service) searchedItemIDs(ctx context.Context, user pgtype.Int8, search pgtype.Text, terms []string) ([]int64, error) {
+	if len(terms) == 0 {
+		return nil, nil
+	}
+	ids, err := s.q.MatchItemIDsByTerms(ctx, sqlc.MatchItemIDsByTermsParams{
+		SubmittedByUserID: user,
+		Search:            search,
+		SearchTerms:       terms,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("match searched item ids: %w", err)
+	}
+	return ids, nil
+}
+
+// remainderItems pages the index-ordered catalog behind the ranked prefix.
+func (s *Service) remainderItems(ctx context.Context, user pgtype.Int8, search pgtype.Text, brand pgtype.Int8, engagedIDs []int64, limit, offset int32) ([]Item, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := s.q.SearchItemsRemainder(ctx, sqlc.SearchItemsRemainderParams{
+		SubmittedByUserID: user,
+		Search:            search,
+		BrandID:           brand,
+		EngagedIds:        engagedIDs,
+		Limit:             limit,
+		Offset:            offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search items: %w", err)
+	}
+	out := make([]Item, 0, len(rows))
+	for i := range rows {
+		out = append(out, toItem(rows[i]))
 	}
 	return out, nil
 }

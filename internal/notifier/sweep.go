@@ -21,6 +21,9 @@ const minutesPerDay = 24 * 60
 // defrost lead-time rule.
 const gramsPerPound = 453.592
 
+// displayDateLayout formats dates in notification text ("Mon Jan 2").
+const displayDateLayout = "Mon Jan 2"
+
 // Start launches the hourly reminder sweep on a background goroutine. The
 // caller's context owns the sweep lifetime — cancelling stops it; Stop()
 // drains the goroutine.
@@ -154,21 +157,9 @@ func (s *Service) sweepMealReminders(ctx context.Context, now time.Time) (int, e
 		}
 		return ids
 	}())
-	proteinByRecipe := map[int64][]sqlc.ListProteinItemsForRecipesRow{}
-	proteinRows, err := s.q.ListProteinItemsForRecipes(ctx, recipeIDs)
+	proteinByRecipe, maxStepByRecipe, err := s.recipeSignals(ctx, recipeIDs)
 	if err != nil {
-		return 0, fmt.Errorf("list protein items: %w", domainerr.FromStorage(err))
-	}
-	for _, r := range proteinRows {
-		proteinByRecipe[r.RecipeID] = append(proteinByRecipe[r.RecipeID], r)
-	}
-	maxStepByRecipe := map[int64]int32{}
-	stepRows, err := s.q.ListLongStepsForRecipes(ctx, recipeIDs)
-	if err != nil {
-		return 0, fmt.Errorf("list long steps: %w", domainerr.FromStorage(err))
-	}
-	for _, r := range stepRows {
-		maxStepByRecipe[r.RecipeID] = r.MaxDurationMinutes
+		return 0, err
 	}
 
 	householdIDs := distinctInt64s(func() []int64 {
@@ -191,34 +182,75 @@ func (s *Service) sweepMealReminders(ctx context.Context, now time.Time) (int, e
 		if meal.Before(today) {
 			continue
 		}
-		scale := servingScale(sl)
-
-		if items := proteinByRecipe[sl.RecipeID]; len(items) > 0 {
-			lbs := proteinPounds(items, scale)
-			lead := defrostLeadDays(lbs)
-			if !now.Before(s.dueAt(meal, lead)) {
-				title := fmt.Sprintf("Defrost protein for %s", meal.Format("Mon Jan 2"))
-				body := fmt.Sprintf("%s calls for %.1f lb of protein, which needs about %d days to thaw — take it out of the freezer today.",
-					sl.RecipeName, lbs, lead)
-				created += s.insertRecipeReminder(ctx, members[sl.HouseholdID], sl.HouseholdID,
-					KindProteinDefrost, title, body, sl.RecipeID,
-					fmt.Sprintf("%s:%d", KindProteinDefrost, sl.SlotID))
-			}
-		}
-
-		if maxDur, ok := maxStepByRecipe[sl.RecipeID]; ok {
-			lead := int(math.Ceil(float64(maxDur) / float64(minutesPerDay)))
-			if !now.Before(s.dueAt(meal, lead)) {
-				title := fmt.Sprintf("Start prep for %s", sl.RecipeName)
-				body := fmt.Sprintf("%s on %s has a step that takes about %d day(s) — start it today to be ready in time.",
-					sl.RecipeName, meal.Format("Mon Jan 2"), lead)
-				created += s.insertRecipeReminder(ctx, members[sl.HouseholdID], sl.HouseholdID,
-					KindMealPrepAdvance, title, body, sl.RecipeID,
-					fmt.Sprintf("%s:%d", KindMealPrepAdvance, sl.SlotID))
-			}
-		}
+		created += s.slotReminders(ctx, sl, meal, now, servingScale(sl),
+			slotContext{proteinByRecipe, maxStepByRecipe, members})
 	}
 	return created, nil
+}
+
+// recipeSignals loads the per-recipe inputs both reminder rules need:
+// protein items for defrost lead time and longest-step duration for
+// advance prep.
+func (s *Service) recipeSignals(ctx context.Context, recipeIDs []int64) (map[int64][]sqlc.ListProteinItemsForRecipesRow, map[int64]int32, error) {
+	proteinByRecipe := map[int64][]sqlc.ListProteinItemsForRecipesRow{}
+	proteinRows, err := s.q.ListProteinItemsForRecipes(ctx, recipeIDs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list protein items: %w", domainerr.FromStorage(err))
+	}
+	for _, r := range proteinRows {
+		proteinByRecipe[r.RecipeID] = append(proteinByRecipe[r.RecipeID], r)
+	}
+	maxStepByRecipe := map[int64]int32{}
+	stepRows, err := s.q.ListLongStepsForRecipes(ctx, recipeIDs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list long steps: %w", domainerr.FromStorage(err))
+	}
+	for _, r := range stepRows {
+		maxStepByRecipe[r.RecipeID] = r.MaxDurationMinutes
+	}
+	return proteinByRecipe, maxStepByRecipe, nil
+}
+
+// slotContext carries the precomputed per-recipe signals and household
+// membership a slot's reminders consult.
+type slotContext struct {
+	proteinByRecipe map[int64][]sqlc.ListProteinItemsForRecipesRow
+	maxStepByRecipe map[int64]int32
+	members         map[int64][]int64
+}
+
+// slotReminders emits the defrost and advance-prep reminders for one meal
+// slot whose date is not in the past.
+func (s *Service) slotReminders(ctx context.Context, sl sqlc.ListMealSlotsWithRecipesRow, meal, now time.Time, scale float64, sc slotContext) int {
+	created := 0
+	if items := sc.proteinByRecipe[sl.RecipeID]; len(items) > 0 {
+		lbs := proteinPounds(items, scale)
+		lead := defrostLeadDays(lbs)
+		if !now.Before(s.dueAt(meal, lead)) {
+			created += s.insertRecipeReminder(ctx, sc.members[sl.HouseholdID], sl.HouseholdID, recipeReminder{
+				kind:  KindProteinDefrost,
+				title: fmt.Sprintf("Defrost protein for %s", meal.Format(displayDateLayout)),
+				body: fmt.Sprintf("%s calls for %.1f lb of protein, which needs about %d days to thaw — take it out of the freezer today.",
+					sl.RecipeName, lbs, lead),
+				recipeID:  sl.RecipeID,
+				dedupBase: fmt.Sprintf("%s:%d", KindProteinDefrost, sl.SlotID),
+			})
+		}
+	}
+	if maxDur, ok := sc.maxStepByRecipe[sl.RecipeID]; ok {
+		lead := int(math.Ceil(float64(maxDur) / float64(minutesPerDay)))
+		if !now.Before(s.dueAt(meal, lead)) {
+			created += s.insertRecipeReminder(ctx, sc.members[sl.HouseholdID], sl.HouseholdID, recipeReminder{
+				kind:  KindMealPrepAdvance,
+				title: fmt.Sprintf("Start prep for %s", sl.RecipeName),
+				body: fmt.Sprintf("%s on %s has a step that takes about %d day(s) — start it today to be ready in time.",
+					sl.RecipeName, meal.Format(displayDateLayout), lead),
+				recipeID:  sl.RecipeID,
+				dedupBase: fmt.Sprintf("%s:%d", KindMealPrepAdvance, sl.SlotID),
+			})
+		}
+	}
+	return created
 }
 
 func (s *Service) sweepExpiry(ctx context.Context, now time.Time) (int, error) {
@@ -246,13 +278,17 @@ func (s *Service) sweepExpiry(ctx context.Context, now time.Time) (int, error) {
 	}
 	created := 0
 	for _, it := range items {
-		exp := it.ExpiresAt.Time.Format("Mon Jan 2")
+		exp := it.ExpiresAt.Time.Format(displayDateLayout)
 		title := fmt.Sprintf("%s expires soon", it.ItemName)
 		body := fmt.Sprintf("%s expires %s — use it or add a replacement to your grocery list.", it.ItemName, exp)
-		created += s.insertItemReminder(ctx, members[it.HouseholdID], it.HouseholdID,
-			KindItemExpiring, title, body, it.ItemID,
-			fmt.Sprintf("%s:%d:%s", KindItemExpiring, it.HouseholdItemID,
-				it.ExpiresAt.Time.Format("2006-01-02")))
+		created += s.insertItemReminder(ctx, members[it.HouseholdID], it.HouseholdID, itemReminder{
+			kind:   KindItemExpiring,
+			title:  title,
+			body:   body,
+			itemID: it.ItemID,
+			dedupBase: fmt.Sprintf("%s:%d:%s", KindItemExpiring, it.HouseholdItemID,
+				it.ExpiresAt.Time.Format(time.DateOnly)),
+		})
 	}
 	return created, nil
 }
@@ -272,15 +308,35 @@ func (s *Service) membersByHousehold(ctx context.Context, householdIDs []int64) 
 	return out, nil
 }
 
+// recipeReminder carries one recipe-scoped notification's content and
+// dedup identity, bundled so the member fan-out stays under the parameter
+// limit.
+type recipeReminder struct {
+	kind      string
+	title     string
+	body      string
+	recipeID  int64
+	dedupBase string
+}
+
+// itemReminder is the item-scoped counterpart of recipeReminder.
+type itemReminder struct {
+	kind      string
+	title     string
+	body      string
+	itemID    int64
+	dedupBase string
+}
+
 // insertRecipeReminder writes one protein/prep notification per member,
 // honoring each member's opt-outs. dedupBase is suffixed with :userID so
 // the per-user keys differ.
-func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, householdID int64, kind, title, body string, recipeID int64, dedupBase string) int {
+func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, householdID int64, r recipeReminder) int {
 	created := 0
 	for _, uid := range memberIDs {
-		ok, err := s.Allowed(ctx, uid, kind)
+		ok, err := s.Allowed(ctx, uid, r.kind)
 		if err != nil {
-			slog.Warn("notification suppression check failed, delivering anyway", "user", uid, "kind", kind, "error", err)
+			slog.Warn("notification suppression check failed, delivering anyway", "user", uid, "kind", r.kind, "error", err)
 			ok = true
 		}
 		if !ok {
@@ -289,14 +345,14 @@ func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, h
 		tag, err := s.q.InsertRecipeReminderNotification(ctx, sqlc.InsertRecipeReminderNotificationParams{
 			UserID:      uid,
 			HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
-			Kind:        kind,
-			Title:       pgtype.Text{String: title, Valid: true},
-			Body:        pgtype.Text{String: body, Valid: true},
-			RecipeID:    pgtype.Int8{Int64: recipeID, Valid: true},
-			DedupKey:    pgtype.Text{String: fmt.Sprintf("%s:%d", dedupBase, uid), Valid: true},
+			Kind:        r.kind,
+			Title:       pgtype.Text{String: r.title, Valid: true},
+			Body:        pgtype.Text{String: r.body, Valid: true},
+			RecipeID:    pgtype.Int8{Int64: r.recipeID, Valid: true},
+			DedupKey:    pgtype.Text{String: fmt.Sprintf("%s:%d", r.dedupBase, uid), Valid: true},
 		})
 		if err != nil {
-			slog.Warn("reminder insert failed", "kind", kind, "user", uid, "error", err)
+			slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
 			continue
 		}
 		created += int(tag.RowsAffected())
@@ -305,12 +361,12 @@ func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, h
 	return created
 }
 
-func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, householdID int64, kind, title, body string, itemID int64, dedupBase string) int {
+func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, householdID int64, r itemReminder) int {
 	created := 0
 	for _, uid := range memberIDs {
-		ok, err := s.Allowed(ctx, uid, kind)
+		ok, err := s.Allowed(ctx, uid, r.kind)
 		if err != nil {
-			slog.Warn("notification suppression check failed, delivering anyway", "user", uid, "kind", kind, "error", err)
+			slog.Warn("notification suppression check failed, delivering anyway", "user", uid, "kind", r.kind, "error", err)
 			ok = true
 		}
 		if !ok {
@@ -319,14 +375,14 @@ func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, hou
 		tag, err := s.q.InsertItemReminderNotification(ctx, sqlc.InsertItemReminderNotificationParams{
 			UserID:      uid,
 			HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
-			Kind:        kind,
-			Title:       pgtype.Text{String: title, Valid: true},
-			Body:        pgtype.Text{String: body, Valid: true},
-			ItemID:      pgtype.Int8{Int64: itemID, Valid: true},
-			DedupKey:    pgtype.Text{String: fmt.Sprintf("%s:%d", dedupBase, uid), Valid: true},
+			Kind:        r.kind,
+			Title:       pgtype.Text{String: r.title, Valid: true},
+			Body:        pgtype.Text{String: r.body, Valid: true},
+			ItemID:      pgtype.Int8{Int64: r.itemID, Valid: true},
+			DedupKey:    pgtype.Text{String: fmt.Sprintf("%s:%d", r.dedupBase, uid), Valid: true},
 		})
 		if err != nil {
-			slog.Warn("reminder insert failed", "kind", kind, "user", uid, "error", err)
+			slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
 			continue
 		}
 		created += int(tag.RowsAffected())

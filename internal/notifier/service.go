@@ -264,24 +264,22 @@ func (s *Service) categoryAllowed(ctx context.Context, userID int64, category st
 		return true, fmt.Errorf("list notification prefs: %w", domainerr.FromStorage(err))
 	}
 	now := time.Now()
-	for _, p := range prefs {
-		if p.Category != CategoryAll {
-			continue
-		}
-		if !p.Enabled || (p.MutedUntil.Valid && p.MutedUntil.Time.After(now)) {
-			return false, nil
-		}
+	if prefMuted(prefs, CategoryAll, now) || prefMuted(prefs, category, now) {
+		return false, nil
 	}
+	return true, nil
+}
+
+// prefMuted reports whether any pref row in the category suppresses
+// delivery — disabled outright or muted until after now.
+func prefMuted(prefs []sqlc.UserprefsNotificationPref, category string, now time.Time) bool {
 	for _, p := range prefs {
 		if p.Category != category {
 			continue
 		}
-		if !p.Enabled {
-			return false, nil
-		}
-		if p.MutedUntil.Valid && p.MutedUntil.Time.After(now) {
-			return false, nil
+		if !p.Enabled || (p.MutedUntil.Valid && p.MutedUntil.Time.After(now)) {
+			return true
 		}
 	}
-	return true, nil
+	return false
 }

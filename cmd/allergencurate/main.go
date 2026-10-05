@@ -264,22 +264,31 @@ Reply ONLY with JSON: {"mappings":[{"ingredient_id":0,"allergens":[{"name":"alle
 	if err != nil {
 		return nil, nil, err
 	}
-	var parsed struct {
-		Mappings []struct {
-			IngredientID int64 `json:"ingredient_id"`
-			Allergens    []struct {
-				Name string `json:"name"`
-				Kind string `json:"kind"`
-			} `json:"allergens"`
-			Confidence string `json:"confidence"`
-			Notes      string `json:"notes"`
-		} `json:"mappings"`
-		Unresolved []struct {
-			IngredientID int64  `json:"ingredient_id"`
-			Reason       string `json:"reason"`
-		} `json:"unresolved"`
-	}
-	if err := json.Unmarshal([]byte(resp.Message.Content), &parsed); err != nil {
+	return parseBatchReply(resp.Message.Content, allergens, ingredients)
+}
+
+// batchReply is the model's JSON response for one propose batch.
+type batchReply struct {
+	Mappings []struct {
+		IngredientID int64 `json:"ingredient_id"`
+		Allergens    []struct {
+			Name string `json:"name"`
+			Kind string `json:"kind"`
+		} `json:"allergens"`
+		Confidence string `json:"confidence"`
+		Notes      string `json:"notes"`
+	} `json:"mappings"`
+	Unresolved []struct {
+		IngredientID int64  `json:"ingredient_id"`
+		Reason       string `json:"reason"`
+	} `json:"unresolved"`
+}
+
+// parseBatchReply converts the model's JSON into mappings and unresolved
+// rows, deduplicating ingredients and normalizing allergen flags.
+func parseBatchReply(content string, allergens []string, ingredients []ingredientRow) ([]mapping, []unresolved, error) {
+	var parsed batchReply
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 		return nil, nil, fmt.Errorf("parse model reply: %w", err)
 	}
 	known := make(map[string]bool, len(allergens))
@@ -296,20 +305,7 @@ Reply ONLY with JSON: {"mappings":[{"ingredient_id":0,"allergens":[{"name":"alle
 		if seen[m.IngredientID] {
 			continue
 		}
-		var flags []allergenFlag
-		flagSeen := make(map[string]bool)
-		for _, a := range m.Allergens {
-			name := normalizeName(a.Name)
-			kind := normalizeName(a.Kind)
-			if name == "" || flagSeen[name] {
-				continue
-			}
-			if kind != "contains" && kind != "may_contain" {
-				kind = "contains"
-			}
-			flagSeen[name] = true
-			flags = append(flags, allergenFlag{Name: name, Kind: kind, NewAllergen: !known[name]})
-		}
+		flags := convertFlags(m.Allergens, known)
 		if len(flags) == 0 {
 			continue
 		}
@@ -330,6 +326,29 @@ Reply ONLY with JSON: {"mappings":[{"ingredient_id":0,"allergens":[{"name":"alle
 		us = append(us, unresolved{IngredientID: u.IngredientID, IngredientName: names[u.IngredientID], Reason: u.Reason})
 	}
 	return ms, us, nil
+}
+
+// convertFlags normalizes one ingredient's allergen list, deduplicating
+// by name and marking names absent from the known-allergen list.
+func convertFlags(raw []struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+}, known map[string]bool) []allergenFlag {
+	var flags []allergenFlag
+	flagSeen := make(map[string]bool)
+	for _, a := range raw {
+		name := normalizeName(a.Name)
+		kind := normalizeName(a.Kind)
+		if name == "" || flagSeen[name] {
+			continue
+		}
+		if kind != "contains" && kind != "may_contain" {
+			kind = "contains"
+		}
+		flagSeen[name] = true
+		flags = append(flags, allergenFlag{Name: name, Kind: kind, NewAllergen: !known[name]})
+	}
+	return flags
 }
 
 // ---------- apply ----------

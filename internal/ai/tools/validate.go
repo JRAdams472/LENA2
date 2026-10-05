@@ -45,76 +45,94 @@ func validateValue(schema map[string]any, v any, path string) error {
 		// No declared type — nothing to check.
 		return nil
 	case "object":
-		m, ok := v.(map[string]any)
-		if !ok {
-			return fmt.Errorf("%w: %s must be an object", ErrInvalidArgs, path)
-		}
-		props, _ := schema["properties"].(map[string]any)
-		for _, req := range stringList(schema["required"]) {
-			if _, ok := m[req]; !ok {
-				return fmt.Errorf("%w: %s.%s is required", ErrInvalidArgs, path, req)
-			}
-		}
-		for key, val := range m {
-			ps, ok := props[key]
-			if !ok {
-				if len(props) > 0 {
-					// A declared property list is treated as closed —
-					// model-invented arguments get a clear error instead
-					// of reaching the handler silently ignored.
-					return fmt.Errorf("%w: %s.%s is not a declared property", ErrInvalidArgs, path, key)
-				}
-				continue
-			}
-			sub, ok := ps.(map[string]any)
-			if !ok {
-				continue
-			}
-			if err := validateValue(sub, val, path+"."+key); err != nil {
-				return err
-			}
-		}
-		return nil
+		return validateObject(schema, v, path)
 	case "string":
-		if _, ok := v.(string); !ok {
-			return fmt.Errorf("%w: %s must be a string", ErrInvalidArgs, path)
-		}
-		return nil
+		return validatePrimitive[string](v, path, "string")
 	case "integer":
-		f, ok := v.(float64)
-		if !ok || f != math.Trunc(f) {
-			return fmt.Errorf("%w: %s must be an integer", ErrInvalidArgs, path)
-		}
-		return checkBounds(schema, f, path)
+		return validateNumber(schema, v, path, true)
 	case "number":
-		f, ok := v.(float64)
-		if !ok {
-			return fmt.Errorf("%w: %s must be a number", ErrInvalidArgs, path)
-		}
-		return checkBounds(schema, f, path)
+		return validateNumber(schema, v, path, false)
 	case "boolean":
-		if _, ok := v.(bool); !ok {
-			return fmt.Errorf("%w: %s must be a boolean", ErrInvalidArgs, path)
-		}
-		return nil
+		return validatePrimitive[bool](v, path, "boolean")
 	case "array":
-		a, ok := v.([]any)
-		if !ok {
-			return fmt.Errorf("%w: %s must be an array", ErrInvalidArgs, path)
-		}
-		items, ok := schema["items"].(map[string]any)
-		if !ok {
-			return nil
-		}
-		for i, item := range a {
-			if err := validateValue(items, item, fmt.Sprintf("%s[%d]", path, i)); err != nil {
-				return err
-			}
-		}
-		return nil
+		return validateArray(schema, v, path)
 	default:
 		return fmt.Errorf("%w: %s has unsupported schema type %q", ErrInvalidArgs, path, typ)
 	}
+}
+
+// validateObject checks required fields and recurses into declared
+// properties. A declared property list is treated as closed —
+// model-invented arguments get a clear error instead of reaching the
+// handler silently ignored.
+func validateObject(schema map[string]any, v any, path string) error {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("%w: %s must be an object", ErrInvalidArgs, path)
+	}
+	props, _ := schema["properties"].(map[string]any)
+	for _, req := range stringList(schema["required"]) {
+		if _, ok := m[req]; !ok {
+			return fmt.Errorf("%w: %s.%s is required", ErrInvalidArgs, path, req)
+		}
+	}
+	for key, val := range m {
+		ps, ok := props[key]
+		if !ok {
+			if len(props) > 0 {
+				return fmt.Errorf("%w: %s.%s is not a declared property", ErrInvalidArgs, path, key)
+			}
+			continue
+		}
+		sub, ok := ps.(map[string]any)
+		if !ok {
+			continue
+		}
+		if err := validateValue(sub, val, path+"."+key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validatePrimitive enforces a scalar JSON type.
+func validatePrimitive[T string | bool](v any, path, name string) error {
+	if _, ok := v.(T); !ok {
+		return fmt.Errorf("%w: %s must be a %s", ErrInvalidArgs, path, name)
+	}
+	return nil
+}
+
+// validateNumber checks the float64 decode and, for integer schemas, that
+// the value is integral, then applies numeric bounds.
+func validateNumber(schema map[string]any, v any, path string, integer bool) error {
+	f, ok := v.(float64)
+	if !ok || (integer && f != math.Trunc(f)) {
+		name := "number"
+		if integer {
+			name = "integer"
+		}
+		return fmt.Errorf("%w: %s must be a %s", ErrInvalidArgs, path, name)
+	}
+	return checkBounds(schema, f, path)
+}
+
+// validateArray recurses into each element against the items schema.
+func validateArray(schema map[string]any, v any, path string) error {
+	a, ok := v.([]any)
+	if !ok {
+		return fmt.Errorf("%w: %s must be an array", ErrInvalidArgs, path)
+	}
+	items, ok := schema["items"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	for i, item := range a {
+		if err := validateValue(items, item, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkBounds applies minimum/maximum when the schema declares them.

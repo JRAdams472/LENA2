@@ -134,82 +134,110 @@ func pantryRows(ctx context.Context, scope Scope, pantry PantryReader, items Ite
 	for i, hi := range rows {
 		ids[i] = hi.ItemID
 	}
-	meta := map[int64]inventory.Item{}
-	unitIDs := map[int64]bool{}
-	if items != nil {
-		list, err := items.GetItemsByIDs(ctx, ids)
-		if err != nil {
-			return nil, fmt.Errorf("item names: %w", err)
-		}
-		for _, it := range list {
-			meta[it.ItemID] = it
-			unitIDs[it.UnitID] = true
-		}
+	meta, units, err := itemMetadata(ctx, items, ids)
+	if err != nil {
+		return nil, err
 	}
-	units := map[int64]inventory.Unit{}
-	if len(unitIDs) > 0 {
-		uids := make([]int64, 0, len(unitIDs))
-		for id := range unitIDs {
-			uids = append(uids, id)
-		}
-		list, err := items.GetUnitsByIDs(ctx, uids)
-		if err != nil {
-			return nil, fmt.Errorf("unit names: %w", err)
-		}
-		for _, u := range list {
-			units[u.UnitID] = u
-		}
-	}
-
 	// Resolved ingredient names let the model match pantry rows to
 	// ingredient-keyed recipe lines regardless of brand.
-	ingredientNames := map[int64]string{}
-	if items != nil {
-		resolved, err := items.ResolveItemIngredients(ctx, scope.HouseholdID, ids)
-		if err != nil {
-			return nil, fmt.Errorf("resolve item ingredients: %w", err)
-		}
-		ingIDs := []int64{}
-		for _, id := range resolved {
-			if id != nil {
-				ingIDs = append(ingIDs, *id)
-			}
-		}
-		if len(ingIDs) > 0 {
-			ings, err := items.GetIngredientsByIDs(ctx, ingIDs)
-			if err != nil {
-				return nil, fmt.Errorf("ingredient names: %w", err)
-			}
-			namesByID := map[int64]string{}
-			for _, in := range ings {
-				namesByID[in.IngredientID] = in.Name
-			}
-			for itemID, ingID := range resolved {
-				if ingID != nil {
-					ingredientNames[itemID] = namesByID[*ingID]
-				}
-			}
-		}
+	ingredientNames, err := itemIngredientNames(ctx, items, scope.HouseholdID, ids)
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]pantryRow, 0, len(rows))
 	for _, hi := range rows {
-		row := pantryRow{
-			Name:       fmt.Sprintf("item #%d", hi.ItemID),
-			Ingredient: ingredientNames[hi.ItemID],
-			Quantity:   hi.CurrentQty,
-			MinQty:     hi.MinQty,
-		}
-		if it, ok := meta[hi.ItemID]; ok {
-			row.Name = it.Name
-			if u, ok := units[it.UnitID]; ok {
-				row.Unit = u.Abbreviation
-			}
-		}
-		if hi.ExpiresAt != nil {
-			row.ExpiresAt = hi.ExpiresAt.Format("2006-01-02")
-		}
-		out = append(out, row)
+		out = append(out, toPantryRow(hi, meta, units, ingredientNames))
 	}
 	return out, nil
+}
+
+// toPantryRow maps one household item, falling back to a placeholder name
+// when the catalog row is missing.
+func toPantryRow(hi userprefs.HouseholdItem, meta map[int64]inventory.Item, units map[int64]inventory.Unit, ingredientNames map[int64]string) pantryRow {
+	row := pantryRow{
+		Name:       fmt.Sprintf("item #%d", hi.ItemID),
+		Ingredient: ingredientNames[hi.ItemID],
+		Quantity:   hi.CurrentQty,
+		MinQty:     hi.MinQty,
+	}
+	if it, ok := meta[hi.ItemID]; ok {
+		row.Name = it.Name
+		if u, ok := units[it.UnitID]; ok {
+			row.Unit = u.Abbreviation
+		}
+	}
+	if hi.ExpiresAt != nil {
+		row.ExpiresAt = hi.ExpiresAt.Format(time.DateOnly)
+	}
+	return row
+}
+
+// itemMetadata loads catalog items and their units for the given ids.
+func itemMetadata(ctx context.Context, items ItemNamer, ids []int64) (map[int64]inventory.Item, map[int64]inventory.Unit, error) {
+	meta := map[int64]inventory.Item{}
+	units := map[int64]inventory.Unit{}
+	if items == nil {
+		return meta, units, nil
+	}
+	list, err := items.GetItemsByIDs(ctx, ids)
+	if err != nil {
+		return nil, nil, fmt.Errorf("item names: %w", err)
+	}
+	unitIDs := map[int64]bool{}
+	for _, it := range list {
+		meta[it.ItemID] = it
+		unitIDs[it.UnitID] = true
+	}
+	if len(unitIDs) == 0 {
+		return meta, units, nil
+	}
+	uids := make([]int64, 0, len(unitIDs))
+	for id := range unitIDs {
+		uids = append(uids, id)
+	}
+	ulist, err := items.GetUnitsByIDs(ctx, uids)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unit names: %w", err)
+	}
+	for _, u := range ulist {
+		units[u.UnitID] = u
+	}
+	return meta, units, nil
+}
+
+// itemIngredientNames maps each pantry item id to its resolved generic
+// ingredient's name.
+func itemIngredientNames(ctx context.Context, items ItemNamer, householdID int64, ids []int64) (map[int64]string, error) {
+	names := map[int64]string{}
+	if items == nil {
+		return names, nil
+	}
+	resolved, err := items.ResolveItemIngredients(ctx, householdID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("resolve item ingredients: %w", err)
+	}
+	ingIDs := []int64{}
+	for _, id := range resolved {
+		if id != nil {
+			ingIDs = append(ingIDs, *id)
+		}
+	}
+	if len(ingIDs) == 0 {
+		return names, nil
+	}
+	ings, err := items.GetIngredientsByIDs(ctx, ingIDs)
+	if err != nil {
+		return nil, fmt.Errorf("ingredient names: %w", err)
+	}
+	namesByID := map[int64]string{}
+	for _, in := range ings {
+		namesByID[in.IngredientID] = in.Name
+	}
+	for itemID, ingID := range resolved {
+		if ingID != nil {
+			names[itemID] = namesByID[*ingID]
+		}
+	}
+	return names, nil
 }

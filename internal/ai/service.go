@@ -116,24 +116,30 @@ func (s *Service) Ask(ctx context.Context, userID, householdID int64, question s
 			return Answer{Text: text, Tools: trace}, nil
 		}
 		for _, call := range m.ToolCalls {
-			result, err := s.reg.Call(ctx, scope, call.Name, call.Arguments)
-			var out string
+			out, err := s.execToolCall(ctx, scope, call)
 			if err != nil {
-				// Report the failure to the model instead of aborting — it
-				// can often answer anyway or retry with valid arguments.
-				out = fmt.Sprintf(`{"error":%q}`, err.Error())
-			} else {
-				data, mErr := json.Marshal(result)
-				if mErr != nil {
-					return Answer{}, fmt.Errorf("marshal tool result: %w", mErr)
-				}
-				out = truncate(string(data), s.cfg.ToolResultMaxBytes)
+				return Answer{}, err
 			}
 			msgs = append(msgs, llm.ToolResult(call, out))
 			trace = append(trace, ToolTrace{Name: call.Name})
 		}
 	}
 	return Answer{}, fmt.Errorf("assistant exceeded %d tool rounds", s.cfg.MaxToolRounds)
+}
+
+// execToolCall runs one model tool call and returns the serialized result
+// to feed back. Call failures are reported to the model instead of
+// aborting — it can often answer anyway or retry with valid arguments.
+func (s *Service) execToolCall(ctx context.Context, scope tools.Scope, call llm.ToolCall) (string, error) {
+	result, err := s.reg.Call(ctx, scope, call.Name, call.Arguments)
+	if err != nil {
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return "", fmt.Errorf("marshal tool result: %w", err)
+	}
+	return truncate(string(data), s.cfg.ToolResultMaxBytes), nil
 }
 
 func truncate(s string, maxLen int) string {

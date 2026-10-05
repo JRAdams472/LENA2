@@ -7,6 +7,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
+	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
 // AllergenSource is the allergen surface the suggestion tools need.
@@ -122,85 +123,14 @@ func allergenCandidates(ctx context.Context, scope Scope, recipes RecipeCatalog,
 		return nil, fmt.Errorf("recipe items: %w", err)
 	}
 
-	itemIDs, ingIDs := map[int64]bool{}, map[int64]bool{}
-	for _, ri := range rItems {
-		if ri.ItemID != nil {
-			itemIDs[*ri.ItemID] = true
-		}
-		if ri.IngredientID != nil {
-			ingIDs[*ri.IngredientID] = true
-		}
-	}
-	iids := keysOf(itemIDs)
-
-	itList, err := items.GetItemsByIDs(ctx, iids)
+	lk, err := allergenLookups(ctx, scope.HouseholdID, items, allergens, rItems)
 	if err != nil {
-		return nil, fmt.Errorf("items: %w", err)
-	}
-	names := map[int64]string{}
-	for _, it := range itList {
-		names[it.ItemID] = it.Name
-	}
-	// Household override wins over the catalog link — the resolved
-	// ingredient is what flags actually attach to at warning time.
-	resolved, err := items.ResolveItemIngredients(ctx, scope.HouseholdID, iids)
-	if err != nil {
-		return nil, fmt.Errorf("resolve item ingredients: %w", err)
-	}
-	for _, g := range resolved {
-		if g != nil {
-			ingIDs[*g] = true
-		}
-	}
-	gids := keysOf(ingIDs)
-
-	ingList, err := items.GetIngredientsByIDs(ctx, gids)
-	if err != nil {
-		return nil, fmt.Errorf("ingredients: %w", err)
-	}
-	ingNames := map[int64]string{}
-	for _, g := range ingList {
-		ingNames[g.IngredientID] = g.Name
-	}
-
-	ingFlags, err := allergens.ListIngredientAllergensByIngredients(ctx, gids)
-	if err != nil {
-		return nil, fmt.Errorf("ingredient flags: %w", err)
-	}
-	itemFlags, err := allergens.ListItemAllergensByItems(ctx, iids)
-	if err != nil {
-		return nil, fmt.Errorf("item flags: %w", err)
-	}
-	flagRows := func(m map[int64][]inventory.EntityAllergen, id int64) []AllergenFlagRow {
-		fs := m[id]
-		out := make([]AllergenFlagRow, len(fs))
-		for i, f := range fs {
-			out[i] = AllergenFlagRow{AllergenID: f.AllergenID, Kind: f.Kind}
-		}
-		return out
+		return nil, err
 	}
 
 	byRecipe := map[int64][]AllergenCandidateItem{}
 	for _, ri := range rItems {
-		c := AllergenCandidateItem{Quantity: ri.Quantity, Optional: ri.IsOptional}
-		if ri.IngredientID != nil {
-			g := *ri.IngredientID
-			c.IngredientID = &g
-			c.Name = ingNames[g]
-			c.Flags = flagRows(ingFlags, g)
-		} else if ri.ItemID != nil {
-			it := *ri.ItemID
-			c.ItemID = &it
-			c.Name = names[it]
-			c.Flags = flagRows(itemFlags, it)
-			if g := resolved[it]; g != nil {
-				c.IngredientID = g
-				if c.Name == "" {
-					c.Name = names[it]
-				}
-				c.Flags = append(c.Flags, flagRows(ingFlags, *g)...)
-			}
-		}
+		c := candidateItem(ri, lk.names, lk.ingNames, lk.resolved, lk.ingFlags, lk.itemFlags)
 		if c.Name == "" {
 			continue
 		}
@@ -216,4 +146,109 @@ func allergenCandidates(ctx context.Context, scope Scope, recipes RecipeCatalog,
 		out.Recipes = append(out.Recipes, AllergenCandidateRecipe{ID: r.RecipeID, Name: r.Name, Items: items})
 	}
 	return out, nil
+}
+
+// candidateLookups bundles every index candidateItem consults.
+type candidateLookups struct {
+	names     map[int64]string
+	ingNames  map[int64]string
+	resolved  map[int64]*int64
+	ingFlags  map[int64][]inventory.EntityAllergen
+	itemFlags map[int64][]inventory.EntityAllergen
+}
+
+// allergenLookups loads item names, resolved household ingredient
+// overrides, ingredient names, and stored flags for the recipe lines.
+func allergenLookups(ctx context.Context, householdID int64, items ItemNamer, allergens AllergenSource, rItems []recipe.RecipeItem) (*candidateLookups, error) {
+	itemIDs, ingIDs := map[int64]bool{}, map[int64]bool{}
+	for _, ri := range rItems {
+		if ri.ItemID != nil {
+			itemIDs[*ri.ItemID] = true
+		}
+		if ri.IngredientID != nil {
+			ingIDs[*ri.IngredientID] = true
+		}
+	}
+	iids := keysOf(itemIDs)
+
+	itList, err := items.GetItemsByIDs(ctx, iids)
+	if err != nil {
+		return nil, fmt.Errorf("items: %w", err)
+	}
+	lk := &candidateLookups{
+		names:    map[int64]string{},
+		ingNames: map[int64]string{},
+	}
+	for _, it := range itList {
+		lk.names[it.ItemID] = it.Name
+	}
+	// Household override wins over the catalog link — the resolved
+	// ingredient is what flags actually attach to at warning time.
+	lk.resolved, err = items.ResolveItemIngredients(ctx, householdID, iids)
+	if err != nil {
+		return nil, fmt.Errorf("resolve item ingredients: %w", err)
+	}
+	for _, g := range lk.resolved {
+		if g != nil {
+			ingIDs[*g] = true
+		}
+	}
+	gids := keysOf(ingIDs)
+
+	ingList, err := items.GetIngredientsByIDs(ctx, gids)
+	if err != nil {
+		return nil, fmt.Errorf("ingredients: %w", err)
+	}
+	for _, g := range ingList {
+		lk.ingNames[g.IngredientID] = g.Name
+	}
+
+	lk.ingFlags, err = allergens.ListIngredientAllergensByIngredients(ctx, gids)
+	if err != nil {
+		return nil, fmt.Errorf("ingredient flags: %w", err)
+	}
+	lk.itemFlags, err = allergens.ListItemAllergensByItems(ctx, iids)
+	if err != nil {
+		return nil, fmt.Errorf("item flags: %w", err)
+	}
+	return lk, nil
+}
+
+// allergenFlagRows converts stored entity flags into output rows.
+func allergenFlagRows(m map[int64][]inventory.EntityAllergen, id int64) []AllergenFlagRow {
+	fs := m[id]
+	out := make([]AllergenFlagRow, len(fs))
+	for i, f := range fs {
+		out[i] = AllergenFlagRow{AllergenID: f.AllergenID, Kind: f.Kind}
+	}
+	return out
+}
+
+// candidateItem converts one recipe line into a flaggable candidate,
+// preferring the generic-ingredient identity and layering resolved-item
+// flags onto item rows.
+func candidateItem(ri recipe.RecipeItem, names, ingNames map[int64]string, resolved map[int64]*int64, ingFlags, itemFlags map[int64][]inventory.EntityAllergen) AllergenCandidateItem {
+	c := AllergenCandidateItem{Quantity: ri.Quantity, Optional: ri.IsOptional}
+	if ri.IngredientID != nil {
+		g := *ri.IngredientID
+		c.IngredientID = &g
+		c.Name = ingNames[g]
+		c.Flags = allergenFlagRows(ingFlags, g)
+		return c
+	}
+	if ri.ItemID == nil {
+		return c
+	}
+	it := *ri.ItemID
+	c.ItemID = &it
+	c.Name = names[it]
+	c.Flags = allergenFlagRows(itemFlags, it)
+	if g := resolved[it]; g != nil {
+		c.IngredientID = g
+		if c.Name == "" {
+			c.Name = names[it]
+		}
+		c.Flags = append(c.Flags, allergenFlagRows(ingFlags, *g)...)
+	}
+	return c
 }
