@@ -1794,6 +1794,13 @@ function toEventTimeline(t: GqlEventTimeline): EventTimeline {
   };
 }
 
+function usualBrandLabel(
+  b: NonNullable<GqlGroceryListItem["usualBrand"]> | null | undefined
+): string | null {
+  if (!b) return null;
+  return b.brand ? `${b.brand.name} ${b.name}` : b.name;
+}
+
 function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListItem {
   return {
     ...audit(),
@@ -1804,9 +1811,7 @@ function toGroceryListItem(listID: number, i: GqlGroceryListItem): GroceryListIt
     ingredientID: i.ingredient ? num(i.ingredient.id) : null,
     ingredientName: i.ingredient?.name ?? null,
     usualBrandItemID: i.usualBrand ? num(i.usualBrand.id) : null,
-    usualBrandName: i.usualBrand
-      ? (i.usualBrand.brand ? `${i.usualBrand.brand.name} ${i.usualBrand.name}` : i.usualBrand.name)
-      : null,
+    usualBrandName: usualBrandLabel(i.usualBrand),
     manualItemName: i.manualItemName,
     quantityNeeded: i.quantityNeeded,
     unitOfMeasure: i.unitOfMeasure,

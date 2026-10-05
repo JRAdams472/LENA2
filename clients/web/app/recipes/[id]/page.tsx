@@ -38,6 +38,29 @@ import { fmtQty } from "@/lib/format";
 import { isOfDrinkingAge } from "@/lib/age";
 import { useMe } from "@/app/auth/useMe";
 
+function ratingSummary(average: number | null, count: number): string {
+  if (average == null) return "No ratings yet";
+  const plural = count === 1 ? "" : "s";
+  return `${average.toFixed(1)} avg · ${count} rating${plural}`;
+}
+
+function brandItemLabel(item: { name: string; brand?: string | null }): string {
+  const brand = item.brand ? `${item.brand} ` : "";
+  return `${brand}${item.name}`;
+}
+
+// Generic ingredients render alone or with their resolved brand item;
+// brand-only lines lead with the brand.
+function recipeItemLabel(ri: RecipeItem): string {
+  if (ri.ingredientName) {
+    if (!ri.itemName) return ri.ingredientName;
+    const brand = ri.itemBrand ? `${ri.itemBrand} ` : "";
+    return `${ri.ingredientName} — ${brand}${ri.itemName}`;
+  }
+  if (ri.itemBrand) return `${ri.itemBrand} — ${ri.itemName ?? ri.itemID}`;
+  return String(ri.itemName ?? ri.itemID);
+}
+
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>();
   const recipeId = Number(params.id);
@@ -306,9 +329,10 @@ export default function RecipeDetailPage() {
                 }}
               />
               <Typography variant="body2" color="text.secondary">
-                {recipeQuery.data.averageRating != null
-                  ? `${recipeQuery.data.averageRating.toFixed(1)} avg · ${recipeQuery.data.ratingCount} rating${recipeQuery.data.ratingCount === 1 ? "" : "s"}`
-                  : "No ratings yet"}
+                {ratingSummary(
+                  recipeQuery.data.averageRating,
+                  recipeQuery.data.ratingCount
+                )}
               </Typography>
             </Box>
             {(recipeQuery.data.categories ?? []).length > 0 && (
@@ -521,7 +545,7 @@ export default function RecipeDetailPage() {
               size="small"
               color="primary"
               variant="outlined"
-              label={`Brand: ${selectedItem.brand ? `${selectedItem.brand} ` : ""}${selectedItem.name}`}
+              label={`Brand: ${brandItemLabel(selectedItem)}`}
               onDelete={() => {
                 setSelectedItem(null);
                 setItemSearch("");
@@ -604,13 +628,7 @@ export default function RecipeDetailPage() {
                       {fmtQty(recipeItem.quantity)}{" "}
                       {recipeItem.unitOfMeasure ?? ""}
                     </TableCell>
-                    <TableCell>
-                      {recipeItem.ingredientName
-                        ? `${recipeItem.ingredientName}${recipeItem.itemName ? ` — ${recipeItem.itemBrand ? `${recipeItem.itemBrand} ` : ""}${recipeItem.itemName}` : ""}`
-                        : recipeItem.itemBrand
-                          ? `${recipeItem.itemBrand} — ${recipeItem.itemName ?? recipeItem.itemID}`
-                          : (recipeItem.itemName ?? recipeItem.itemID)}
-                    </TableCell>
+                    <TableCell>{recipeItemLabel(recipeItem)}</TableCell>
                     <TableCell>{recipeItem.isOptional ? "Yes" : "No"}</TableCell>
                     <TableCell>
                       <Button

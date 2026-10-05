@@ -26,6 +26,13 @@ const MUTE_OPTIONS = [
   { label: "1 week", ms: 7 * 24 * 60 * 60 * 1000 },
 ];
 
+function prefStatusText(isAll: boolean, enabled: boolean): string {
+  if (isAll) {
+    return "Pause every notification for a while — nothing is delivered until it expires.";
+  }
+  return enabled ? "Delivered" : "Turned off";
+}
+
 function fmtUntil(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     month: "short",
@@ -108,11 +115,7 @@ function PrefRow({ pref }: { pref: NotificationCategoryPreference }) {
         primary={isAll ? `${pref.label} (global mute)` : pref.label}
         secondary={
           <>
-            {isAll
-              ? "Pause every notification for a while — nothing is delivered until it expires."
-              : pref.enabled
-                ? "Delivered"
-                : "Turned off"}
+            {prefStatusText(isAll, pref.enabled)}
             {error && (
               <Typography component="span" color="error" sx={{ display: "block" }}>
                 {error}

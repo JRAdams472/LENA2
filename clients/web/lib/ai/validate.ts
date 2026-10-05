@@ -100,35 +100,45 @@ export function validatePairings(
   const seen = new Set<string>();
   const out: RawPairing[] = [];
   for (const raw of list) {
-    const p = raw as { bottleId?: unknown; name?: unknown; reason?: unknown };
-    let bottleId: number | null = null;
-    let name = "";
-    let inCellar = false;
-    if (typeof p.bottleId === "number") {
-      const b = cellarById.get(p.bottleId);
-      if (!b) continue;
-      bottleId = p.bottleId;
-      name =
-        b.vintageYear && b.vintageYear > 0
-          ? `${b.vineyard} ${b.vintageYear}`
-          : b.vineyard;
-      inCellar = true;
-    } else {
-      if (typeof p.name !== "string") continue;
-      name = p.name.trim();
-      if (name === "" || name.length > 80) continue;
-    }
-    const key = `${bottleId ?? 0}|${name.toLowerCase()}`;
+    const p = toPairing(raw, cellarById);
+    if (!p) continue;
+    const key = `${p.bottleId ?? 0}|${p.name.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({
-      bottleId,
-      name,
-      reason: truncate(((p.reason as string) ?? "").trim(), 160),
-      inCellar,
-    });
+    out.push(p);
   }
   return out.slice(0, maxCount);
+}
+
+type CellarMap = Map<number, NonNullable<PairingsContext["cellar"]>[number]>;
+
+// A numeric bottleId must resolve to a cellar bottle (stamps name +
+// inCellar); a style pick needs a real bounded name.
+function toPairing(raw: unknown, cellarById: CellarMap): RawPairing | null {
+  const p = raw as { bottleId?: unknown; name?: unknown; reason?: unknown };
+  let bottleId: number | null = null;
+  let name = "";
+  let inCellar = false;
+  if (typeof p.bottleId === "number") {
+    const b = cellarById.get(p.bottleId);
+    if (!b) return null;
+    bottleId = p.bottleId;
+    name =
+      b.vintageYear && b.vintageYear > 0
+        ? `${b.vineyard} ${b.vintageYear}`
+        : b.vineyard;
+    inCellar = true;
+  } else {
+    if (typeof p.name !== "string") return null;
+    name = p.name.trim();
+    if (name === "" || name.length > 80) return null;
+  }
+  return {
+    bottleId,
+    name,
+    reason: truncate(((p.reason as string) ?? "").trim(), 160),
+    inCellar,
+  };
 }
 
 export interface RawCocktail {
@@ -209,6 +219,71 @@ export function validateEventFixes(
 ): RawEventFix[] {
   const list = (parsed as { fixes?: unknown })?.fixes;
   if (!Array.isArray(list)) return [];
+  const { stepsByRecipe, names } = eventFixIndex(ctx);
+  const gran = ctx.slotGranularityMinutes && ctx.slotGranularityMinutes > 0
+    ? ctx.slotGranularityMinutes
+    : 15;
+  const seen = new Set<string>();
+  const out: RawEventFix[] = [];
+  for (const raw of list) {
+    const fix = toEventFix(raw, stepsByRecipe, names, gran);
+    if (!fix) continue;
+    const key = `${fix.eventRecipeId}|${fix.action}|${fix.stepNumber ?? 0}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(fix);
+  }
+  return out.slice(0, maxCount);
+}
+
+// One fix entry: known recipe + step references and a payload that passes
+// the per-action checks. RecipeName is stamped from context.
+function toEventFix(
+  raw: unknown,
+  stepsByRecipe: Map<number, Set<number>>,
+  names: Map<number, string>,
+  gran: number
+): RawEventFix | null {
+  const f = raw as Record<string, unknown>;
+  const eventRecipeId = f.eventRecipeId;
+  const action = f.action;
+  if (typeof eventRecipeId !== "number" || typeof action !== "string") {
+    return null;
+  }
+  const steps = stepsByRecipe.get(eventRecipeId);
+  if (!steps) return null;
+  const fields: EventFixFields = {
+    stepNumber: typeof f.stepNumber === "number" ? f.stepNumber : null,
+    minutes: typeof f.minutes === "number" ? f.minutes : null,
+    appliance: typeof f.appliance === "string" ? f.appliance : null,
+    durationMinutes:
+      typeof f.durationMinutes === "number" ? f.durationMinutes : null,
+    dependsOnStepNumber:
+      typeof f.dependsOnStepNumber === "number" ? f.dependsOnStepNumber : null,
+  };
+  if (!eventFixPayloadOk(action, steps, gran, fields)) return null;
+  return {
+    eventRecipeId,
+    recipeName: names.get(eventRecipeId) ?? "",
+    action: action as RawEventFix["action"],
+    ...fields,
+    reason: truncate(((f.reason as string) ?? "").trim(), 160),
+  };
+}
+
+interface EventFixFields {
+  stepNumber: number | null;
+  minutes: number | null;
+  appliance: string | null;
+  durationMinutes: number | null;
+  dependsOnStepNumber: number | null;
+}
+
+// Steps-per-recipe and name lookups for the offered timeline.
+function eventFixIndex(ctx: EventContext): {
+  stepsByRecipe: Map<number, Set<number>>;
+  names: Map<number, string>;
+} {
   const stepsByRecipe = new Map<number, Set<number>>();
   const names = new Map<number, string>();
   for (const r of ctx.recipes ?? []) {
@@ -218,90 +293,50 @@ export function validateEventFixes(
       new Set((r.steps ?? []).map((s) => s.step))
     );
   }
-  const gran = ctx.slotGranularityMinutes && ctx.slotGranularityMinutes > 0
-    ? ctx.slotGranularityMinutes
-    : 15;
-  const seen = new Set<string>();
-  const out: RawEventFix[] = [];
-  for (const raw of list) {
-    const f = raw as Record<string, unknown>;
-    const eventRecipeId = f.eventRecipeId;
-    const action = f.action;
-    if (typeof eventRecipeId !== "number" || typeof action !== "string") {
-      continue;
-    }
-    const steps = stepsByRecipe.get(eventRecipeId);
-    if (!steps) continue;
-    const stepNumber = typeof f.stepNumber === "number" ? f.stepNumber : null;
-    const minutes = typeof f.minutes === "number" ? f.minutes : null;
-    const appliance = typeof f.appliance === "string" ? f.appliance : null;
-    const durationMinutes =
-      typeof f.durationMinutes === "number" ? f.durationMinutes : null;
-    const dependsOnStepNumber =
-      typeof f.dependsOnStepNumber === "number" ? f.dependsOnStepNumber : null;
+  return { stepsByRecipe, names };
+}
 
-    switch (action) {
-      case "shift_serve":
-        if (
-          minutes === null ||
-          minutes === 0 ||
-          minutes > 480 ||
-          minutes < -480 ||
-          minutes % gran !== 0
-        ) {
-          continue;
-        }
-        break;
-      case "set_appliance":
-        if (
-          stepNumber === null ||
-          !steps.has(stepNumber) ||
-          appliance === null ||
-          appliance.trim() === "" ||
-          appliance.length > 40
-        ) {
-          continue;
-        }
-        break;
-      case "set_duration":
-        if (
-          stepNumber === null ||
-          !steps.has(stepNumber) ||
-          durationMinutes === null ||
-          durationMinutes <= 0 ||
-          durationMinutes > 720
-        ) {
-          continue;
-        }
-        break;
-      case "set_dependency":
-        if (
-          stepNumber === null ||
-          !steps.has(stepNumber) ||
-          dependsOnStepNumber === null ||
-          dependsOnStepNumber === stepNumber ||
-          !steps.has(dependsOnStepNumber)
-        ) {
-          continue;
-        }
-        break;
-      default:
-        continue;
-    }
-    const key = `${eventRecipeId}|${action}|${stepNumber ?? 0}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      eventRecipeId,
-      recipeName: names.get(eventRecipeId) ?? "",
-      stepNumber,
-      action: action as RawEventFix["action"],
-      minutes,
-      appliance,
-      durationMinutes,
-      dependsOnStepNumber,
-      reason: truncate(((f.reason as string) ?? "").trim(), 160),
-    });
+// Per-action payload validation: unknown actions and out-of-range fields are
+// dropped; step references must point at real steps in the recipe.
+function eventFixPayloadOk(
+  action: string,
+  steps: Set<number>,
+  gran: number,
+  f: EventFixFields
+): boolean {
+  const stepOk =
+    f.stepNumber !== null && steps.has(f.stepNumber);
+  switch (action) {
+    case "shift_serve":
+      return (
+        f.minutes !== null &&
+        f.minutes !== 0 &&
+        f.minutes <= 480 &&
+        f.minutes >= -480 &&
+        f.minutes % gran === 0
+      );
+    case "set_appliance":
+      return (
+        stepOk &&
+        f.appliance !== null &&
+        f.appliance.trim() !== "" &&
+        f.appliance.length <= 40
+      );
+    case "set_duration":
+      return (
+        stepOk &&
+        f.durationMinutes !== null &&
+        f.durationMinutes > 0 &&
+        f.durationMinutes <= 720
+      );
+    case "set_dependency":
+      return (
+        stepOk &&
+        f.dependsOnStepNumber !== null &&
+        f.dependsOnStepNumber !== f.stepNumber &&
+        steps.has(f.dependsOnStepNumber)
+      );
+    default:
+      return false;
   }
-  return out.slice(0, maxCount);
 }

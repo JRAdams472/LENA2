@@ -998,17 +998,16 @@ function SlotItems({
   onRemove: (itemId: number) => void;
 }) {
   const items = [...(slot.items ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
+  let note = "";
+  if (slot.baseServings != null) {
+    note = ` — scaled for ${slot.servings ?? "—"} servings (recipe makes ${slot.baseServings})`;
+  } else if (slot.recipeID) {
+    note = " (copied from recipe — edits stay on this event)";
+  }
   return (
     <Box sx={{ py: 1 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-        <Typography variant="subtitle2">
-          Ingredients
-          {slot.baseServings != null
-            ? ` — scaled for ${slot.servings ?? "—"} servings (recipe makes ${slot.baseServings})`
-            : slot.recipeID
-            ? " (copied from recipe — edits stay on this event)"
-            : ""}
-        </Typography>
+        <Typography variant="subtitle2">Ingredients{note}</Typography>
         <Button size="small" variant="outlined" onClick={onAdd}>
           Add ingredient
         </Button>

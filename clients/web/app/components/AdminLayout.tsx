@@ -220,17 +220,7 @@ function NotificationBell() {
             key={n.notificationID}
             onClick={() => {
               setAnchor(null);
-              // Reminders deep-link to their subject; event notifications
-              // to the event; household activity to the household page.
-              router.push(
-                n.recipeId != null
-                  ? `/recipes/${n.recipeId}`
-                  : n.foodEventId != null
-                    ? `/events/${n.foodEventId}`
-                    : n.itemId != null
-                      ? "/inventory/items"
-                      : "/household"
-              );
+              router.push(notificationHref(n));
             }}
           >
             <ListItemText
@@ -277,6 +267,30 @@ function NotificationBell() {
       </Menu>
     </>
   );
+}
+
+// Reminders deep-link to their subject; event notifications to the
+// event; household activity to the household page.
+function notificationHref(n: HouseholdNotification): string {
+  if (n.recipeId != null) return `/recipes/${n.recipeId}`;
+  if (n.foodEventId != null) return `/events/${n.foodEventId}`;
+  if (n.itemId != null) return "/inventory/items";
+  return "/household";
+}
+
+function navGroupIcon(label: string) {
+  switch (label) {
+    case "Inventory":
+      return <InventoryIcon />;
+    case "Wine":
+      return <WineBarIcon />;
+    case "Recipes":
+      return <MenuBookIcon />;
+    case "Meal Planning":
+      return <RestaurantIcon />;
+    default:
+      return null;
+  }
 }
 
 function notificationText(n: HouseholdNotification): string {
@@ -356,92 +370,85 @@ export default function AdminLayout({
     return <LoginScreen />;
   }
 
-  const renderNavEntry = (group: NavEntry, caption = false) => {
-    if (group.children) {
-      const active = isGroupActive(pathname, group.children);
-      const icon =
-        group.label === "Inventory" ? (
-          <InventoryIcon />
-        ) : group.label === "Wine" ? (
-          <WineBarIcon />
-        ) : group.label === "Recipes" ? (
-          <MenuBookIcon />
-        ) : group.label === "Meal Planning" ? (
-          <RestaurantIcon />
-        ) : null;
-
-      return (
-        <React.Fragment key={group.label}>
-          <ListItem disablePadding>
-            <ListItemButton
-              onClick={() => toggleGroup(group.label)}
-              selected={active}
-            >
-              {icon && <ListItemIcon>{icon}</ListItemIcon>}
-              <ListItemText
-                primary={group.label}
-                slotProps={
-                  caption
-                    ? {
-                        primary: {
-                          variant: "overline",
-                          color: "text.secondary",
-                          sx: { lineHeight: 1.5 },
-                        },
-                      }
-                    : undefined
-                }
-              />
-              {openGroups[group.label] ? (
-                <ExpandLess fontSize={caption ? "small" : "medium"} />
-              ) : (
-                <ExpandMore fontSize={caption ? "small" : "medium"} />
-              )}
-            </ListItemButton>
-          </ListItem>
-          <Collapse
-            in={openGroups[group.label]}
-            timeout="auto"
-            unmountOnExit
-          >
-            <List component="div" disablePadding>
-              {group.children.filter((child) => !child.adminOnly || isAdmin).map((child) => (
-                <ListItem key={child.href} disablePadding>
-                  <ListItemButton
-                    component={Link}
-                    href={child.href}
-                    selected={isActive(pathname, child.href)}
-                    onClick={() => setMobileOpen(false)}
-                    sx={{ pl: caption ? 3 : 4 }}
-                  >
-                    <ListItemText primary={child.label} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          </Collapse>
-        </React.Fragment>
-      );
-    }
+  const renderNavGroup = (group: NavEntry, caption: boolean) => {
+    const active = isGroupActive(pathname, group.children!);
+    const icon = navGroupIcon(group.label);
+    const expand = openGroups[group.label] ? (
+      <ExpandLess fontSize={caption ? "small" : "medium"} />
+    ) : (
+      <ExpandMore fontSize={caption ? "small" : "medium"} />
+    );
 
     return (
-      <ListItem key={group.href!} disablePadding>
-        <ListItemButton
-          component={Link}
-          href={group.href!}
-          selected={isActive(pathname, group.href!)}
-          onClick={() => setMobileOpen(false)}
+      <React.Fragment key={group.label}>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => toggleGroup(group.label)}
+            selected={active}
+          >
+            {icon && <ListItemIcon>{icon}</ListItemIcon>}
+            <ListItemText
+              primary={group.label}
+              slotProps={
+                caption
+                  ? {
+                      primary: {
+                        variant: "overline",
+                        color: "text.secondary",
+                        sx: { lineHeight: 1.5 },
+                      },
+                    }
+                  : undefined
+              }
+            />
+            {expand}
+          </ListItemButton>
+        </ListItem>
+        <Collapse
+          in={openGroups[group.label]}
+          timeout="auto"
+          unmountOnExit
         >
-          {group.label === "Dashboard" && (
-            <ListItemIcon>
-              <DashboardIcon />
-            </ListItemIcon>
-          )}
-          <ListItemText primary={group.label} />
-        </ListItemButton>
-      </ListItem>
+          <List component="div" disablePadding>
+            {group.children!.filter((child) => !child.adminOnly || isAdmin).map((child) => (
+              <ListItem key={child.href} disablePadding>
+                <ListItemButton
+                  component={Link}
+                  href={child.href}
+                  selected={isActive(pathname, child.href)}
+                  onClick={() => setMobileOpen(false)}
+                  sx={{ pl: caption ? 3 : 4 }}
+                >
+                  <ListItemText primary={child.label} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
+      </React.Fragment>
     );
   };
+
+  const renderNavLeaf = (group: NavEntry) => (
+    <ListItem key={group.href!} disablePadding>
+      <ListItemButton
+        component={Link}
+        href={group.href!}
+        selected={isActive(pathname, group.href!)}
+        onClick={() => setMobileOpen(false)}
+      >
+        {group.label === "Dashboard" && (
+          <ListItemIcon>
+            <DashboardIcon />
+          </ListItemIcon>
+        )}
+        <ListItemText primary={group.label} />
+      </ListItemButton>
+    </ListItem>
+  );
+
+  const renderNavEntry = (group: NavEntry, caption = false) =>
+    group.children ? renderNavGroup(group, caption) : renderNavLeaf(group);
 
   const drawerContent = (
     <Box

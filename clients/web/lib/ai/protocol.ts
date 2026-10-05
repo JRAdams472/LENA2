@@ -89,28 +89,38 @@ export function extractJsonObject(raw: string): unknown {
 // object or a stringified object — both occur in the wild).
 function parseToolCalls(v: unknown, known: Set<string>): ToolCallRequest[] | undefined {
   if (!Array.isArray(v) || v.length === 0) return undefined;
-  const calls: ToolCallRequest[] = [];
-  for (const item of v) {
-    if (!item || typeof item !== "object") return undefined;
-    const { name, arguments: args } = item as { name?: unknown; arguments?: unknown };
-    if (typeof name !== "string" || !known.has(name)) return undefined;
-    let parsed: Record<string, unknown> = {};
-    if (typeof args === "string" && args.trim()) {
-      try {
-        const p = JSON.parse(args);
-        if (!p || typeof p !== "object" || Array.isArray(p)) return undefined;
-        parsed = p as Record<string, unknown>;
-      } catch {
-        return undefined;
-      }
-    } else if (args != null) {
-      if (typeof args !== "object" || Array.isArray(args)) return undefined;
-      parsed = args as Record<string, unknown>;
-    }
-    if (JSON.stringify(parsed).length > MAX_CALL_ARGS_BYTES) return undefined;
-    calls.push({ name, arguments: parsed });
+  const calls = v.map((item) => toToolCall(item, known));
+  // One bad call poisons the batch — the model gets a retry, not a
+  // silently truncated tool set.
+  return calls.includes(undefined) ? undefined : (calls as ToolCallRequest[]);
+}
+
+function toToolCall(item: unknown, known: Set<string>): ToolCallRequest | undefined {
+  if (!item || typeof item !== "object") return undefined;
+  const { name, arguments: args } = item as { name?: unknown; arguments?: unknown };
+  if (typeof name !== "string" || !known.has(name)) return undefined;
+  const parsed = parseCallArguments(args);
+  if (!parsed || JSON.stringify(parsed).length > MAX_CALL_ARGS_BYTES) {
+    return undefined;
   }
-  return calls;
+  return { name, arguments: parsed };
+}
+
+// arguments may arrive as an object or a stringified object — both occur
+// in the wild. Absent arguments normalize to an empty object.
+function parseCallArguments(args: unknown): Record<string, unknown> | undefined {
+  if (typeof args === "string" && args.trim()) {
+    try {
+      const p = JSON.parse(args);
+      if (!p || typeof p !== "object" || Array.isArray(p)) return undefined;
+      return p as Record<string, unknown>;
+    } catch {
+      return undefined;
+    }
+  }
+  if (args == null) return {};
+  if (typeof args !== "object" || Array.isArray(args)) return undefined;
+  return args as Record<string, unknown>;
 }
 
 // parseModelReply classifies raw model output for the agent loop.
