@@ -12,9 +12,9 @@
 // The shot list below is the canonical set — add/remove entries for new pages,
 // and prefer waitFor text that only appears once real data has rendered.
 
-import { createRequire } from "module";
-import { mkdirSync } from "fs";
-import { execSync } from "child_process";
+import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 const require = createRequire(new URL("../../clients/web/package.json", import.meta.url));
 const { chromium, request } = require("playwright");
@@ -102,7 +102,7 @@ await gql(
   }`,
   {
     itemId: expiringItem.id,
-    expiresAt: new Date(Date.now() + 2 * 86400_000).toISOString(),
+    expiresAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
   }
 );
 await gql(`mutation { triggerNotificationSweep }`);
