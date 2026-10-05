@@ -16,6 +16,8 @@ TODAY = os.environ.get("DEMO_DATE") or date.today().isoformat()
 # JS getDay(): Sun=0..Sat=6; Python weekday(): Mon=0..Sun=6.
 DOW = (date.fromisoformat(TODAY).weekday() + 1) % 7
 WEEK_NAME = "Week of " + TODAY
+OLIVE_OIL = "olive oil"
+STORE_NAME = "Corner Market"
 
 
 def token(sub, email, name):
@@ -47,7 +49,6 @@ def find_items(tok, keywords, page_size=2000):
             "query($p:Int,$n:Int){ items(page:$p,pageSize:$n){ items { id name } pageInfo { totalCount } } }",
             {"p": page, "n": page_size},
         )
-        found_any = False
         for it in data["items"]["items"]:
             name = it["name"].lower()
             for kw in keywords:
@@ -88,7 +89,7 @@ except RuntimeError as e:
 
 items = find_items(
     ADMIN,
-    ["chicken", "pasta", "spaghetti", "olive oil", "onion", "garlic", "potato", "rice", "carrot", "tomato", "milk", "egg", "flour", "butter", "cheese", "salt", "broth", "bread"],
+    ["chicken", "pasta", "spaghetti", OLIVE_OIL, "onion", "garlic", "potato", "rice", "carrot", "tomato", "milk", "egg", "flour", "butter", "cheese", "salt", "broth", "bread"],
 )
 print("items found:", sorted(items.keys()))
 
@@ -176,7 +177,7 @@ roast = get_or_create_recipe(
                 ri("potato", 2, "lb"),
                 ri("carrot", 1, "lb"),
                 ri("onion", 1, "each"),
-                ing("olive oil", 3, "tbsp"),
+                ing(OLIVE_OIL, 3, "tbsp"),
                 ri("salt", 1, "tsp"),
                 ri("garlic", 4, "each", optional=True),
             ],
@@ -303,7 +304,7 @@ if not glist:
 # Demo store with a walk-ordered aisle layout; the grocery list is routed
 # through it so the detail page shows route groups.
 existing_stores = gql(ADMIN, "{ groceryStores { id name } }")["groceryStores"]
-store = next((s for s in existing_stores if s["name"] == "Corner Market"), None)
+store = next((s for s in existing_stores if s["name"] == STORE_NAME), None)
 if store:
     store_id = store["id"]
     print("store exists:", store["name"])
@@ -311,7 +312,7 @@ else:
     store_id = gql(
         ADMIN,
         "mutation($name: String!) { createStore(name: $name) { id } }",
-        {"name": "Corner Market"},
+        {"name": STORE_NAME},
     )["createStore"]["id"]
     for pos, name in enumerate(["Produce", "Dairy", "Pantry Staples"]):
         gql(
@@ -319,7 +320,7 @@ else:
             "mutation($storeId: ID!, $name: String!, $position: Int!) { createStoreAisle(storeId: $storeId, name: $name, position: $position) { id } }",
             {"storeId": store_id, "name": name, "position": pos},
         )
-    print("store + aisles:", store["name"] if store else "Corner Market")
+    print("store + aisles:", store["name"] if store else STORE_NAME)
 
 if glist["id"]:
     gql(
@@ -433,7 +434,7 @@ else:
 # Pantry stock — a few items on hand.
 pantry_count = gql(ADMIN, "{ userItems(page:1,pageSize:1){ pageInfo { totalCount } } }")["userItems"]["pageInfo"]["totalCount"]
 if pantry_count == 0:
-    for kw, qty in [("milk", 1), ("egg", 12), ("flour", 5), ("butter", 2), ("rice", 3), ("olive oil", 1)]:
+    for kw, qty in [("milk", 1), ("egg", 12), ("flour", 5), ("butter", 2), ("rice", 3), (OLIVE_OIL, 1)]:
         if kw in items:
             gql(
                 ADMIN,

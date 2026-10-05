@@ -11,7 +11,7 @@ import asyncio
 import io
 import os
 import tempfile
-from typing import Any
+from typing import Annotated, Any
 
 import pytesseract
 from fastapi import FastAPI, File, UploadFile
@@ -132,7 +132,9 @@ def _write_temp(contents: bytes, suffix: str) -> str:
 
 
 @app.post("/ocr")
-async def ocr(image: UploadFile = File(...), psm: int = DEFAULT_PSM) -> dict:
+async def ocr(
+    image: Annotated[UploadFile, File()], psm: int = DEFAULT_PSM
+) -> dict | JSONResponse:
     # Streamed size limit: read at most MAX_UPLOAD_BYTES + 1 so a huge body
     # is rejected without being fully buffered.
     contents = await image.read(MAX_UPLOAD_BYTES + 1)
