@@ -45,6 +45,8 @@ Thumbs.db
 
 # Screenshot capture output (published to LENA2.wiki repo instead)
 /wiki-shots/
+tools/wiki-shots/wiki-shots/
+tools/wiki-shots/wiki-shots-*.zip
 
 # Local screenshot/audit captures
 audit-shots/
