@@ -224,7 +224,7 @@ export default function ItemsPage() {
     const value = window.prompt("Enter new Category ID");
     if (value === null) return;
     const categoryId = Number(value);
-    if (isNaN(categoryId)) {
+    if (Number.isNaN(categoryId)) {
       alert("Category ID must be a number");
       return;
     }

@@ -468,7 +468,7 @@ export default function HouseholdPage() {
             </ListItem>
           ))}
         </List>
-        {searchQuery.data && searchQuery.data.length === 0 && (
+        {searchQuery.data?.length === 0 && (
           <Typography color="text.secondary">Nobody by that name.</Typography>
         )}
       </Paper>

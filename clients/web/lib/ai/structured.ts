@@ -38,8 +38,10 @@ export async function runStructured<C, T>(
       const out = validate(obj, ctx);
       if (out !== null) return out;
     }
-    messages.push({ role: "assistant", content: raw });
-    messages.push({ role: "user", content: RETRY_HINT });
+    messages.push(
+      { role: "assistant", content: raw },
+      { role: "user", content: RETRY_HINT }
+    );
   }
   throw new StructuredError("local model returned malformed suggestions");
 }

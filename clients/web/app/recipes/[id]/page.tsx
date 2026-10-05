@@ -103,7 +103,7 @@ export default function RecipeDetailPage() {
   const recipeQuery = useQuery({
     queryKey: ["recipe", recipeId],
     queryFn: () => api.getRecipe(recipeId),
-    enabled: !isNaN(recipeId),
+    enabled: !Number.isNaN(recipeId),
   });
 
   const groupsQuery = useQuery({
@@ -114,7 +114,7 @@ export default function RecipeDetailPage() {
   });
 
   useEffect(() => {
-    if (!isNaN(recipeId)) void api.recordView("recipe", recipeId);
+    if (!Number.isNaN(recipeId)) void api.recordView("recipe", recipeId);
   }, [recipeId]);
 
   useEffect(() => {
@@ -143,13 +143,13 @@ export default function RecipeDetailPage() {
   const recipeItemsQuery = useQuery({
     queryKey: ["recipe-items", recipeId],
     queryFn: () => api.getRecipeItems(recipeId),
-    enabled: !isNaN(recipeId),
+    enabled: !Number.isNaN(recipeId),
   });
 
   const recipeStepsQuery = useQuery({
     queryKey: ["recipe-steps", recipeId],
     queryFn: () => api.getRecipeSteps(recipeId),
-    enabled: !isNaN(recipeId),
+    enabled: !Number.isNaN(recipeId),
   });
 
   const invalidateItems = () =>
@@ -296,7 +296,7 @@ export default function RecipeDetailPage() {
     (a, b) => a.stepNumber - b.stepNumber
   );
 
-  if (isNaN(recipeId)) {
+  if (Number.isNaN(recipeId)) {
     return <Alert severity="error">Invalid recipe id</Alert>;
   }
 

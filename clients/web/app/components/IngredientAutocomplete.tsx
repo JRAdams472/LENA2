@@ -67,7 +67,7 @@ export default function IngredientAutocomplete({
       onInputChange={(_, v) => setInput(v)}
       value={value}
       onChange={(_, v) => {
-        if (v && v.ingredientID === CREATE_ID) {
+        if (v?.ingredientID === CREATE_ID) {
           const name = input.trim();
           if (name) {
             void api.getOrCreateIngredient({ name }).then((ing) => {

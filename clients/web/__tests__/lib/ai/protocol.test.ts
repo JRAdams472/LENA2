@@ -45,7 +45,7 @@ describe("parseModelReply", () => {
   });
 
   it("accepts stringified arguments", () => {
-    const raw = `{"toolCalls":[{"name":"get_pantry_inventory","arguments":"{\\"limit\\":3}"}]}`;
+    const raw = String.raw`{"toolCalls":[{"name":"get_pantry_inventory","arguments":"{\"limit\":3}"}]}`;
     const r = parseModelReply(raw, TOOLS);
     expect(r).toEqual({
       kind: "tools",

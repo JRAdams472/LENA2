@@ -5,9 +5,9 @@ const mockFetch = global.fetch as jest.Mock;
 
 function b64(obj: object): string {
   return btoa(JSON.stringify(obj))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
 }
 
 function makeToken(claims: object): string {

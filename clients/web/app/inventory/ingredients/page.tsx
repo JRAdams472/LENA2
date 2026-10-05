@@ -73,7 +73,7 @@ export default function IngredientsPage() {
           : (dialogCategory?.categoryID ?? null);
       if (isCreate) {
         return api.createIngredient({
-          name: String(values.name ?? ""),
+          name: (values.name ?? "") as string,
           categoryId: categoryId ?? null,
           defaultUnit: (values.defaultUnit as string) || null,
         });

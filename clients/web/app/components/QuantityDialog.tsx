@@ -45,10 +45,10 @@ export default function QuantityDialog({
     if (open) setQty(String(Math.max(min, Math.floor(initialValue))));
   }
 
-  const value = parseInt(qty, 10);
-  const valid = !isNaN(value) && value >= min;
+  const value = Number.parseInt(qty, 10);
+  const valid = !Number.isNaN(value) && value >= min;
   const bump = (delta: number) =>
-    setQty(String(Math.max(min, (isNaN(value) ? 0 : value) + delta)));
+    setQty(String(Math.max(min, (Number.isNaN(value) ? 0 : value) + delta)));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>

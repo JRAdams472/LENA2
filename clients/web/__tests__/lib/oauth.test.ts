@@ -119,12 +119,12 @@ describe("pkce", () => {
 
   it("derives the RFC 7636 S256 challenge", async () => {
     // jsdom lacks crypto.subtle and TextEncoder — back them with Node's.
-    const { webcrypto } = await import("crypto");
-    const { TextEncoder } = await import("util");
+    const { webcrypto } = await import("node:crypto");
+    const { TextEncoder } = await import("node:util");
     if (!globalThis.crypto?.subtle) {
       Object.defineProperty(globalThis, "crypto", { value: webcrypto });
     }
-    if (typeof globalThis.TextEncoder === "undefined") {
+    if (globalThis.TextEncoder === undefined) {
       Object.defineProperty(globalThis, "TextEncoder", { value: TextEncoder });
     }
     // Appendix B vector: the challenge must be base64url(SHA-256(verifier)).
