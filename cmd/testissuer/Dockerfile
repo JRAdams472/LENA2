@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build stage — Go toolchain matches go.mod. Pinned by digest: golang 1.27.1-alpine.
-FROM golang@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS builder
+FROM golang@sha256:e0174e51e81218523251d85d248a90d24c3d5e81543b4f07a5d66229397db190 AS builder
 
 WORKDIR /build
 
