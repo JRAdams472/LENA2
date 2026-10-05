@@ -65,6 +65,7 @@ Seq and Jaeger run locally in the compose stack and are both queryable over plai
       -Dsonar.javascript.lcov.reportPaths=clients/web/coverage/lcov.info
     ```
     (On Git Bash use `"$(pwd -W)/internal:..."` for the mount paths.)
+  - **Boy-scout rule:** when a change touches a file that has open low/info-severity SonarQube findings, fix them in the same change when the fix is trivial and low-risk (`replaceAll`, `node:` imports, `Number.isNaN`, optional chaining, etc.). Skip nontrivial findings rather than letting a small fix balloon a diff.
 - Linear attachments go through `prepare_attachment_upload` → PUT the file to the signed URL with its exact signed headers → `create_attachment_from_upload`. A `SignatureDoesNotMatch` means the headers drifted — request a fresh URL and PUT immediately (URLs expire in ~60s).
 
 ## Plan Close-Out
@@ -79,6 +80,7 @@ After the final phase of any plan merges, before starting the next:
 6. Review every doc listed in `README.md`'s **Documentation** section plus the touched client READMEs (`clients/web/README.md`, `clients/mobile/README.md`) for staleness — env vars, versions, workflow/job names, helper-package names, and endpoint lists drift fast.
 7. Update the GitHub wiki (`LENA2.wiki.git`) — it lives outside the repo, so clone it, add/refresh pages for what shipped, and push to `master`.
 8. Refresh wiki **screenshots** when user-facing screens changed: run the isolated `lena2shots` stack per `.devin/skills/wiki-screenshots` (`tools/wiki-shots/seed_demo.py` + `capture.mjs`), inspect every PNG for spinners, publish under `images/`, and embed them on the relevant wiki pages — no wiki page should ship prose-only when a screen exists. Evaluate mobile screenshots the same way; if no emulator is available, note that and keep it as a follow-up.
+9. **SonarQube rescan gate (required):** if the plan remediated SonarQube findings, run the documented rescan after the final phase merges and confirm **zero new open issues** beyond the plan's accepted `wontfix` list — a finding introduced by the plan's own code is a regression, not backlog. Record the final open-issue count in the close-out proof.
 
 ## Code Size & Coverage Report (required on parent-ticket close-out)
 

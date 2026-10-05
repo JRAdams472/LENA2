@@ -63,10 +63,12 @@ function gqlItem(over: Record<string, unknown> = {}) {
   };
 }
 
+const DEFAULT_PAGE = { pageNumber: 1, pageSize: 200 };
+
 function itemsPage(
   items: object[],
   totalCount = items.length,
-  pageInfo: { pageNumber: number; pageSize: number } = { pageNumber: 1, pageSize: 200 }
+  pageInfo: { pageNumber: number; pageSize: number } = DEFAULT_PAGE
 ) {
   return {
     items: {

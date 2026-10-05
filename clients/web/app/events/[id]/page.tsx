@@ -135,13 +135,13 @@ export default function EventDetailPage({
   const eventQuery = useQuery({
     queryKey: ["foodEvent", eventId],
     queryFn: () => api.getFoodEvent(eventId),
-    enabled: !isNaN(eventId),
+    enabled: !Number.isNaN(eventId),
   });
 
   const timelineQuery = useQuery({
     queryKey: ["eventTimeline", eventId],
     queryFn: () => api.getEventTimeline(eventId),
-    enabled: !isNaN(eventId) && showTimeline,
+    enabled: !Number.isNaN(eventId) && showTimeline,
   });
 
   const localAIReady = useLocalEngineReady();
@@ -388,7 +388,7 @@ export default function EventDetailPage({
     setItemDialogOpen(true);
   };
 
-  if (isNaN(eventId)) {
+  if (Number.isNaN(eventId)) {
     return <Alert severity="error">Invalid event id</Alert>;
   }
   if (eventQuery.isLoading) return <CircularProgress />;

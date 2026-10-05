@@ -15,13 +15,13 @@ const mockFetch = global.fetch as jest.Mock;
 
 function makeToken(email: string, exp: number) {
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
   const payload = btoa(JSON.stringify({ email, exp }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
   return `${header}.${payload}.signature`;
 }
 

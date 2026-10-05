@@ -19,13 +19,13 @@ const mockPush = jest.fn();
 
 function makeToken(email: string, exp: number) {
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
   const payload = btoa(JSON.stringify({ email, exp }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
   return `${header}.${payload}.signature`;
 }
 
@@ -231,11 +231,10 @@ describe("AdminLayout", () => {
 
     // Opening the menu marks everything read.
     expect(
-      mockFetch.mock.calls.some(([, init]) =>
-        (init as RequestInit).body
-          ?.toString()
-          .includes("markAllNotificationsRead")
-      )
+      mockFetch.mock.calls.some(([, init]) => {
+        const body = (init as RequestInit).body;
+        return typeof body === "string" && body.includes("markAllNotificationsRead");
+      })
     ).toBe(true);
     // MUI keeps the last count in the DOM; the invisible class is the signal.
     expect(
@@ -268,11 +267,10 @@ describe("AdminLayout", () => {
       fireEvent.click(screen.getByRole("button", { name: "Add to list" }));
     });
     expect(
-      mockFetch.mock.calls.some(([, init]) =>
-        (init as RequestInit).body
-          ?.toString()
-          .includes("addItemToCurrentGroceryList")
-      )
+      mockFetch.mock.calls.some(([, init]) => {
+        const body = (init as RequestInit).body;
+        return typeof body === "string" && body.includes("addItemToCurrentGroceryList");
+      })
     ).toBe(true);
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/grocery-lists"));
   });

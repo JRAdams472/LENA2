@@ -53,7 +53,7 @@ interface DataTableProps<T extends object> {
 function cellText(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  return String(value as string | number | boolean);
 }
 
 export default function DataTable<T extends object>({
@@ -112,7 +112,7 @@ export default function DataTable<T extends object>({
       else if (bVal === null || bVal === undefined) comparison = -1;
       else if (typeof aVal === "number" && typeof bVal === "number") comparison = aVal - bVal;
       else if (typeof aVal === "boolean" && typeof bVal === "boolean") comparison = Number(aVal) - Number(bVal);
-      else comparison = String(aVal).localeCompare(String(bVal));
+      else comparison = cellText(aVal).localeCompare(cellText(bVal));
 
       return sortDirection === "asc" ? comparison : -comparison;
     });

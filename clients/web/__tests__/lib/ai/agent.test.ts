@@ -49,7 +49,7 @@ describe("runAgent", () => {
     expect(out.tools).toEqual(["get_expiring_items"]);
     expect(out.answer).toBe("Your milk expires Friday.");
     // The tool result was fed back as a user turn.
-    const lastUser = seen[1].filter((m) => m.role === "user").at(-1);
+    const lastUser = seen[1].findLast((m) => m.role === "user");
     expect(lastUser?.content).toContain("Tool results:");
     expect(lastUser?.content).toContain("get_expiring_items");
   });

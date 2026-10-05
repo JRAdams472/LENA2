@@ -32,7 +32,7 @@ export function oauthVerifierKey(provider: OAuthProvider): string {
 // (LEN-29 finding 4).
 function base64url(bytes: Uint8Array): string {
   let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
+  for (const b of bytes) bin += String.fromCodePoint(b);
   return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 

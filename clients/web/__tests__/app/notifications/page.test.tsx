@@ -119,7 +119,7 @@ describe("NotificationsPage", () => {
   });
 
   it("shows an active mute chip that can be cleared", async () => {
-    const until = new Date(Date.now() + 3600_000).toISOString();
+    const until = new Date(Date.now() + 3_600_000).toISOString();
     mockedApi.getMyNotificationPreferences.mockResolvedValue([
       { ...prefs[1], mutedUntil: until },
     ]);

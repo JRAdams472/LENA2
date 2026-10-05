@@ -64,9 +64,10 @@ test.describe("semantic recipe search", () => {
         .poll(async () => (await names()).indexOf(targetName), { timeout: 30_000 })
         .toBeGreaterThanOrEqual(0);
       const ranked = await names();
-      expect(ranked.indexOf(targetName)).toBeLessThan(
-        ranked.indexOf(otherName) === -1 ? Number.MAX_SAFE_INTEGER : ranked.indexOf(otherName)
-      );
+      const otherIdx = ranked.includes(otherName)
+        ? ranked.indexOf(otherName)
+        : Number.MAX_SAFE_INTEGER;
+      expect(ranked.indexOf(targetName)).toBeLessThan(otherIdx);
 
       // The UI toggle exists (semanticSearchAvailable is true in e2e) and
       // drives the same result.

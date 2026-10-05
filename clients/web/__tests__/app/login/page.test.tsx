@@ -36,13 +36,13 @@ jest.mock("@react-oauth/google", () => ({
 function makeToken() {
   const exp = 2000000000;
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
   const payload = btoa(JSON.stringify({ email: "admin@example.com", exp }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replaceAll("=", "")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_");
   return `${header}.${payload}.signature`;
 }
 

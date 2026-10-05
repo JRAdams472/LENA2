@@ -29,7 +29,7 @@ export class NanoEngine implements LocalEngine {
   }
 
   async chat(messages: EngineMessage[]): Promise<string> {
-    const last = messages[messages.length - 1];
+    const last = messages.at(-1) ?? { role: "user" as const, content: "" };
     const history = messages.slice(0, -1);
 
     let session;

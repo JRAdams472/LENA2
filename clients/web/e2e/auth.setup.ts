@@ -1,6 +1,6 @@
 import { test as setup, expect } from "@playwright/test";
-import { mkdirSync, writeFileSync } from "fs";
-import { dirname } from "path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { AUTH_FILE } from "../playwright.config";
 import { mintToken, PRIMARY_USER } from "./helpers";
 

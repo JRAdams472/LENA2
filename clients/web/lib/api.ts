@@ -3863,17 +3863,18 @@ export const api = {
     const existing = slots.find((s) => s.mealSlotID === slotId);
     if (!existing) throw new ApiError(404, `MealSlot ${slotId} not found`);
     await api.deleteMealSlot(planId, slotId);
-    return api.addMealSlot(planId, {
+    const merged = {
       ...audit(),
       dayOfWeek: slot.dayOfWeek ?? existing.dayOfWeek,
       mealType: slot.mealType ?? existing.mealType,
-      recipeID: slot.recipeID !== undefined ? slot.recipeID : existing.recipeID,
+      recipeID: existing.recipeID,
       servings: slot.servings ?? existing.servings,
-      replacementNote:
-        slot.replacementNote !== undefined
-          ? slot.replacementNote
-          : existing.replacementNote,
-    });
+      replacementNote: existing.replacementNote,
+    };
+    // `null` is meaningful here (clears the field), so `??` would be wrong.
+    if (slot.recipeID !== undefined) merged.recipeID = slot.recipeID;
+    if (slot.replacementNote !== undefined) merged.replacementNote = slot.replacementNote;
+    return api.addMealSlot(planId, merged);
   },
 
   deleteMealSlot: async (_planId: number, slotId: number): Promise<void> => {

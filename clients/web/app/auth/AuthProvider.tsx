@@ -66,7 +66,7 @@ const DEVICE = "web";
 function decodeJwtPayload(token: string): GoogleJwtPayload | null {
   try {
     const payload = token.split(".")[1];
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const base64 = payload.replaceAll("-", "+").replaceAll("_", "/");
     const padding = "=".repeat((4 - (base64.length % 4)) % 4);
     const json = atob(base64 + padding);
     return JSON.parse(json) as GoogleJwtPayload;

@@ -28,7 +28,7 @@ export function nanoHandle(g: NanoGlobal = globalThis as NanoGlobal): NanoHandle
 
 // hasWebGPU reports whether the WebLLM path can run at all.
 export function hasWebGPU(g: { navigator?: { gpu?: unknown } } = globalThis): boolean {
-  return typeof g.navigator?.gpu !== "undefined" && g.navigator.gpu !== null;
+  return g.navigator?.gpu !== undefined && g.navigator.gpu !== null;
 }
 
 export function detectLocalCapability(g: NanoGlobal & { navigator?: { gpu?: unknown } } = globalThis): LocalCapability {
