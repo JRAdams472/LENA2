@@ -45,3 +45,11 @@ Thumbs.db
 
 # Screenshot capture output (published to LENA2.wiki repo instead)
 /wiki-shots/
+
+# Local screenshot/audit captures
+audit-shots/
+mobile-shots/
+uat-shots/
+clients/mobile/mobile-shots/
+clients/mobile/drive-log.txt
+clients/mobile/perm-dialog.png
