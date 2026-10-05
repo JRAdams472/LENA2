@@ -62,7 +62,7 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 		return nil, badInputf(msgServingsPositive)
 	}
 
-	scaled, err := r.RecipeService.ScaleRecipe(ctx, id, args.Servings)
+	scaled, err := r.RecipeService.ScaleRecipeEffective(ctx, id, u.HouseholdID, args.Servings)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +86,13 @@ func (r *Resolver) ScaledRecipe(ctx context.Context, args struct {
 	}
 	rc.itemsBy[scaled.Recipe.RecipeID] = scaled.Items
 	rc.stepsBy[scaled.Recipe.RecipeID] = scaled.Steps
+	// Surface the delta so scaledRecipe.householdDelta still resolves;
+	// view: canonical on a scaled recipe returns the same scaled lines.
+	if d, err := r.RecipeService.GetRecipeDelta(ctx, scaled.Recipe.RecipeID, u.HouseholdID); err != nil {
+		return nil, err
+	} else if d != nil {
+		rc.deltas = map[int64]*recipe.RecipeDelta{scaled.Recipe.RecipeID: d}
+	}
 	fav, err := r.UserPrefsService.GetRecipeFavorite(ctx, u.UserID, scaled.Recipe.RecipeID)
 	if err != nil && !errors.Is(err, domainerr.ErrNotFound) {
 		return nil, err
@@ -957,20 +964,30 @@ func (r *recipeResolver) PrepTimeMinutes() *int32 { return r.recipe.PrepTimeMinu
 
 func (r *recipeResolver) CookTimeMinutes() *int32 { return r.recipe.CookTimeMinutes }
 
-func (r *recipeResolver) Items(ctx context.Context) ([]*recipeItemResolver, error) {
+// Items resolves recipe lines — the household delta-applied view by
+// default, or the untouched canonical rows for view: canonical.
+func (r *recipeResolver) Items(ctx context.Context, args struct{ View string }) ([]*recipeItemResolver, error) {
+	canonical, err := canonicalView(args.View)
+	if err != nil {
+		return nil, err
+	}
 	var items []recipe.RecipeItem
 	var itemsByID map[int64]inventory.Item
 	var ingredients map[int64]inventory.Ingredient
 	var ch *itemChildren
 	if r.rc != nil {
 		items = r.rc.itemsBy[r.recipe.RecipeID]
+		if canonical {
+			if canon, ok := r.rc.canonItemsBy[r.recipe.RecipeID]; ok {
+				items = canon
+			}
+		}
 		itemsByID = r.rc.items
 		ingredients = r.rc.ingredients
 		ch = r.rc.itemChildren
 	} else {
 		slog.Default().Warn("recipe.items missed preload; lazy-loading", "recipe_id", r.recipe.RecipeID)
-		var err error
-		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
+		items, err = r.lazyItems(ctx, canonical)
 		if err != nil {
 			return nil, err
 		}
@@ -995,7 +1012,7 @@ func (r *recipeResolver) allergenSet(ctx context.Context) (*allergyContext, map[
 		items = r.rc.itemsBy[r.recipe.RecipeID]
 	} else {
 		var err error
-		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
+		items, err = r.lazyItems(ctx, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1041,7 +1058,11 @@ func (r *recipeResolver) AllergyWarnings(ctx context.Context) ([]*allergyWarning
 
 // ItemSections groups the recipe's items by section name in display order.
 // Items without a section land in a group with a null name.
-func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSectionResolver, error) {
+func (r *recipeResolver) ItemSections(ctx context.Context, args struct{ View string }) ([]*recipeItemSectionResolver, error) {
+	canonical, err := canonicalView(args.View)
+	if err != nil {
+		return nil, err
+	}
 	var items []recipe.RecipeItem
 	var itemsByID map[int64]inventory.Item
 	var ingredients map[int64]inventory.Ingredient
@@ -1049,14 +1070,18 @@ func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSection
 	var units map[int64]inventory.Unit
 	if r.rc != nil {
 		items = r.rc.itemsBy[r.recipe.RecipeID]
+		if canonical {
+			if canon, ok := r.rc.canonItemsBy[r.recipe.RecipeID]; ok {
+				items = canon
+			}
+		}
 		itemsByID = r.rc.items
 		ingredients = r.rc.ingredients
 		ch = r.rc.itemChildren
 		units = r.rc.units
 	} else {
 		slog.Default().Warn("recipe.itemSections missed preload; lazy-loading", "recipe_id", r.recipe.RecipeID)
-		var err error
-		items, err = r.rec.ListRecipeItems(ctx, r.recipe.RecipeID)
+		items, err = r.lazyItems(ctx, canonical)
 		if err != nil {
 			return nil, err
 		}
@@ -1076,13 +1101,21 @@ func (r *recipeResolver) ItemSections(ctx context.Context) ([]*recipeItemSection
 	return sections, nil
 }
 
-func (r *recipeResolver) Steps(ctx context.Context) ([]*recipeStepResolver, error) {
+func (r *recipeResolver) Steps(ctx context.Context, args struct{ View string }) ([]*recipeStepResolver, error) {
+	canonical, err := canonicalView(args.View)
+	if err != nil {
+		return nil, err
+	}
 	var steps []recipe.RecipeStep
 	if r.rc != nil {
 		steps = r.rc.stepsBy[r.recipe.RecipeID]
+		if canonical {
+			if canon, ok := r.rc.canonStepsBy[r.recipe.RecipeID]; ok {
+				steps = canon
+			}
+		}
 	} else {
-		var err error
-		steps, err = r.rec.ListRecipeSteps(ctx, r.recipe.RecipeID)
+		steps, err = r.lazySteps(ctx, canonical)
 		if err != nil {
 			return nil, err
 		}
@@ -1247,6 +1280,10 @@ func (r *recipeItemResolver) Notes() *string { return nilIfEmpty(r.item.Notes) }
 
 func (r *recipeItemResolver) IsOptional() bool { return r.item.IsOptional }
 
+// DeltaKind is null on untouched canonical lines; "substitute"/"adjust"/
+// "add" mark the delta kind that produced this effective line.
+func (r *recipeItemResolver) DeltaKind() *string { return nilIfEmpty(r.item.DeltaKind) }
+
 // recipeItemSectionResolver resolves a named group of recipe items.
 type recipeItemSectionResolver struct {
 	name  string
@@ -1272,6 +1309,10 @@ func (r *recipeStepResolver) IsPassive() bool { return r.step.IsPassive }
 func (r *recipeStepResolver) DependsOnStepNumber() *int32 { return r.step.DependsOnStepNumber }
 
 func (r *recipeStepResolver) Appliance() *string { return nilIfEmpty(r.step.Appliance) }
+
+// DeltaKind is null on untouched canonical steps; "replace"/"add" mark
+// the delta kind that produced this effective step.
+func (r *recipeStepResolver) DeltaKind() *string { return nilIfEmpty(r.step.DeltaKind) }
 
 type recipePageResolver struct {
 	inv      ItemReader

@@ -5552,6 +5552,21 @@ func (mr *MockRecipeReaderMockRecorder) ScaleRecipe(ctx, recipeID, servings any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScaleRecipe", reflect.TypeOf((*MockRecipeReader)(nil).ScaleRecipe), ctx, recipeID, servings)
 }
 
+// ScaleRecipeEffective mocks base method.
+func (m *MockRecipeReader) ScaleRecipeEffective(ctx context.Context, recipeID, householdID int64, servings int32) (recipe.ScaledRecipe, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScaleRecipeEffective", ctx, recipeID, householdID, servings)
+	ret0, _ := ret[0].(recipe.ScaledRecipe)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScaleRecipeEffective indicates an expected call of ScaleRecipeEffective.
+func (mr *MockRecipeReaderMockRecorder) ScaleRecipeEffective(ctx, recipeID, householdID, servings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScaleRecipeEffective", reflect.TypeOf((*MockRecipeReader)(nil).ScaleRecipeEffective), ctx, recipeID, householdID, servings)
+}
+
 // SearchRecipes mocks base method.
 func (m *MockRecipeReader) SearchRecipes(ctx context.Context, arg recipe.RecipeSearch) ([]recipe.Recipe, error) {
 	m.ctrl.T.Helper()
@@ -5936,6 +5951,103 @@ func (mr *MockRecipeRaterMockRecorder) SetRating(ctx, userID, recipeID, rating, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRating", reflect.TypeOf((*MockRecipeRater)(nil).SetRating), ctx, userID, recipeID, rating, by)
 }
 
+// MockRecipeDeltaStore is a mock of RecipeDeltaStore interface.
+type MockRecipeDeltaStore struct {
+	ctrl     *gomock.Controller
+	recorder *MockRecipeDeltaStoreMockRecorder
+	isgomock struct{}
+}
+
+// MockRecipeDeltaStoreMockRecorder is the mock recorder for MockRecipeDeltaStore.
+type MockRecipeDeltaStoreMockRecorder struct {
+	mock *MockRecipeDeltaStore
+}
+
+// NewMockRecipeDeltaStore creates a new mock instance.
+func NewMockRecipeDeltaStore(ctrl *gomock.Controller) *MockRecipeDeltaStore {
+	mock := &MockRecipeDeltaStore{ctrl: ctrl}
+	mock.recorder = &MockRecipeDeltaStoreMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRecipeDeltaStore) EXPECT() *MockRecipeDeltaStoreMockRecorder {
+	return m.recorder
+}
+
+// AcknowledgeRecipeDelta mocks base method.
+func (m *MockRecipeDeltaStore) AcknowledgeRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcknowledgeRecipeDelta", ctx, recipeID, householdID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcknowledgeRecipeDelta indicates an expected call of AcknowledgeRecipeDelta.
+func (mr *MockRecipeDeltaStoreMockRecorder) AcknowledgeRecipeDelta(ctx, recipeID, householdID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcknowledgeRecipeDelta", reflect.TypeOf((*MockRecipeDeltaStore)(nil).AcknowledgeRecipeDelta), ctx, recipeID, householdID, by)
+}
+
+// ClearRecipeDelta mocks base method.
+func (m *MockRecipeDeltaStore) ClearRecipeDelta(ctx context.Context, recipeID, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearRecipeDelta", ctx, recipeID, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearRecipeDelta indicates an expected call of ClearRecipeDelta.
+func (mr *MockRecipeDeltaStoreMockRecorder) ClearRecipeDelta(ctx, recipeID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearRecipeDelta", reflect.TypeOf((*MockRecipeDeltaStore)(nil).ClearRecipeDelta), ctx, recipeID, householdID)
+}
+
+// GetRecipeDelta mocks base method.
+func (m *MockRecipeDeltaStore) GetRecipeDelta(ctx context.Context, recipeID, householdID int64) (*recipe.RecipeDelta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRecipeDelta", ctx, recipeID, householdID)
+	ret0, _ := ret[0].(*recipe.RecipeDelta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRecipeDelta indicates an expected call of GetRecipeDelta.
+func (mr *MockRecipeDeltaStoreMockRecorder) GetRecipeDelta(ctx, recipeID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeDelta", reflect.TypeOf((*MockRecipeDeltaStore)(nil).GetRecipeDelta), ctx, recipeID, householdID)
+}
+
+// ListRecipeDeltas mocks base method.
+func (m *MockRecipeDeltaStore) ListRecipeDeltas(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]*recipe.RecipeDelta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeDeltas", ctx, householdID, recipeIDs)
+	ret0, _ := ret[0].(map[int64]*recipe.RecipeDelta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeDeltas indicates an expected call of ListRecipeDeltas.
+func (mr *MockRecipeDeltaStoreMockRecorder) ListRecipeDeltas(ctx, householdID, recipeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeDeltas", reflect.TypeOf((*MockRecipeDeltaStore)(nil).ListRecipeDeltas), ctx, householdID, recipeIDs)
+}
+
+// SetRecipeDelta mocks base method.
+func (m *MockRecipeDeltaStore) SetRecipeDelta(ctx context.Context, recipeID, householdID int64, items []recipe.DeltaItem, steps []recipe.DeltaStep, by string) (recipe.RecipeDelta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetRecipeDelta", ctx, recipeID, householdID, items, steps, by)
+	ret0, _ := ret[0].(recipe.RecipeDelta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetRecipeDelta indicates an expected call of SetRecipeDelta.
+func (mr *MockRecipeDeltaStoreMockRecorder) SetRecipeDelta(ctx, recipeID, householdID, items, steps, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRecipeDelta", reflect.TypeOf((*MockRecipeDeltaStore)(nil).SetRecipeDelta), ctx, recipeID, householdID, items, steps, by)
+}
+
 // MockRecipeService is a mock of RecipeService interface.
 type MockRecipeService struct {
 	ctrl     *gomock.Controller
@@ -5958,6 +6070,20 @@ func NewMockRecipeService(ctrl *gomock.Controller) *MockRecipeService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockRecipeService) EXPECT() *MockRecipeServiceMockRecorder {
 	return m.recorder
+}
+
+// AcknowledgeRecipeDelta mocks base method.
+func (m *MockRecipeService) AcknowledgeRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcknowledgeRecipeDelta", ctx, recipeID, householdID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcknowledgeRecipeDelta indicates an expected call of AcknowledgeRecipeDelta.
+func (mr *MockRecipeServiceMockRecorder) AcknowledgeRecipeDelta(ctx, recipeID, householdID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcknowledgeRecipeDelta", reflect.TypeOf((*MockRecipeService)(nil).AcknowledgeRecipeDelta), ctx, recipeID, householdID, by)
 }
 
 // AddRecipeItem mocks base method.
@@ -5987,6 +6113,20 @@ func (m *MockRecipeService) AddRecipeStep(ctx context.Context, recipeID int64, s
 func (mr *MockRecipeServiceMockRecorder) AddRecipeStep(ctx, recipeID, stepNumber, instruction, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddRecipeStep", reflect.TypeOf((*MockRecipeService)(nil).AddRecipeStep), ctx, recipeID, stepNumber, instruction, by)
+}
+
+// ClearRecipeDelta mocks base method.
+func (m *MockRecipeService) ClearRecipeDelta(ctx context.Context, recipeID, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearRecipeDelta", ctx, recipeID, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearRecipeDelta indicates an expected call of ClearRecipeDelta.
+func (mr *MockRecipeServiceMockRecorder) ClearRecipeDelta(ctx, recipeID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearRecipeDelta", reflect.TypeOf((*MockRecipeService)(nil).ClearRecipeDelta), ctx, recipeID, householdID)
 }
 
 // CountRecipes mocks base method.
@@ -6165,6 +6305,21 @@ func (mr *MockRecipeServiceMockRecorder) GetRecipeByID(ctx, recipeID any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeByID", reflect.TypeOf((*MockRecipeService)(nil).GetRecipeByID), ctx, recipeID)
 }
 
+// GetRecipeDelta mocks base method.
+func (m *MockRecipeService) GetRecipeDelta(ctx context.Context, recipeID, householdID int64) (*recipe.RecipeDelta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRecipeDelta", ctx, recipeID, householdID)
+	ret0, _ := ret[0].(*recipe.RecipeDelta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRecipeDelta indicates an expected call of GetRecipeDelta.
+func (mr *MockRecipeServiceMockRecorder) GetRecipeDelta(ctx, recipeID, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecipeDelta", reflect.TypeOf((*MockRecipeService)(nil).GetRecipeDelta), ctx, recipeID, householdID)
+}
+
 // GetRecipesByIDs mocks base method.
 func (m *MockRecipeService) GetRecipesByIDs(ctx context.Context, recipeIDs []int64) ([]recipe.Recipe, error) {
 	m.ctrl.T.Helper()
@@ -6268,6 +6423,21 @@ func (m *MockRecipeService) ListRatingSummaries(ctx context.Context, recipeIDs [
 func (mr *MockRecipeServiceMockRecorder) ListRatingSummaries(ctx, recipeIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRatingSummaries", reflect.TypeOf((*MockRecipeService)(nil).ListRatingSummaries), ctx, recipeIDs)
+}
+
+// ListRecipeDeltas mocks base method.
+func (m *MockRecipeService) ListRecipeDeltas(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]*recipe.RecipeDelta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecipeDeltas", ctx, householdID, recipeIDs)
+	ret0, _ := ret[0].(map[int64]*recipe.RecipeDelta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecipeDeltas indicates an expected call of ListRecipeDeltas.
+func (mr *MockRecipeServiceMockRecorder) ListRecipeDeltas(ctx, householdID, recipeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecipeDeltas", reflect.TypeOf((*MockRecipeService)(nil).ListRecipeDeltas), ctx, householdID, recipeIDs)
 }
 
 // ListRecipeItems mocks base method.
@@ -6389,6 +6559,21 @@ func (mr *MockRecipeServiceMockRecorder) ScaleRecipe(ctx, recipeID, servings any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScaleRecipe", reflect.TypeOf((*MockRecipeService)(nil).ScaleRecipe), ctx, recipeID, servings)
 }
 
+// ScaleRecipeEffective mocks base method.
+func (m *MockRecipeService) ScaleRecipeEffective(ctx context.Context, recipeID, householdID int64, servings int32) (recipe.ScaledRecipe, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScaleRecipeEffective", ctx, recipeID, householdID, servings)
+	ret0, _ := ret[0].(recipe.ScaledRecipe)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScaleRecipeEffective indicates an expected call of ScaleRecipeEffective.
+func (mr *MockRecipeServiceMockRecorder) ScaleRecipeEffective(ctx, recipeID, householdID, servings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScaleRecipeEffective", reflect.TypeOf((*MockRecipeService)(nil).ScaleRecipeEffective), ctx, recipeID, householdID, servings)
+}
+
 // SearchRecipes mocks base method.
 func (m *MockRecipeService) SearchRecipes(ctx context.Context, arg recipe.RecipeSearch) ([]recipe.Recipe, error) {
 	m.ctrl.T.Helper()
@@ -6446,6 +6631,21 @@ func (m *MockRecipeService) SetRecipeCategories(ctx context.Context, recipeID in
 func (mr *MockRecipeServiceMockRecorder) SetRecipeCategories(ctx, recipeID, categoryIDs, by any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRecipeCategories", reflect.TypeOf((*MockRecipeService)(nil).SetRecipeCategories), ctx, recipeID, categoryIDs, by)
+}
+
+// SetRecipeDelta mocks base method.
+func (m *MockRecipeService) SetRecipeDelta(ctx context.Context, recipeID, householdID int64, items []recipe.DeltaItem, steps []recipe.DeltaStep, by string) (recipe.RecipeDelta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetRecipeDelta", ctx, recipeID, householdID, items, steps, by)
+	ret0, _ := ret[0].(recipe.RecipeDelta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetRecipeDelta indicates an expected call of SetRecipeDelta.
+func (mr *MockRecipeServiceMockRecorder) SetRecipeDelta(ctx, recipeID, householdID, items, steps, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRecipeDelta", reflect.TypeOf((*MockRecipeService)(nil).SetRecipeDelta), ctx, recipeID, householdID, items, steps, by)
 }
 
 // UpdateCategory mocks base method.

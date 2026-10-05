@@ -320,6 +320,10 @@ type Mutation {
   deleteRecipe(id: ID!): Boolean! @admin
   setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
   rateRecipe(recipeId: ID!, rating: Int!): Recipe!
+  # Household recipe deltas — any member may write these.
+  setRecipeDelta(recipeId: ID!, items: [RecipeDeltaItemInput!]!, steps: [RecipeDeltaStepInput!]!): RecipeDelta!
+  clearRecipeDelta(recipeId: ID!): Boolean!
+  acknowledgeRecipeDelta(recipeId: ID!): RecipeDelta!
   setRecipeCategories(recipeId: ID!, categoryIds: [ID!]!): Recipe! @admin
   createRecipeCategoryGroup(input: CreateRecipeCategoryGroupInput!): RecipeCategoryGroup! @admin
   updateRecipeCategoryGroup(id: ID!, input: UpdateRecipeCategoryGroupInput!): RecipeCategoryGroup! @admin
@@ -775,9 +779,13 @@ type Recipe {
   servings: Int
   prepTimeMinutes: Int
   cookTimeMinutes: Int
-  items: [RecipeItem!]!
-  itemSections: [RecipeItemSection!]!
-  steps: [RecipeStep!]!
+  # view selects the household delta-applied (effective) rows or the
+  # untouched canonical rows.
+  items(view: RecipeView = effective): [RecipeItem!]!
+  itemSections(view: RecipeView = effective): [RecipeItemSection!]!
+  steps(view: RecipeView = effective): [RecipeStep!]!
+  # The household's tweak set for this recipe — null when untouched.
+  householdDelta: RecipeDelta
   isFavorite: Boolean!
   selectionCount: Int!
   personalSelectionCount: Int!
@@ -824,6 +832,10 @@ type RecipeItem {
   displayOrder: Int!
   notes: String
   isOptional: Boolean!
+  # Null for untouched canonical lines; otherwise the delta kind that
+  # produced this effective line (substitute, adjust, add — removed lines
+  # never surface). Added lines carry id 0.
+  deltaKind: String
 }
 
 # RecipeItemSection groups recipe items by section name (e.g. "For the
@@ -846,6 +858,106 @@ type RecipeStep {
   dependsOnStepNumber: Int
   # The resource the step occupies (e.g. "oven"), for contention-aware
   # scheduling.
+  appliance: String
+  # Null for untouched canonical steps; otherwise the delta kind that
+  # produced this effective step (replace, add — removed steps never
+  # surface). Added steps carry no base identity.
+  deltaKind: String
+}
+
+# RecipeView selects between the household delta-applied rows and the
+# untouched canonical recipe.
+enum RecipeView {
+  effective
+  canonical
+}
+
+# A household's tweak set for one canonical recipe (LEN-25). One delta
+# per recipe+household; stale fires when the canonical recipe changed
+# after the delta was last written or acknowledged.
+type RecipeDelta {
+  id: ID!
+  stale: Boolean!
+  # Rows whose base line/step was deleted by a canonical edit — kept
+  # around and flagged rather than silently dropped.
+  orphanedItemCount: Int!
+  orphanedStepCount: Int!
+  items: [RecipeDeltaItem!]!
+  steps: [RecipeDeltaStep!]!
+  updatedAt: Time
+}
+
+# One ingredient-line change in a recipe delta.
+type RecipeDeltaItem {
+  id: ID!
+  # Anchored base line — null for added lines and orphans.
+  recipeItemId: ID
+  kind: RecipeDeltaItemKind!
+  item: Item
+  ingredient: Ingredient
+  quantity: Float
+  unit: String
+  section: String
+  displayOrder: Int
+  notes: String
+  isOptional: Boolean
+  # True when a canonical edit deleted the anchored line.
+  orphaned: Boolean!
+}
+
+enum RecipeDeltaItemKind {
+  substitute
+  adjust
+  remove
+  add
+}
+
+# One step change in a recipe delta.
+type RecipeDeltaStep {
+  id: ID!
+  # Anchored base step — null for added steps and orphans.
+  stepId: ID
+  kind: RecipeDeltaStepKind!
+  stepNumber: Int
+  instruction: String
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean
+  dependsOnStepNumber: Int
+  appliance: String
+  orphaned: Boolean!
+}
+
+enum RecipeDeltaStepKind {
+  replace
+  remove
+  add
+}
+
+# The whole-delta change set — replace-style writes send every change the
+# household wants, and the service stores it verbatim.
+input RecipeDeltaItemInput {
+  recipeItemId: ID
+  kind: RecipeDeltaItemKind!
+  itemId: ID
+  ingredientId: ID
+  quantity: Float
+  unitId: ID
+  section: String
+  displayOrder: Int
+  notes: String
+  isOptional: Boolean
+}
+
+input RecipeDeltaStepInput {
+  stepId: ID
+  kind: RecipeDeltaStepKind!
+  stepNumber: Int
+  instruction: String
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean
+  dependsOnStepNumber: Int
   appliance: String
 }
 

@@ -145,6 +145,7 @@ func TestResolver_MealPlan_Nutrition_Happy(t *testing.T) {
 	mp := mock.NewMockMealPlanService(ctrl)
 	inv := mock.NewMockInventoryService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec}
 
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(10), mealPlanUserID).Return(mealplan.MealPlan{

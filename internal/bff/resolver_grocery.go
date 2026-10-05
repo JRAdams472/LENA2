@@ -241,7 +241,7 @@ func (r *Resolver) planGroceryNeeds(ctx context.Context, mealPlanID, householdID
 	if err != nil {
 		return nil, err
 	}
-	recipes, recipeItems, err := r.planRecipes(ctx, slots)
+	recipes, recipeItems, err := r.planRecipes(ctx, householdID, slots)
 	if err != nil {
 		return nil, err
 	}
