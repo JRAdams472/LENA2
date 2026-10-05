@@ -384,3 +384,82 @@ SET embedding = NULL,
     embedding_model = NULL,
     embedding_at = NULL
 WHERE recipe_id = sqlc.arg(recipe_id);
+
+-- name: GetRecipeDelta :one
+-- The household's delta for a recipe, or no row.
+SELECT *
+FROM recipe.recipe_delta
+WHERE recipe_id = $1 AND household_id = $2;
+
+-- name: ListRecipeDeltas :many
+-- The household's deltas across a set of recipes — the batch load behind
+-- loadRecipeChildren/planRecipes.
+SELECT *
+FROM recipe.recipe_delta
+WHERE household_id = $1 AND recipe_id = ANY($2::bigint[]);
+
+-- name: UpsertRecipeDelta :one
+-- Creates the delta row on first change or touches updated_* on later
+-- writes. base_updated_at snapshots the canonical recipe's current
+-- updated_at (created_at when never edited) so stale detection compares
+-- against a real version marker.
+INSERT INTO recipe.recipe_delta (recipe_id, household_id, base_updated_at, created_by, updated_by)
+SELECT $1, $2,
+       COALESCE(r.updated_at, r.created_at),
+       $3, $3
+FROM recipe.recipe r
+WHERE r.recipe_id = $1
+ON CONFLICT (recipe_id, household_id)
+DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING *;
+
+-- name: AcknowledgeRecipeDelta :execrows
+-- Marks the delta as seen against the recipe's current version — clears
+-- the stale flag until the next canonical edit.
+UPDATE recipe.recipe_delta
+SET base_updated_at = (SELECT COALESCE(r.updated_at, r.created_at) FROM recipe.recipe r WHERE r.recipe_id = $1),
+    updated_by      = $3,
+    updated_at      = now()
+WHERE recipe_id = $1 AND household_id = $2;
+
+-- name: DeleteRecipeDelta :execrows
+DELETE FROM recipe.recipe_delta
+WHERE recipe_id = $1 AND household_id = $2;
+
+-- name: ReplaceDeltaItems :exec
+-- Whole-delta replace: clears the delta's item rows before the caller
+-- re-inserts the desired set in the same transaction.
+DELETE FROM recipe.recipe_delta_item
+WHERE recipe_delta_id = $1;
+
+-- name: AddDeltaItem :one
+INSERT INTO recipe.recipe_delta_item
+    (recipe_delta_id, recipe_item_id, kind, item_id, ingredient_id,
+     quantity, unit_id, section_name, display_order, notes, is_optional,
+     created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+RETURNING *;
+
+-- name: ListDeltaItemsByDeltas :many
+SELECT *
+FROM recipe.recipe_delta_item
+WHERE recipe_delta_id = ANY($1::bigint[])
+ORDER BY recipe_delta_id, delta_item_id;
+
+-- name: ReplaceDeltaSteps :exec
+DELETE FROM recipe.recipe_delta_step
+WHERE recipe_delta_id = $1;
+
+-- name: AddDeltaStep :one
+INSERT INTO recipe.recipe_delta_step
+    (recipe_delta_id, step_id, kind, step_number, instruction,
+     duration_minutes, step_type, is_passive, depends_on_step_number,
+     appliance, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+RETURNING *;
+
+-- name: ListDeltaStepsByDeltas :many
+SELECT *
+FROM recipe.recipe_delta_step
+WHERE recipe_delta_id = ANY($1::bigint[])
+ORDER BY recipe_delta_id, delta_step_id;

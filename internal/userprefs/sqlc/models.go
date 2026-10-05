@@ -548,6 +548,54 @@ type RecipeRecipeCategory struct {
 	AssignedAt time.Time `json:"assigned_at"`
 }
 
+type RecipeRecipeDeltaItem struct {
+	DeltaItemID   int64              `json:"delta_item_id"`
+	RecipeDeltaID int64              `json:"recipe_delta_id"`
+	RecipeItemID  pgtype.Int8        `json:"recipe_item_id"`
+	Kind          string             `json:"kind"`
+	ItemID        pgtype.Int8        `json:"item_id"`
+	IngredientID  pgtype.Int8        `json:"ingredient_id"`
+	Quantity      pgtype.Numeric     `json:"quantity"`
+	UnitID        pgtype.Int8        `json:"unit_id"`
+	SectionName   pgtype.Text        `json:"section_name"`
+	DisplayOrder  pgtype.Int4        `json:"display_order"`
+	Notes         pgtype.Text        `json:"notes"`
+	IsOptional    pgtype.Bool        `json:"is_optional"`
+	CreatedBy     string             `json:"created_by"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedBy     pgtype.Text        `json:"updated_by"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RecipeRecipeDeltaStep struct {
+	DeltaStepID         int64              `json:"delta_step_id"`
+	RecipeDeltaID       int64              `json:"recipe_delta_id"`
+	StepID              pgtype.Int8        `json:"step_id"`
+	Kind                string             `json:"kind"`
+	StepNumber          pgtype.Int4        `json:"step_number"`
+	Instruction         pgtype.Text        `json:"instruction"`
+	DurationMinutes     pgtype.Int4        `json:"duration_minutes"`
+	StepType            pgtype.Text        `json:"step_type"`
+	IsPassive           pgtype.Bool        `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4        `json:"depends_on_step_number"`
+	Appliance           pgtype.Text        `json:"appliance"`
+	CreatedBy           string             `json:"created_by"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedBy           pgtype.Text        `json:"updated_by"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RecipeRecipeDeltum struct {
+	RecipeDeltaID int64              `json:"recipe_delta_id"`
+	RecipeID      int64              `json:"recipe_id"`
+	HouseholdID   int64              `json:"household_id"`
+	BaseUpdatedAt time.Time          `json:"base_updated_at"`
+	CreatedBy     string             `json:"created_by"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedBy     pgtype.Text        `json:"updated_by"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RecipeRecipeImport struct {
 	RecipeImportID    int64              `json:"recipe_import_id"`
 	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`

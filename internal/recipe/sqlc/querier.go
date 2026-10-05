@@ -9,6 +9,11 @@ import (
 )
 
 type Querier interface {
+	// Marks the delta as seen against the recipe's current version — clears
+	// the stale flag until the next canonical edit.
+	AcknowledgeRecipeDelta(ctx context.Context, arg AcknowledgeRecipeDeltaParams) (int64, error)
+	AddDeltaItem(ctx context.Context, arg AddDeltaItemParams) (RecipeRecipeDeltaItem, error)
+	AddDeltaStep(ctx context.Context, arg AddDeltaStepParams) (RecipeRecipeDeltaStep, error)
 	AddRecipeCategories(ctx context.Context, arg AddRecipeCategoriesParams) error
 	AddRecipeItem(ctx context.Context, arg AddRecipeItemParams) error
 	AddRecipeStep(ctx context.Context, arg AddRecipeStepParams) (RecipeRecipeStep, error)
@@ -29,12 +34,15 @@ type Querier interface {
 	DeleteCategory(ctx context.Context, categoryID int64) error
 	DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) error
 	DeleteRecipe(ctx context.Context, recipeID int64) error
+	DeleteRecipeDelta(ctx context.Context, arg DeleteRecipeDeltaParams) (int64, error)
 	DeleteRecipeItems(ctx context.Context, recipeID int64) error
 	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipeSteps(ctx context.Context, recipeID int64) error
 	GetCategoryByID(ctx context.Context, categoryID int64) (RecipeCategory, error)
 	GetCategoryGroupByID(ctx context.Context, categoryGroupID int64) (RecipeCategoryGroup, error)
 	GetRecipeByID(ctx context.Context, recipeID int64) (RecipeRecipe, error)
+	// The household's delta for a recipe, or no row.
+	GetRecipeDelta(ctx context.Context, arg GetRecipeDeltaParams) (RecipeRecipeDeltum, error)
 	GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error)
 	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
 	ListCategoriesByGroup(ctx context.Context, categoryGroupID int64) ([]RecipeCategory, error)
@@ -45,9 +53,14 @@ type Querier interface {
 	// metadata so resolvers never query per-row.
 	ListCategoriesForRecipes(ctx context.Context, recipeIds []int64) ([]ListCategoriesForRecipesRow, error)
 	ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup, error)
+	ListDeltaItemsByDeltas(ctx context.Context, dollar_1 []int64) ([]RecipeRecipeDeltaItem, error)
+	ListDeltaStepsByDeltas(ctx context.Context, dollar_1 []int64) ([]RecipeRecipeDeltaStep, error)
 	// Active recipes whose embedding is missing or was built by another model —
 	// the backfill sweep's work set.
 	ListEmbeddingCandidates(ctx context.Context, arg ListEmbeddingCandidatesParams) ([]int64, error)
+	// The household's deltas across a set of recipes — the batch load behind
+	// loadRecipeChildren/planRecipes.
+	ListRecipeDeltas(ctx context.Context, arg ListRecipeDeltasParams) ([]RecipeRecipeDeltum, error)
 	ListRecipeItems(ctx context.Context, recipeID int64) ([]RecipeRecipeItem, error)
 	ListRecipeItemsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeItem, error)
 	ListRecipeRatingSummaries(ctx context.Context, recipeIds []int64) ([]ListRecipeRatingSummariesRow, error)
@@ -59,6 +72,10 @@ type Querier interface {
 	ListRecipeStepsByRecipes(ctx context.Context, recipeIds []int64) ([]RecipeRecipeStep, error)
 	ListRecipes(ctx context.Context, arg ListRecipesParams) ([]RecipeRecipe, error)
 	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
+	// Whole-delta replace: clears the delta's item rows before the caller
+	// re-inserts the desired set in the same transaction.
+	ReplaceDeltaItems(ctx context.Context, recipeDeltaID int64) error
+	ReplaceDeltaSteps(ctx context.Context, recipeDeltaID int64) error
 	// Filtered + engagement-ranked recipe listing. Ranking tiers come from
 	// engagement ID arrays computed by the BFF (analytics/userprefs live in
 	// other schemas — SQL never crosses schemas):
@@ -84,6 +101,11 @@ type Querier interface {
 	// Timing columns are written only by the create/replace-children path
 	// (AddRecipeStep); this partial update preserves them.
 	UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepParams) (int64, error)
+	// Creates the delta row on first change or touches updated_* on later
+	// writes. base_updated_at snapshots the canonical recipe's current
+	// updated_at (created_at when never edited) so stale detection compares
+	// against a real version marker.
+	UpsertRecipeDelta(ctx context.Context, arg UpsertRecipeDeltaParams) (RecipeRecipeDeltum, error)
 	UpsertRecipeRating(ctx context.Context, arg UpsertRecipeRatingParams) (RecipeRecipeRating, error)
 }
 

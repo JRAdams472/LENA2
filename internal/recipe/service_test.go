@@ -199,6 +199,7 @@ func TestScaleRecipe(t *testing.T) {
 }
 
 func TestListRecipes(t *testing.T) {
+	activeRow := recipeRow()
 	tests := []struct {
 		name   string
 		active bool
@@ -212,10 +213,11 @@ func TestListRecipes(t *testing.T) {
 			active: true,
 			limit:  10,
 			offset: 0,
-			rows:   []sqlc.RecipeRecipe{recipeRow()},
+			rows:   []sqlc.RecipeRecipe{activeRow},
 			want: []Recipe{{
 				RecipeID: 7, Name: "Pancakes", Description: "fluffy",
 				Servings: i32(4), PrepTimeMinutes: i32(10), CookTimeMinutes: i32(15), IsActive: true,
+				UpdatedAt: &activeRow.UpdatedAt.Time,
 			}},
 		},
 		{

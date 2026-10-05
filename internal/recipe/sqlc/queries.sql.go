@@ -13,6 +13,149 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acknowledgeRecipeDelta = `-- name: AcknowledgeRecipeDelta :execrows
+UPDATE recipe.recipe_delta
+SET base_updated_at = (SELECT COALESCE(r.updated_at, r.created_at) FROM recipe.recipe r WHERE r.recipe_id = $1),
+    updated_by      = $3,
+    updated_at      = now()
+WHERE recipe_id = $1 AND household_id = $2
+`
+
+type AcknowledgeRecipeDeltaParams struct {
+	RecipeID    int64       `json:"recipe_id"`
+	HouseholdID int64       `json:"household_id"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+// Marks the delta as seen against the recipe's current version — clears
+// the stale flag until the next canonical edit.
+func (q *Queries) AcknowledgeRecipeDelta(ctx context.Context, arg AcknowledgeRecipeDeltaParams) (int64, error) {
+	result, err := q.db.Exec(ctx, acknowledgeRecipeDelta, arg.RecipeID, arg.HouseholdID, arg.UpdatedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const addDeltaItem = `-- name: AddDeltaItem :one
+INSERT INTO recipe.recipe_delta_item
+    (recipe_delta_id, recipe_item_id, kind, item_id, ingredient_id,
+     quantity, unit_id, section_name, display_order, notes, is_optional,
+     created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+RETURNING delta_item_id, recipe_delta_id, recipe_item_id, kind, item_id, ingredient_id, quantity, unit_id, section_name, display_order, notes, is_optional, created_by, created_at, updated_by, updated_at
+`
+
+type AddDeltaItemParams struct {
+	RecipeDeltaID int64          `json:"recipe_delta_id"`
+	RecipeItemID  pgtype.Int8    `json:"recipe_item_id"`
+	Kind          string         `json:"kind"`
+	ItemID        pgtype.Int8    `json:"item_id"`
+	IngredientID  pgtype.Int8    `json:"ingredient_id"`
+	Quantity      pgtype.Numeric `json:"quantity"`
+	UnitID        pgtype.Int8    `json:"unit_id"`
+	SectionName   pgtype.Text    `json:"section_name"`
+	DisplayOrder  pgtype.Int4    `json:"display_order"`
+	Notes         pgtype.Text    `json:"notes"`
+	IsOptional    pgtype.Bool    `json:"is_optional"`
+	CreatedBy     string         `json:"created_by"`
+}
+
+func (q *Queries) AddDeltaItem(ctx context.Context, arg AddDeltaItemParams) (RecipeRecipeDeltaItem, error) {
+	row := q.db.QueryRow(ctx, addDeltaItem,
+		arg.RecipeDeltaID,
+		arg.RecipeItemID,
+		arg.Kind,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.UnitID,
+		arg.SectionName,
+		arg.DisplayOrder,
+		arg.Notes,
+		arg.IsOptional,
+		arg.CreatedBy,
+	)
+	var i RecipeRecipeDeltaItem
+	err := row.Scan(
+		&i.DeltaItemID,
+		&i.RecipeDeltaID,
+		&i.RecipeItemID,
+		&i.Kind,
+		&i.ItemID,
+		&i.IngredientID,
+		&i.Quantity,
+		&i.UnitID,
+		&i.SectionName,
+		&i.DisplayOrder,
+		&i.Notes,
+		&i.IsOptional,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const addDeltaStep = `-- name: AddDeltaStep :one
+INSERT INTO recipe.recipe_delta_step
+    (recipe_delta_id, step_id, kind, step_number, instruction,
+     duration_minutes, step_type, is_passive, depends_on_step_number,
+     appliance, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+RETURNING delta_step_id, recipe_delta_id, step_id, kind, step_number, instruction, duration_minutes, step_type, is_passive, depends_on_step_number, appliance, created_by, created_at, updated_by, updated_at
+`
+
+type AddDeltaStepParams struct {
+	RecipeDeltaID       int64       `json:"recipe_delta_id"`
+	StepID              pgtype.Int8 `json:"step_id"`
+	Kind                string      `json:"kind"`
+	StepNumber          pgtype.Int4 `json:"step_number"`
+	Instruction         pgtype.Text `json:"instruction"`
+	DurationMinutes     pgtype.Int4 `json:"duration_minutes"`
+	StepType            pgtype.Text `json:"step_type"`
+	IsPassive           pgtype.Bool `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4 `json:"depends_on_step_number"`
+	Appliance           pgtype.Text `json:"appliance"`
+	CreatedBy           string      `json:"created_by"`
+}
+
+func (q *Queries) AddDeltaStep(ctx context.Context, arg AddDeltaStepParams) (RecipeRecipeDeltaStep, error) {
+	row := q.db.QueryRow(ctx, addDeltaStep,
+		arg.RecipeDeltaID,
+		arg.StepID,
+		arg.Kind,
+		arg.StepNumber,
+		arg.Instruction,
+		arg.DurationMinutes,
+		arg.StepType,
+		arg.IsPassive,
+		arg.DependsOnStepNumber,
+		arg.Appliance,
+		arg.CreatedBy,
+	)
+	var i RecipeRecipeDeltaStep
+	err := row.Scan(
+		&i.DeltaStepID,
+		&i.RecipeDeltaID,
+		&i.StepID,
+		&i.Kind,
+		&i.StepNumber,
+		&i.Instruction,
+		&i.DurationMinutes,
+		&i.StepType,
+		&i.IsPassive,
+		&i.DependsOnStepNumber,
+		&i.Appliance,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const addRecipeCategories = `-- name: AddRecipeCategories :exec
 INSERT INTO recipe.recipe_category (recipe_id, category_id, assigned_by)
 SELECT $1, unnest($2::bigint[]), $3
@@ -399,6 +542,24 @@ func (q *Queries) DeleteRecipe(ctx context.Context, recipeID int64) error {
 	return err
 }
 
+const deleteRecipeDelta = `-- name: DeleteRecipeDelta :execrows
+DELETE FROM recipe.recipe_delta
+WHERE recipe_id = $1 AND household_id = $2
+`
+
+type DeleteRecipeDeltaParams struct {
+	RecipeID    int64 `json:"recipe_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+func (q *Queries) DeleteRecipeDelta(ctx context.Context, arg DeleteRecipeDeltaParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRecipeDelta, arg.RecipeID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteRecipeItems = `-- name: DeleteRecipeItems :exec
 DELETE FROM recipe.recipe_item
 WHERE recipe_id = $1
@@ -496,6 +657,34 @@ func (q *Queries) GetRecipeByID(ctx context.Context, recipeID int64) (RecipeReci
 		&i.Embedding,
 		&i.EmbeddingModel,
 		&i.EmbeddingAt,
+	)
+	return i, err
+}
+
+const getRecipeDelta = `-- name: GetRecipeDelta :one
+SELECT recipe_delta_id, recipe_id, household_id, base_updated_at, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_delta
+WHERE recipe_id = $1 AND household_id = $2
+`
+
+type GetRecipeDeltaParams struct {
+	RecipeID    int64 `json:"recipe_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+// The household's delta for a recipe, or no row.
+func (q *Queries) GetRecipeDelta(ctx context.Context, arg GetRecipeDeltaParams) (RecipeRecipeDeltum, error) {
+	row := q.db.QueryRow(ctx, getRecipeDelta, arg.RecipeID, arg.HouseholdID)
+	var i RecipeRecipeDeltum
+	err := row.Scan(
+		&i.RecipeDeltaID,
+		&i.RecipeID,
+		&i.HouseholdID,
+		&i.BaseUpdatedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -740,6 +929,93 @@ func (q *Queries) ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup
 	return items, nil
 }
 
+const listDeltaItemsByDeltas = `-- name: ListDeltaItemsByDeltas :many
+SELECT delta_item_id, recipe_delta_id, recipe_item_id, kind, item_id, ingredient_id, quantity, unit_id, section_name, display_order, notes, is_optional, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_delta_item
+WHERE recipe_delta_id = ANY($1::bigint[])
+ORDER BY recipe_delta_id, delta_item_id
+`
+
+func (q *Queries) ListDeltaItemsByDeltas(ctx context.Context, dollar_1 []int64) ([]RecipeRecipeDeltaItem, error) {
+	rows, err := q.db.Query(ctx, listDeltaItemsByDeltas, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeDeltaItem{}
+	for rows.Next() {
+		var i RecipeRecipeDeltaItem
+		if err := rows.Scan(
+			&i.DeltaItemID,
+			&i.RecipeDeltaID,
+			&i.RecipeItemID,
+			&i.Kind,
+			&i.ItemID,
+			&i.IngredientID,
+			&i.Quantity,
+			&i.UnitID,
+			&i.SectionName,
+			&i.DisplayOrder,
+			&i.Notes,
+			&i.IsOptional,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeltaStepsByDeltas = `-- name: ListDeltaStepsByDeltas :many
+SELECT delta_step_id, recipe_delta_id, step_id, kind, step_number, instruction, duration_minutes, step_type, is_passive, depends_on_step_number, appliance, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_delta_step
+WHERE recipe_delta_id = ANY($1::bigint[])
+ORDER BY recipe_delta_id, delta_step_id
+`
+
+func (q *Queries) ListDeltaStepsByDeltas(ctx context.Context, dollar_1 []int64) ([]RecipeRecipeDeltaStep, error) {
+	rows, err := q.db.Query(ctx, listDeltaStepsByDeltas, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeDeltaStep{}
+	for rows.Next() {
+		var i RecipeRecipeDeltaStep
+		if err := rows.Scan(
+			&i.DeltaStepID,
+			&i.RecipeDeltaID,
+			&i.StepID,
+			&i.Kind,
+			&i.StepNumber,
+			&i.Instruction,
+			&i.DurationMinutes,
+			&i.StepType,
+			&i.IsPassive,
+			&i.DependsOnStepNumber,
+			&i.Appliance,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEmbeddingCandidates = `-- name: ListEmbeddingCandidates :many
 SELECT recipe_id
 FROM recipe.recipe
@@ -769,6 +1045,48 @@ func (q *Queries) ListEmbeddingCandidates(ctx context.Context, arg ListEmbedding
 			return nil, err
 		}
 		items = append(items, recipe_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecipeDeltas = `-- name: ListRecipeDeltas :many
+SELECT recipe_delta_id, recipe_id, household_id, base_updated_at, created_by, created_at, updated_by, updated_at
+FROM recipe.recipe_delta
+WHERE household_id = $1 AND recipe_id = ANY($2::bigint[])
+`
+
+type ListRecipeDeltasParams struct {
+	HouseholdID int64   `json:"household_id"`
+	Column2     []int64 `json:"column_2"`
+}
+
+// The household's deltas across a set of recipes — the batch load behind
+// loadRecipeChildren/planRecipes.
+func (q *Queries) ListRecipeDeltas(ctx context.Context, arg ListRecipeDeltasParams) ([]RecipeRecipeDeltum, error) {
+	rows, err := q.db.Query(ctx, listRecipeDeltas, arg.HouseholdID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeDeltum{}
+	for rows.Next() {
+		var i RecipeRecipeDeltum
+		if err := rows.Scan(
+			&i.RecipeDeltaID,
+			&i.RecipeID,
+			&i.HouseholdID,
+			&i.BaseUpdatedAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1102,6 +1420,28 @@ WHERE recipe_item_id = $1
 
 func (q *Queries) RemoveRecipeItem(ctx context.Context, recipeItemID int64) error {
 	_, err := q.db.Exec(ctx, removeRecipeItem, recipeItemID)
+	return err
+}
+
+const replaceDeltaItems = `-- name: ReplaceDeltaItems :exec
+DELETE FROM recipe.recipe_delta_item
+WHERE recipe_delta_id = $1
+`
+
+// Whole-delta replace: clears the delta's item rows before the caller
+// re-inserts the desired set in the same transaction.
+func (q *Queries) ReplaceDeltaItems(ctx context.Context, recipeDeltaID int64) error {
+	_, err := q.db.Exec(ctx, replaceDeltaItems, recipeDeltaID)
+	return err
+}
+
+const replaceDeltaSteps = `-- name: ReplaceDeltaSteps :exec
+DELETE FROM recipe.recipe_delta_step
+WHERE recipe_delta_id = $1
+`
+
+func (q *Queries) ReplaceDeltaSteps(ctx context.Context, recipeDeltaID int64) error {
+	_, err := q.db.Exec(ctx, replaceDeltaSteps, recipeDeltaID)
 	return err
 }
 
@@ -1498,6 +1838,44 @@ func (q *Queries) UpdateRecipeStep(ctx context.Context, arg UpdateRecipeStepPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertRecipeDelta = `-- name: UpsertRecipeDelta :one
+INSERT INTO recipe.recipe_delta (recipe_id, household_id, base_updated_at, created_by, updated_by)
+SELECT $1, $2,
+       COALESCE(r.updated_at, r.created_at),
+       $3, $3
+FROM recipe.recipe r
+WHERE r.recipe_id = $1
+ON CONFLICT (recipe_id, household_id)
+DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = now()
+RETURNING recipe_delta_id, recipe_id, household_id, base_updated_at, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertRecipeDeltaParams struct {
+	RecipeID    int64  `json:"recipe_id"`
+	HouseholdID int64  `json:"household_id"`
+	CreatedBy   string `json:"created_by"`
+}
+
+// Creates the delta row on first change or touches updated_* on later
+// writes. base_updated_at snapshots the canonical recipe's current
+// updated_at (created_at when never edited) so stale detection compares
+// against a real version marker.
+func (q *Queries) UpsertRecipeDelta(ctx context.Context, arg UpsertRecipeDeltaParams) (RecipeRecipeDeltum, error) {
+	row := q.db.QueryRow(ctx, upsertRecipeDelta, arg.RecipeID, arg.HouseholdID, arg.CreatedBy)
+	var i RecipeRecipeDeltum
+	err := row.Scan(
+		&i.RecipeDeltaID,
+		&i.RecipeID,
+		&i.HouseholdID,
+		&i.BaseUpdatedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertRecipeRating = `-- name: UpsertRecipeRating :one
