@@ -79,6 +79,25 @@ async function shot(name, path, waitFor) {
   console.log("shot:", name);
 }
 
+// Wait on the page's h4/h5 heading — sidebar nav labels also contain
+// these names, so plain-text waits can fire before the page loads.
+async function shotHeading(name, path, heading) {
+  await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+  try {
+    await page
+      .getByRole("heading", { name: heading, exact: false })
+      .first()
+      .waitFor({ timeout: 60000 });
+  } catch (e) {
+    console.log("shot failed:", name, "url:", page.url());
+    console.log((await page.locator("body").innerText()).slice(0, 800));
+    throw e;
+  }
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+  console.log("shot:", name);
+}
+
 // Seed an expiring pantry item and fire the notification sweep so the
 // bell shot shows a real reminder.
 async function gql(query, variables = {}) {
@@ -277,6 +296,77 @@ await page.getByText("mock provider", { exact: false }).first().waitFor({ timeou
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/assistant-answer.png`, fullPage: false });
 console.log("shot: assistant-answer");
+
+// Full-route audit coverage — admin/catalog pages not in the original
+// wiki set. Empty queues still produce useful empty-state shots.
+await shotHeading("inventory-brands", "/inventory/brands", "Brands");
+await shotHeading("inventory-flavor-profiles", "/inventory/flavor-profiles", "Flavor Profiles");
+await shotHeading("inventory-food-flavors", "/inventory/food-flavors", "Food Flavors");
+await shotHeading("inventory-food-nutrients", "/inventory/food-nutrients", "Food Nutrients");
+await shotHeading("inventory-nutrient-types", "/inventory/nutrient-types", "Nutrient Types");
+await shotHeading("items-pending", "/items/pending", "Pending Items");
+await shotHeading("profile", "/profile", "Profile");
+await shotHeading("recipes-pending", "/recipes/pending", "Pending Recipe Reviews");
+await shotHeading("users-admin", "/users", "Users");
+await shotHeading("wine-countries", "/wine/countries", "Countries");
+await shotHeading("wine-grape-varieties", "/wine/grape-varieties", "Grape Varieties");
+await shotHeading("wine-regions", "/wine/regions", "Regions");
+await shotHeading("wine-types", "/wine/types", "Types");
+await shotHeading("wine-vintages", "/wine/vintages", "Vintages");
+await shotHeading("wine-flavor-profiles", "/wine/wine-flavor-profiles", "Wine Flavor Profiles");
+
+// Review detail only exists while the import queue is non-empty.
+const pendingImport = await gql(
+  `query { pendingRecipeImports(page: 1, pageSize: 1) { items { id status } } }`
+).then((d) => d.pendingRecipeImports.items[0]);
+if (pendingImport) {
+  await shotHeading(
+    "recipe-import-review",
+    `/recipes/pending/${pendingImport.id}`,
+    "Review Import"
+  );
+} else {
+  console.log("skip: recipe-import-review (import queue empty)");
+}
+
+// 390px pass on the high-traffic routes — the audit needs the responsive
+// read, and these double as wiki mobile-layout shots.
+const mctx = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  deviceScaleFactor: 2,
+  isMobile: true,
+});
+await mctx.addInitScript(
+  (t) => window.localStorage.setItem("lena_id_token", t),
+  id_token
+);
+const mpage = await mctx.newPage();
+async function mshot(name, path, waitFor) {
+  await mpage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+  await mpage
+    .getByText(waitFor, { exact: false })
+    .first()
+    .waitFor({ timeout: 60000 });
+  await mpage.waitForTimeout(1000);
+  await mpage.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+  console.log("shot:", name);
+}
+await mshot("dashboard-mobile", "/", "Time to restock");
+await mshot("recipes-mobile", "/recipes", "Herb Roast Chicken");
+await mshot("recipe-detail-mobile", `/recipes/${roastId}`, "Herb Roast Chicken");
+await mshot("meal-plan-week-mobile", `/meal-plans/${planId}`, "Week of");
+await mshot("grocery-list-mobile", `/grocery-lists/${listId}`, "Time to restock");
+await mshot("assistant-mobile", "/assistant", "Ask Dot");
+await mshot("household-mobile", "/household", "E2E Member");
+await mpage.goto(`${BASE}/inventory/items`, { waitUntil: "domcontentloaded" });
+await mpage
+  .getByText("ADD TO INVENTORY", { exact: false })
+  .first()
+  .waitFor({ timeout: 120000 });
+await mpage.waitForTimeout(800);
+await mpage.screenshot({ path: `${OUT}/inventory-items-mobile.png` });
+console.log("shot: inventory-items-mobile");
+await mctx.close();
 
 // Signed-out login screen for Getting-Started — a fresh context with no
 // seeded token shows the real sign-in buttons.
