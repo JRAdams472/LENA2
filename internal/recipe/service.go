@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -86,6 +87,9 @@ type Recipe struct {
 	PrepTimeMinutes *int32
 	CookTimeMinutes *int32
 	IsActive        bool
+	// UpdatedAt feeds delta drift detection (RecipeDelta.Stale); nil until
+	// the recipe's first canonical edit.
+	UpdatedAt *time.Time
 }
 
 // CreateRecipe adds a new recipe.
@@ -291,6 +295,8 @@ func (s *Service) UpdateRecipeWithChildren(ctx context.Context, recipeID int64, 
 // reference (the brand-agnostic ingredient); ItemID is an optional
 // preferred-brand hint. SectionName groups items (e.g. "crust",
 // "filling"); DisplayOrder controls ordering within the recipe.
+// DeltaKind is set only when the line came through ApplyDelta — "" means
+// untouched canonical, otherwise one of the DeltaItem* kinds.
 type RecipeItem struct {
 	RecipeItemID int64
 	RecipeID     int64
@@ -302,6 +308,7 @@ type RecipeItem struct {
 	DisplayOrder int32
 	Notes        string
 	IsOptional   bool
+	DeltaKind    string
 }
 
 // AddRecipeItem adds an item to a recipe.
@@ -373,6 +380,8 @@ func (s *Service) RemoveRecipeItem(ctx context.Context, recipeItemID int64) erro
 // IsPassive marks hands-off work (rest, bake, marinade) that frees the
 // cook, DependsOnStepNumber overrides the default previous-step edge, and
 // Appliance names the resource the step occupies.
+// DeltaKind mirrors RecipeItem.DeltaKind — set only on delta-applied
+// views, one of the DeltaStep* kinds.
 type RecipeStep struct {
 	StepID              int64
 	RecipeID            int64
@@ -383,6 +392,7 @@ type RecipeStep struct {
 	IsPassive           bool
 	DependsOnStepNumber *int32
 	Appliance           string
+	DeltaKind           string
 }
 
 // AddRecipeStep adds a step to a recipe.
@@ -565,6 +575,10 @@ func toRecipe(row sqlc.RecipeRecipe) Recipe {
 	if row.CookTimeMinutes.Valid {
 		v := row.CookTimeMinutes.Int32
 		r.CookTimeMinutes = &v
+	}
+	if row.UpdatedAt.Valid {
+		v := row.UpdatedAt.Time
+		r.UpdatedAt = &v
 	}
 	return r
 }
