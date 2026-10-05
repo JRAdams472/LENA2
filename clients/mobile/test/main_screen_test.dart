@@ -6,7 +6,7 @@ import 'package:lena_mobile/screens/main_screen.dart';
 
 void main() {
   testWidgets(
-    'MainScreen bottom nav has Dashboard, Grocery, Events, Scan, Pantry, Household, Ask Dot, and More',
+    'MainScreen bottom nav has Home, Grocery, Events, Scan, Pantry, People, Ask Dot, and More',
     (tester) async {
       await tester.pumpWidget(
         GraphQLProvider(
@@ -16,25 +16,21 @@ void main() {
       );
       await tester.pump();
 
-      final nav = find.byType(BottomNavigationBar);
-      expect(find.descendant(of: nav, matching: find.text('Dashboard')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Grocery')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Events')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Scan')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Pantry')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Household')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Ask Dot')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('More')),
-          findsOneWidget);
-      expect(find.descendant(of: nav, matching: find.text('Assistant')),
-          findsNothing);
+      final nav =
+          tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar));
+      expect(nav.items.map((i) => i.label).toList(), [
+        'Home',
+        'Grocery',
+        'Events',
+        'Scan',
+        'Pantry',
+        'People',
+        'Ask Dot',
+        'More',
+      ]);
+      // Eight fixed destinations can't fit labels — only the selected
+      // tab's label is visible.
+      expect(nav.showUnselectedLabels, isFalse);
     },
   );
 
@@ -49,7 +45,10 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.text('More'));
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.byIcon(Icons.more_horiz),
+      ));
       await tester.pump();
 
       expect(find.text('Recipes'), findsOneWidget);
@@ -60,7 +59,7 @@ void main() {
   );
 
   testWidgets(
-    'tapping the Household tab shows the household screen',
+    'tapping the People tab shows the household screen',
     (tester) async {
       await tester.pumpWidget(
         GraphQLProvider(
@@ -70,10 +69,46 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.text('Household'));
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.byIcon(Icons.group),
+      ));
       await tester.pump();
 
       expect(find.text('Household'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'unvisited tabs are not built — Scan never mounts at launch',
+    (tester) async {
+      await tester.pumpWidget(
+        GraphQLProvider(
+          client: ValueNotifier(graphQLClient),
+          child: const MaterialApp(home: MainScreen()),
+        ),
+      );
+      await tester.pump();
+
+      // ScanScreen builds lazily on first visit so its CAMERA
+      // permission isn't requested at launch.
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.text('Center a barcode in the camera view'), findsNothing);
+
+      await tester.tap(find.descendant(
+        of: find.byType(BottomNavigationBar),
+        matching: find.byIcon(Icons.qr_code_scanner),
+      ));
+      await tester.pump();
+
+      // After visiting, the tab is mounted.
+      expect(
+        find.descendant(
+          of: find.byType(IndexedStack),
+          matching: find.byType(Scaffold),
+        ),
+        findsWidgets,
+      );
     },
   );
 }

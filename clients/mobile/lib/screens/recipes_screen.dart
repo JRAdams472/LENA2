@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
+import '../theme.dart';
 import 'edit_recipe_screen.dart';
 
 const String recipesQuery = r'''
@@ -100,13 +102,10 @@ class _RecipesScreenState extends State<RecipesScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Filter by category',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       TextButton(
@@ -220,7 +219,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
           IconButton(
             icon: Icon(
               _favoritesOnly ? Icons.star : Icons.star_border,
-              color: _favoritesOnly ? Colors.amber : null,
+              color: _favoritesOnly ? lenaWheat : null,
             ),
             tooltip: 'Favorites only',
             onPressed: () => setState(() => _favoritesOnly = !_favoritesOnly),
@@ -269,7 +268,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
               builder: (QueryResult result,
                   {VoidCallback? refetch, FetchMore? fetchMore}) {
                 if (result.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonList();
                 }
                 if (result.hasException) {
                   return Center(
@@ -289,40 +288,44 @@ class _RecipesScreenState extends State<RecipesScreen> {
                     final item = items[index] as Map<String, dynamic>;
                     final description = item['description'] as String?;
                     final isFavorite = item['isFavorite'] as bool? ?? false;
-                    return ListTile(
-                      title: Text(item['name'] as String),
-                      subtitle: description != null && description.isNotEmpty
-                          ? Text(description)
-                          : null,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Serves ${item['servings'] ?? '-'}'),
-                          Mutation(
-                            options: MutationOptions(
-                              document: gql(setRecipeFavorite),
-                              onCompleted: (_) => refetch?.call(),
+                    return Card(
+                      child: ListTile(
+                        dense: true,
+                        title: Text(item['name'] as String),
+                        subtitle: description != null && description.isNotEmpty
+                            ? Text(description,
+                                maxLines: 2, overflow: TextOverflow.ellipsis)
+                            : null,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Serves ${item['servings'] ?? '-'}'),
+                            Mutation(
+                              options: MutationOptions(
+                                document: gql(setRecipeFavorite),
+                                onCompleted: (_) => refetch?.call(),
+                              ),
+                              builder: (RunMutation runMutation,
+                                  QueryResult? result) {
+                                return IconButton(
+                                  icon: Icon(isFavorite
+                                      ? Icons.star
+                                      : Icons.star_border),
+                                  onPressed: () => runMutation({
+                                    'recipeId': item['id'],
+                                    'isFavorite': !isFavorite,
+                                  }),
+                                );
+                              },
                             ),
-                            builder:
-                                (RunMutation runMutation, QueryResult? result) {
-                              return IconButton(
-                                icon: Icon(isFavorite
-                                    ? Icons.star
-                                    : Icons.star_border),
-                                onPressed: () => runMutation({
-                                  'recipeId': item['id'],
-                                  'isFavorite': !isFavorite,
-                                }),
-                              );
-                            },
+                          ],
+                        ),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EditRecipeScreen(
+                                recipeId: item['id'] as String),
                           ),
-                        ],
-                      ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              EditRecipeScreen(recipeId: item['id'] as String),
                         ),
                       ),
                     );
@@ -334,6 +337,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab-recipes',
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const EditRecipeScreen()),

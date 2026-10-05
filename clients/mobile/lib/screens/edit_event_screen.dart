@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 
 const String createFoodEventMutation = r'''
   mutation CreateFoodEvent($input: CreateFoodEventInput!) {

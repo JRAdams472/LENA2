@@ -84,7 +84,7 @@ class FlutterGemmaBinding implements GemmaBinding {
     final builder = FlutterGemma.installModel(
       modelType: modelType,
       fileType: fileType,
-    // foreground: null → auto (>500MB downloads get a foreground service).
+      // foreground: null → auto (>500MB downloads get a foreground service).
     ).fromNetwork(url, token: token);
     if (onProgress != null) builder.withProgress(onProgress);
     if (cancelHandle is _CancelHandle) {

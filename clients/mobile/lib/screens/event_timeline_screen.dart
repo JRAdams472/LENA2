@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import 'event_detail_screen.dart' show hhmmOf;
 
 const String eventTimelineQuery = r'''
@@ -57,7 +58,7 @@ class EventTimelineScreen extends StatelessWidget {
         builder: (QueryResult result,
             {VoidCallback? refetch, FetchMore? fetchMore}) {
           if (result.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return const SkeletonList();
           }
           if (result.hasException) {
             return Center(child: Text('Error: ${result.exception.toString()}'));
@@ -165,10 +166,10 @@ class _RecipeTimelineCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   '⚠ $w',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontSize: 13,
-                  ),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.error),
                 ),
               ),
             const SizedBox(height: 8),
@@ -222,7 +223,7 @@ class _StepRow extends StatelessWidget {
             width: 96,
             child: Text(
               '$start–$end',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
           Expanded(
@@ -231,26 +232,24 @@ class _StepRow extends StatelessWidget {
               children: [
                 Text(
                   '${step['stepNumber']}. ${step['instruction']}',
-                  style: const TextStyle(fontSize: 14),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 if (tags.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       tags.join(' · '),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.secondary),
                     ),
                   ),
                 for (final c in conflicts)
                   Text(
                     '⚠ $c',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
                   ),
               ],
             ),

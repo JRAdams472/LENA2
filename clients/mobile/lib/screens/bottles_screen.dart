@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import 'edit_bottle_screen.dart';
 
@@ -74,7 +75,7 @@ class _BottlesScreenState extends State<BottlesScreen> {
               builder: (QueryResult result,
                   {VoidCallback? refetch, FetchMore? fetchMore}) {
                 if (result.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonList();
                 }
                 if (result.hasException) {
                   return Center(
@@ -90,14 +91,17 @@ class _BottlesScreenState extends State<BottlesScreen> {
                     final bottle = items[index] as Map<String, dynamic>;
                     final name = (bottle['vineyard'] as String?) ?? 'Unknown';
                     final year = bottle['vintageYear']?.toString() ?? '';
-                    return ListTile(
-                      title: Text('$name $year'),
-                      subtitle: Text(bottle['bottleSize'] as String? ?? ''),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => EditBottleScreen(
-                              bottleId: bottle['id'] as String),
+                    return Card(
+                      child: ListTile(
+                        dense: true,
+                        title: Text('$name $year'.trim()),
+                        subtitle: Text(bottle['bottleSize'] as String? ?? ''),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EditBottleScreen(
+                                bottleId: bottle['id'] as String),
+                          ),
                         ),
                       ),
                     );
@@ -109,6 +113,7 @@ class _BottlesScreenState extends State<BottlesScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab-bottles',
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const EditBottleScreen()),

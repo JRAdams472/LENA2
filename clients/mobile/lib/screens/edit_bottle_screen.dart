@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 
 const String typesQuery = r'''
@@ -224,7 +225,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
           title:
               Text(widget.bottleId == null ? 'Create Bottle' : 'Edit Bottle'),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const SkeletonForm(),
       );
     }
 
@@ -239,7 +240,9 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _typeId,
-              decoration: const InputDecoration(labelText: 'Type'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Type'),
               items: _types
                   .map((t) => DropdownMenuItem(
                         value: t['id'] as String,
@@ -251,7 +254,9 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _countryId,
-              decoration: const InputDecoration(labelText: 'Country'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Country'),
               items: _countries
                   .map((c) => DropdownMenuItem(
                         value: c['id'] as String,
@@ -269,7 +274,9 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _regionId,
-              decoration: const InputDecoration(labelText: 'Region'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Region'),
               items: _regions
                   .map((r) => DropdownMenuItem(
                         value: r['id'] as String,
@@ -280,41 +287,57 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
             ),
             TextField(
               controller: _vintageCtrl,
-              decoration: const InputDecoration(labelText: 'Vintage year'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Vintage year'),
               keyboardType: TextInputType.number,
             ),
             TextField(
               controller: _bottleSizeCtrl,
-              decoration: const InputDecoration(labelText: 'Bottle size'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Bottle size'),
             ),
             TextField(
               controller: _vineyardCtrl,
-              decoration: const InputDecoration(labelText: 'Vineyard'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Vineyard'),
             ),
             TextField(
               controller: _abvCtrl,
-              decoration: const InputDecoration(labelText: 'ABV'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'ABV'),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
             ),
             TextField(
               controller: _acidityCtrl,
-              decoration: const InputDecoration(labelText: 'Acidity'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Acidity'),
               keyboardType: TextInputType.number,
             ),
             TextField(
               controller: _tanninCtrl,
-              decoration: const InputDecoration(labelText: 'Tannin level'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Tannin level'),
               keyboardType: TextInputType.number,
             ),
             TextField(
               controller: _bodyCtrl,
-              decoration: const InputDecoration(labelText: 'Body'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Body'),
               keyboardType: TextInputType.number,
             ),
             TextField(
               controller: _sweetnessCtrl,
-              decoration: const InputDecoration(labelText: 'Sweetness'),
+              decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Sweetness'),
               keyboardType: TextInputType.number,
             ),
             CheckboxListTile(

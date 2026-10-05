@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
 
@@ -326,14 +327,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       _isSavingCategories = true;
     });
     try {
-      final result = await GraphQLProvider.of(context).value.mutate(
-          MutationOptions(
-            document: gql(setRecipeCategoriesMutation),
-            variables: {
-              'recipeId': widget.recipeId,
-              'categoryIds': _selectedCategoryIds.toList(),
-            },
-          ));
+      final result =
+          await GraphQLProvider.of(context).value.mutate(MutationOptions(
+                document: gql(setRecipeCategoriesMutation),
+                variables: {
+                  'recipeId': widget.recipeId,
+                  'categoryIds': _selectedCategoryIds.toList(),
+                },
+              ));
       if (result.hasException) {
         throw result.exception ?? Exception('setRecipeCategories failed');
       }
@@ -443,7 +444,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           title:
               Text(widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe'),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const SkeletonForm(),
       );
     }
 
@@ -466,8 +467,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             if (_allergyWarnings.isNotEmpty)
               Card(
                 color: allergyWarningSevere(_allergyWarnings)
-                    ? Colors.red.shade50
-                    : Colors.orange.shade50,
+                    ? Theme.of(context)
+                        .colorScheme
+                        .error
+                        .withValues(alpha: 0.10)
+                    : Theme.of(context)
+                        .colorScheme
+                        .tertiary
+                        .withValues(alpha: 0.10),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Row(
@@ -495,12 +502,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const Text('Allergens:',
-                      style: TextStyle(fontSize: 12, color: Colors.black54)),
+                  Text('Allergens:',
+                      style: Theme.of(context).textTheme.bodySmall),
                   if (_allergenFlags.isEmpty)
-                    const Text('No allergen information',
-                        style: TextStyle(
-                            fontSize: 12, fontStyle: FontStyle.italic))
+                    Text('No allergen information',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(fontStyle: FontStyle.italic))
                   else
                     for (final f in _allergenFlags)
                       Chip(
@@ -508,7 +517,13 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                           f['kind'] == 'contains'
                               ? '${(f['allergen'] as Map?)?['name']}'
                               : '${(f['allergen'] as Map?)?['name']} (may contain)',
-                          style: const TextStyle(fontSize: 11),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                  letterSpacing: 0,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface),
                         ),
                         visualDensity: VisualDensity.compact,
                       ),

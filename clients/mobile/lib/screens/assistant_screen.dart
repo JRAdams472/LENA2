@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 
 import '../ai/api.dart';
 import '../ai/controller.dart';
@@ -96,6 +97,40 @@ class _AssistantScreenState extends State<AssistantScreen> {
     }
   }
 
+  // Same quick prompts the web chat offers — tap one to start a
+  // conversation instead of staring at an empty list.
+  Widget _emptyState() {
+    const prompts = [
+      "What's expiring in my pantry soon?",
+      'What should I cook this week?',
+      "What's in my wine cellar?",
+    ];
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const SizedBox(height: 32),
+        Text(
+          'Ask Dot anything about your kitchen.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final p in prompts)
+              ActionChip(
+                label: Text(p),
+                onPressed: _controller.sending ? null : () => _send(p),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildLocalCard() {
     final c = _controller;
     if (c.status == LocalStatus.downloading) {
@@ -177,7 +212,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
     final c = _controller;
 
     if (c.status == LocalStatus.checking) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: SkeletonList());
     }
     if (!c.available) {
       return Scaffold(
@@ -231,60 +266,86 @@ class _AssistantScreenState extends State<AssistantScreen> {
         children: [
           _buildLocalCard(),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
-              itemBuilder: (context, i) {
-                final m = _messages[i];
-                return Align(
-                  alignment:
-                      m.isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: m.isUser
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          m.text,
-                          style: TextStyle(
-                            color: m.isUser ? Colors.white : null,
+            child: _messages.isEmpty
+                ? _emptyState()
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, i) {
+                      final m = _messages[i];
+                      return Align(
+                        alignment: m.isUser
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          constraints: BoxConstraints(
+                            maxWidth: MediaQuery.of(context).size.width * 0.8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: m.isUser
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                m.text,
+                                style: TextStyle(
+                                  color: m.isUser
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : null,
+                                ),
+                              ),
+                              if (m.tools.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'looked up: ${m.tools.join(", ")}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: m.isUser
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimary
+                                                  .withValues(alpha: 0.8)
+                                              : null,
+                                        ),
+                                  ),
+                                ),
+                              if (m.engineLabel != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    m.engineLabel!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          letterSpacing: 0,
+                                          color: m.isUser
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimary
+                                                  .withValues(alpha: 0.7)
+                                              : null,
+                                        ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        if (m.tools.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              'looked up: ${m.tools.join(", ")}',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ),
-                        if (m.engineLabel != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              m.engineLabel!,
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                          ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
           if (c.sending)
             const Padding(

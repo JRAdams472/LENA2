@@ -84,7 +84,13 @@ class AllergyWarningBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     if (warnings.isEmpty) return const SizedBox.shrink();
     final severe = allergyWarningSevere(warnings);
-    final color = severe ? Colors.red.shade700 : Colors.orange.shade800;
+    final scheme = Theme.of(context).colorScheme;
+    final color = severe ? scheme.error : scheme.tertiary;
+    final labelStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        );
     final lines = warnings.map(allergyWarningText).join('\n');
     return Tooltip(
       message: lines,
@@ -113,7 +119,22 @@ class AllergyWarningBadge extends StatelessWidget {
             ],
           ),
         ),
-        child: Icon(Icons.warning_amber_rounded, color: color, size: 20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.warning_amber_rounded, color: color, size: 16),
+              const SizedBox(width: 2),
+              Text('${warnings.length}', style: labelStyle),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import 'adjust_bottle_screen.dart';
 import 'bottles_screen.dart';
 
@@ -52,12 +53,25 @@ class WineScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Wine Cellar')),
+      appBar: AppBar(
+        title: const Text('Wine Cellar'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.wine_bar),
+            tooltip: 'Bottle catalog',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BottlesScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Query(
         options: QueryOptions(document: gql(userBottlesQuery)),
-        builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+        builder: (QueryResult result,
+            {VoidCallback? refetch, FetchMore? fetchMore}) {
           if (result.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return const SkeletonList();
           }
           if (result.hasException) {
             return Center(child: Text('Error: ${result.exception.toString()}'));
@@ -75,52 +89,44 @@ class WineScreen extends StatelessWidget {
               final name = bottle?['vineyard'] as String? ?? 'Unknown';
               final year = bottle?['vintageYear']?.toString() ?? '';
               final isFavorite = item['isFavorite'] as bool? ?? false;
-              return ListTile(
-                title: Text('$name $year'),
-                subtitle: Text('Quantity: ${item['quantity'] ?? 0}'),
-                trailing: IconButton(
-                  icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                  onPressed: bottleId == null
+              return Card(
+                child: ListTile(
+                  dense: true,
+                  title: Text('$name $year'.trim()),
+                  subtitle: Text('Quantity: ${item['quantity'] ?? 0}'),
+                  trailing: IconButton(
+                    icon: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border),
+                    onPressed: bottleId == null
+                        ? null
+                        : () => _toggleFavorite(
+                            context, bottleId, isFavorite, refetch),
+                  ),
+                  onTap: bottleId == null
                       ? null
-                      : () => _toggleFavorite(context, bottleId, isFavorite, refetch),
-                ),
-                onTap: bottleId == null
-                    ? null
-                    : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AdjustBottleScreen(
-                              bottleId: bottleId,
-                              quantity: item['quantity'] as int?,
+                      : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AdjustBottleScreen(
+                                bottleId: bottleId,
+                                quantity: item['quantity'] as int?,
+                              ),
                             ),
                           ),
-                        ),
+                ),
               );
             },
           );
         },
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'adjust',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AdjustBottleScreen()),
-            ),
-            child: const Icon(Icons.add),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'bottles',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const BottlesScreen()),
-            ),
-            child: const Icon(Icons.wine_bar),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'adjust',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AdjustBottleScreen()),
+        ),
+        icon: const Icon(Icons.add),
+        label: const Text('Adjust'),
       ),
     );
   }

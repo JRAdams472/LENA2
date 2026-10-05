@@ -197,7 +197,8 @@ void main() {
         'items': {'__typename': 'ItemPage', 'items': <dynamic>[]},
       },
     });
-    await tester.pumpWidget(_app(link, const EditMealPlanScreen(mealPlanId: '1')));
+    await tester
+        .pumpWidget(_app(link, const EditMealPlanScreen(mealPlanId: '1')));
     await tester.pump();
 
     await tester.enterText(

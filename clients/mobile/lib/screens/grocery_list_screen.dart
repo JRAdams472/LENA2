@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../allergy.dart';
+import '../format.dart';
 
 const String groceryRoutingQuery = r'''
   query GroceryRouting($id: ID!) {
@@ -386,7 +388,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     VoidCallback? refetch,
   ) {
     if (result.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (result.hasException) {
       return Center(child: Text('Error: ${result.exception.toString()}'));
@@ -463,7 +465,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
           child: Text(
             (aisle?['name'] as String?) ?? 'Other items',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
         ReorderableListView(
@@ -507,8 +509,10 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     final usual = item['usualBrand'] as Map<String, dynamic>?;
     final usualBrandName = usual == null
         ? null
-        : '${(usual['brand'] as Map?)?['name'] ?? ''} ${usual['name'] ?? ''}'
-            .trim();
+        : brandedName(
+            (usual['brand'] as Map?)?['name'] as String?,
+            usual['name'] as String?,
+          );
 
     return CheckboxListTile(
       key: ValueKey('grocery-item-$id'),
@@ -517,18 +521,23 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           Expanded(child: Text('$name — $quantity $unit')),
           AllergyWarningBadge(warnings: allergyWarningsOf(item)),
           if (suggested)
-            const Padding(
-              padding: EdgeInsets.only(left: 4.0),
+            Padding(
+              padding: const EdgeInsets.only(left: 4.0),
               child: Text(
                 'suggested aisle',
-                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(fontStyle: FontStyle.italic, letterSpacing: 0),
               ),
             ),
         ],
       ),
       subtitle: Text(
-        'Source: ${item['source']}'
-        '${usualBrandName != null && usualBrandName.isNotEmpty ? ' · usual: $usualBrandName' : ''}',
+        humanSource(item['source'] as String?) +
+            (usualBrandName != null && usualBrandName.isNotEmpty
+                ? ' · usually buys $usualBrandName'
+                : ''),
       ),
       value: isChecked,
       onChanged: (_) => _toggle(context, item, refetch),

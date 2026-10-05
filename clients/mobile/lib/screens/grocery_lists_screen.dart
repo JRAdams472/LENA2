@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
+import '../format.dart';
 import 'generate_grocery_dialog.dart';
 import 'grocery_list_screen.dart';
 
@@ -29,11 +31,15 @@ class GroceryListsScreen extends StatelessWidget {
         document: gql(groceryListsQuery),
         variables: const {'page': 1, 'pageSize': 25},
       ),
-      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+      builder: (QueryResult result,
+          {VoidCallback? refetch, FetchMore? fetchMore}) {
         return Scaffold(
           appBar: AppBar(title: const Text('Grocery Lists')),
           body: _body(context, result, refetch),
           floatingActionButton: FloatingActionButton(
+            // Tabs live together in MainScreen's IndexedStack — every
+            // tab FAB needs a unique heroTag or route transitions crash.
+            heroTag: 'fab-grocery-lists',
             onPressed: () => showDialog(
               context: context,
               builder: (_) => GenerateGroceryDialog(onGenerated: refetch),
@@ -45,9 +51,10 @@ class GroceryListsScreen extends StatelessWidget {
     );
   }
 
-  Widget _body(BuildContext context, QueryResult result, VoidCallback? refetch) {
+  Widget _body(
+      BuildContext context, QueryResult result, VoidCallback? refetch) {
     if (result.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (result.hasException) {
       return Center(child: Text('Error: ${result.exception.toString()}'));
@@ -68,7 +75,7 @@ class GroceryListsScreen extends StatelessWidget {
           return Card(
             child: ListTile(
               title: Text('List ${index + 1}'),
-              subtitle: Text('Generated: $generatedAt'),
+              subtitle: Text('Generated ${fmtIso(generatedAt)}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.push(
                 context,

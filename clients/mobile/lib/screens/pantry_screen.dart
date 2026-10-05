@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 
 const String pantryQuery = r'''
@@ -91,7 +92,7 @@ class _PantryScreenState extends State<PantryScreen> {
   Widget _body(
       BuildContext context, QueryResult result, VoidCallback? refetch) {
     if (result.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (result.hasException) {
       return Center(child: Text('Error: ${result.exception.toString()}'));

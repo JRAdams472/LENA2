@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import 'edit_item_screen.dart';
 
@@ -81,7 +82,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
               builder: (QueryResult result,
                   {VoidCallback? refetch, FetchMore? fetchMore}) {
                 if (result.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonList();
                 }
                 if (result.hasException) {
                   return Center(
@@ -97,16 +98,25 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     final item = items[index] as Map<String, dynamic>;
                     final brand = item['brand']?['name'] as String?;
                     final category = item['category']?['name'] as String?;
-                    return ListTile(
-                      title: Text(item['name'] as String),
-                      subtitle: Text(
-                        '${item['unit']} ${category != null ? '— $category' : ''} ${brand != null ? '/ $brand' : ''}',
-                      ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              EditItemScreen(itemId: item['id'] as String),
+                    final subtitle = [
+                      item['unit'] as String?,
+                      category,
+                      brand,
+                    ]
+                        .whereType<String>()
+                        .where((s) => s.isNotEmpty)
+                        .join(' · ');
+                    return Card(
+                      child: ListTile(
+                        dense: true,
+                        title: Text(item['name'] as String),
+                        subtitle: subtitle.isEmpty ? null : Text(subtitle),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                EditItemScreen(itemId: item['id'] as String),
+                          ),
                         ),
                       ),
                     );
@@ -118,6 +128,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab-items',
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const EditItemScreen()),
