@@ -31,8 +31,11 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All" },
 ];
 
-const statusColor = (s: string) =>
-  s === "accepted" ? "success" : s === "dismissed" ? "default" : "warning";
+const statusColor = (s: string) => {
+  if (s === "accepted") return "success";
+  if (s === "dismissed") return "default";
+  return "warning";
+};
 
 // AI-proposed allergen flags held for human review. Nothing here writes a
 // flag until Accept — which applies it under the reviewer's name — and the
@@ -67,10 +70,11 @@ export default function AllergenSuggestionsPage() {
   const suggestMutation = useMutation({
     mutationFn: (recipeId: number) => api.suggestRecipeAllergens(recipeId),
     onSuccess: (created) => {
+      const plural = created.length === 1 ? "" : "s";
       setNotice(
         created.length === 0
           ? "No new proposals — every suggestion either duplicates an open row or a curated flag."
-          : `${created.length} suggestion${created.length === 1 ? "" : "s"} added to the queue.`
+          : `${created.length} suggestion${plural} added to the queue.`
       );
       refresh();
     },

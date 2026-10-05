@@ -33,6 +33,11 @@ import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { GroceryListItem, GroceryRouteGroup, Store, StoreAisle } from "@/lib/types";
 
+function brandItemLabel(item: { name: string; brand?: string | null }): string {
+  const brand = item.brand ? `${item.brand} ` : "";
+  return `${brand}${item.name}`;
+}
+
 interface ManualForm {
   quantityNeeded: string;
   unitOfMeasure: string;
@@ -139,7 +144,7 @@ function BrandPickDialog({
         <Autocomplete
           autoFocus
           options={options}
-          getOptionLabel={(i) => `${i.brand ? `${i.brand} ` : ""}${i.name}`}
+          getOptionLabel={(i) => brandItemLabel(i)}
           isOptionEqualToValue={(o, v) => o.itemID === v.itemID}
           inputValue={input}
           onInputChange={(_, v) => setInput(v)}
@@ -601,7 +606,7 @@ export default function GroceryListDetailPage({
     ...(addItemQuery.data ?? []).map((i) => ({
       kind: "item" as const,
       id: i.itemID,
-      label: `${i.brand ? `${i.brand} ` : ""}${i.name}`,
+      label: brandItemLabel(i),
     })),
   ];
 

@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { runAgent } from "./agent";
 import { setLocalEngine } from "./engineStore";
-import { detectLocalCapability, nanoAvailability } from "./capabilities";
+import { detectLocalCapability, nanoAvailability, type LocalCapability } from "./capabilities";
 import { NanoEngine } from "./engines/nano";
 import { DEFAULT_WEBLLM_MODEL, WebLLMEngine, WEBLLM_MODELS, type DownloadProgress, type WebLLMModelKey } from "./engines/webllm";
 import type { AssistantResult, LocalEngine } from "./types";
@@ -183,15 +183,7 @@ export function useAssistant(): AssistantController {
   const toolsReady = !!tools && tools.length > 0;
   const localPossible = toolsReady && (capability === "nano" ? nanoReady !== false : capability === "webllm");
 
-  const status: LocalStatus | null = capability === null
-    ? null
-    : download
-      ? "downloading"
-      : engine
-        ? "ready"
-        : localPossible
-          ? "opt-in"
-          : "unavailable";
+  const status = resolveStatus(capability, download, engine, localPossible);
 
   const available = serverAI === true || status === "ready" || (localPossible && status !== "unavailable");
   const localActive = mode !== "server" && engine !== null;
@@ -208,4 +200,18 @@ export function useAssistant(): AssistantController {
     downloadError,
     ask,
   };
+}
+
+// Maps capability probe + lifecycle state onto the public status; null
+// while the capability snapshot hasn't hydrated yet.
+function resolveStatus(
+  capability: LocalCapability | null,
+  download: DownloadProgress | null,
+  engine: LocalEngine | null,
+  localPossible: boolean
+): LocalStatus | null {
+  if (capability === null) return null;
+  if (download) return "downloading";
+  if (engine) return "ready";
+  return localPossible ? "opt-in" : "unavailable";
 }

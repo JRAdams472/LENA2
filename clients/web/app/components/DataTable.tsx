@@ -48,6 +48,14 @@ interface DataTableProps<T extends object> {
   fields?: FieldDef<T>[];
 }
 
+// Fallback cell rendering when a field has no custom render: objects
+// stringify, nulls blank out.
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 export default function DataTable<T extends object>({
   title,
   rows,
@@ -65,11 +73,14 @@ export default function DataTable<T extends object>({
   pagination,
   fields,
 }: DataTableProps<T>) {
-  let columnDefs: FieldDef<T>[] = fields && fields.length > 0
-    ? fields
-    : rows.length > 0
-      ? (Object.keys(rows[0]) as Extract<keyof T, string>[]).map((key) => ({ key, label: key, sortable: true }))
-      : [];
+  let columnDefs: FieldDef<T>[] = [];
+  if (fields && fields.length > 0) {
+    columnDefs = fields;
+  } else if (rows.length > 0) {
+    columnDefs = (Object.keys(rows[0]) as Extract<keyof T, string>[]).map(
+      (key) => ({ key, label: key, sortable: true })
+    );
+  }
 
   const hiddenKeys = new Set(["createdBy", "createDate"]);
   const idRegex = /id$/i;
@@ -183,13 +194,7 @@ export default function DataTable<T extends object>({
                     const value = (row as Record<string, unknown>)[col.key];
                     return (
                       <TableCell key={col.key}>
-                        {col.render
-                          ? col.render(row)
-                          : value === null || value === undefined
-                          ? ""
-                          : typeof value === "object"
-                          ? JSON.stringify(value)
-                          : String(value)}
+                        {col.render ? col.render(row) : cellText(value)}
                       </TableCell>
                     );
                   })}

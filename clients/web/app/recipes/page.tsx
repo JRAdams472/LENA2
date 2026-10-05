@@ -393,7 +393,7 @@ export default function RecipesPage() {
             component="label"
             disabled={uploading}
           >
-            Choose File
+            Choose File{" "}
             <input
               ref={fileInputRef}
               type="file"

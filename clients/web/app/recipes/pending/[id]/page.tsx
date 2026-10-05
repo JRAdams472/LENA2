@@ -240,9 +240,10 @@ function IngredientRow({
       {item.suggestions.length > 0 && (
         <Stack direction="row" spacing={0.5} sx={{ pl: 12, mt: 0.5, flexWrap: "wrap" }}>
           {[...item.suggestions]
-            .sort((a, b) =>
-              a.kind === b.kind ? b.score - a.score : a.kind === "ingredient" ? -1 : 1
-            )
+            .sort((a, b) => {
+              if (a.kind === b.kind) return b.score - a.score;
+              return a.kind === "ingredient" ? -1 : 1;
+            })
             .map((s) => (
               <Chip
                 key={`${s.kind}-${s.id}`}

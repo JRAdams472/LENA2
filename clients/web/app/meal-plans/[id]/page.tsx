@@ -49,6 +49,16 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_TYPE_IDS = [0, 1, 2];
 
+function brandItemName(item: { name: string; brand?: string | null }): string {
+  return item.brand ? `${item.brand} — ${item.name}` : item.name;
+}
+
+function itemSearchEmptyText(brandId: number | null, search: string): string {
+  if (brandId === null && search.length < 2) return "Type at least 2 characters";
+  if (brandId !== null && search.length === 0) return "No items for this brand";
+  return "No items found";
+}
+
 interface SlotDialogState {
   open: boolean;
   day: number;
@@ -493,13 +503,7 @@ function SlotDialog({
             }}
             filterOptions={(options) => options}
             loading={searchQuery.isLoading}
-            noOptionsText={
-              brandId === null && debouncedItemSearch.length < 2
-                ? "Type at least 2 characters"
-                : brandId !== null && debouncedItemSearch.length === 0
-                ? "No items for this brand"
-                : "No items found"
-            }
+            noOptionsText={itemSearchEmptyText(brandId, debouncedItemSearch)}
             renderOption={(props, item) => {
               const { key, ...liProps } = props;
               return (
@@ -535,9 +539,7 @@ function SlotDialog({
 
         {adhoc.map((a, i) => {
           const item = itemsQuery.data?.find((it) => it.itemID === a.itemID);
-          const itemName = item
-            ? (item.brand ? `${item.brand} — ${item.name}` : item.name)
-            : `Item ${a.itemID}`;
+          const itemName = item ? brandItemName(item) : `Item ${a.itemID}`;
           return (
             <Box
               key={a.keyId}
@@ -720,7 +722,13 @@ export default function MealPlanDetailPage({
   const itemLabel = (itemId: number) => {
     const item = itemsQuery.data?.find((i) => i.itemID === itemId);
     if (!item) return `Item ${itemId}`;
-    return item.brand ? `${item.brand} — ${item.name}` : item.name;
+    return brandItemName(item);
+  };
+
+  const slotItemChipLabel = (it: MealSlotItem) => {
+    const name = it.itemID != null ? itemLabel(it.itemID) : it.ingredientName ?? "Item";
+    const qty = it.quantity ? ` - ${fmtQty(it.quantity)} ${it.unitOfMeasure ?? ""}`.trim() : "";
+    return name + qty;
   };
 
   const recipeName = (rid: number | null) =>
@@ -919,7 +927,7 @@ export default function MealPlanDetailPage({
                         {slot.mealSlotItems.map((it) => (
                           <Chip
                             key={it.mealSlotItemID}
-                            label={`${it.itemID != null ? itemLabel(it.itemID) : it.ingredientName ?? "Item"}${it.quantity ? ` - ${fmtQty(it.quantity)} ${it.unitOfMeasure ?? ""}`.trim() : ""}`}
+                            label={slotItemChipLabel(it)}
                             size="small"
                             sx={{ mr: 0.5, mb: 0.5 }}
                           />
