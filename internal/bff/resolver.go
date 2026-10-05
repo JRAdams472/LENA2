@@ -906,11 +906,17 @@ type countPair struct {
 }
 
 // recipeChildren holds recipe rows batch-loaded for a list response so
-// nested recipe field resolvers do not issue a query per row.
+// nested recipe field resolvers do not issue a query per row. itemsBy and
+// stepsBy carry the delta-applied (household) view when a delta exists;
+// the canonical rows live in canonItemsBy/canonStepsBy for
+// view: canonical requests.
 type recipeChildren struct {
 	recipes      map[int64]recipe.Recipe
 	itemsBy      map[int64][]recipe.RecipeItem
 	stepsBy      map[int64][]recipe.RecipeStep
+	canonItemsBy map[int64][]recipe.RecipeItem
+	canonStepsBy map[int64][]recipe.RecipeStep
+	deltas       map[int64]*recipe.RecipeDelta
 	categoriesBy map[int64][]recipe.Category
 	favorites    map[int64]bool
 	items        map[int64]inventory.Item
@@ -940,6 +946,8 @@ func newRecipeChildren() *recipeChildren {
 		recipes:      make(map[int64]recipe.Recipe),
 		itemsBy:      make(map[int64][]recipe.RecipeItem),
 		stepsBy:      make(map[int64][]recipe.RecipeStep),
+		canonItemsBy: make(map[int64][]recipe.RecipeItem),
+		canonStepsBy: make(map[int64][]recipe.RecipeStep),
 		favorites:    make(map[int64]bool),
 		units:        make(map[int64]inventory.Unit),
 		recipeCounts: make(map[int64]countPair),
@@ -1003,11 +1011,35 @@ func loadRecipeChildren(ctx context.Context, l recipeChildLoaders, userID, house
 		if err := rc.loadRecipeRows(ctx, l, userID, recipeIDs); err != nil {
 			return nil, err
 		}
+		// Deltas apply before the inventory/allergen loads so every
+		// downstream resolution sees the household's effective lines.
+		if err := rc.applyDeltas(ctx, l.rec, householdID, recipeIDs); err != nil {
+			return nil, err
+		}
 	}
 	if err := loadRecipeInventoryChildren(ctx, l, rc, householdID, extraItemIDs, extraIngredientIDs); err != nil {
 		return nil, err
 	}
 	return rc, nil
+}
+
+// applyDeltas loads the household's deltas for these recipes and folds
+// them into itemsBy/stepsBy, keeping the canonical copies aside for
+// view: canonical requests.
+func (rc *recipeChildren) applyDeltas(ctx context.Context, rec RecipeDeltaStore, householdID int64, recipeIDs []int64) error {
+	deltas, err := rec.ListRecipeDeltas(ctx, householdID, recipeIDs)
+	if err != nil {
+		return fmt.Errorf("load recipe deltas: %w", err)
+	}
+	rc.deltas = deltas
+	for rid, d := range deltas {
+		rc.canonItemsBy[rid] = rc.itemsBy[rid]
+		rc.canonStepsBy[rid] = rc.stepsBy[rid]
+		eff := recipe.ApplyDelta(rc.itemsBy[rid], rc.stepsBy[rid], d)
+		rc.itemsBy[rid] = eff.Items
+		rc.stepsBy[rid] = eff.Steps
+	}
+	return nil
 }
 
 // recipeItemIDs returns the sorted union of extra IDs and every recipe
@@ -1059,6 +1091,26 @@ func recipeItemUnitIDs(itemsBy map[int64][]recipe.RecipeItem) []int64 {
 	return sortedIDs(set)
 }
 
+// deltaUnitIDs unions the unit IDs carried on delta rows (adjust/add) so
+// the delta editor resolves units without extra loads.
+func deltaUnitIDs(deltas map[int64]*recipe.RecipeDelta, base []int64) []int64 {
+	if len(deltas) == 0 {
+		return base
+	}
+	set := make(map[int64]bool, len(base))
+	for _, id := range base {
+		set[id] = true
+	}
+	for _, d := range deltas {
+		for _, di := range d.Items {
+			if di.UnitID != nil {
+				set[*di.UnitID] = true
+			}
+		}
+	}
+	return sortedIDs(set)
+}
+
 // loadRecipeInventoryChildren batch-loads the inventory-side children
 // referenced by rc.itemsBy (plus any extra item/ingredient IDs): catalog
 // items, their children, recipe-item units, and brand-agnostic
@@ -1082,7 +1134,7 @@ func loadRecipeInventoryChildren(ctx context.Context, l recipeChildLoaders, rc *
 		return err
 	}
 	rc.itemChildren = ch
-	rc.units, err = loadUnits(ctx, l.inv, recipeItemUnitIDs(rc.itemsBy))
+	rc.units, err = loadUnits(ctx, l.inv, deltaUnitIDs(rc.deltas, recipeItemUnitIDs(rc.itemsBy)))
 	if err != nil {
 		return err
 	}

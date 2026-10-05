@@ -39,6 +39,9 @@ func newRecMocks(t *testing.T) (*mock.MockRecipeService, *mock.MockInventoryServ
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	rec := mock.NewMockRecipeService(ctrl)
+	// Most recipe reads flow through loadRecipeChildren, which always asks
+	// for household deltas; tests that don't exercise deltas get none.
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	return rec, mock.NewMockInventoryService(ctrl), mock.NewMockUserPrefsService(ctrl)
 }
 
@@ -87,7 +90,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		require.NotNil(t, res.CookTimeMinutes())
 		assert.Equal(t, int32(20), *res.CookTimeMinutes())
 
-		items, err := res.Items(ctx)
+		items, err := res.Items(ctx, struct{ View string }{View: ""})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, graphql.ID("40"), items[0].ID())
@@ -102,7 +105,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Broth", it.Name())
 
-		steps, err := res.Steps(ctx)
+		steps, err := res.Steps(ctx, struct{ View string }{View: ""})
 		require.NoError(t, err)
 		require.Len(t, steps, 1)
 		assert.Equal(t, int32(1), steps[0].StepNumber())
@@ -158,7 +161,7 @@ func TestResolver_Recipe_Recipe(t *testing.T) {
 func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		rec, inv, up := newRecMocks(t)
-		rec.EXPECT().ScaleRecipe(gomock.Any(), int64(9), int32(2)).Return(recipe.ScaledRecipe{
+		rec.EXPECT().ScaleRecipeEffective(gomock.Any(), int64(9), gomock.Any(), int32(2)).Return(recipe.ScaledRecipe{
 			Recipe: recipe.Recipe{RecipeID: 9, Name: "Soup", Servings: recInt32Ptr(2)},
 			Items: []recipe.RecipeItem{
 				{RecipeItemID: 40, RecipeID: 9, ItemID: ptrInt64(3), Quantity: 1, UnitID: 3, Notes: "diced"},
@@ -167,6 +170,7 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 				{StepID: 7, RecipeID: 9, StepNumber: 1, Instruction: "Boil"},
 			},
 		}, nil)
+		rec.EXPECT().GetRecipeDelta(gomock.Any(), int64(9), int64(11)).Return(nil, nil)
 		up.EXPECT().GetRecipeFavorite(gomock.Any(), int64(11), int64(9)).Return(userprefs.RecipeFavorite{UserID: 11, RecipeID: 9, IsFavorite: true}, nil)
 		inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Item{{ItemID: 3, Name: "Broth", CategoryID: 1, UnitID: 3}}, nil)
 		inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return([]inventory.Category{{CategoryID: 1, Name: "Pantry"}}, nil)
@@ -189,7 +193,7 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 		assert.Equal(t, int32(2), *res.Servings())
 
 		ctx := recCtx()
-		items, err := res.Items(ctx)
+		items, err := res.Items(ctx, struct{ View string }{View: ""})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, 1.0, items[0].Quantity())
@@ -237,7 +241,7 @@ func TestResolver_Recipe_ScaledRecipe(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().ScaleRecipe(gomock.Any(), int64(9), int32(2)).Return(recipe.ScaledRecipe{}, errRecBoom)
+		rec.EXPECT().ScaleRecipeEffective(gomock.Any(), int64(9), gomock.Any(), int32(2)).Return(recipe.ScaledRecipe{}, errRecBoom)
 		r := &Resolver{RecipeService: rec}
 		_, err := r.ScaledRecipe(recCtx(), struct {
 			ID       graphql.ID

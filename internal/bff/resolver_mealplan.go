@@ -137,7 +137,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 	if err != nil {
 		return nil, err
 	}
-	recipes, recipeItems, err := r.planRecipes(ctx, slots)
+	recipes, recipeItems, err := r.planRecipes(ctx, u.HouseholdID, slots)
 	if err != nil {
 		return nil, err
 	}
@@ -203,8 +203,10 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 }
 
 // planRecipes batch-loads the recipes and recipe items referenced by a
-// plan's slots.
-func (r *Resolver) planRecipes(ctx context.Context, slots []mealplan.MealSlot) ([]recipe.Recipe, []recipe.RecipeItem, error) {
+// plan's slots. Recipe items come back delta-applied for the household so
+// nutrition aggregation and grocery generation both see the household's
+// version.
+func (r *Resolver) planRecipes(ctx context.Context, householdID int64, slots []mealplan.MealSlot) ([]recipe.Recipe, []recipe.RecipeItem, error) {
 	recipeIDs := distinctIDs(slots, func(s mealplan.MealSlot) *int64 { return s.RecipeID })
 	if len(recipeIDs) == 0 {
 		return nil, nil, nil
@@ -217,7 +219,22 @@ func (r *Resolver) planRecipes(ctx context.Context, slots []mealplan.MealSlot) (
 	if err != nil {
 		return nil, nil, err
 	}
-	return recipes, recipeItems, nil
+	deltas, err := r.RecipeService.ListRecipeDeltas(ctx, householdID, recipeIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(deltas) == 0 {
+		return recipes, recipeItems, nil
+	}
+	byRecipe := make(map[int64][]recipe.RecipeItem, len(recipeIDs))
+	for _, it := range recipeItems {
+		byRecipe[it.RecipeID] = append(byRecipe[it.RecipeID], it)
+	}
+	effective := make([]recipe.RecipeItem, 0, len(recipeItems))
+	for rid, items := range byRecipe {
+		effective = append(effective, recipe.ApplyDelta(items, nil, deltas[rid]).Items...)
+	}
+	return recipes, effective, nil
 }
 
 // nutritionInputs batch-loads the nutrient rows, item metadata, and unit

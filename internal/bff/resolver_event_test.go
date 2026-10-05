@@ -44,6 +44,7 @@ func TestResolver_FoodEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ev := mock.NewMockEventService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	r := &Resolver{EventService: ev, RecipeService: rec}
 
 	recipeID := int64(11)
@@ -239,6 +240,7 @@ func TestResolver_AddEventRecipe(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ev := mock.NewMockEventService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	h := mock.NewMockHouseholdService(ctrl)
 	idSvc := mock.NewMockIdentityService(ctrl)
 	r := &Resolver{EventService: ev, RecipeService: rec, HouseholdService: h, IdentityService: idSvc}
@@ -260,6 +262,7 @@ func TestResolver_AddEventRecipe(t *testing.T) {
 	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(11)).Return(recipe.Recipe{
 		RecipeID: 11, Name: "Casserole", Servings: &base,
 	}, nil)
+	rec.EXPECT().GetRecipeDelta(gomock.Any(), int64(11), int64(7)).Return(nil, nil)
 	rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeStep{
 		{RecipeID: 11, StepNumber: 1, Instruction: "mix"},
 		{RecipeID: 11, StepNumber: 2, Instruction: "bake", Appliance: "oven"},
@@ -617,6 +620,7 @@ func TestResolver_SyncEventRecipe(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ev := mock.NewMockEventService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	h := mock.NewMockHouseholdService(ctrl)
 	idSvc := mock.NewMockIdentityService(ctrl)
 	r := &Resolver{EventService: ev, RecipeService: rec, HouseholdService: h, IdentityService: idSvc}
@@ -629,6 +633,7 @@ func TestResolver_SyncEventRecipe(t *testing.T) {
 	rec.EXPECT().GetRecipeByID(gomock.Any(), int64(11)).Return(recipe.Recipe{
 		RecipeID: 11, Servings: &base,
 	}, nil)
+	rec.EXPECT().GetRecipeDelta(gomock.Any(), int64(11), int64(7)).Return(nil, nil)
 	rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeStep{
 		{RecipeID: 11, StepNumber: 1, Instruction: "new instruction"},
 	}, nil)

@@ -11,6 +11,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/event"
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/recipe"
 )
 
 // FoodEvent resolves a single event by ID, scoped to the caller's
@@ -787,10 +788,15 @@ func (r *Resolver) snapshotRecipeContents(ctx context.Context, er event.EventRec
 	if err != nil {
 		return err
 	}
+	delta, err := r.RecipeService.GetRecipeDelta(ctx, *er.RecipeID, u.HouseholdID)
+	if err != nil {
+		return err
+	}
 	steps, err := r.RecipeService.ListRecipeStepsByRecipes(ctx, []int64{*er.RecipeID})
 	if err != nil {
 		return err
 	}
+	steps = recipe.ApplyDelta(nil, steps, delta).Steps
 	snap := make([]event.EventRecipeStep, len(steps))
 	for i, s := range steps {
 		snap[i] = event.EventRecipeStep{
@@ -810,6 +816,7 @@ func (r *Resolver) snapshotRecipeContents(ctx context.Context, er event.EventRec
 	if err != nil {
 		return err
 	}
+	items = recipe.ApplyDelta(items, nil, delta).Items
 	snapItems := make([]event.EventRecipeItem, len(items))
 	for i, it := range items {
 		snapItems[i] = event.EventRecipeItem{

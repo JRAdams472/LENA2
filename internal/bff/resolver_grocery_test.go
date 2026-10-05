@@ -225,6 +225,7 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	mp := mock.NewMockMealPlanService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	up := mock.NewMockUserPrefsService(ctrl)
 	inv := mock.NewMockInventoryService(ctrl)
 	r := &Resolver{GroceryService: g, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, InventoryService: inv}
@@ -279,6 +280,7 @@ func TestResolver_GenerateGroceryList_RegeneratesInPlace(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	mp := mock.NewMockMealPlanService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	up := mock.NewMockUserPrefsService(ctrl)
 	inv := mock.NewMockInventoryService(ctrl)
 	r := &Resolver{GroceryService: g, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, InventoryService: inv}
@@ -617,6 +619,7 @@ func TestResolver_GenerateGroceryList_IngredientNeeds(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	mp := mock.NewMockMealPlanService(ctrl)
 	rec := mock.NewMockRecipeService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	up := mock.NewMockUserPrefsService(ctrl)
 	inv := mock.NewMockInventoryService(ctrl)
 	r := &Resolver{GroceryService: g, MealPlanService: mp, RecipeService: rec, UserPrefsService: up, InventoryService: inv}

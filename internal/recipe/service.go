@@ -167,6 +167,42 @@ func (s *Service) ScaleRecipe(ctx context.Context, recipeID int64, servings int3
 	return ScaledRecipe{Recipe: rec, Items: scaledItems, Steps: steps}, nil
 }
 
+// ScaleRecipeEffective scales the household delta-applied view of the
+// recipe — the delta is applied to canonical lines first, then every
+// effective quantity scales, so an adjusted "2 cups" still doubles at
+// double servings.
+func (s *Service) ScaleRecipeEffective(ctx context.Context, recipeID, householdID int64, servings int32) (ScaledRecipe, error) {
+	rec, err := s.GetRecipeByID(ctx, recipeID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+	if rec.Servings == nil || *rec.Servings <= 0 {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: recipe has no valid base servings")
+	}
+	if servings <= 0 {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: target servings must be positive")
+	}
+	items, err := s.ListRecipeItems(ctx, recipeID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+	steps, err := s.ListRecipeSteps(ctx, recipeID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+	delta, err := s.GetRecipeDelta(ctx, recipeID, householdID)
+	if err != nil {
+		return ScaledRecipe{}, fmt.Errorf("scale recipe: %w", err)
+	}
+	eff := ApplyDelta(items, steps, delta)
+	factor := float64(servings) / float64(*rec.Servings)
+	for i := range eff.Items {
+		eff.Items[i].Quantity *= factor
+	}
+	rec.Servings = &servings
+	return ScaledRecipe{Recipe: rec, Items: eff.Items, Steps: eff.Steps}, nil
+}
+
 // ListRecipes returns a paginated list of active/inactive recipes.
 func (s *Service) ListRecipes(ctx context.Context, active bool, limit, offset int32) ([]Recipe, error) {
 	rows, err := s.q.ListRecipes(ctx, sqlc.ListRecipesParams{IsActive: active, Limit: limit, Offset: offset})

@@ -308,6 +308,7 @@ var _ EventService = (*event.Service)(nil)
 type RecipeReader interface {
 	GetRecipeByID(ctx context.Context, recipeID int64) (recipe.Recipe, error)
 	ScaleRecipe(ctx context.Context, recipeID int64, servings int32) (recipe.ScaledRecipe, error)
+	ScaleRecipeEffective(ctx context.Context, recipeID, householdID int64, servings int32) (recipe.ScaledRecipe, error)
 	ListRecipes(ctx context.Context, active bool, limit, offset int32) ([]recipe.Recipe, error)
 	CountRecipes(ctx context.Context, active bool) (int64, error)
 	GetRecipesByIDs(ctx context.Context, recipeIDs []int64) ([]recipe.Recipe, error)
@@ -353,11 +354,22 @@ type RecipeRater interface {
 	ListRatedAtLeast(ctx context.Context, userID int64, minRating int16) ([]recipe.RecipeRating, error)
 }
 
+// RecipeDeltaStore is the household-delta surface of the recipe domain —
+// tweak sets layered on canonical recipes (LEN-25).
+type RecipeDeltaStore interface {
+	GetRecipeDelta(ctx context.Context, recipeID, householdID int64) (*recipe.RecipeDelta, error)
+	ListRecipeDeltas(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]*recipe.RecipeDelta, error)
+	SetRecipeDelta(ctx context.Context, recipeID, householdID int64, items []recipe.DeltaItem, steps []recipe.DeltaStep, by string) (recipe.RecipeDelta, error)
+	ClearRecipeDelta(ctx context.Context, recipeID, householdID int64) error
+	AcknowledgeRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error
+}
+
 // RecipeService is the subset of *recipe.Service used by the resolver.
 type RecipeService interface {
 	RecipeReader
 	RecipeWriter
 	RecipeRater
+	RecipeDeltaStore
 }
 
 var _ RecipeService = (*recipe.Service)(nil)
