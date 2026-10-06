@@ -264,10 +264,18 @@ describe("api client: recipes", () => {
 
     const recipe = await api.getRecipe(1);
 
-    expect(lastRequestBody().variables).toEqual({ id: "1" });
+    expect(lastRequestBody().variables).toEqual({ id: "1", view: "effective" });
     expect(recipe.recipeID).toBe(1);
     expect(recipe.servings).toBe(4);
     expect(recipe.isActive).toBe(true);
+  });
+
+  it("getRecipe passes the canonical view through", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ recipe: gqlRecipe() }));
+
+    await api.getRecipe(1, "canonical");
+
+    expect(lastRequestBody().variables).toEqual({ id: "1", view: "canonical" });
   });
 
   it("getRecipe throws ApiError 404 when missing", async () => {

@@ -1296,6 +1296,10 @@ func (r *recipeItemSectionResolver) Items() []*recipeItemResolver { return r.ite
 
 type recipeStepResolver struct{ step recipe.RecipeStep }
 
+func (r *recipeStepResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(r.step.StepID, 10))
+}
+
 func (r *recipeStepResolver) StepNumber() int32 { return r.step.StepNumber }
 
 func (r *recipeStepResolver) Instruction() string { return r.step.Instruction }

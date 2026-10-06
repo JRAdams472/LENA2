@@ -11,6 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
+	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/recipe"
@@ -205,6 +206,52 @@ func TestResolver_PlanRecipes_Delta(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, int64(99), *items[0].ItemID)
+}
+
+// TestLoadRecipeInventoryChildren_DeltaRefs proves the preload unions
+// canonical and delta-target refs with the effective set: a substituted
+// or removed canonical line still resolves its original item/ingredient/
+// unit for view: canonical, and delta targets resolve for the editor.
+func TestLoadRecipeInventoryChildren_DeltaRefs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	inv := mock.NewMockItemReader(ctrl)
+
+	canon := []recipe.RecipeItem{
+		{RecipeItemID: 41, RecipeID: 9, IngredientID: ptrInt64(2), Quantity: 3, UnitID: 14},
+		{RecipeItemID: 42, RecipeID: 9, IngredientID: ptrInt64(3), Quantity: 1, UnitID: 1},
+	}
+	d := &recipe.RecipeDelta{Items: []recipe.DeltaItem{
+		{Kind: recipe.DeltaItemSubstitute, RecipeItemID: ptrInt64(41), IngredientID: ptrInt64(4)},
+		{Kind: recipe.DeltaItemRemove, RecipeItemID: ptrInt64(42)},
+		{Kind: recipe.DeltaItemAdd, IngredientID: ptrInt64(5), UnitID: ptrInt64(1)},
+	}}
+	eff := recipe.ApplyDelta(canon, nil, d)
+	rc := newRecipeChildren()
+	rc.canonItemsBy[9] = canon
+	rc.itemsBy[9] = eff.Items
+	rc.deltas = map[int64]*recipe.RecipeDelta{9: d}
+
+	// Units: canonical lines carry 14+1; the add row carries 1.
+	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{1, 14}).Return([]inventory.Unit{
+		{UnitID: 1, Name: "teaspoon"}, {UnitID: 14, Name: "each"},
+	}, nil)
+	// Canonical-only refs (garlic 2, salt 3) must load alongside the
+	// effective refs (shallot 4, flakes 5) — before the union the
+	// canonical lines resolved nil for view: canonical.
+	inv.EXPECT().GetIngredientsByIDs(gomock.Any(), []int64{2, 3, 4, 5}).Return([]inventory.Ingredient{
+		{IngredientID: 2, Name: "garlic"},
+		{IngredientID: 3, Name: "salt"},
+		{IngredientID: 4, Name: "shallot"},
+		{IngredientID: 5, Name: "red pepper flakes"},
+	}, nil)
+	inv.EXPECT().ListIngredientAllergensByIngredients(gomock.Any(), []int64{2, 3, 4, 5}).Return(nil, nil)
+
+	err := loadRecipeInventoryChildren(context.Background(), recipeChildLoaders{inv: inv}, rc, 0, nil, nil)
+	require.NoError(t, err)
+	assert.Contains(t, rc.ingredients, int64(2))
+	assert.Contains(t, rc.ingredients, int64(3))
+	assert.Contains(t, rc.ingredients, int64(4))
+	assert.Contains(t, rc.ingredients, int64(5))
 }
 
 func f64p(v float64) *float64 { return &v }

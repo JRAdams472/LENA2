@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
@@ -11,6 +11,7 @@ import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Radio from "@mui/material/Radio";
@@ -27,14 +28,32 @@ import TableHead from "@mui/material/TableHead";
 import Rating from "@mui/material/Rating";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import CloseIcon from "@mui/icons-material/Close";
 import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { AllergyWarningsAlert, AllergenFlagsLine } from "@/app/components/AllergyWarning";
 import { api } from "@/lib/api";
-import { Ingredient, Item, PairingSuggestion, RecipeItem, RecipeStep } from "@/lib/types";
+import { Ingredient, Item, PairingSuggestion, RecipeItem, RecipeStep, RecipeView } from "@/lib/types";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
-import { brandedName, brandSuffix, fmtQty } from "@/lib/format";
+import { brandedName, brandSuffix, fmtQty, recipeItemLabel } from "@/lib/format";
+import {
+  DeltaDraft,
+  deltaBadgeLabel,
+  draftForLine,
+  draftForStep,
+  draftFromDelta,
+  upsertItemDraft,
+  upsertStepDraft,
+} from "@/lib/delta";
+import {
+  DeltaBadge,
+  ItemTweakEditor,
+  RecipeDeltaPanel,
+  StepTweakEditor,
+} from "@/app/recipes/[id]/recipe-delta";
 import { isOfDrinkingAge } from "@/lib/age";
 import { useMe } from "@/app/auth/useMe";
 
@@ -48,16 +67,7 @@ function brandItemLabel(item: { name: string; brand?: string | null }): string {
   return brandedName(item.brand, item.name);
 }
 
-// Generic ingredients render alone or with their resolved brand item;
-// brand-only lines lead with the brand.
-function recipeItemLabel(ri: RecipeItem): string {
-  if (ri.ingredientName) {
-    if (!ri.itemName) return ri.ingredientName;
-    return `${ri.ingredientName} — ${brandedName(ri.itemBrand, ri.itemName)}`;
-  }
-  if (ri.itemBrand) return `${ri.itemBrand} — ${ri.itemName ?? ri.itemID}`;
-  return String(ri.itemName ?? ri.itemID);
-}
+
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>();
@@ -82,6 +92,15 @@ export default function RecipeDetailPage() {
   const [itemSearch, setItemSearch] = useState("");
   const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
 
+  // Household delta UI state: the recipe view toggle, the editable change
+  // set, the stale-banner dismissal, and which line/step editor is open.
+  const [view, setView] = useState<RecipeView>("effective");
+  const [draft, setDraft] = useState<DeltaDraft>({ items: [], steps: [] });
+  const [staleDismissed, setStaleDismissed] = useState(false);
+  const [tweakItemId, setTweakItemId] = useState<number | null>(null);
+  const [tweakStepId, setTweakStepId] = useState<number | null>(null);
+  const draftVersionRef = useRef("");
+
   const { me, isAdmin } = useMe();
 
   const localAIReady = useLocalEngineReady();
@@ -99,8 +118,16 @@ export default function RecipeDetailPage() {
   const canPair = (aiQuery.data === true || localAIReady) && isOfDrinkingAge(me?.birthdate);
 
   const recipeQuery = useQuery({
-    queryKey: ["recipe", recipeId],
-    queryFn: () => api.getRecipe(recipeId),
+    queryKey: ["recipe", recipeId, view],
+    queryFn: () => api.getRecipe(recipeId, view),
+    enabled: !Number.isNaN(recipeId),
+  });
+
+  // Canonical rows for the tweaks panel's "Swap X for Y" descriptions —
+  // the effective view's labels are already changed.
+  const canonicalQuery = useQuery({
+    queryKey: ["recipe-canonical", recipeId],
+    queryFn: () => api.getRecipe(recipeId, "canonical"),
     enabled: !Number.isNaN(recipeId),
   });
 
@@ -139,15 +166,42 @@ export default function RecipeDetailPage() {
   });
 
   const recipeItemsQuery = useQuery({
-    queryKey: ["recipe-items", recipeId],
-    queryFn: () => api.getRecipeItems(recipeId),
+    queryKey: ["recipe-items", recipeId, view],
+    queryFn: () => api.getRecipeItems(recipeId, view),
     enabled: !Number.isNaN(recipeId),
   });
 
   const recipeStepsQuery = useQuery({
-    queryKey: ["recipe-steps", recipeId],
-    queryFn: () => api.getRecipeSteps(recipeId),
+    queryKey: ["recipe-steps", recipeId, view],
+    queryFn: () => api.getRecipeSteps(recipeId, view),
     enabled: !Number.isNaN(recipeId),
+  });
+
+  const delta = recipeQuery.data?.householdDelta ?? null;
+
+  // Seed the editor draft from the saved delta — but only when the saved
+  // change set actually moves, so unrelated refetches (rating, categories)
+  // don't wipe unsaved tweaks.
+  useEffect(() => {
+    const version = delta ? `${delta.recipeDeltaID}:${delta.updatedAt}` : "none";
+    if (draftVersionRef.current !== version) {
+      draftVersionRef.current = version;
+      setDraft(draftFromDelta(delta));
+    }
+  }, [delta]);
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: () => api.acknowledgeRecipeDelta(recipeId),
+    onSuccess: () => {
+      setStaleDismissed(false);
+      return queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] });
+    },
+  });
+
+  const unitsQuery = useQuery({
+    queryKey: ["units"],
+    queryFn: api.getUnits,
+    staleTime: 60_000,
   });
 
   const invalidateItems = () =>
@@ -309,12 +363,79 @@ export default function RecipeDetailPage() {
         )}
         {recipeQuery.data && (
           <>
-            <Typography variant="h4" gutterBottom>
-              {recipeQuery.data.recipeName}
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+              <Typography variant="h4" gutterBottom>
+                {recipeQuery.data.recipeName}
+              </Typography>
+              {delta && (
+                <Chip
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  label="Household version"
+                  sx={{ mb: 1 }}
+                />
+              )}
+            </Box>
             <Typography color="text.secondary" gutterBottom>
               {recipeQuery.data.description ?? "No description"}
             </Typography>
+            {(delta || isAdmin) && (
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={view}
+                onChange={(_, v) => {
+                  if (v) setView(v);
+                }}
+                sx={{ mt: 0.5, mb: 1 }}
+                aria-label="Recipe version"
+              >
+                <ToggleButton value="effective">Household version</ToggleButton>
+                <ToggleButton value="canonical">Original recipe</ToggleButton>
+              </ToggleButtonGroup>
+            )}
+            {view === "canonical" && delta && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                Showing the original recipe — your household&apos;s tweaks are
+                hidden.
+              </Alert>
+            )}
+            {delta?.stale && !staleDismissed && (
+              <Alert
+                severity="warning"
+                sx={{ mt: 1 }}
+                action={
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <Button
+                      size="small"
+                      color="inherit"
+                      onClick={() => acknowledgeMutation.mutate()}
+                      disabled={acknowledgeMutation.isPending}
+                    >
+                      Mark reviewed
+                    </Button>
+                    <IconButton
+                      size="small"
+                      aria-label="Dismiss"
+                      color="inherit"
+                      onClick={() => setStaleDismissed(true)}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                }
+              >
+                The original recipe changed after these tweaks were saved.
+                {delta.orphanedItemCount + delta.orphanedStepCount > 0 &&
+                  ` ${delta.orphanedItemCount + delta.orphanedStepCount} tweak(s) no longer apply.`}
+              </Alert>
+            )}
+            {acknowledgeMutation.error && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {(acknowledgeMutation.error as Error).message}
+              </Alert>
+            )}
             <Typography variant="body2">
               Servings: {recipeQuery.data.servings ?? "-"}
             </Typography>
@@ -485,6 +606,7 @@ export default function RecipeDetailPage() {
           Ingredients
         </Typography>
 
+        {isAdmin && (
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
           <IngredientAutocomplete
             value={selectedIngredient}
@@ -585,6 +707,7 @@ export default function RecipeDetailPage() {
             Add Ingredient
           </Button>
         </Box>
+        )}
 
         {addItemMutation.error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -621,25 +744,71 @@ export default function RecipeDetailPage() {
               </TableHead>
               <TableBody>
                 {(recipeItemsQuery.data ?? []).map((recipeItem) => (
-                  <TableRow key={recipeItem.itemID}>
+                  <Fragment key={recipeItem.recipeItemID ?? `add-${recipeItemLabel(recipeItem)}`}>
+                  <TableRow>
                     <TableCell>
                       {fmtQty(recipeItem.quantity)}{" "}
                       {recipeItem.unitOfMeasure ?? ""}
                     </TableCell>
-                    <TableCell>{recipeItemLabel(recipeItem)}</TableCell>
+                    <TableCell>
+                      {recipeItemLabel(recipeItem)}
+                      {recipeItem.deltaKind && (
+                        <DeltaBadge label={deltaBadgeLabel(recipeItem.deltaKind)} />
+                      )}
+                    </TableCell>
                     <TableCell>{recipeItem.isOptional ? "Yes" : "No"}</TableCell>
                     <TableCell>
-                      <Button
-                        size="small"
-                        color="error"
-                        onClick={() =>
-                          removeItemMutation.mutate(recipeItem)
-                        }
-                      >
-                        Remove
-                      </Button>
+                      {(recipeItem.recipeItemID ?? 0) > 0 && !!me?.household && (
+                        <Button
+                          size="small"
+                          onClick={() =>
+                            setTweakItemId(
+                              tweakItemId === recipeItem.recipeItemID
+                                ? null
+                                : (recipeItem.recipeItemID ?? null)
+                            )
+                          }
+                        >
+                          Tweak
+                        </Button>
+                      )}
+                      {isAdmin && (view === "canonical" || !delta) && (
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={() =>
+                            removeItemMutation.mutate(recipeItem)
+                          }
+                        >
+                          Remove
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
+                  {tweakItemId === recipeItem.recipeItemID &&
+                    (recipeItem.recipeItemID ?? 0) > 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} sx={{ py: 0.5 }}>
+                          <ItemTweakEditor
+                            item={recipeItem}
+                            existing={draftForLine(
+                              draft.items,
+                              recipeItem.recipeItemID ?? 0
+                            )}
+                            units={unitsQuery.data ?? []}
+                            onApply={(row) => {
+                              setDraft((d) => ({
+                                ...d,
+                                items: upsertItemDraft(d.items, row),
+                              }));
+                              setTweakItemId(null);
+                            }}
+                            onCancel={() => setTweakItemId(null)}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
@@ -647,11 +816,24 @@ export default function RecipeDetailPage() {
         )}
       </Paper>
 
+      {!!me?.household && (
+        <RecipeDeltaPanel
+          recipeId={recipeId}
+          delta={delta}
+          draft={draft}
+          onDraftChange={setDraft}
+          canonicalItems={canonicalQuery.data?.recipeItems ?? []}
+          canonicalSteps={canonicalQuery.data?.recipeSteps ?? []}
+        />
+      )}
+
       <Paper sx={{ p: 3 }}>
         <Typography variant="h5" gutterBottom>
           Steps
         </Typography>
 
+        {isAdmin && (
+        <>
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
           <TextField
             size="small"
@@ -730,6 +912,8 @@ export default function RecipeDetailPage() {
             helperText='e.g. "oven", "stovetop"'
           />
         </Box>
+        </>
+        )}
 
         {addStepMutation.error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -766,13 +950,21 @@ export default function RecipeDetailPage() {
                 alignItems: "center",
                 gap: 2,
                 py: 1,
+                flexWrap: "wrap",
               }}
             >
               <Typography sx={{ minWidth: 32 }}>{step.stepNumber}.</Typography>
-              <Typography sx={{ flexGrow: 1 }}>
+              <Typography sx={{ flex: "1 1 240px", minWidth: 0 }}>
                 {step.instruction}
+                {step.deltaKind && (
+                  <DeltaBadge label={deltaBadgeLabel(step.deltaKind)} />
+                )}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ minWidth: 180 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ minWidth: { xs: 0, sm: 180 } }}
+              >
                 {[
                   step.durationMinutes != null ? `${step.durationMinutes}m` : null,
                   step.stepType,
@@ -782,17 +974,47 @@ export default function RecipeDetailPage() {
                   .filter(Boolean)
                   .join(" · ")}
               </Typography>
-              <Button size="small" onClick={() => handleEditStep(step)}>
-                Edit
-              </Button>
-              <Button
-                size="small"
-                color="error"
-                onClick={() => handleDeleteStep(step)}
-              >
-                Delete
-              </Button>
+              {step.recipeStepID > 0 && !!me?.household && (
+                <Button
+                  size="small"
+                  onClick={() =>
+                    setTweakStepId(
+                      tweakStepId === step.recipeStepID ? null : step.recipeStepID
+                    )
+                  }
+                >
+                  Tweak
+                </Button>
+              )}
+              {isAdmin && (view === "canonical" || !delta) && (
+                <>
+                  <Button size="small" onClick={() => handleEditStep(step)}>
+                    Edit
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => handleDeleteStep(step)}
+                  >
+                    Delete
+                  </Button>
+                </>
+              )}
             </Box>
+            {tweakStepId === step.recipeStepID && step.recipeStepID > 0 && (
+              <StepTweakEditor
+                step={step}
+                existing={draftForStep(draft.steps, step.recipeStepID)}
+                onApply={(row) => {
+                  setDraft((d) => ({
+                    ...d,
+                    steps: upsertStepDraft(d.steps, row),
+                  }));
+                  setTweakStepId(null);
+                }}
+                onCancel={() => setTweakStepId(null)}
+              />
+            )}
             <Divider />
           </Box>
         ))}

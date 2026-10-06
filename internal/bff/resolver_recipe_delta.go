@@ -193,6 +193,14 @@ func (r *recipeDeltaItemResolver) Ingredient(ctx context.Context) (*ingredientRe
 
 func (r *recipeDeltaItemResolver) Quantity() *float64 { return r.d.Quantity }
 
+func (r *recipeDeltaItemResolver) UnitID() *graphql.ID {
+	if r.d.UnitID == nil {
+		return nil
+	}
+	id := graphql.ID(strconv.FormatInt(*r.d.UnitID, 10))
+	return &id
+}
+
 func (r *recipeDeltaItemResolver) Unit(ctx context.Context) (*string, error) {
 	var units map[int64]inventory.Unit
 	if r.rc != nil {

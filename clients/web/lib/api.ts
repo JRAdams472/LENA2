@@ -20,6 +20,8 @@ import {
   Recipe,
   RecipeItem,
   RecipeStep,
+  RecipeDelta,
+  RecipeView,
   RecipeRecommendation,
   RecipeCategory,
   RecipeCategoryGroup,
@@ -500,15 +502,20 @@ interface GqlUserItemPage {
 }
 
 interface GqlRecipeItem {
+  id: string;
   item: GqlItem | null;
   ingredient?: GqlIngredient | null;
   quantity: number;
   unit: string;
+  section: string | null;
+  displayOrder: number;
   notes: string | null;
   isOptional: boolean;
+  deltaKind: string | null;
 }
 
 interface GqlRecipeStep {
+  id: string;
   stepNumber: number;
   instruction: string;
   durationMinutes: number | null;
@@ -516,6 +523,47 @@ interface GqlRecipeStep {
   isPassive: boolean;
   dependsOnStepNumber: number | null;
   appliance: string | null;
+  deltaKind: string | null;
+}
+
+interface GqlRecipeDeltaItem {
+  id: string;
+  recipeItemId: string | null;
+  kind: string;
+  item: { id: string; name: string; brand: GqlBrand | null } | null;
+  ingredient: GqlIngredient | null;
+  quantity: number | null;
+  unit: string | null;
+  unitId: string | null;
+  section: string | null;
+  displayOrder: number | null;
+  notes: string | null;
+  isOptional: boolean | null;
+  orphaned: boolean;
+}
+
+interface GqlRecipeDeltaStep {
+  id: string;
+  stepId: string | null;
+  kind: string;
+  stepNumber: number | null;
+  instruction: string | null;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean | null;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
+  orphaned: boolean;
+}
+
+interface GqlRecipeDelta {
+  id: string;
+  stale: boolean;
+  orphanedItemCount: number;
+  orphanedStepCount: number;
+  items: GqlRecipeDeltaItem[] | null;
+  steps: GqlRecipeDeltaStep[] | null;
+  updatedAt: string | null;
 }
 
 interface GqlRecipeCategory {
@@ -541,6 +589,7 @@ interface GqlRecipe {
   cookTimeMinutes: number | null;
   items: GqlRecipeItem[];
   steps: GqlRecipeStep[];
+  householdDelta?: GqlRecipeDelta | null;
   isFavorite: boolean;
   selectionCount: number;
   personalSelectionCount: number;
@@ -1272,15 +1321,19 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
 function toRecipeItem(recipeID: number, r: GqlRecipeItem): RecipeItem {
   return {
     recipeID,
+    recipeItemID: num(r.id),
     itemID: r.item ? num(r.item.id) : null,
     ingredientID: r.ingredient ? num(r.ingredient.id) : null,
     ingredientName: r.ingredient?.name ?? null,
     quantity: r.quantity,
     unitOfMeasure: r.unit,
+    section: r.section ?? null,
+    displayOrder: r.displayOrder ?? 0,
     notes: r.notes,
     isOptional: r.isOptional,
     itemName: r.item?.name ?? null,
     itemBrand: r.item?.brand?.name ?? null,
+    deltaKind: r.deltaKind ?? null,
     recipe: null,
     item: r.item ? toItem(r.item) : null,
     ingredient: r.ingredient ? toIngredient(r.ingredient) : null,
@@ -1290,7 +1343,7 @@ function toRecipeItem(recipeID: number, r: GqlRecipeItem): RecipeItem {
 function toRecipeStep(recipeID: number, s: GqlRecipeStep): RecipeStep {
   return {
     ...audit(),
-    recipeStepID: s.stepNumber,
+    recipeStepID: num(s.id) || s.stepNumber,
     recipeID,
     stepNumber: s.stepNumber,
     instruction: s.instruction,
@@ -1299,7 +1352,53 @@ function toRecipeStep(recipeID: number, s: GqlRecipeStep): RecipeStep {
     isPassive: s.isPassive,
     dependsOnStepNumber: s.dependsOnStepNumber,
     appliance: s.appliance,
+    deltaKind: s.deltaKind ?? null,
     recipe: null,
+  };
+}
+
+function toRecipeDeltaItem(i: GqlRecipeDeltaItem): RecipeDelta["items"][number] {
+  return {
+    recipeDeltaItemID: num(i.id),
+    recipeItemID: i.recipeItemId != null ? num(i.recipeItemId) : null,
+    kind: i.kind as RecipeDelta["items"][number]["kind"],
+    itemID: i.item ? num(i.item.id) : null,
+    itemName: i.item?.name ?? null,
+    itemBrand: i.item?.brand?.name ?? null,
+    ingredientID: i.ingredient ? num(i.ingredient.id) : null,
+    ingredientName: i.ingredient?.name ?? null,
+    quantity: i.quantity,
+    unitOfMeasure: i.unit,
+    unitID: i.unitId != null ? num(i.unitId) : null,
+    section: i.section,
+    displayOrder: i.displayOrder,
+    notes: i.notes,
+    isOptional: i.isOptional,
+    orphaned: i.orphaned,
+  };
+}
+
+function toRecipeDelta(d: GqlRecipeDelta): RecipeDelta {
+  return {
+    recipeDeltaID: num(d.id),
+    stale: d.stale,
+    orphanedItemCount: d.orphanedItemCount,
+    orphanedStepCount: d.orphanedStepCount,
+    items: (d.items ?? []).map(toRecipeDeltaItem),
+    steps: (d.steps ?? []).map((s) => ({
+      recipeDeltaStepID: num(s.id),
+      stepID: s.stepId != null ? num(s.stepId) : null,
+      kind: s.kind as RecipeDelta["steps"][number]["kind"],
+      stepNumber: s.stepNumber,
+      instruction: s.instruction,
+      durationMinutes: s.durationMinutes,
+      stepType: s.stepType,
+      isPassive: s.isPassive,
+      dependsOnStepNumber: s.dependsOnStepNumber,
+      appliance: s.appliance,
+      orphaned: s.orphaned,
+    })),
+    updatedAt: d.updatedAt ?? null,
   };
 }
 
@@ -1317,6 +1416,7 @@ function toRecipe(r: GqlRecipe): Recipe {
     isFavorite: r.isFavorite,
     recipeItems: (r.items ?? []).map((i) => toRecipeItem(recipeID, i)),
     recipeSteps: (r.steps ?? []).map((s) => toRecipeStep(recipeID, s)),
+    householdDelta: r.householdDelta ? toRecipeDelta(r.householdDelta) : null,
     selectionCount: r.selectionCount ?? 0,
     personalSelectionCount: r.personalSelectionCount ?? 0,
     myRating: r.myRating ?? null,
@@ -1657,6 +1757,35 @@ function toMealPlan(p: GqlMealPlan): MealPlan {
 
 // EventRecipeStepInput is the writable shape of an event slot's snapshot
 // step — step_number is server-assigned on add.
+// RecipeDeltaItemInput is the writable shape of one line change in a
+// household delta (setRecipeDelta). recipeItemId anchors a canonical
+// line; leave it null for added lines. Substitute carries the new
+// item/ingredient plus optional field overrides — one change per line.
+export interface RecipeDeltaItemInput {
+  recipeItemId?: string | null;
+  kind: "substitute" | "adjust" | "remove" | "add";
+  itemId?: string | null;
+  ingredientId?: string | null;
+  quantity?: number | null;
+  unitId?: string | null;
+  section?: string | null;
+  displayOrder?: number | null;
+  notes?: string | null;
+  isOptional?: boolean | null;
+}
+
+export interface RecipeDeltaStepInput {
+  stepId?: string | null;
+  kind: "replace" | "remove" | "add";
+  stepNumber?: number | null;
+  instruction?: string | null;
+  durationMinutes?: number | null;
+  stepType?: string | null;
+  isPassive?: boolean | null;
+  dependsOnStepNumber?: number | null;
+  appliance?: string | null;
+}
+
 export interface EventRecipeStepInput {
   instruction: string;
   durationMinutes?: number | null;
@@ -1895,12 +2024,42 @@ const RECIPE_CATEGORY_FIELDS = `
   id name group { id name exclusive displayOrder }
 `;
 
-const RECIPE_FIELDS = `
+const RECIPE_CORE_FIELDS = `
   id name description servings prepTimeMinutes cookTimeMinutes isFavorite selectionCount personalSelectionCount myRating averageRating ratingCount
-  items { quantity unit notes isOptional ingredient { id name } item { ${ITEM_FIELDS} } }
-  steps { stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance }
+`;
+
+const RECIPE_ITEM_FIELDS = `
+  id quantity unit section displayOrder notes isOptional deltaKind ingredient { id name } item { ${ITEM_FIELDS} }
+`;
+
+const RECIPE_STEP_FIELDS = `
+  id stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance deltaKind
+`;
+
+const RECIPE_DELTA_FIELDS = `
+  id stale orphanedItemCount orphanedStepCount updatedAt
+  items { id kind recipeItemId item { id name brand { id name } } ingredient { id name } quantity unit unitId section displayOrder notes isOptional orphaned }
+  steps { id kind stepId stepNumber instruction durationMinutes stepType isPassive dependsOnStepNumber appliance orphaned }
+`;
+
+const RECIPE_FIELDS = `
+  ${RECIPE_CORE_FIELDS}
+  items { ${RECIPE_ITEM_FIELDS} }
+  steps { ${RECIPE_STEP_FIELDS} }
   categories { ${RECIPE_CATEGORY_FIELDS} }
   ${ALLERGY_FIELDS}
+`;
+
+// Detail-page variant: items/steps take the caller's $view and the
+// household delta is included. Embedded queries (meal plans, lists) keep
+// the leaner RECIPE_FIELDS so they don't pay for delta rows.
+const RECIPE_DETAIL_FIELDS = `
+  ${RECIPE_CORE_FIELDS}
+  items(view: $view) { ${RECIPE_ITEM_FIELDS} }
+  steps(view: $view) { ${RECIPE_STEP_FIELDS} }
+  categories { ${RECIPE_CATEGORY_FIELDS} }
+  ${ALLERGY_FIELDS}
+  householdDelta { ${RECIPE_DELTA_FIELDS} }
 `;
 
 const RECIPE_IMPORT_FIELDS = `
@@ -3480,10 +3639,13 @@ export const api = {
     return toPaged(items, data.recipes.pageInfo);
   },
 
-  getRecipe: async (id: number): Promise<Recipe> => {
+  // view selects effective (household delta applied) vs. canonical rows.
+  // Mutation flows must pass "canonical" — writing effective rows back
+  // would bake household tweaks into the shared recipe.
+  getRecipe: async (id: number, view: RecipeView = "effective"): Promise<Recipe> => {
     const data = await request<{ recipe: GqlRecipe | null }>(
-      `query ($id: ID!) { recipe(id: $id) { ${RECIPE_FIELDS} } }`,
-      { id: String(id) }
+      `query ($id: ID!, $view: RecipeView!) { recipe(id: $id) { ${RECIPE_DETAIL_FIELDS} } }`,
+      { id: String(id), view }
     );
     if (!data.recipe) throw new ApiError(404, `Recipe ${id} not found`);
     return toRecipe(data.recipe);
@@ -3497,9 +3659,17 @@ export const api = {
     return toRecipe(data.createRecipe);
   },
 
-  updateRecipe: async (id: number, recipe: Partial<Recipe>): Promise<Recipe> => {
-    const existing = await api.getRecipe(id);
+  // Canonical recipe writes merge onto the canonical view so a household
+  // delta's effective rows never leak into the shared recipe. Callers
+  // replacing items/steps pass replaceContents — plain edits keep the
+  // canonical rows even when the caller's object carries effective ones.
+  updateRecipe: async (id: number, recipe: Partial<Recipe>, opts?: { replaceContents?: boolean }): Promise<Recipe> => {
+    const existing = await api.getRecipe(id, "canonical");
     const merged = { ...existing, ...recipe };
+    if (!opts?.replaceContents) {
+      merged.recipeItems = existing.recipeItems;
+      merged.recipeSteps = existing.recipeSteps;
+    }
     const data = await request<{ updateRecipe: GqlRecipe }>(
       `mutation ($id: ID!, $input: CreateRecipeInput!) { updateRecipe(id: $id, input: $input) { ${RECIPE_FIELDS} } }`,
       { id: String(id), input: toRecipeInput(merged) }
@@ -3673,11 +3843,11 @@ export const api = {
     return toRecipe(data.rateRecipe);
   },
 
-  getRecipeItems: async (recipeId: number): Promise<RecipeItem[]> =>
-    (await api.getRecipe(recipeId)).recipeItems ?? [],
+  getRecipeItems: async (recipeId: number, view: RecipeView = "effective"): Promise<RecipeItem[]> =>
+    (await api.getRecipe(recipeId, view)).recipeItems ?? [],
 
   addRecipeItem: async (recipeId: number, item: { itemId?: number | null; ingredientId?: number | null; portion: number; unit: string | null; isOptional: boolean }): Promise<RecipeItem> => {
-    const recipe = await api.getRecipe(recipeId);
+    const recipe = await api.getRecipe(recipeId, "canonical");
     const items = (recipe.recipeItems ?? []).map((i) => ({
       itemId: i.itemID != null ? String(i.itemID) : null,
       ingredientId: i.ingredientID != null ? String(i.ingredientID) : null,
@@ -3694,7 +3864,7 @@ export const api = {
       notes: null,
       isOptional: item.isOptional,
     });
-    const updated = await api.updateRecipe(recipeId, recipeInputOverride(recipe, { items }));
+    const updated = await api.updateRecipe(recipeId, recipeInputOverride(recipe, { items }), { replaceContents: true });
     return (
       (updated.recipeItems ?? []).find((i) =>
         item.itemId != null ? i.itemID === item.itemId : i.ingredientID === item.ingredientId
@@ -3716,7 +3886,7 @@ export const api = {
     recipeId: number,
     item: { itemID?: number | null; ingredientID?: number | null }
   ): Promise<void> => {
-    const recipe = await api.getRecipe(recipeId);
+    const recipe = await api.getRecipe(recipeId, "canonical");
     const items = (recipe.recipeItems ?? [])
       .filter((i) => !(
         (item.itemID != null && i.itemID === item.itemID) ||
@@ -3730,17 +3900,17 @@ export const api = {
         notes: i.notes,
         isOptional: i.isOptional,
       }));
-    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { items }));
+    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { items }), { replaceContents: true });
   },
 
-  getRecipeSteps: async (recipeId: number): Promise<RecipeStep[]> =>
-    (await api.getRecipe(recipeId)).recipeSteps ?? [],
+  getRecipeSteps: async (recipeId: number, view: RecipeView = "effective"): Promise<RecipeStep[]> =>
+    (await api.getRecipe(recipeId, view)).recipeSteps ?? [],
 
   addRecipeStep: async (recipeId: number, step: Partial<RecipeStep> & { stepNumber: number; instruction: string }): Promise<RecipeStep> => {
-    const recipe = await api.getRecipe(recipeId);
+    const recipe = await api.getRecipe(recipeId, "canonical");
     const steps = (recipe.recipeSteps ?? []).map(toStepInput);
     steps.push(toStepInput(step));
-    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }));
+    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }), { replaceContents: true });
     return {
       ...audit(),
       recipeStepID: step.stepNumber,
@@ -3757,13 +3927,13 @@ export const api = {
   },
 
   updateRecipeStep: async (recipeId: number, stepId: number, step: Partial<RecipeStep> & { stepNumber: number; instruction: string }): Promise<RecipeStep> => {
-    const recipe = await api.getRecipe(recipeId);
+    const recipe = await api.getRecipe(recipeId, "canonical");
     const steps = (recipe.recipeSteps ?? []).map((s) =>
       s.recipeStepID === stepId || s.stepNumber === stepId
         ? toStepInput(step)
         : toStepInput(s)
     );
-    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }));
+    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }), { replaceContents: true });
     return {
       ...audit(),
       recipeStepID: step.stepNumber,
@@ -3780,11 +3950,46 @@ export const api = {
   },
 
   deleteRecipeStep: async (recipeId: number, stepId: number): Promise<void> => {
-    const recipe = await api.getRecipe(recipeId);
+    const recipe = await api.getRecipe(recipeId, "canonical");
     const steps = (recipe.recipeSteps ?? [])
       .filter((s) => s.recipeStepID !== stepId && s.stepNumber !== stepId)
       .map(toStepInput);
-    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }));
+    await api.updateRecipe(recipeId, recipeInputOverride(recipe, { steps }), { replaceContents: true });
+  },
+
+  // ---------- household recipe deltas ----------
+
+  // Whole-change-set write: the household's complete tweak list replaces
+  // whatever was saved before (the service diffs line anchors itself).
+  setRecipeDelta: async (
+    recipeId: number,
+    items: RecipeDeltaItemInput[],
+    steps: RecipeDeltaStepInput[]
+  ): Promise<RecipeDelta> => {
+    const data = await request<{ setRecipeDelta: GqlRecipeDelta }>(
+      `mutation ($recipeId: ID!, $items: [RecipeDeltaItemInput!]!, $steps: [RecipeDeltaStepInput!]!) {
+        setRecipeDelta(recipeId: $recipeId, items: $items, steps: $steps) { ${RECIPE_DELTA_FIELDS} }
+      }`,
+      { recipeId: String(recipeId), items, steps }
+    );
+    return toRecipeDelta(data.setRecipeDelta);
+  },
+
+  clearRecipeDelta: async (recipeId: number): Promise<void> => {
+    await request<{ clearRecipeDelta: boolean }>(
+      `mutation ($recipeId: ID!) { clearRecipeDelta(recipeId: $recipeId) }`,
+      { recipeId: String(recipeId) }
+    );
+  },
+
+  // Marks the delta reviewed against the current canonical recipe —
+  // clears the stale banner without changing any tweaks.
+  acknowledgeRecipeDelta: async (recipeId: number): Promise<RecipeDelta> => {
+    const data = await request<{ acknowledgeRecipeDelta: GqlRecipeDelta }>(
+      `mutation ($recipeId: ID!) { acknowledgeRecipeDelta(recipeId: $recipeId) { ${RECIPE_DELTA_FIELDS} } }`,
+      { recipeId: String(recipeId) }
+    );
+    return toRecipeDelta(data.acknowledgeRecipeDelta);
   },
 
   // Meal Plans
