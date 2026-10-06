@@ -286,11 +286,13 @@ func TestSweep_CreatesDedupedReminders(t *testing.T) {
 		{HouseholdItemID: 3, HouseholdID: 7, ItemID: 9, ItemName: "Milk",
 			ExpiresAt: ts(now.AddDate(0, 0, 2))},
 	}, nil)
-	// Members allowed for all kinds.
+	// Members allowed for all kinds; each member is checked twice per
+	// kind — once for the feed channel, once for push (nil prefs deny
+	// push, so no outbox rows are expected).
 	for _, uid := range []int64{11, 12} {
 		for _, kind := range []string{KindProteinDefrost, KindMealPrepAdvance, KindItemExpiring} {
-			mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), kind).Return("cat", nil)
-			mq.EXPECT().ListNotificationPrefs(gomock.Any(), uid).Return(nil, nil)
+			mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), kind).Return("cat", nil).Times(2)
+			mq.EXPECT().ListNotificationPrefs(gomock.Any(), uid).Return(nil, nil).Times(2)
 		}
 	}
 	// 2 recipe reminders + 1 item reminder x 2 members = 6 inserts.
@@ -316,14 +318,42 @@ func TestSweep_SuppressedMemberGetsNothing(t *testing.T) {
 	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
 		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
 	}, nil)
-	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil).Times(2)
 	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return([]sqlc.UserprefsNotificationPref{
 		{Category: "expiry", Enabled: false},
-	}, nil)
+	}, nil).Times(2)
 
 	n, err := svc.Sweep(context.Background(), now)
 	require.NoError(t, err)
 	assert.Equal(t, 0, n)
+}
+
+// A member who opted into push for the expiry category gets an outbox
+// row even when the feed channel is disabled — independent channels.
+func TestSweep_PushOptInEnqueuesDelivery(t *testing.T) {
+	svc, mq := newService(t)
+	now := time.Date(2025, 6, 2, 9, 0, 0, 0, time.Local)
+	mq.EXPECT().ListMealSlotsWithRecipes(gomock.Any()).Return(nil, nil)
+	mq.EXPECT().ListExpiringHouseholdItems(gomock.Any(), gomock.Any()).Return([]sqlc.ListExpiringHouseholdItemsRow{
+		{HouseholdItemID: 3, HouseholdID: 7, ItemID: 9, ItemName: "Milk",
+			ExpiresAt: ts(now.AddDate(0, 0, 1))},
+	}, nil)
+	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
+		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
+	}, nil)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil).Times(2)
+	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return([]sqlc.UserprefsNotificationPref{
+		{Category: "expiry", Enabled: false, PushEnabled: true},
+	}, nil).Times(2)
+	mq.EXPECT().InsertPushDelivery(gomock.Any(), gomock.Cond(func(a sqlc.InsertPushDeliveryParams) bool {
+		return a.UserID == 11 && a.Kind == KindItemExpiring &&
+			a.ItemID.Valid && a.ItemID.Int64 == 9 &&
+			a.Title.Valid && a.DedupKey.Valid
+	})).Return(pgconn.NewCommandTag("INSERT 0 1"), nil)
+
+	n, err := svc.Sweep(context.Background(), now)
+	require.NoError(t, err)
+	assert.Equal(t, 0, n) // push rows don't count as feed notifications
 }
 
 // ---------- push gate ----------

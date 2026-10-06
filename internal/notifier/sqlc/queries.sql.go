@@ -82,10 +82,11 @@ func (q *Queries) InsertItemReminderNotification(ctx context.Context, arg Insert
 	)
 }
 
-const insertPushDelivery = `-- name: InsertPushDelivery :exec
+const insertPushDelivery = `-- name: InsertPushDelivery :execresult
 INSERT INTO household.push_delivery
-    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body, dedup_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (dedup_key) DO NOTHING
 `
 
 type InsertPushDeliveryParams struct {
@@ -99,10 +100,13 @@ type InsertPushDeliveryParams struct {
 	ItemID      pgtype.Int8 `json:"item_id"`
 	Title       pgtype.Text `json:"title"`
 	Body        pgtype.Text `json:"body"`
+	DedupKey    pgtype.Text `json:"dedup_key"`
 }
 
-func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) error {
-	_, err := q.db.Exec(ctx, insertPushDelivery,
+// dedup_key mirrors notifications: sweep inserts carry it (idempotent per
+// user+reminder), event-driven rows pass NULL and never conflict.
+func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, insertPushDelivery,
 		arg.UserID,
 		arg.Kind,
 		arg.HouseholdID,
@@ -113,8 +117,8 @@ func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDelivery
 		arg.ItemID,
 		arg.Title,
 		arg.Body,
+		arg.DedupKey,
 	)
-	return err
 }
 
 const insertRecipeReminderNotification = `-- name: InsertRecipeReminderNotification :execresult
@@ -252,12 +256,15 @@ func (q *Queries) ListDisplayNamesForUsers(ctx context.Context, userIds []int64)
 }
 
 const listDuePushDeliveries = `-- name: ListDuePushDeliveries :many
-SELECT push_delivery_id, user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body, status, attempts, next_attempt_at, sent_at, last_error, created_at, updated_at FROM household.push_delivery
-WHERE status = 'pending' AND next_attempt_at <= now()
+SELECT push_delivery_id, user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body, status, attempts, next_attempt_at, sent_at, last_error, created_at, updated_at, dedup_key FROM household.push_delivery
+WHERE (status = 'pending' AND next_attempt_at <= now())
+   OR (status = 'sending' AND updated_at < now() - interval '5 minutes')
 ORDER BY push_delivery_id
 LIMIT $1
 `
 
+// Due pending rows, plus 'sending' rows whose claim went stale — a worker
+// that dies mid-deliver would otherwise strand them forever.
 func (q *Queries) ListDuePushDeliveries(ctx context.Context, limit int32) ([]HouseholdPushDelivery, error) {
 	rows, err := q.db.Query(ctx, listDuePushDeliveries, limit)
 	if err != nil {
@@ -286,6 +293,7 @@ func (q *Queries) ListDuePushDeliveries(ctx context.Context, limit int32) ([]Hou
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DedupKey,
 		); err != nil {
 			return nil, err
 		}

@@ -71,10 +71,11 @@ type CategoryPreference struct {
 // Service owns notification preferences, the suppression gate, and the
 // reminder sweep.
 type Service struct {
-	q    sqlc.Querier
-	cfg  Config
-	stop context.CancelFunc
-	wg   sync.WaitGroup
+	q        sqlc.Querier
+	cfg      Config
+	stop     context.CancelFunc
+	wg       sync.WaitGroup
+	delivery *DeliveryWorker
 }
 
 // NewService builds the notifier. Like the other domain services it joins

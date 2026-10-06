@@ -99,8 +99,10 @@ type Invite struct {
 // NotifyGate decides at write time whether a notification of a given kind
 // may be delivered to a user — the notifier service implements it so
 // per-category opt-outs and mute windows apply to event-driven writes too.
+// Feed and push are independent channels with separate opt-ins.
 type NotifyGate interface {
 	Allowed(ctx context.Context, userID int64, kind string) (bool, error)
+	PushAllowed(ctx context.Context, userID int64, kind string) (bool, error)
 }
 
 // Service provides household and invite operations backed by Postgres.
@@ -285,13 +287,9 @@ func (s *Service) LockHousehold(ctx context.Context, householdID int64) (Househo
 // their read backlog; call it inside the producing operation's
 // transaction so the notification can never outlive a rolled-back change.
 func (s *Service) CreateNotification(ctx context.Context, userID int64, kind NotificationKind, householdID *int64, actorUserID *int64, inviteID *int64, foodEventID *int64) error {
-	if s.gate != nil {
-		ok, err := s.gate.Allowed(ctx, userID, string(kind))
-		if err != nil {
-			slog.Warn("notification suppression check failed, delivering anyway", "user", userID, "kind", kind, "error", err)
-		} else if !ok {
-			return nil
-		}
+	feedOK, pushOK := s.gateDecisions(ctx, userID, kind)
+	if !feedOK && !pushOK {
+		return nil
 	}
 	hh := pgtype.Int8{}
 	if householdID != nil {
@@ -309,17 +307,59 @@ func (s *Service) CreateNotification(ctx context.Context, userID int64, kind Not
 	if foodEventID != nil {
 		ev = pgtype.Int8{Int64: *foodEventID, Valid: true}
 	}
-	if _, err := s.q.CreateNotification(ctx, sqlc.CreateNotificationParams{
-		UserID:      userID,
-		HouseholdID: hh,
-		Kind:        string(kind),
-		ActorUserID: actor,
-		InviteID:    inv,
-		FoodEventID: ev,
-	}); err != nil {
-		return fmt.Errorf("create notification: %w", domainerr.FromStorage(err))
+	if feedOK {
+		if _, err := s.q.CreateNotification(ctx, sqlc.CreateNotificationParams{
+			UserID:      userID,
+			HouseholdID: hh,
+			Kind:        string(kind),
+			ActorUserID: actor,
+			InviteID:    inv,
+			FoodEventID: ev,
+		}); err != nil {
+			return fmt.Errorf("create notification: %w", domainerr.FromStorage(err))
+		}
+		if err := s.q.PruneReadNotifications(ctx, userID); err != nil {
+			return err
+		}
 	}
-	return s.q.PruneReadNotifications(ctx, userID)
+	if pushOK {
+		// The delivery worker claims the row and fans out to the user's
+		// device tokens; the outbox row rides this transaction so a
+		// rollback can never promise a push for an unmade change.
+		if _, err := s.q.InsertPushDelivery(ctx, sqlc.InsertPushDeliveryParams{
+			UserID:      userID,
+			Kind:        string(kind),
+			HouseholdID: hh,
+			ActorUserID: actor,
+			InviteID:    inv,
+			FoodEventID: ev,
+		}); err != nil {
+			return fmt.Errorf("insert push delivery: %w", domainerr.FromStorage(err))
+		}
+	}
+	return nil
+}
+
+// gateDecisions evaluates the feed and push channels independently: a
+// feed gate error fails open (deliver — an in-app row can't spam a
+// phone), while a push gate error fails closed (don't risk an errant
+// push on a prefs outage).
+func (s *Service) gateDecisions(ctx context.Context, userID int64, kind NotificationKind) (feedOK, pushOK bool) {
+	feedOK = true
+	if s.gate == nil {
+		return feedOK, false
+	}
+	if ok, err := s.gate.Allowed(ctx, userID, string(kind)); err != nil {
+		slog.Warn("notification suppression check failed, delivering anyway", "user", userID, "kind", kind, "error", err)
+	} else {
+		feedOK = ok
+	}
+	if ok, err := s.gate.PushAllowed(ctx, userID, string(kind)); err != nil {
+		slog.Warn("push suppression check failed, skipping push", "user", userID, "kind", kind, "error", err)
+	} else {
+		pushOK = ok
+	}
+	return feedOK, pushOK
 }
 
 // ListNotificationsForUser returns the user's notifications newest-first.

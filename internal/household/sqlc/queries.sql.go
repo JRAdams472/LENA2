@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -239,6 +240,35 @@ func (q *Queries) GetInviteByID(ctx context.Context, inviteID int64) (HouseholdI
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertPushDelivery = `-- name: InsertPushDelivery :execresult
+INSERT INTO household.push_delivery
+    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertPushDeliveryParams struct {
+	UserID      int64       `json:"user_id"`
+	Kind        string      `json:"kind"`
+	HouseholdID pgtype.Int8 `json:"household_id"`
+	ActorUserID pgtype.Int8 `json:"actor_user_id"`
+	InviteID    pgtype.Int8 `json:"invite_id"`
+	FoodEventID pgtype.Int8 `json:"food_event_id"`
+}
+
+// Outbox row for the push channel — written in the same transaction as
+// the feed notification (or instead of it when push-only is enabled).
+// Event-driven rows carry no dedup_key; NULLs never conflict.
+func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, insertPushDelivery,
+		arg.UserID,
+		arg.Kind,
+		arg.HouseholdID,
+		arg.ActorUserID,
+		arg.InviteID,
+		arg.FoodEventID,
+	)
 }
 
 const listNotificationsForUser = `-- name: ListNotificationsForUser :many

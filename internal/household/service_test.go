@@ -217,14 +217,20 @@ func TestCreateNotification(t *testing.T) {
 }
 
 type stubGate struct {
-	allowed bool
-	err     error
-	called  bool
+	allowed     bool
+	pushAllowed bool
+	err         error
+	pushErr     error
+	called      bool
 }
 
 func (g *stubGate) Allowed(_ context.Context, _ int64, _ string) (bool, error) {
 	g.called = true
 	return g.allowed, g.err
+}
+
+func (g *stubGate) PushAllowed(_ context.Context, _ int64, _ string) (bool, error) {
+	return g.pushAllowed, g.pushErr
 }
 
 func TestCreateNotification_GateSuppressed(t *testing.T) {
@@ -246,6 +252,48 @@ func TestCreateNotification_GateErrorDelivers(t *testing.T) {
 
 	// A gate failure fails open so a prefs outage can't eat notifications.
 	require.NoError(t, svc.CreateNotification(ctx, 3, KindMemberJoined, nil, nil, nil, nil))
+}
+
+func TestCreateNotification_PushOnlySkipsFeed(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	// Feed suppressed, push opted in: outbox row written, no feed insert.
+	svc.WithNotifyGate(&stubGate{allowed: false, pushAllowed: true})
+	mq.EXPECT().InsertPushDelivery(ctx, gomock.Any()).DoAndReturn(
+		func(_ context.Context, arg sqlc.InsertPushDeliveryParams) (pgconn.CommandTag, error) {
+			assert.Equal(t, int64(3), arg.UserID)
+			assert.Equal(t, string(KindMemberJoined), arg.Kind)
+			return pgconn.NewCommandTag("INSERT 0 1"), nil
+		})
+	require.NoError(t, svc.CreateNotification(ctx, 3, KindMemberJoined, nil, nil, nil, nil))
+}
+
+func TestCreateNotification_BothChannels(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	svc.WithNotifyGate(&stubGate{allowed: true, pushAllowed: true})
+	mq.EXPECT().CreateNotification(ctx, gomock.Any()).Return(sqlc.HouseholdNotification{}, nil)
+	mq.EXPECT().PruneReadNotifications(ctx, int64(3)).Return(nil)
+	mq.EXPECT().InsertPushDelivery(ctx, gomock.Any()).Return(pgconn.NewCommandTag("INSERT 0 1"), nil)
+	require.NoError(t, svc.CreateNotification(ctx, 3, KindMemberJoined, nil, nil, nil, nil))
+}
+
+func TestCreateNotification_PushGateErrorFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	// Feed gate fine, push gate errors: feed row still lands, no push —
+	// an errant buzz is worse than a skipped one.
+	svc.WithNotifyGate(&stubGate{allowed: true, pushErr: errDB})
+	mq.EXPECT().CreateNotification(ctx, gomock.Any()).Return(sqlc.HouseholdNotification{}, nil)
+	mq.EXPECT().PruneReadNotifications(ctx, int64(3)).Return(nil)
+	require.NoError(t, svc.CreateNotification(ctx, 3, KindMemberJoined, nil, nil, nil, nil))
+}
+
+func TestCreateNotification_BothChannelsSuppressed(t *testing.T) {
+	svc, _ := newService(t)
+	svc.WithNotifyGate(&stubGate{allowed: false, pushAllowed: false})
+	// Nothing written on either channel.
+	require.NoError(t, svc.CreateNotification(context.Background(), 3, KindMemberJoined, nil, nil, nil, nil))
 }
 
 func TestListNotificationsForUser(t *testing.T) {

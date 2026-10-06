@@ -132,14 +132,20 @@ WHERE token = $1;
 SELECT * FROM identity.device_token
 WHERE user_id = ANY(sqlc.arg(user_ids)::bigint[]);
 
--- name: InsertPushDelivery :exec
+-- name: InsertPushDelivery :execresult
+-- dedup_key mirrors notifications: sweep inserts carry it (idempotent per
+-- user+reminder), event-driven rows pass NULL and never conflict.
 INSERT INTO household.push_delivery
-    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body)
-VALUES ($1, $2, sqlc.narg(household_id), sqlc.narg(actor_user_id), sqlc.narg(invite_id), sqlc.narg(food_event_id), sqlc.narg(recipe_id), sqlc.narg(item_id), sqlc.narg(title), sqlc.narg(body));
+    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body, dedup_key)
+VALUES ($1, $2, sqlc.narg(household_id), sqlc.narg(actor_user_id), sqlc.narg(invite_id), sqlc.narg(food_event_id), sqlc.narg(recipe_id), sqlc.narg(item_id), sqlc.narg(title), sqlc.narg(body), sqlc.narg(dedup_key))
+ON CONFLICT (dedup_key) DO NOTHING;
 
 -- name: ListDuePushDeliveries :many
+-- Due pending rows, plus 'sending' rows whose claim went stale — a worker
+-- that dies mid-deliver would otherwise strand them forever.
 SELECT * FROM household.push_delivery
-WHERE status = 'pending' AND next_attempt_at <= now()
+WHERE (status = 'pending' AND next_attempt_at <= now())
+   OR (status = 'sending' AND updated_at < now() - interval '5 minutes')
 ORDER BY push_delivery_id
 LIMIT $1;
 

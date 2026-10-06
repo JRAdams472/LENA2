@@ -101,11 +101,12 @@ func (mr *MockQuerierMockRecorder) InsertItemReminderNotification(ctx, arg any) 
 }
 
 // InsertPushDelivery mocks base method.
-func (m *MockQuerier) InsertPushDelivery(ctx context.Context, arg sqlc.InsertPushDeliveryParams) error {
+func (m *MockQuerier) InsertPushDelivery(ctx context.Context, arg sqlc.InsertPushDeliveryParams) (pgconn.CommandTag, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertPushDelivery", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(pgconn.CommandTag)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // InsertPushDelivery indicates an expected call of InsertPushDelivery.

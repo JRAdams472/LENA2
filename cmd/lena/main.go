@@ -210,6 +210,9 @@ func newServer(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, tel *tel
 	if err := s.wireAuth(cfg, pool, log); err != nil {
 		return nil, nil, err
 	}
+	if err := s.wirePush(cfg); err != nil {
+		return nil, nil, err
+	}
 	e, err := newEcho(cfg, log, tel, pool, s.Authenticator)
 	if err != nil {
 		return nil, nil, err
@@ -270,6 +273,31 @@ func newDomainServices(cfg config.Config, pool *pgxpool.Pool) *serverServices {
 
 // wireAI configures the OCR→draft import pipeline and the assistant's
 // provider, tool registry, and embedding service.
+// wirePush selects the push sender and starts the delivery worker, which
+// drains household.push_delivery to device tokens until Resolver.Shutdown
+// stops it. The default "log" provider records would-be sends so dev and
+// e2e exercise the full pipeline credential-free; "fcm" needs the mounted
+// service account.
+func (s *serverServices) wirePush(cfg config.Config) error {
+	dc := notifier.DeliveryConfig{
+		PollInterval: cfg.PushPollInterval,
+		MaxAttempts:  int32(cfg.PushMaxAttempts),
+	}
+	switch cfg.PushProvider {
+	case "fcm":
+		sender, err := notifier.NewFCMSender(context.Background(), cfg.FCMCredentialsFile)
+		if err != nil {
+			return fmt.Errorf("fcm sender init: %w", err)
+		}
+		s.NotifierSvc.AttachDelivery(context.Background(), sender, dc)
+	case "log", "":
+		s.NotifierSvc.AttachDelivery(context.Background(), notifier.LogSender{}, dc)
+	default:
+		return fmt.Errorf("unknown LENA_PUSH_PROVIDER %q (want log|fcm)", cfg.PushProvider)
+	}
+	return nil
+}
+
 func (s *serverServices) wireAI(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) {
 
 	// Kept as the interface so a missing URL yields an untyped nil —

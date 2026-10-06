@@ -57,6 +57,9 @@ func (s *Service) Stop() {
 	if s.stop != nil {
 		s.stop()
 	}
+	if s.delivery != nil {
+		s.delivery.Stop()
+	}
 	s.wg.Wait()
 }
 
@@ -334,29 +337,32 @@ type itemReminder struct {
 func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, householdID int64, r recipeReminder) int {
 	created := 0
 	for _, uid := range memberIDs {
-		ok, err := s.Allowed(ctx, uid, r.kind)
-		if err != nil {
-			slog.Warn("notification suppression check failed, delivering anyway", "user", uid, "kind", r.kind, "error", err)
-			ok = true
-		}
-		if !ok {
+		feedOK, pushOK := s.channelDecisions(ctx, uid, r.kind)
+		if !feedOK && !pushOK {
 			continue
 		}
-		tag, err := s.q.InsertRecipeReminderNotification(ctx, sqlc.InsertRecipeReminderNotificationParams{
-			UserID:      uid,
-			HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
-			Kind:        r.kind,
-			Title:       pgtype.Text{String: r.title, Valid: true},
-			Body:        pgtype.Text{String: r.body, Valid: true},
-			RecipeID:    pgtype.Int8{Int64: r.recipeID, Valid: true},
-			DedupKey:    pgtype.Text{String: fmt.Sprintf("%s:%d", r.dedupBase, uid), Valid: true},
-		})
-		if err != nil {
-			slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
-			continue
+		dedup := fmt.Sprintf("%s:%d", r.dedupBase, uid)
+		if feedOK {
+			tag, err := s.q.InsertRecipeReminderNotification(ctx, sqlc.InsertRecipeReminderNotificationParams{
+				UserID:      uid,
+				HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
+				Kind:        r.kind,
+				Title:       pgtype.Text{String: r.title, Valid: true},
+				Body:        pgtype.Text{String: r.body, Valid: true},
+				RecipeID:    pgtype.Int8{Int64: r.recipeID, Valid: true},
+				DedupKey:    pgtype.Text{String: dedup, Valid: true},
+			})
+			if err != nil {
+				slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
+				continue
+			}
+			created += int(tag.RowsAffected())
+			_ = s.q.PruneReadNotifications(ctx, uid)
 		}
-		created += int(tag.RowsAffected())
-		_ = s.q.PruneReadNotifications(ctx, uid)
+		if pushOK {
+			s.enqueuePush(ctx, uid, r.kind, householdID, r.title, r.body,
+				pgtype.Int8{Int64: r.recipeID, Valid: true}, pgtype.Int8{}, dedup)
+		}
 	}
 	return created
 }
@@ -364,31 +370,69 @@ func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, h
 func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, householdID int64, r itemReminder) int {
 	created := 0
 	for _, uid := range memberIDs {
-		ok, err := s.Allowed(ctx, uid, r.kind)
-		if err != nil {
-			slog.Warn("notification suppression check failed, delivering anyway", "user", uid, "kind", r.kind, "error", err)
-			ok = true
-		}
-		if !ok {
+		feedOK, pushOK := s.channelDecisions(ctx, uid, r.kind)
+		if !feedOK && !pushOK {
 			continue
 		}
-		tag, err := s.q.InsertItemReminderNotification(ctx, sqlc.InsertItemReminderNotificationParams{
-			UserID:      uid,
-			HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
-			Kind:        r.kind,
-			Title:       pgtype.Text{String: r.title, Valid: true},
-			Body:        pgtype.Text{String: r.body, Valid: true},
-			ItemID:      pgtype.Int8{Int64: r.itemID, Valid: true},
-			DedupKey:    pgtype.Text{String: fmt.Sprintf("%s:%d", r.dedupBase, uid), Valid: true},
-		})
-		if err != nil {
-			slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
-			continue
+		dedup := fmt.Sprintf("%s:%d", r.dedupBase, uid)
+		if feedOK {
+			tag, err := s.q.InsertItemReminderNotification(ctx, sqlc.InsertItemReminderNotificationParams{
+				UserID:      uid,
+				HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
+				Kind:        r.kind,
+				Title:       pgtype.Text{String: r.title, Valid: true},
+				Body:        pgtype.Text{String: r.body, Valid: true},
+				ItemID:      pgtype.Int8{Int64: r.itemID, Valid: true},
+				DedupKey:    pgtype.Text{String: dedup, Valid: true},
+			})
+			if err != nil {
+				slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
+				continue
+			}
+			created += int(tag.RowsAffected())
+			_ = s.q.PruneReadNotifications(ctx, uid)
 		}
-		created += int(tag.RowsAffected())
-		_ = s.q.PruneReadNotifications(ctx, uid)
+		if pushOK {
+			s.enqueuePush(ctx, uid, r.kind, householdID, r.title, r.body,
+				pgtype.Int8{}, pgtype.Int8{Int64: r.itemID, Valid: true}, dedup)
+		}
 	}
 	return created
+}
+
+// channelDecisions evaluates the feed and push gates for one recipient.
+// Feed errors fail open (deliver); push errors fail closed — a prefs
+// outage must not send pushes to a phone.
+func (s *Service) channelDecisions(ctx context.Context, userID int64, kind string) (feedOK, pushOK bool) {
+	ok, err := s.Allowed(ctx, userID, kind)
+	if err != nil {
+		slog.Warn("notification suppression check failed, delivering anyway", "user", userID, "kind", kind, "error", err)
+		ok = true
+	}
+	feedOK = ok
+	ok, err = s.PushAllowed(ctx, userID, kind)
+	if err != nil {
+		slog.Warn("push suppression check failed, skipping push", "user", userID, "kind", kind, "error", err)
+		return feedOK, false
+	}
+	return feedOK, ok
+}
+
+// enqueuePush writes the outbox row the delivery worker drains; dedup_key
+// makes a repeat sweep insert a no-op, matching the feed insert's idempotency.
+func (s *Service) enqueuePush(ctx context.Context, userID int64, kind string, householdID int64, title, body string, recipeID, itemID pgtype.Int8, dedup string) {
+	if _, err := s.q.InsertPushDelivery(ctx, sqlc.InsertPushDeliveryParams{
+		UserID:      userID,
+		Kind:        kind,
+		HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
+		RecipeID:    recipeID,
+		ItemID:      itemID,
+		Title:       pgtype.Text{String: title, Valid: true},
+		Body:        pgtype.Text{String: body, Valid: true},
+		DedupKey:    pgtype.Text{String: dedup, Valid: true},
+	}); err != nil {
+		slog.Warn("push delivery enqueue failed", "kind", kind, "user", userID, "error", err)
+	}
 }
 
 // distinctInt64s dedups preserving first-seen order.
