@@ -117,6 +117,31 @@ builds compile the read out entirely. Mint a token from the e2e stack's
 test issuer (`http://localhost:8085/token?sub=...&email=...`) — tokens
 are valid for one hour.
 
+### Push notifications (Android)
+
+Push runs through Firebase Cloud Messaging and shares the
+`google-services.json` used by Google sign-in — the file is gitignored and
+the google-services Gradle plugin applies only when it is present. When it
+is absent (CI, plain emulator/dev builds), `PushService` falls back to a
+disabled stub instead of crashing, and notification delivery silently
+skips the push channel.
+
+For a real-device build the Firebase Android app's package name must match
+`applicationId` (still the placeholder `com.example.lena_mobile` — the
+rename is an explicit LEN-17 follow-up). Server side, set
+`LENA_PUSH_PROVIDER=fcm` and `LENA_FCM_CREDENTIALS_FILE`
+(see `../../docs/deployment.md`).
+
+At runtime the app requests `POST_NOTIFICATIONS` after sign-in
+(Android 13+), registers the FCM token via `registerDeviceToken`, dedupes
+it in `shared_preferences`, re-registers on `onTokenRefresh`, and
+unregisters best-effort on sign-out through `AuthService.onBeforeSignOut`
+(which runs while the bearer is still valid). Foreground pushes post a
+local heads-up on the `lena_default` channel and bump the unread badge;
+taps route through the shared `notification_links.dart` kind→screen map.
+Per-category Push switches live in Notification settings — `_all` is the
+master opt-in and independent of the Feed switches.
+
 ## On-device AI (Ask Dot)
 
 Ask Dot can run inference on the phone itself via `flutter_gemma` instead of
@@ -160,6 +185,7 @@ gated artifacts.
 - `lib/format.dart` — shared display helpers (localized dates, brand-prefix dedupe, weekday names, grocery-source copy).
 - `lib/widgets/skeleton.dart` — `SkeletonList`/`SkeletonCard`/`SkeletonForm` loading placeholders and the `LenaSplash` boot screen.
 - `lib/ai/` — Ask Dot local inference: `engine.dart`/`protocol.dart`/`agent.dart` (engine contract, JSON tool protocol, bounded agent loop), `gemma_engine.dart` + `gemma_binding.dart` (`flutter_gemma` seam for tests), `model_manager.dart` (download/delete + dart-define config), `controller.dart` (orchestration + SharedPreferences mode), `api.dart` (assistant GraphQL queries).
+- `lib/push/push_service.dart` — push lifecycle with injectable `MessagingClient`/`HeadsUpNotifier` seams (permission, token register/dedup/refresh, sign-out unregister, foreground heads-up, tap routing). `lib/notification_links.dart` is the shared notification→screen map used by feed rows and push taps.
 
 ## Testing
 

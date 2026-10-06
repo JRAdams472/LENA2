@@ -94,7 +94,9 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item. An hourly sweep also produces reminders: protein defrosting (scaled by weight — 48 hours up to 8 lbs, then 24 hours per additional 4 lbs), multi-day recipe prep (steps of 24h+), and pantry items nearing their expiry date. Expiry reminders include an **Add to list** action that drops a replacement onto the current grocery list.
 
-`/notifications` manages delivery per user: each category (household, events, meal reminders, expiry) can be toggled off entirely or muted for a preset window, and a global mute pauses everything.
+`/notifications` manages delivery per user: each category (household, events, meal reminders, expiry) can be toggled off entirely, opted into **mobile push** independently (push is off by default — the `_all` row is the master switch), or muted for a preset window, and a global mute pauses everything.
+
+**Mobile push** (Android) delivers notifications through Firebase Cloud Messaging: the server writes a `push_delivery` outbox row in the same transaction as the event, and a `DeliveryWorker` drains it — `LENA_PUSH_PROVIDER=log` prints redacted sends for dev/e2e, `fcm` needs `LENA_FCM_CREDENTIALS_FILE` (see `docs/deployment.md`). Tapping a push deep-links to the subject (recipe, pantry item, event) via the shared notification-routing map.
 
 Most catalog pages require an **admin** role; day-to-day pantry and planning features are available to all authenticated users.
 

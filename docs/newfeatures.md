@@ -16,6 +16,8 @@ work lives in Linear (project **LENA**) — don't add new wish-list items here.
 ~~Notifications when things are about to expire~~ ✅ Done — `item_expiring` reminders from pantry `expires_at` within a configurable window (`NOTIFY_EXPIRY_DAYS`, default 3).
 ~~this particular notification should allow you to add a replacement item onto your weekly grocery list.~~ ✅ Done — `addItemToCurrentGroceryList` adds the item to the latest list as a manual entry.
 
+✅ Done — **mobile push notifications** (LEN-17, PRs #289–#292): FCM delivery via a `household.push_delivery` outbox + `DeliveryWorker` with retry/backoff and dead-token pruning; `log` provider default, `fcm` when `LENA_FCM_CREDENTIALS_FILE` is set. Per-category **push** toggles on web + mobile (`_all` = master opt-in, independent of feed); token register/refresh/unregister lifecycle; taps deep-link via the shared kind→screen map.
+
 ## Full AI Integration
 ✅ Done — provider-agnostic `llm.Provider` (Ollama + mock + seam for commercial APIs), MCP-shaped read-only tool registry with a bounded agent loop, household-scoped GraphQL surface (`askAssistant`, `suggestMeals`, `suggestEventFixes`, `suggestPairings`, `suggestCocktails`), web + mobile assistant UIs, and a birthdate-based 21+ gate on all alcohol suggestions (PRs #196–#200).
 ### Integrate AI into the meal planner

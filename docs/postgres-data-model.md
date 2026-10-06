@@ -768,7 +768,17 @@ CREATE INDEX idx_event_recipe_event ON event.event_recipe (food_event_id);
 
 `event.event_recipe_item` (migration 0033) is the same snapshot pattern for ingredients: `recipe_item` rows copy into the slot at link time, and `event.event_recipe.base_servings` freezes the recipe's `servings` as the scaling denominator — so `quantity × servings ÷ base_servings` stays correct even if the original recipe's serving count changes later. Event-context item edits write only to the snapshot. `syncEventRecipe` re-copies steps, items, and base servings over the snapshots; unlinking a slot keeps both as free-form content.
 
-## 11. Data-Isolation Notes
+## 11. Notifications & push (migrations `0050`–`0051`)
+
+The notification feed is a **two-channel** design: `household.notifications` is the durable in-app feed, and `household.push_delivery` is a transactional outbox that a background `DeliveryWorker` drains via a pluggable `Sender` (`log` default, `fcm` when credentials are configured).
+
+- `household.notification_pref.push_enabled` — per-category push opt-in, **independent** of the feed `enabled` flag (a category can push without feeding). `category = '_all'` is the master opt-in; `muted_until` silences both channels.
+- `identity.device_token` — one row per registered FCM token: `token` (unique — re-registration under a new user/device takes the row over), `platform` (`android|ios|web`), audit columns. Dead tokens are deleted when FCM reports `Unregistered`.
+- `household.push_delivery` — denormalized outbox (`user_id`, `kind`, `title`, `body`, `data` JSONB, link columns `recipe_id`/`item_id`/`food_event_id`, `dedup_key`). Statuses `pending→sending→sent|failed` with `attempts` and `next_attempt_at` for exponential backoff; `dedup_key` (migration `0051`, e.g. a reminder sweep tick) collapses repeat writes via `ON CONFLICT DO NOTHING`.
+
+Outbox rows are written in the same transaction as their source event (household notification fan-out or the reminder sweep), so a crashed worker can only duplicate a send, never lose one.
+
+## 12. Data-Isolation Notes
 
 - `identity.users` is the only table referenced by foreign keys from other schemas for scoping.
 - All catalog tables are global and may be mutated by any authenticated user initially.

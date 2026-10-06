@@ -205,6 +205,14 @@ LENA_AI_EMBED_MODEL=nomic-embed-text   # must emit 768-dim vectors
 LENA_TRUSTED_PROXY_CIDRS=172.31.0.10/32        # MUST equal Caddy's pinned IP
 LENA_AUTH_CODE_EXCHANGE_RATE_LIMIT_PER_MINUTE=60  # global bucket on /auth/session/:provider
 LENA_GRAPHQL_DISABLE_INTROSPECTION=false       # introspection is admin-only either way
+
+# Mobile push notifications — default provider is `log` (writes the rendered
+# payload to the server log; the outbox still drains, useful for dev/e2e).
+# `fcm` requires a Firebase service-account JSON, mounted as a secret:
+LENA_PUSH_PROVIDER=log
+LENA_PUSH_POLL_INTERVAL=5s        # outbox poll cadence
+LENA_PUSH_MAX_ATTEMPTS=5          # exponential-backoff retries before `failed`
+# LENA_FCM_CREDENTIALS_FILE=/run/secrets/fcm-service-account.json
 ```
 
 ## 5. Build & Run
