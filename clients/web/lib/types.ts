@@ -501,6 +501,19 @@ export interface RecipeDelta {
   updatedAt: string | null;
 }
 
+// One audit row from a household's tweak history (LEN-58) — written on
+// every set, clear, and acknowledge. itemCount/stepCount count the tweaks
+// in the event's "after" snapshot (or "before" on a clear).
+export interface RecipeDeltaEvent {
+  recipeDeltaEventID: number;
+  event: "set" | "clear" | "acknowledge";
+  actor: string;
+  itemCount: number;
+  stepCount: number;
+  detail: string;
+  createdAt: string;
+}
+
 // A household food event groups recipes (or free-form slots) scheduled to
 // be served at absolute times on one date.
 export interface FoodEvent {

@@ -7,10 +7,13 @@ package recipe
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
@@ -424,6 +427,12 @@ func (s *Service) SetRecipeDelta(ctx context.Context, recipeID, householdID int6
 	}
 	var delta RecipeDelta
 	err := s.withTx(ctx, func(q sqlc.Querier) error {
+		// Snapshot the outgoing set before the replace — the event row
+		// records both sides of the rewrite.
+		prior, err := loadDeltaSet(ctx, q, recipeID, householdID)
+		if err != nil {
+			return fmt.Errorf("set recipe delta: %w", domainerr.FromStorage(err))
+		}
 		row, err := q.UpsertRecipeDelta(ctx, sqlc.UpsertRecipeDeltaParams{
 			RecipeID: recipeID, HouseholdID: householdID, CreatedBy: by,
 		})
@@ -434,7 +443,16 @@ func (s *Service) SetRecipeDelta(ctx context.Context, recipeID, householdID int6
 		if err := replaceDeltaItems(ctx, q, row.RecipeDeltaID, items, by); err != nil {
 			return err
 		}
-		return replaceDeltaSteps(ctx, q, row.RecipeDeltaID, steps, by)
+		if err := replaceDeltaSteps(ctx, q, row.RecipeDeltaID, steps, by); err != nil {
+			return err
+		}
+		var before *deltaSetSnapshot
+		if prior != nil {
+			before = prior.snapshot()
+		}
+		after := (deltaSet{items: items, steps: steps}).snapshot()
+		return insertDeltaEvent(ctx, q, recipeID, householdID,
+			&row.RecipeDeltaID, DeltaEventSet, by, before, after)
 	})
 	if err != nil {
 		return RecipeDelta{}, err
@@ -501,32 +519,245 @@ func replaceDeltaSteps(ctx context.Context, q sqlc.Querier, deltaID int64, steps
 
 // ClearRecipeDelta removes the household's delta for a recipe, restoring
 // the canonical view everywhere.
-func (s *Service) ClearRecipeDelta(ctx context.Context, recipeID, householdID int64) error {
-	n, err := s.q.DeleteRecipeDelta(ctx, sqlc.DeleteRecipeDeltaParams{
-		RecipeID: recipeID, HouseholdID: householdID,
+func (s *Service) ClearRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error {
+	return s.withTx(ctx, func(q sqlc.Querier) error {
+		cur, err := loadDeltaSet(ctx, q, recipeID, householdID)
+		if err != nil {
+			return fmt.Errorf("clear recipe delta: %w", domainerr.FromStorage(err))
+		}
+		if cur == nil {
+			return fmt.Errorf("clear recipe delta: %w", domainerr.ErrNotFound)
+		}
+		if err := insertDeltaEvent(ctx, q, recipeID, householdID,
+			&cur.deltaID, DeltaEventClear, by, cur.snapshot(), nil); err != nil {
+			return fmt.Errorf("clear recipe delta: %w", err)
+		}
+		n, err := q.DeleteRecipeDelta(ctx, sqlc.DeleteRecipeDeltaParams{
+			RecipeID: recipeID, HouseholdID: householdID,
+		})
+		if err != nil {
+			return fmt.Errorf("clear recipe delta: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("clear recipe delta: %w", domainerr.ErrNotFound)
+		}
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("clear recipe delta: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("clear recipe delta: %w", domainerr.ErrNotFound)
-	}
-	return nil
 }
 
 // AcknowledgeRecipeDelta marks the delta as reviewed against the recipe's
 // current version — clears the stale flag until the next canonical edit.
 func (s *Service) AcknowledgeRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error {
-	n, err := s.q.AcknowledgeRecipeDelta(ctx, sqlc.AcknowledgeRecipeDeltaParams{
-		RecipeID: recipeID, HouseholdID: householdID, UpdatedBy: textOrNull(by),
+	return s.withTx(ctx, func(q sqlc.Querier) error {
+		cur, err := loadDeltaSet(ctx, q, recipeID, householdID)
+		if err != nil {
+			return fmt.Errorf("acknowledge recipe delta: %w", domainerr.FromStorage(err))
+		}
+		if cur == nil {
+			return fmt.Errorf("acknowledge recipe delta: %w", domainerr.ErrNotFound)
+		}
+		n, err := q.AcknowledgeRecipeDelta(ctx, sqlc.AcknowledgeRecipeDeltaParams{
+			RecipeID: recipeID, HouseholdID: householdID, UpdatedBy: textOrNull(by),
+		})
+		if err != nil {
+			return fmt.Errorf("acknowledge recipe delta: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("acknowledge recipe delta: %w", domainerr.ErrNotFound)
+		}
+		return insertDeltaEvent(ctx, q, recipeID, householdID,
+			&cur.deltaID, DeltaEventAcknowledge, by, nil, cur.snapshot())
+	})
+}
+
+// ---------- event log (LEN-58) ----------
+
+// Delta event kinds — the append-only audit record of who changed a
+// household tweak set and when.
+const (
+	DeltaEventSet         = "set"
+	DeltaEventClear       = "clear"
+	DeltaEventAcknowledge = "acknowledge"
+)
+
+// RecipeDeltaEvent is one audit row — a set/clear/acknowledge plus the
+// serialized change-set snapshots around it. ItemCount/StepCount count
+// the tweaks in the event's "after" snapshot — or "before" on a clear,
+// where there is no after.
+type RecipeDeltaEvent struct {
+	RecipeDeltaEventID int64
+	RecipeID           int64
+	HouseholdID        int64
+	RecipeDeltaID      *int64
+	Event              string
+	Actor              string
+	Detail             []byte
+	ItemCount          int
+	StepCount          int
+	CreatedAt          time.Time
+}
+
+// deltaSetSnapshot is the serialized change-set shape stored in an
+// event's detail blob: {"items": [...], "steps": [...]}.
+type deltaSetSnapshot struct {
+	Items []deltaItemSnapshot `json:"items"`
+	Steps []deltaStepSnapshot `json:"steps"`
+}
+
+type deltaItemSnapshot struct {
+	DeltaItemID  int64    `json:"deltaItemId,omitempty"`
+	RecipeItemID *int64   `json:"recipeItemId,omitempty"`
+	Kind         string   `json:"kind"`
+	ItemID       *int64   `json:"itemId,omitempty"`
+	IngredientID *int64   `json:"ingredientId,omitempty"`
+	Quantity     *float64 `json:"quantity,omitempty"`
+	UnitID       *int64   `json:"unitId,omitempty"`
+	SectionName  *string  `json:"sectionName,omitempty"`
+	DisplayOrder *int32   `json:"displayOrder,omitempty"`
+	Notes        *string  `json:"notes,omitempty"`
+	IsOptional   *bool    `json:"isOptional,omitempty"`
+}
+
+type deltaStepSnapshot struct {
+	DeltaStepID         int64   `json:"deltaStepId,omitempty"`
+	StepID              *int64  `json:"stepId,omitempty"`
+	Kind                string  `json:"kind"`
+	StepNumber          *int32  `json:"stepNumber,omitempty"`
+	Instruction         *string `json:"instruction,omitempty"`
+	DurationMinutes     *int32  `json:"durationMinutes,omitempty"`
+	StepType            *string `json:"stepType,omitempty"`
+	IsPassive           *bool   `json:"isPassive,omitempty"`
+	DependsOnStepNumber *int32  `json:"dependsOnStepNumber,omitempty"`
+	Appliance           *string `json:"appliance,omitempty"`
+}
+
+// deltaEventDetail is the stored blob: {"before": snap|null, "after":
+// snap|null}. Set carries both sides of the replace; clear carries the
+// removed set under before; acknowledge carries the current set under
+// after.
+type deltaEventDetail struct {
+	Before *deltaSetSnapshot `json:"before"`
+	After  *deltaSetSnapshot `json:"after"`
+}
+
+// deltaSet is a loaded change set — the delta row id plus its rows.
+type deltaSet struct {
+	deltaID int64
+	items   []DeltaItem
+	steps   []DeltaStep
+}
+
+func (s deltaSet) snapshot() *deltaSetSnapshot {
+	snap := &deltaSetSnapshot{
+		Items: make([]deltaItemSnapshot, 0, len(s.items)),
+		Steps: make([]deltaStepSnapshot, 0, len(s.steps)),
+	}
+	for _, d := range s.items {
+		snap.Items = append(snap.Items, deltaItemSnapshot(d))
+	}
+	for _, d := range s.steps {
+		snap.Steps = append(snap.Steps, deltaStepSnapshot(d))
+	}
+	return snap
+}
+
+// loadDeltaSet reads the household's delta row and its change rows inside
+// the caller's transaction; nil when no delta exists.
+func loadDeltaSet(ctx context.Context, q sqlc.Querier, recipeID, householdID int64) (*deltaSet, error) {
+	row, err := q.GetRecipeDelta(ctx, sqlc.GetRecipeDeltaParams{
+		RecipeID: recipeID, HouseholdID: householdID,
 	})
 	if err != nil {
-		return fmt.Errorf("acknowledge recipe delta: %w", err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	if n == 0 {
-		return fmt.Errorf("acknowledge recipe delta: %w", domainerr.ErrNotFound)
+	set := &deltaSet{deltaID: row.RecipeDeltaID}
+	itemRows, err := q.ListDeltaItemsByDeltas(ctx, []int64{row.RecipeDeltaID})
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	for _, r := range itemRows {
+		di, err := toDeltaItem(r)
+		if err != nil {
+			return nil, err
+		}
+		set.items = append(set.items, di)
+	}
+	stepRows, err := q.ListDeltaStepsByDeltas(ctx, []int64{row.RecipeDeltaID})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range stepRows {
+		set.steps = append(set.steps, toDeltaStep(r))
+	}
+	return set, nil
+}
+
+// insertDeltaEvent appends one audit row inside the caller's transaction.
+func insertDeltaEvent(ctx context.Context, q sqlc.Querier,
+	recipeID, householdID int64, deltaID *int64, event, actor string,
+	before, after *deltaSetSnapshot) error {
+	detail, err := json.Marshal(deltaEventDetail{Before: before, After: after})
+	if err != nil {
+		return fmt.Errorf("delta event detail: %w", err)
+	}
+	return q.InsertDeltaEvent(ctx, sqlc.InsertDeltaEventParams{
+		RecipeID:      recipeID,
+		HouseholdID:   householdID,
+		RecipeDeltaID: optInt8(deltaID),
+		Event:         event,
+		Actor:         actor,
+		Detail:        detail,
+	})
+}
+
+// ListRecipeDeltaEvents returns the household's tweak history for a
+// recipe, newest first, capped at limit.
+func (s *Service) ListRecipeDeltaEvents(ctx context.Context, recipeID, householdID int64, limit int32) ([]RecipeDeltaEvent, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.q.ListDeltaEvents(ctx, sqlc.ListDeltaEventsParams{
+		RecipeID: recipeID, HouseholdID: householdID, Limit: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list delta events: %w", err)
+	}
+	out := make([]RecipeDeltaEvent, 0, len(rows))
+	for _, r := range rows {
+		ev := RecipeDeltaEvent{
+			RecipeDeltaEventID: r.RecipeDeltaEventID,
+			RecipeID:           r.RecipeID,
+			HouseholdID:        r.HouseholdID,
+			RecipeDeltaID:      int8OrNil(r.RecipeDeltaID),
+			Event:              r.Event,
+			Actor:              r.Actor,
+			Detail:             r.Detail,
+			CreatedAt:          r.CreatedAt,
+		}
+		ev.ItemCount, ev.StepCount = deltaEventCounts(r.Detail)
+		out = append(out, ev)
+	}
+	return out, nil
+}
+
+// deltaEventCounts extracts tweak counts from an event blob — after-side
+// for set/acknowledge, before-side for a clear.
+func deltaEventCounts(detail []byte) (items, steps int) {
+	var d deltaEventDetail
+	if err := json.Unmarshal(detail, &d); err != nil {
+		return 0, 0
+	}
+	snap := d.After
+	if snap == nil {
+		snap = d.Before
+	}
+	if snap == nil {
+		return 0, 0
+	}
+	return len(snap.Items), len(snap.Steps)
 }
 
 // ---------- validation ----------

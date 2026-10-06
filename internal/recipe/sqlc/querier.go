@@ -45,6 +45,9 @@ type Querier interface {
 	GetRecipeDelta(ctx context.Context, arg GetRecipeDeltaParams) (RecipeRecipeDeltum, error)
 	GetRecipeRating(ctx context.Context, arg GetRecipeRatingParams) (RecipeRecipeRating, error)
 	GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]RecipeRecipe, error)
+	// Appends one audit row to the delta event log — the caller supplies the
+	// serialized before/after change-set snapshot.
+	InsertDeltaEvent(ctx context.Context, arg InsertDeltaEventParams) error
 	ListCategoriesByGroup(ctx context.Context, categoryGroupID int64) ([]RecipeCategory, error)
 	// Categories with their group's exclusivity/name, for assignment-time
 	// validation (a recipe may hold at most one category per exclusive group).
@@ -53,6 +56,8 @@ type Querier interface {
 	// metadata so resolvers never query per-row.
 	ListCategoriesForRecipes(ctx context.Context, recipeIds []int64) ([]ListCategoriesForRecipesRow, error)
 	ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup, error)
+	// A recipe's tweak history for the household, newest first.
+	ListDeltaEvents(ctx context.Context, arg ListDeltaEventsParams) ([]RecipeRecipeDeltaEvent, error)
 	ListDeltaItemsByDeltas(ctx context.Context, dollar_1 []int64) ([]RecipeRecipeDeltaItem, error)
 	ListDeltaStepsByDeltas(ctx context.Context, dollar_1 []int64) ([]RecipeRecipeDeltaStep, error)
 	// Active recipes whose embedding is missing or was built by another model —

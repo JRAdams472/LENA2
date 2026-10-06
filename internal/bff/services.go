@@ -360,8 +360,9 @@ type RecipeDeltaStore interface {
 	GetRecipeDelta(ctx context.Context, recipeID, householdID int64) (*recipe.RecipeDelta, error)
 	ListRecipeDeltas(ctx context.Context, householdID int64, recipeIDs []int64) (map[int64]*recipe.RecipeDelta, error)
 	SetRecipeDelta(ctx context.Context, recipeID, householdID int64, items []recipe.DeltaItem, steps []recipe.DeltaStep, by string) (recipe.RecipeDelta, error)
-	ClearRecipeDelta(ctx context.Context, recipeID, householdID int64) error
+	ClearRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error
 	AcknowledgeRecipeDelta(ctx context.Context, recipeID, householdID int64, by string) error
+	ListRecipeDeltaEvents(ctx context.Context, recipeID, householdID int64, limit int32) ([]recipe.RecipeDeltaEvent, error)
 }
 
 // RecipeService is the subset of *recipe.Service used by the resolver.
