@@ -512,7 +512,7 @@ export function StepTweakEditor({
         <>
           <TextField
             size="small"
-            label="Instruction"
+            label="Replacement directions"
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
             sx={{ flexGrow: 1, minWidth: 220 }}
@@ -874,7 +874,7 @@ export function RecipeDeltaPanel({
         />
         <TextField
           size="small"
-          label="Instruction"
+          label="Step directions"
           value={addInstruction}
           onChange={(e) => setAddInstruction(e.target.value)}
           sx={{ flexGrow: 1, minWidth: 220 }}
@@ -895,7 +895,7 @@ export function RecipeDeltaPanel({
           onClick={addStep}
           disabled={addStepNumber === "" || addInstruction.trim() === ""}
         >
-          Add step
+          Add new step
         </Button>
       </Box>
 

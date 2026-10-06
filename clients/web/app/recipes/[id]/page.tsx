@@ -36,7 +36,7 @@ import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { AllergyWarningsAlert, AllergenFlagsLine } from "@/app/components/AllergyWarning";
 import { api } from "@/lib/api";
-import { Ingredient, Item, PairingSuggestion, RecipeItem, RecipeStep, RecipeView } from "@/lib/types";
+import { Ingredient, Item, PairingSuggestion, Recipe, RecipeItem, RecipeStep, RecipeView } from "@/lib/types";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
 import { brandedName, brandSuffix, fmtQty, recipeItemLabel } from "@/lib/format";
 import {
@@ -263,10 +263,23 @@ export default function RecipeDetailPage() {
     onSuccess: invalidateSteps,
   });
 
+  // recipeQuery is view-keyed — merge the fields each mutation owns into
+  // the cached recipe instead of writing the mutation response wholesale
+  // (it carries no householdDelta and effective-only items).
   const rateMutation = useMutation({
     mutationFn: (rating: number) => api.rateRecipe(recipeId, rating),
     onSuccess: (updated) => {
-      queryClient.setQueryData(["recipe", recipeId], updated);
+      queryClient.setQueryData(["recipe", recipeId, view], (old: Recipe | undefined) =>
+        old
+          ? {
+              ...old,
+              myRating: updated.myRating,
+              averageRating: updated.averageRating,
+              ratingCount: updated.ratingCount,
+            }
+          : old
+      );
+      queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] });
     },
   });
 
@@ -274,7 +287,10 @@ export default function RecipeDetailPage() {
     mutationFn: (categoryIds: number[]) =>
       api.setRecipeCategories(recipeId, categoryIds),
     onSuccess: (updated) => {
-      queryClient.setQueryData(["recipe", recipeId], updated);
+      queryClient.setQueryData(["recipe", recipeId, view], (old: Recipe | undefined) =>
+        old ? { ...old, categories: updated.categories } : old
+      );
+      queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
     },
   });

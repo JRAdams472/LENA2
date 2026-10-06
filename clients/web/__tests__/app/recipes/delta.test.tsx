@@ -328,3 +328,72 @@ describe("recipe detail — household delta", () => {
     expect(screen.queryByRole("button", { name: "Tweak" })).toBeNull();
   });
 });
+
+describe("recipe detail — cache regressions", () => {
+  it("updates the categories chip after a category pick (view-keyed cache)", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "admin", household: { householdID: 9 } },
+      isAdmin: true,
+      isLoading: false,
+    });
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(
+          gql({
+            recipeCategoryGroups: [
+              {
+                id: "1",
+                name: "Course",
+                exclusive: true,
+                displayOrder: 1,
+                categories: [
+                  {
+                    id: "4",
+                    name: "Dinner",
+                    group: { id: "1", name: "Course", exclusive: true, displayOrder: 1 },
+                  },
+                  {
+                    id: "5",
+                    name: "Lunch",
+                    group: { id: "1", name: "Course", exclusive: true, displayOrder: 1 },
+                  },
+                ],
+              },
+            ],
+          })
+        );
+      }
+      if (body.query.includes("setRecipeCategories")) {
+        recipe.categories = [
+          {
+            id: "4",
+            name: "Dinner",
+            group: { id: "1", name: "Course", exclusive: true, displayOrder: 1 },
+          },
+        ] as typeof recipe.categories;
+        return Promise.resolve(
+          gql({
+            setRecipeCategories: { ...recipe },
+          })
+        );
+      }
+      if (body.query.includes("units")) {
+        return Promise.resolve(gql({ units: [] }));
+      }
+      if (body.query.includes("aiAvailable")) {
+        return Promise.resolve(gql({ aiAvailable: false }));
+      }
+      if (body.query.includes("recordView")) {
+        return Promise.resolve(gql({ recordView: true }));
+      }
+      return Promise.resolve(gql({ recipe }));
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pasta")).toBeInTheDocument());
+    fireEvent.click(await screen.findByRole("radio", { name: "Dinner" }));
+    await waitFor(() =>
+      expect(screen.getByText("Course: Dinner")).toBeInTheDocument()
+    );
+  });
+});
