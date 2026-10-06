@@ -149,7 +149,7 @@ func TestResolver_SetRecipeDelta(t *testing.T) {
 
 	t.Run("clear + acknowledge", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
-		rec.EXPECT().ClearRecipeDelta(gomock.Any(), int64(9), int64(11)).Return(nil)
+		rec.EXPECT().ClearRecipeDelta(gomock.Any(), int64(9), int64(11), recTestEmail).Return(nil)
 		r := &Resolver{RecipeService: rec}
 		ok, err := r.ClearRecipeDelta(recCtx(), struct{ RecipeID graphql.ID }{RecipeID: "9"})
 		require.NoError(t, err)
@@ -260,4 +260,45 @@ func f64p(v float64) *float64 { return &v }
 func recUser() currentuser.User {
 	u, _ := currentuser.FromContext(recCtx())
 	return u
+}
+
+// TestResolver_RecipeDeltaEvents covers the tweak-history query — auth,
+// household gate, pass-through, and field mapping.
+func TestResolver_RecipeDeltaEvents(t *testing.T) {
+	t.Run("member lists events", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		now := time.Now()
+		rec.EXPECT().ListRecipeDeltaEvents(gomock.Any(), int64(9), int64(11), int32(5)).
+			Return([]recipe.RecipeDeltaEvent{{
+				RecipeDeltaEventID: 77, RecipeID: 9, HouseholdID: 11,
+				Event: recipe.DeltaEventSet, Actor: recTestEmail,
+				Detail:    []byte(`{"before":null,"after":{"items":[],"steps":[]}}`),
+				ItemCount: 2, StepCount: 1, CreatedAt: now,
+			}}, nil)
+
+		r := &Resolver{RecipeService: rec}
+		out, err := r.RecipeDeltaEvents(recCtx(), struct {
+			RecipeID graphql.ID
+			Limit    int32
+		}{RecipeID: "9", Limit: 5})
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		ev := out[0]
+		assert.Equal(t, "77", string(ev.ID()))
+		assert.Equal(t, "set", ev.Event())
+		assert.Equal(t, recTestEmail, ev.Actor())
+		assert.Equal(t, int32(2), ev.ItemCount())
+		assert.Equal(t, int32(1), ev.StepCount())
+		assert.Contains(t, ev.Detail(), `"after"`)
+		assert.Equal(t, graphqlTime(now), ev.CreatedAt())
+	})
+
+	t.Run("household-less user is rejected", func(t *testing.T) {
+		r := &Resolver{}
+		_, err := r.RecipeDeltaEvents(noHouseCtx(), struct {
+			RecipeID graphql.ID
+			Limit    int32
+		}{RecipeID: "9"})
+		require.Error(t, err)
+	})
 }

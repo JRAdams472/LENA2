@@ -2,9 +2,11 @@ package recipe
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,12 +162,31 @@ func deltaRow() sqlc.RecipeRecipeDeltum {
 func TestSetRecipeDelta(t *testing.T) {
 	svc, mq := newService(t)
 	mq.EXPECT().GetRecipeByID(gomock.Any(), int64(7)).Return(recipeRow(), nil)
+	mq.EXPECT().GetRecipeDelta(gomock.Any(), sqlc.GetRecipeDeltaParams{
+		RecipeID: 7, HouseholdID: 3,
+	}).Return(sqlc.RecipeRecipeDeltum{}, pgx.ErrNoRows)
 	mq.EXPECT().UpsertRecipeDelta(gomock.Any(), sqlc.UpsertRecipeDeltaParams{
 		RecipeID: 7, HouseholdID: 3, CreatedBy: "alice",
 	}).Return(deltaRow(), nil)
 	mq.EXPECT().ReplaceDeltaItems(gomock.Any(), int64(40)).Return(nil)
 	mq.EXPECT().AddDeltaItem(gomock.Any(), gomock.Any()).Return(sqlc.RecipeRecipeDeltaItem{}, nil)
 	mq.EXPECT().ReplaceDeltaSteps(gomock.Any(), int64(40)).Return(nil)
+	mq.EXPECT().InsertDeltaEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.InsertDeltaEventParams) error {
+			assert.Equal(t, DeltaEventSet, p.Event)
+			assert.Equal(t, "alice", p.Actor)
+			assert.Equal(t, int64(40), p.RecipeDeltaID.Int64)
+			var detail struct {
+				Before *deltaSetSnapshot `json:"before"`
+				After  *deltaSetSnapshot `json:"after"`
+			}
+			require.NoError(t, json.Unmarshal(p.Detail, &detail))
+			assert.Nil(t, detail.Before)
+			require.NotNil(t, detail.After)
+			require.Len(t, detail.After.Items, 1)
+			assert.Equal(t, DeltaItemSubstitute, detail.After.Items[0].Kind)
+			return nil
+		})
 
 	d, err := svc.SetRecipeDelta(context.Background(), 7, 3, []DeltaItem{
 		{Kind: DeltaItemSubstitute, RecipeItemID: i64(11), IngredientID: i64(202)},
@@ -201,20 +222,49 @@ func TestSetRecipeDeltaValidation(t *testing.T) {
 
 func TestClearRecipeDelta(t *testing.T) {
 	svc, mq := newService(t)
+	mq.EXPECT().GetRecipeDelta(gomock.Any(), sqlc.GetRecipeDeltaParams{
+		RecipeID: 7, HouseholdID: 3,
+	}).Return(deltaRow(), nil)
+	mq.EXPECT().ListDeltaItemsByDeltas(gomock.Any(), []int64{40}).Return(nil, nil)
+	mq.EXPECT().ListDeltaStepsByDeltas(gomock.Any(), []int64{40}).Return(nil, nil)
+	mq.EXPECT().InsertDeltaEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.InsertDeltaEventParams) error {
+			assert.Equal(t, DeltaEventClear, p.Event)
+			assert.Equal(t, "alice", p.Actor)
+			var detail struct {
+				Before *deltaSetSnapshot `json:"before"`
+				After  *deltaSetSnapshot `json:"after"`
+			}
+			require.NoError(t, json.Unmarshal(p.Detail, &detail))
+			require.NotNil(t, detail.Before)
+			assert.Nil(t, detail.After)
+			return nil
+		})
 	mq.EXPECT().DeleteRecipeDelta(gomock.Any(), sqlc.DeleteRecipeDeltaParams{RecipeID: 7, HouseholdID: 3}).Return(int64(1), nil)
-	require.NoError(t, svc.ClearRecipeDelta(context.Background(), 7, 3))
+	require.NoError(t, svc.ClearRecipeDelta(context.Background(), 7, 3, "alice"))
 
 	mq2svc, mq2 := newService(t)
-	mq2.EXPECT().DeleteRecipeDelta(gomock.Any(), gomock.Any()).Return(int64(0), nil)
-	err := mq2svc.ClearRecipeDelta(context.Background(), 7, 3)
+	mq2.EXPECT().GetRecipeDelta(gomock.Any(), gomock.Any()).Return(sqlc.RecipeRecipeDeltum{}, pgx.ErrNoRows)
+	err := mq2svc.ClearRecipeDelta(context.Background(), 7, 3, "alice")
 	require.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
 func TestAcknowledgeRecipeDelta(t *testing.T) {
 	svc, mq := newService(t)
+	mq.EXPECT().GetRecipeDelta(gomock.Any(), sqlc.GetRecipeDeltaParams{
+		RecipeID: 7, HouseholdID: 3,
+	}).Return(deltaRow(), nil)
+	mq.EXPECT().ListDeltaItemsByDeltas(gomock.Any(), []int64{40}).Return(nil, nil)
+	mq.EXPECT().ListDeltaStepsByDeltas(gomock.Any(), []int64{40}).Return(nil, nil)
 	mq.EXPECT().AcknowledgeRecipeDelta(gomock.Any(), sqlc.AcknowledgeRecipeDeltaParams{
 		RecipeID: 7, HouseholdID: 3, UpdatedBy: pgtype.Text{String: "alice", Valid: true},
 	}).Return(int64(1), nil)
+	mq.EXPECT().InsertDeltaEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.InsertDeltaEventParams) error {
+			assert.Equal(t, DeltaEventAcknowledge, p.Event)
+			assert.Equal(t, "alice", p.Actor)
+			return nil
+		})
 	require.NoError(t, svc.AcknowledgeRecipeDelta(context.Background(), 7, 3, "alice"))
 }
 

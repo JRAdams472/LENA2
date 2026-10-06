@@ -463,3 +463,18 @@ SELECT *
 FROM recipe.recipe_delta_step
 WHERE recipe_delta_id = ANY($1::bigint[])
 ORDER BY recipe_delta_id, delta_step_id;
+
+-- name: InsertDeltaEvent :exec
+-- Appends one audit row to the delta event log — the caller supplies the
+-- serialized before/after change-set snapshot.
+INSERT INTO recipe.recipe_delta_event
+    (recipe_id, household_id, recipe_delta_id, event, actor, detail)
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: ListDeltaEvents :many
+-- A recipe's tweak history for the household, newest first.
+SELECT *
+FROM recipe.recipe_delta_event
+WHERE recipe_id = $1 AND household_id = $2
+ORDER BY created_at DESC, recipe_delta_event_id DESC
+LIMIT $3;

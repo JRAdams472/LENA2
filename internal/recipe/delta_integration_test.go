@@ -2,6 +2,7 @@ package recipe
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -122,10 +123,31 @@ func TestIntegrationRecipeDeltaLifecycle(t *testing.T) {
 	assert.Equal(t, 1, eff.OrphanedItems)
 
 	// Clear removes the whole delta.
-	require.NoError(t, svc.ClearRecipeDelta(ctx, rec.RecipeID, householdID))
+	require.NoError(t, svc.ClearRecipeDelta(ctx, rec.RecipeID, householdID, itBy))
 	delta, err = svc.GetRecipeDelta(ctx, rec.RecipeID, householdID)
 	require.NoError(t, err)
 	assert.Nil(t, delta)
-	err = svc.ClearRecipeDelta(ctx, rec.RecipeID, householdID)
+	err = svc.ClearRecipeDelta(ctx, rec.RecipeID, householdID, itBy)
 	require.ErrorIs(t, err, domainerr.ErrNotFound)
+
+	// Event log: one row per set/acknowledge/clear, newest first, all
+	// attributed to the actor.
+	events, err := svc.ListRecipeDeltaEvents(ctx, rec.RecipeID, householdID, 10)
+	require.NoError(t, err)
+	require.Len(t, events, 3)
+	assert.Equal(t, []string{DeltaEventClear, DeltaEventAcknowledge, DeltaEventSet},
+		[]string{events[0].Event, events[1].Event, events[2].Event})
+	for _, e := range events {
+		assert.Equal(t, itBy, e.Actor)
+	}
+	// The clear event's before-snapshot carries the removed change rows.
+	var detail struct {
+		Before struct {
+			Items []struct {
+				Kind string `json:"kind"`
+			} `json:"items"`
+		} `json:"before"`
+	}
+	require.NoError(t, json.Unmarshal(events[0].Detail, &detail))
+	assert.NotEmpty(t, detail.Before.Items)
 }

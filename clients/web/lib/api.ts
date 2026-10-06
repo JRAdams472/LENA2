@@ -21,6 +21,7 @@ import {
   RecipeItem,
   RecipeStep,
   RecipeDelta,
+  RecipeDeltaEvent,
   RecipeView,
   RecipeRecommendation,
   RecipeCategory,
@@ -564,6 +565,16 @@ interface GqlRecipeDelta {
   items: GqlRecipeDeltaItem[] | null;
   steps: GqlRecipeDeltaStep[] | null;
   updatedAt: string | null;
+}
+
+interface GqlRecipeDeltaEvent {
+  id: string;
+  event: string;
+  actor: string;
+  itemCount: number;
+  stepCount: number;
+  detail: string;
+  createdAt: string;
 }
 
 interface GqlRecipeCategory {
@@ -1400,6 +1411,18 @@ function toRecipeDelta(d: GqlRecipeDelta): RecipeDelta {
       orphaned: s.orphaned,
     })),
     updatedAt: d.updatedAt ?? null,
+  };
+}
+
+function toRecipeDeltaEvent(e: GqlRecipeDeltaEvent): RecipeDeltaEvent {
+  return {
+    recipeDeltaEventID: num(e.id),
+    event: e.event as RecipeDeltaEvent["event"],
+    actor: e.actor,
+    itemCount: e.itemCount,
+    stepCount: e.stepCount,
+    detail: e.detail,
+    createdAt: e.createdAt,
   };
 }
 
@@ -4021,6 +4044,17 @@ export const api = {
       { recipeId: String(recipeId) }
     );
     return toRecipeDelta(data.acknowledgeRecipeDelta);
+  },
+
+  recipeDeltaEvents: async (
+    recipeId: number,
+    limit = 20
+  ): Promise<RecipeDeltaEvent[]> => {
+    const data = await request<{ recipeDeltaEvents: GqlRecipeDeltaEvent[] }>(
+      `query ($recipeId: ID!, $limit: Int) { recipeDeltaEvents(recipeId: $recipeId, limit: $limit) { id event actor itemCount stepCount detail createdAt } }`,
+      { recipeId: String(recipeId), limit }
+    );
+    return (data.recipeDeltaEvents ?? []).map(toRecipeDeltaEvent);
   },
 
   // Meal Plans

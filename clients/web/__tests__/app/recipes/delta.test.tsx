@@ -150,6 +150,32 @@ function mockApi(overrides?: { recipe?: object }) {
         gql({ acknowledgeRecipeDelta: { ...deltaRow, stale: false } })
       );
     }
+    if (body.query.includes("recipeDeltaEvents")) {
+      return Promise.resolve(
+        gql({
+          recipeDeltaEvents: [
+            {
+              id: "51",
+              event: "set",
+              actor: "e2e@example.com",
+              itemCount: 1,
+              stepCount: 0,
+              detail: "{}",
+              createdAt: "2026-10-05T12:00:00Z",
+            },
+            {
+              id: "50",
+              event: "acknowledge",
+              actor: "bob@example.com",
+              itemCount: 1,
+              stepCount: 0,
+              detail: "{}",
+              createdAt: "2026-10-04T12:00:00Z",
+            },
+          ],
+        })
+      );
+    }
     if (body.query.includes("recordView")) {
       return Promise.resolve(gql({ recordView: true }));
     }
@@ -314,6 +340,27 @@ describe("recipe detail — household delta", () => {
         )
       ).toBe(true);
     });
+  });
+
+  it("lists the tweak history under the tweaks panel", async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/e2e@example\.com saved the tweak set — 1 line/)
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByText("Tweak history")).toBeInTheDocument();
+    expect(
+      screen.getByText(/bob@example\.com marked the tweaks reviewed/)
+    ).toBeInTheDocument();
+    // The query is household-scoped to this recipe.
+    expect(
+      getBodies().some(
+        (b) =>
+          b.query.includes("recipeDeltaEvents") &&
+          b.variables.recipeId === "1"
+      )
+    ).toBe(true);
   });
 
   it("hides the tweaks panel for a user with no household", async () => {

@@ -580,6 +580,17 @@ type RecipeRecipeCategory struct {
 	AssignedAt time.Time `json:"assigned_at"`
 }
 
+type RecipeRecipeDeltaEvent struct {
+	RecipeDeltaEventID int64       `json:"recipe_delta_event_id"`
+	RecipeID           int64       `json:"recipe_id"`
+	HouseholdID        int64       `json:"household_id"`
+	RecipeDeltaID      pgtype.Int8 `json:"recipe_delta_id"`
+	Event              string      `json:"event"`
+	Actor              string      `json:"actor"`
+	Detail             []byte      `json:"detail"`
+	CreatedAt          time.Time   `json:"created_at"`
+}
+
 type RecipeRecipeDeltaItem struct {
 	DeltaItemID   int64              `json:"delta_item_id"`
 	RecipeDeltaID int64              `json:"recipe_delta_id"`

@@ -40,6 +40,7 @@ import {
   Ingredient,
   Item,
   RecipeDelta,
+  RecipeDeltaEvent,
   RecipeItem,
   RecipeStep,
   Unit,
@@ -64,6 +65,35 @@ const stepKindChip: Record<StepDraft["kind"], string> = {
   remove: "Remove",
   add: "Add",
 };
+
+const eventKindChip: Record<RecipeDeltaEvent["event"], string> = {
+  set: "Saved",
+  clear: "Cleared",
+  acknowledge: "Reviewed",
+};
+
+/** One history line — "e2e@example.com saved the tweak set — 4 lines + 2 steps". */
+function describeDeltaEvent(e: RecipeDeltaEvent): string {
+  const tweakBits = [
+    e.itemCount > 0
+      ? `${e.itemCount} line${e.itemCount === 1 ? "" : "s"}`
+      : null,
+    e.stepCount > 0
+      ? `${e.stepCount} step${e.stepCount === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
+  const tweaks = tweakBits.length > 0 ? ` — ${tweakBits.join(" + ")}` : "";
+  switch (e.event) {
+    case "set":
+      return `${e.actor} saved the tweak set${tweaks}`;
+    case "clear":
+      return `${e.actor} cleared all tweaks${tweaks}`;
+    case "acknowledge":
+      return `${e.actor} marked the tweaks reviewed`;
+    default:
+      return `${e.actor}: ${e.event}`;
+  }
+}
 
 /** Small filled chip marking a delta-produced row (Swapped/Added/…). */
 export function DeltaBadge({ label }: { label: string }) {
@@ -588,6 +618,13 @@ export function RecipeDeltaPanel({
   });
   const units = unitsQuery.data ?? [];
 
+  const eventsQuery = useQuery({
+    queryKey: ["recipeDeltaEvents", recipeId],
+    queryFn: () => api.recipeDeltaEvents(recipeId, 10),
+    staleTime: 30_000,
+  });
+  const events = eventsQuery.data ?? [];
+
   // add-line form
   const [addIngredient, setAddIngredient] = useState<Ingredient | null>(null);
   const [addItem, setAddItem] = useState<Item | null>(null);
@@ -606,6 +643,7 @@ export function RecipeDeltaPanel({
     void queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] });
     void queryClient.invalidateQueries({ queryKey: ["recipe-items", recipeId] });
     void queryClient.invalidateQueries({ queryKey: ["recipe-steps", recipeId] });
+    void queryClient.invalidateQueries({ queryKey: ["recipeDeltaEvents", recipeId] });
   };
 
   const saveMutation = useMutation({
@@ -943,6 +981,41 @@ export function RecipeDeltaPanel({
           </Typography>
         )}
       </Box>
+
+      <Divider sx={{ my: 2 }} />
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        Tweak history
+      </Typography>
+      {events.length === 0 && !eventsQuery.isPending && (
+        <Typography variant="body2" color="text.secondary">
+          No tweak history yet.
+        </Typography>
+      )}
+      {events.map((e) => (
+        <Box
+          key={e.recipeDeltaEventID}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            py: 0.25,
+            flexWrap: "wrap",
+          }}
+        >
+          <Chip
+            size="small"
+            variant="outlined"
+            label={eventKindChip[e.event] ?? e.event}
+            sx={{ minWidth: 64 }}
+          />
+          <Typography variant="body2" sx={{ flexGrow: 1, minWidth: 0 }}>
+            {describeDeltaEvent(e)}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {new Date(e.createdAt).toLocaleString()}
+          </Typography>
+        </Box>
+      ))}
     </Paper>
   );
 }

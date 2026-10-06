@@ -374,7 +374,7 @@ func (r *Resolver) ClearRecipeDelta(ctx context.Context, args struct {
 	if err != nil {
 		return false, err
 	}
-	if err := r.RecipeService.ClearRecipeDelta(ctx, recipeID, u.HouseholdID); err != nil {
+	if err := r.RecipeService.ClearRecipeDelta(ctx, recipeID, u.HouseholdID, u.Email); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -418,4 +418,59 @@ func (r *Resolver) deltaResolverFor(ctx context.Context, u currentuser.User, rec
 		return nil, err
 	}
 	return &recipeDeltaResolver{delta: &d, rec: rec, rc: rc, inv: r.InventoryService}, nil
+}
+
+// ---------- delta event log (LEN-58) ----------
+
+// recipeDeltaEventResolver resolves RecipeDeltaEvent fields.
+type recipeDeltaEventResolver struct {
+	ev recipe.RecipeDeltaEvent
+}
+
+func (e *recipeDeltaEventResolver) ID() graphql.ID {
+	return graphql.ID(strconv.FormatInt(e.ev.RecipeDeltaEventID, 10))
+}
+
+func (e *recipeDeltaEventResolver) Event() string { return e.ev.Event }
+func (e *recipeDeltaEventResolver) Actor() string { return e.ev.Actor }
+
+//nolint:gosec // tweak-set sizes are bounded well below int32
+func (e *recipeDeltaEventResolver) ItemCount() int32 { return int32(e.ev.ItemCount) }
+
+//nolint:gosec // tweak-set sizes are bounded well below int32
+func (e *recipeDeltaEventResolver) StepCount() int32 { return int32(e.ev.StepCount) }
+
+// Detail returns the serialized {"before","after"} change-set snapshots.
+func (e *recipeDeltaEventResolver) Detail() string { return string(e.ev.Detail) }
+
+func (e *recipeDeltaEventResolver) CreatedAt() graphql.Time {
+	return graphqlTime(e.ev.CreatedAt)
+}
+
+// RecipeDeltaEvents lists the household's tweak history for a recipe,
+// newest first.
+func (r *Resolver) RecipeDeltaEvents(ctx context.Context, args struct {
+	RecipeID graphql.ID
+	Limit    int32
+}) ([]*recipeDeltaEventResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if u.HouseholdID == 0 {
+		return nil, badInputf("no household to read delta events for")
+	}
+	recipeID, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return nil, err
+	}
+	events, err := r.RecipeService.ListRecipeDeltaEvents(ctx, recipeID, u.HouseholdID, args.Limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*recipeDeltaEventResolver, len(events))
+	for i := range events {
+		out[i] = &recipeDeltaEventResolver{ev: events[i]}
+	}
+	return out, nil
 }

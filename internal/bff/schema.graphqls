@@ -115,6 +115,9 @@ type Query {
   units: [Unit!]!
   recipe(id: ID!): Recipe
   scaledRecipe(id: ID!, servings: Int!): Recipe
+  # The household's tweak-set audit log for a recipe, newest first
+  # (LEN-58). Covers set/clear/acknowledge with before/after snapshots.
+  recipeDeltaEvents(recipeId: ID!, limit: Int = 20): [RecipeDeltaEvent!]!
   recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String, searchMode: RecipeSearchMode = keyword): RecipePage!
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
@@ -950,6 +953,27 @@ enum RecipeDeltaStepKind {
   replace
   remove
   add
+}
+
+# One audit row from a household's tweak history (LEN-58) — written on
+# every set, clear, and acknowledge.
+type RecipeDeltaEvent {
+  id: ID!
+  event: RecipeDeltaEventKind!
+  # Email of the member who made the change.
+  actor: String!
+  # Tweaks in the event's "after" snapshot — or "before" on a clear.
+  itemCount: Int!
+  stepCount: Int!
+  # Serialized {"before","after"} change-set snapshots, as a JSON string.
+  detail: String!
+  createdAt: Time!
+}
+
+enum RecipeDeltaEventKind {
+  set
+  clear
+  acknowledge
 }
 
 # The whole-delta change set — replace-style writes send every change the

@@ -756,6 +756,35 @@ func (q *Queries) GetRecipesByIDs(ctx context.Context, recipeIds []int64) ([]Rec
 	return items, nil
 }
 
+const insertDeltaEvent = `-- name: InsertDeltaEvent :exec
+INSERT INTO recipe.recipe_delta_event
+    (recipe_id, household_id, recipe_delta_id, event, actor, detail)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertDeltaEventParams struct {
+	RecipeID      int64       `json:"recipe_id"`
+	HouseholdID   int64       `json:"household_id"`
+	RecipeDeltaID pgtype.Int8 `json:"recipe_delta_id"`
+	Event         string      `json:"event"`
+	Actor         string      `json:"actor"`
+	Detail        []byte      `json:"detail"`
+}
+
+// Appends one audit row to the delta event log — the caller supplies the
+// serialized before/after change-set snapshot.
+func (q *Queries) InsertDeltaEvent(ctx context.Context, arg InsertDeltaEventParams) error {
+	_, err := q.db.Exec(ctx, insertDeltaEvent,
+		arg.RecipeID,
+		arg.HouseholdID,
+		arg.RecipeDeltaID,
+		arg.Event,
+		arg.Actor,
+		arg.Detail,
+	)
+	return err
+}
+
 const listCategoriesByGroup = `-- name: ListCategoriesByGroup :many
 SELECT category_id, category_group_id, name, created_by, created_at, updated_by, updated_at
 FROM recipe.category
@@ -918,6 +947,50 @@ func (q *Queries) ListCategoryGroups(ctx context.Context) ([]RecipeCategoryGroup
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeltaEvents = `-- name: ListDeltaEvents :many
+SELECT recipe_delta_event_id, recipe_id, household_id, recipe_delta_id, event, actor, detail, created_at
+FROM recipe.recipe_delta_event
+WHERE recipe_id = $1 AND household_id = $2
+ORDER BY created_at DESC, recipe_delta_event_id DESC
+LIMIT $3
+`
+
+type ListDeltaEventsParams struct {
+	RecipeID    int64 `json:"recipe_id"`
+	HouseholdID int64 `json:"household_id"`
+	Limit       int32 `json:"limit"`
+}
+
+// A recipe's tweak history for the household, newest first.
+func (q *Queries) ListDeltaEvents(ctx context.Context, arg ListDeltaEventsParams) ([]RecipeRecipeDeltaEvent, error) {
+	rows, err := q.db.Query(ctx, listDeltaEvents, arg.RecipeID, arg.HouseholdID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecipeRecipeDeltaEvent{}
+	for rows.Next() {
+		var i RecipeRecipeDeltaEvent
+		if err := rows.Scan(
+			&i.RecipeDeltaEventID,
+			&i.RecipeID,
+			&i.HouseholdID,
+			&i.RecipeDeltaID,
+			&i.Event,
+			&i.Actor,
+			&i.Detail,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
