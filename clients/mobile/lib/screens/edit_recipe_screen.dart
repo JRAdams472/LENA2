@@ -3,6 +3,8 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
+import '../recipe_delta.dart';
+import 'recipe_tweaks.dart';
 
 const String itemsQuery = r'''
   query Items($search: String) {
@@ -42,7 +44,7 @@ const String getOrCreateIngredientMutation = r'''
 ''';
 
 const String recipeQuery = r'''
-  query Recipe($id: ID!) {
+  query Recipe($id: ID!, $view: RecipeView!) {
     recipe(id: $id) {
       id
       name
@@ -61,7 +63,9 @@ const String recipeQuery = r'''
           displayOrder
         }
       }
-      items {
+      items(view: $view) {
+        id
+        deltaKind
         item {
           id
           name
@@ -72,10 +76,56 @@ const String recipeQuery = r'''
         }
         quantity
         unit
+        section
+        displayOrder
+        notes
+        isOptional
       }
-      steps {
+      steps(view: $view) {
+        id
         stepNumber
         instruction
+        durationMinutes
+        stepType
+        isPassive
+        dependsOnStepNumber
+        appliance
+        deltaKind
+      }
+      householdDelta {
+        id
+        stale
+        orphanedItemCount
+        orphanedStepCount
+        updatedAt
+        items {
+          id
+          kind
+          recipeItemId
+          item { id name }
+          ingredient { id name }
+          quantity
+          unit
+          unitId
+          section
+          displayOrder
+          notes
+          isOptional
+          orphaned
+        }
+        steps {
+          id
+          kind
+          stepId
+          stepNumber
+          instruction
+          durationMinutes
+          stepType
+          isPassive
+          dependsOnStepNumber
+          appliance
+          orphaned
+        }
       }
       allergyWarnings {
         memberKind
@@ -87,6 +137,39 @@ const String recipeQuery = r'''
         kind
         allergen { id name }
       }
+    }
+    me {
+      id
+      household {
+        id
+        myRole
+      }
+    }
+  }
+''';
+
+const String setRecipeDeltaMutation = r'''
+  mutation SetRecipeDelta(
+    $recipeId: ID!
+    $items: [RecipeDeltaItemInput!]!
+    $steps: [RecipeDeltaStepInput!]!
+  ) {
+    setRecipeDelta(recipeId: $recipeId, items: $items, steps: $steps) {
+      id
+    }
+  }
+''';
+
+const String clearRecipeDeltaMutation = r'''
+  mutation ClearRecipeDelta($recipeId: ID!) {
+    clearRecipeDelta(recipeId: $recipeId)
+  }
+''';
+
+const String acknowledgeRecipeDeltaMutation = r'''
+  mutation AcknowledgeRecipeDelta($recipeId: ID!) {
+    acknowledgeRecipeDelta(recipeId: $recipeId) {
+      id
     }
   }
 ''';
@@ -171,6 +254,28 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   List<Map<String, dynamic>> _allergyWarnings = [];
   List<Map<String, dynamic>> _allergenFlags = [];
   final Set<String> _selectedCategoryIds = {};
+
+  // LEN-25 household delta state. The effective view is the recipe with
+  // the household's change set applied; _view toggles the contents list
+  // between it and the untouched canonical rows.
+  String _view = 'effective';
+  Map<String, dynamic>? _delta;
+  List<Map<String, dynamic>> _rawDeltaItems = [];
+  List<Map<String, dynamic>> _rawDeltaSteps = [];
+  List<DeltaItemDraft> _itemDrafts = [];
+  List<DeltaStepDraft> _stepDrafts = [];
+  List<Map<String, dynamic>> _viewItems = [];
+  List<Map<String, dynamic>> _viewSteps = [];
+  Map<String, String> _itemBaseLabels = {};
+  Map<String, int> _stepBaseNumbers = {};
+  bool _canTweak = false;
+  bool _isSavingDelta = false;
+
+  bool get _deltaDirty =>
+      !itemDraftsEqual(
+          _itemDrafts, _rawDeltaItems.map(DeltaItemDraft.fromRow).toList()) ||
+      !stepDraftsEqual(
+          _stepDrafts, _rawDeltaSteps.map(DeltaStepDraft.fromRow).toList());
 
   @override
   void didChangeDependencies() {
@@ -275,14 +380,85 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                 .cast<Map<String, dynamic>>();
       });
 
-      final recipeResult = await client.query(
-        QueryOptions(
-          document: gql(recipeQuery),
-          variables: {'id': widget.recipeId},
-        ),
-      );
-      final recipe = recipeResult.data?['recipe'] as Map<String, dynamic>?;
-      if (recipe != null) {
+      final data = await _loadRecipe('effective');
+      if (data != null) {
+        final me = data['me'] as Map<String, dynamic>?;
+        _canTweak = me?['household'] != null;
+        _applyRecipe(data);
+        final delta = (data['recipe'] as Map<String, dynamic>?)?['householdDelta'];
+        // Canonical rows feed base labels for tweak descriptions and the
+        // canonical edit form — fetch them whenever a delta exists (the
+        // effective list alone can't name a removed/swapped line).
+        if (delta != null) {
+          final canonical = await _loadRecipe('canonical');
+          if (canonical != null) {
+            _applyCanonicalBase(canonical['recipe'] as Map<String, dynamic>?);
+          }
+        } else {
+          _applyCanonicalBase(data['recipe'] as Map<String, dynamic>?);
+        }
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadRecipe(String view) async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.query(
+      QueryOptions(
+        document: gql(recipeQuery),
+        variables: {'id': widget.recipeId, 'view': view},
+        fetchPolicy: FetchPolicy.networkOnly,
+      ),
+    );
+    if (result.hasException) return null;
+    return result.data;
+  }
+
+  /// Populates view/delta state from a recipe query response.
+  void _applyRecipe(Map<String, dynamic> data) {
+    final recipe = data['recipe'] as Map<String, dynamic>?;
+    if (recipe == null) return;
+    final delta = recipe['householdDelta'] as Map<String, dynamic>?;
+    setState(() {
+      _viewItems = (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
+      _viewSteps = (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
+      _delta = delta;
+      _rawDeltaItems =
+          (delta?['items'] as List? ?? []).cast<Map<String, dynamic>>();
+      _rawDeltaSteps =
+          (delta?['steps'] as List? ?? []).cast<Map<String, dynamic>>();
+      _itemDrafts = _rawDeltaItems.map(DeltaItemDraft.fromRow).toList();
+      _stepDrafts = _rawDeltaSteps.map(DeltaStepDraft.fromRow).toList();
+    });
+  }
+
+  /// Canonical rows → anchor lookup maps + the admin edit form. The form
+  /// must seed from canonical data, not the household's effective rows.
+  void _applyCanonicalBase(Map<String, dynamic>? recipe) {
+    if (recipe == null) return;
+    final items =
+        (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
+    final steps =
+        (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
+    setState(() {
+      _itemBaseLabels = {
+        for (final i in items)
+          i['id'] as String: ((i['ingredient']?['name'] ??
+                  i['item']?['name'] ??
+                  'line ${i['id']}') as String),
+      };
+      _stepBaseNumbers = {
+        for (final s in steps)
+          s['id'] as String: (s['stepNumber'] as num).toInt(),
+      };
+    });
+    if (!_formFilled) _fillForm(recipe);
+  }
+
+  bool _formFilled = false;
+
+  void _fillForm(Map<String, dynamic> recipe) {
+    _formFilled = true;
         final item = (recipe['items'] as List?)?[0] as Map<String, dynamic>?;
         final step = (recipe['steps'] as List?)?[0] as Map<String, dynamic>?;
         setState(() {
@@ -313,8 +489,6 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           _allergyWarnings = allergyWarningsOf(recipe);
           _allergenFlags = allergenFlagsOf(recipe);
         });
-      }
-    }
   }
 
   Future<void> _setCategories(Set<String> next) async {
@@ -370,6 +544,208 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     } finally {
       if (mounted) setState(() => _isTogglingFavorite = false);
     }
+  }
+
+  // ---------- household delta ----------
+
+  Future<void> _switchView(String view) async {
+    if (view == _view) return;
+    final data = await _loadRecipe(view);
+    if (data == null) return;
+    setState(() => _view = view);
+    final recipe = data['recipe'] as Map<String, dynamic>?;
+    if (recipe != null) {
+      setState(() {
+        _viewItems =
+            (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
+        _viewSteps =
+            (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
+        _delta = recipe['householdDelta'] as Map<String, dynamic>?;
+      });
+    }
+  }
+
+  Future<void> _acknowledgeDelta() async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.mutate(MutationOptions(
+      document: gql(acknowledgeRecipeDeltaMutation),
+      variables: {'recipeId': widget.recipeId},
+    ));
+    if (result.hasException || !mounted) return;
+    setState(() => _delta?['stale'] = false);
+  }
+
+  Future<void> _saveDelta() async {
+    setState(() => _isSavingDelta = true);
+    try {
+      final client = GraphQLProvider.of(context).value;
+      final result = await client.mutate(MutationOptions(
+        document: gql(setRecipeDeltaMutation),
+        variables: {
+          'recipeId': widget.recipeId,
+          'items': _itemDrafts.map(toDeltaItemInput).toList(),
+          'steps': _stepDrafts.map(toDeltaStepInput).toList(),
+        },
+      ));
+      if (result.hasException) {
+        throw result.exception ?? Exception('setRecipeDelta failed');
+      }
+      final data = await _loadRecipe('effective');
+      if (data != null) _applyRecipe(data);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save tweaks')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingDelta = false);
+    }
+  }
+
+  Future<void> _clearDelta() async {
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.mutate(MutationOptions(
+      document: gql(clearRecipeDeltaMutation),
+      variables: {'recipeId': widget.recipeId},
+    ));
+    if (result.hasException || !mounted) return;
+    setState(() {
+      _delta = null;
+      _rawDeltaItems = [];
+      _rawDeltaSteps = [];
+      _itemDrafts = [];
+      _stepDrafts = [];
+    });
+  }
+
+  void _discardDeltaEdits() {
+    setState(() {
+      _itemDrafts = _rawDeltaItems.map(DeltaItemDraft.fromRow).toList();
+      _stepDrafts = _rawDeltaSteps.map(DeltaStepDraft.fromRow).toList();
+    });
+  }
+
+  /// Apply a returned sheet draft to the item change set — one change per
+  /// anchored line, so a re-tweak replaces the earlier draft.
+  void _applyItemDraft(DeltaItemDraft draft) {
+    setState(() {
+      if (draft.recipeItemId != null) {
+        _itemDrafts
+            .removeWhere((d) => d.recipeItemId == draft.recipeItemId);
+      }
+      _itemDrafts.add(draft);
+    });
+  }
+
+  void _applyStepDraft(DeltaStepDraft draft) {
+    setState(() {
+      if (draft.stepId != null) {
+        _stepDrafts.removeWhere((d) => d.stepId == draft.stepId);
+      }
+      _stepDrafts.add(draft);
+    });
+  }
+
+  Future<void> _tweakItem(Map<String, dynamic> line) async {
+    final label = (line['ingredient']?['name'] ?? line['item']?['name'] ??
+        'this line') as String;
+    final draft = await showItemTweakSheet(
+      context: context,
+      anchorId: line['id'] as String?,
+      anchorLabel: label,
+    );
+    if (draft != null) _applyItemDraft(draft);
+  }
+
+  Future<void> _tweakStep(Map<String, dynamic> step) async {
+    final draft = await showStepTweakSheet(
+      context: context,
+      anchorStepId: step['id'] as String?,
+      anchorNumber: (step['stepNumber'] as num?)?.toInt(),
+      nextStepNumber: _viewSteps.length + 1,
+    );
+    if (draft != null) _applyStepDraft(draft);
+  }
+
+  Future<void> _addLineTweak() async {
+    final draft = await showItemTweakSheet(context: context);
+    if (draft != null) _applyItemDraft(draft);
+  }
+
+  Future<void> _addStepTweak() async {
+    final draft = await showStepTweakSheet(
+      context: context,
+      nextStepNumber: _viewSteps.length + 1,
+    );
+    if (draft != null) _applyStepDraft(draft);
+  }
+
+  void _removeDraft(bool isStep, Object draft) {
+    setState(() {
+      if (isStep) {
+        _stepDrafts.remove(draft);
+      } else {
+        _itemDrafts.remove(draft);
+      }
+    });
+  }
+
+  /// "2 cup milk" — quantity + unit + ingredient/item name.
+  String _lineLabel(Map<String, dynamic> line) {
+    final name = (line['ingredient']?['name'] ?? line['item']?['name'] ?? '')
+        as String;
+    final qty = line['quantity'];
+    final unit = line['unit'] as String?;
+    final bits = [
+      if (qty != null) '$qty',
+      if (unit != null && unit.isNotEmpty) unit,
+      name,
+    ].join(' ');
+    return bits.trim().isEmpty ? '(line)' : bits.trim();
+  }
+
+  Widget _contentsRow({
+    required IconData icon,
+    required String label,
+    required String? deltaKind,
+    required bool tweakable,
+    required VoidCallback onTweak,
+  }) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(label),
+                if (deltaKind != null && deltaKindLabels.containsKey(deltaKind))
+                  Chip(
+                    label: Text(deltaKindLabels[deltaKind]!),
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onPrimary),
+                    backgroundColor: theme.colorScheme.primary,
+                  ),
+              ],
+            ),
+          ),
+          if (tweakable)
+            TextButton(
+              onPressed: onTweak,
+              style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact),
+              child: const Text('Tweak'),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -530,6 +906,110 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                 ],
               ),
             ),
+            // LEN-25 — household delta surface (members only).
+            if (widget.recipeId != null && _canTweak) ...[
+              if (_delta?['stale'] == true)
+                Card(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .tertiary
+                      .withValues(alpha: 0.10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'The original recipe changed since your tweaks '
+                          'were saved — review and mark as checked when '
+                          'happy.${((_delta?['orphanedItemCount'] as num? ?? 0) +
+                                  (_delta?['orphanedStepCount'] as num? ?? 0)) >
+                              0 ? ' Some tweaks no longer apply.' : ''}',
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _acknowledgeDelta,
+                            child: const Text('Mark reviewed'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_delta != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Chip(
+                      label: const Text('Household version'),
+                      visualDensity: VisualDensity.compact,
+                      labelStyle:
+                          Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color:
+                                    Theme.of(context).colorScheme.primary,
+                              ),
+                      side: BorderSide(
+                          color: Theme.of(context).colorScheme.primary),
+                    ),
+                    const Spacer(),
+                    SegmentedButton<String>(
+                      style: SegmentedButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
+                      segments: const [
+                        ButtonSegment(
+                            value: 'effective', label: Text('Household')),
+                        ButtonSegment(
+                            value: 'canonical', label: Text('Original')),
+                      ],
+                      selected: {_view},
+                      onSelectionChanged: (s) => _switchView(s.first),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              const Text('Contents (household view)',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              if (_viewItems.isEmpty && _viewSteps.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: Text('No contents yet.'),
+                ),
+              for (final line in _viewItems)
+                _contentsRow(
+                  icon: Icons.restaurant,
+                  label: _lineLabel(line),
+                  deltaKind: line['deltaKind'] as String?,
+                  tweakable: _view == 'effective' && line['id'] != '0',
+                  onTweak: () => _tweakItem(line),
+                ),
+              for (final step in _viewSteps)
+                _contentsRow(
+                  icon: Icons.format_list_numbered,
+                  label:
+                      '${step['stepNumber']}. ${step['instruction']}',
+                  deltaKind: step['deltaKind'] as String?,
+                  tweakable: _view == 'effective' && step['id'] != '0',
+                  onTweak: () => _tweakStep(step),
+                ),
+              const SizedBox(height: 8),
+              RecipeTweaksCard(
+                itemDrafts: _itemDrafts,
+                stepDrafts: _stepDrafts,
+                itemBaseLabels: _itemBaseLabels,
+                stepBaseNumbers: _stepBaseNumbers,
+                dirty: _deltaDirty,
+                saving: _isSavingDelta,
+                onAddLineTweak: _addLineTweak,
+                onAddStepTweak: _addStepTweak,
+                onRemoveDraft: _removeDraft,
+                onSave: _saveDelta,
+                onDiscard: _discardDeltaEdits,
+                onClearAll: _clearDelta,
+              ),
+              const SizedBox(height: 8),
+            ],
             TextField(
               controller: _nameCtrl,
               decoration: const InputDecoration(labelText: 'Name'),
