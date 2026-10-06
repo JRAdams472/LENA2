@@ -155,10 +155,22 @@ await shot("recipe-detail", `/recipes/${roastId}`, "Herb Roast Chicken");
 await page.goto(`${BASE}/recipes/${pastaId}`, { waitUntil: "domcontentloaded" });
 const ingHeading = page.getByRole("heading", { name: "Ingredients" });
 await ingHeading.waitFor();
+// Element shots must wait for the bottom of the page — async panels above
+// (Categories) reflow the paper bounds while they mount.
+await page.getByRole("heading", { name: "Steps" }).waitFor();
+await page.waitForTimeout(300);
 await ingHeading
   .locator("xpath=ancestor::div[contains(@class,'MuiPaper')][1]")
   .screenshot({ path: `${OUT}/recipe-detail-ingredients.png` });
 console.log("shot: recipe-detail-ingredients");
+// Household tweaks panel — the pasta recipe carries the seeded delta
+// (substitute/adjust/remove/add lines + replace/add steps).
+const tweaksHeading = page.getByRole("heading", { name: "Household tweaks" });
+await tweaksHeading.waitFor();
+await tweaksHeading
+  .locator("xpath=ancestor::div[contains(@class,'MuiPaper')][1]")
+  .screenshot({ path: `${OUT}/recipe-tweaks.png` });
+console.log("shot: recipe-tweaks");
 await shot("recipe-categories-admin", "/recipes/categories", "Cuisine");
 await shot("notification-settings", "/notifications", "Expiring pantry items");
 await shot("inventory-categories", "/inventory/categories", "Meat");

@@ -49,6 +49,22 @@ import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
 let draftSeq = 0;
 const nextKey = () => `new-${++draftSeq}`;
 
+const numOrBlank = (v: number | null | undefined): string =>
+  v != null ? String(v) : "";
+
+const itemKindChip: Record<ItemDraft["kind"], string> = {
+  substitute: "Swap",
+  adjust: "Adjust",
+  remove: "Remove",
+  add: "Add",
+};
+
+const stepKindChip: Record<StepDraft["kind"], string> = {
+  replace: "Edit",
+  remove: "Remove",
+  add: "Add",
+};
+
 /** Small filled chip marking a delta-produced row (Swapped/Added/…). */
 export function DeltaBadge({ label }: { label: string }) {
   return (
@@ -445,11 +461,7 @@ export function StepTweakEditor({
     existing?.instruction ?? step.instruction
   );
   const [duration, setDuration] = useState(
-    existing?.durationMinutes != null
-      ? String(existing.durationMinutes)
-      : step.durationMinutes != null
-        ? String(step.durationMinutes)
-        : ""
+    numOrBlank(existing?.durationMinutes ?? step.durationMinutes)
   );
   const [stepType, setStepType] = useState(existing?.stepType ?? step.stepType ?? "");
   const [passive, setPassive] = useState(existing?.isPassive ?? step.isPassive ?? false);
@@ -727,15 +739,7 @@ export function RecipeDeltaPanel({
             <Chip
               size="small"
               variant="outlined"
-              label={
-                d.kind === "substitute"
-                  ? "Swap"
-                  : d.kind === "adjust"
-                    ? "Adjust"
-                    : d.kind === "remove"
-                      ? "Remove"
-                      : "Add"
-              }
+              label={itemKindChip[d.kind]}
               sx={{ minWidth: 64 }}
             />
             <Typography variant="body2" sx={{ flex: "1 1 200px", minWidth: 0 }}>
@@ -779,9 +783,7 @@ export function RecipeDeltaPanel({
             <Chip
               size="small"
               variant="outlined"
-              label={
-                d.kind === "replace" ? "Edit" : d.kind === "remove" ? "Remove" : "Add"
-              }
+              label={stepKindChip[d.kind]}
               sx={{ minWidth: 64 }}
             />
             <Typography variant="body2" sx={{ flex: "1 1 200px", minWidth: 0 }}>

@@ -449,6 +449,84 @@ else:
 # surfaces (recipe detail, meal plan, grocery list) and the profile allergy
 # editor have content. The set* mutations are upsert-shaped, so re-running
 # is a no-op.
+# Household recipe delta on Garlic Butter Pasta (LEN-25) — anchors are
+# re-queried every run so the tweak set stays applied even if the recipe
+# was re-created. setRecipeDelta replaces the whole set, so this is
+# idempotent.
+_unit_ids = {u["name"].lower(): u["id"] for u in gql(ADMIN, "{ units { id name } }")["units"]}
+_pasta_view = gql(
+    ADMIN,
+    "query($id: ID!) { recipe(id: $id) { items(view: canonical) { id quantity unit item { name } ingredient { name } } steps(view: canonical) { id stepNumber } } }",
+    {"id": pasta["id"]},
+)["recipe"]
+_pasta_items = _pasta_view["items"]
+_pasta_steps = _pasta_view["steps"]
+
+
+def _line(pred):
+    return next((i for i in _pasta_items if pred(i)), None)
+
+
+_butter = _line(lambda i: i["item"] and "butter" in i["item"]["name"].lower())
+_garlic = _line(lambda i: i["ingredient"] and i["ingredient"]["name"].lower() == "garlic")
+_salt = _line(lambda i: i["ingredient"] and i["ingredient"]["name"].lower() == "salt")
+_step4 = next((s for s in _pasta_steps if s["stepNumber"] == 4), None)
+
+_delta_items, _delta_steps = [], []
+if _butter:
+    _delta_items.append(
+        {
+            "recipeItemId": _butter["id"],
+            "kind": "adjust",
+            "quantity": 6,
+            "unitId": _unit_ids.get("tbsp") or _unit_ids.get("tablespoon"),
+        }
+    )
+if _garlic:
+    _delta_items.append(
+        {
+            "recipeItemId": _garlic["id"],
+            "kind": "substitute",
+            "ingredientId": get_ing("shallot"),
+        }
+    )
+if _salt:
+    _delta_items.append({"recipeItemId": _salt["id"], "kind": "remove"})
+_delta_items.append(
+    {
+        "kind": "add",
+        "ingredientId": get_ing("red pepper flakes"),
+        "quantity": 0.5,
+        "unitId": _unit_ids.get("tsp") or _unit_ids.get("teaspoon"),
+        "notes": "optional heat",
+        "isOptional": True,
+    }
+)
+if _step4:
+    _delta_steps.append(
+        {
+            "stepId": _step4["id"],
+            "kind": "replace",
+            "instruction": "Plate, then rest for one minute before serving",
+        }
+    )
+_delta_steps.append(
+    {
+        "kind": "add",
+        "stepNumber": 5,
+        "instruction": "Finish with a drizzle of olive oil and extra cheese",
+        "stepType": "serve",
+        "isPassive": False,
+    }
+)
+
+gql(
+    ADMIN,
+    "mutation($r: ID!, $i: [RecipeDeltaItemInput!]!, $s: [RecipeDeltaStepInput!]!) { setRecipeDelta(recipeId: $r, items: $i, steps: $s) { id } }",
+    {"r": pasta["id"], "i": _delta_items, "s": _delta_steps},
+)
+print("recipe delta seeded on", pasta["name"])
+
 allergen_by_name = {
     a["name"].lower(): a["id"]
     for a in gql(ADMIN, "{ allergens { id name } }")["allergens"]

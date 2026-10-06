@@ -102,6 +102,7 @@ export function recipeItemLabel(ri: {
 
 /** "qty unit label" — the full display of a recipe line's amount + name. */
 export function recipeLineText(ri: RecipeItem): string {
-  const qty = `${fmtQty(ri.quantity)}${ri.unitOfMeasure ? ` ${ri.unitOfMeasure}` : ""}`.trim();
+  const unit = ri.unitOfMeasure ? ` ${ri.unitOfMeasure}` : "";
+  const qty = `${fmtQty(ri.quantity)}${unit}`.trim();
   return qty ? `${qty} ${recipeItemLabel(ri)}` : recipeItemLabel(ri);
 }

@@ -254,28 +254,7 @@ func applyStepDelta(steps []RecipeStep, changes []DeltaStep) []RecipeStep {
 		out = append(out, st)
 	}
 	for _, d := range adds {
-		st := RecipeStep{DeltaKind: DeltaStepAdd}
-		if len(steps) > 0 {
-			st.RecipeID = steps[0].RecipeID
-		}
-		if d.StepNumber != nil {
-			st.StepNumber = *d.StepNumber
-		}
-		if d.Instruction != nil {
-			st.Instruction = *d.Instruction
-		}
-		st.DurationMinutes = d.DurationMinutes
-		if d.StepType != nil {
-			st.StepType = *d.StepType
-		}
-		if d.IsPassive != nil {
-			st.IsPassive = *d.IsPassive
-		}
-		st.DependsOnStepNumber = d.DependsOnStepNumber
-		if d.Appliance != nil {
-			st.Appliance = *d.Appliance
-		}
-		out = append(out, st)
+		out = append(out, newAddedStep(d, steps))
 	}
 	// An added step takes its step_number slot — on ties it sorts ahead of
 	// the canonical step it displaces.
@@ -291,6 +270,32 @@ func applyStepDelta(steps []RecipeStep, changes []DeltaStep) []RecipeStep {
 		out[i].StepNumber = int32(i + 1)
 	}
 	return out
+}
+
+// newAddedStep builds the effective step an add row carries.
+func newAddedStep(d DeltaStep, steps []RecipeStep) RecipeStep {
+	st := RecipeStep{DeltaKind: DeltaStepAdd}
+	if len(steps) > 0 {
+		st.RecipeID = steps[0].RecipeID
+	}
+	if d.StepNumber != nil {
+		st.StepNumber = *d.StepNumber
+	}
+	if d.Instruction != nil {
+		st.Instruction = *d.Instruction
+	}
+	st.DurationMinutes = d.DurationMinutes
+	if d.StepType != nil {
+		st.StepType = *d.StepType
+	}
+	if d.IsPassive != nil {
+		st.IsPassive = *d.IsPassive
+	}
+	st.DependsOnStepNumber = d.DependsOnStepNumber
+	if d.Appliance != nil {
+		st.Appliance = *d.Appliance
+	}
+	return st
 }
 
 // patchRecipeStep applies the non-nil columns of a replace row.
@@ -426,57 +431,72 @@ func (s *Service) SetRecipeDelta(ctx context.Context, recipeID, householdID int6
 			return fmt.Errorf("upsert recipe delta: %w", err)
 		}
 		delta = *toRecipeDelta(row)
-		if err := q.ReplaceDeltaItems(ctx, row.RecipeDeltaID); err != nil {
-			return fmt.Errorf("replace delta items: %w", err)
+		if err := replaceDeltaItems(ctx, q, row.RecipeDeltaID, items, by); err != nil {
+			return err
 		}
-		for _, d := range items {
-			qty, err := deltaQuantity(d.Quantity)
-			if err != nil {
-				return err
-			}
-			if _, err := q.AddDeltaItem(ctx, sqlc.AddDeltaItemParams{
-				RecipeDeltaID: row.RecipeDeltaID,
-				RecipeItemID:  optInt8(d.RecipeItemID),
-				Kind:          d.Kind,
-				ItemID:        optInt8(d.ItemID),
-				IngredientID:  optInt8(d.IngredientID),
-				Quantity:      qty,
-				UnitID:        optInt8(d.UnitID),
-				SectionName:   optText(d.SectionName),
-				DisplayOrder:  optInt4(d.DisplayOrder),
-				Notes:         optText(d.Notes),
-				IsOptional:    optBool(d.IsOptional),
-				CreatedBy:     by,
-			}); err != nil {
-				return fmt.Errorf("add delta item: %w", domainerr.FromStorage(err))
-			}
-		}
-		if err := q.ReplaceDeltaSteps(ctx, row.RecipeDeltaID); err != nil {
-			return fmt.Errorf("replace delta steps: %w", err)
-		}
-		for _, d := range steps {
-			if _, err := q.AddDeltaStep(ctx, sqlc.AddDeltaStepParams{
-				RecipeDeltaID:       row.RecipeDeltaID,
-				StepID:              optInt8(d.StepID),
-				Kind:                d.Kind,
-				StepNumber:          optInt4(d.StepNumber),
-				Instruction:         optText(d.Instruction),
-				DurationMinutes:     optInt4(d.DurationMinutes),
-				StepType:            optText(d.StepType),
-				IsPassive:           optBool(d.IsPassive),
-				DependsOnStepNumber: optInt4(d.DependsOnStepNumber),
-				Appliance:           optText(d.Appliance),
-				CreatedBy:           by,
-			}); err != nil {
-				return fmt.Errorf("add delta step: %w", domainerr.FromStorage(err))
-			}
-		}
-		return nil
+		return replaceDeltaSteps(ctx, q, row.RecipeDeltaID, steps, by)
 	})
 	if err != nil {
 		return RecipeDelta{}, err
 	}
 	return delta, nil
+}
+
+// replaceDeltaItems rewrites the change set's item rows inside the
+// caller's transaction.
+func replaceDeltaItems(ctx context.Context, q sqlc.Querier, deltaID int64, items []DeltaItem, by string) error {
+	if err := q.ReplaceDeltaItems(ctx, deltaID); err != nil {
+		return fmt.Errorf("replace delta items: %w", err)
+	}
+	for _, d := range items {
+		qty, err := deltaQuantity(d.Quantity)
+		if err != nil {
+			return err
+		}
+		if _, err := q.AddDeltaItem(ctx, sqlc.AddDeltaItemParams{
+			RecipeDeltaID: deltaID,
+			RecipeItemID:  optInt8(d.RecipeItemID),
+			Kind:          d.Kind,
+			ItemID:        optInt8(d.ItemID),
+			IngredientID:  optInt8(d.IngredientID),
+			Quantity:      qty,
+			UnitID:        optInt8(d.UnitID),
+			SectionName:   optText(d.SectionName),
+			DisplayOrder:  optInt4(d.DisplayOrder),
+			Notes:         optText(d.Notes),
+			IsOptional:    optBool(d.IsOptional),
+			CreatedBy:     by,
+		}); err != nil {
+			return fmt.Errorf("add delta item: %w", domainerr.FromStorage(err))
+		}
+	}
+	return nil
+}
+
+// replaceDeltaSteps rewrites the change set's step rows inside the
+// caller's transaction.
+func replaceDeltaSteps(ctx context.Context, q sqlc.Querier, deltaID int64, steps []DeltaStep, by string) error {
+	if err := q.ReplaceDeltaSteps(ctx, deltaID); err != nil {
+		return fmt.Errorf("replace delta steps: %w", err)
+	}
+	for _, d := range steps {
+		if _, err := q.AddDeltaStep(ctx, sqlc.AddDeltaStepParams{
+			RecipeDeltaID:       deltaID,
+			StepID:              optInt8(d.StepID),
+			Kind:                d.Kind,
+			StepNumber:          optInt4(d.StepNumber),
+			Instruction:         optText(d.Instruction),
+			DurationMinutes:     optInt4(d.DurationMinutes),
+			StepType:            optText(d.StepType),
+			IsPassive:           optBool(d.IsPassive),
+			DependsOnStepNumber: optInt4(d.DependsOnStepNumber),
+			Appliance:           optText(d.Appliance),
+			CreatedBy:           by,
+		}); err != nil {
+			return fmt.Errorf("add delta step: %w", domainerr.FromStorage(err))
+		}
+	}
+	return nil
 }
 
 // ClearRecipeDelta removes the household's delta for a recipe, restoring
@@ -513,74 +533,107 @@ func (s *Service) AcknowledgeRecipeDelta(ctx context.Context, recipeID, househol
 
 func validateDeltaItems(items []DeltaItem) error {
 	for i, d := range items {
-		field := fmt.Sprintf("itemChanges[%d]", i)
-		switch d.Kind {
-		case DeltaItemAdd:
-			if d.RecipeItemID != nil {
-				return &domainerr.ValidationError{Field: field, Msg: "added lines can't anchor a recipe line"}
-			}
-			if d.ItemID == nil && d.IngredientID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "added lines need an item or ingredient"}
-			}
-			if d.Quantity == nil || *d.Quantity <= 0 {
-				return &domainerr.ValidationError{Field: field, Msg: "added lines need a positive quantity"}
-			}
-			if d.UnitID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "added lines need a unit"}
-			}
-		case DeltaItemSubstitute:
-			if d.RecipeItemID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "substitute needs a recipe line"}
-			}
-			if (d.ItemID == nil) == (d.IngredientID == nil) {
-				return &domainerr.ValidationError{Field: field, Msg: "substitute targets exactly one item or ingredient"}
-			}
-		case DeltaItemAdjust:
-			if d.RecipeItemID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "adjust needs a recipe line"}
-			}
-			if d.Quantity != nil && *d.Quantity <= 0 {
-				return &domainerr.ValidationError{Field: field, Msg: "quantity must be positive"}
-			}
-			if d.ItemID != nil || d.IngredientID != nil {
-				return &domainerr.ValidationError{Field: field, Msg: "adjust cannot change the item — use substitute"}
-			}
-		case DeltaItemRemove:
-			if d.RecipeItemID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "remove needs a recipe line"}
-			}
-		default:
-			return &domainerr.ValidationError{Field: field, Msg: fmt.Sprintf("unknown item change kind %q", d.Kind)}
+		if err := validateDeltaItem(fmt.Sprintf("itemChanges[%d]", i), d); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validateDeltaItem(field string, d DeltaItem) error {
+	switch d.Kind {
+	case DeltaItemAdd:
+		return validateDeltaLineAdd(field, d)
+	case DeltaItemSubstitute:
+		return validateDeltaSubstitute(field, d)
+	case DeltaItemAdjust:
+		return validateDeltaAdjust(field, d)
+	case DeltaItemRemove:
+		if d.RecipeItemID == nil {
+			return &domainerr.ValidationError{Field: field, Msg: "remove needs a recipe line"}
+		}
+		return nil
+	default:
+		return &domainerr.ValidationError{Field: field, Msg: fmt.Sprintf("unknown item change kind %q", d.Kind)}
+	}
+}
+
+func validateDeltaLineAdd(field string, d DeltaItem) error {
+	if d.RecipeItemID != nil {
+		return &domainerr.ValidationError{Field: field, Msg: "added lines can't anchor a recipe line"}
+	}
+	if d.ItemID == nil && d.IngredientID == nil {
+		return &domainerr.ValidationError{Field: field, Msg: "added lines need an item or ingredient"}
+	}
+	if d.Quantity == nil || *d.Quantity <= 0 {
+		return &domainerr.ValidationError{Field: field, Msg: "added lines need a positive quantity"}
+	}
+	if d.UnitID == nil {
+		return &domainerr.ValidationError{Field: field, Msg: "added lines need a unit"}
+	}
+	return nil
+}
+
+func validateDeltaSubstitute(field string, d DeltaItem) error {
+	if d.RecipeItemID == nil {
+		return &domainerr.ValidationError{Field: field, Msg: "substitute needs a recipe line"}
+	}
+	if (d.ItemID == nil) == (d.IngredientID == nil) {
+		return &domainerr.ValidationError{Field: field, Msg: "substitute targets exactly one item or ingredient"}
+	}
+	return nil
+}
+
+func validateDeltaAdjust(field string, d DeltaItem) error {
+	if d.RecipeItemID == nil {
+		return &domainerr.ValidationError{Field: field, Msg: "adjust needs a recipe line"}
+	}
+	if d.Quantity != nil && *d.Quantity <= 0 {
+		return &domainerr.ValidationError{Field: field, Msg: "quantity must be positive"}
+	}
+	if d.ItemID != nil || d.IngredientID != nil {
+		return &domainerr.ValidationError{Field: field, Msg: "adjust cannot change the item — use substitute"}
 	}
 	return nil
 }
 
 func validateDeltaSteps(steps []DeltaStep) error {
 	for i, d := range steps {
-		field := fmt.Sprintf("stepChanges[%d]", i)
-		switch d.Kind {
-		case DeltaStepAdd:
-			if d.StepID != nil {
-				return &domainerr.ValidationError{Field: field, Msg: "added steps can't anchor a base step"}
-			}
-			if d.StepNumber == nil || *d.StepNumber <= 0 {
-				return &domainerr.ValidationError{Field: field, Msg: "added steps need a positive step number"}
-			}
-			if d.Instruction == nil || *d.Instruction == "" {
-				return &domainerr.ValidationError{Field: field, Msg: "added steps need an instruction"}
-			}
-		case DeltaStepReplace:
-			if d.StepID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "replace needs a step"}
-			}
-		case DeltaStepRemove:
-			if d.StepID == nil {
-				return &domainerr.ValidationError{Field: field, Msg: "remove needs a step"}
-			}
-		default:
-			return &domainerr.ValidationError{Field: field, Msg: fmt.Sprintf("unknown step change kind %q", d.Kind)}
+		if err := validateDeltaStep(fmt.Sprintf("stepChanges[%d]", i), d); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validateDeltaStep(field string, d DeltaStep) error {
+	switch d.Kind {
+	case DeltaStepAdd:
+		return validateDeltaStepAdd(field, d)
+	case DeltaStepReplace:
+		if d.StepID == nil {
+			return &domainerr.ValidationError{Field: field, Msg: "replace needs a step"}
+		}
+		return nil
+	case DeltaStepRemove:
+		if d.StepID == nil {
+			return &domainerr.ValidationError{Field: field, Msg: "remove needs a step"}
+		}
+		return nil
+	default:
+		return &domainerr.ValidationError{Field: field, Msg: fmt.Sprintf("unknown step change kind %q", d.Kind)}
+	}
+}
+
+func validateDeltaStepAdd(field string, d DeltaStep) error {
+	if d.StepID != nil {
+		return &domainerr.ValidationError{Field: field, Msg: "added steps can't anchor a base step"}
+	}
+	if d.StepNumber == nil || *d.StepNumber <= 0 {
+		return &domainerr.ValidationError{Field: field, Msg: "added steps need a positive step number"}
+	}
+	if d.Instruction == nil || *d.Instruction == "" {
+		return &domainerr.ValidationError{Field: field, Msg: "added steps need an instruction"}
 	}
 	return nil
 }

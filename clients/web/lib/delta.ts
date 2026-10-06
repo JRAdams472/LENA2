@@ -266,6 +266,38 @@ export function draftTargetLabel(d: {
   return bits.join(" — ") || "ingredient";
 }
 
+/** "qty unit" from a draft's portion fields, or "" when no quantity. */
+function draftQtyText(d: {
+  quantity?: number | null;
+  unitName?: string | null;
+}): string {
+  if (d.quantity == null) return "";
+  return d.unitName
+    ? `${fmtQty(d.quantity)} ${d.unitName}`
+    : fmtQty(d.quantity);
+}
+
+/** Appends ` — "instruction"` to a label when the draft carries one. */
+function withInstruction(label: string, instruction?: string | null): string {
+  return instruction ? `${label} — "${instruction}"` : label;
+}
+
+function describeAdjust(d: ItemDraft, baseLabel: string): string {
+  const parts: string[] = [];
+  const qty = draftQtyText(d);
+  if (qty) parts.push(qty);
+  if (d.notes) parts.push(`"${d.notes}"`);
+  if (d.isOptional != null) parts.push(d.isOptional ? "optional" : "required");
+  const suffix = parts.length ? ` — ${parts.join(", ")}` : "";
+  return `Adjust ${baseLabel}${suffix}`;
+}
+
+function describeAddLine(d: ItemDraft): string {
+  const qty = draftQtyText(d);
+  const target = draftTargetLabel(d);
+  return qty ? `Add ${qty} ${target}` : `Add ${target}`;
+}
+
 /** Human-readable summary of one item change for the tweaks list. */
 export function describeItemChange(
   d: ItemDraft,
@@ -275,28 +307,15 @@ export function describeItemChange(
   const baseLabel =
     resolved ||
     (d.recipeItemId != null ? `line ${d.recipeItemId}` : "the original line");
-  const target = draftTargetLabel(d);
   switch (d.kind) {
     case "substitute":
-      return `Swap ${baseLabel} for ${target}`;
-    case "adjust": {
-      const parts: string[] = [];
-      if (d.quantity != null)
-        parts.push(`${fmtQty(d.quantity)}${d.unitName ? ` ${d.unitName}` : ""}`.trim());
-      if (d.notes) parts.push(`"${d.notes}"`);
-      if (d.isOptional != null)
-        parts.push(d.isOptional ? "optional" : "required");
-      return `Adjust ${baseLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
-    }
+      return `Swap ${baseLabel} for ${draftTargetLabel(d)}`;
+    case "adjust":
+      return describeAdjust(d, baseLabel);
     case "remove":
       return `Remove ${baseLabel}`;
-    case "add": {
-      const qty =
-        d.quantity != null
-          ? `${fmtQty(d.quantity)}${d.unitName ? ` ${d.unitName}` : ""} `
-          : "";
-      return `Add ${qty}${target}`.replace(/\s+/g, " ").trim();
-    }
+    case "add":
+      return describeAddLine(d);
   }
 }
 
@@ -309,10 +328,10 @@ export function describeStepChange(
   const baseLabel = n != null ? `step ${n}` : "the original step";
   switch (d.kind) {
     case "replace":
-      return `Edit ${baseLabel}${d.instruction ? ` — "${d.instruction}"` : ""}`;
+      return withInstruction(`Edit ${baseLabel}`, d.instruction);
     case "remove":
       return `Remove ${baseLabel}`;
     case "add":
-      return `Add step ${d.stepNumber ?? "?"}${d.instruction ? ` — "${d.instruction}"` : ""}`;
+      return withInstruction(`Add step ${d.stepNumber ?? "?"}`, d.instruction);
   }
 }
