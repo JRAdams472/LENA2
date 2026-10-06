@@ -266,6 +266,7 @@ type HouseholdPushDelivery struct {
 	LastError      pgtype.Text        `json:"last_error"`
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	DedupKey       pgtype.Text        `json:"dedup_key"`
 }
 
 type IdentityDeviceToken struct {

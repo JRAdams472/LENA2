@@ -6,6 +6,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Querier interface {
@@ -22,6 +24,10 @@ type Querier interface {
 	// concurrent accept/leave/remove operations against the same household.
 	GetHouseholdByIDForUpdate(ctx context.Context, householdID int64) (HouseholdHousehold, error)
 	GetInviteByID(ctx context.Context, inviteID int64) (HouseholdInvite, error)
+	// Outbox row for the push channel — written in the same transaction as
+	// the feed notification (or instead of it when push-only is enabled).
+	// Event-driven rows carry no dedup_key; NULLs never conflict.
+	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (pgconn.CommandTag, error)
 	ListNotificationsForUser(ctx context.Context, arg ListNotificationsForUserParams) ([]HouseholdNotification, error)
 	ListPendingInvitesForUser(ctx context.Context, toUserID int64) ([]HouseholdInvite, error)
 	ListSentInvitesForUser(ctx context.Context, fromUserID int64) ([]HouseholdInvite, error)

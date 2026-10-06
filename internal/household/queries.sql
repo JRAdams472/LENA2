@@ -111,3 +111,11 @@ WHERE from_user_id = $1
   AND household_id = $2
   AND status = 'pending'
 RETURNING *;
+
+-- name: InsertPushDelivery :execresult
+-- Outbox row for the push channel — written in the same transaction as
+-- the feed notification (or instead of it when push-only is enabled).
+-- Event-driven rows carry no dedup_key; NULLs never conflict.
+INSERT INTO household.push_delivery
+    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id)
+VALUES ($1, $2, sqlc.narg(household_id), sqlc.narg(actor_user_id), sqlc.narg(invite_id), sqlc.narg(food_event_id));

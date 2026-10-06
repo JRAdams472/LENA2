@@ -227,6 +227,18 @@ type Config struct {
 	// NotificationExpiryDays is how far ahead of userprefs.household_item
 	// expires_at the expiry reminder fires.
 	NotificationExpiryDays int `envconfig:"NOTIFY_EXPIRY_DAYS" default:"3"`
+	// PushProvider selects the push sender: "log" records would-be sends
+	// (default — dev and e2e exercise the full pipeline without Firebase
+	// credentials), "fcm" calls Firebase Cloud Messaging.
+	PushProvider string `envconfig:"PUSH_PROVIDER" default:"log"`
+	// PushPollInterval is how often the delivery worker drains
+	// household.push_delivery.
+	PushPollInterval time.Duration `envconfig:"PUSH_POLL_INTERVAL" default:"5s"`
+	// PushMaxAttempts bounds delivery retries before a row is failed.
+	PushMaxAttempts int32 `envconfig:"PUSH_MAX_ATTEMPTS" default:"5"`
+	// FCMCredentialsFile is the service-account JSON path used when
+	// PUSH_PROVIDER=fcm; mounted as a secret, never committed.
+	FCMCredentialsFile string `envconfig:"FCM_CREDENTIALS_FILE" default:""`
 	// AnalyticsDecayInterval is how often analytics.selection_score is
 	// rebuilt from the interaction-event log.
 	AnalyticsDecayInterval time.Duration `envconfig:"ANALYTICS_DECAY_INTERVAL" default:"6h"`

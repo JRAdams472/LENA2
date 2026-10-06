@@ -17,13 +17,17 @@ type Querier interface {
 	DeleteDeviceTokenForUser(ctx context.Context, arg DeleteDeviceTokenForUserParams) error
 	GetNotificationTypeCategory(ctx context.Context, kind string) (string, error)
 	InsertItemReminderNotification(ctx context.Context, arg InsertItemReminderNotificationParams) (pgconn.CommandTag, error)
-	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) error
+	// dedup_key mirrors notifications: sweep inserts carry it (idempotent per
+	// user+reminder), event-driven rows pass NULL and never conflict.
+	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (pgconn.CommandTag, error)
 	// dedup_key makes every scheduled insert naturally idempotent. NULL keys never
 	// conflict, so event-driven rows are unaffected.
 	InsertRecipeReminderNotification(ctx context.Context, arg InsertRecipeReminderNotificationParams) (pgconn.CommandTag, error)
 	ListActiveNotificationTypes(ctx context.Context) ([]ListActiveNotificationTypesRow, error)
 	ListDeviceTokensForUsers(ctx context.Context, userIds []int64) ([]IdentityDeviceToken, error)
 	ListDisplayNamesForUsers(ctx context.Context, userIds []int64) ([]ListDisplayNamesForUsersRow, error)
+	// Due pending rows, plus 'sending' rows whose claim went stale — a worker
+	// that dies mid-deliver would otherwise strand them forever.
 	ListDuePushDeliveries(ctx context.Context, limit int32) ([]HouseholdPushDelivery, error)
 	ListExpiringHouseholdItems(ctx context.Context, arg ListExpiringHouseholdItemsParams) ([]ListExpiringHouseholdItemsRow, error)
 	// Steps of a full day or longer are "advance prep" for notification purposes.
