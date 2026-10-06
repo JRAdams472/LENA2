@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../push/push_service.dart';
 import 'assistant_screen.dart';
 import 'dashboard_screen.dart';
 import 'events_screen.dart';
@@ -60,6 +61,10 @@ class _MainScreenState extends State<MainScreen> {
     // Timer.periodic (not QueryOptions.pollInterval) so the timer cancels
     // on dispose and widget tests stay clean.
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _loadUnread());
+    // Push arrives only after sign-in — permission + token registration
+    // happen here, and a foreground push bumps the badge immediately.
+    pushService.start();
+    pushService.onPushReceived = _loadUnread;
   }
 
   Future<void> _loadUnread() async {
@@ -75,6 +80,9 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    if (pushService.onPushReceived == _loadUnread) {
+      pushService.onPushReceived = null;
+    }
     super.dispose();
   }
 

@@ -100,6 +100,11 @@ class AuthService extends ChangeNotifier {
   String? get idToken => _idToken;
   String? get lastError => _lastError;
 
+  /// Runs at the top of signOut while the bearer is still valid — the push
+  /// service hooks this to unregister the device token before the session
+  /// disappears. Best-effort; failures must not block logout.
+  Future<void> Function()? onBeforeSignOut;
+
   bool get _isExpired {
     if (_idToken == null) return true;
     final exp = _extractExp(_idToken!);
@@ -262,6 +267,11 @@ class AuthService extends ChangeNotifier {
 
   Future<void> signOut() async {
     final rt = _refreshToken;
+    try {
+      await onBeforeSignOut?.call();
+    } catch (e) {
+      debugPrint('pre-signout hook failed (continuing): $e');
+    }
     await _clearTokens();
     _lastError = null;
     if (rt != null) {
