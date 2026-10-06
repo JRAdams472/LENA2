@@ -7,10 +7,38 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const deleteDeviceToken = `-- name: DeleteDeviceToken :exec
+DELETE FROM identity.device_token
+WHERE token = $1
+`
+
+// Dead-token prune from the dispatcher — provider said the token is gone,
+// so ownership no longer matters.
+func (q *Queries) DeleteDeviceToken(ctx context.Context, token string) error {
+	_, err := q.db.Exec(ctx, deleteDeviceToken, token)
+	return err
+}
+
+const deleteDeviceTokenForUser = `-- name: DeleteDeviceTokenForUser :exec
+DELETE FROM identity.device_token
+WHERE token = $1 AND user_id = $2
+`
+
+type DeleteDeviceTokenForUserParams struct {
+	Token  string `json:"token"`
+	UserID int64  `json:"user_id"`
+}
+
+func (q *Queries) DeleteDeviceTokenForUser(ctx context.Context, arg DeleteDeviceTokenForUserParams) error {
+	_, err := q.db.Exec(ctx, deleteDeviceTokenForUser, arg.Token, arg.UserID)
+	return err
+}
 
 const getNotificationTypeCategory = `-- name: GetNotificationTypeCategory :one
 SELECT category
@@ -52,6 +80,41 @@ func (q *Queries) InsertItemReminderNotification(ctx context.Context, arg Insert
 		arg.ItemID,
 		arg.DedupKey,
 	)
+}
+
+const insertPushDelivery = `-- name: InsertPushDelivery :exec
+INSERT INTO household.push_delivery
+    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+`
+
+type InsertPushDeliveryParams struct {
+	UserID      int64       `json:"user_id"`
+	Kind        string      `json:"kind"`
+	HouseholdID pgtype.Int8 `json:"household_id"`
+	ActorUserID pgtype.Int8 `json:"actor_user_id"`
+	InviteID    pgtype.Int8 `json:"invite_id"`
+	FoodEventID pgtype.Int8 `json:"food_event_id"`
+	RecipeID    pgtype.Int8 `json:"recipe_id"`
+	ItemID      pgtype.Int8 `json:"item_id"`
+	Title       pgtype.Text `json:"title"`
+	Body        pgtype.Text `json:"body"`
+}
+
+func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) error {
+	_, err := q.db.Exec(ctx, insertPushDelivery,
+		arg.UserID,
+		arg.Kind,
+		arg.HouseholdID,
+		arg.ActorUserID,
+		arg.InviteID,
+		arg.FoodEventID,
+		arg.RecipeID,
+		arg.ItemID,
+		arg.Title,
+		arg.Body,
+	)
+	return err
 }
 
 const insertRecipeReminderNotification = `-- name: InsertRecipeReminderNotification :execresult
@@ -113,6 +176,116 @@ func (q *Queries) ListActiveNotificationTypes(ctx context.Context) ([]ListActive
 			&i.Category,
 			&i.Label,
 			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeviceTokensForUsers = `-- name: ListDeviceTokensForUsers :many
+SELECT device_token_id, user_id, platform, token, last_seen_at, created_at, updated_at FROM identity.device_token
+WHERE user_id = ANY($1::bigint[])
+`
+
+func (q *Queries) ListDeviceTokensForUsers(ctx context.Context, userIds []int64) ([]IdentityDeviceToken, error) {
+	rows, err := q.db.Query(ctx, listDeviceTokensForUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityDeviceToken{}
+	for rows.Next() {
+		var i IdentityDeviceToken
+		if err := rows.Scan(
+			&i.DeviceTokenID,
+			&i.UserID,
+			&i.Platform,
+			&i.Token,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDisplayNamesForUsers = `-- name: ListDisplayNamesForUsers :many
+SELECT user_id, display_name
+FROM identity.users
+WHERE user_id = ANY($1::bigint[])
+`
+
+type ListDisplayNamesForUsersRow struct {
+	UserID      int64       `json:"user_id"`
+	DisplayName pgtype.Text `json:"display_name"`
+}
+
+func (q *Queries) ListDisplayNamesForUsers(ctx context.Context, userIds []int64) ([]ListDisplayNamesForUsersRow, error) {
+	rows, err := q.db.Query(ctx, listDisplayNamesForUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDisplayNamesForUsersRow{}
+	for rows.Next() {
+		var i ListDisplayNamesForUsersRow
+		if err := rows.Scan(&i.UserID, &i.DisplayName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDuePushDeliveries = `-- name: ListDuePushDeliveries :many
+SELECT push_delivery_id, user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body, status, attempts, next_attempt_at, sent_at, last_error, created_at, updated_at FROM household.push_delivery
+WHERE status = 'pending' AND next_attempt_at <= now()
+ORDER BY push_delivery_id
+LIMIT $1
+`
+
+func (q *Queries) ListDuePushDeliveries(ctx context.Context, limit int32) ([]HouseholdPushDelivery, error) {
+	rows, err := q.db.Query(ctx, listDuePushDeliveries, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdPushDelivery{}
+	for rows.Next() {
+		var i HouseholdPushDelivery
+		if err := rows.Scan(
+			&i.PushDeliveryID,
+			&i.UserID,
+			&i.Kind,
+			&i.HouseholdID,
+			&i.ActorUserID,
+			&i.InviteID,
+			&i.FoodEventID,
+			&i.RecipeID,
+			&i.ItemID,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Attempts,
+			&i.NextAttemptAt,
+			&i.SentAt,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -297,7 +470,7 @@ func (q *Queries) ListMemberIDsForHouseholds(ctx context.Context, householdIds [
 }
 
 const listNotificationPrefs = `-- name: ListNotificationPrefs :many
-SELECT user_id, category, enabled, muted_until, created_at, updated_at
+SELECT user_id, category, enabled, muted_until, created_at, updated_at, push_enabled
 FROM userprefs.notification_pref
 WHERE user_id = $1
 `
@@ -318,6 +491,7 @@ func (q *Queries) ListNotificationPrefs(ctx context.Context, userID int64) ([]Us
 			&i.MutedUntil,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PushEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -377,6 +551,68 @@ func (q *Queries) ListProteinItemsForRecipes(ctx context.Context, recipeIds []in
 	return items, nil
 }
 
+const markPushDeliveryFailed = `-- name: MarkPushDeliveryFailed :exec
+UPDATE household.push_delivery
+SET status = 'failed', attempts = attempts + 1,
+    last_error = $2, updated_at = now()
+WHERE push_delivery_id = $1
+`
+
+type MarkPushDeliveryFailedParams struct {
+	PushDeliveryID int64       `json:"push_delivery_id"`
+	LastError      pgtype.Text `json:"last_error"`
+}
+
+func (q *Queries) MarkPushDeliveryFailed(ctx context.Context, arg MarkPushDeliveryFailedParams) error {
+	_, err := q.db.Exec(ctx, markPushDeliveryFailed, arg.PushDeliveryID, arg.LastError)
+	return err
+}
+
+const markPushDeliveryRetry = `-- name: MarkPushDeliveryRetry :exec
+UPDATE household.push_delivery
+SET status = 'pending', attempts = attempts + 1,
+    next_attempt_at = $2, last_error = $3, updated_at = now()
+WHERE push_delivery_id = $1
+`
+
+type MarkPushDeliveryRetryParams struct {
+	PushDeliveryID int64       `json:"push_delivery_id"`
+	NextAttemptAt  time.Time   `json:"next_attempt_at"`
+	LastError      pgtype.Text `json:"last_error"`
+}
+
+func (q *Queries) MarkPushDeliveryRetry(ctx context.Context, arg MarkPushDeliveryRetryParams) error {
+	_, err := q.db.Exec(ctx, markPushDeliveryRetry, arg.PushDeliveryID, arg.NextAttemptAt, arg.LastError)
+	return err
+}
+
+const markPushDeliverySending = `-- name: MarkPushDeliverySending :execrows
+UPDATE household.push_delivery
+SET status = 'sending', updated_at = now()
+WHERE push_delivery_id = $1 AND status = 'pending'
+`
+
+// Cheap two-phase claim: flip to 'sending' only while still pending, so a
+// second dispatcher can never double-send the same row.
+func (q *Queries) MarkPushDeliverySending(ctx context.Context, pushDeliveryID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, markPushDeliverySending, pushDeliveryID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markPushDeliverySent = `-- name: MarkPushDeliverySent :exec
+UPDATE household.push_delivery
+SET status = 'sent', sent_at = now(), updated_at = now()
+WHERE push_delivery_id = $1
+`
+
+func (q *Queries) MarkPushDeliverySent(ctx context.Context, pushDeliveryID int64) error {
+	_, err := q.db.Exec(ctx, markPushDeliverySent, pushDeliveryID)
+	return err
+}
+
 const pruneReadNotifications = `-- name: PruneReadNotifications :exec
 DELETE FROM household.notifications n
 WHERE n.user_id = $1
@@ -393,6 +629,30 @@ WHERE n.user_id = $1
 
 func (q *Queries) PruneReadNotifications(ctx context.Context, userID int64) error {
 	_, err := q.db.Exec(ctx, pruneReadNotifications, userID)
+	return err
+}
+
+const upsertDeviceToken = `-- name: UpsertDeviceToken :exec
+INSERT INTO identity.device_token (user_id, platform, token, last_seen_at, updated_at)
+VALUES ($1, $2, $3, now(), now())
+ON CONFLICT (token)
+    DO UPDATE SET user_id = EXCLUDED.user_id,
+                  platform = EXCLUDED.platform,
+                  last_seen_at = now(),
+                  updated_at = now()
+`
+
+type UpsertDeviceTokenParams struct {
+	UserID   int64  `json:"user_id"`
+	Platform string `json:"platform"`
+	Token    string `json:"token"`
+}
+
+// Register is idempotent: re-registering the same token refreshes
+// last_seen_at and reassigns it to the latest user (token follows the
+// most recent login on a shared device).
+func (q *Queries) UpsertDeviceToken(ctx context.Context, arg UpsertDeviceTokenParams) error {
+	_, err := q.db.Exec(ctx, upsertDeviceToken, arg.UserID, arg.Platform, arg.Token)
 	return err
 }
 
@@ -419,5 +679,26 @@ func (q *Queries) UpsertNotificationPref(ctx context.Context, arg UpsertNotifica
 		arg.Enabled,
 		arg.MutedUntil,
 	)
+	return err
+}
+
+const upsertNotificationPrefPushEnabled = `-- name: UpsertNotificationPrefPushEnabled :exec
+INSERT INTO userprefs.notification_pref (user_id, category, push_enabled, updated_at)
+VALUES ($1, $2, $3, now())
+ON CONFLICT (user_id, category)
+    DO UPDATE SET push_enabled = EXCLUDED.push_enabled,
+                  updated_at = now()
+`
+
+type UpsertNotificationPrefPushEnabledParams struct {
+	UserID      int64  `json:"user_id"`
+	Category    string `json:"category"`
+	PushEnabled bool   `json:"push_enabled"`
+}
+
+// Push is an independent channel: this updates only push_enabled and
+// preserves enabled/muted_until on an existing row.
+func (q *Queries) UpsertNotificationPrefPushEnabled(ctx context.Context, arg UpsertNotificationPrefPushEnabledParams) error {
+	_, err := q.db.Exec(ctx, upsertNotificationPrefPushEnabled, arg.UserID, arg.Category, arg.PushEnabled)
 	return err
 }

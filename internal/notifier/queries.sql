@@ -96,3 +96,78 @@ WHERE n.user_id = $1
       ORDER BY k.created_at DESC
       LIMIT 100
   );
+
+-- name: UpsertNotificationPrefPushEnabled :exec
+-- Push is an independent channel: this updates only push_enabled and
+-- preserves enabled/muted_until on an existing row.
+INSERT INTO userprefs.notification_pref (user_id, category, push_enabled, updated_at)
+VALUES ($1, $2, $3, now())
+ON CONFLICT (user_id, category)
+    DO UPDATE SET push_enabled = EXCLUDED.push_enabled,
+                  updated_at = now();
+
+-- name: UpsertDeviceToken :exec
+-- Register is idempotent: re-registering the same token refreshes
+-- last_seen_at and reassigns it to the latest user (token follows the
+-- most recent login on a shared device).
+INSERT INTO identity.device_token (user_id, platform, token, last_seen_at, updated_at)
+VALUES ($1, $2, $3, now(), now())
+ON CONFLICT (token)
+    DO UPDATE SET user_id = EXCLUDED.user_id,
+                  platform = EXCLUDED.platform,
+                  last_seen_at = now(),
+                  updated_at = now();
+
+-- name: DeleteDeviceTokenForUser :exec
+DELETE FROM identity.device_token
+WHERE token = $1 AND user_id = $2;
+
+-- name: DeleteDeviceToken :exec
+-- Dead-token prune from the dispatcher — provider said the token is gone,
+-- so ownership no longer matters.
+DELETE FROM identity.device_token
+WHERE token = $1;
+
+-- name: ListDeviceTokensForUsers :many
+SELECT * FROM identity.device_token
+WHERE user_id = ANY(sqlc.arg(user_ids)::bigint[]);
+
+-- name: InsertPushDelivery :exec
+INSERT INTO household.push_delivery
+    (user_id, kind, household_id, actor_user_id, invite_id, food_event_id, recipe_id, item_id, title, body)
+VALUES ($1, $2, sqlc.narg(household_id), sqlc.narg(actor_user_id), sqlc.narg(invite_id), sqlc.narg(food_event_id), sqlc.narg(recipe_id), sqlc.narg(item_id), sqlc.narg(title), sqlc.narg(body));
+
+-- name: ListDuePushDeliveries :many
+SELECT * FROM household.push_delivery
+WHERE status = 'pending' AND next_attempt_at <= now()
+ORDER BY push_delivery_id
+LIMIT $1;
+
+-- name: MarkPushDeliverySending :execrows
+-- Cheap two-phase claim: flip to 'sending' only while still pending, so a
+-- second dispatcher can never double-send the same row.
+UPDATE household.push_delivery
+SET status = 'sending', updated_at = now()
+WHERE push_delivery_id = $1 AND status = 'pending';
+
+-- name: MarkPushDeliverySent :exec
+UPDATE household.push_delivery
+SET status = 'sent', sent_at = now(), updated_at = now()
+WHERE push_delivery_id = $1;
+
+-- name: MarkPushDeliveryRetry :exec
+UPDATE household.push_delivery
+SET status = 'pending', attempts = attempts + 1,
+    next_attempt_at = $2, last_error = $3, updated_at = now()
+WHERE push_delivery_id = $1;
+
+-- name: MarkPushDeliveryFailed :exec
+UPDATE household.push_delivery
+SET status = 'failed', attempts = attempts + 1,
+    last_error = $2, updated_at = now()
+WHERE push_delivery_id = $1;
+
+-- name: ListDisplayNamesForUsers :many
+SELECT user_id, display_name
+FROM identity.users
+WHERE user_id = ANY(sqlc.arg(user_ids)::bigint[]);

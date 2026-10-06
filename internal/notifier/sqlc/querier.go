@@ -11,12 +11,20 @@ import (
 )
 
 type Querier interface {
+	// Dead-token prune from the dispatcher — provider said the token is gone,
+	// so ownership no longer matters.
+	DeleteDeviceToken(ctx context.Context, token string) error
+	DeleteDeviceTokenForUser(ctx context.Context, arg DeleteDeviceTokenForUserParams) error
 	GetNotificationTypeCategory(ctx context.Context, kind string) (string, error)
 	InsertItemReminderNotification(ctx context.Context, arg InsertItemReminderNotificationParams) (pgconn.CommandTag, error)
+	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) error
 	// dedup_key makes every scheduled insert naturally idempotent. NULL keys never
 	// conflict, so event-driven rows are unaffected.
 	InsertRecipeReminderNotification(ctx context.Context, arg InsertRecipeReminderNotificationParams) (pgconn.CommandTag, error)
 	ListActiveNotificationTypes(ctx context.Context) ([]ListActiveNotificationTypesRow, error)
+	ListDeviceTokensForUsers(ctx context.Context, userIds []int64) ([]IdentityDeviceToken, error)
+	ListDisplayNamesForUsers(ctx context.Context, userIds []int64) ([]ListDisplayNamesForUsersRow, error)
+	ListDuePushDeliveries(ctx context.Context, limit int32) ([]HouseholdPushDelivery, error)
 	ListExpiringHouseholdItems(ctx context.Context, arg ListExpiringHouseholdItemsParams) ([]ListExpiringHouseholdItemsRow, error)
 	// Steps of a full day or longer are "advance prep" for notification purposes.
 	ListLongStepsForRecipes(ctx context.Context, recipeIds []int64) ([]ListLongStepsForRecipesRow, error)
@@ -29,8 +37,21 @@ type Querier interface {
 	// the unit's weight conversion factor (NULL unit_id or a non-weight kind
 	// means the quantity can't contribute to the lbs total — Go skips it).
 	ListProteinItemsForRecipes(ctx context.Context, recipeIds []int64) ([]ListProteinItemsForRecipesRow, error)
+	MarkPushDeliveryFailed(ctx context.Context, arg MarkPushDeliveryFailedParams) error
+	MarkPushDeliveryRetry(ctx context.Context, arg MarkPushDeliveryRetryParams) error
+	// Cheap two-phase claim: flip to 'sending' only while still pending, so a
+	// second dispatcher can never double-send the same row.
+	MarkPushDeliverySending(ctx context.Context, pushDeliveryID int64) (int64, error)
+	MarkPushDeliverySent(ctx context.Context, pushDeliveryID int64) error
 	PruneReadNotifications(ctx context.Context, userID int64) error
+	// Register is idempotent: re-registering the same token refreshes
+	// last_seen_at and reassigns it to the latest user (token follows the
+	// most recent login on a shared device).
+	UpsertDeviceToken(ctx context.Context, arg UpsertDeviceTokenParams) error
 	UpsertNotificationPref(ctx context.Context, arg UpsertNotificationPrefParams) error
+	// Push is an independent channel: this updates only push_enabled and
+	// preserves enabled/muted_until on an existing row.
+	UpsertNotificationPrefPushEnabled(ctx context.Context, arg UpsertNotificationPrefPushEnabledParams) error
 }
 
 var _ Querier = (*Queries)(nil)

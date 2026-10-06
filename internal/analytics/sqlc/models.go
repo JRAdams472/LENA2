@@ -247,6 +247,37 @@ type HouseholdNotificationType struct {
 	IsActive    bool        `json:"is_active"`
 }
 
+type HouseholdPushDelivery struct {
+	PushDeliveryID int64              `json:"push_delivery_id"`
+	UserID         int64              `json:"user_id"`
+	Kind           string             `json:"kind"`
+	HouseholdID    pgtype.Int8        `json:"household_id"`
+	ActorUserID    pgtype.Int8        `json:"actor_user_id"`
+	InviteID       pgtype.Int8        `json:"invite_id"`
+	FoodEventID    pgtype.Int8        `json:"food_event_id"`
+	RecipeID       pgtype.Int8        `json:"recipe_id"`
+	ItemID         pgtype.Int8        `json:"item_id"`
+	Title          pgtype.Text        `json:"title"`
+	Body           pgtype.Text        `json:"body"`
+	Status         string             `json:"status"`
+	Attempts       int32              `json:"attempts"`
+	NextAttemptAt  time.Time          `json:"next_attempt_at"`
+	SentAt         pgtype.Timestamptz `json:"sent_at"`
+	LastError      pgtype.Text        `json:"last_error"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type IdentityDeviceToken struct {
+	DeviceTokenID int64              `json:"device_token_id"`
+	UserID        int64              `json:"user_id"`
+	Platform      string             `json:"platform"`
+	Token         string             `json:"token"`
+	LastSeenAt    time.Time          `json:"last_seen_at"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type IdentitySession struct {
 	SessionID   int64              `json:"session_id"`
 	UserID      int64              `json:"user_id"`
@@ -712,12 +743,13 @@ type UserprefsHouseholdItemIngredient struct {
 }
 
 type UserprefsNotificationPref struct {
-	UserID     int64              `json:"user_id"`
-	Category   string             `json:"category"`
-	Enabled    bool               `json:"enabled"`
-	MutedUntil pgtype.Timestamptz `json:"muted_until"`
-	CreatedAt  time.Time          `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	UserID      int64              `json:"user_id"`
+	Category    string             `json:"category"`
+	Enabled     bool               `json:"enabled"`
+	MutedUntil  pgtype.Timestamptz `json:"muted_until"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	PushEnabled bool               `json:"push_enabled"`
 }
 
 type UserprefsUserAllergen struct {

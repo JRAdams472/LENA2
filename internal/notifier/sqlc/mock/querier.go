@@ -42,6 +42,34 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// DeleteDeviceToken mocks base method.
+func (m *MockQuerier) DeleteDeviceToken(ctx context.Context, token string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDeviceToken", ctx, token)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDeviceToken indicates an expected call of DeleteDeviceToken.
+func (mr *MockQuerierMockRecorder) DeleteDeviceToken(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDeviceToken", reflect.TypeOf((*MockQuerier)(nil).DeleteDeviceToken), ctx, token)
+}
+
+// DeleteDeviceTokenForUser mocks base method.
+func (m *MockQuerier) DeleteDeviceTokenForUser(ctx context.Context, arg sqlc.DeleteDeviceTokenForUserParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDeviceTokenForUser", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDeviceTokenForUser indicates an expected call of DeleteDeviceTokenForUser.
+func (mr *MockQuerierMockRecorder) DeleteDeviceTokenForUser(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDeviceTokenForUser", reflect.TypeOf((*MockQuerier)(nil).DeleteDeviceTokenForUser), ctx, arg)
+}
+
 // GetNotificationTypeCategory mocks base method.
 func (m *MockQuerier) GetNotificationTypeCategory(ctx context.Context, kind string) (string, error) {
 	m.ctrl.T.Helper()
@@ -72,6 +100,20 @@ func (mr *MockQuerierMockRecorder) InsertItemReminderNotification(ctx, arg any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertItemReminderNotification", reflect.TypeOf((*MockQuerier)(nil).InsertItemReminderNotification), ctx, arg)
 }
 
+// InsertPushDelivery mocks base method.
+func (m *MockQuerier) InsertPushDelivery(ctx context.Context, arg sqlc.InsertPushDeliveryParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertPushDelivery", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertPushDelivery indicates an expected call of InsertPushDelivery.
+func (mr *MockQuerierMockRecorder) InsertPushDelivery(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertPushDelivery", reflect.TypeOf((*MockQuerier)(nil).InsertPushDelivery), ctx, arg)
+}
+
 // InsertRecipeReminderNotification mocks base method.
 func (m *MockQuerier) InsertRecipeReminderNotification(ctx context.Context, arg sqlc.InsertRecipeReminderNotificationParams) (pgconn.CommandTag, error) {
 	m.ctrl.T.Helper()
@@ -100,6 +142,51 @@ func (m *MockQuerier) ListActiveNotificationTypes(ctx context.Context) ([]sqlc.L
 func (mr *MockQuerierMockRecorder) ListActiveNotificationTypes(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActiveNotificationTypes", reflect.TypeOf((*MockQuerier)(nil).ListActiveNotificationTypes), ctx)
+}
+
+// ListDeviceTokensForUsers mocks base method.
+func (m *MockQuerier) ListDeviceTokensForUsers(ctx context.Context, userIds []int64) ([]sqlc.IdentityDeviceToken, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDeviceTokensForUsers", ctx, userIds)
+	ret0, _ := ret[0].([]sqlc.IdentityDeviceToken)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDeviceTokensForUsers indicates an expected call of ListDeviceTokensForUsers.
+func (mr *MockQuerierMockRecorder) ListDeviceTokensForUsers(ctx, userIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeviceTokensForUsers", reflect.TypeOf((*MockQuerier)(nil).ListDeviceTokensForUsers), ctx, userIds)
+}
+
+// ListDisplayNamesForUsers mocks base method.
+func (m *MockQuerier) ListDisplayNamesForUsers(ctx context.Context, userIds []int64) ([]sqlc.ListDisplayNamesForUsersRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDisplayNamesForUsers", ctx, userIds)
+	ret0, _ := ret[0].([]sqlc.ListDisplayNamesForUsersRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDisplayNamesForUsers indicates an expected call of ListDisplayNamesForUsers.
+func (mr *MockQuerierMockRecorder) ListDisplayNamesForUsers(ctx, userIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDisplayNamesForUsers", reflect.TypeOf((*MockQuerier)(nil).ListDisplayNamesForUsers), ctx, userIds)
+}
+
+// ListDuePushDeliveries mocks base method.
+func (m *MockQuerier) ListDuePushDeliveries(ctx context.Context, limit int32) ([]sqlc.HouseholdPushDelivery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDuePushDeliveries", ctx, limit)
+	ret0, _ := ret[0].([]sqlc.HouseholdPushDelivery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDuePushDeliveries indicates an expected call of ListDuePushDeliveries.
+func (mr *MockQuerierMockRecorder) ListDuePushDeliveries(ctx, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDuePushDeliveries", reflect.TypeOf((*MockQuerier)(nil).ListDuePushDeliveries), ctx, limit)
 }
 
 // ListExpiringHouseholdItems mocks base method.
@@ -192,6 +279,63 @@ func (mr *MockQuerierMockRecorder) ListProteinItemsForRecipes(ctx, recipeIds any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProteinItemsForRecipes", reflect.TypeOf((*MockQuerier)(nil).ListProteinItemsForRecipes), ctx, recipeIds)
 }
 
+// MarkPushDeliveryFailed mocks base method.
+func (m *MockQuerier) MarkPushDeliveryFailed(ctx context.Context, arg sqlc.MarkPushDeliveryFailedParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkPushDeliveryFailed", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkPushDeliveryFailed indicates an expected call of MarkPushDeliveryFailed.
+func (mr *MockQuerierMockRecorder) MarkPushDeliveryFailed(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPushDeliveryFailed", reflect.TypeOf((*MockQuerier)(nil).MarkPushDeliveryFailed), ctx, arg)
+}
+
+// MarkPushDeliveryRetry mocks base method.
+func (m *MockQuerier) MarkPushDeliveryRetry(ctx context.Context, arg sqlc.MarkPushDeliveryRetryParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkPushDeliveryRetry", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkPushDeliveryRetry indicates an expected call of MarkPushDeliveryRetry.
+func (mr *MockQuerierMockRecorder) MarkPushDeliveryRetry(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPushDeliveryRetry", reflect.TypeOf((*MockQuerier)(nil).MarkPushDeliveryRetry), ctx, arg)
+}
+
+// MarkPushDeliverySending mocks base method.
+func (m *MockQuerier) MarkPushDeliverySending(ctx context.Context, pushDeliveryID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkPushDeliverySending", ctx, pushDeliveryID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkPushDeliverySending indicates an expected call of MarkPushDeliverySending.
+func (mr *MockQuerierMockRecorder) MarkPushDeliverySending(ctx, pushDeliveryID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPushDeliverySending", reflect.TypeOf((*MockQuerier)(nil).MarkPushDeliverySending), ctx, pushDeliveryID)
+}
+
+// MarkPushDeliverySent mocks base method.
+func (m *MockQuerier) MarkPushDeliverySent(ctx context.Context, pushDeliveryID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkPushDeliverySent", ctx, pushDeliveryID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkPushDeliverySent indicates an expected call of MarkPushDeliverySent.
+func (mr *MockQuerierMockRecorder) MarkPushDeliverySent(ctx, pushDeliveryID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPushDeliverySent", reflect.TypeOf((*MockQuerier)(nil).MarkPushDeliverySent), ctx, pushDeliveryID)
+}
+
 // PruneReadNotifications mocks base method.
 func (m *MockQuerier) PruneReadNotifications(ctx context.Context, userID int64) error {
 	m.ctrl.T.Helper()
@@ -206,6 +350,20 @@ func (mr *MockQuerierMockRecorder) PruneReadNotifications(ctx, userID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PruneReadNotifications", reflect.TypeOf((*MockQuerier)(nil).PruneReadNotifications), ctx, userID)
 }
 
+// UpsertDeviceToken mocks base method.
+func (m *MockQuerier) UpsertDeviceToken(ctx context.Context, arg sqlc.UpsertDeviceTokenParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertDeviceToken", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertDeviceToken indicates an expected call of UpsertDeviceToken.
+func (mr *MockQuerierMockRecorder) UpsertDeviceToken(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDeviceToken", reflect.TypeOf((*MockQuerier)(nil).UpsertDeviceToken), ctx, arg)
+}
+
 // UpsertNotificationPref mocks base method.
 func (m *MockQuerier) UpsertNotificationPref(ctx context.Context, arg sqlc.UpsertNotificationPrefParams) error {
 	m.ctrl.T.Helper()
@@ -218,4 +376,18 @@ func (m *MockQuerier) UpsertNotificationPref(ctx context.Context, arg sqlc.Upser
 func (mr *MockQuerierMockRecorder) UpsertNotificationPref(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertNotificationPref", reflect.TypeOf((*MockQuerier)(nil).UpsertNotificationPref), ctx, arg)
+}
+
+// UpsertNotificationPrefPushEnabled mocks base method.
+func (m *MockQuerier) UpsertNotificationPrefPushEnabled(ctx context.Context, arg sqlc.UpsertNotificationPrefPushEnabledParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertNotificationPrefPushEnabled", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertNotificationPrefPushEnabled indicates an expected call of UpsertNotificationPrefPushEnabled.
+func (mr *MockQuerierMockRecorder) UpsertNotificationPrefPushEnabled(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertNotificationPrefPushEnabled", reflect.TypeOf((*MockQuerier)(nil).UpsertNotificationPrefPushEnabled), ctx, arg)
 }
