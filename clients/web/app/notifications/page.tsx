@@ -26,11 +26,18 @@ const MUTE_OPTIONS = [
   { label: "1 week", ms: 7 * 24 * 60 * 60 * 1000 },
 ];
 
-function prefStatusText(isAll: boolean, enabled: boolean): string {
+function prefStatusText(
+  isAll: boolean,
+  enabled: boolean,
+  pushEnabled: boolean
+): string {
   if (isAll) {
-    return "Pause every notification for a while — nothing is delivered until it expires.";
+    return pushEnabled
+      ? "Pushes every category — and pauses everything while muted."
+      : "Pause every notification for a while — nothing is delivered until it expires.";
   }
-  return enabled ? "Delivered" : "Turned off";
+  const feed = enabled ? "Delivered" : "Turned off";
+  return pushEnabled ? `${feed} · pushed` : feed;
 }
 
 function fmtUntil(iso: string): string {
@@ -59,6 +66,14 @@ function PrefRow({ pref }: { pref: NotificationCategoryPreference }) {
   const toggle = useMutation({
     mutationFn: (enabled: boolean) =>
       api.setNotificationCategoryEnabled(pref.category, enabled),
+    onSuccess: refresh,
+    onError: (e) =>
+      setError(e instanceof ApiError ? e.message : "Failed to update"),
+  });
+
+  const pushToggle = useMutation({
+    mutationFn: (enabled: boolean) =>
+      api.setNotificationCategoryPushEnabled(pref.category, enabled),
     onSuccess: refresh,
     onError: (e) =>
       setError(e instanceof ApiError ? e.message : "Failed to update"),
@@ -105,14 +120,44 @@ function PrefRow({ pref }: { pref: NotificationCategoryPreference }) {
           >
             Mute
           </Button>
-          {!isAll && (
+          <Box sx={{ textAlign: "center" }}>
             <Switch
-              edge="end"
-              checked={pref.enabled}
-              onChange={(e) => toggle.mutate(e.target.checked)}
-              title="Turn delivery on or off"
-              slotProps={{ input: { "aria-label": `Enable ${pref.label}` } }}
+              checked={pref.pushEnabled}
+              onChange={(e) => pushToggle.mutate(e.target.checked)}
+              title="Push this category to your devices"
+              slotProps={{
+                input: { "aria-label": `Push ${pref.label}` },
+              }}
             />
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block" }}
+            >
+              Push
+            </Typography>
+          </Box>
+          {isAll ? (
+            // _all has no feed toggle — global muting is time-bounded.
+            // Spacer keeps the Push column aligned across rows.
+            <Box sx={{ width: 58 }} />
+          ) : (
+            <Box sx={{ textAlign: "center" }}>
+              <Switch
+                edge="end"
+                checked={pref.enabled}
+                onChange={(e) => toggle.mutate(e.target.checked)}
+                title="Turn feed delivery on or off"
+                slotProps={{ input: { "aria-label": `Enable ${pref.label}` } }}
+              />
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block" }}
+              >
+                Feed
+              </Typography>
+            </Box>
           )}
         </Box>
       }
@@ -121,7 +166,7 @@ function PrefRow({ pref }: { pref: NotificationCategoryPreference }) {
         primary={isAll ? `${pref.label} (global mute)` : pref.label}
         secondary={
           <>
-            {prefStatusText(isAll, pref.enabled)}
+            {prefStatusText(isAll, pref.enabled, pref.pushEnabled)}
             {error && (
               <Typography component="span" color="error" sx={{ display: "block" }}>
                 {error}
@@ -174,8 +219,9 @@ export default function NotificationsPage() {
         Notification settings
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Choose which notifications reach your feed. Muting pauses a category
-        for a while without turning it off; the global mute pauses everything.
+        Choose which notifications reach your feed — and which get pushed to
+        your devices. Muting pauses a category for a while without turning it
+        off; the global mute pauses everything.
       </Typography>
       <List>
         {prefs.map((p) => (

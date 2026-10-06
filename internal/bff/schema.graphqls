@@ -400,6 +400,15 @@ type Mutation {
   # Turns a notification category on/off ("_all" toggles nothing extra --
   # global muting goes through muteNotifications instead).
   setNotificationCategoryEnabled(category: String!, enabled: Boolean!): Boolean!
+  # Opts a category in/out of push delivery; "_all" is the master push
+  # switch. Push is independent of the feed toggle.
+  setNotificationCategoryPushEnabled(category: String!, enabled: Boolean!): Boolean!
+  # Registers a push device token for the caller ("android"|"ios"|"web").
+  # Idempotent; a token already owned by someone else is taken over.
+  registerDeviceToken(token: String!, platform: String!): Boolean!
+  # Removes one of the caller's own device tokens (logout). Removing a
+  # token owned by someone else is a no-op.
+  unregisterDeviceToken(token: String!): Boolean!
   # Mutes one category -- or every kind when category is null/"_all" --
   # until the given time.
   muteNotifications(category: String, until: Time!): Boolean!
@@ -573,6 +582,10 @@ type NotificationCategoryPreference {
   category: String!
   label: String!
   enabled: Boolean!
+  # Whether push delivery is opted in for this category ("_all" is the
+  # master push opt-in). Independent of `enabled` — a member can want a
+  # category pushed but absent from the feed.
+  pushEnabled: Boolean!
   mutedUntil: Time
 }
 

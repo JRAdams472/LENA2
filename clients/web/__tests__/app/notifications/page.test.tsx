@@ -9,6 +9,7 @@ jest.mock("../../../lib/api", () => ({
   api: {
     getMyNotificationPreferences: jest.fn(),
     setNotificationCategoryEnabled: jest.fn(),
+    setNotificationCategoryPushEnabled: jest.fn(),
     muteNotifications: jest.fn(),
     clearNotificationMute: jest.fn(),
   },
@@ -28,18 +29,21 @@ const prefs = [
     category: "_all",
     label: "All notifications",
     enabled: true,
+    pushEnabled: false,
     mutedUntil: null,
   },
   {
     category: "household",
     label: "Household activity",
     enabled: true,
+    pushEnabled: true,
     mutedUntil: null,
   },
   {
     category: "expiry",
     label: "Expiring pantry items",
     enabled: false,
+    pushEnabled: false,
     mutedUntil: null,
   },
 ];
@@ -66,7 +70,8 @@ describe("NotificationsPage", () => {
     expect(screen.getByText("Household activity")).toBeInTheDocument();
     expect(screen.getByText("Expiring pantry items")).toBeInTheDocument();
     expect(screen.getByText("Turned off")).toBeInTheDocument();
-    expect(screen.getAllByText("Delivered").length).toBeGreaterThan(0);
+    // Household is feed-on + push-on, so it reads "Delivered · pushed".
+    expect(screen.getByText("Delivered · pushed")).toBeInTheDocument();
   });
 
   it("toggles a category off via the switch", async () => {
@@ -83,6 +88,38 @@ describe("NotificationsPage", () => {
       )
     );
     expect(mockedApi.getMyNotificationPreferences).toHaveBeenCalledTimes(2);
+  });
+
+  it("toggles a category's push delivery via its own switch", async () => {
+    mockedApi.setNotificationCategoryPushEnabled.mockResolvedValue(true);
+    renderPage();
+
+    const toggle = await screen.findByLabelText("Push Expiring pantry items");
+    await userEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(mockedApi.setNotificationCategoryPushEnabled).toHaveBeenCalledWith(
+        "expiry",
+        true
+      )
+    );
+    // Feed toggle untouched — push is an independent channel.
+    expect(mockedApi.setNotificationCategoryEnabled).not.toHaveBeenCalled();
+  });
+
+  it("shows a push switch on the _all row — it is the master push opt-in", async () => {
+    mockedApi.setNotificationCategoryPushEnabled.mockResolvedValue(true);
+    renderPage();
+
+    const toggle = await screen.findByLabelText("Push All notifications");
+    await userEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(mockedApi.setNotificationCategoryPushEnabled).toHaveBeenCalledWith(
+        "_all",
+        true
+      )
+    );
   });
 
   it("mutes a category for a preset window", async () => {

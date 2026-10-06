@@ -13,6 +13,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/grocery"
 	"github.com/JRAdams472/LENA2/internal/notifier"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
 
@@ -61,6 +62,85 @@ func TestResolver_SetNotificationCategoryEnabled(t *testing.T) {
 		Enabled  bool
 	}{Category: notifier.CategoryAll, Enabled: false})
 	require.Error(t, err)
+}
+
+func TestResolver_SetNotificationCategoryPushEnabled(t *testing.T) {
+	n := newNotifierMock(t)
+	// Category toggle passes through, and unlike the feed toggle _all is
+	// accepted — it is the master push switch.
+	n.EXPECT().SetCategoryPushEnabled(gomock.Any(), int64(7), "expiry", true).Return(nil)
+	n.EXPECT().SetCategoryPushEnabled(gomock.Any(), int64(7), notifier.CategoryAll, true).Return(nil)
+	r := &Resolver{NotifierService: n}
+	ctx := testutil.WithUser(context.Background(), 7, "u@example.com")
+
+	ok, err := r.SetNotificationCategoryPushEnabled(ctx, struct {
+		Category string
+		Enabled  bool
+	}{Category: "expiry", Enabled: true})
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	ok, err = r.SetNotificationCategoryPushEnabled(ctx, struct {
+		Category string
+		Enabled  bool
+	}{Category: notifier.CategoryAll, Enabled: true})
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	// Unauthenticated -> rejected before the service runs.
+	_, err = r.SetNotificationCategoryPushEnabled(context.Background(), struct {
+		Category string
+		Enabled  bool
+	}{Category: "expiry", Enabled: true})
+	require.ErrorContains(t, err, "unauthorized")
+}
+
+func TestResolver_RegisterDeviceToken(t *testing.T) {
+	n := newNotifierMock(t)
+	n.EXPECT().RegisterDeviceToken(gomock.Any(), int64(7), "android", "fcm-token-abc").Return(nil)
+	// Platform/token validation is the service's job — the resolver must
+	// propagate its rejection.
+	n.EXPECT().RegisterDeviceToken(gomock.Any(), int64(7), "toaster", "tok").Return(
+		&domainerr.ValidationError{Field: "platform", Msg: "unknown device platform"})
+	r := &Resolver{NotifierService: n}
+	ctx := testutil.WithUser(context.Background(), 7, "u@example.com")
+
+	ok, err := r.RegisterDeviceToken(ctx, struct {
+		Token    string
+		Platform string
+	}{Token: "fcm-token-abc", Platform: "android"})
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	_, err = r.RegisterDeviceToken(ctx, struct {
+		Token    string
+		Platform string
+	}{Token: "tok", Platform: "toaster"})
+	require.Error(t, err)
+
+	_, err = r.RegisterDeviceToken(context.Background(), struct {
+		Token    string
+		Platform string
+	}{Token: "fcm-token-abc", Platform: "android"})
+	require.ErrorContains(t, err, "unauthorized")
+}
+
+func TestResolver_UnregisterDeviceToken(t *testing.T) {
+	n := newNotifierMock(t)
+	// Ownership scoping happens in the service query (token + userID).
+	n.EXPECT().UnregisterDeviceToken(gomock.Any(), int64(7), "fcm-token-abc").Return(nil)
+	r := &Resolver{NotifierService: n}
+
+	ok, err := r.UnregisterDeviceToken(testutil.WithUser(context.Background(), 7, "u@example.com"), struct {
+		Token string
+	}{Token: "fcm-token-abc"})
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	_, err = r.UnregisterDeviceToken(context.Background(), struct {
+		Token string
+	}{Token: "fcm-token-abc"})
+	require.ErrorContains(t, err, "unauthorized")
 }
 
 func TestResolver_MuteNotifications(t *testing.T) {

@@ -532,6 +532,9 @@ type NotifierService interface {
 	SetCategoryEnabled(ctx context.Context, userID int64, category string, enabled bool) error
 	MuteCategory(ctx context.Context, userID int64, category string, until time.Time) error
 	ClearMute(ctx context.Context, userID int64, category string) error
+	SetCategoryPushEnabled(ctx context.Context, userID int64, category string, enabled bool) error
+	RegisterDeviceToken(ctx context.Context, userID int64, platform, token string) error
+	UnregisterDeviceToken(ctx context.Context, userID int64, token string) error
 	Sweep(ctx context.Context, now time.Time) (int, error)
 	Stop()
 }

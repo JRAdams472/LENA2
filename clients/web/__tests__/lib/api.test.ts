@@ -1122,6 +1122,39 @@ describe("api client: notifications", () => {
     });
   });
 
+  it("setNotificationCategoryPushEnabled posts category and flag", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ setNotificationCategoryPushEnabled: true })
+    );
+
+    await api.setNotificationCategoryPushEnabled("_all", true);
+    expect(lastRequestBody().variables).toEqual({
+      category: "_all",
+      enabled: true,
+    });
+  });
+
+  it("registerDeviceToken posts token and platform", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ registerDeviceToken: true })
+    );
+
+    await api.registerDeviceToken("fcm-tok", "android");
+    expect(lastRequestBody().variables).toEqual({
+      token: "fcm-tok",
+      platform: "android",
+    });
+  });
+
+  it("unregisterDeviceToken posts the token", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ unregisterDeviceToken: true })
+    );
+
+    await api.unregisterDeviceToken("fcm-tok");
+    expect(lastRequestBody().variables).toEqual({ token: "fcm-tok" });
+  });
+
   it("muteNotifications posts category and until; null category is global", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({ muteNotifications: true })

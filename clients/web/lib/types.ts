@@ -103,6 +103,7 @@ export interface NotificationCategoryPreference {
   category: string;
   label: string;
   enabled: boolean;
+  pushEnabled: boolean;
   mutedUntil: string | null;
 }
 

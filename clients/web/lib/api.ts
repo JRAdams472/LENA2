@@ -1064,6 +1064,7 @@ interface GqlNotificationCategoryPreference {
   category: string;
   label: string;
   enabled: boolean;
+  pushEnabled: boolean;
   mutedUntil: string | null;
 }
 
@@ -2360,7 +2361,7 @@ export const api = {
     const data = await request<{
       myNotificationPreferences: GqlNotificationCategoryPreference[];
     }>(
-      `query { myNotificationPreferences { category label enabled mutedUntil } }`
+      `query { myNotificationPreferences { category label enabled pushEnabled mutedUntil } }`
     );
     return data.myNotificationPreferences ?? [];
   },
@@ -2374,6 +2375,36 @@ export const api = {
       { category, enabled }
     );
     return data.setNotificationCategoryEnabled;
+  },
+
+  setNotificationCategoryPushEnabled: async (
+    category: string,
+    enabled: boolean
+  ): Promise<boolean> => {
+    const data = await request<{ setNotificationCategoryPushEnabled: boolean }>(
+      `mutation ($category: String!, $enabled: Boolean!) { setNotificationCategoryPushEnabled(category: $category, enabled: $enabled) }`,
+      { category, enabled }
+    );
+    return data.setNotificationCategoryPushEnabled;
+  },
+
+  registerDeviceToken: async (
+    token: string,
+    platform: string
+  ): Promise<boolean> => {
+    const data = await request<{ registerDeviceToken: boolean }>(
+      `mutation ($token: String!, $platform: String!) { registerDeviceToken(token: $token, platform: $platform) }`,
+      { token, platform }
+    );
+    return data.registerDeviceToken;
+  },
+
+  unregisterDeviceToken: async (token: string): Promise<boolean> => {
+    const data = await request<{ unregisterDeviceToken: boolean }>(
+      `mutation ($token: String!) { unregisterDeviceToken(token: $token) }`,
+      { token }
+    );
+    return data.unregisterDeviceToken;
   },
 
   muteNotifications: async (

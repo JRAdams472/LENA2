@@ -48,6 +48,54 @@ func (r *Resolver) SetNotificationCategoryEnabled(ctx context.Context, args stru
 	return true, nil
 }
 
+// SetNotificationCategoryPushEnabled opts a category in or out of push
+// delivery. Unlike the feed toggle, "_all" is meaningful here — it is the
+// master push switch the mobile settings screen shows first.
+func (r *Resolver) SetNotificationCategoryPushEnabled(ctx context.Context, args struct {
+	Category string
+	Enabled  bool
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if err := r.NotifierService.SetCategoryPushEnabled(ctx, u.UserID, args.Category, args.Enabled); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// RegisterDeviceToken records the caller's push token after the app gets it
+// from FCM. Validation (platform enum, token length) lives in the service.
+func (r *Resolver) RegisterDeviceToken(ctx context.Context, args struct {
+	Token    string
+	Platform string
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if err := r.NotifierService.RegisterDeviceToken(ctx, u.UserID, args.Platform, args.Token); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UnregisterDeviceToken drops the caller's token on logout — scoped to the
+// caller's own rows by the service.
+func (r *Resolver) UnregisterDeviceToken(ctx context.Context, args struct {
+	Token string
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if err := r.NotifierService.UnregisterDeviceToken(ctx, u.UserID, args.Token); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // MuteNotifications mutes one category — or every kind when the category is
 // null or "_all" — until the given time.
 func (r *Resolver) MuteNotifications(ctx context.Context, args struct {
@@ -137,9 +185,10 @@ type notificationPrefResolver struct {
 	p notifier.CategoryPreference
 }
 
-func (r *notificationPrefResolver) Category() string { return r.p.Category }
-func (r *notificationPrefResolver) Label() string    { return r.p.Label }
-func (r *notificationPrefResolver) Enabled() bool    { return r.p.Enabled }
+func (r *notificationPrefResolver) Category() string  { return r.p.Category }
+func (r *notificationPrefResolver) Label() string     { return r.p.Label }
+func (r *notificationPrefResolver) Enabled() bool     { return r.p.Enabled }
+func (r *notificationPrefResolver) PushEnabled() bool { return r.p.PushEnabled }
 
 func (r *notificationPrefResolver) MutedUntil() *graphql.Time {
 	if r.p.MutedUntil == nil {

@@ -8905,6 +8905,20 @@ func (mr *MockNotifierServiceMockRecorder) MuteCategory(ctx, userID, category, u
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MuteCategory", reflect.TypeOf((*MockNotifierService)(nil).MuteCategory), ctx, userID, category, until)
 }
 
+// RegisterDeviceToken mocks base method.
+func (m *MockNotifierService) RegisterDeviceToken(ctx context.Context, userID int64, platform, token string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RegisterDeviceToken", ctx, userID, platform, token)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RegisterDeviceToken indicates an expected call of RegisterDeviceToken.
+func (mr *MockNotifierServiceMockRecorder) RegisterDeviceToken(ctx, userID, platform, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDeviceToken", reflect.TypeOf((*MockNotifierService)(nil).RegisterDeviceToken), ctx, userID, platform, token)
+}
+
 // SetCategoryEnabled mocks base method.
 func (m *MockNotifierService) SetCategoryEnabled(ctx context.Context, userID int64, category string, enabled bool) error {
 	m.ctrl.T.Helper()
@@ -8917,6 +8931,20 @@ func (m *MockNotifierService) SetCategoryEnabled(ctx context.Context, userID int
 func (mr *MockNotifierServiceMockRecorder) SetCategoryEnabled(ctx, userID, category, enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCategoryEnabled", reflect.TypeOf((*MockNotifierService)(nil).SetCategoryEnabled), ctx, userID, category, enabled)
+}
+
+// SetCategoryPushEnabled mocks base method.
+func (m *MockNotifierService) SetCategoryPushEnabled(ctx context.Context, userID int64, category string, enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetCategoryPushEnabled", ctx, userID, category, enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetCategoryPushEnabled indicates an expected call of SetCategoryPushEnabled.
+func (mr *MockNotifierServiceMockRecorder) SetCategoryPushEnabled(ctx, userID, category, enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCategoryPushEnabled", reflect.TypeOf((*MockNotifierService)(nil).SetCategoryPushEnabled), ctx, userID, category, enabled)
 }
 
 // Stop mocks base method.
@@ -8944,6 +8972,20 @@ func (m *MockNotifierService) Sweep(ctx context.Context, now time.Time) (int, er
 func (mr *MockNotifierServiceMockRecorder) Sweep(ctx, now any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sweep", reflect.TypeOf((*MockNotifierService)(nil).Sweep), ctx, now)
+}
+
+// UnregisterDeviceToken mocks base method.
+func (m *MockNotifierService) UnregisterDeviceToken(ctx context.Context, userID int64, token string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnregisterDeviceToken", ctx, userID, token)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnregisterDeviceToken indicates an expected call of UnregisterDeviceToken.
+func (mr *MockNotifierServiceMockRecorder) UnregisterDeviceToken(ctx, userID, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterDeviceToken", reflect.TypeOf((*MockNotifierService)(nil).UnregisterDeviceToken), ctx, userID, token)
 }
 
 // MockAuthInvalidator is a mock of AuthInvalidator interface.
