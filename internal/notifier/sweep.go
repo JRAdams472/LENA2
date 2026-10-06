@@ -360,8 +360,15 @@ func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, h
 			_ = s.q.PruneReadNotifications(ctx, uid)
 		}
 		if pushOK {
-			s.enqueuePush(ctx, uid, r.kind, householdID, r.title, r.body,
-				pgtype.Int8{Int64: r.recipeID, Valid: true}, pgtype.Int8{}, dedup)
+			s.enqueuePush(ctx, sqlc.InsertPushDeliveryParams{
+				UserID:      uid,
+				Kind:        r.kind,
+				HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
+				RecipeID:    pgtype.Int8{Int64: r.recipeID, Valid: true},
+				Title:       pgtype.Text{String: r.title, Valid: true},
+				Body:        pgtype.Text{String: r.body, Valid: true},
+				DedupKey:    pgtype.Text{String: dedup, Valid: true},
+			})
 		}
 	}
 	return created
@@ -393,8 +400,15 @@ func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, hou
 			_ = s.q.PruneReadNotifications(ctx, uid)
 		}
 		if pushOK {
-			s.enqueuePush(ctx, uid, r.kind, householdID, r.title, r.body,
-				pgtype.Int8{}, pgtype.Int8{Int64: r.itemID, Valid: true}, dedup)
+			s.enqueuePush(ctx, sqlc.InsertPushDeliveryParams{
+				UserID:      uid,
+				Kind:        r.kind,
+				HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
+				ItemID:      pgtype.Int8{Int64: r.itemID, Valid: true},
+				Title:       pgtype.Text{String: r.title, Valid: true},
+				Body:        pgtype.Text{String: r.body, Valid: true},
+				DedupKey:    pgtype.Text{String: dedup, Valid: true},
+			})
 		}
 	}
 	return created
@@ -420,18 +434,9 @@ func (s *Service) channelDecisions(ctx context.Context, userID int64, kind strin
 
 // enqueuePush writes the outbox row the delivery worker drains; dedup_key
 // makes a repeat sweep insert a no-op, matching the feed insert's idempotency.
-func (s *Service) enqueuePush(ctx context.Context, userID int64, kind string, householdID int64, title, body string, recipeID, itemID pgtype.Int8, dedup string) {
-	if _, err := s.q.InsertPushDelivery(ctx, sqlc.InsertPushDeliveryParams{
-		UserID:      userID,
-		Kind:        kind,
-		HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
-		RecipeID:    recipeID,
-		ItemID:      itemID,
-		Title:       pgtype.Text{String: title, Valid: true},
-		Body:        pgtype.Text{String: body, Valid: true},
-		DedupKey:    pgtype.Text{String: dedup, Valid: true},
-	}); err != nil {
-		slog.Warn("push delivery enqueue failed", "kind", kind, "user", userID, "error", err)
+func (s *Service) enqueuePush(ctx context.Context, p sqlc.InsertPushDeliveryParams) {
+	if _, err := s.q.InsertPushDelivery(ctx, p); err != nil {
+		slog.Warn("push delivery enqueue failed", "kind", p.Kind, "user", p.UserID, "error", err)
 	}
 }
 

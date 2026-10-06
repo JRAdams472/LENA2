@@ -400,6 +400,32 @@ Store routing — all household-scoped:
 
 `EventRecipeItemInput` takes `unit` as a name or abbreviation resolved through the shared unit catalog (like `RecipeItemInput`), plus `itemId`, `quantity` (the unscaled base amount), `section`, `displayOrder`, `notes`, and `isOptional`.
 
+### Notifications and push (LEN-17)
+
+`Notification` is the in-app feed row; each kind carries whichever link fields apply (`recipeId`, `itemId`, `foodEventId`, `inviteId`, `householdId`) so clients can deep-link taps. `NotificationCategoryPreference` describes one category's delivery settings:
+
+- `enabled` — feed delivery; `pushEnabled` — independent push opt-in (off by default; `_all` is the master push switch and accepts push but not feed toggles).
+- `mutedUntil` — channel-agnostic mute that suppresses both feed and push.
+
+```graphql
+type NotificationCategoryPreference {
+  category: String!
+  label: String!
+  enabled: Boolean!
+  pushEnabled: Boolean!
+  mutedUntil: Time
+}
+```
+
+- `myNotificationPreferences: [NotificationCategoryPreference!]!`
+- `unreadNotificationCount: Int!`
+- `setNotificationCategoryEnabled(category: String!, enabled: Boolean!): Boolean!`
+- `setNotificationCategoryPushEnabled(category: String!, enabled: Boolean!): Boolean!` — accepts `_all` as the master opt-in.
+- `muteNotifications(category: String, until: Time!): Boolean!` / `clearNotificationMute(category: String): Boolean!` — null category targets the global `_all` mute.
+- `registerDeviceToken(token: String!, platform: String!): Boolean!` / `unregisterDeviceToken(token: String!): Boolean!` — viewer-scoped FCM token lifecycle (`platform` is `android|ios|web`). Upsert on register takes the token over if another user/device already holds it.
+
+Push delivery is fire-and-forget through a `household.push_delivery` outbox — mutations return after the outbox row is written; a background worker drains it.
+
 ## Example operations
 
 ### Fetch current user and pantry
