@@ -8,6 +8,7 @@ const String notificationPrefsQuery = r'''
       category
       label
       enabled
+      pushEnabled
       mutedUntil
     }
   }
@@ -16,6 +17,12 @@ const String notificationPrefsQuery = r'''
 const String setCategoryEnabledMutation = r'''
   mutation SetCategoryEnabled($category: String!, $enabled: Boolean!) {
     setNotificationCategoryEnabled(category: $category, enabled: $enabled)
+  }
+''';
+
+const String setCategoryPushEnabledMutation = r'''
+  mutation SetCategoryPushEnabled($category: String!, $enabled: Boolean!) {
+    setNotificationCategoryPushEnabled(category: $category, enabled: $enabled)
   }
 ''';
 
@@ -134,6 +141,7 @@ class _NotificationSettingsScreenState
   Widget _prefTile(Map<String, dynamic> pref) {
     final isAll = pref['category'] == '_all';
     final enabled = pref['enabled'] as bool? ?? true;
+    final pushEnabled = pref['pushEnabled'] as bool? ?? false;
     final muted = _isMuted(pref);
     final label = pref['label'] as String? ?? pref['category'] as String? ?? '';
 
@@ -181,8 +189,19 @@ class _NotificationSettingsScreenState
               label: const Text('Snooze'),
               onPressed: () => _muteMenu(pref),
             ),
+            // Push is a second channel — _all is its master switch, so the
+            // push toggle shows even where the feed toggle is hidden.
+            _labeledSwitch(
+              label: 'Push',
+              value: pushEnabled,
+              onChanged: (v) => _mutate(setCategoryPushEnabledMutation, {
+                'category': pref['category'],
+                'enabled': v,
+              }),
+            ),
             if (!isAll)
-              Switch(
+              _labeledSwitch(
+                label: 'Feed',
                 value: enabled,
                 onChanged: (v) => _mutate(setCategoryEnabledMutation, {
                   'category': pref['category'],
@@ -193,6 +212,23 @@ class _NotificationSettingsScreenState
           ],
         ),
       ),
+    );
+  }
+
+  Widget _labeledSwitch({
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 36,
+          child: Switch(value: value, onChanged: onChanged),
+        ),
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+      ],
     );
   }
 
@@ -235,9 +271,9 @@ class _NotificationSettingsScreenState
           const Padding(
             padding: EdgeInsets.only(bottom: 8.0),
             child: Text(
-              'Choose which notifications reach your feed. Muting pauses a '
-              'category for a while without turning it off; the global mute '
-              'pauses everything.',
+              'Choose which notifications reach your feed and which arrive '
+              'as pushes. Muting pauses a category for a while without '
+              'turning it off; the global mute pauses everything.',
             ),
           ),
           ...prefs.map(_prefTile),

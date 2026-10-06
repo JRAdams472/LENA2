@@ -20,3 +20,6 @@ android/app/release
 .DS_Store
 *.log
 .env
+
+# Firebase client config — contains the project key, do not commit.
+android/app/google-services.json

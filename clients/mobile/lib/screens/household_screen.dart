@@ -5,11 +5,9 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
 
 import '../allergy.dart';
-import 'edit_recipe_screen.dart';
-import 'event_detail_screen.dart';
+import '../notification_links.dart';
 import 'grocery_lists_screen.dart';
 import 'notification_settings_screen.dart';
-import 'pantry_screen.dart';
 
 const int maxHouseholdMembers = 10;
 
@@ -303,34 +301,15 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
   }
 
   // Deep link for a notification row: recipe reminders open the recipe,
-  // expiry rows open the pantry, event kinds open the event detail.
+  // expiry rows open the pantry, event kinds open the event detail. Shared
+  // with push-tap routing (notification_links.dart).
   void Function()? _notificationLink(Map<String, dynamic> n) {
-    final recipeId = n['recipeId'] as String?;
-    if (recipeId != null) {
-      return () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => EditRecipeScreen(recipeId: recipeId),
-            ),
-          );
-    }
-    final itemId = n['itemId'] as String?;
-    if (itemId != null) {
-      return () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const PantryScreen()),
-          );
-    }
-    final eventId = n['foodEventId'] as String?;
-    if (eventId != null) {
-      return () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => EventDetailScreen(foodEventId: eventId),
-            ),
-          );
-    }
-    return null;
+    final dest = notificationDestination(n);
+    if (dest == null) return null;
+    return () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => dest),
+        );
   }
 
   Future<void> _addReplacement(String itemId) async {
