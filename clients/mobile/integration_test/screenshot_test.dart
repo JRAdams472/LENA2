@@ -191,6 +191,63 @@ void main() {
       await shot(tester, '16-edit-recipe', const Duration(seconds: 6));
       if (openedRecipe) await back(tester);
 
+      // LEN-59 — recipe tweaks walk on the seeded "Garlic Butter Pasta"
+      // household delta: stale banner + acknowledge, household/original
+      // toggle, delta badges, tweaks card, and a tweak sheet.
+      final recipeSearch =
+          find.widgetWithText(TextField, 'Search recipes');
+      if (exists(recipeSearch)) {
+        await tester.enterText(recipeSearch, 'pasta');
+        await settle(tester);
+        final pasta = find.text('Garlic Butter Pasta');
+        if (exists(pasta) &&
+            await tapFirst(tester, pasta, 'garlic butter pasta tile')) {
+          await settle(tester);
+          final segments = find.byType(SegmentedButton<String>);
+          if (exists(segments)) {
+            // Stale banner over the household view with delta badges.
+            await shot(tester, '27-recipe-tweaks-stale');
+            if (exists(find.text('Mark reviewed'))) {
+              await tapFirst(
+                  tester, find.text('Mark reviewed'), 'mark reviewed');
+              await settle(tester);
+              await shot(tester, '28-recipe-tweaks-reviewed');
+            }
+            // Original view for comparison, then back to household.
+            await tapIfExists(
+                tester,
+                find.descendant(
+                    of: segments, matching: find.text('Original')),
+                'original segment');
+            await settle(tester);
+            await shot(tester, '29-recipe-tweaks-original');
+            await tapIfExists(
+                tester,
+                find.descendant(
+                    of: segments, matching: find.text('Household')),
+                'household segment');
+            await settle(tester);
+            // Item tweak sheet via a row's Tweak action — while the
+            // contents rows are still on screen (the lazy list drops
+            // them once the tweaks card scrolls into view).
+            if (exists(find.text('Tweak'))) {
+              await tapFirst(tester, find.text('Tweak'), 'tweak action');
+              await settle(tester);
+              await shot(tester, '30-recipe-tweak-sheet');
+              await dismissModal(tester);
+            }
+            // Household tweaks card below the contents list.
+            await tester.scrollUntilVisible(
+              find.text('Household tweaks'),
+              200,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await shot(tester, '31-recipe-tweaks-card');
+          }
+          await back(tester);
+        }
+      }
+
       final openedNew = await tapIfExists(
           tester, find.byType(FloatingActionButton), 'new recipe FAB');
       await shot(tester, '17-new-recipe');
