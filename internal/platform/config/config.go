@@ -235,7 +235,7 @@ type Config struct {
 	// household.push_delivery.
 	PushPollInterval time.Duration `envconfig:"PUSH_POLL_INTERVAL" default:"5s"`
 	// PushMaxAttempts bounds delivery retries before a row is failed.
-	PushMaxAttempts int `envconfig:"PUSH_MAX_ATTEMPTS" default:"5"`
+	PushMaxAttempts int32 `envconfig:"PUSH_MAX_ATTEMPTS" default:"5"`
 	// FCMCredentialsFile is the service-account JSON path used when
 	// PUSH_PROVIDER=fcm; mounted as a secret, never committed.
 	FCMCredentialsFile string `envconfig:"FCM_CREDENTIALS_FILE" default:""`

@@ -19,7 +19,8 @@ type FCMSender struct {
 // NewFCMSender builds the sender from a service-account JSON file (the
 // LENA_FCM_CREDENTIALS_FILE path mounted into the container).
 func NewFCMSender(ctx context.Context, credentialsFile string) (*FCMSender, error) {
-	app, err := firebase.NewApp(ctx, nil, option.WithCredentialsFile(credentialsFile))
+	app, err := firebase.NewApp(ctx, nil,
+		option.WithAuthCredentialsFile(option.ServiceAccount, credentialsFile))
 	if err != nil {
 		return nil, fmt.Errorf("firebase app init: %w", err)
 	}
@@ -30,6 +31,11 @@ func NewFCMSender(ctx context.Context, credentialsFile string) (*FCMSender, erro
 	return &FCMSender{client: client}, nil
 }
 
+// SendEach delivers the message to every token in one multicast batch.
+// value the mobile SDK reports) — MulticastMessage.Tokens is deprecated in favor
+// of FIDs, which is a different client-side identity we do not collect.
+//
+//nolint:staticcheck // device tokens are FCM registration tokens (the getToken()
 func (s *FCMSender) SendEach(ctx context.Context, tokens []string, msg PushMessage) []SendResult {
 	res, err := s.client.SendEachForMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
@@ -67,8 +73,7 @@ func (s *FCMSender) SendEach(ctx context.Context, tokens []string, msg PushMessa
 func classifyFCMError(err error) error {
 	if messaging.IsUnregistered(err) ||
 		messaging.IsInvalidArgument(err) ||
-		messaging.IsRegistrationTokenNotRegistered(err) ||
-		messaging.IsMismatchedCredential(err) {
+		messaging.IsSenderIDMismatch(err) {
 		return ErrTokenGone
 	}
 	return err

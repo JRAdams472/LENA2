@@ -281,7 +281,7 @@ func newDomainServices(cfg config.Config, pool *pgxpool.Pool) *serverServices {
 func (s *serverServices) wirePush(cfg config.Config) error {
 	dc := notifier.DeliveryConfig{
 		PollInterval: cfg.PushPollInterval,
-		MaxAttempts:  int32(cfg.PushMaxAttempts),
+		MaxAttempts:  cfg.PushMaxAttempts,
 	}
 	switch cfg.PushProvider {
 	case "fcm":

@@ -1,8 +1,3 @@
-// Push delivery pipeline: an outbox writer side (the seams in
-// household.CreateNotification and the reminder sweep enqueue rows) and a
-// worker side that drains household.push_delivery to device tokens through
-// a Sender. Delivery is at-least-once — a crash between send and mark can
-// replay a row, which is preferable to silently eating a push.
 package notifier
 
 import (
@@ -48,6 +43,8 @@ type Sender interface {
 // e2e stacks exercise the full pipeline without Firebase credentials.
 type LogSender struct{}
 
+// SendEach records one log line per token instead of sending — token
+// redacted, outcome reported as success so the pipeline drains.
 func (LogSender) SendEach(_ context.Context, tokens []string, msg PushMessage) []SendResult {
 	out := make([]SendResult, len(tokens))
 	for i, t := range tokens {
@@ -95,9 +92,13 @@ func (c DeliveryConfig) withDefaults() DeliveryConfig {
 	return c
 }
 
-// DeliveryWorker drains push_delivery rows to device tokens. Lifecycle
-// mirrors the reminder sweep: Start spawns a goroutine, Stop cancels and
-// waits for in-flight sends.
+// DeliveryWorker drains push_delivery rows to device tokens — the worker
+// side of the push pipeline whose writer side is the outbox inserts in
+// household.CreateNotification and the reminder sweep. Delivery is
+// at-least-once: a crash between send and mark can replay a row, which is
+// preferable to silently eating a push. Lifecycle mirrors the reminder
+// sweep: Start spawns a goroutine, Stop cancels and waits for in-flight
+// sends.
 type DeliveryWorker struct {
 	q      sqlc.Querier
 	sender Sender
@@ -108,6 +109,8 @@ type DeliveryWorker struct {
 	wg   sync.WaitGroup
 }
 
+// NewDeliveryWorker builds a worker over the outbox queries and sender,
+// filling any unset config values with production defaults.
 func NewDeliveryWorker(q sqlc.Querier, sender Sender, cfg DeliveryConfig) *DeliveryWorker {
 	return &DeliveryWorker{q: q, sender: sender, cfg: cfg.withDefaults()}
 }
@@ -121,6 +124,8 @@ func (s *Service) AttachDelivery(ctx context.Context, sender Sender, cfg Deliver
 	s.delivery.Start(ctx)
 }
 
+// Start spawns the drain loop: an immediate drain, then one per
+// PollInterval until the context cancels. A second call is a no-op.
 func (w *DeliveryWorker) Start(ctx context.Context) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -146,6 +151,7 @@ func (w *DeliveryWorker) Start(ctx context.Context) {
 	}()
 }
 
+// Stop cancels the drain loop and waits for any in-flight send to finish.
 func (w *DeliveryWorker) Stop() {
 	w.mu.Lock()
 	stop := w.stop
