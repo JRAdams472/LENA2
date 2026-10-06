@@ -512,6 +512,65 @@ CREATE TABLE recipe.user_recipe_preference (
     updated_at   TIMESTAMPTZ,
     PRIMARY KEY (user_id, recipe_id)
 );
+
+-- Household recipe deltas (0044_recipe_deltas): one change set per
+-- recipe+household, applied over the canonical rows at read time.
+CREATE TABLE recipe.recipe_delta (
+    delta_id         BIGSERIAL PRIMARY KEY,
+    recipe_id        BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
+    household_id     BIGINT NOT NULL REFERENCES identity.household(household_id) ON DELETE CASCADE,
+    -- Canonical recipe.updated_at this delta was written against; stale
+    -- until acknowledge_recipe_delta() realigns it.
+    base_updated_at  TIMESTAMPTZ,
+    acked_updated_at TIMESTAMPTZ,
+    created_by       VARCHAR(100) NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by       VARCHAR(100),
+    updated_at       TIMESTAMPTZ,
+    UNIQUE (recipe_id, household_id)
+);
+
+-- kind: substitute | adjust | remove | add. Anchors SET NULL so
+-- canonical edits orphan (never silently drop) member tweaks.
+CREATE TABLE recipe.recipe_delta_item (
+    delta_item_id  BIGSERIAL PRIMARY KEY,
+    delta_id       BIGINT NOT NULL REFERENCES recipe.recipe_delta(delta_id) ON DELETE CASCADE,
+    recipe_item_id BIGINT REFERENCES recipe.recipe_item(recipe_item_id) ON DELETE SET NULL,
+    kind           VARCHAR(20) NOT NULL,
+    -- Override + add payload (all optional):
+    item_id        BIGINT REFERENCES inventory.item(item_id),
+    ingredient_id  BIGINT REFERENCES inventory.ingredient(ingredient_id),
+    quantity       DOUBLE PRECISION,
+    unit_id        BIGINT REFERENCES inventory.unit(unit_id),
+    section        VARCHAR(100),
+    display_order  INTEGER,
+    notes          VARCHAR(500),
+    is_optional    BOOLEAN,
+    created_by     VARCHAR(100) NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by     VARCHAR(100),
+    updated_at     TIMESTAMPTZ
+);
+CREATE INDEX idx_recipe_delta_item_delta ON recipe.recipe_delta_item (delta_id, display_order);
+
+CREATE TABLE recipe.recipe_delta_step (
+    delta_step_id        BIGSERIAL PRIMARY KEY,
+    delta_id             BIGINT NOT NULL REFERENCES recipe.recipe_delta(delta_id) ON DELETE CASCADE,
+    step_id              BIGINT REFERENCES recipe.recipe_step(step_id) ON DELETE SET NULL,
+    kind                 VARCHAR(20) NOT NULL,  -- replace | remove | add
+    step_number          INTEGER,
+    instruction          VARCHAR(2000),
+    duration_minutes     INTEGER,
+    step_type            VARCHAR(30),
+    is_passive           BOOLEAN,
+    depends_on_step_number INTEGER,
+    appliance            VARCHAR(60),
+    created_by           VARCHAR(100) NOT NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by           VARCHAR(100),
+    updated_at           TIMESTAMPTZ
+);
+CREATE INDEX idx_recipe_delta_step_delta ON recipe.recipe_delta_step (delta_id, step_number);
 ```
 
 ## 7. Meal Plan

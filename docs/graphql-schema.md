@@ -70,8 +70,9 @@ type Recipe {
   servings: Int
   prepTimeMinutes: Int
   cookTimeMinutes: Int
-  items: [RecipeItem!]!
-  steps: [RecipeStep!]!
+  items(view: RecipeView = effective): [RecipeItem!]!
+  steps(view: RecipeView = effective): [RecipeStep!]!
+  householdDelta: RecipeDelta
 }
 
 type RecipeItem {
@@ -80,6 +81,9 @@ type RecipeItem {
   unit: String!
   notes: String
   isOptional: Boolean!
+  # "substitute" | "adjust" | "add" when the effective row came from the
+  # household delta; null on untouched canonical rows.
+  deltaKind: String
 }
 
 type RecipeStep {
@@ -91,8 +95,62 @@ type RecipeStep {
   isPassive: Boolean!
   dependsOnStepNumber: Int
   appliance: String
+  # "replace" | "add" for delta-sourced rows; null on canonical rows.
+  deltaKind: String
 }
 ```
+
+#### Household recipe deltas (LEN-25)
+
+Each household may keep one `RecipeDelta` per recipe — a change set of line/step tweaks applied on top of the shared canonical recipe at every consumer seam (display, scaling, meal-plan nutrition, grocery generation, event snapshots, AI). Canonical edits never mutate deltas: orphaned rows persist flagged via `orphaned`/`orphanedItemCount`/`orphanedStepCount`, and `stale` stays set until acknowledged.
+
+```graphql
+enum RecipeView { effective canonical }
+
+type RecipeDelta {
+  id: ID!
+  stale: Boolean!
+  orphanedItemCount: Int!
+  orphanedStepCount: Int!
+  items: [RecipeDeltaItem!]!
+  steps: [RecipeDeltaStep!]!
+  updatedAt: Time
+}
+
+type RecipeDeltaItem {
+  id: ID!
+  recipeItemId: ID        # canonical anchor — null for adds/orphans
+  kind: RecipeDeltaItemKind!  # substitute | adjust | remove | add
+  item: Item
+  ingredient: Ingredient
+  quantity: Float
+  unit: String
+  unitId: ID
+  section: String
+  displayOrder: Int
+  notes: String
+  isOptional: Boolean
+  orphaned: Boolean!
+}
+
+type RecipeDeltaStep {
+  id: ID!
+  stepId: ID              # canonical anchor — null for adds/orphans
+  kind: RecipeDeltaStepKind!  # replace | remove | add
+  stepNumber: Int
+  instruction: String
+  durationMinutes: Int
+  stepType: String
+  isPassive: Boolean
+  dependsOnStepNumber: Int
+  appliance: String
+  orphaned: Boolean!
+}
+```
+
+- `setRecipeDelta(recipeId: ID!, items: [RecipeDeltaItemInput!]!, steps: [RecipeDeltaStepInput!]!): RecipeDelta!` — any household member; replaces the change set wholesale.
+- `clearRecipeDelta(recipeId: ID!): Boolean!` — removes the household's delta entirely.
+- `acknowledgeRecipeDelta(recipeId: ID!): RecipeDelta!` — marks the current canonical revision reviewed, clearing `stale`.
 
 ### Wine — `Bottle`
 

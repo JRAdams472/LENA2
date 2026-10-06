@@ -1111,6 +1111,38 @@ func deltaUnitIDs(deltas map[int64]*recipe.RecipeDelta, base []int64) []int64 {
 	return sortedIDs(set)
 }
 
+// mergedItemsBy returns the union of effective and canonical line maps —
+// canonical IDs for a recipe append after that recipe's effective lines.
+func mergedItemsBy(itemsBy, canonItemsBy map[int64][]recipe.RecipeItem) map[int64][]recipe.RecipeItem {
+	if len(canonItemsBy) == 0 {
+		return itemsBy
+	}
+	out := make(map[int64][]recipe.RecipeItem, len(itemsBy)+len(canonItemsBy))
+	for rid, items := range itemsBy {
+		out[rid] = items
+	}
+	for rid, canon := range canonItemsBy {
+		out[rid] = append(out[rid], canon...)
+	}
+	return out
+}
+
+// deltaRefIDs appends the item/ingredient IDs delta rows reference —
+// substitute/add targets and orphaned payloads.
+func deltaRefIDs(deltas map[int64]*recipe.RecipeDelta, itemIDs, ingredientIDs []int64) ([]int64, []int64) {
+	for _, d := range deltas {
+		for _, di := range d.Items {
+			if di.ItemID != nil {
+				itemIDs = append(itemIDs, *di.ItemID)
+			}
+			if di.IngredientID != nil {
+				ingredientIDs = append(ingredientIDs, *di.IngredientID)
+			}
+		}
+	}
+	return itemIDs, ingredientIDs
+}
+
 // loadRecipeInventoryChildren batch-loads the inventory-side children
 // referenced by rc.itemsBy (plus any extra item/ingredient IDs): catalog
 // items, their children, recipe-item units, and brand-agnostic
@@ -1123,29 +1155,8 @@ func loadRecipeInventoryChildren(ctx context.Context, l recipeChildLoaders, rc *
 	// effective list dropped (substituted or removed lines, orphaned
 	// tweaks). Union every referenced ID into the preload so
 	// view: canonical and the delta rows resolve without lazy loads.
-	allItemsBy := rc.itemsBy
-	if len(rc.canonItemsBy) > 0 {
-		allItemsBy = make(map[int64][]recipe.RecipeItem, len(rc.itemsBy)+len(rc.canonItemsBy))
-		for rid, items := range rc.itemsBy {
-			allItemsBy[rid] = items
-		}
-		for rid, canon := range rc.canonItemsBy {
-			merged := make([]recipe.RecipeItem, 0, len(allItemsBy[rid])+len(canon))
-			merged = append(merged, allItemsBy[rid]...)
-			merged = append(merged, canon...)
-			allItemsBy[rid] = merged
-		}
-	}
-	for _, d := range rc.deltas {
-		for _, di := range d.Items {
-			if di.ItemID != nil {
-				extraItemIDs = append(extraItemIDs, *di.ItemID)
-			}
-			if di.IngredientID != nil {
-				extraIngredientIDs = append(extraIngredientIDs, *di.IngredientID)
-			}
-		}
-	}
+	allItemsBy := mergedItemsBy(rc.itemsBy, rc.canonItemsBy)
+	extraItemIDs, extraIngredientIDs = deltaRefIDs(rc.deltas, extraItemIDs, extraIngredientIDs)
 	itemIDs := recipeItemIDs(allItemsBy, extraItemIDs)
 	items, err := loadItems(ctx, l.inv, itemIDs)
 	if err != nil {
