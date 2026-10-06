@@ -1119,7 +1119,34 @@ func loadRecipeInventoryChildren(ctx context.Context, l recipeChildLoaders, rc *
 	if l.inv == nil {
 		return nil
 	}
-	itemIDs := recipeItemIDs(rc.itemsBy, extraItemIDs)
+	// Canonical lines and delta rows can reference items/ingredients the
+	// effective list dropped (substituted or removed lines, orphaned
+	// tweaks). Union every referenced ID into the preload so
+	// view: canonical and the delta rows resolve without lazy loads.
+	allItemsBy := rc.itemsBy
+	if len(rc.canonItemsBy) > 0 {
+		allItemsBy = make(map[int64][]recipe.RecipeItem, len(rc.itemsBy)+len(rc.canonItemsBy))
+		for rid, items := range rc.itemsBy {
+			allItemsBy[rid] = items
+		}
+		for rid, canon := range rc.canonItemsBy {
+			merged := make([]recipe.RecipeItem, 0, len(allItemsBy[rid])+len(canon))
+			merged = append(merged, allItemsBy[rid]...)
+			merged = append(merged, canon...)
+			allItemsBy[rid] = merged
+		}
+	}
+	for _, d := range rc.deltas {
+		for _, di := range d.Items {
+			if di.ItemID != nil {
+				extraItemIDs = append(extraItemIDs, *di.ItemID)
+			}
+			if di.IngredientID != nil {
+				extraIngredientIDs = append(extraIngredientIDs, *di.IngredientID)
+			}
+		}
+	}
+	itemIDs := recipeItemIDs(allItemsBy, extraItemIDs)
 	items, err := loadItems(ctx, l.inv, itemIDs)
 	if err != nil {
 		return err
@@ -1129,18 +1156,18 @@ func loadRecipeInventoryChildren(ctx context.Context, l recipeChildLoaders, rc *
 	for _, it := range items {
 		list = append(list, it)
 	}
-	ch, err := loadItemChildren(ctx, l.inv, l.id, l.up, list, householdID, recipeItemIngredientIDs(rc.itemsBy, extraIngredientIDs))
+	ch, err := loadItemChildren(ctx, l.inv, l.id, l.up, list, householdID, recipeItemIngredientIDs(allItemsBy, extraIngredientIDs))
 	if err != nil {
 		return err
 	}
 	rc.itemChildren = ch
-	rc.units, err = loadUnits(ctx, l.inv, deltaUnitIDs(rc.deltas, recipeItemUnitIDs(rc.itemsBy)))
+	rc.units, err = loadUnits(ctx, l.inv, deltaUnitIDs(rc.deltas, recipeItemUnitIDs(allItemsBy)))
 	if err != nil {
 		return err
 	}
 	// Recipe items may reference brand-agnostic ingredients; batch-load
 	// them so nested ingredient resolvers never issue a query per row.
-	rc.ingredients, err = loadIngredients(ctx, l.inv, recipeItemIngredientIDs(rc.itemsBy, nil))
+	rc.ingredients, err = loadIngredients(ctx, l.inv, recipeItemIngredientIDs(allItemsBy, extraIngredientIDs))
 	return err
 }
 

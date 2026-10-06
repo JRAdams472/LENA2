@@ -846,6 +846,9 @@ type RecipeItemSection {
 }
 
 type RecipeStep {
+  # Canonical step identity — household delta step rows anchor on it.
+  # Added effective steps carry id 0.
+  id: ID!
   stepNumber: Int!
   instruction: String!
   # Timing metadata feeding the future event-timeline scheduler; null
@@ -897,6 +900,8 @@ type RecipeDeltaItem {
   ingredient: Ingredient
   quantity: Float
   unit: String
+  # Unit identity — clients need it to round-trip a saved change set.
+  unitId: ID
   section: String
   displayOrder: Int
   notes: String

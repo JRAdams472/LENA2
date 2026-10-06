@@ -1,3 +1,5 @@
+import type { RecipeItem } from "./types";
+
 /** Format a computed quantity for display — at most 2 decimals, trailing zeros trimmed. */
 export function fmtQty(n: number): string {
   return Number(n.toFixed(2)).toString();
@@ -77,4 +79,29 @@ export function brandSuffix(
   const b = brand?.trim();
   if (!b || name.trim().toLowerCase().includes(b.toLowerCase())) return "";
   return ` — ${b}`;
+}
+
+/**
+ * One-line label for a recipe ingredient row. Generic ingredients render
+ * alone or with their resolved brand item; brand-only lines lead with the
+ * brand.
+ */
+export function recipeItemLabel(ri: {
+  ingredientName?: string | null;
+  itemName?: string | null;
+  itemBrand?: string | null;
+  itemID?: number | null;
+}): string {
+  if (ri.ingredientName) {
+    if (!ri.itemName) return ri.ingredientName;
+    return `${ri.ingredientName} — ${brandedName(ri.itemBrand, ri.itemName)}`;
+  }
+  if (ri.itemBrand) return `${ri.itemBrand} — ${ri.itemName ?? ri.itemID}`;
+  return String(ri.itemName ?? ri.itemID ?? "");
+}
+
+/** "qty unit label" — the full display of a recipe line's amount + name. */
+export function recipeLineText(ri: RecipeItem): string {
+  const qty = `${fmtQty(ri.quantity)}${ri.unitOfMeasure ? ` ${ri.unitOfMeasure}` : ""}`.trim();
+  return qty ? `${qty} ${recipeItemLabel(ri)}` : recipeItemLabel(ri);
 }

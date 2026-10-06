@@ -371,6 +371,9 @@ export interface Recipe extends AuditableEntity {
   isFavorite: boolean;
   recipeItems?: RecipeItem[];
   recipeSteps?: RecipeStep[];
+  // Present on the detail fetch — the household's tweak set, when one
+  // exists. Effective items/steps already have it applied.
+  householdDelta?: RecipeDelta | null;
   selectionCount: number;
   personalSelectionCount: number;
   myRating: number | null;
@@ -403,16 +406,24 @@ export interface RecipeCategoryGroup {
 
 export interface RecipeItem {
   recipeID: number;
+  // Canonical recipe_item identity — household delta rows anchor on it.
+  // Delta-added lines carry 0.
+  recipeItemID?: number;
   // Null when the line is ingredient-only.
   itemID: number | null;
   ingredientID?: number | null;
   ingredientName?: string | null;
   quantity: number;
   unitOfMeasure: string | null;
+  section?: string | null;
+  displayOrder?: number;
   notes: string | null;
   isOptional: boolean;
   itemName?: string | null;
   itemBrand?: string | null;
+  // Set on effective lines produced by a household delta —
+  // substitute/adjust/add; removed lines never surface.
+  deltaKind?: string | null;
   recipe?: Recipe | null;
   item?: Item | null;
   ingredient?: Ingredient | null;
@@ -429,7 +440,64 @@ export interface RecipeStep extends AuditableEntity {
   isPassive?: boolean;
   dependsOnStepNumber?: number | null;
   appliance?: string | null;
+  // Set on effective steps produced by a household delta — replace/add;
+  // removed steps never surface.
+  deltaKind?: string | null;
   recipe?: Recipe | null;
+}
+
+// Which recipe rows the API returns: the household delta-applied view or
+// the untouched canonical recipe.
+export type RecipeView = "effective" | "canonical";
+
+// One ingredient-line change in a household recipe delta.
+export interface RecipeDeltaItem {
+  recipeDeltaItemID: number;
+  // Anchored canonical line — null for added lines and orphans.
+  recipeItemID: number | null;
+  kind: "substitute" | "adjust" | "remove" | "add";
+  itemID: number | null;
+  itemName: string | null;
+  itemBrand: string | null;
+  ingredientID: number | null;
+  ingredientName: string | null;
+  quantity: number | null;
+  unitOfMeasure: string | null;
+  unitID: number | null;
+  section: string | null;
+  displayOrder: number | null;
+  notes: string | null;
+  isOptional: boolean | null;
+  orphaned: boolean;
+}
+
+// One step change in a household recipe delta.
+export interface RecipeDeltaStep {
+  recipeDeltaStepID: number;
+  // Anchored canonical step — null for added steps and orphans.
+  stepID: number | null;
+  kind: "replace" | "remove" | "add";
+  stepNumber: number | null;
+  instruction: string | null;
+  durationMinutes: number | null;
+  stepType: string | null;
+  isPassive: boolean | null;
+  dependsOnStepNumber: number | null;
+  appliance: string | null;
+  orphaned: boolean;
+}
+
+// A household's tweak set for one canonical recipe (LEN-25). stale fires
+// when the canonical recipe changed after the delta was last written or
+// acknowledged.
+export interface RecipeDelta {
+  recipeDeltaID: number;
+  stale: boolean;
+  orphanedItemCount: number;
+  orphanedStepCount: number;
+  items: RecipeDeltaItem[];
+  steps: RecipeDeltaStep[];
+  updatedAt: string | null;
 }
 
 // A household food event groups recipes (or free-form slots) scheduled to
