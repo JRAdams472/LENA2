@@ -105,6 +105,7 @@ func TestResolver_RegisterDeviceToken(t *testing.T) {
 	r := &Resolver{NotifierService: n}
 	ctx := testutil.WithUser(context.Background(), 7, "u@example.com")
 
+	//nolint:gosec // test literal, not a credential
 	ok, err := r.RegisterDeviceToken(ctx, struct {
 		Token    string
 		Platform string
@@ -115,9 +116,10 @@ func TestResolver_RegisterDeviceToken(t *testing.T) {
 	_, err = r.RegisterDeviceToken(ctx, struct {
 		Token    string
 		Platform string
-	}{Token: "tok", Platform: "toaster"})
+	}{Token: "tok", Platform: "toaster"}) //nolint:gosec // test literal
 	require.Error(t, err)
 
+	//nolint:gosec // test literal, not a credential
 	_, err = r.RegisterDeviceToken(context.Background(), struct {
 		Token    string
 		Platform string
@@ -131,12 +133,14 @@ func TestResolver_UnregisterDeviceToken(t *testing.T) {
 	n.EXPECT().UnregisterDeviceToken(gomock.Any(), int64(7), "fcm-token-abc").Return(nil)
 	r := &Resolver{NotifierService: n}
 
+	//nolint:gosec // test literal, not a credential
 	ok, err := r.UnregisterDeviceToken(testutil.WithUser(context.Background(), 7, "u@example.com"), struct {
 		Token string
 	}{Token: "fcm-token-abc"})
 	require.NoError(t, err)
 	assert.True(t, ok)
 
+	//nolint:gosec // test literal, not a credential
 	_, err = r.UnregisterDeviceToken(context.Background(), struct {
 		Token string
 	}{Token: "fcm-token-abc"})
