@@ -61,10 +61,11 @@ type Config struct {
 // CategoryPreference is one opt-out bucket's effective state for a user:
 // registry categories plus the _all global mute row.
 type CategoryPreference struct {
-	Category   string
-	Label      string
-	Enabled    bool
-	MutedUntil *time.Time
+	Category    string
+	Label       string
+	Enabled     bool
+	PushEnabled bool
+	MutedUntil  *time.Time
 }
 
 // Service owns notification preferences, the suppression gate, and the
@@ -131,6 +132,7 @@ func prefFor(category string, p sqlc.UserprefsNotificationPref) CategoryPreferen
 	}
 	if p.Category != "" {
 		cp.Enabled = p.Enabled
+		cp.PushEnabled = p.PushEnabled
 		if p.MutedUntil.Valid {
 			t := p.MutedUntil.Time
 			cp.MutedUntil = &t
@@ -178,6 +180,21 @@ func (s *Service) ClearMute(ctx context.Context, userID int64, category string) 
 		return err
 	}
 	return s.upsertPref(ctx, userID, category, enabled, nil)
+}
+
+// SetCategoryPushEnabled switches push delivery for one bucket (or _all)
+// without disturbing enabled or an active mute window. Push is independent
+// of the feed: a member can want a category pushed but not in feed.
+func (s *Service) SetCategoryPushEnabled(ctx context.Context, userID int64, category string, enabled bool) error {
+	if err := s.checkCategory(ctx, category); err != nil {
+		return err
+	}
+	if err := s.q.UpsertNotificationPrefPushEnabled(ctx, sqlc.UpsertNotificationPrefPushEnabledParams{
+		UserID: userID, Category: category, PushEnabled: enabled,
+	}); err != nil {
+		return fmt.Errorf("upsert notification pref push: %w", domainerr.FromStorage(err))
+	}
+	return nil
 }
 
 func (s *Service) upsertPref(ctx context.Context, userID int64, category string, enabled bool, mutedUntil *time.Time) error {
@@ -282,4 +299,87 @@ func prefMuted(prefs []sqlc.UserprefsNotificationPref, category string, now time
 		}
 	}
 	return false
+}
+
+// PushAllowed reports whether a notification of the given kind may also be
+// pushed to the user's devices. Like Allowed it resolves the kind's
+// category, but the gates differ: mutes are channel-agnostic (a mute means
+// silence), while 'enabled' gates only the feed — push requires an
+// explicit push_enabled opt-in on the category or on _all.
+func (s *Service) PushAllowed(ctx context.Context, userID int64, kind string) (bool, error) {
+	category, err := s.q.GetNotificationTypeCategory(ctx, kind)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return true, nil
+		}
+		return true, fmt.Errorf("notification kind lookup: %w", domainerr.FromStorage(err))
+	}
+	return s.categoryPushAllowed(ctx, userID, category)
+}
+
+func (s *Service) categoryPushAllowed(ctx context.Context, userID int64, category string) (bool, error) {
+	prefs, err := s.q.ListNotificationPrefs(ctx, userID)
+	if err != nil {
+		return true, fmt.Errorf("list notification prefs: %w", domainerr.FromStorage(err))
+	}
+	now := time.Now()
+	if prefSilenced(prefs, CategoryAll, now) || prefSilenced(prefs, category, now) {
+		return false, nil
+	}
+	return prefPushOn(prefs, CategoryAll) || prefPushOn(prefs, category), nil
+}
+
+// prefSilenced reports whether an active mute window suppresses the
+// category — unlike prefMuted it ignores 'enabled', which gates the feed
+// channel only.
+func prefSilenced(prefs []sqlc.UserprefsNotificationPref, category string, now time.Time) bool {
+	for _, p := range prefs {
+		if p.Category == category && p.MutedUntil.Valid && p.MutedUntil.Time.After(now) {
+			return true
+		}
+	}
+	return false
+}
+
+func prefPushOn(prefs []sqlc.UserprefsNotificationPref, category string) bool {
+	for _, p := range prefs {
+		if p.Category == category {
+			return p.PushEnabled
+		}
+	}
+	return false
+}
+
+// ---------- Device tokens ----------
+
+// RegisterDeviceToken records or refreshes a provider push token for the
+// user. Register is idempotent per token and reassigns ownership to the
+// caller — the token follows the most recent login on a shared device.
+func (s *Service) RegisterDeviceToken(ctx context.Context, userID int64, platform, token string) error {
+	switch platform {
+	case "android", "ios", "web":
+	default:
+		return &domainerr.ValidationError{Field: "platform", Msg: "unknown device platform"}
+	}
+	if token == "" || len(token) > 512 {
+		return &domainerr.ValidationError{Field: "token", Msg: "device token must be 1-512 characters"}
+	}
+	if err := s.q.UpsertDeviceToken(ctx, sqlc.UpsertDeviceTokenParams{
+		UserID: userID, Platform: platform, Token: token,
+	}); err != nil {
+		return fmt.Errorf("register device token: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// UnregisterDeviceToken removes one of the caller's own tokens (logout).
+// Removing someone else's token is a no-op, not an error — the caller can
+// only ever see and revoke their own registrations.
+func (s *Service) UnregisterDeviceToken(ctx context.Context, userID int64, token string) error {
+	if err := s.q.DeleteDeviceTokenForUser(ctx, sqlc.DeleteDeviceTokenForUserParams{
+		Token: token, UserID: userID,
+	}); err != nil {
+		return fmt.Errorf("unregister device token: %w", domainerr.FromStorage(err))
+	}
+	return nil
 }

@@ -325,3 +325,156 @@ func TestSweep_SuppressedMemberGetsNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, n)
 }
+
+// ---------- push gate ----------
+
+func TestPushAllowed_UnknownKindFailsOpen(t *testing.T) {
+	svc, mq := newService(t)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), "ghost_kind").Return("", pgx.ErrNoRows)
+	ok, err := svc.PushAllowed(context.Background(), 1, "ghost_kind")
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+func TestPushAllowed_Matrix(t *testing.T) {
+	now := time.Now()
+	future := now.Add(time.Hour)
+	past := now.Add(-time.Hour)
+
+	for _, tc := range []struct {
+		name  string
+		prefs []sqlc.UserprefsNotificationPref
+		want  bool
+	}{
+		// Push is opt-in: unlike the feed, defaults deny.
+		{"no prefs -> denied", nil, false},
+		{"unrelated pref -> denied", []sqlc.UserprefsNotificationPref{
+			{Category: "events", PushEnabled: true},
+		}, false},
+		{"category push on -> allowed", []sqlc.UserprefsNotificationPref{
+			{Category: "expiry", PushEnabled: true},
+		}, true},
+		{"master _all push on -> allowed", []sqlc.UserprefsNotificationPref{
+			{Category: CategoryAll, PushEnabled: true},
+		}, true},
+		{"master on, category off -> still allowed", []sqlc.UserprefsNotificationPref{
+			{Category: CategoryAll, PushEnabled: true},
+			{Category: "expiry", PushEnabled: false},
+		}, true},
+		{"category push on but muted -> denied", []sqlc.UserprefsNotificationPref{
+			{Category: "expiry", PushEnabled: true, MutedUntil: ts(future)},
+		}, false},
+		{"expired mute -> allowed", []sqlc.UserprefsNotificationPref{
+			{Category: "expiry", PushEnabled: true, MutedUntil: ts(past)},
+		}, true},
+		{"_all muted -> denied despite category push", []sqlc.UserprefsNotificationPref{
+			{Category: CategoryAll, MutedUntil: ts(future)},
+			{Category: "expiry", PushEnabled: true},
+		}, false},
+		// Channels are independent: disabling the feed does not kill push.
+		{"feed disabled, push on -> allowed", []sqlc.UserprefsNotificationPref{
+			{Category: "expiry", Enabled: false, PushEnabled: true},
+		}, true},
+		{"_all feed disabled, category push on -> allowed", []sqlc.UserprefsNotificationPref{
+			{Category: CategoryAll, Enabled: false},
+			{Category: "expiry", PushEnabled: true},
+		}, true},
+		{"feed enabled alone -> denied", []sqlc.UserprefsNotificationPref{
+			{Category: "expiry", Enabled: true},
+		}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, mq := newService(t)
+			mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil)
+			mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(1)).Return(tc.prefs, nil)
+			ok, err := svc.PushAllowed(context.Background(), 1, KindItemExpiring)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, ok)
+		})
+	}
+}
+
+func TestSetCategoryPushEnabled(t *testing.T) {
+	svc, mq := newService(t)
+	gomock.InOrder(
+		mq.EXPECT().ListActiveNotificationTypes(gomock.Any()).Return([]sqlc.ListActiveNotificationTypesRow{
+			{Kind: "item_expiring", Category: "expiry"},
+		}, nil),
+		mq.EXPECT().UpsertNotificationPrefPushEnabled(gomock.Any(), sqlc.UpsertNotificationPrefPushEnabledParams{
+			UserID: 1, Category: "expiry", PushEnabled: true,
+		}).Return(nil),
+	)
+	require.NoError(t, svc.SetCategoryPushEnabled(context.Background(), 1, "expiry", true))
+}
+
+func TestSetCategoryPushEnabled_UnknownCategory(t *testing.T) {
+	svc, mq := newService(t)
+	mq.EXPECT().ListActiveNotificationTypes(gomock.Any()).Return([]sqlc.ListActiveNotificationTypesRow{
+		{Kind: "item_expiring", Category: "expiry"},
+	}, nil)
+	err := svc.SetCategoryPushEnabled(context.Background(), 1, "bogus", true)
+	var ve *domainerr.ValidationError
+	require.ErrorAs(t, err, &ve)
+}
+
+func TestListCategoryPreferences_ExposesPushFlag(t *testing.T) {
+	svc, mq := newService(t)
+	mq.EXPECT().ListActiveNotificationTypes(gomock.Any()).Return([]sqlc.ListActiveNotificationTypesRow{
+		{Kind: "item_expiring", Category: "expiry"},
+	}, nil)
+	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(1)).Return([]sqlc.UserprefsNotificationPref{
+		{Category: "expiry", Enabled: true, PushEnabled: true},
+	}, nil)
+
+	got, err := svc.ListCategoryPreferences(context.Background(), 1)
+	require.NoError(t, err)
+	for _, p := range got {
+		if p.Category == "expiry" {
+			assert.True(t, p.PushEnabled)
+			return
+		}
+	}
+	t.Fatal("expiry pref missing")
+}
+
+// ---------- device tokens ----------
+
+func TestRegisterDeviceToken_Validation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		platform string
+		token    string
+		wantErr  bool
+	}{
+		{"android ok", "android", "fcm-token-abc", false},
+		{"ios ok", "ios", "apns-token", false},
+		{"web ok", "web", "vapid-token", false},
+		{"bad platform", "carrier-pigeon", "tok", true},
+		{"empty token", "android", "", true},
+		{"oversized token", "android", string(make([]byte, 513)), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, mq := newService(t)
+			if !tc.wantErr {
+				mq.EXPECT().UpsertDeviceToken(gomock.Any(), sqlc.UpsertDeviceTokenParams{
+					UserID: 1, Platform: tc.platform, Token: tc.token,
+				}).Return(nil)
+			}
+			err := svc.RegisterDeviceToken(context.Background(), 1, tc.platform, tc.token)
+			if tc.wantErr {
+				var ve *domainerr.ValidationError
+				require.ErrorAs(t, err, &ve)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUnregisterDeviceToken_ScopedToCaller(t *testing.T) {
+	svc, mq := newService(t)
+	mq.EXPECT().DeleteDeviceTokenForUser(gomock.Any(), sqlc.DeleteDeviceTokenForUserParams{
+		Token: "tok", UserID: 1,
+	}).Return(nil)
+	require.NoError(t, svc.UnregisterDeviceToken(context.Background(), 1, "tok"))
+}
