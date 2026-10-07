@@ -26,9 +26,9 @@ const maxHouseholdMembers = 10
 // enumerating user IDs.
 const msgCannotInvite = "cannot invite this user"
 
-// MyHousehold resolves the caller's household with its members; nil when
-// the caller has none (should not occur once the authenticator ensures a
-// default household, but the query must not error on it).
+// MyHousehold resolves the caller's active household with its members;
+// nil when the caller has none (should not occur once the authenticator
+// ensures a default household, but the query must not error on it).
 func (r *Resolver) MyHousehold(ctx context.Context) (*householdResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -37,28 +37,70 @@ func (r *Resolver) MyHousehold(ctx context.Context) (*householdResolver, error) 
 	if u.HouseholdID == 0 {
 		return nil, nil
 	}
-	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID)
+	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID, u.HouseholdID)
 }
 
-// householdWithMembers loads a household and its members in two queries.
-// viewerID marks the caller in the member list and resolves myRole from
-// the DB rows rather than the (possibly stale) auth cache.
-func (r *Resolver) householdWithMembers(ctx context.Context, householdID, viewerID int64) (*householdResolver, error) {
+// MyHouseholds lists every household the caller belongs to — the data
+// behind the active-household switcher.
+func (r *Resolver) MyHouseholds(ctx context.Context) ([]*householdResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mine, err := r.HouseholdService.ListMyHouseholds(ctx, u.UserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*householdResolver, 0, len(mine))
+	for _, m := range mine {
+		hr, err := r.householdWithMembers(ctx, m.Household.HouseholdID, u.UserID, u.HouseholdID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, hr)
+	}
+	return out, nil
+}
+
+// householdWithMembers loads a household and its members. Roles come from
+// the household_member rows (membership order, oldest first) — a user's
+// active-pointer role would report the wrong value once they belong to
+// several households. activeHouseholdID marks the caller's active
+// household; passing it keeps the flag honest when the caller's cached
+// pointer is stale (just-switched mutations).
+func (r *Resolver) householdWithMembers(ctx context.Context, householdID, viewerID, activeHouseholdID int64) (*householdResolver, error) {
 	hh, err := r.HouseholdService.GetHouseholdByID(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
-	members, err := r.IdentityService.ListUsersByHousehold(ctx, householdID)
+	mems, err := r.HouseholdService.ListMembersByHousehold(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
-	out := &householdResolver{hh: hh}
-	for _, m := range members {
+	ids := make([]int64, 0, len(mems))
+	for _, m := range mems {
+		ids = append(ids, m.UserID)
+	}
+	users, err := r.IdentityService.ListUsersByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]identity.User, len(users))
+	for _, usr := range users {
+		byID[usr.UserID] = usr
+	}
+	out := &householdResolver{hh: hh, isActive: householdID == activeHouseholdID}
+	for _, m := range mems {
+		usr, ok := byID[m.UserID]
+		if !ok {
+			continue // membership outlived the user row only mid-cascade
+		}
 		if m.UserID == viewerID {
-			out.myRole = m.HouseholdRole
+			out.myRole = m.Role
 		}
 		out.members = append(out.members, &householdMemberResolver{
-			u:    m,
+			u:    usr,
+			role: m.Role,
 			isMe: m.UserID == viewerID,
 		})
 	}
@@ -179,8 +221,12 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 	if !target.IsActive || !target.IsSearchable {
 		return nil, badInputf(msgCannotInvite)
 	}
-	if target.HouseholdID != nil && *target.HouseholdID == u.HouseholdID {
+	// Already a mate is membership, not pointer equality — the target's
+	// active household may be a different one they also belong to.
+	if _, err := r.HouseholdService.GetMembership(ctx, u.HouseholdID, targetID); err == nil {
 		return nil, badInputf(msgCannotInvite)
+	} else if !errors.Is(err, domainerr.ErrNotFound) {
+		return nil, err
 	}
 	if n, err := r.IdentityService.CountUsersByHousehold(ctx, u.HouseholdID); err != nil {
 		return nil, err
@@ -211,11 +257,14 @@ func (r *Resolver) InviteHouseholdMember(ctx context.Context, args struct {
 	return out[0], nil
 }
 
-// AcceptHouseholdInvite moves the caller into the inviter's household and
-// merges the caller's default-household data (pantry, cellar, meal plans,
-// grocery lists) in a single transaction.
+// AcceptHouseholdInvite joins the caller to the inviter's household and
+// activates it — prior memberships are kept (LEN-26 multi-membership).
+// mergeFromHouseholdId optionally names another household the caller
+// solely owns; its pantry/cellar/plans/lists/events are merged in and the
+// source household is dissolved.
 func (r *Resolver) AcceptHouseholdInvite(ctx context.Context, args struct {
-	InviteID graphql.ID
+	InviteID             graphql.ID
+	MergeFromHouseholdID *graphql.ID
 }) (*householdResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -225,6 +274,14 @@ func (r *Resolver) AcceptHouseholdInvite(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	var mergeFrom *int64
+	if args.MergeFromHouseholdID != nil {
+		id, err := parseID(string(*args.MergeFromHouseholdID))
+		if err != nil {
+			return nil, err
+		}
+		mergeFrom = &id
+	}
 	inv, err := r.HouseholdService.GetInviteByID(ctx, inviteID)
 	if err != nil {
 		return nil, err
@@ -233,61 +290,89 @@ func (r *Resolver) AcceptHouseholdInvite(ctx context.Context, args struct {
 		// Non-party access must not leak that the invite exists.
 		return nil, domainerr.ErrNotFound
 	}
-	if err := r.acceptInvite(ctx, u, inv); err != nil {
+	if err := r.acceptInvite(ctx, u, inv, mergeFrom); err != nil {
 		return nil, err
 	}
 	r.invalidateUser(ctx, u)
 	r.invalidateUserID(ctx, inv.FromUserID)
-	return r.householdWithMembers(ctx, inv.HouseholdID, u.UserID)
+	return r.householdWithMembers(ctx, inv.HouseholdID, u.UserID, inv.HouseholdID)
 }
 
 // acceptInvite runs the invite-accept orchestration in one unit of work:
 // lock the household row (serializing concurrent accepts/leaves/removals
-// and the member cap), transition the invite, merge the caller's
-// household data into the inviter's household, move the caller as a
-// member with an expected-value guard, then write notifications.
-func (r *Resolver) acceptInvite(ctx context.Context, u currentuser.User, inv household.Invite) error {
+// and the member cap), transition the invite, add the caller's
+// membership, optionally merge a named sole-owned household, activate the
+// joined household, dissolve the merge source, then notify.
+func (r *Resolver) acceptInvite(ctx context.Context, u currentuser.User, inv household.Invite, mergeFrom *int64) error {
 	return r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
 		if _, err := r.HouseholdService.LockHousehold(ctx, inv.HouseholdID); err != nil {
 			return err
 		}
-		if n, err := r.IdentityService.CountUsersByHousehold(ctx, inv.HouseholdID); err != nil {
+		if n, err := r.HouseholdService.CountMembers(ctx, inv.HouseholdID); err != nil {
 			return err
 		} else if n >= maxHouseholdMembers {
 			return badInputf("household is full")
 		}
-		inviter, err := r.IdentityService.GetByID(ctx, inv.FromUserID)
-		if err != nil {
-			return err
-		}
-		if inviter.HouseholdID == nil || *inviter.HouseholdID != inv.HouseholdID {
-			return domainerr.ErrConflict
-		}
-		target, err := r.IdentityService.GetByID(ctx, u.UserID)
-		if err != nil {
+		// The invite is dead if the inviter left the household — membership
+		// check, not pointer equality, since members may be active elsewhere.
+		if _, err := r.HouseholdService.GetMembership(ctx, inv.HouseholdID, inv.FromUserID); err != nil {
+			if errors.Is(err, domainerr.ErrNotFound) {
+				return domainerr.ErrConflict
+			}
 			return err
 		}
 		if _, err := r.HouseholdService.TransitionInvite(ctx, inv.InviteID, household.StatusAccepted, u.Email); err != nil {
 			return err
 		}
-		if err := r.mergeIntoHousehold(ctx, target.HouseholdID, inv.HouseholdID, u.Email); err != nil {
+		if _, err := r.HouseholdService.GetMembership(ctx, inv.HouseholdID, u.UserID); errors.Is(err, domainerr.ErrNotFound) {
+			if _, err := r.HouseholdService.JoinHousehold(ctx, inv.HouseholdID, u.UserID, identity.HouseholdRoleMember, u.Email); err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
-		if err := r.IdentityService.SetUserHousehold(ctx, u.UserID, inv.HouseholdID, identity.HouseholdRoleMember, target.HouseholdID); err != nil {
+		if mergeFrom != nil {
+			if err := r.validateMergeSource(ctx, *mergeFrom, inv.HouseholdID, u.UserID); err != nil {
+				return err
+			}
+			if err := r.mergeIntoHousehold(ctx, mergeFrom, inv.HouseholdID, u.Email); err != nil {
+				return err
+			}
+		}
+		if err := r.IdentityService.SetActiveHousehold(ctx, u.UserID, inv.HouseholdID, u.Email); err != nil {
 			return err
 		}
-		// Mirror the move into household_member (LEN-26 P1 keeps membership
-		// 1:1 with the active pointer; P2 turns accept into add-membership).
-		if _, err := r.HouseholdService.JoinHousehold(ctx, inv.HouseholdID, u.UserID, identity.HouseholdRoleMember, u.Email); err != nil {
-			return err
-		}
-		if target.HouseholdID != nil && *target.HouseholdID != inv.HouseholdID {
-			if err := r.HouseholdService.RemoveMembership(ctx, *target.HouseholdID, u.UserID); err != nil && !errors.Is(err, domainerr.ErrNotFound) {
+		if mergeFrom != nil {
+			// Pointer is already off the source (activated above); the
+			// caller was its sole member so no users row can reference it.
+			if err := r.HouseholdService.DeleteHousehold(ctx, *mergeFrom); err != nil {
 				return err
 			}
 		}
 		return r.notifyJoin(ctx, u, inv)
 	})
+}
+
+// validateMergeSource gates the dissolve: only a household the caller
+// solely owns may merge — shared households are always rejected so their
+// other members keep their data.
+func (r *Resolver) validateMergeSource(ctx context.Context, sourceID, targetID, userID int64) error {
+	if sourceID == targetID {
+		return badInputf("cannot merge a household into itself")
+	}
+	mem, err := r.HouseholdService.GetMembership(ctx, sourceID, userID)
+	if err != nil {
+		return err // strangers get NOT_FOUND — don't leak the household
+	}
+	if mem.Role != identity.HouseholdRoleOwner {
+		return badInputf("only a household you own can be merged")
+	}
+	if n, err := r.HouseholdService.CountMembers(ctx, sourceID); err != nil {
+		return err
+	} else if n != 1 {
+		return badInputf("only a household you alone belong to can be merged")
+	}
+	return nil
 }
 
 // mergeIntoHousehold moves a joining member's previous-household stock,
@@ -323,7 +408,7 @@ func (r *Resolver) notifyJoin(ctx context.Context, u currentuser.User, inv house
 	if err := r.notify(ctx, []int64{inv.FromUserID}, household.KindInviteAccepted, inv.HouseholdID, u.UserID, &inv.InviteID); err != nil {
 		return err
 	}
-	members, err := r.IdentityService.ListUsersByHousehold(ctx, inv.HouseholdID)
+	members, err := r.HouseholdService.ListMembersByHousehold(ctx, inv.HouseholdID)
 	if err != nil {
 		return err
 	}
@@ -399,11 +484,15 @@ func (r *Resolver) transitionInvite(ctx context.Context, rawID graphql.ID, to ho
 	return resolved[0], nil
 }
 
-// LeaveHousehold moves the caller into a fresh single-person household as
-// its owner. Their data stays with the household they left. When the
-// caller was the owner and other members remain, ownership transfers to
-// the earliest admin, else the earliest member.
-func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
+// LeaveHousehold removes the caller's membership from the given
+// household (default: their active one). Data stays behind. An owner
+// leaving a multi-member household promotes the earliest admin, else the
+// earliest member. Leaving the active household activates the earliest
+// remaining membership — or, when none remain, recreates the legacy
+// fresh single-person household.
+func (r *Resolver) LeaveHousehold(ctx context.Context, args struct {
+	HouseholdID *graphql.ID
+}) (bool, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return false, err
@@ -414,38 +503,44 @@ func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if fresh.HouseholdID == nil {
+		// The DB row is authoritative — the cached active pointer may lag
+		// a recent switch, so default the target from fresh.HouseholdID.
+		var leaveID int64
+		switch {
+		case args.HouseholdID != nil:
+			if leaveID, err = parseID(string(*args.HouseholdID)); err != nil {
+				return err
+			}
+		case fresh.HouseholdID != nil:
+			leaveID = *fresh.HouseholdID
+		default:
 			return badInputf("no household to leave")
 		}
-		// The DB row is authoritative — the cached household id may lag a
-		// recent move, so lock and operate on fresh.HouseholdID.
-		oldHouseholdID := *fresh.HouseholdID
-		if _, err := r.HouseholdService.LockHousehold(ctx, oldHouseholdID); err != nil {
+		if _, err := r.HouseholdService.LockHousehold(ctx, leaveID); err != nil {
 			return err
 		}
-		members, err := r.IdentityService.ListUsersByHousehold(ctx, oldHouseholdID)
+		caller, err := r.HouseholdService.GetMembership(ctx, leaveID, u.UserID)
 		if err != nil {
 			return err
 		}
-		promoted, err = r.promoteSuccessor(ctx, u, fresh, members, oldHouseholdID)
+		members, err := r.HouseholdService.ListMembersByHousehold(ctx, leaveID)
 		if err != nil {
 			return err
 		}
-		if err := r.cancelPendingInvitesFromUser(ctx, u, oldHouseholdID); err != nil {
-			return err
-		}
-		hh, err := r.HouseholdService.CreateHousehold(ctx, u.Email)
+		promoted, err = r.promoteSuccessor(ctx, u, caller.Role, members, leaveID)
 		if err != nil {
 			return err
 		}
-		if err := r.IdentityService.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, identity.HouseholdRoleOwner, fresh.HouseholdID); err != nil {
+		if err := r.cancelPendingInvitesFromUser(ctx, u, leaveID); err != nil {
 			return err
 		}
-		if _, err := r.HouseholdService.JoinHousehold(ctx, hh.HouseholdID, u.UserID, identity.HouseholdRoleOwner, u.Email); err != nil {
+		if err := r.HouseholdService.RemoveMembership(ctx, leaveID, u.UserID); err != nil {
 			return err
 		}
-		if err := r.HouseholdService.RemoveMembership(ctx, oldHouseholdID, u.UserID); err != nil && !errors.Is(err, domainerr.ErrNotFound) {
-			return err
+		if fresh.HouseholdID != nil && *fresh.HouseholdID == leaveID {
+			if err := r.activateFallbackHousehold(ctx, u.UserID, u.Email); err != nil {
+				return err
+			}
 		}
 		var remaining []int64
 		for _, m := range members {
@@ -453,7 +548,7 @@ func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
 				remaining = append(remaining, m.UserID)
 			}
 		}
-		return r.notify(ctx, remaining, household.KindMemberLeft, oldHouseholdID, u.UserID, nil)
+		return r.notify(ctx, remaining, household.KindMemberLeft, leaveID, u.UserID, nil)
 	})
 	if err != nil {
 		return false, err
@@ -465,12 +560,34 @@ func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// activateFallbackHousehold points a user who just left/was removed from
+// their active household at their earliest remaining membership — or, when
+// none remain, creates the fresh single-person household that preserves
+// legacy behavior. Call after the old membership row is deleted.
+func (r *Resolver) activateFallbackHousehold(ctx context.Context, userID int64, by string) error {
+	mems, err := r.HouseholdService.ListMembershipsByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(mems) > 0 {
+		return r.IdentityService.SetActiveHousehold(ctx, userID, mems[0].HouseholdID, by)
+	}
+	hh, err := r.HouseholdService.CreateHousehold(ctx, by)
+	if err != nil {
+		return err
+	}
+	if _, err := r.HouseholdService.JoinHousehold(ctx, hh.HouseholdID, userID, identity.HouseholdRoleOwner, by); err != nil {
+		return err
+	}
+	return r.IdentityService.SetActiveHousehold(ctx, userID, hh.HouseholdID, by)
+}
+
 // promoteSuccessor hands ownership to the earliest admin (else the
 // earliest member) when the caller leaving was the owner of a multi-member
-// household. Returns the promoted member's ID, or 0 when no promotion was
-// needed/possible.
-func (r *Resolver) promoteSuccessor(ctx context.Context, u currentuser.User, fresh identity.User, members []identity.User, householdID int64) (int64, error) {
-	if fresh.HouseholdRole != identity.HouseholdRoleOwner || len(members) <= 1 {
+// household. Membership order defines "earliest". Returns the promoted
+// member's ID, or 0 when no promotion was needed/possible.
+func (r *Resolver) promoteSuccessor(ctx context.Context, u currentuser.User, callerRole string, members []household.Membership, householdID int64) (int64, error) {
+	if callerRole != identity.HouseholdRoleOwner || len(members) <= 1 {
 		return 0, nil
 	}
 	successor := firstMemberWithRole(members, u.UserID, identity.HouseholdRoleAdmin)
@@ -480,11 +597,18 @@ func (r *Resolver) promoteSuccessor(ctx context.Context, u currentuser.User, fre
 	if successor == 0 {
 		return 0, nil
 	}
-	if err := r.IdentityService.SetUserHouseholdRole(ctx, successor, householdID, identity.HouseholdRoleOwner, u.Email); err != nil {
-		return 0, err
-	}
 	if _, err := r.HouseholdService.JoinHousehold(ctx, householdID, successor, identity.HouseholdRoleOwner, u.Email); err != nil {
 		return 0, err
+	}
+	// Sync the pointer's cached role only when this household is the
+	// successor's active one — a member active elsewhere keeps their own
+	// pointer role untouched.
+	if succ, err := r.IdentityService.GetByID(ctx, successor); err != nil {
+		return 0, err
+	} else if succ.HouseholdID != nil && *succ.HouseholdID == householdID {
+		if err := r.IdentityService.SetUserHouseholdRole(ctx, successor, householdID, identity.HouseholdRoleOwner, u.Email); err != nil {
+			return 0, err
+		}
 	}
 	if err := r.notify(ctx, []int64{successor}, household.KindRoleChanged, householdID, u.UserID, nil); err != nil {
 		return 0, err
@@ -508,6 +632,70 @@ func (r *Resolver) cancelPendingInvitesFromUser(ctx context.Context, u currentus
 	return nil
 }
 
+// CreateHousehold makes a new household, joins the caller as owner, and
+// activates it — the "add a household" entry point beside invite accept.
+func (r *Resolver) CreateHousehold(ctx context.Context, args struct {
+	Name *string
+}) (*householdResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var hh household.Household
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var err error
+		hh, err = r.HouseholdService.CreateHousehold(ctx, u.Email)
+		if err != nil {
+			return err
+		}
+		if _, err := r.HouseholdService.JoinHousehold(ctx, hh.HouseholdID, u.UserID, identity.HouseholdRoleOwner, u.Email); err != nil {
+			return err
+		}
+		if err := r.IdentityService.SetActiveHousehold(ctx, u.UserID, hh.HouseholdID, u.Email); err != nil {
+			return err
+		}
+		if args.Name != nil {
+			if _, err := r.HouseholdService.RenameHousehold(ctx, hh.HouseholdID, strings.TrimSpace(*args.Name), u.Email); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r.invalidateUser(ctx, u)
+	return r.householdWithMembers(ctx, hh.HouseholdID, u.UserID, hh.HouseholdID)
+}
+
+// SetActiveHousehold moves the caller's active-household pointer to a
+// household they belong to. All household-scoped reads and writes follow
+// it; non-members get NOT_FOUND so household IDs are not enumerable.
+func (r *Resolver) SetActiveHousehold(ctx context.Context, args struct {
+	HouseholdID graphql.ID
+}) (*householdResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hhID, err := parseID(string(args.HouseholdID))
+	if err != nil {
+		return nil, err
+	}
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		err := r.IdentityService.SetActiveHousehold(ctx, u.UserID, hhID, u.Email)
+		if errors.Is(err, domainerr.ErrConflict) {
+			return domainerr.ErrNotFound
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	r.invalidateUser(ctx, u)
+	return r.householdWithMembers(ctx, hhID, u.UserID, hhID)
+}
+
 // RenameHousehold sets or clears the caller's household display name.
 // Owner-only; other members are notified.
 func (r *Resolver) RenameHousehold(ctx context.Context, args struct {
@@ -524,7 +712,7 @@ func (r *Resolver) RenameHousehold(ctx context.Context, args struct {
 		if _, err := r.HouseholdService.RenameHousehold(ctx, u.HouseholdID, args.Name, u.Email); err != nil {
 			return err
 		}
-		members, err := r.IdentityService.ListUsersByHousehold(ctx, u.HouseholdID)
+		members, err := r.HouseholdService.ListMembersByHousehold(ctx, u.HouseholdID)
 		if err != nil {
 			return err
 		}
@@ -539,7 +727,7 @@ func (r *Resolver) RenameHousehold(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID)
+	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID, u.HouseholdID)
 }
 
 // SetHouseholdRole promotes a member to admin or demotes an admin to
@@ -570,18 +758,22 @@ func (r *Resolver) SetHouseholdRole(ctx context.Context, args struct {
 		if _, err := r.HouseholdService.LockHousehold(ctx, u.HouseholdID); err != nil {
 			return err
 		}
-		target, err := r.householdMember(ctx, u.HouseholdID, targetID)
+		target, mem, err := r.householdMember(ctx, u.HouseholdID, targetID)
 		if err != nil {
 			return err
 		}
-		if target.HouseholdRole == identity.HouseholdRoleOwner {
+		if mem.Role == identity.HouseholdRoleOwner {
 			return badInputf("cannot change the owner's role")
-		}
-		if err := r.IdentityService.SetUserHouseholdRole(ctx, targetID, u.HouseholdID, role, u.Email); err != nil {
-			return err
 		}
 		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, targetID, role, u.Email); err != nil {
 			return err
+		}
+		// The membership role is authoritative; mirror it onto the user's
+		// active-pointer role only when this household is their active one.
+		if target.HouseholdID != nil && *target.HouseholdID == u.HouseholdID {
+			if err := r.IdentityService.SetUserHouseholdRole(ctx, targetID, u.HouseholdID, role, u.Email); err != nil {
+				return err
+			}
 		}
 		return r.notify(ctx, []int64{targetID}, household.KindRoleChanged, u.HouseholdID, u.UserID, nil)
 	})
@@ -589,7 +781,7 @@ func (r *Resolver) SetHouseholdRole(ctx context.Context, args struct {
 		return nil, err
 	}
 	r.invalidateUserID(ctx, targetID)
-	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID)
+	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID, u.HouseholdID)
 }
 
 // TransferHouseholdOwnership hands ownership to another member; the
@@ -615,19 +807,22 @@ func (r *Resolver) TransferHouseholdOwnership(ctx context.Context, args struct {
 		if _, err := r.HouseholdService.LockHousehold(ctx, u.HouseholdID); err != nil {
 			return err
 		}
-		if _, err := r.householdMember(ctx, u.HouseholdID, targetID); err != nil {
-			return err
-		}
-		if err := r.IdentityService.SetUserHouseholdRole(ctx, targetID, u.HouseholdID, identity.HouseholdRoleOwner, u.Email); err != nil {
+		target, _, err := r.householdMember(ctx, u.HouseholdID, targetID)
+		if err != nil {
 			return err
 		}
 		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, targetID, identity.HouseholdRoleOwner, u.Email); err != nil {
 			return err
 		}
-		if err := r.IdentityService.SetUserHouseholdRole(ctx, u.UserID, u.HouseholdID, identity.HouseholdRoleMember, u.Email); err != nil {
+		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, u.UserID, identity.HouseholdRoleMember, u.Email); err != nil {
 			return err
 		}
-		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, u.UserID, identity.HouseholdRoleMember, u.Email); err != nil {
+		if target.HouseholdID != nil && *target.HouseholdID == u.HouseholdID {
+			if err := r.IdentityService.SetUserHouseholdRole(ctx, targetID, u.HouseholdID, identity.HouseholdRoleOwner, u.Email); err != nil {
+				return err
+			}
+		}
+		if err := r.IdentityService.SetUserHouseholdRole(ctx, u.UserID, u.HouseholdID, identity.HouseholdRoleMember, u.Email); err != nil {
 			return err
 		}
 		return r.notify(ctx, []int64{targetID}, household.KindRoleChanged, u.HouseholdID, u.UserID, nil)
@@ -637,7 +832,7 @@ func (r *Resolver) TransferHouseholdOwnership(ctx context.Context, args struct {
 	}
 	r.invalidateUser(ctx, u)
 	r.invalidateUserID(ctx, targetID)
-	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID)
+	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID, u.HouseholdID)
 }
 
 // RemoveHouseholdMember moves a member into a fresh single-person
@@ -665,14 +860,14 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 		if _, err := r.HouseholdService.LockHousehold(ctx, u.HouseholdID); err != nil {
 			return err
 		}
-		target, err := r.householdMember(ctx, u.HouseholdID, targetID)
+		target, mem, err := r.householdMember(ctx, u.HouseholdID, targetID)
 		if err != nil {
 			return err
 		}
-		if target.HouseholdRole == identity.HouseholdRoleOwner {
+		if mem.Role == identity.HouseholdRoleOwner {
 			return errForbidden()
 		}
-		if u.HouseholdRole == identity.HouseholdRoleAdmin && target.HouseholdRole != identity.HouseholdRoleMember {
+		if u.HouseholdRole == identity.HouseholdRoleAdmin && mem.Role != identity.HouseholdRoleMember {
 			return errForbidden()
 		}
 		cancelled, err := r.HouseholdService.CancelPendingInvitesFrom(ctx, targetID, u.HouseholdID, u.Email)
@@ -684,28 +879,26 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 				return err
 			}
 		}
-		fresh, err := r.HouseholdService.CreateHousehold(ctx, u.Email)
-		if err != nil {
+		if err := r.HouseholdService.RemoveMembership(ctx, u.HouseholdID, targetID); err != nil {
 			return err
 		}
-		if err := r.IdentityService.SetUserHousehold(ctx, targetID, fresh.HouseholdID, identity.HouseholdRoleOwner, target.HouseholdID); err != nil {
-			return err
-		}
-		if _, err := r.HouseholdService.JoinHousehold(ctx, fresh.HouseholdID, targetID, identity.HouseholdRoleOwner, u.Email); err != nil {
-			return err
-		}
-		if err := r.HouseholdService.RemoveMembership(ctx, u.HouseholdID, targetID); err != nil && !errors.Is(err, domainerr.ErrNotFound) {
-			return err
+		// The target keeps every other membership; only when this was their
+		// active household does their pointer move — to the earliest
+		// remaining membership or a fresh solo household.
+		if target.HouseholdID != nil && *target.HouseholdID == u.HouseholdID {
+			if err := r.activateFallbackHousehold(ctx, targetID, u.Email); err != nil {
+				return err
+			}
 		}
 		if err := r.notify(ctx, []int64{targetID}, household.KindMemberRemoved, u.HouseholdID, u.UserID, nil); err != nil {
 			return err
 		}
-		var remaining []int64
-		members, err := r.IdentityService.ListUsersByHousehold(ctx, u.HouseholdID)
+		mems, err := r.HouseholdService.ListMembersByHousehold(ctx, u.HouseholdID)
 		if err != nil {
 			return err
 		}
-		for _, m := range members {
+		var remaining []int64
+		for _, m := range mems {
 			if m.UserID != u.UserID {
 				remaining = append(remaining, m.UserID)
 			}
@@ -717,7 +910,7 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 		return nil, err
 	}
 	r.invalidateUserID(ctx, targetID)
-	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID)
+	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID, u.HouseholdID)
 }
 
 // MyNotifications returns the caller's household notifications,
@@ -842,25 +1035,28 @@ func requireHouseholdRole(u currentuser.User, roles ...string) error {
 	return errForbidden()
 }
 
-// householdMember fetches a user that must currently belong to
-// householdID; strangers get NOT_FOUND so membership is never leaked.
-func (r *Resolver) householdMember(ctx context.Context, householdID, userID int64) (identity.User, error) {
+// householdMember fetches a user that must belong to householdID —
+// membership is authoritative (household_member), so a member whose
+// active pointer sits in a different household still resolves; strangers
+// get NOT_FOUND so membership is never leaked.
+func (r *Resolver) householdMember(ctx context.Context, householdID, userID int64) (identity.User, household.Membership, error) {
+	mem, err := r.HouseholdService.GetMembership(ctx, householdID, userID)
+	if err != nil {
+		return identity.User{}, household.Membership{}, err
+	}
 	target, err := r.IdentityService.GetByID(ctx, userID)
 	if err != nil {
-		return identity.User{}, err
+		return identity.User{}, household.Membership{}, err
 	}
-	if target.HouseholdID == nil || *target.HouseholdID != householdID {
-		return identity.User{}, domainerr.ErrNotFound
-	}
-	return target, nil
+	return target, mem, nil
 }
 
-// firstMemberWithRole returns the earliest-listed member carrying role,
-// excluding excludeUserID. Callers pass the ListUsersByHousehold result,
-// which is ordered by created_at.
-func firstMemberWithRole(members []identity.User, excludeUserID int64, role string) int64 {
+// firstMemberWithRole returns the earliest-joined member carrying role,
+// excluding excludeUserID. Callers pass the ListMembersByHousehold
+// result, which is ordered by membership created_at.
+func firstMemberWithRole(members []household.Membership, excludeUserID int64, role string) int64 {
 	for _, m := range members {
-		if m.UserID != excludeUserID && m.HouseholdRole == role {
+		if m.UserID != excludeUserID && m.Role == role {
 			return m.UserID
 		}
 	}
@@ -894,9 +1090,10 @@ func householdUserResolvers(users []identity.User) []*householdUserResolver {
 }
 
 type householdResolver struct {
-	hh      household.Household
-	members []*householdMemberResolver
-	myRole  string
+	hh       household.Household
+	members  []*householdMemberResolver
+	myRole   string
+	isActive bool
 }
 
 func (r *householdResolver) ID() graphql.ID {
@@ -909,12 +1106,19 @@ func (r *householdResolver) Members() []*householdMemberResolver { return r.memb
 
 func (r *householdResolver) MyRole() string { return strings.ToUpper(r.myRole) }
 
+// IsActive reports whether this household is the caller's active one —
+// set at build time against the caller's (post-mutation) pointer.
+func (r *householdResolver) IsActive() bool { return r.isActive }
+
 func (r *householdResolver) CreatedAt() graphql.Time { return graphqlTime(r.hh.CreatedAt) }
 
 // householdMemberResolver resolves HouseholdMember — the restricted user
-// projection paired with per-household role metadata.
+// projection paired with the role the member holds in THIS household
+// (from household_member; the user's pointer role may be for a different
+// household).
 type householdMemberResolver struct {
 	u    identity.User
+	role string
 	isMe bool
 }
 
@@ -922,7 +1126,7 @@ func (r *householdMemberResolver) User() *householdUserResolver {
 	return &householdUserResolver{u: r.u}
 }
 
-func (r *householdMemberResolver) Role() string { return strings.ToUpper(r.u.HouseholdRole) }
+func (r *householdMemberResolver) Role() string { return strings.ToUpper(r.role) }
 
 func (r *householdMemberResolver) IsMe() bool { return r.isMe }
 

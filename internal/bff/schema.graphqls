@@ -159,6 +159,10 @@ type Query {
   pendingRecipeImports(page: Int = 1, pageSize: Int = 25): RecipeImportPage! @admin
   # The caller's household with its members; null when the caller has none.
   myHousehold: Household
+  # Every household the caller belongs to — backs the household switcher.
+  # Each entry carries the caller's role in that household and whether it
+  # is their currently active one.
+  myHouseholds: [Household!]!
   # Pending invites the caller received or sent (for cancellation).
   householdInvites: [HouseholdInvite!]!
   # Opted-in, active users matching a name/email term; excludes the
@@ -385,10 +389,23 @@ type Mutation {
   # Household membership: invite by user id, accept/decline received
   # invites, cancel sent ones, or leave the current household.
   inviteHouseholdMember(userId: ID!): HouseholdInvite!
-  acceptHouseholdInvite(inviteId: ID!): Household!
+  # Accepting adds a membership and activates the joined household. When
+  # mergeFromHouseholdId names another household the caller solely owns,
+  # its pantry/cellar/plans/lists/events move into the joined household
+  # and the source household is dissolved.
+  acceptHouseholdInvite(inviteId: ID!, mergeFromHouseholdId: ID): Household!
   declineHouseholdInvite(inviteId: ID!): HouseholdInvite!
   cancelHouseholdInvite(inviteId: ID!): HouseholdInvite!
-  leaveHousehold: Boolean!
+  # Leaves the given household (default: the caller's active one). Owners
+  # of multi-member households promote a successor first; leaving the
+  # active household activates the caller's earliest remaining membership
+  # or creates a fresh single-person household when none remain.
+  leaveHousehold(householdId: ID): Boolean!
+  # Creates a new household, joins the caller as owner, and activates it.
+  createHousehold(name: String): Household!
+  # Moves the caller's active-household pointer to a household they belong
+  # to. All household-scoped reads and writes follow it.
+  setActiveHousehold(householdId: ID!): Household!
   # Owner-only: set or clear the household's display name (empty clears).
   renameHousehold(name: String!): Household!
   # Owner-only: promote a member to admin or demote an admin to member.
@@ -547,6 +564,8 @@ type Household {
   members: [HouseholdMember!]!
   # The caller's own role within this household.
   myRole: HouseholdRole!
+  # Whether this is the caller's currently active household.
+  isActive: Boolean!
   createdAt: Time!
 }
 
