@@ -165,6 +165,41 @@ void main() {
     await nav(tester, 'People');
     await shot(tester, '10-household');
 
+    // LEN-26: household switcher — active-household header opens the
+    // switch sheet, New household opens the create dialog, and accepting
+    // an invite offers a merge when a sole-owned home exists.
+    final openedSwitch = await tapIfExists(
+        tester, find.widgetWithText(TextButton, 'Switch'), 'switch header');
+    if (openedSwitch) {
+      await shot(tester, '10a-household-switcher');
+      final openedCreate =
+          await tapIfExists(tester, find.text('New household'), 'new household');
+      if (openedCreate) {
+        await shot(tester, '10b-household-create');
+        await tapIfExists(
+            tester, find.widgetWithText(TextButton, 'Cancel'), 'cancel create');
+        await settle(tester, const Duration(seconds: 1));
+      } else {
+        await back(tester);
+      }
+    }
+
+    // Scroll to the invitations card and open the accept-merge prompt.
+    await tester.scrollUntilVisible(
+      find.text('Invitations'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await shot(tester, '10c-household-invitations', const Duration(seconds: 2));
+    final openedMerge = await tapIfExists(
+        tester, find.byIcon(Icons.check), 'accept invite');
+    if (openedMerge) {
+      await shot(tester, '10d-household-accept-merge');
+      await tapIfExists(
+          tester, find.widgetWithText(TextButton, 'Cancel'), 'cancel merge');
+      await settle(tester, const Duration(seconds: 1));
+    }
+
     final openedNotif = await tapIfExists(tester,
         find.byTooltip('Notification settings'), 'notification settings gear');
     await shot(tester, '11-notification-settings');

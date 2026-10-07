@@ -33,6 +33,16 @@ const String householdQuery = r'''
         isMe
       }
     }
+    myHouseholds {
+      id
+      name
+      myRole
+      isActive
+      members {
+        role
+        isMe
+      }
+    }
     householdInvites {
       id
       status
@@ -82,8 +92,20 @@ const String inviteMutation = r'''
 ''';
 
 const String acceptInviteMutation = r'''
-  mutation AcceptInvite($inviteId: ID!) {
-    acceptHouseholdInvite(inviteId: $inviteId) { id }
+  mutation AcceptInvite($inviteId: ID!, $mergeFromHouseholdId: ID) {
+    acceptHouseholdInvite(inviteId: $inviteId, mergeFromHouseholdId: $mergeFromHouseholdId) { id }
+  }
+''';
+
+const String setActiveHouseholdMutation = r'''
+  mutation SetActiveHousehold($householdId: ID!) {
+    setActiveHousehold(householdId: $householdId) { id }
+  }
+''';
+
+const String createHouseholdMutation = r'''
+  mutation CreateHousehold($name: String) {
+    createHousehold(name: $name) { id name }
   }
 ''';
 
@@ -100,8 +122,8 @@ const String cancelInviteMutation = r'''
 ''';
 
 const String leaveMutation = r'''
-  mutation LeaveHousehold {
-    leaveHousehold
+  mutation LeaveHousehold($householdId: ID) {
+    leaveHousehold(householdId: $householdId)
   }
 ''';
 
@@ -248,6 +270,10 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
     String doc,
     Map<String, dynamic> vars, {
     String? confirm,
+    // Pointer-moving mutations (switch/create/accept/leave-active) change
+    // which household every other screen sees — reset the normalized
+    // cache so nothing serves stale household-scoped data.
+    bool resetCache = false,
   }) async {
     final client = GraphQLProvider.of(context).value;
     if (confirm != null) {
@@ -281,6 +307,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
       });
     } else {
       setState(() => _error = null);
+      if (resetCache) client.cache.store.reset();
       _refetch?.call();
     }
   }
@@ -401,6 +428,195 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
     );
   }
 
+  static String _householdName(Map<String, dynamic> h) =>
+      (h['name'] as String?) ?? 'Unnamed household';
+
+  // A household the caller solely owns (single member + OWNER) can be
+  // merged into a household they join — see _acceptInvite.
+  static Map<String, dynamic>? _mergeSource(
+    List<Map<String, dynamic>> households,
+  ) {
+    for (final h in households) {
+      final members = (h['members'] as List? ?? []);
+      if (h['myRole'] == 'OWNER' && members.length == 1) return h;
+    }
+    return null;
+  }
+
+  // Switch + per-household leave + new-household entry point.
+  void _householdSwitcher(List<Map<String, dynamic>> households) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final h in households)
+              ListTile(
+                leading: h['isActive'] == true
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(ctx).colorScheme.primary)
+                    : const Icon(Icons.home_outlined),
+                title: Text(_householdName(h)),
+                subtitle: Text(
+                  '${(h['members'] as List? ?? []).length} member(s) · '
+                  '${(h['myRole'] as String? ?? 'MEMBER').toLowerCase()}',
+                ),
+                trailing: h['isActive'] == true
+                    ? const Text('Active')
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _mutate(
+                                setActiveHouseholdMutation,
+                                {'householdId': h['id']},
+                                resetCache: true,
+                              );
+                            },
+                            child: const Text('Switch'),
+                          ),
+                          IconButton(
+                            tooltip: 'Leave ${_householdName(h)}',
+                            icon: Icon(
+                              Icons.logout,
+                              color: Theme.of(ctx).colorScheme.error,
+                            ),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _mutate(
+                                leaveMutation,
+                                {'householdId': h['id']},
+                                confirm:
+                                    'Leave ${_householdName(h)}? Your shared data stays with the household.',
+                                resetCache: true,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.add_home_outlined),
+              title: const Text('New household'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _newHouseholdDialog();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _newHouseholdDialog() {
+    final ctrl = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New household'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Creates a separate pantry, cellar, meal plans, and grocery '
+              'lists, and switches you to it.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              maxLength: 100,
+              decoration: const InputDecoration(
+                labelText: 'Household name',
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              final name = ctrl.text.trim();
+              _mutate(
+                createHouseholdMutation,
+                {'name': name.isEmpty ? null : name},
+                resetCache: true,
+              );
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Accepts an invite. When the caller solely owns another household, a
+  // prompt offers merge-and-dissolve; otherwise a plain confirm.
+  void _acceptInvite(
+    Map<String, dynamic> inv,
+    Map<String, dynamic>? mergeSource,
+  ) {
+    final inviteId = inv['id'] as String;
+    if (mergeSource == null) {
+      _mutate(acceptInviteMutation, {'inviteId': inviteId}, resetCache: true);
+      return;
+    }
+    final sourceName = _householdName(mergeSource);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Join this household?'),
+        content: Text(
+          'You can merge $sourceName into the new household — its pantry, '
+          'cellar, meal plans, and grocery lists move over and the empty '
+          'household is deleted. Or just join and keep it as a separate '
+          'household.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _mutate(
+                acceptInviteMutation,
+                {'inviteId': inviteId},
+                resetCache: true,
+              );
+            },
+            child: const Text('Just join'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _mutate(
+                acceptInviteMutation,
+                {
+                  'inviteId': inviteId,
+                  'mergeFromHouseholdId': mergeSource['id'],
+                },
+                resetCache: true,
+              );
+            },
+            child: const Text('Join and merge'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Query(
@@ -444,6 +660,9 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
     final myId = me['id'] as String?;
     final isSearchable = me['isSearchable'] as bool? ?? true;
     final household = result.data?['myHousehold'] as Map<String, dynamic>?;
+    final households = (result.data?['myHouseholds'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    final mergeSource = _mergeSource(households);
     final members =
         (household?['members'] as List? ?? []).cast<Map<String, dynamic>>();
     final myRole = household?['myRole'] as String? ?? 'MEMBER';
@@ -489,6 +708,20 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Text(_error!),
+              ),
+            ),
+          if (household != null)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.home_outlined),
+                title: Text(_householdName(household)),
+                subtitle: const Text('Your active household'),
+                trailing: TextButton(
+                  onPressed: households.isEmpty
+                      ? null
+                      : () => _householdSwitcher(households),
+                  child: const Text('Switch'),
+                ),
               ),
             ),
           if (isOwner)
@@ -671,9 +904,10 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               ),
               onPressed: () => _mutate(
                 leaveMutation,
-                const {},
+                {'householdId': household?['id']},
                 confirm:
                     'Leave this household? You will get a fresh empty pantry, cellar, meal plans, and grocery lists; your data stays with the household.',
+                resetCache: true,
               ),
             ),
           const SizedBox(height: 16),
@@ -696,7 +930,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                 child: ListTile(
                   title: Text('${_userName(from)} invited you'),
                   subtitle: const Text(
-                    'Joining merges your pantry, cellar, meal plans, and grocery lists into theirs.',
+                    'Joining makes theirs your active household.',
                   ),
                   trailing: Wrap(
                     spacing: 8,
@@ -704,10 +938,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                       IconButton(
                         icon: Icon(Icons.check,
                             color: Theme.of(context).colorScheme.primary),
-                        onPressed: () => _mutate(
-                          acceptInviteMutation,
-                          {'inviteId': inv['id']},
-                        ),
+                        onPressed: () => _acceptInvite(inv, mergeSource),
                       ),
                       IconButton(
                         icon: Icon(Icons.close,
