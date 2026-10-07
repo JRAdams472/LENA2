@@ -1014,20 +1014,24 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               controller: _nameCtrl,
               decoration: const InputDecoration(labelText: 'Name'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _descCtrl,
               decoration: const InputDecoration(labelText: 'Description'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _servingsCtrl,
               decoration: const InputDecoration(labelText: 'Servings'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _prepCtrl,
               decoration: const InputDecoration(labelText: 'Prep minutes'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _cookCtrl,
               decoration: const InputDecoration(labelText: 'Cook minutes'),
@@ -1044,6 +1048,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               ),
               onChanged: _onIngredientSearchChanged,
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _ingredientId,
@@ -1090,6 +1095,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               ),
               onChanged: _onItemSearchChanged,
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _itemId,
@@ -1111,12 +1117,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                 }
               }),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _qtyCtrl,
               decoration: const InputDecoration(labelText: 'Quantity'),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _unitCtrl,
               decoration: const InputDecoration(labelText: 'Unit'),
