@@ -3,16 +3,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:lena_mobile/graphql_config.dart';
 import 'package:lena_mobile/screens/main_screen.dart';
+import 'package:lena_mobile/theme_mode.dart';
+import 'package:provider/provider.dart';
+
+Widget _app({required Widget home}) => GraphQLProvider(
+      client: ValueNotifier(graphQLClient),
+      child: ChangeNotifierProvider.value(
+        value: ThemeModeController(),
+        child: MaterialApp(home: home),
+      ),
+    );
 
 void main() {
   testWidgets(
     'MainScreen bottom nav has Home, Grocery, Events, Scan, Pantry, People, Ask Dot, and More',
     (tester) async {
       await tester.pumpWidget(
-        GraphQLProvider(
-          client: ValueNotifier(graphQLClient),
-          child: const MaterialApp(home: MainScreen()),
-        ),
+        _app(home: const MainScreen()),
       );
       await tester.pump();
 
@@ -38,10 +45,7 @@ void main() {
     'the More tab links to recipes, meal plans, wine, and items',
     (tester) async {
       await tester.pumpWidget(
-        GraphQLProvider(
-          client: ValueNotifier(graphQLClient),
-          child: const MaterialApp(home: MainScreen()),
-        ),
+        _app(home: const MainScreen()),
       );
       await tester.pump();
 
@@ -62,10 +66,7 @@ void main() {
     'tapping the People tab shows the household screen',
     (tester) async {
       await tester.pumpWidget(
-        GraphQLProvider(
-          client: ValueNotifier(graphQLClient),
-          child: const MaterialApp(home: MainScreen()),
-        ),
+        _app(home: const MainScreen()),
       );
       await tester.pump();
 
@@ -83,10 +84,7 @@ void main() {
     'unvisited tabs are not built — Scan never mounts at launch',
     (tester) async {
       await tester.pumpWidget(
-        GraphQLProvider(
-          client: ValueNotifier(graphQLClient),
-          child: const MaterialApp(home: MainScreen()),
-        ),
+        _app(home: const MainScreen()),
       );
       await tester.pump();
 

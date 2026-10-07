@@ -219,7 +219,11 @@ class _RecipesScreenState extends State<RecipesScreen> {
           IconButton(
             icon: Icon(
               _favoritesOnly ? Icons.star : Icons.star_border,
-              color: _favoritesOnly ? lenaWheat : null,
+              color: _favoritesOnly
+                  ? (Theme.of(context).brightness == Brightness.dark
+                      ? lenaDarkWheat
+                      : lenaWheat)
+                  : null,
             ),
             tooltip: 'Favorites only',
             onPressed: () => setState(() => _favoritesOnly = !_favoritesOnly),

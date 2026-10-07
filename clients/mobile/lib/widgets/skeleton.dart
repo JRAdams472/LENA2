@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme.dart';
 
 /// Shared skeleton placeholders for list/form loading states.
 ///
@@ -119,17 +118,17 @@ class LenaSplash extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: lenaSage,
+                color: Theme.of(context).colorScheme.primary,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
                   'L',
                   style: TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 40,
                     fontWeight: FontWeight.w800,
-                    color: lenaPaper,
+                    color: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
               ),
@@ -140,7 +139,8 @@ class LenaSplash extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .headlineMedium
-                  ?.copyWith(color: lenaSageDark),
+                  ?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer),
             ),
           ],
         ),
