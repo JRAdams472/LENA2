@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../dashboard_helpers.dart';
-import '../theme.dart';
 import 'edit_recipe_screen.dart';
 import 'meal_plans_screen.dart';
 
@@ -126,11 +125,12 @@ class DashboardContent extends StatelessWidget {
         ),
         CircleAvatar(
           radius: 20,
-          backgroundColor: lenaSage.withValues(alpha: 0.25),
+          backgroundColor:
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
           child: Text(
             initial,
-            style: const TextStyle(
-              color: lenaSageDark,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -214,8 +214,9 @@ class DashboardContent extends StatelessWidget {
         child: Row(
           children: [
             _iconBadge(
+              context,
               mealIcon(slot['mealType'] as String?),
-              lenaSage,
+              Theme.of(context).colorScheme.primary,
               size: 40,
             ),
             const SizedBox(width: 12),
@@ -237,7 +238,10 @@ class DashboardContent extends StatelessWidget {
               ),
             ),
             if (recipeId != null)
-              const Icon(Icons.chevron_right, color: lenaInkMuted),
+              Icon(
+                Icons.chevron_right,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
           ],
         ),
       ),
@@ -278,7 +282,10 @@ class DashboardContent extends StatelessWidget {
     final recipe = rec['recipe'] as Map<String, dynamic>?;
     final recipeId = recipe?['id'] as String?;
     final meta = suggestionMeta(recipe);
-    final accent = accentFor(_recipeNum(recipeId));
+    final accent = accentFor(
+      _recipeNum(recipeId),
+      brightness: Theme.of(context).brightness,
+    );
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -295,7 +302,11 @@ class DashboardContent extends StatelessWidget {
                     child: _reasonChip(context, rec['reason'] as String? ?? ''),
                   ),
                   const SizedBox(width: 8),
-                  _iconBadge(suggestionIcon(_categories(recipe)), accent),
+                  _iconBadge(
+                    context,
+                    suggestionIcon(_categories(recipe)),
+                    accent,
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -313,15 +324,16 @@ class DashboardContent extends StatelessWidget {
                   Text(
                     'View recipe',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: lenaSageDark,
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
                           fontWeight: FontWeight.w600,
                         ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(
+                  Icon(
                     Icons.arrow_forward,
                     size: 16,
-                    color: lenaSageDark,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
                   ),
                 ],
               ),
@@ -336,7 +348,10 @@ class DashboardContent extends StatelessWidget {
     final recipe = rec['recipe'] as Map<String, dynamic>?;
     final recipeId = recipe?['id'] as String?;
     final meta = suggestionMeta(recipe);
-    final accent = accentFor(_recipeNum(recipeId));
+    final accent = accentFor(
+      _recipeNum(recipeId),
+      brightness: Theme.of(context).brightness,
+    );
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -347,7 +362,12 @@ class DashboardContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              _iconBadge(suggestionIcon(_categories(recipe)), accent, size: 40),
+              _iconBadge(
+                context,
+                suggestionIcon(_categories(recipe)),
+                accent,
+                size: 40,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -364,14 +384,19 @@ class DashboardContent extends StatelessWidget {
                       ),
                     Text(
                       reasonLabel(rec['reason'] as String? ?? ''),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: lenaOliveDark),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSecondaryContainer,
+                          ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: lenaInkMuted),
+              Icon(
+                Icons.chevron_right,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),
@@ -383,21 +408,26 @@ class DashboardContent extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: lenaOlive.withValues(alpha: 0.14),
+        color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         reasonLabel(reason),
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: lenaOliveDark,
+              color: Theme.of(context).colorScheme.onSecondaryContainer,
               fontWeight: FontWeight.w600,
             ),
       ),
     );
   }
 
-  Widget _iconBadge(IconData icon, Color accent, {double size = 48}) {
+  Widget _iconBadge(
+    BuildContext context,
+    IconData icon,
+    Color accent, {
+    double size = 48,
+  }) {
     return Container(
       width: size,
       height: size,
@@ -405,7 +435,11 @@ class DashboardContent extends StatelessWidget {
         color: accent,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Icon(icon, color: lenaPaper, size: size * 0.55),
+      child: Icon(
+        icon,
+        color: Theme.of(context).colorScheme.onPrimary,
+        size: size * 0.55,
+      ),
     );
   }
 

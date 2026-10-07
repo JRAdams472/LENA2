@@ -212,6 +212,23 @@ void main() {
     await nav(tester, 'More');
     await shot(tester, '13-more');
 
+    // LEN-74: dark mode — the More Appearance card flips the scheme;
+    // re-shoot key surfaces dark, then restore light for the rest of
+    // the walk.
+    if (await tapIfExists(
+        tester, find.text('Dark'), 'appearance Dark segment')) {
+      await settle(tester);
+      await shot(tester, '13a-more-dark', const Duration(seconds: 2));
+      await nav(tester, 'Home');
+      await shot(tester, '13b-dashboard-dark');
+      await nav(tester, 'People');
+      await shot(tester, '13c-household-dark');
+      await nav(tester, 'More');
+      await tapIfExists(
+          tester, find.text('Light'), 'appearance Light segment');
+      await settle(tester, const Duration(seconds: 1));
+    }
+
     final openedRecipes =
         await tapIfExists(tester, find.text('Recipes'), 'recipes tile');
     await shot(tester, '14-recipes', const Duration(seconds: 6));

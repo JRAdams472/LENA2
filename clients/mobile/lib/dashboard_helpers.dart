@@ -18,8 +18,10 @@ String reasonLabel(String reason) =>
 
 // Deterministic accent per recipe so suggestion tiles differentiate
 // without real photos.
-Color accentFor(int recipeId) =>
-    lenaAccents[recipeId.abs() % lenaAccents.length];
+Color accentFor(int recipeId, {Brightness brightness = Brightness.light}) {
+  final accents = lenaAccentsFor(brightness);
+  return accents[recipeId.abs() % accents.length];
+}
 
 // Category/dish-type keywords drive the suggestion tile icon, same
 // rules as the web dashboard.
