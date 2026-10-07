@@ -210,6 +210,16 @@ type HouseholdHousehold struct {
 	UpdatedBy   pgtype.Text        `json:"updated_by"`
 }
 
+type HouseholdHouseholdMember struct {
+	HouseholdID int64              `json:"household_id"`
+	UserID      int64              `json:"user_id"`
+	Role        string             `json:"role"`
+	CreatedBy   string             `json:"created_by"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type HouseholdInvite struct {
 	InviteID    int64              `json:"invite_id"`
 	FromUserID  int64              `json:"from_user_id"`

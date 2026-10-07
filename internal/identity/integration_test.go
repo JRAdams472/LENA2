@@ -89,10 +89,18 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 
 	// Assign both caller and mate to one household, guarding on their
 	// current membership so a stale expected value loses with a conflict.
+	// Member reads now come from household.household_member (LEN-26), so
+	// each pointer move mirrors a membership swap like the resolver does.
 	hh, err := hsvc.CreateHousehold(ctx, "hh-caller@example.com")
 	require.NoError(t, err)
 	require.NoError(t, svc.SetUserHousehold(ctx, caller, hh.HouseholdID, identity.HouseholdRoleOwner, &callerH))
+	_, err = hsvc.JoinHousehold(ctx, hh.HouseholdID, caller, identity.HouseholdRoleOwner, "hh-caller@example.com")
+	require.NoError(t, err)
+	require.NoError(t, hsvc.RemoveMembership(ctx, callerH, caller))
 	require.NoError(t, svc.SetUserHousehold(ctx, mate, hh.HouseholdID, identity.HouseholdRoleMember, mateGot.HouseholdID))
+	_, err = hsvc.JoinHousehold(ctx, hh.HouseholdID, mate, identity.HouseholdRoleMember, "hh-caller@example.com")
+	require.NoError(t, err)
+	require.NoError(t, hsvc.RemoveMembership(ctx, *mateGot.HouseholdID, mate))
 
 	// A stale expected value loses the race with a conflict.
 	wrong := int64(999)

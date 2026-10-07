@@ -26,6 +26,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/household"
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
@@ -87,9 +88,11 @@ func isSessionAuth(ctx context.Context) bool {
 }
 
 // householdStore is the subset of household.Service the authenticator needs
-// to ensure every resolved user has a default household.
+// to ensure every resolved user has a default household and matching
+// membership row (LEN-26).
 type householdStore interface {
 	CreateHousehold(ctx context.Context, by string) (household.Household, error)
+	JoinHousehold(ctx context.Context, householdID, userID int64, role, by string) (household.Membership, error)
 }
 
 // Authenticator validates OIDC ID tokens and resolves the current user.
@@ -107,6 +110,11 @@ type Authenticator struct {
 	mu       sync.RWMutex
 	jwks     map[string]*cachedKeySet
 	inflight map[string]*jwksFetch
+
+	// uow opens the ambient transaction for the bootstrap path that writes
+	// household + membership + active pointer together. Nil in tests →
+	// inline execution.
+	uow dbtx.UnitOfWork
 
 	// users caches the resolved identity row per issuer|subject so a burst
 	// of requests from one token does not UpsertUser on every call.
@@ -203,6 +211,20 @@ func NewAuthenticator(cfg AuthConfig, identitySvc identityStore, householdSvc ho
 // access tokens (iss=lena). Nil/absent keeps OIDC-only authentication.
 func (a *Authenticator) SetSessions(v sessionValidator) {
 	a.sessions = v
+}
+
+// SetUnitOfWork attaches the ambient-transaction runner used by the
+// default-household bootstrap so household, membership, and active-pointer
+// writes commit atomically. Nil falls back to inline execution (tests).
+func (a *Authenticator) SetUnitOfWork(uow dbtx.UnitOfWork) {
+	a.uow = uow
+}
+
+func (a *Authenticator) unitOfWork() dbtx.UnitOfWork {
+	if a.uow != nil {
+		return a.uow
+	}
+	return dbtx.Inline()
 }
 
 // zipIssuersAndAudiences pairs the ith issuer with the ith audience. This
@@ -608,17 +630,27 @@ func toCurrentUser(u identity.User) currentuser.User {
 	return cu
 }
 
-// ensureDefaultHousehold creates a household for a user who has none and
-// assigns it with an expected-value guard. If a concurrent resolution or
-// invite accept assigned a household first (ErrConflict), the already-
-// assigned household is adopted after a re-read; the household row created
-// here is then left empty, which is harmless.
+// ensureDefaultHousehold creates a household for a user who has none,
+// writes their owner membership (LEN-26: household.household_member is the
+// source of truth for member lists), and assigns it as the active
+// household — all in one ambient transaction. If a concurrent resolution
+// or invite accept assigned a household first (ErrConflict), the whole
+// tx rolls back and the already-assigned household is adopted after a
+// re-read.
 func (a *Authenticator) ensureDefaultHousehold(ctx context.Context, u *identity.User) error {
-	hh, err := a.households.CreateHousehold(ctx, u.Email)
+	var hh household.Household
+	err := a.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var err error
+		hh, err = a.households.CreateHousehold(ctx, u.Email)
+		if err != nil {
+			return err
+		}
+		if _, err := a.households.JoinHousehold(ctx, hh.HouseholdID, u.UserID, identity.HouseholdRoleOwner, u.Email); err != nil {
+			return err
+		}
+		return a.identity.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, identity.HouseholdRoleOwner, nil)
+	})
 	if err != nil {
-		return err
-	}
-	if err := a.identity.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, identity.HouseholdRoleOwner, nil); err != nil {
 		if !errors.Is(err, domainerr.ErrConflict) {
 			return err
 		}
@@ -628,6 +660,12 @@ func (a *Authenticator) ensureDefaultHousehold(ctx context.Context, u *identity.
 		}
 		if fresh.HouseholdID == nil {
 			return errors.New("household assignment conflicted but user still has none")
+		}
+		// The winning flow wrote the membership; upsert is defensive and
+		// converges on retry when it raced a membership write that has not
+		// committed yet.
+		if _, err := a.households.JoinHousehold(ctx, *fresh.HouseholdID, u.UserID, fresh.HouseholdRole, u.Email); err != nil {
+			return err
 		}
 		*u = fresh
 		return nil

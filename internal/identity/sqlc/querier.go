@@ -6,8 +6,6 @@ package sqlc
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -16,7 +14,9 @@ type Querier interface {
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountLoginsByUser(ctx context.Context, userID int64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
-	CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error)
+	// Membership table is the source of truth (LEN-26): a member's active
+	// pointer (users.household_id) may sit on a different household.
+	CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error)
 	DeleteLoginsByProvider(ctx context.Context, arg DeleteLoginsByProviderParams) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	// Resolves a provider identity to its user via the login mapping table —
@@ -28,7 +28,11 @@ type Querier interface {
 	InsertLogin(ctx context.Context, arg InsertLoginParams) (IdentityUserLogin, error)
 	ListLoginsByUser(ctx context.Context, userID int64) ([]IdentityUserLogin, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
-	ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]IdentityUser, error)
+	// Members of a household regardless of which household their active
+	// pointer currently sits on. household_role on the returned rows is the
+	// member's ACTIVE-household role — callers needing the member's role in
+	// THIS household read it from household.household_member instead.
+	ListUsersByHousehold(ctx context.Context, householdID int64) ([]IdentityUser, error)
 	ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]IdentityUser, error)
 	// Deactivation kills every live refresh-token family for the user so the
 	// session cookie path dies immediately (access tokens still expire on
@@ -36,8 +40,15 @@ type Querier interface {
 	RevokeUserSessions(ctx context.Context, userID int64) error
 	// Household-invite candidate search: opt-in, active users only, caller and
 	// the caller's household members excluded. pattern is a pre-escaped LIKE
-	// pattern built by the service.
+	// pattern built by the service. Membership lives in household_member —
+	// a candidate whose active pointer sits elsewhere may still belong to
+	// the excluded household.
 	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]IdentityUser, error)
+	// LEN-26: moves the user's active-household pointer (household_id +
+	// household_role) to a household they already belong to. The EXISTS guard
+	// makes "not a member" lose with zero rows; role syncs from the membership
+	// row in the same statement so the two columns can never diverge.
+	SetActiveHousehold(ctx context.Context, arg SetActiveHouseholdParams) (int64, error)
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) (int64, error)
 	// Conditional update: the expected-household guard turns a concurrent
 	// accept/leave race into a zero-row conflict instead of a lost update.

@@ -101,7 +101,10 @@ func TestListInvites(t *testing.T) {
 	mq.EXPECT().ListPendingInvitesForUser(ctx, int64(2)).Return([]sqlc.HouseholdInvite{
 		{InviteID: 1, FromUserID: 9, ToUserID: 2, Status: "pending"},
 	}, nil)
-	mq.EXPECT().ListSentInvitesForUser(ctx, int64(9)).Return([]sqlc.HouseholdInvite{
+	mq.EXPECT().ListSentInvitesForUser(ctx, sqlc.ListSentInvitesForUserParams{
+		FromUserID:  9,
+		HouseholdID: 8,
+	}).Return([]sqlc.HouseholdInvite{
 		{InviteID: 1, FromUserID: 9, ToUserID: 2, Status: "pending"},
 	}, nil)
 
@@ -110,7 +113,7 @@ func TestListInvites(t *testing.T) {
 	require.Len(t, pending, 1)
 	assert.Equal(t, int64(9), pending[0].FromUserID)
 
-	sent, err := svc.ListSentInvitesForUser(ctx, 9)
+	sent, err := svc.ListSentInvitesForUser(ctx, 9, 8)
 	require.NoError(t, err)
 	require.Len(t, sent, 1)
 	assert.Equal(t, int64(2), sent[0].ToUserID)
@@ -304,6 +307,7 @@ func TestListNotificationsForUser(t *testing.T) {
 	mq.EXPECT().ListNotificationsForUser(ctx, gomock.Any()).DoAndReturn(
 		func(_ context.Context, arg sqlc.ListNotificationsForUserParams) ([]sqlc.HouseholdNotification, error) {
 			assert.Equal(t, int64(4), arg.UserID)
+			assert.Equal(t, pgtype.Int8{Int64: 8, Valid: true}, arg.HouseholdID)
 			assert.Equal(t, int32(10), arg.Limit)
 			return []sqlc.HouseholdNotification{{
 				NotificationID: 9,
@@ -313,7 +317,7 @@ func TestListNotificationsForUser(t *testing.T) {
 				CreatedAt:      now,
 			}}, nil
 		})
-	got, err := svc.ListNotificationsForUser(ctx, 4, 10)
+	got, err := svc.ListNotificationsForUser(ctx, 4, 8, 10)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, int64(9), got[0].NotificationID)
@@ -326,16 +330,22 @@ func TestNotificationCountsAndRead(t *testing.T) {
 
 	t.Run("unread count", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountUnreadNotifications(ctx, int64(4)).Return(int64(3), nil)
-		n, err := svc.CountUnreadNotifications(ctx, 4)
+		mq.EXPECT().CountUnreadNotifications(ctx, sqlc.CountUnreadNotificationsParams{
+			UserID:      4,
+			HouseholdID: pgtype.Int8{Int64: 8, Valid: true},
+		}).Return(int64(3), nil)
+		n, err := svc.CountUnreadNotifications(ctx, 4, 8)
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), n)
 	})
 
 	t.Run("mark all read", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().MarkAllNotificationsRead(ctx, int64(4)).Return(int64(2), nil)
-		require.NoError(t, svc.MarkAllNotificationsRead(ctx, 4))
+		mq.EXPECT().MarkAllNotificationsRead(ctx, sqlc.MarkAllNotificationsReadParams{
+			UserID:      4,
+			HouseholdID: pgtype.Int8{Int64: 8, Valid: true},
+		}).Return(int64(2), nil)
+		require.NoError(t, svc.MarkAllNotificationsRead(ctx, 4, 8))
 	})
 }
 
@@ -353,4 +363,100 @@ func TestCancelPendingInvitesFrom(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, int64(12), got[0].InviteID)
+}
+
+func TestMembershipQueries(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	row := sqlc.HouseholdHouseholdMember{
+		HouseholdID: 8, UserID: 4, Role: "owner",
+		CreatedBy: "a@a.com", CreatedAt: now,
+		UpdatedBy: pgtype.Text{String: "b@b.com", Valid: true},
+		UpdatedAt: pgtype.Timestamptz{Time: now, Valid: true},
+	}
+
+	t.Run("get membership maps row", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetMembership(ctx, sqlc.GetMembershipParams{HouseholdID: 8, UserID: 4}).
+			Return(row, nil)
+		m, err := svc.GetMembership(ctx, 8, 4)
+		require.NoError(t, err)
+		assert.Equal(t, int64(8), m.HouseholdID)
+		assert.Equal(t, "owner", m.Role)
+		require.NotNil(t, m.UpdatedBy)
+		assert.Equal(t, "b@b.com", *m.UpdatedBy)
+	})
+
+	t.Run("get membership missing is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetMembership(ctx, gomock.Any()).Return(sqlc.HouseholdHouseholdMember{}, pgx.ErrNoRows)
+		_, err := svc.GetMembership(ctx, 8, 4)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
+	})
+
+	t.Run("list members and memberships", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListMembersByHousehold(ctx, int64(8)).Return([]sqlc.HouseholdHouseholdMember{row}, nil)
+		mq.EXPECT().ListMembershipsByUser(ctx, int64(4)).Return([]sqlc.HouseholdHouseholdMember{row, {HouseholdID: 9, UserID: 4, Role: "member"}}, nil)
+
+		members, err := svc.ListMembersByHousehold(ctx, 8)
+		require.NoError(t, err)
+		require.Len(t, members, 1)
+
+		mine, err := svc.ListMembershipsByUser(ctx, 4)
+		require.NoError(t, err)
+		require.Len(t, mine, 2)
+		assert.Equal(t, "member", mine[1].Role)
+	})
+
+	t.Run("list my households joins role", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListHouseholdsByUser(ctx, int64(4)).Return([]sqlc.ListHouseholdsByUserRow{{
+			HouseholdID: 8, Name: pgtype.Text{String: "Home", Valid: true},
+			CreatedBy: "a@a.com", CreatedAt: now, MemberRole: "owner",
+		}}, nil)
+		got, err := svc.ListMyHouseholds(ctx, 4)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, int64(8), got[0].Household.HouseholdID)
+		require.NotNil(t, got[0].Household.Name)
+		assert.Equal(t, "Home", *got[0].Household.Name)
+		assert.Equal(t, "owner", got[0].Role)
+	})
+
+	t.Run("count members", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountMembers(ctx, int64(8)).Return(int64(3), nil)
+		n, err := svc.CountMembers(ctx, 8)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), n)
+	})
+}
+
+func TestJoinAndRemoveMembership(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("join upserts", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpsertMembership(ctx, sqlc.UpsertMembershipParams{
+			HouseholdID: 8, UserID: 4, Role: "member", CreatedBy: "a@a.com",
+		}).Return(sqlc.HouseholdHouseholdMember{
+			HouseholdID: 8, UserID: 4, Role: "member", CreatedBy: "a@a.com", CreatedAt: time.Now(),
+		}, nil)
+		m, err := svc.JoinHousehold(ctx, 8, 4, "member", "a@a.com")
+		require.NoError(t, err)
+		assert.Equal(t, "member", m.Role)
+	})
+
+	t.Run("remove deletes the row", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteMembership(ctx, sqlc.DeleteMembershipParams{HouseholdID: 8, UserID: 4}).Return(int64(1), nil)
+		require.NoError(t, svc.RemoveMembership(ctx, 8, 4))
+	})
+
+	t.Run("remove non-member is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteMembership(ctx, gomock.Any()).Return(int64(0), nil)
+		assert.ErrorIs(t, svc.RemoveMembership(ctx, 8, 4), domainerr.ErrNotFound)
+	})
 }

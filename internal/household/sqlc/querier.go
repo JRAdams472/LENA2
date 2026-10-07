@@ -15,23 +15,35 @@ type Querier interface {
 	// household are cancelled so they can no longer be accepted against a
 	// household the sender no longer belongs to.
 	CancelPendingInvitesFrom(ctx context.Context, arg CancelPendingInvitesFromParams) ([]HouseholdInvite, error)
-	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
+	CountMembers(ctx context.Context, householdID int64) (int64, error)
+	CountUnreadNotifications(ctx context.Context, arg CountUnreadNotificationsParams) (int64, error)
 	CreateHousehold(ctx context.Context, createdBy string) (HouseholdHousehold, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (HouseholdInvite, error)
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (HouseholdNotification, error)
+	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) (int64, error)
 	GetHouseholdByID(ctx context.Context, householdID int64) (HouseholdHousehold, error)
 	// Row lock: serialize member-count checks and membership transitions for
 	// concurrent accept/leave/remove operations against the same household.
 	GetHouseholdByIDForUpdate(ctx context.Context, householdID int64) (HouseholdHousehold, error)
 	GetInviteByID(ctx context.Context, inviteID int64) (HouseholdInvite, error)
+	// ---------- membership (LEN-26) ----------
+	GetMembership(ctx context.Context, arg GetMembershipParams) (HouseholdHouseholdMember, error)
 	// Outbox row for the push channel — written in the same transaction as
 	// the feed notification (or instead of it when push-only is enabled).
 	// Event-driven rows carry no dedup_key; NULLs never conflict.
 	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (pgconn.CommandTag, error)
+	// The user's households with their role in each — backs the switcher.
+	ListHouseholdsByUser(ctx context.Context, userID int64) ([]ListHouseholdsByUserRow, error)
+	ListMembersByHousehold(ctx context.Context, householdID int64) ([]HouseholdHouseholdMember, error)
+	ListMembershipsByUser(ctx context.Context, userID int64) ([]HouseholdHouseholdMember, error)
+	// Feeds scope to the active household (LEN-26); notifications without a
+	// household_id are user-global and still show.
 	ListNotificationsForUser(ctx context.Context, arg ListNotificationsForUserParams) ([]HouseholdNotification, error)
 	ListPendingInvitesForUser(ctx context.Context, toUserID int64) ([]HouseholdInvite, error)
-	ListSentInvitesForUser(ctx context.Context, fromUserID int64) ([]HouseholdInvite, error)
-	MarkAllNotificationsRead(ctx context.Context, userID int64) (int64, error)
+	// Sent invites scope to a household (the caller's active one); the
+	// received-invite list (ListPendingInvitesForUser) stays unscoped.
+	ListSentInvitesForUser(ctx context.Context, arg ListSentInvitesForUserParams) ([]HouseholdInvite, error)
+	MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error)
 	// Retention: keep at most the 100 most recent read notifications per user;
 	// called inside the same transaction as CreateNotification.
 	PruneReadNotifications(ctx context.Context, userID int64) error
@@ -39,6 +51,10 @@ type Querier interface {
 	// Status-guarded: only a pending invite can transition, so a concurrent
 	// accept/decline/cancel loses with zero rows instead of a lost update.
 	TransitionInvite(ctx context.Context, arg TransitionInviteParams) (HouseholdInvite, error)
+	// Joins a user to a household; on re-join the role is refreshed. The
+	// caller's users-row active pointer syncs separately (identity service),
+	// inside the same ambient transaction.
+	UpsertMembership(ctx context.Context, arg UpsertMembershipParams) (HouseholdHouseholdMember, error)
 }
 
 var _ Querier = (*Queries)(nil)

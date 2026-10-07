@@ -478,6 +478,7 @@ type UserReader interface {
 type HouseholdDirectory interface {
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error
 	SetUserHouseholdRole(ctx context.Context, userID, householdID int64, role, by string) error
+	SetActiveHousehold(ctx context.Context, userID, householdID int64, by string) error
 	SetUserSearchable(ctx context.Context, userID int64, searchable bool, by string) error
 	ListUsersByHousehold(ctx context.Context, householdID int64) ([]identity.User, error)
 	ListUsersByIDs(ctx context.Context, ids []int64) ([]identity.User, error)
@@ -512,15 +513,22 @@ type HouseholdService interface {
 	CreateInvite(ctx context.Context, fromUserID, toUserID, householdID int64, by string) (household.Invite, error)
 	GetInviteByID(ctx context.Context, inviteID int64) (household.Invite, error)
 	ListPendingInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error)
-	ListSentInvitesForUser(ctx context.Context, userID int64) ([]household.Invite, error)
+	ListSentInvitesForUser(ctx context.Context, userID, householdID int64) ([]household.Invite, error)
 	TransitionInvite(ctx context.Context, inviteID int64, to household.Status, by string) (household.Invite, error)
 	RenameHousehold(ctx context.Context, householdID int64, name, by string) (household.Household, error)
 	LockHousehold(ctx context.Context, householdID int64) (household.Household, error)
 	CancelPendingInvitesFrom(ctx context.Context, fromUserID, householdID int64, by string) ([]household.Invite, error)
 	CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID, actorUserID, inviteID, foodEventID *int64) error
-	ListNotificationsForUser(ctx context.Context, userID int64, limit int32) ([]household.Notification, error)
-	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
-	MarkAllNotificationsRead(ctx context.Context, userID int64) error
+	ListNotificationsForUser(ctx context.Context, userID, householdID int64, limit int32) ([]household.Notification, error)
+	CountUnreadNotifications(ctx context.Context, userID, householdID int64) (int64, error)
+	MarkAllNotificationsRead(ctx context.Context, userID, householdID int64) error
+	GetMembership(ctx context.Context, householdID, userID int64) (household.Membership, error)
+	ListMembersByHousehold(ctx context.Context, householdID int64) ([]household.Membership, error)
+	ListMembershipsByUser(ctx context.Context, userID int64) ([]household.Membership, error)
+	ListMyHouseholds(ctx context.Context, userID int64) ([]household.MyHousehold, error)
+	CountMembers(ctx context.Context, householdID int64) (int64, error)
+	JoinHousehold(ctx context.Context, householdID, userID int64, role, by string) (household.Membership, error)
+	RemoveMembership(ctx context.Context, householdID, userID int64) error
 }
 
 var _ HouseholdService = (*household.Service)(nil)

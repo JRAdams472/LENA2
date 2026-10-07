@@ -76,7 +76,7 @@ func (r *Resolver) HouseholdInvites(ctx context.Context) ([]*householdInviteReso
 	if err != nil {
 		return nil, err
 	}
-	sent, err := r.HouseholdService.ListSentInvitesForUser(ctx, u.UserID)
+	sent, err := r.HouseholdService.ListSentInvitesForUser(ctx, u.UserID, u.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +276,16 @@ func (r *Resolver) acceptInvite(ctx context.Context, u currentuser.User, inv hou
 		if err := r.IdentityService.SetUserHousehold(ctx, u.UserID, inv.HouseholdID, identity.HouseholdRoleMember, target.HouseholdID); err != nil {
 			return err
 		}
+		// Mirror the move into household_member (LEN-26 P1 keeps membership
+		// 1:1 with the active pointer; P2 turns accept into add-membership).
+		if _, err := r.HouseholdService.JoinHousehold(ctx, inv.HouseholdID, u.UserID, identity.HouseholdRoleMember, u.Email); err != nil {
+			return err
+		}
+		if target.HouseholdID != nil && *target.HouseholdID != inv.HouseholdID {
+			if err := r.HouseholdService.RemoveMembership(ctx, *target.HouseholdID, u.UserID); err != nil && !errors.Is(err, domainerr.ErrNotFound) {
+				return err
+			}
+		}
 		return r.notifyJoin(ctx, u, inv)
 	})
 }
@@ -431,6 +441,12 @@ func (r *Resolver) LeaveHousehold(ctx context.Context) (bool, error) {
 		if err := r.IdentityService.SetUserHousehold(ctx, u.UserID, hh.HouseholdID, identity.HouseholdRoleOwner, fresh.HouseholdID); err != nil {
 			return err
 		}
+		if _, err := r.HouseholdService.JoinHousehold(ctx, hh.HouseholdID, u.UserID, identity.HouseholdRoleOwner, u.Email); err != nil {
+			return err
+		}
+		if err := r.HouseholdService.RemoveMembership(ctx, oldHouseholdID, u.UserID); err != nil && !errors.Is(err, domainerr.ErrNotFound) {
+			return err
+		}
 		var remaining []int64
 		for _, m := range members {
 			if m.UserID != u.UserID {
@@ -465,6 +481,9 @@ func (r *Resolver) promoteSuccessor(ctx context.Context, u currentuser.User, fre
 		return 0, nil
 	}
 	if err := r.IdentityService.SetUserHouseholdRole(ctx, successor, householdID, identity.HouseholdRoleOwner, u.Email); err != nil {
+		return 0, err
+	}
+	if _, err := r.HouseholdService.JoinHousehold(ctx, householdID, successor, identity.HouseholdRoleOwner, u.Email); err != nil {
 		return 0, err
 	}
 	if err := r.notify(ctx, []int64{successor}, household.KindRoleChanged, householdID, u.UserID, nil); err != nil {
@@ -561,6 +580,9 @@ func (r *Resolver) SetHouseholdRole(ctx context.Context, args struct {
 		if err := r.IdentityService.SetUserHouseholdRole(ctx, targetID, u.HouseholdID, role, u.Email); err != nil {
 			return err
 		}
+		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, targetID, role, u.Email); err != nil {
+			return err
+		}
 		return r.notify(ctx, []int64{targetID}, household.KindRoleChanged, u.HouseholdID, u.UserID, nil)
 	})
 	if err != nil {
@@ -599,7 +621,13 @@ func (r *Resolver) TransferHouseholdOwnership(ctx context.Context, args struct {
 		if err := r.IdentityService.SetUserHouseholdRole(ctx, targetID, u.HouseholdID, identity.HouseholdRoleOwner, u.Email); err != nil {
 			return err
 		}
+		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, targetID, identity.HouseholdRoleOwner, u.Email); err != nil {
+			return err
+		}
 		if err := r.IdentityService.SetUserHouseholdRole(ctx, u.UserID, u.HouseholdID, identity.HouseholdRoleMember, u.Email); err != nil {
+			return err
+		}
+		if _, err := r.HouseholdService.JoinHousehold(ctx, u.HouseholdID, u.UserID, identity.HouseholdRoleMember, u.Email); err != nil {
 			return err
 		}
 		return r.notify(ctx, []int64{targetID}, household.KindRoleChanged, u.HouseholdID, u.UserID, nil)
@@ -663,6 +691,12 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 		if err := r.IdentityService.SetUserHousehold(ctx, targetID, fresh.HouseholdID, identity.HouseholdRoleOwner, target.HouseholdID); err != nil {
 			return err
 		}
+		if _, err := r.HouseholdService.JoinHousehold(ctx, fresh.HouseholdID, targetID, identity.HouseholdRoleOwner, u.Email); err != nil {
+			return err
+		}
+		if err := r.HouseholdService.RemoveMembership(ctx, u.HouseholdID, targetID); err != nil && !errors.Is(err, domainerr.ErrNotFound) {
+			return err
+		}
 		if err := r.notify(ctx, []int64{targetID}, household.KindMemberRemoved, u.HouseholdID, u.UserID, nil); err != nil {
 			return err
 		}
@@ -695,7 +729,7 @@ func (r *Resolver) MyNotifications(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	notifs, err := r.HouseholdService.ListNotificationsForUser(ctx, u.UserID, clamp(args.Limit, 1, 100))
+	notifs, err := r.HouseholdService.ListNotificationsForUser(ctx, u.UserID, u.HouseholdID, clamp(args.Limit, 1, 100))
 	if err != nil {
 		return nil, err
 	}
@@ -708,7 +742,7 @@ func (r *Resolver) UnreadNotificationCount(ctx context.Context) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	n, err := r.HouseholdService.CountUnreadNotifications(ctx, u.UserID)
+	n, err := r.HouseholdService.CountUnreadNotifications(ctx, u.UserID, u.HouseholdID)
 	if err != nil {
 		return 0, err
 	}
@@ -725,7 +759,7 @@ func (r *Resolver) MarkAllNotificationsRead(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if err := r.HouseholdService.MarkAllNotificationsRead(ctx, u.UserID); err != nil {
+	if err := r.HouseholdService.MarkAllNotificationsRead(ctx, u.UserID, u.HouseholdID); err != nil {
 		return false, err
 	}
 	return true, nil
