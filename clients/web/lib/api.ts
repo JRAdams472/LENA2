@@ -1056,6 +1056,7 @@ interface GqlHousehold {
   name: string | null;
   members: GqlHouseholdMember[];
   myRole: string;
+  isActive: boolean;
   createdAt: string;
 }
 
@@ -1135,6 +1136,7 @@ const toHousehold = (h: GqlHousehold): Household => ({
   name: h.name ?? null,
   members: (h.members ?? []).map(toHouseholdMember),
   myRole: toHouseholdRole(h.myRole),
+  isActive: h.isActive === true,
   createdAt: h.createdAt,
 });
 
@@ -2023,6 +2025,11 @@ const ALLERGY_FIELDS = `
   allergyWarnings { ${ALLERGY_WARNING_FIELDS} }
 `;
 
+// Household selection shared by myHousehold/myHouseholds + every household
+// mutation. isActive marks the caller's active pointer in list reads; on
+// mutation payloads it's simply true for the returned (active) household.
+const HOUSEHOLD_FIELDS = `id name myRole isActive members { user { id displayName firstName lastName } role isMe } createdAt`;
+
 const BRAND_FIELDS = `
   id name selectionCount personalSelectionCount
 `;
@@ -2232,7 +2239,7 @@ export const api = {
   // Auth
   getMe: async (): Promise<User> => {
     const data = await request<{ me: GqlUser }>(
-      `query { me { id email displayName firstName lastName backupEmail birthdate role isActive isProtected lastLoginAt isSearchable household { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } } }`
+      `query { me { id email displayName firstName lastName backupEmail birthdate role isActive isProtected lastLoginAt isSearchable household { ${HOUSEHOLD_FIELDS} } } }`
     );
     return toUser(data.me);
   },
@@ -2255,9 +2262,36 @@ export const api = {
   // Household
   getMyHousehold: async (): Promise<Household | null> => {
     const data = await request<{ myHousehold: GqlHousehold | null }>(
-      `query { myHousehold { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`
+      `query { myHousehold { ${HOUSEHOLD_FIELDS} } }`
     );
     return data.myHousehold ? toHousehold(data.myHousehold) : null;
+  },
+
+  // Every household the caller belongs to; isActive marks the pointer.
+  getMyHouseholds: async (): Promise<Household[]> => {
+    const data = await request<{ myHouseholds: GqlHousehold[] }>(
+      `query { myHouseholds { ${HOUSEHOLD_FIELDS} } }`
+    );
+    return (data.myHouseholds ?? []).map(toHousehold);
+  },
+
+  // New household: server joins the caller as owner and activates it.
+  createHousehold: async (name?: string): Promise<Household> => {
+    const data = await request<{ createHousehold: GqlHousehold }>(
+      `mutation ($name: String) { createHousehold(name: $name) { ${HOUSEHOLD_FIELDS} } }`,
+      { name: name?.trim() || null }
+    );
+    return toHousehold(data.createHousehold);
+  },
+
+  // Moves the caller's active-household pointer; most app data is
+  // household-scoped, so callers should invalidate broadly after this.
+  setActiveHousehold: async (householdID: number): Promise<Household> => {
+    const data = await request<{ setActiveHousehold: GqlHousehold }>(
+      `mutation ($householdId: ID!) { setActiveHousehold(householdId: $householdId) { ${HOUSEHOLD_FIELDS} } }`,
+      { householdId: String(householdID) }
+    );
+    return toHousehold(data.setActiveHousehold);
   },
 
   getHouseholdInvites: async (): Promise<HouseholdInvite[]> => {
@@ -2286,10 +2320,20 @@ export const api = {
     return toHouseholdInvite(data.inviteHouseholdMember);
   },
 
-  acceptHouseholdInvite: async (inviteID: number): Promise<Household> => {
+  // mergeFromHouseholdID opts a sole-owned source household into the
+  // merge-then-dissolve path; omitted, the caller keeps their old
+  // households as additional memberships.
+  acceptHouseholdInvite: async (
+    inviteID: number,
+    mergeFromHouseholdID?: number
+  ): Promise<Household> => {
     const data = await request<{ acceptHouseholdInvite: GqlHousehold }>(
-      `mutation ($inviteId: ID!) { acceptHouseholdInvite(inviteId: $inviteId) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
-      { inviteId: String(inviteID) }
+      `mutation ($inviteId: ID!, $mergeFromHouseholdId: ID) { acceptHouseholdInvite(inviteId: $inviteId, mergeFromHouseholdId: $mergeFromHouseholdId) { ${HOUSEHOLD_FIELDS} } }`,
+      {
+        inviteId: String(inviteID),
+        mergeFromHouseholdId:
+          mergeFromHouseholdID != null ? String(mergeFromHouseholdID) : null,
+      }
     );
     return toHousehold(data.acceptHouseholdInvite);
   },
@@ -2310,16 +2354,19 @@ export const api = {
     return toHouseholdInvite(data.cancelHouseholdInvite);
   },
 
-  leaveHousehold: async (): Promise<boolean> => {
+  // householdID targets a specific membership; omitted, the server drops
+  // the caller's active household.
+  leaveHousehold: async (householdID?: number): Promise<boolean> => {
     const data = await request<{ leaveHousehold: boolean }>(
-      `mutation { leaveHousehold }`
+      `mutation ($householdId: ID) { leaveHousehold(householdId: $householdId) }`,
+      { householdId: householdID != null ? String(householdID) : null }
     );
     return data.leaveHousehold;
   },
 
   renameHousehold: async (name: string): Promise<Household> => {
     const data = await request<{ renameHousehold: GqlHousehold }>(
-      `mutation ($name: String!) { renameHousehold(name: $name) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      `mutation ($name: String!) { renameHousehold(name: $name) { ${HOUSEHOLD_FIELDS} } }`,
       { name }
     );
     return toHousehold(data.renameHousehold);
@@ -2330,7 +2377,7 @@ export const api = {
     role: HouseholdRole
   ): Promise<Household> => {
     const data = await request<{ setHouseholdRole: GqlHousehold }>(
-      `mutation ($userId: ID!, $role: HouseholdRole!) { setHouseholdRole(userId: $userId, role: $role) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      `mutation ($userId: ID!, $role: HouseholdRole!) { setHouseholdRole(userId: $userId, role: $role) { ${HOUSEHOLD_FIELDS} } }`,
       { userId: String(userID), role }
     );
     return toHousehold(data.setHouseholdRole);
@@ -2338,7 +2385,7 @@ export const api = {
 
   removeHouseholdMember: async (userID: number): Promise<Household> => {
     const data = await request<{ removeHouseholdMember: GqlHousehold }>(
-      `mutation ($userId: ID!) { removeHouseholdMember(userId: $userId) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      `mutation ($userId: ID!) { removeHouseholdMember(userId: $userId) { ${HOUSEHOLD_FIELDS} } }`,
       { userId: String(userID) }
     );
     return toHousehold(data.removeHouseholdMember);
@@ -2348,7 +2395,7 @@ export const api = {
     userID: number
   ): Promise<Household> => {
     const data = await request<{ transferHouseholdOwnership: GqlHousehold }>(
-      `mutation ($userId: ID!) { transferHouseholdOwnership(userId: $userId) { id name myRole members { user { id displayName firstName lastName } role isMe } createdAt } }`,
+      `mutation ($userId: ID!) { transferHouseholdOwnership(userId: $userId) { ${HOUSEHOLD_FIELDS} } }`,
       { userId: String(userID) }
     );
     return toHousehold(data.transferHouseholdOwnership);

@@ -31,6 +31,7 @@ const gqlHousehold = {
   id: "42",
   name: "The Smiths",
   myRole: "OWNER",
+  isActive: true,
   members: [{ user: gqlHouseholdUser, role: "MEMBER", isMe: false }],
   createdAt: "2026-01-01T00:00:00Z",
 };
@@ -55,6 +56,7 @@ describe("api client: household", () => {
       householdID: 42,
       name: "The Smiths",
       myRole: "OWNER",
+      isActive: true,
       members: [
         {
           user: { userID: 9, displayName: "Mate", firstName: "Ann", lastName: "Lee" },
@@ -112,8 +114,63 @@ describe("api client: household", () => {
     );
     const hh = await api.acceptHouseholdInvite(55);
     const body = lastRequestBody();
-    expect(body.variables).toEqual({ inviteId: "55" });
+    expect(body.variables).toEqual({
+      inviteId: "55",
+      mergeFromHouseholdId: null,
+    });
     expect(hh.householdID).toBe(42);
+  });
+
+  it("acceptHouseholdInvite sends the merge source when given", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ acceptHouseholdInvite: gqlHousehold })
+    );
+    await api.acceptHouseholdInvite(55, 77);
+    const body = lastRequestBody();
+    expect(body.variables).toEqual({
+      inviteId: "55",
+      mergeFromHouseholdId: "77",
+    });
+  });
+
+  it("getMyHouseholds maps the list", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ myHouseholds: [gqlHousehold] })
+    );
+    const list = await api.getMyHouseholds();
+    expect(list).toHaveLength(1);
+    expect(list[0].householdID).toBe(42);
+    expect(list[0].isActive).toBe(true);
+  });
+
+  it("setActiveHousehold sends the household id", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ setActiveHousehold: gqlHousehold })
+    );
+    const hh = await api.setActiveHousehold(77);
+    const body = lastRequestBody();
+    expect(body.query).toContain("setActiveHousehold");
+    expect(body.variables).toEqual({ householdId: "77" });
+    expect(hh.householdID).toBe(42);
+  });
+
+  it("createHousehold sends the name and maps the result", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ createHousehold: gqlHousehold })
+    );
+    const hh = await api.createHousehold("Cabin");
+    const body = lastRequestBody();
+    expect(body.variables).toEqual({ name: "Cabin" });
+    expect(hh.householdID).toBe(42);
+  });
+
+  it("createHousehold sends null for a blank name", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ createHousehold: gqlHousehold })
+    );
+    await api.createHousehold("  ");
+    const body = lastRequestBody();
+    expect(body.variables).toEqual({ name: null });
   });
 
   it("declineHouseholdInvite returns the invite", async () => {
@@ -139,5 +196,12 @@ describe("api client: household", () => {
   it("leaveHousehold returns the boolean", async () => {
     mockFetch.mockResolvedValueOnce(mockGraphQL({ leaveHousehold: true }));
     expect(await api.leaveHousehold()).toBe(true);
+  });
+
+  it("leaveHousehold sends the target household id", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ leaveHousehold: true }));
+    expect(await api.leaveHousehold(77)).toBe(true);
+    const body = lastRequestBody();
+    expect(body.variables).toEqual({ householdId: "77" });
   });
 });
