@@ -66,6 +66,25 @@ const theme = createTheme({
     },
   },
   shape: { borderRadius: 10 },
+  // design.md §8 — 150ms micro / 250ms component / 400ms page entrances,
+  // decelerate easing throughout.
+  transitions: {
+    duration: {
+      shortest: 150,
+      shorter: 200,
+      short: 250,
+      standard: 250,
+      complex: 400,
+      enteringScreen: 250,
+      leavingScreen: 150,
+    },
+    easing: {
+      easeOut: "cubic-bezier(0.2, 0, 0, 1)",
+      easeInOut: "cubic-bezier(0.4, 0, 0.2, 1)",
+      easeIn: "cubic-bezier(0.4, 0, 1, 1)",
+      sharp: "cubic-bezier(0.4, 0, 0.6, 1)",
+    },
+  },
   // design.md §3 — Nunito is the shared family (mobile bundles the same TTFs);
   // --font-nunito is set by next/font/local in layout.tsx.
   typography: {
@@ -146,6 +165,18 @@ const theme = createTheme({
             },
           },
         ],
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        // design.md §8 — pressed feedback settles at scale(0.98).
+        root: ({ theme }) => ({
+          transition: theme.transitions.create(
+            ["background-color", "transform", "box-shadow", "border-color"],
+            { duration: theme.transitions.duration.shortest }
+          ),
+          "&:active": { transform: "scale(0.98)" },
+        }),
       },
     },
     MuiListItemIcon: {

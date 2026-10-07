@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
+import StatusChip from "@/app/components/StatusChip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -45,10 +45,10 @@ function householdName(h: Household): string {
   return h.name ?? "Unnamed household";
 }
 
-function roleChipColor(role: HouseholdRole): "primary" | "secondary" | "default" {
+function roleChipTone(role: HouseholdRole): "primary" | "success" | "neutral" {
   if (role === "OWNER") return "primary";
-  if (role === "ADMIN") return "secondary";
-  return "default";
+  if (role === "ADMIN") return "success";
+  return "neutral";
 }
 
 export default function HouseholdPage() {
@@ -291,7 +291,7 @@ export default function HouseholdPage() {
               key={h.householdID}
               secondaryAction={
                 h.isActive ? (
-                  <Chip label="active" size="small" color="primary" />
+                  <StatusChip label="active" tone="primary" />
                 ) : (
                   <Box sx={{ display: "flex", gap: 1 }}>
                     <Button
@@ -394,10 +394,9 @@ export default function HouseholdPage() {
                 primary={
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     {userName(m.user)}
-                    <Chip
+                    <StatusChip
                       label={m.role.toLowerCase()}
-                      size="small"
-                      color={roleChipColor(m.role)}
+                      tone={roleChipTone(m.role)}
                     />
                     {m.isMe && (
                       <Typography variant="body2" color="text.secondary">
