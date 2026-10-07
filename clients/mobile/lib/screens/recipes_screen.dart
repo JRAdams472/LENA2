@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../theme.dart';
@@ -282,7 +283,11 @@ class _RecipesScreenState extends State<RecipesScreen> {
                 final items = result.data?['recipes']?['items'] as List? ?? [];
 
                 if (items.isEmpty) {
-                  return const Center(child: Text('No recipes found'));
+                  return const EmptyState(
+                    icon: Icons.restaurant_menu,
+                    title: 'No recipes found',
+                    description: 'Try a different search or filter.',
+                  );
                 }
 
                 return ListView.builder(

@@ -98,7 +98,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Nothing planned for today yet'), findsOneWidget);
-    expect(find.text('Plan it →'), findsOneWidget);
+    expect(find.text('Plan it'), findsOneWidget);
   });
 
   testWidgets('empty suggestions show friendly copy', (tester) async {
@@ -107,6 +107,6 @@ void main() {
     await tester.pumpWidget(_wrap(DashboardContent(data: data)));
     await tester.pump();
 
-    expect(find.textContaining('rate a few recipes'), findsOneWidget);
+    expect(find.textContaining('Rate a few recipes'), findsOneWidget);
   });
 }

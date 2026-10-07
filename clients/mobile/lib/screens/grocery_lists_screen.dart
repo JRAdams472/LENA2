@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/skeleton.dart';
 import '../format.dart';
 import 'generate_grocery_dialog.dart';
@@ -61,7 +62,11 @@ class GroceryListsScreen extends StatelessWidget {
     }
     final lists = result.data?['groceryLists']?['items'] as List? ?? [];
     if (lists.isEmpty) {
-      return const Center(child: Text('No grocery lists yet.'));
+      return const EmptyState(
+        icon: Icons.shopping_cart_outlined,
+        title: 'No grocery lists yet',
+        description: 'Generate one from a meal plan.',
+      );
     }
     return RefreshIndicator(
       onRefresh: () async => refetch?.call(),

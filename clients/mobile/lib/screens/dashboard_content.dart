@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../dashboard_helpers.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/motion.dart';
+import '../widgets/section_header.dart';
+import '../widgets/status_chip.dart';
 import 'edit_recipe_screen.dart';
 import 'meal_plans_screen.dart';
+import 'recipes_screen.dart';
 
 const _weekdays = [
   'Monday',
@@ -61,7 +66,8 @@ class DashboardContent extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: () async => onRefresh?.call(),
-      child: ListView(
+      child: LenaFadeIn(
+        child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           _greetingHeader(context, name),
@@ -97,7 +103,8 @@ class DashboardContent extends StatelessWidget {
           _todaysMeals(context, slots),
           const SizedBox(height: 20),
           _suggestions(context, recommendations),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -143,35 +150,25 @@ class DashboardContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Today\'s meals', style: Theme.of(context).textTheme.titleLarge),
+        SectionHeader(
+          title: 'Today\'s meals',
+          actionLabel: 'Plan',
+          onAction: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MealPlansScreen()),
+          ),
+        ),
         const SizedBox(height: 8),
         if (slots.isEmpty)
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Nothing planned for today yet',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 4),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 36),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const MealPlansScreen(),
-                      ),
-                    ),
-                    child: const Text('Plan it →'),
-                  ),
-                ],
+            child: EmptyState(
+              icon: Icons.restaurant_menu,
+              title: 'Nothing planned for today yet',
+              description: 'Pick a recipe and fill today\'s slots.',
+              actionLabel: 'Plan it',
+              onAction: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MealPlansScreen()),
               ),
             ),
           )
@@ -252,20 +249,22 @@ class DashboardContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Delicious ideas for tonight',
-          style: Theme.of(context).textTheme.titleLarge,
+        SectionHeader(
+          title: 'Delicious ideas for tonight',
+          actionLabel: 'Browse',
+          onAction: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const RecipesScreen()),
+          ),
         ),
         const SizedBox(height: 8),
         if (recommendations.isEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Nothing to suggest yet — rate a few recipes and we\'ll get '
-                'ideas flowing.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+          const Card(
+            child: EmptyState(
+              icon: Icons.lightbulb_outline,
+              title: 'Nothing to suggest yet',
+              description:
+                  'Rate a few recipes and we\'ll get ideas flowing.',
             ),
           )
         else ...[
@@ -299,7 +298,10 @@ class DashboardContent extends StatelessWidget {
               Row(
                 children: [
                   Flexible(
-                    child: _reasonChip(context, rec['reason'] as String? ?? ''),
+                    child: StatusChip(
+                      label: reasonLabel(rec['reason'] as String? ?? ''),
+                      tone: StatusTone.secondary,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   _iconBadge(
@@ -400,24 +402,6 @@ class DashboardContent extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _reasonChip(BuildContext context, String reason) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        reasonLabel(reason),
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
       ),
     );
   }
