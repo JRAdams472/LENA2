@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 
@@ -99,7 +100,11 @@ class _PantryScreenState extends State<PantryScreen> {
     }
     final items = result.data?['userItems']?['items'] as List? ?? [];
     if (items.isEmpty) {
-      return const Center(child: Text('Your pantry is empty.'));
+      return const EmptyState(
+        icon: Icons.kitchen_outlined,
+        title: 'Your pantry is empty',
+        description: 'Scan an item or add one to get started.',
+      );
     }
     return RefreshIndicator(
       onRefresh: () async => refetch?.call(),

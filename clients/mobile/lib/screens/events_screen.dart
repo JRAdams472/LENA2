@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/skeleton.dart';
 import 'edit_event_screen.dart';
 import 'event_detail_screen.dart';
@@ -64,8 +65,10 @@ class _EventsScreenState extends State<EventsScreen> {
 
     final items = result.data?['foodEvents']?['items'] as List? ?? [];
     if (items.isEmpty) {
-      return const Center(
-        child: Text('No events yet — tap + to plan one.'),
+      return const EmptyState(
+        icon: Icons.event,
+        title: 'No events yet',
+        description: 'Tap + to plan one.',
       );
     }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
+import '../widgets/status_chip.dart';
 
 import '../allergy.dart';
 import '../notification_links.dart';
@@ -463,7 +464,10 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                   '${(h['myRole'] as String? ?? 'MEMBER').toLowerCase()}',
                 ),
                 trailing: h['isActive'] == true
-                    ? const Text('Active')
+                    ? const StatusChip(
+                        label: 'Active',
+                        tone: StatusTone.primary,
+                      )
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -814,10 +818,25 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
           ...members.map((m) {
             final user = m['user'] as Map<String, dynamic>;
             final role = (m['role'] as String? ?? 'MEMBER').toLowerCase();
+            final isElevated = role == 'owner' || role == 'admin';
             return Card(
               child: ListTile(
                 title: Text(_userName(user)),
-                subtitle: Text(m['isMe'] == true ? '$role — you' : role),
+                subtitle: Row(
+                  children: [
+                    StatusChip(
+                      label: role,
+                      tone: isElevated
+                          ? StatusTone.primary
+                          : StatusTone.neutral,
+                    ),
+                    if (m['isMe'] == true) ...[
+                      const SizedBox(width: 6),
+                      Text('you',
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ],
+                ),
                 trailing: _canManage(myRole, m)
                     ? IconButton(
                         icon: const Icon(Icons.more_vert),
