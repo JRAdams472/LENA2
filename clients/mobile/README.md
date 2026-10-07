@@ -168,11 +168,13 @@ gated artifacts.
 
 ## Project structure
 
-- `lib/theme.dart` — `lenaTheme()`: the web's sage/cream palette, bundled Nunito, and M3 component themes.
+- `lib/theme.dart` — `lenaTheme()` + `lenaDarkTheme()`: the web's sage/cream palette, bundled Nunito, and M3 component themes; dark uses warm-charcoal surfaces with lifted sage accents per `docs/design.md`.
+- `lib/theme_mode.dart` — `ThemeModeController` (provider): system/light/dark selection persisted in `shared_preferences`; the Appearance card on `more_screen.dart` drives it.
+- `lib/widgets/` — shared UI primitives: `EmptyState`, `SectionHeader`, `StatusChip`, `LenaFadeIn` motion tokens, `LenaSkeleton`/`LenaSplash` loading states.
 - `lib/graphql_config.dart` — `GraphQLClient` with `AuthLink` (proactive session refresh) + `ErrorLink` (one-time refresh-and-retry on 401).
 - `lib/main.dart` — App entry point with `GraphQLProvider` and `AuthGate`.
 - `lib/auth/auth_service.dart` — Google sign-in, `/auth/session` exchange, secure token storage, `LENA_DEBUG_ID_TOKEN` bypass for emulator/e2e runs.
-- `lib/screens/login_screen.dart` — Google sign-in button.
+- `lib/screens/login_screen.dart` — split-card sign-in: sage brand panel over the Google button, theme-aware in both schemes.
 - `lib/screens/main_screen.dart` — Bottom-nav shell.
 - `lib/screens/dashboard_screen.dart` + `dashboard_content.dart` — Dashboard GraphQL wrapper + the greeting/meals/recommendations layout; display logic lives in pure helpers under `lib/dashboard_helpers.dart`.
 - `lib/screens/grocery_lists_screen.dart` + `grocery_list_screen.dart` — Grocery list list/detail; the detail screen renders the server's `groceryRouteGroups` verbatim (aisle-grouped, per-group `ReorderableListView`, "move to aisle" menu, store picker). Ingredient-only lines show a `usual:` caption once a brand is remembered; the first check-off opens a brand picker (`checkGroceryItemWithBrand`) that records the household's usual.

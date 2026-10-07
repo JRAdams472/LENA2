@@ -275,7 +275,7 @@ PNGs land in `clients/mobile/mobile-shots/` when the walk completes.
 
 ## CI
 
-`.github/workflows/test.yml` runs on `main`, `phase-*`, and `mobile-redesign-*` branches:
+`.github/workflows/test.yml` runs on pushes to `main`, `phase-*`, `mobile-redesign-*`, and `len-*`/`LEN-*` (ticket) branches, and on PRs targeting `main`:
 
 - **Go** — build, vet, `gofmt`, tests with coverage.
 - **Web** — TypeScript, ESLint, Jest, Next.js build.
@@ -331,5 +331,6 @@ PNGs land in `clients/mobile/mobile-shots/` when the walk completes.
 - `docs/auth-oidc.md` — authentication flow.
 - `docs/graphql-schema.md` — GraphQL API reference.
 - `docs/postgres-data-model.md` — database schema overview.
+- `docs/design.md` — shared design language: sage/cream palette, light + dark token tables, type ramp, spacing/motion spec.
 - `clients/web/README.md` — web client setup.
 - `clients/mobile/README.md` — Flutter client setup.

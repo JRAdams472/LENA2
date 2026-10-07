@@ -6,6 +6,8 @@ on:
       - main
       - "phase-*"
       - "mobile-redesign-*"
+      - "len-*"
+      - "LEN-*"
   pull_request:
     branches:
       - main
@@ -190,6 +192,13 @@ jobs:
       - name: Install dependencies
         working-directory: clients/web
         run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('clients/web/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
         working-directory: clients/web

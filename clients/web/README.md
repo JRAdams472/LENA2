@@ -102,5 +102,5 @@ npm run build
 
 - Next.js (App Router, `output: "standalone"`)
 - TypeScript
-- Material UI
+- Material UI — `colorSchemes` light/dark (toggle in the AppBar and on `/profile`); Nunito self-hosted via `next/font/local`; theme + tokens per `docs/design.md`
 - React Query
