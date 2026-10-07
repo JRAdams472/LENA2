@@ -21,15 +21,14 @@ export default function StatusChip({
   const theme = useTheme();
   const palette = paletteFor(theme);
   const token =
-    tone === "neutral"
-      ? palette.text.secondary
-      : palette[tone].main;
-  const label =
-    tone === "neutral"
-      ? palette.text.secondary
-      : tone === "primary"
-        ? palette.primary.dark
-        : palette[tone].dark;
+    tone === "neutral" ? palette.text.secondary : palette[tone].main;
+  const labels: Record<StatusTone, string> = {
+    primary: palette.primary.dark,
+    success: palette.success.dark,
+    error: palette.error.dark,
+    neutral: palette.text.secondary,
+  };
+  const label = labels[tone];
   return (
     <Chip
       size="small"
