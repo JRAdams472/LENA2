@@ -20,8 +20,14 @@ import LocalCafeIcon from "@mui/icons-material/LocalCafe";
 import CakeIcon from "@mui/icons-material/Cake";
 import SetMealIcon from "@mui/icons-material/SetMeal";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
-import { alpha, styled, useTheme, Theme } from "@mui/material/styles";
+import {
+  styled,
+  useColorScheme,
+  useTheme,
+  Theme,
+} from "@mui/material/styles";
 import { Recipe } from "@/lib/types";
+import { paletteFor } from "@/lib/themeVars";
 import { sizeBadge, stripSize } from "@/lib/format";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
@@ -41,18 +47,21 @@ function reasonLabel(reason: string) {
 }
 
 // design.md --accent-terracotta / --accent-wheat: the two warm accents that
-// don't have a MUI palette slot. Sage/olive come from theme tokens.
-const TERRACOTTA = "#C0876B";
-const WHEAT = "#D9B26A";
+// don't have a MUI palette slot. Sage/olive come from theme tokens; the
+// dark values lift for contrast on the charcoal canvas.
+const TERRACOTTA = { light: "#C0876B", dark: "#D09B7F" };
+const WHEAT = { light: "#D9B26A", dark: "#E3C584" };
 
 // Deterministic accent per recipe so suggestion tiles differentiate
-// without real photos: sage, olive, terracotta, wheat.
-function accentFor(theme: Theme, recipeID: number) {
+// without real photos: sage, olive, terracotta, wheat. Palette tokens go
+// through theme.vars so they resolve per color scheme; the warm accents
+// have no palette slot and pick a concrete value from `dark`.
+function accentFor(theme: Theme, dark: boolean, recipeID: number) {
   const accents = [
-    theme.palette.primary.main,
-    theme.palette.success.main,
-    TERRACOTTA,
-    WHEAT,
+    paletteFor(theme).primary.main,
+    paletteFor(theme).success.main,
+    dark ? TERRACOTTA.dark : TERRACOTTA.light,
+    dark ? WHEAT.dark : WHEAT.light,
   ];
   return accents[Math.abs(recipeID) % accents.length];
 }
@@ -87,13 +96,15 @@ const PlanMealLink = styled(Link)(({ theme }) => ({
   fontSize: "0.75rem",
   fontWeight: 500,
   fontStyle: "normal",
-  color: theme.palette.text.secondary,
-  backgroundColor: theme.palette.background.paper,
-  border: `1px dashed ${theme.palette.divider}`,
+  color: paletteFor(theme).text.secondary,
+  backgroundColor: paletteFor(theme).background.paper,
+  border: `1px dashed ${paletteFor(theme).divider}`,
   borderRadius: 999,
   padding: "5px 12px",
   textDecoration: "none",
-  "&:hover": { backgroundColor: alpha(theme.palette.primary.main, 0.08) },
+  "&:hover": {
+    backgroundColor: `color-mix(in srgb, ${paletteFor(theme).primary.main} 8%, transparent)`,
+  },
 }));
 
 function DashboardSkeleton() {
@@ -144,6 +155,10 @@ function isDateInRange(date: Date, weekStartDate: string) {
 
 export default function Dashboard() {
   const theme = useTheme();
+  // Resolved scheme for JS-side color picks — theme.palette.mode is static
+  // under colorSchemeSelector:"class".
+  const { mode, systemMode } = useColorScheme();
+  const isDark = (mode === "system" ? systemMode : mode) === "dark";
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -315,7 +330,7 @@ export default function Dashboard() {
                 <Box
                   key={meal}
                   sx={{
-                    bgcolor: alpha(theme.palette.primary.main, 0.06),
+                    bgcolor: `color-mix(in srgb, ${paletteFor(theme).primary.main} 6%, transparent)`,
                     borderRadius: 2,
                     p: 2,
                   }}
@@ -349,7 +364,7 @@ export default function Dashboard() {
                       {createElement(MEAL_ICONS[mt], {
                         sx: {
                           fontSize: 40,
-                          color: alpha(theme.palette.primary.main, 0.35),
+                          color: `color-mix(in srgb, ${paletteFor(theme).primary.main} 35%, transparent)`,
                         },
                       })}
                       <Typography variant="body2" color="text.secondary">
@@ -420,8 +435,8 @@ export default function Dashboard() {
                         width: 48,
                         height: 48,
                         borderRadius: 2,
-                        bgcolor: accentFor(theme, s.recipe.recipeID),
-                        color: theme.palette.background.paper,
+                        bgcolor: accentFor(theme, isDark, s.recipe.recipeID),
+                        color: paletteFor(theme).primary.contrastText,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -450,7 +465,7 @@ export default function Dashboard() {
                       size="small"
                       label={reasonLabel(s.reason)}
                       sx={{
-                        bgcolor: alpha(theme.palette.success.main, 0.12),
+                        bgcolor: `color-mix(in srgb, ${paletteFor(theme).success.main} 12%, transparent)`,
                         color: "success.dark",
                         fontWeight: 500,
                         "& .MuiChip-label": { px: 1.25 },
