@@ -365,6 +365,17 @@ func TestCancelPendingInvitesFrom(t *testing.T) {
 	assert.Equal(t, int64(12), got[0].InviteID)
 }
 
+func TestNotificationKindUserDirected(t *testing.T) {
+	// Notices addressed to a non-member must write household_id NULL so the
+	// active-household feed filter can never hide them.
+	for _, k := range []NotificationKind{KindInviteReceived, KindInviteCancelled, KindMemberRemoved} {
+		assert.True(t, k.UserDirected(), string(k))
+	}
+	for _, k := range []NotificationKind{KindInviteAccepted, KindInviteDeclined, KindMemberJoined, KindMemberLeft, KindRoleChanged, KindHouseholdRenamed} {
+		assert.False(t, k.UserDirected(), string(k))
+	}
+}
+
 func TestMembershipQueries(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()

@@ -44,6 +44,20 @@ type Household struct {
 // NotificationKind identifies the household event a notification records.
 type NotificationKind string
 
+// UserDirected reports whether the notification's recipient relationship
+// is to the event itself rather than to the household — the target is not
+// (or no longer) a member: received/cancelled invites and removal notices.
+// These rows are written with a NULL household_id so active-household feed
+// scoping (LEN-26) can never hide a notice addressed to the user.
+func (k NotificationKind) UserDirected() bool {
+	switch k {
+	case KindInviteReceived, KindInviteCancelled, KindMemberRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Notification kinds written inside the transaction that produces them.
 const (
 	KindInviteReceived   NotificationKind = "invite_received"

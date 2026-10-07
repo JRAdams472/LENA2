@@ -811,13 +811,18 @@ func (r *Resolver) notify(ctx context.Context, userIDs []int64, kind household.N
 // notifyEvent is notify with a food-event deep-link target.
 func (r *Resolver) notifyEvent(ctx context.Context, userIDs []int64, kind household.NotificationKind, householdID int64, actorID int64, inviteID, foodEventID *int64) error {
 	for _, uid := range userIDs {
-		hh := householdID
+		// User-directed notices (received/cancelled invites, removal) go to
+		// non-members — scope them user-global or feed filtering hides them.
+		var hh *int64
+		if !kind.UserDirected() {
+			hh = &householdID
+		}
 		var actor *int64
 		if actorID != 0 {
 			a := actorID
 			actor = &a
 		}
-		if err := r.HouseholdService.CreateNotification(ctx, uid, kind, &hh, actor, inviteID, foodEventID); err != nil {
+		if err := r.HouseholdService.CreateNotification(ctx, uid, kind, hh, actor, inviteID, foodEventID); err != nil {
 			return err
 		}
 	}
