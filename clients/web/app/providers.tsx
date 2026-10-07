@@ -29,6 +29,24 @@ const theme = createTheme({
     text: { primary: "#3E3E34", secondary: "#6B6B5E" },
   },
   shape: { borderRadius: 10 },
+  // design.md §3 — Nunito is the shared family (mobile bundles the same TTFs);
+  // --font-nunito is set by next/font/local in layout.tsx.
+  typography: {
+    fontFamily:
+      "var(--font-nunito), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    h1: { fontSize: "1.25rem", fontWeight: 700 },
+    h2: { fontSize: "1.125rem", fontWeight: 600 },
+    h3: { fontSize: "0.875rem", fontWeight: 600 },
+    h4: { fontSize: "1.25rem", fontWeight: 700 },
+    h5: { fontSize: "1.125rem", fontWeight: 600 },
+    h6: { fontSize: "0.875rem", fontWeight: 600 },
+    body1: { fontSize: "0.875rem", lineHeight: 1.5 },
+    body2: { fontSize: "0.875rem", lineHeight: 1.5 },
+    subtitle1: { fontSize: "0.9375rem", fontWeight: 600 },
+    subtitle2: { fontSize: "0.8125rem", fontWeight: 500 },
+    caption: { fontSize: "0.75rem", fontWeight: 500 },
+    button: { fontWeight: 600 },
+  },
   components: {
     MuiCssBaseline: {
       // Raw next/link anchors otherwise render the browser default blue,
