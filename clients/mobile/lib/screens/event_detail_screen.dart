@@ -489,6 +489,7 @@ class _SlotDialogState extends State<_SlotDialog> {
               ],
               onChanged: (v) => setState(() => _recipeId = v),
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               isExpanded: true,
               initialValue: _mealType,
@@ -498,6 +499,7 @@ class _SlotDialogState extends State<_SlotDialog> {
                   .toList(),
               onChanged: (v) => setState(() => _mealType = v ?? 'dinner'),
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               isExpanded: true,
               initialValue: _time,
@@ -510,6 +512,7 @@ class _SlotDialogState extends State<_SlotDialog> {
                   .toList(),
               onChanged: (v) => setState(() => _time = v ?? _time),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _servingsCtrl,
               decoration: const InputDecoration(
@@ -517,6 +520,7 @@ class _SlotDialogState extends State<_SlotDialog> {
               ),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _notesCtrl,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),

@@ -601,10 +601,12 @@ class _ScanScreenState extends State<ScanScreen> {
             controller: _nameCtrl,
             decoration: const InputDecoration(labelText: 'Item name'),
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _unitCtrl,
             decoration: const InputDecoration(labelText: 'Unit (e.g., oz, lb)'),
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _categoryCtrl,
             decoration: const InputDecoration(

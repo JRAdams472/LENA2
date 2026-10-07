@@ -119,6 +119,7 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
                   .toList(),
               onChanged: (v) => setState(() => _bottleId = v),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _quantityCtrl,
               decoration: const InputDecoration(labelText: 'Quantity'),

@@ -393,6 +393,7 @@ class _ItemTweakSheetState extends State<_ItemTweakSheet> {
                   });
                 },
               ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
                 isExpanded: true,
                 initialValue: _ingredientId,
@@ -406,6 +407,7 @@ class _ItemTweakSheetState extends State<_ItemTweakSheet> {
                     .toList(),
                 onChanged: (v) => setState(() => _ingredientId = v),
               ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
                 isExpanded: true,
                 initialValue: _itemId,
@@ -429,6 +431,7 @@ class _ItemTweakSheetState extends State<_ItemTweakSheet> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
               ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
                 isExpanded: true,
                 initialValue: _unitId,
@@ -442,6 +445,7 @@ class _ItemTweakSheetState extends State<_ItemTweakSheet> {
                     .toList(),
                 onChanged: (v) => setState(() => _unitId = v),
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _notesCtrl,
                 decoration: const InputDecoration(labelText: 'Notes'),
@@ -586,6 +590,7 @@ class _StepTweakSheetState extends State<_StepTweakSheet> {
                 maxLines: 3,
                 minLines: 1,
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _durationCtrl,
                 decoration:

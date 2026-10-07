@@ -251,6 +251,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   .toList(),
               onChanged: (v) => setState(() => _typeId = v),
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _countryId,
@@ -271,6 +272,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                 await _loadRegions();
               },
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _regionId,
@@ -285,6 +287,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   .toList(),
               onChanged: (v) => setState(() => _regionId = v),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _vintageCtrl,
               decoration: const InputDecoration(
@@ -292,18 +295,21 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   labelText: 'Vintage year'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _bottleSizeCtrl,
               decoration: const InputDecoration(
                   floatingLabelBehavior: FloatingLabelBehavior.always,
                   labelText: 'Bottle size'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _vineyardCtrl,
               decoration: const InputDecoration(
                   floatingLabelBehavior: FloatingLabelBehavior.always,
                   labelText: 'Vineyard'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _abvCtrl,
               decoration: const InputDecoration(
@@ -312,6 +318,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _acidityCtrl,
               decoration: const InputDecoration(
@@ -319,6 +326,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   labelText: 'Acidity'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _tanninCtrl,
               decoration: const InputDecoration(
@@ -326,6 +334,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   labelText: 'Tannin level'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _bodyCtrl,
               decoration: const InputDecoration(
@@ -333,6 +342,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   labelText: 'Body'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _sweetnessCtrl,
               decoration: const InputDecoration(
@@ -340,6 +350,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
                   labelText: 'Sweetness'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             CheckboxListTile(
               title: const Text('Oak integration'),
               value: _oakIntegration,

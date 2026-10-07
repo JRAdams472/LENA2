@@ -210,10 +210,12 @@ class _EditItemScreenState extends State<EditItemScreen> {
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Name'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _unitController,
               decoration: const InputDecoration(labelText: 'Unit'),
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _categoryId,
@@ -226,6 +228,7 @@ class _EditItemScreenState extends State<EditItemScreen> {
                   .toList(),
               onChanged: (v) => setState(() => _categoryId = v),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _brandSearchCtrl,
               decoration: const InputDecoration(
@@ -234,6 +237,7 @@ class _EditItemScreenState extends State<EditItemScreen> {
               ),
               onChanged: _onBrandSearchChanged,
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
               isExpanded: true,
               value: _brandId,
@@ -253,10 +257,12 @@ class _EditItemScreenState extends State<EditItemScreen> {
                 }
               }),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _upc12Controller,
               decoration: const InputDecoration(labelText: 'UPC-12 (optional)'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _upc14Controller,
               decoration: const InputDecoration(labelText: 'UPC-14 (optional)'),

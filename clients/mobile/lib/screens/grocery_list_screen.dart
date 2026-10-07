@@ -413,11 +413,13 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
             controller: _manualCtrl,
             decoration: const InputDecoration(labelText: 'Item name'),
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _qtyCtrl,
             decoration: const InputDecoration(labelText: 'Quantity'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _unitCtrl,
             decoration: const InputDecoration(labelText: 'Unit'),

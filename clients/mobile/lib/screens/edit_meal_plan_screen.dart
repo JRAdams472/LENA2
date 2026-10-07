@@ -511,11 +511,13 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               controller: _nameCtrl,
               decoration: const InputDecoration(labelText: 'Name'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _dateCtrl,
               decoration: const InputDecoration(
                   labelText: 'Week start date (YYYY-MM-DD)'),
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<int>(
               isExpanded: true,
               initialValue: _weekStartDay,
@@ -556,12 +558,14 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                 ],
                 onChanged: (v) => setState(() => _slotDay = v ?? 0),
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _mealTypeCtrl,
                 decoration: const InputDecoration(labelText: 'Meal type'),
                 onChanged: (_) => _recipeSearchDebouncer
                     .run(() => _loadRecipes(_mealTypeCtrl.text)),
               ),
+              const SizedBox(height: 12),
               if (_categoryGroups.isNotEmpty)
                 DropdownButtonFormField<String?>(
                   isExpanded: true,
@@ -580,6 +584,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                   ],
                   onChanged: (v) => setState(() => _categoryFilter = v),
                 ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
                 isExpanded: true,
                 value: _recipeSelection,
@@ -599,16 +604,19 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                 ],
                 onChanged: (v) => setState(() => _recipeSelection = v),
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _servingsCtrl,
                 decoration: const InputDecoration(labelText: 'Servings'),
                 keyboardType: TextInputType.number,
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _noteCtrl,
                 decoration:
                     const InputDecoration(labelText: 'Replacement note'),
               ),
+              const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: _isAddingSlot ? null : _addSlot,
                 child: _isAddingSlot
