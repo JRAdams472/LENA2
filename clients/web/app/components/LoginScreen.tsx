@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { GoogleLogin } from "@react-oauth/google";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Divider from "@mui/material/Divider";
+import Fade from "@mui/material/Fade";
 import Paper from "@mui/material/Paper";
 import SvgIcon from "@mui/material/SvgIcon";
 import Typography from "@mui/material/Typography";
@@ -91,23 +93,55 @@ export default function LoginScreen() {
         px: 2,
       }}
     >
+      <Fade in timeout={400}>
       <Paper
         elevation={3}
         sx={{
-          p: 4,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 3,
-          maxWidth: 400,
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "5fr 6fr" },
+          maxWidth: 720,
           width: "100%",
-          textAlign: "center",
+          overflow: "hidden",
         }}
       >
-        <Typography variant="h4" component="h1">
-          <LenaLogo size={36} />
-        </Typography>
-        <Typography color="text.secondary">
+        {/* Brand panel — the signature sage band, same in both color modes
+            (deep sage keeps the cream wordmark at AA). */}
+        <Box
+          sx={{
+            bgcolor: "#5F7A57",
+            color: "#FFFDF8",
+            p: { xs: 4, sm: 5 },
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: 1.5,
+          }}
+        >
+          <Typography component="h1" variant="h4" sx={{ lineHeight: 1 }}>
+            <LenaLogo size={40} iconColor="#FFFDF8" textColor="#FFFDF8" />
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ color: "rgba(255,253,248,0.85)", mt: 1 }}
+          >
+            The household kitchen, kept — pantry, recipes, meal plans, and wine
+            in one place.
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            p: { xs: 4, sm: 5 },
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 2,
+            textAlign: "center",
+          }}
+        >
+        <Typography variant="h6">Welcome back</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: -1 }}>
           Sign in to manage inventory, recipes, and meal plans.
         </Typography>
         <GoogleLogin
@@ -127,6 +161,9 @@ export default function LoginScreen() {
             );
           }}
         />
+        {enabledProviders().length > 0 && (
+          <Divider sx={{ width: "100%" }}>or continue with</Divider>
+        )}
         {enabledProviders().map((provider) => {
           const meta = PROVIDER_META[provider];
           return (
@@ -155,7 +192,9 @@ export default function LoginScreen() {
             {error}
           </Typography>
         )}
+        </Box>
       </Paper>
+      </Fade>
     </Box>
   );
 }

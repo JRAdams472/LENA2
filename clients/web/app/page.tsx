@@ -28,6 +28,11 @@ import {
 } from "@mui/material/styles";
 import { Recipe } from "@/lib/types";
 import { paletteFor } from "@/lib/themeVars";
+import Fade from "@mui/material/Fade";
+import SectionHeader from "@/app/components/SectionHeader";
+import StatusChip from "@/app/components/StatusChip";
+import EmptyState from "@/app/components/EmptyState";
+import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import { sizeBadge, stripSize } from "@/lib/format";
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
@@ -247,6 +252,8 @@ export default function Dashboard() {
     return <Alert severity="error">{(recipesQuery.error as Error).message}</Alert>;
 
   return (
+    // Skeleton unmounts first; content fades in — the spec'd crossfade.
+    <Fade in timeout={theme.transitions.duration.complex}>
     <Box>
       <Typography variant="h4" gutterBottom>
         Dashboard
@@ -308,9 +315,16 @@ export default function Dashboard() {
         </Paper>
       )}
       <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          Today's meals
-        </Typography>
+        <SectionHeader
+          title="Today's meals"
+          action={
+            activePlanId !== null && (
+              <Typography variant="body2">
+                <Link href={`/meal-plans/${activePlanId}`}>Open plan →</Link>
+              </Typography>
+            )
+          }
+        />
         {activePlanId === null ? (
           <Typography color="text.secondary">
             No meal plan for this week yet.{" "}
@@ -398,9 +412,14 @@ export default function Dashboard() {
             },
           }}
         >
-          <Typography variant="h6" gutterBottom>
-            Delicious ideas for tonight
-          </Typography>
+          <SectionHeader
+            title="Delicious ideas for tonight"
+            action={
+              <Typography variant="body2">
+                <Link href="/recipes">Browse recipes →</Link>
+              </Typography>
+            }
+          />
         {suggestionsQuery.isLoading && <CircularProgress />}
         {suggestionsQuery.error && (
           <Alert severity="error">
@@ -410,10 +429,12 @@ export default function Dashboard() {
         {!suggestionsQuery.isLoading &&
           !suggestionsQuery.error &&
           (suggestionsQuery.data ?? []).length === 0 && (
-            <Typography color="text.secondary">
-              Nothing to suggest yet — rate a few recipes and we'll get ideas
-              flowing.
-            </Typography>
+            <EmptyState
+              compact
+              icon={LightbulbOutlinedIcon}
+              title="Nothing to suggest yet"
+              description="Rate a few recipes and we'll get ideas flowing."
+            />
           )}
           {(suggestionsQuery.data ?? []).length > 0 && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -428,6 +449,14 @@ export default function Dashboard() {
                       display: "flex",
                       alignItems: "center",
                       gap: 1.5,
+                      transition: theme.transitions.create(
+                        ["transform", "border-color"],
+                        { duration: theme.transitions.duration.shortest }
+                      ),
+                      "&:hover": {
+                        transform: "translateY(-1px)",
+                        borderColor: paletteFor(theme).primary.main,
+                      },
                     }}
                   >
                     <Box
@@ -461,16 +490,7 @@ export default function Dashboard() {
                         </Typography>
                       )}
                     </Box>
-                    <Chip
-                      size="small"
-                      label={reasonLabel(s.reason)}
-                      sx={{
-                        bgcolor: `color-mix(in srgb, ${paletteFor(theme).success.main} 12%, transparent)`,
-                        color: "success.dark",
-                        fontWeight: 500,
-                        "& .MuiChip-label": { px: 1.25 },
-                      }}
-                    />
+                    <StatusChip tone="success" label={reasonLabel(s.reason)} />
                   </Paper>
                 );
               })}
@@ -487,9 +507,14 @@ export default function Dashboard() {
 
         {(restockQuery.data ?? []).length > 0 && (
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Time to restock
-            </Typography>
+            <SectionHeader
+              title="Time to restock"
+              action={
+                <Typography variant="body2">
+                  <Link href="/grocery-lists">Open grocery lists →</Link>
+                </Typography>
+              }
+            />
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {(restockQuery.data ?? []).map((it) => {
                 const size = sizeBadge(it.name, it.unit);
@@ -536,12 +561,10 @@ export default function Dashboard() {
                 );
               })}
             </Box>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              <Link href="/grocery-lists">Open grocery lists</Link>
-            </Typography>
           </Paper>
         )}
       </Box>
     </Box>
+    </Fade>
   );
 }

@@ -23,7 +23,10 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { ReactNode, useMemo, useState } from "react";
 import TableSortLabel from "@mui/material/TableSortLabel";
+import Fade from "@mui/material/Fade";
+import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
 import { FieldDef } from "./CrudDialog";
+import EmptyState from "./EmptyState";
 
 interface DataTableProps<T extends object> {
   title: string;
@@ -232,28 +235,27 @@ export default function DataTable<T extends object>({
       )}
       {error && <Alert severity="error">{error.message}</Alert>}
       {!isLoading && !error && rows.length === 0 && (
-        <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-          {(totalCount ?? pagination?.totalCount) ? (
-            // Server-paged tables can legitimately return an empty page —
-            // e.g. food flavors page over items, and this page's items have
-            // none. Don't claim the dataset is empty.
+        (totalCount ?? pagination?.totalCount) ? (
+          // Server-paged tables can legitimately return an empty page —
+          // e.g. food flavors page over items, and this page's items have
+          // none. Don't claim the dataset is empty.
+          <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
             <Typography color="text.secondary">
               No results on this page — try another page.
             </Typography>
-          ) : (
-            <>
-              <Typography color="text.secondary" gutterBottom>
-                Nothing here yet
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Create the first {title.toLowerCase().replace(/s$/, "")} to get
-                started.
-              </Typography>
-            </>
-          )}
-        </Paper>
+          </Paper>
+        ) : (
+          // No CTA here — the header's Create button is already the affordance.
+          <EmptyState
+            icon={InboxOutlinedIcon}
+            title="Nothing here yet"
+            description={`Create the first ${title.toLowerCase().replace(/s$/, "")} to get started.`}
+          />
+        )
       )}
       {!isLoading && !error && rows.length > 0 && isNarrow && (
+        // Skeleton unmounts as content fades in — the spec'd crossfade.
+        <Fade in>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
           {displayRows.map((row) => (
             <Paper key={rowKey(row)} variant="outlined" sx={{ p: 2 }}>
@@ -302,8 +304,10 @@ export default function DataTable<T extends object>({
             </Paper>
           ))}
         </Box>
+        </Fade>
       )}
       {!isLoading && !error && rows.length > 0 && !isNarrow && (
+        <Fade in>
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -383,6 +387,7 @@ export default function DataTable<T extends object>({
             </TableBody>
           </Table>
         </TableContainer>
+        </Fade>
       )}
       {paginationData && (
         <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
