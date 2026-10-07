@@ -76,6 +76,9 @@ export interface Household {
   name: string | null;
   members: HouseholdMember[];
   myRole: HouseholdRole;
+  // True when this row is the caller's active household (server-side
+  // pointer); exactly one entry in myHouseholds is active at a time.
+  isActive: boolean;
   createdAt: string;
 }
 

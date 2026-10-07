@@ -7,6 +7,11 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
@@ -18,7 +23,12 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { api, ApiError } from "@/lib/api";
-import { HouseholdMember, HouseholdRole, HouseholdUser } from "@/lib/types";
+import {
+  Household,
+  HouseholdMember,
+  HouseholdRole,
+  HouseholdUser,
+} from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
 const MAX_MEMBERS = 10;
@@ -29,6 +39,10 @@ function userName(u: HouseholdUser): string {
     [u.firstName, u.lastName].filter(Boolean).join(" ") ??
     `User ${u.userID}`
   );
+}
+
+function householdName(h: Household): string {
+  return h.name ?? "Unnamed household";
 }
 
 function roleChipColor(role: HouseholdRole): "primary" | "secondary" | "default" {
@@ -46,10 +60,17 @@ export default function HouseholdPage() {
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<HouseholdMember | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [acceptFor, setAcceptFor] = useState<number | null>(null);
 
   const householdQuery = useQuery({
     queryKey: ["myHousehold"],
     queryFn: () => api.getMyHousehold(),
+  });
+  const householdsQuery = useQuery({
+    queryKey: ["myHouseholds"],
+    queryFn: () => api.getMyHouseholds(),
   });
   const invitesQuery = useQuery({
     queryKey: ["householdInvites"],
@@ -63,12 +84,16 @@ export default function HouseholdPage() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["myHousehold"] });
+    queryClient.invalidateQueries({ queryKey: ["myHouseholds"] });
     queryClient.invalidateQueries({ queryKey: ["householdInvites"] });
     queryClient.invalidateQueries({ queryKey: ["searchHouseholdUsers"] });
     queryClient.invalidateQueries({ queryKey: ["unreadNotificationCount"] });
     queryClient.invalidateQueries({ queryKey: ["myNotifications"] });
     queryClient.invalidateQueries({ queryKey: ["me"] });
   };
+  // Pointer-moving mutations (switch/create/accept/leave-active) change
+  // which household every scoped page sees — drop the whole cache.
+  const invalidateAll = () => queryClient.invalidateQueries();
   const onErr = (e: unknown) =>
     setError(e instanceof ApiError ? e.message : "Request failed");
 
@@ -81,10 +106,38 @@ export default function HouseholdPage() {
     onError: onErr,
   });
   const acceptMutation = useMutation({
-    mutationFn: (inviteID: number) => api.acceptHouseholdInvite(inviteID),
+    mutationFn: ({
+      inviteID,
+      mergeFromHouseholdID,
+    }: {
+      inviteID: number;
+      mergeFromHouseholdID?: number;
+    }) => api.acceptHouseholdInvite(inviteID, mergeFromHouseholdID),
     onSuccess: () => {
       setError(null);
-      invalidate();
+      setAcceptFor(null);
+      invalidateAll();
+    },
+    onError: (e) => {
+      setAcceptFor(null);
+      onErr(e);
+    },
+  });
+  const switchMutation = useMutation({
+    mutationFn: (householdID: number) => api.setActiveHousehold(householdID),
+    onSuccess: () => {
+      setError(null);
+      invalidateAll();
+    },
+    onError: onErr,
+  });
+  const createMutation = useMutation({
+    mutationFn: (name: string) => api.createHousehold(name),
+    onSuccess: () => {
+      setError(null);
+      setCreateOpen(false);
+      setCreateName("");
+      invalidateAll();
     },
     onError: onErr,
   });
@@ -105,10 +158,10 @@ export default function HouseholdPage() {
     onError: onErr,
   });
   const leaveMutation = useMutation({
-    mutationFn: () => api.leaveHousehold(),
+    mutationFn: (householdID?: number) => api.leaveHousehold(householdID),
     onSuccess: () => {
       setError(null);
-      invalidate();
+      invalidateAll();
     },
     onError: onErr,
   });
@@ -164,7 +217,12 @@ export default function HouseholdPage() {
     setMenuAnchor(null);
   }
 
-  if (householdQuery.isLoading || invitesQuery.isLoading || !me) {
+  if (
+    householdQuery.isLoading ||
+    householdsQuery.isLoading ||
+    invitesQuery.isLoading ||
+    !me
+  ) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
         <CircularProgress />
@@ -175,12 +233,23 @@ export default function HouseholdPage() {
     return (
       <Alert severity="error">{(householdQuery.error as Error).message}</Alert>
     );
+  if (householdsQuery.error)
+    return (
+      <Alert severity="error">{(householdsQuery.error as Error).message}</Alert>
+    );
   if (invitesQuery.error)
     return (
       <Alert severity="error">{(invitesQuery.error as Error).message}</Alert>
     );
 
   const household = householdQuery.data;
+  const households = householdsQuery.data ?? [];
+  // A household I solely own is merge-eligible on invite accept — its data
+  // folds into the destination and the empty source is deleted. The list is
+  // membership-ordered, so the earliest sole-owned home is offered.
+  const mergeSource = households.find(
+    (h) => h.members.length === 1 && h.myRole === "OWNER"
+  );
   const invites = invitesQuery.data ?? [];
   const incoming = invites.filter((i) => i.toUser.userID === me.userID);
   const outgoing = invites.filter((i) => i.fromUser.userID === me.userID);
@@ -201,6 +270,68 @@ export default function HouseholdPage() {
     <Box sx={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 3, mx: "auto" }}>
       <Typography variant="h4">Household</Typography>
       {error && <Alert severity="error">{error}</Alert>}
+
+      <Paper sx={{ p: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 1,
+          }}
+        >
+          <Typography variant="h6">Your households</Typography>
+          <Button size="small" onClick={() => setCreateOpen(true)}>
+            New household
+          </Button>
+        </Box>
+        <List dense>
+          {households.map((h) => (
+            <ListItem
+              key={h.householdID}
+              secondaryAction={
+                h.isActive ? (
+                  <Chip label="active" size="small" color="primary" />
+                ) : (
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      aria-label={`Switch to ${householdName(h)}`}
+                      onClick={() => switchMutation.mutate(h.householdID)}
+                      disabled={switchMutation.isPending}
+                    >
+                      Switch
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      aria-label={`Leave ${householdName(h)}`}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Leave ${householdName(h)}? Your shared data stays with the household.`
+                          )
+                        ) {
+                          leaveMutation.mutate(h.householdID);
+                        }
+                      }}
+                      disabled={leaveMutation.isPending}
+                    >
+                      Leave
+                    </Button>
+                  </Box>
+                )
+              }
+            >
+              <ListItemText
+                primary={householdName(h)}
+                secondary={`${h.members.length} member${h.members.length === 1 ? "" : "s"} · ${h.myRole.toLowerCase()}`}
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
 
       <Paper sx={{ p: 2 }}>
         {isOwner ? (
@@ -340,7 +471,7 @@ export default function HouseholdPage() {
                   "Leave this household? You will get a fresh empty pantry, cellar, meal plans, and grocery lists; your data stays with the household."
                 )
               ) {
-                leaveMutation.mutate();
+                leaveMutation.mutate(household?.householdID);
               }
             }}
             disabled={leaveMutation.isPending}
@@ -364,7 +495,13 @@ export default function HouseholdPage() {
                     <Button
                       size="small"
                       variant="contained"
-                      onClick={() => acceptMutation.mutate(inv.inviteID)}
+                      onClick={() => {
+                        if (mergeSource) {
+                          setAcceptFor(inv.inviteID);
+                        } else {
+                          acceptMutation.mutate({ inviteID: inv.inviteID });
+                        }
+                      }}
                       disabled={acceptMutation.isPending}
                     >
                       Accept
@@ -381,7 +518,7 @@ export default function HouseholdPage() {
               >
                 <ListItemText
                   primary={`${userName(inv.fromUser)} invited you`}
-                  secondary="Joining merges your pantry, cellar, meal plans, and grocery lists into theirs."
+                  secondary="Joining makes theirs your active household."
                 />
               </ListItem>
             ))}
@@ -472,6 +609,90 @@ export default function HouseholdPage() {
           <Typography color="text.secondary">Nobody by that name.</Typography>
         )}
       </Paper>
+
+      <Dialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>New household</DialogTitle>
+        <Box
+          component="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createMutation.mutate(createName);
+          }}
+        >
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Creates a separate pantry, cellar, meal plans, and grocery
+              lists, and switches you to it.
+            </DialogContentText>
+            <TextField
+              label="Household name"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              size="small"
+              fullWidth
+              autoFocus
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={createMutation.isPending}
+            >
+              Create
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog
+        open={acceptFor !== null}
+        onClose={() => setAcceptFor(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Join this household?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You can merge {mergeSource ? householdName(mergeSource) : ""} into
+            the new household — its pantry, cellar, meal plans, and grocery
+            lists move over and the empty household is deleted. Or just join
+            and keep it as a separate household.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAcceptFor(null)}>Cancel</Button>
+          <Button
+            onClick={() =>
+              acceptFor !== null &&
+              acceptMutation.mutate({ inviteID: acceptFor })
+            }
+            disabled={acceptMutation.isPending}
+          >
+            Just join
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() =>
+              acceptFor !== null &&
+              acceptMutation.mutate({
+                inviteID: acceptFor,
+                mergeFromHouseholdID: mergeSource?.householdID,
+              })
+            }
+            disabled={acceptMutation.isPending}
+          >
+            Join and merge
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

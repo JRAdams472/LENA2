@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import HouseholdPage from "@/app/household/page";
@@ -13,6 +13,7 @@ import { useMe } from "@/app/auth/useMe";
 jest.mock("../../../lib/api", () => ({
   api: {
     getMyHousehold: jest.fn(),
+    getMyHouseholds: jest.fn(),
     getHouseholdInvites: jest.fn(),
     searchHouseholdUsers: jest.fn(),
     inviteHouseholdMember: jest.fn(),
@@ -24,6 +25,8 @@ jest.mock("../../../lib/api", () => ({
     setHouseholdRole: jest.fn(),
     removeHouseholdMember: jest.fn(),
     transferHouseholdOwnership: jest.fn(),
+    setActiveHousehold: jest.fn(),
+    createHousehold: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -61,6 +64,7 @@ const household = {
   householdID: 42,
   name: null,
   myRole: "OWNER" as const,
+  isActive: true,
   members: [
     {
       user: { userID: 7, displayName: "Me", firstName: null, lastName: null },
@@ -108,6 +112,7 @@ describe("household page", () => {
       refetch: jest.fn(),
     });
     mockedApi.getMyHousehold.mockResolvedValue(household);
+    mockedApi.getMyHouseholds.mockResolvedValue([household]);
     mockedApi.getHouseholdInvites.mockResolvedValue([]);
     mockedApi.searchHouseholdUsers.mockResolvedValue([]);
   });
@@ -253,7 +258,10 @@ describe("household page", () => {
     await screen.findByText(/Mate invited you/);
     await userEvent.click(screen.getByRole("button", { name: /accept/i }));
     await waitFor(() =>
-      expect(mockedApi.acceptHouseholdInvite).toHaveBeenCalledWith(55)
+      expect(mockedApi.acceptHouseholdInvite).toHaveBeenCalledWith(
+        55,
+        undefined
+      )
     );
   });
 
@@ -292,6 +300,143 @@ describe("household page", () => {
     );
   });
 
+  it("lists all memberships with the active one marked", async () => {
+    mockedApi.getMyHouseholds.mockResolvedValue([
+      household,
+      {
+        householdID: 77,
+        name: "Beach house",
+        myRole: "MEMBER" as const,
+        isActive: false,
+        members: [household.members[0], { user: mate, role: "OWNER" as const, isMe: false }],
+        createdAt: "2026-02-01T00:00:00Z",
+      },
+    ]);
+    renderPage();
+    expect(await screen.findByText("Beach house")).toBeInTheDocument();
+    expect(screen.getByText("Unnamed household")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(screen.getByText("2 members · member")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /switch to beach house/i })
+    ).toBeInTheDocument();
+  });
+
+  it("switches the active household", async () => {
+    mockedApi.getMyHouseholds.mockResolvedValue([
+      household,
+      {
+        householdID: 77,
+        name: "Beach house",
+        myRole: "MEMBER" as const,
+        isActive: false,
+        members: [household.members[0]],
+        createdAt: "2026-02-01T00:00:00Z",
+      },
+    ]);
+    renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /switch to beach house/i })
+    );
+    await waitFor(() =>
+      expect(mockedApi.setActiveHousehold).toHaveBeenCalledWith(77)
+    );
+  });
+
+  it("leaves a non-active household from the list", async () => {
+    const confirm = jest.spyOn(window, "confirm").mockReturnValue(true);
+    mockedApi.getMyHouseholds.mockResolvedValue([
+      household,
+      {
+        householdID: 77,
+        name: "Beach house",
+        myRole: "MEMBER" as const,
+        isActive: false,
+        members: [household.members[0]],
+        createdAt: "2026-02-01T00:00:00Z",
+      },
+    ]);
+    renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /leave beach house/i })
+    );
+    await waitFor(() =>
+      expect(mockedApi.leaveHousehold).toHaveBeenCalledWith(77)
+    );
+    confirm.mockRestore();
+  });
+
+  it("creates a household through the dialog", async () => {
+    renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /new household/i })
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(
+      within(dialog).getByLabelText(/household name/i),
+      "Cabin"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /create/i })
+    );
+    await waitFor(() =>
+      expect(mockedApi.createHousehold).toHaveBeenCalledWith("Cabin")
+    );
+  });
+
+  it("offers merge when the caller solely owns a household", async () => {
+    mockedApi.getMyHousehold.mockResolvedValue({
+      ...household,
+      members: [household.members[0]],
+    });
+    mockedApi.getMyHouseholds.mockResolvedValue([
+      {
+        ...household,
+        name: "Solo home",
+        members: [household.members[0]],
+      },
+    ]);
+    mockedApi.getHouseholdInvites.mockResolvedValue([incomingInvite]);
+    renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /accept/i })
+    );
+    expect(
+      await screen.findByText(/merge Solo home into the new household/)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /join and merge/i })
+    );
+    await waitFor(() =>
+      expect(mockedApi.acceptHouseholdInvite).toHaveBeenCalledWith(55, 42)
+    );
+  });
+
+  it("joins without merging when the user declines the merge", async () => {
+    mockedApi.getMyHouseholds.mockResolvedValue([
+      {
+        ...household,
+        name: "Solo home",
+        members: [household.members[0]],
+      },
+    ]);
+    mockedApi.getHouseholdInvites.mockResolvedValue([incomingInvite]);
+    renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /accept/i })
+    );
+    await screen.findByText(/merge Solo home into the new household/);
+    await userEvent.click(
+      screen.getByRole("button", { name: /just join/i })
+    );
+    await waitFor(() =>
+      expect(mockedApi.acceptHouseholdInvite).toHaveBeenCalledWith(
+        55,
+        undefined
+      )
+    );
+  });
+
   it("leaves the household after confirmation", async () => {
     const confirm = jest.spyOn(window, "confirm").mockReturnValue(true);
     renderPage();
@@ -299,7 +444,9 @@ describe("household page", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /leave household/i })
     );
-    await waitFor(() => expect(mockedApi.leaveHousehold).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockedApi.leaveHousehold).toHaveBeenCalledWith(42)
+    );
     confirm.mockRestore();
   });
 });
