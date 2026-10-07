@@ -30,9 +30,12 @@ var allowedSchemas = map[string][]string{
 	"grocery":          {"grocery"},
 	"household":        {"household"},
 	"idempotency":      {"platform"},
-	"identity":         {"identity"},
-	"inventory":        {"inventory", "recipe", "mealplan", "event", "grocery", "userprefs"},
-	"mealplan":         {"mealplan"},
+	// identity reads household.household_member for member lists, invite
+	// search exclusion, and the SetActiveHousehold guard; household still
+	// owns all membership writes (ADR-005).
+	"identity":  {"identity", "household"},
+	"inventory": {"inventory", "recipe", "mealplan", "event", "grocery", "userprefs"},
+	"mealplan":  {"mealplan"},
 	// notifier is the cross-domain scheduler: it writes household
 	// notifications and reads plan/recipe/pantry/identity inputs.
 	"notifier": {"household", "userprefs", "mealplan", "recipe", "inventory", "identity"},

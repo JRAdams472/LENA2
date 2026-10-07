@@ -40,6 +40,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
+	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
@@ -429,6 +430,7 @@ func (s *serverServices) wireAuth(cfg config.Config, pool *pgxpool.Pool, log *sl
 		return fmt.Errorf("auth config: %w", err)
 	}
 	authenticator.SetSessions(s.SessionSvc)
+	authenticator.SetUnitOfWork(dbtx.NewUnitOfWork(pool))
 	s.Authenticator = authenticator
 	return nil
 }

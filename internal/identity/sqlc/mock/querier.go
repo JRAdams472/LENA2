@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	sqlc "github.com/JRAdams472/LENA2/internal/identity/sqlc"
-	pgtype "github.com/jackc/pgx/v5/pgtype"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -118,7 +117,7 @@ func (mr *MockQuerierMockRecorder) CountUsers(ctx any) *gomock.Call {
 }
 
 // CountUsersByHousehold mocks base method.
-func (m *MockQuerier) CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error) {
+func (m *MockQuerier) CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountUsersByHousehold", ctx, householdID)
 	ret0, _ := ret[0].(int64)
@@ -238,7 +237,7 @@ func (mr *MockQuerierMockRecorder) ListUsers(ctx, arg any) *gomock.Call {
 }
 
 // ListUsersByHousehold mocks base method.
-func (m *MockQuerier) ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]sqlc.IdentityUser, error) {
+func (m *MockQuerier) ListUsersByHousehold(ctx context.Context, householdID int64) ([]sqlc.IdentityUser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListUsersByHousehold", ctx, householdID)
 	ret0, _ := ret[0].([]sqlc.IdentityUser)
@@ -294,6 +293,21 @@ func (m *MockQuerier) SearchUsers(ctx context.Context, arg sqlc.SearchUsersParam
 func (mr *MockQuerierMockRecorder) SearchUsers(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchUsers", reflect.TypeOf((*MockQuerier)(nil).SearchUsers), ctx, arg)
+}
+
+// SetActiveHousehold mocks base method.
+func (m *MockQuerier) SetActiveHousehold(ctx context.Context, arg sqlc.SetActiveHouseholdParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetActiveHousehold", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetActiveHousehold indicates an expected call of SetActiveHousehold.
+func (mr *MockQuerierMockRecorder) SetActiveHousehold(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetActiveHousehold", reflect.TypeOf((*MockQuerier)(nil).SetActiveHousehold), ctx, arg)
 }
 
 // SetUserActive mocks base method.

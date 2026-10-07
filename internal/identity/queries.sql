@@ -190,9 +190,31 @@ SET household_role = sqlc.arg(household_role),
 WHERE user_id = sqlc.arg(user_id)
   AND household_id = sqlc.arg(household_id);
 
+-- name: SetActiveHousehold :execrows
+-- LEN-26: moves the user's active-household pointer (household_id +
+-- household_role) to a household they already belong to. The EXISTS guard
+-- makes "not a member" lose with zero rows; role syncs from the membership
+-- row in the same statement so the two columns can never diverge.
+UPDATE identity.users u
+SET household_id   = sqlc.arg(household_id),
+    household_role = (SELECT hm.role
+                      FROM household.household_member hm
+                      WHERE hm.household_id = sqlc.arg(household_id)
+                        AND hm.user_id = sqlc.arg(user_id)),
+    updated_by     = sqlc.narg(by),
+    updated_at     = now()
+WHERE u.user_id = sqlc.arg(user_id)
+  AND EXISTS (
+      SELECT 1
+      FROM household.household_member hm
+      WHERE hm.household_id = sqlc.arg(household_id)
+        AND hm.user_id = sqlc.arg(user_id));
+
 -- name: CountUsersByHousehold :one
+-- Membership table is the source of truth (LEN-26): a member's active
+-- pointer (users.household_id) may sit on a different household.
 SELECT count(*)
-FROM identity.users
+FROM household.household_member
 WHERE household_id = $1;
 
 -- name: SetUserSearchable :execrows
@@ -203,10 +225,16 @@ SET is_searchable = $2,
 WHERE user_id = $1;
 
 -- name: ListUsersByHousehold :many
-SELECT *
-FROM identity.users
-WHERE household_id = $1
-ORDER BY created_at;
+-- Members of a household regardless of which household their active
+-- pointer currently sits on. household_role on the returned rows is the
+-- member's ACTIVE-household role — callers needing the member's role in
+-- THIS household read it from household.household_member instead.
+SELECT u.*
+FROM identity.users u
+JOIN household.household_member hm
+  ON hm.user_id = u.user_id
+ AND hm.household_id = $1
+ORDER BY u.created_at;
 
 -- name: ListUsersByIDs :many
 SELECT *
@@ -216,14 +244,20 @@ WHERE user_id = ANY($1::bigint[]);
 -- name: SearchUsers :many
 -- Household-invite candidate search: opt-in, active users only, caller and
 -- the caller's household members excluded. pattern is a pre-escaped LIKE
--- pattern built by the service.
+-- pattern built by the service. Membership lives in household_member —
+-- a candidate whose active pointer sits elsewhere may still belong to
+-- the excluded household.
 SELECT *
-FROM identity.users
+FROM identity.users u
 WHERE is_active
   AND is_searchable
-  AND user_id <> sqlc.arg(exclude_user_id)
+  AND u.user_id <> sqlc.arg(exclude_user_id)
   AND (sqlc.narg(exclude_household_id)::bigint IS NULL
-       OR household_id IS DISTINCT FROM sqlc.narg(exclude_household_id)::bigint)
+       OR NOT EXISTS (
+           SELECT 1
+           FROM household.household_member hm
+           WHERE hm.household_id = sqlc.narg(exclude_household_id)::bigint
+             AND hm.user_id = u.user_id))
   AND (
          display_name ILIKE sqlc.arg(pattern)
       OR first_name   ILIKE sqlc.arg(pattern)

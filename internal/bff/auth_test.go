@@ -98,6 +98,10 @@ func (f *fakeHouseholdStore) CreateHousehold(_ context.Context, _ string) (house
 	return household.Household{HouseholdID: id}, nil
 }
 
+func (f *fakeHouseholdStore) JoinHousehold(_ context.Context, householdID, userID int64, role, _ string) (household.Membership, error) {
+	return household.Membership{HouseholdID: householdID, UserID: userID, Role: role}, nil
+}
+
 // jwksIssuer is a test OIDC issuer serving discovery + a swappable JWKS.
 type jwksIssuer struct {
 	server *httptest.Server

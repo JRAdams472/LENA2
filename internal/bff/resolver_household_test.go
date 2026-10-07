@@ -73,7 +73,7 @@ func TestResolver_HouseholdInvites(t *testing.T) {
 	h.EXPECT().ListPendingInvitesForUser(gomock.Any(), hhUserID).Return([]household.Invite{
 		{InviteID: 21, FromUserID: 9, ToUserID: hhUserID, HouseholdID: 42, Status: household.StatusPending},
 	}, nil)
-	h.EXPECT().ListSentInvitesForUser(gomock.Any(), hhUserID).Return([]household.Invite{
+	h.EXPECT().ListSentInvitesForUser(gomock.Any(), hhUserID, hhUserID).Return([]household.Invite{
 		{InviteID: 22, FromUserID: hhUserID, ToUserID: 11, HouseholdID: hhUserID, Status: household.StatusPending},
 	}, nil)
 	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{9, hhUserID, 11})).Return([]identity.User{
@@ -189,6 +189,10 @@ func TestResolver_AcceptHouseholdInvite(t *testing.T) {
 	mp.EXPECT().ReassignHousehold(gomock.Any(), targetHH, inviterHH, hhEmail).Return(nil)
 	groc.EXPECT().ReassignHousehold(gomock.Any(), targetHH, inviterHH, hhEmail).Return(nil)
 	idSvc.EXPECT().SetUserHousehold(gomock.Any(), hhUserID, inviterHH, identity.HouseholdRoleMember, &targetHH).Return(nil)
+	// Membership mirror: join the new household, drop the old one.
+	h.EXPECT().JoinHousehold(gomock.Any(), inviterHH, hhUserID, identity.HouseholdRoleMember, hhEmail).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"}, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), targetHH, hhUserID).Return(nil)
 	// invite_accepted to the inviter; member_joined to other members.
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindInviteAccepted, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
@@ -307,6 +311,9 @@ func TestResolver_LeaveHousehold(t *testing.T) {
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
 		Return(household.Household{HouseholdID: 90}, nil)
 	idSvc.EXPECT().SetUserHousehold(gomock.Any(), hhUserID, int64(90), identity.HouseholdRoleOwner, &currentHH).Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), hhUserID, identity.HouseholdRoleOwner, hhEmail).
+		Return(household.Membership{HouseholdID: 90, UserID: hhUserID, Role: "owner"}, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
 
 	ok, err := r.LeaveHousehold(hhCtx())
@@ -472,6 +479,8 @@ func TestResolver_SetHouseholdRole(t *testing.T) {
 		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleMember}, nil)
 	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(9), hhUserID, identity.HouseholdRoleAdmin, hhEmail).
 		Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), hhUserID, int64(9), identity.HouseholdRoleAdmin, hhEmail).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: "admin"}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(9))
@@ -536,7 +545,11 @@ func TestResolver_TransferHouseholdOwnership(t *testing.T) {
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleMember}, nil)
 	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(9), hhUserID, identity.HouseholdRoleOwner, hhEmail).Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), hhUserID, int64(9), identity.HouseholdRoleOwner, hhEmail).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: "owner"}, nil)
 	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), hhUserID, hhUserID, identity.HouseholdRoleMember, hhEmail).Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), hhUserID, hhUserID, identity.HouseholdRoleMember, hhEmail).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: hhUserID, Role: "member"}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
@@ -570,6 +583,9 @@ func TestResolver_RemoveHouseholdMember(t *testing.T) {
 		Return(household.Household{HouseholdID: 90}, nil)
 	expectedHH := int64(hhUserID)
 	idSvc.EXPECT().SetUserHousehold(gomock.Any(), int64(9), int64(90), identity.HouseholdRoleOwner, &expectedHH).Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), int64(9), identity.HouseholdRoleOwner, hhEmail).
+		Return(household.Membership{HouseholdID: 90, UserID: 9, Role: "owner"}, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), hhUserID, int64(9)).Return(nil)
 	// member_removed to the target; member_left to the remaining members.
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberRemoved, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
@@ -634,6 +650,8 @@ func TestResolver_LeaveHousehold_OwnerTransfer(t *testing.T) {
 			{UserID: 10, HouseholdRole: identity.HouseholdRoleAdmin},
 		}, nil)
 	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(10), currentHH, identity.HouseholdRoleOwner, hhEmail).Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), currentHH, int64(10), identity.HouseholdRoleOwner, hhEmail).
+		Return(household.Membership{HouseholdID: currentHH, UserID: 10, Role: "owner"}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(10), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	// A pending invite the leaver sent for this household is cancelled.
@@ -644,6 +662,9 @@ func TestResolver_LeaveHousehold_OwnerTransfer(t *testing.T) {
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
 		Return(household.Household{HouseholdID: 90}, nil)
 	idSvc.EXPECT().SetUserHousehold(gomock.Any(), hhUserID, int64(90), identity.HouseholdRoleOwner, &currentHH).Return(nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), hhUserID, identity.HouseholdRoleOwner, hhEmail).
+		Return(household.Membership{HouseholdID: 90, UserID: hhUserID, Role: "owner"}, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
 	// member_left goes to each of the two remaining members.
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(10), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -663,7 +684,7 @@ func TestResolver_MyNotifications(t *testing.T) {
 
 	actor := int64(9)
 	// Direct resolver calls bypass the schema default — the limit clamps to 1.
-	h.EXPECT().ListNotificationsForUser(gomock.Any(), hhUserID, int32(1)).
+	h.EXPECT().ListNotificationsForUser(gomock.Any(), hhUserID, hhUserID, int32(1)).
 		Return([]household.Notification{
 			{NotificationID: 5, UserID: hhUserID, Kind: household.KindInviteReceived, ActorUserID: &actor},
 			{NotificationID: 4, UserID: hhUserID, Kind: household.KindMemberJoined},
@@ -685,12 +706,12 @@ func TestResolver_NotificationCountAndMarkRead(t *testing.T) {
 	h := mock.NewMockHouseholdService(ctrl)
 	r := &Resolver{HouseholdService: h}
 
-	h.EXPECT().CountUnreadNotifications(gomock.Any(), hhUserID).Return(int64(3), nil)
+	h.EXPECT().CountUnreadNotifications(gomock.Any(), hhUserID, hhUserID).Return(int64(3), nil)
 	n, err := r.UnreadNotificationCount(hhCtx())
 	require.NoError(t, err)
 	assert.Equal(t, int32(3), n)
 
-	h.EXPECT().MarkAllNotificationsRead(gomock.Any(), hhUserID).Return(nil)
+	h.EXPECT().MarkAllNotificationsRead(gomock.Any(), hhUserID, hhUserID).Return(nil)
 	ok, err := r.MarkAllNotificationsRead(hhCtx())
 	require.NoError(t, err)
 	assert.True(t, ok)

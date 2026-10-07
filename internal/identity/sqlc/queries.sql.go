@@ -106,11 +106,13 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 
 const countUsersByHousehold = `-- name: CountUsersByHousehold :one
 SELECT count(*)
-FROM identity.users
+FROM household.household_member
 WHERE household_id = $1
 `
 
-func (q *Queries) CountUsersByHousehold(ctx context.Context, householdID pgtype.Int8) (int64, error) {
+// Membership table is the source of truth (LEN-26): a member's active
+// pointer (users.household_id) may sit on a different household.
+func (q *Queries) CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, countUsersByHousehold, householdID)
 	var count int64
 	err := row.Scan(&count)
@@ -384,13 +386,19 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 }
 
 const listUsersByHousehold = `-- name: ListUsersByHousehold :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
-FROM identity.users
-WHERE household_id = $1
-ORDER BY created_at
+SELECT u.user_id, u.provider, u.external_subject, u.email, u.display_name, u.is_active, u.last_login_at, u.created_by, u.created_at, u.updated_by, u.updated_at, u.role, u.first_name, u.last_name, u.backup_email, u.household_id, u.is_searchable, u.household_role, u.birthdate
+FROM identity.users u
+JOIN household.household_member hm
+  ON hm.user_id = u.user_id
+ AND hm.household_id = $1
+ORDER BY u.created_at
 `
 
-func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID pgtype.Int8) ([]IdentityUser, error) {
+// Members of a household regardless of which household their active
+// pointer currently sits on. household_role on the returned rows is the
+// member's ACTIVE-household role — callers needing the member's role in
+// THIS household read it from household.household_member instead.
+func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID int64) ([]IdentityUser, error) {
 	rows, err := q.db.Query(ctx, listUsersByHousehold, householdID)
 	if err != nil {
 		return nil, err
@@ -493,12 +501,16 @@ func (q *Queries) RevokeUserSessions(ctx context.Context, userID int64) error {
 
 const searchUsers = `-- name: SearchUsers :many
 SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
-FROM identity.users
+FROM identity.users u
 WHERE is_active
   AND is_searchable
-  AND user_id <> $1
+  AND u.user_id <> $1
   AND ($2::bigint IS NULL
-       OR household_id IS DISTINCT FROM $2::bigint)
+       OR NOT EXISTS (
+           SELECT 1
+           FROM household.household_member hm
+           WHERE hm.household_id = $2::bigint
+             AND hm.user_id = u.user_id))
   AND (
          display_name ILIKE $3
       OR first_name   ILIKE $3
@@ -518,7 +530,9 @@ type SearchUsersParams struct {
 
 // Household-invite candidate search: opt-in, active users only, caller and
 // the caller's household members excluded. pattern is a pre-escaped LIKE
-// pattern built by the service.
+// pattern built by the service. Membership lives in household_member —
+// a candidate whose active pointer sits elsewhere may still belong to
+// the excluded household.
 func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]IdentityUser, error) {
 	rows, err := q.db.Query(ctx, searchUsers,
 		arg.ExcludeUserID,
@@ -562,6 +576,41 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Ide
 		return nil, err
 	}
 	return items, nil
+}
+
+const setActiveHousehold = `-- name: SetActiveHousehold :execrows
+UPDATE identity.users u
+SET household_id   = $1,
+    household_role = (SELECT hm.role
+                      FROM household.household_member hm
+                      WHERE hm.household_id = $1
+                        AND hm.user_id = $2),
+    updated_by     = $3,
+    updated_at     = now()
+WHERE u.user_id = $2
+  AND EXISTS (
+      SELECT 1
+      FROM household.household_member hm
+      WHERE hm.household_id = $1
+        AND hm.user_id = $2)
+`
+
+type SetActiveHouseholdParams struct {
+	HouseholdID pgtype.Int8 `json:"household_id"`
+	UserID      int64       `json:"user_id"`
+	By          pgtype.Text `json:"by"`
+}
+
+// LEN-26: moves the user's active-household pointer (household_id +
+// household_role) to a household they already belong to. The EXISTS guard
+// makes "not a member" lose with zero rows; role syncs from the membership
+// row in the same statement so the two columns can never diverge.
+func (q *Queries) SetActiveHousehold(ctx context.Context, arg SetActiveHouseholdParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setActiveHousehold, arg.HouseholdID, arg.UserID, arg.By)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setUserActive = `-- name: SetUserActive :execrows

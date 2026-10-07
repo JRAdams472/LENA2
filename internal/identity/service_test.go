@@ -621,6 +621,24 @@ func TestHouseholdQueries(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("set active household success", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetActiveHousehold(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.SetActiveHouseholdParams) (int64, error) {
+				assert.Equal(t, int64(2), arg.UserID)
+				assert.Equal(t, pgtype.Int8{Int64: 10, Valid: true}, arg.HouseholdID)
+				return 1, nil
+			})
+		require.NoError(t, svc.SetActiveHousehold(ctx, 2, 10, "a@b.com"))
+	})
+
+	t.Run("set active household non-member is a conflict", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetActiveHousehold(ctx, gomock.Any()).Return(int64(0), nil)
+		err := svc.SetActiveHousehold(ctx, 2, 10, "a@b.com")
+		assert.ErrorIs(t, err, domainerr.ErrConflict)
+	})
+
 	t.Run("list by ids empty short-circuits", func(t *testing.T) {
 		svc, _ := newService(t)
 		users, err := svc.ListUsersByIDs(ctx, nil)

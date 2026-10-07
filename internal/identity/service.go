@@ -484,10 +484,30 @@ func (s *Service) SetUserHouseholdRole(ctx context.Context, userID, householdID 
 	return nil
 }
 
+// SetActiveHousehold moves the user's active-household pointer to a
+// household they already belong to (LEN-26 switcher). The membership
+// EXISTS guard means switching to a non-member household yields zero rows
+// and surfaces as domainerr.ErrConflict; household_role syncs from the
+// membership row in the same statement.
+func (s *Service) SetActiveHousehold(ctx context.Context, userID, householdID int64, by string) error {
+	n, err := s.q.SetActiveHousehold(ctx, sqlc.SetActiveHouseholdParams{
+		UserID:      userID,
+		HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
+		By:          textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set active household: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set active household: %w", domainerr.ErrConflict)
+	}
+	return nil
+}
+
 // CountUsersByHousehold returns the household's member count; the
 // accept-path cap check runs it under a household row lock.
 func (s *Service) CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error) {
-	n, err := s.q.CountUsersByHousehold(ctx, pgtype.Int8{Int64: householdID, Valid: true})
+	n, err := s.q.CountUsersByHousehold(ctx, householdID)
 	if err != nil {
 		return 0, fmt.Errorf("count users by household: %w", domainerr.FromStorage(err))
 	}
@@ -513,7 +533,7 @@ func (s *Service) SetUserSearchable(ctx context.Context, userID int64, searchabl
 
 // ListUsersByHousehold returns the members of a household.
 func (s *Service) ListUsersByHousehold(ctx context.Context, householdID int64) ([]User, error) {
-	rows, err := s.q.ListUsersByHousehold(ctx, pgtype.Int8{Int64: householdID, Valid: true})
+	rows, err := s.q.ListUsersByHousehold(ctx, householdID)
 	if err != nil {
 		return nil, fmt.Errorf("list users by household: %w", domainerr.FromStorage(err))
 	}

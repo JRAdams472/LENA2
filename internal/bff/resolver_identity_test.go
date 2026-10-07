@@ -27,6 +27,10 @@ type fakeIdentityService struct {
 	roleErr    error
 	activeErr  error
 	profileErr error
+	// memberships mirrors household_member for LEN-26: user → household →
+	// role. When nil, a user's household_id counts as their only membership
+	// (the P1 1:1 invariant).
+	memberships map[int64]map[int64]string
 }
 
 func newFakeIdentityService(users ...identity.User) *fakeIdentityService {
@@ -116,6 +120,30 @@ func (f *fakeIdentityService) SetUserHouseholdRole(_ context.Context, userID, ho
 	if !ok || u.HouseholdID == nil || *u.HouseholdID != householdID {
 		return domainerr.ErrConflict
 	}
+	u.HouseholdRole = role
+	f.users[userID] = u
+	if f.memberships != nil && f.memberships[userID] != nil {
+		f.memberships[userID][householdID] = role
+	}
+	return nil
+}
+
+func (f *fakeIdentityService) SetActiveHousehold(_ context.Context, userID, householdID int64, _ string) error {
+	u, ok := f.users[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	role := ""
+	if f.memberships != nil {
+		role = f.memberships[userID][householdID]
+	}
+	if role == "" && u.HouseholdID != nil && *u.HouseholdID == householdID {
+		role = u.HouseholdRole
+	}
+	if role == "" {
+		return domainerr.ErrConflict
+	}
+	u.HouseholdID = &householdID
 	u.HouseholdRole = role
 	f.users[userID] = u
 	return nil

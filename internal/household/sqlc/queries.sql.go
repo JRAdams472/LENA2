@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -62,15 +63,34 @@ func (q *Queries) CancelPendingInvitesFrom(ctx context.Context, arg CancelPendin
 	return items, nil
 }
 
+const countMembers = `-- name: CountMembers :one
+SELECT count(*)
+FROM household.household_member
+WHERE household_id = $1
+`
+
+func (q *Queries) CountMembers(ctx context.Context, householdID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countMembers, householdID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUnreadNotifications = `-- name: CountUnreadNotifications :one
 SELECT count(*)
 FROM household.notifications
 WHERE user_id = $1
   AND read_at IS NULL
+  AND (household_id IS NULL OR household_id = $2)
 `
 
-func (q *Queries) CountUnreadNotifications(ctx context.Context, userID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countUnreadNotifications, userID)
+type CountUnreadNotificationsParams struct {
+	UserID      int64       `json:"user_id"`
+	HouseholdID pgtype.Int8 `json:"household_id"`
+}
+
+func (q *Queries) CountUnreadNotifications(ctx context.Context, arg CountUnreadNotificationsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadNotifications, arg.UserID, arg.HouseholdID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -176,6 +196,25 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return i, err
 }
 
+const deleteMembership = `-- name: DeleteMembership :execrows
+DELETE FROM household.household_member
+WHERE household_id = $1
+  AND user_id = $2
+`
+
+type DeleteMembershipParams struct {
+	HouseholdID int64 `json:"household_id"`
+	UserID      int64 `json:"user_id"`
+}
+
+func (q *Queries) DeleteMembership(ctx context.Context, arg DeleteMembershipParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMembership, arg.HouseholdID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getHouseholdByID = `-- name: GetHouseholdByID :one
 SELECT household_id, created_by, created_at, updated_at, name, updated_by
 FROM household.households
@@ -242,6 +281,35 @@ func (q *Queries) GetInviteByID(ctx context.Context, inviteID int64) (HouseholdI
 	return i, err
 }
 
+const getMembership = `-- name: GetMembership :one
+
+SELECT household_id, user_id, role, created_by, created_at, updated_by, updated_at
+FROM household.household_member
+WHERE household_id = $1
+  AND user_id = $2
+`
+
+type GetMembershipParams struct {
+	HouseholdID int64 `json:"household_id"`
+	UserID      int64 `json:"user_id"`
+}
+
+// ---------- membership (LEN-26) ----------
+func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (HouseholdHouseholdMember, error) {
+	row := q.db.QueryRow(ctx, getMembership, arg.HouseholdID, arg.UserID)
+	var i HouseholdHouseholdMember
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertPushDelivery = `-- name: InsertPushDelivery :execresult
 INSERT INTO household.push_delivery
     (user_id, kind, household_id, actor_user_id, invite_id, food_event_id)
@@ -271,21 +339,143 @@ func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDelivery
 	)
 }
 
+const listHouseholdsByUser = `-- name: ListHouseholdsByUser :many
+SELECT h.household_id, h.created_by, h.created_at, h.updated_at, h.name, h.updated_by, m.role AS member_role
+FROM household.households h
+JOIN household.household_member m
+  ON m.household_id = h.household_id
+WHERE m.user_id = $1
+ORDER BY m.created_at
+`
+
+type ListHouseholdsByUserRow struct {
+	HouseholdID int64              `json:"household_id"`
+	CreatedBy   string             `json:"created_by"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Name        pgtype.Text        `json:"name"`
+	UpdatedBy   pgtype.Text        `json:"updated_by"`
+	MemberRole  string             `json:"member_role"`
+}
+
+// The user's households with their role in each — backs the switcher.
+func (q *Queries) ListHouseholdsByUser(ctx context.Context, userID int64) ([]ListHouseholdsByUserRow, error) {
+	rows, err := q.db.Query(ctx, listHouseholdsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHouseholdsByUserRow{}
+	for rows.Next() {
+		var i ListHouseholdsByUserRow
+		if err := rows.Scan(
+			&i.HouseholdID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
+			&i.UpdatedBy,
+			&i.MemberRole,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMembersByHousehold = `-- name: ListMembersByHousehold :many
+SELECT household_id, user_id, role, created_by, created_at, updated_by, updated_at
+FROM household.household_member
+WHERE household_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListMembersByHousehold(ctx context.Context, householdID int64) ([]HouseholdHouseholdMember, error) {
+	rows, err := q.db.Query(ctx, listMembersByHousehold, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdHouseholdMember{}
+	for rows.Next() {
+		var i HouseholdHouseholdMember
+		if err := rows.Scan(
+			&i.HouseholdID,
+			&i.UserID,
+			&i.Role,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMembershipsByUser = `-- name: ListMembershipsByUser :many
+SELECT household_id, user_id, role, created_by, created_at, updated_by, updated_at
+FROM household.household_member
+WHERE user_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListMembershipsByUser(ctx context.Context, userID int64) ([]HouseholdHouseholdMember, error) {
+	rows, err := q.db.Query(ctx, listMembershipsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdHouseholdMember{}
+	for rows.Next() {
+		var i HouseholdHouseholdMember
+		if err := rows.Scan(
+			&i.HouseholdID,
+			&i.UserID,
+			&i.Role,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNotificationsForUser = `-- name: ListNotificationsForUser :many
 SELECT notification_id, user_id, household_id, kind, actor_user_id, invite_id, read_at, created_at, food_event_id, title, body, recipe_id, item_id, dedup_key
 FROM household.notifications
 WHERE user_id = $1
+  AND (household_id IS NULL OR household_id = $2)
 ORDER BY created_at DESC
-LIMIT $2
+LIMIT $3
 `
 
 type ListNotificationsForUserParams struct {
-	UserID int64 `json:"user_id"`
-	Limit  int32 `json:"limit"`
+	UserID      int64       `json:"user_id"`
+	HouseholdID pgtype.Int8 `json:"household_id"`
+	Limit       int32       `json:"limit"`
 }
 
+// Feeds scope to the active household (LEN-26); notifications without a
+// household_id are user-global and still show.
 func (q *Queries) ListNotificationsForUser(ctx context.Context, arg ListNotificationsForUserParams) ([]HouseholdNotification, error) {
-	rows, err := q.db.Query(ctx, listNotificationsForUser, arg.UserID, arg.Limit)
+	rows, err := q.db.Query(ctx, listNotificationsForUser, arg.UserID, arg.HouseholdID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -361,12 +551,20 @@ const listSentInvitesForUser = `-- name: ListSentInvitesForUser :many
 SELECT invite_id, from_user_id, to_user_id, household_id, status, created_by, created_at, updated_by, updated_at
 FROM household.invites
 WHERE from_user_id = $1
+  AND household_id = $2
   AND status = 'pending'
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListSentInvitesForUser(ctx context.Context, fromUserID int64) ([]HouseholdInvite, error) {
-	rows, err := q.db.Query(ctx, listSentInvitesForUser, fromUserID)
+type ListSentInvitesForUserParams struct {
+	FromUserID  int64 `json:"from_user_id"`
+	HouseholdID int64 `json:"household_id"`
+}
+
+// Sent invites scope to a household (the caller's active one); the
+// received-invite list (ListPendingInvitesForUser) stays unscoped.
+func (q *Queries) ListSentInvitesForUser(ctx context.Context, arg ListSentInvitesForUserParams) ([]HouseholdInvite, error) {
+	rows, err := q.db.Query(ctx, listSentInvitesForUser, arg.FromUserID, arg.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
@@ -400,10 +598,16 @@ UPDATE household.notifications
 SET read_at = now()
 WHERE user_id = $1
   AND read_at IS NULL
+  AND (household_id IS NULL OR household_id = $2)
 `
 
-func (q *Queries) MarkAllNotificationsRead(ctx context.Context, userID int64) (int64, error) {
-	result, err := q.db.Exec(ctx, markAllNotificationsRead, userID)
+type MarkAllNotificationsReadParams struct {
+	UserID      int64       `json:"user_id"`
+	HouseholdID pgtype.Int8 `json:"household_id"`
+}
+
+func (q *Queries) MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markAllNotificationsRead, arg.UserID, arg.HouseholdID)
 	if err != nil {
 		return 0, err
 	}
@@ -487,6 +691,46 @@ func (q *Queries) TransitionInvite(ctx context.Context, arg TransitionInvitePara
 		&i.ToUserID,
 		&i.HouseholdID,
 		&i.Status,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertMembership = `-- name: UpsertMembership :one
+INSERT INTO household.household_member (household_id, user_id, role, created_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (household_id, user_id) DO UPDATE
+SET role       = EXCLUDED.role,
+    updated_by = EXCLUDED.created_by,
+    updated_at = now()
+RETURNING household_id, user_id, role, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertMembershipParams struct {
+	HouseholdID int64  `json:"household_id"`
+	UserID      int64  `json:"user_id"`
+	Role        string `json:"role"`
+	CreatedBy   string `json:"created_by"`
+}
+
+// Joins a user to a household; on re-join the role is refreshed. The
+// caller's users-row active pointer syncs separately (identity service),
+// inside the same ambient transaction.
+func (q *Queries) UpsertMembership(ctx context.Context, arg UpsertMembershipParams) (HouseholdHouseholdMember, error) {
+	row := q.db.QueryRow(ctx, upsertMembership,
+		arg.HouseholdID,
+		arg.UserID,
+		arg.Role,
+		arg.CreatedBy,
+	)
+	var i HouseholdHouseholdMember
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.UserID,
+		&i.Role,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,

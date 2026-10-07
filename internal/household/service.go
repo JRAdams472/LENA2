@@ -44,6 +44,20 @@ type Household struct {
 // NotificationKind identifies the household event a notification records.
 type NotificationKind string
 
+// UserDirected reports whether the notification's recipient relationship
+// is to the event itself rather than to the household — the target is not
+// (or no longer) a member: received/cancelled invites and removal notices.
+// These rows are written with a NULL household_id so active-household feed
+// scoping (LEN-26) can never hide a notice addressed to the user.
+func (k NotificationKind) UserDirected() bool {
+	switch k {
+	case KindInviteReceived, KindInviteCancelled, KindMemberRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Notification kinds written inside the transaction that produces them.
 const (
 	KindInviteReceived   NotificationKind = "invite_received"
@@ -81,6 +95,26 @@ type Notification struct {
 	ItemID    *int64
 	ReadAt    *time.Time
 	CreatedAt time.Time
+}
+
+// Membership ties a user to a household with a role (LEN-26). The
+// household_member table is the source of truth for membership; the
+// user's household_id/household_role columns mirror the ACTIVE
+// membership so household-scoped queries keep working.
+type Membership struct {
+	HouseholdID int64
+	UserID      int64
+	Role        string
+	CreatedBy   string
+	CreatedAt   time.Time
+	UpdatedBy   *string
+	UpdatedAt   *time.Time
+}
+
+// MyHousehold pairs a household the user belongs to with their role in it.
+type MyHousehold struct {
+	Household Household
+	Role      string
 }
 
 // Invite is a pending or concluded household invitation.
@@ -219,9 +253,14 @@ func (s *Service) ListPendingInvitesForUser(ctx context.Context, userID int64) (
 	return toInvites(rows), nil
 }
 
-// ListSentInvitesForUser returns pending invites the user sent.
-func (s *Service) ListSentInvitesForUser(ctx context.Context, userID int64) ([]Invite, error) {
-	rows, err := s.q.ListSentInvitesForUser(ctx, userID)
+// ListSentInvitesForUser returns pending invites the user sent for the
+// given household (the caller's active one — sent invites scope to the
+// active household; received invites aggregate).
+func (s *Service) ListSentInvitesForUser(ctx context.Context, userID, householdID int64) ([]Invite, error) {
+	rows, err := s.q.ListSentInvitesForUser(ctx, sqlc.ListSentInvitesForUserParams{
+		FromUserID:  userID,
+		HouseholdID: householdID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list sent invites: %w", domainerr.FromStorage(err))
 	}
@@ -362,11 +401,13 @@ func (s *Service) gateDecisions(ctx context.Context, userID int64, kind Notifica
 	return feedOK, pushOK
 }
 
-// ListNotificationsForUser returns the user's notifications newest-first.
-func (s *Service) ListNotificationsForUser(ctx context.Context, userID int64, limit int32) ([]Notification, error) {
+// ListNotificationsForUser returns the user's notifications for the
+// active household plus user-global (household-less) ones, newest-first.
+func (s *Service) ListNotificationsForUser(ctx context.Context, userID, householdID int64, limit int32) ([]Notification, error) {
 	rows, err := s.q.ListNotificationsForUser(ctx, sqlc.ListNotificationsForUserParams{
-		UserID: userID,
-		Limit:  limit,
+		UserID:      userID,
+		HouseholdID: pgtype.Int8{Int64: householdID, Valid: householdID != 0},
+		Limit:       limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list notifications: %w", domainerr.FromStorage(err))
@@ -378,18 +419,26 @@ func (s *Service) ListNotificationsForUser(ctx context.Context, userID int64, li
 	return out, nil
 }
 
-// CountUnreadNotifications backs the nav badge.
-func (s *Service) CountUnreadNotifications(ctx context.Context, userID int64) (int64, error) {
-	n, err := s.q.CountUnreadNotifications(ctx, userID)
+// CountUnreadNotifications backs the nav badge; scoped to the active
+// household plus user-global notifications.
+func (s *Service) CountUnreadNotifications(ctx context.Context, userID, householdID int64) (int64, error) {
+	n, err := s.q.CountUnreadNotifications(ctx, sqlc.CountUnreadNotificationsParams{
+		UserID:      userID,
+		HouseholdID: pgtype.Int8{Int64: householdID, Valid: householdID != 0},
+	})
 	if err != nil {
 		return 0, fmt.Errorf("count unread notifications: %w", domainerr.FromStorage(err))
 	}
 	return n, nil
 }
 
-// MarkAllNotificationsRead clears the user's unread set.
-func (s *Service) MarkAllNotificationsRead(ctx context.Context, userID int64) error {
-	if _, err := s.q.MarkAllNotificationsRead(ctx, userID); err != nil {
+// MarkAllNotificationsRead clears the user's unread set for the active
+// household plus user-global notifications.
+func (s *Service) MarkAllNotificationsRead(ctx context.Context, userID, householdID int64) error {
+	if _, err := s.q.MarkAllNotificationsRead(ctx, sqlc.MarkAllNotificationsReadParams{
+		UserID:      userID,
+		HouseholdID: pgtype.Int8{Int64: householdID, Valid: householdID != 0},
+	}); err != nil {
 		return fmt.Errorf("mark notifications read: %w", domainerr.FromStorage(err))
 	}
 	return nil
@@ -408,6 +457,135 @@ func (s *Service) CancelPendingInvitesFrom(ctx context.Context, fromUserID, hous
 		return nil, fmt.Errorf("cancel pending invites: %w", domainerr.FromStorage(err))
 	}
 	return toInvites(rows), nil
+}
+
+// ---------- membership (LEN-26) ----------
+
+// GetMembership returns the user's membership row for a household, or
+// domainerr.ErrNotFound when they don't belong.
+func (s *Service) GetMembership(ctx context.Context, householdID, userID int64) (Membership, error) {
+	row, err := s.q.GetMembership(ctx, sqlc.GetMembershipParams{
+		HouseholdID: householdID,
+		UserID:      userID,
+	})
+	if err != nil {
+		return Membership{}, fmt.Errorf("get membership: %w", domainerr.FromStorage(err))
+	}
+	return toMembership(row), nil
+}
+
+// ListMembersByHousehold returns every membership row for a household,
+// join order (oldest first).
+func (s *Service) ListMembersByHousehold(ctx context.Context, householdID int64) ([]Membership, error) {
+	rows, err := s.q.ListMembersByHousehold(ctx, householdID)
+	if err != nil {
+		return nil, fmt.Errorf("list members: %w", domainerr.FromStorage(err))
+	}
+	return toMemberships(rows), nil
+}
+
+// ListMembershipsByUser returns every household the user belongs to,
+// join order.
+func (s *Service) ListMembershipsByUser(ctx context.Context, userID int64) ([]Membership, error) {
+	rows, err := s.q.ListMembershipsByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list memberships: %w", domainerr.FromStorage(err))
+	}
+	return toMemberships(rows), nil
+}
+
+// ListMyHouseholds returns the user's households with their role in
+// each — backs the active-household switcher.
+func (s *Service) ListMyHouseholds(ctx context.Context, userID int64) ([]MyHousehold, error) {
+	rows, err := s.q.ListHouseholdsByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list my households: %w", domainerr.FromStorage(err))
+	}
+	out := make([]MyHousehold, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, MyHousehold{
+			Household: toHousehold(sqlc.HouseholdHousehold{
+				HouseholdID: r.HouseholdID,
+				Name:        r.Name,
+				CreatedBy:   r.CreatedBy,
+				CreatedAt:   r.CreatedAt,
+				UpdatedBy:   r.UpdatedBy,
+				UpdatedAt:   r.UpdatedAt,
+			}),
+			Role: r.MemberRole,
+		})
+	}
+	return out, nil
+}
+
+// CountMembers returns the household's member count — drives the cap and
+// last-owner checks.
+func (s *Service) CountMembers(ctx context.Context, householdID int64) (int64, error) {
+	n, err := s.q.CountMembers(ctx, householdID)
+	if err != nil {
+		return 0, fmt.Errorf("count members: %w", domainerr.FromStorage(err))
+	}
+	return n, nil
+}
+
+// JoinHousehold writes (or refreshes) a membership row. Callers sync the
+// user's active-household pointer via the identity service inside the
+// same ambient transaction — this method deliberately does not touch
+// identity.users.
+func (s *Service) JoinHousehold(ctx context.Context, householdID, userID int64, role, by string) (Membership, error) {
+	row, err := s.q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{
+		HouseholdID: householdID,
+		UserID:      userID,
+		Role:        role,
+		CreatedBy:   by,
+	})
+	if err != nil {
+		return Membership{}, fmt.Errorf("join household: %w", domainerr.FromStorage(err))
+	}
+	return toMembership(row), nil
+}
+
+// RemoveMembership deletes a membership row; zero rows means the user
+// was not a member and surfaces as domainerr.ErrNotFound.
+func (s *Service) RemoveMembership(ctx context.Context, householdID, userID int64) error {
+	n, err := s.q.DeleteMembership(ctx, sqlc.DeleteMembershipParams{
+		HouseholdID: householdID,
+		UserID:      userID,
+	})
+	if err != nil {
+		return fmt.Errorf("remove membership: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("remove membership: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+func toMembership(row sqlc.HouseholdHouseholdMember) Membership {
+	m := Membership{
+		HouseholdID: row.HouseholdID,
+		UserID:      row.UserID,
+		Role:        row.Role,
+		CreatedBy:   row.CreatedBy,
+		CreatedAt:   row.CreatedAt,
+	}
+	if row.UpdatedBy.Valid {
+		s := row.UpdatedBy.String
+		m.UpdatedBy = &s
+	}
+	if row.UpdatedAt.Valid {
+		t := row.UpdatedAt.Time
+		m.UpdatedAt = &t
+	}
+	return m
+}
+
+func toMemberships(rows []sqlc.HouseholdHouseholdMember) []Membership {
+	out := make([]Membership, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toMembership(r))
+	}
+	return out
 }
 
 func toNotification(row sqlc.HouseholdNotification) Notification {

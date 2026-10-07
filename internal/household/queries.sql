@@ -26,9 +26,12 @@ WHERE to_user_id = $1
 ORDER BY created_at DESC;
 
 -- name: ListSentInvitesForUser :many
+-- Sent invites scope to a household (the caller's active one); the
+-- received-invite list (ListPendingInvitesForUser) stays unscoped.
 SELECT *
 FROM household.invites
 WHERE from_user_id = $1
+  AND household_id = $2
   AND status = 'pending'
 ORDER BY created_at DESC;
 
@@ -81,23 +84,28 @@ WHERE n.user_id = $1
   );
 
 -- name: ListNotificationsForUser :many
+-- Feeds scope to the active household (LEN-26); notifications without a
+-- household_id are user-global and still show.
 SELECT *
 FROM household.notifications
 WHERE user_id = $1
+  AND (household_id IS NULL OR household_id = $2)
 ORDER BY created_at DESC
-LIMIT $2;
+LIMIT $3;
 
 -- name: CountUnreadNotifications :one
 SELECT count(*)
 FROM household.notifications
 WHERE user_id = $1
-  AND read_at IS NULL;
+  AND read_at IS NULL
+  AND (household_id IS NULL OR household_id = $2);
 
 -- name: MarkAllNotificationsRead :execrows
 UPDATE household.notifications
 SET read_at = now()
 WHERE user_id = $1
-  AND read_at IS NULL;
+  AND read_at IS NULL
+  AND (household_id IS NULL OR household_id = $2);
 
 -- name: CancelPendingInvitesFrom :many
 -- Leave/remove cleanup: pending invites a departing member sent for that
@@ -119,3 +127,54 @@ RETURNING *;
 INSERT INTO household.push_delivery
     (user_id, kind, household_id, actor_user_id, invite_id, food_event_id)
 VALUES ($1, $2, sqlc.narg(household_id), sqlc.narg(actor_user_id), sqlc.narg(invite_id), sqlc.narg(food_event_id));
+
+-- ---------- membership (LEN-26) ----------
+
+-- name: GetMembership :one
+SELECT *
+FROM household.household_member
+WHERE household_id = $1
+  AND user_id = $2;
+
+-- name: ListMembersByHousehold :many
+SELECT *
+FROM household.household_member
+WHERE household_id = $1
+ORDER BY created_at;
+
+-- name: ListMembershipsByUser :many
+SELECT *
+FROM household.household_member
+WHERE user_id = $1
+ORDER BY created_at;
+
+-- name: ListHouseholdsByUser :many
+-- The user's households with their role in each — backs the switcher.
+SELECT h.*, m.role AS member_role
+FROM household.households h
+JOIN household.household_member m
+  ON m.household_id = h.household_id
+WHERE m.user_id = $1
+ORDER BY m.created_at;
+
+-- name: CountMembers :one
+SELECT count(*)
+FROM household.household_member
+WHERE household_id = $1;
+
+-- name: UpsertMembership :one
+-- Joins a user to a household; on re-join the role is refreshed. The
+-- caller's users-row active pointer syncs separately (identity service),
+-- inside the same ambient transaction.
+INSERT INTO household.household_member (household_id, user_id, role, created_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (household_id, user_id) DO UPDATE
+SET role       = EXCLUDED.role,
+    updated_by = EXCLUDED.created_by,
+    updated_at = now()
+RETURNING *;
+
+-- name: DeleteMembership :execrows
+DELETE FROM household.household_member
+WHERE household_id = $1
+  AND user_id = $2;

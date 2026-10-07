@@ -238,6 +238,17 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 		 WHERE user_id = $1 AND household_id IS NULL`, u.UserID, householdID); err != nil {
 		t.Fatalf("assign test household: %v", err)
 	}
+	// Mirror the active pointer into household_member (LEN-26) — member
+	// lists read the membership table, so a pointer without a row would
+	// make the user invisible to their own household.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO household.household_member (household_id, user_id, role, created_by)
+		 SELECT u.household_id, u.user_id, u.household_role, $2
+		 FROM identity.users u
+		 WHERE u.user_id = $1 AND u.household_id IS NOT NULL
+		 ON CONFLICT (household_id, user_id) DO UPDATE SET role = EXCLUDED.role`, u.UserID, email); err != nil {
+		t.Fatalf("mirror test membership: %v", err)
+	}
 	return u.UserID
 }
 
