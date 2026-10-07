@@ -529,6 +529,9 @@ type HouseholdService interface {
 	CountMembers(ctx context.Context, householdID int64) (int64, error)
 	JoinHousehold(ctx context.Context, householdID, userID int64, role, by string) (household.Membership, error)
 	RemoveMembership(ctx context.Context, householdID, userID int64) error
+	// DeleteHousehold dissolves a sole-owned household after its data was
+	// merged into another (LEN-26); callers move member pointers first.
+	DeleteHousehold(ctx context.Context, householdID int64) error
 }
 
 var _ HouseholdService = (*household.Service)(nil)

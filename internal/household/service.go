@@ -561,6 +561,20 @@ func (s *Service) RemoveMembership(ctx context.Context, householdID, userID int6
 	return nil
 }
 
+// DeleteHousehold removes a household row (merge-dissolve). Callers must
+// reassign RESTRICT-FK data and move member pointers first; membership and
+// other references cascade. Zero rows surfaces as domainerr.ErrNotFound.
+func (s *Service) DeleteHousehold(ctx context.Context, householdID int64) error {
+	n, err := s.q.DeleteHousehold(ctx, householdID)
+	if err != nil {
+		return fmt.Errorf("delete household: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("delete household: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
 func toMembership(row sqlc.HouseholdHouseholdMember) Membership {
 	m := Membership{
 		HouseholdID: row.HouseholdID,

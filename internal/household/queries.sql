@@ -178,3 +178,12 @@ RETURNING *;
 DELETE FROM household.household_member
 WHERE household_id = $1
   AND user_id = $2;
+
+-- name: DeleteHousehold :execrows
+-- Dissolve-on-merge (LEN-26): removes a sole-owned household after its
+-- stock/plans/lists/events were reassigned. users.household_id is a
+-- RESTRICT FK — the caller's pointer must move off first. Remaining
+-- references (memberships, invites, deltas, routes, links) CASCADE;
+-- notification/push history SET NULLs.
+DELETE FROM household.households
+WHERE household_id = $1;

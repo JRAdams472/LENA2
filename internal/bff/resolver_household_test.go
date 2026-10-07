@@ -36,9 +36,13 @@ func TestResolver_MyHousehold(t *testing.T) {
 	created := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
 	h.EXPECT().GetHouseholdByID(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID, CreatedAt: created}, nil)
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), hhUserID).Return([]identity.User{
-		{UserID: hhUserID, Email: hhEmail, DisplayName: "Caller", HouseholdRole: identity.HouseholdRoleOwner},
-		{UserID: 9, Email: "mate@example.com", DisplayName: "Mate", HouseholdRole: identity.HouseholdRoleMember},
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).Return([]household.Membership{
+		{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleOwner},
+		{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleMember},
+	}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{hhUserID, 9})).Return([]identity.User{
+		{UserID: hhUserID, Email: hhEmail, DisplayName: "Caller"},
+		{UserID: 9, Email: "mate@example.com", DisplayName: "Mate"},
 	}, nil)
 
 	res, err := r.MyHousehold(hhCtx())
@@ -46,6 +50,7 @@ func TestResolver_MyHousehold(t *testing.T) {
 	require.NotNil(t, res)
 	assert.Equal(t, graphql.ID("7"), res.ID())
 	assert.Equal(t, "OWNER", res.MyRole())
+	assert.True(t, res.IsActive())
 	require.Len(t, res.Members(), 2)
 	assert.Equal(t, "Caller", *res.Members()[0].User().DisplayName())
 	assert.Equal(t, "OWNER", res.Members()[0].Role())
@@ -126,6 +131,9 @@ func TestResolver_InviteHouseholdMember(t *testing.T) {
 	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
+	// Not already a mate — membership check, not pointer equality.
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{}, domainerr.ErrNotFound)
 	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).Return(int64(2), nil)
 	h.EXPECT().CreateInvite(gomock.Any(), hhUserID, int64(9), hhUserID, hhEmail).
 		Return(household.Invite{InviteID: 30, FromUserID: hhUserID, ToUserID: 9, HouseholdID: hhUserID, Status: household.StatusPending}, nil)
@@ -149,11 +157,13 @@ func TestResolver_InviteHouseholdMember_Guards(t *testing.T) {
 	_, err := r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "7"})
 	assert.Error(t, err)
 
-	// Already in the caller's household: same generic error as every
-	// other target-side rejection (no enumeration signal).
-	sameHH := hhUserID
+	// Already a member of the caller's household — even though their
+	// active pointer is elsewhere, the membership check still catches it.
+	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &sameHH, IsActive: true, IsSearchable: true}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: "member"}, nil)
 	_, err = r.InviteHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
 	assert.ErrorContains(t, err, "cannot invite this user")
 }
@@ -172,27 +182,25 @@ func TestResolver_AcceptHouseholdInvite(t *testing.T) {
 	}
 
 	inviterHH := int64(42)
-	targetHH := hhUserID
 	inv := household.Invite{InviteID: 55, FromUserID: 9, ToUserID: hhUserID, HouseholdID: inviterHH, Status: household.StatusPending}
 
 	h.EXPECT().GetInviteByID(gomock.Any(), int64(55)).Return(inv, nil)
 	h.EXPECT().LockHousehold(gomock.Any(), inviterHH).
 		Return(household.Household{HouseholdID: inviterHH}, nil)
-	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), inviterHH).Return(int64(1), nil)
-	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &inviterHH}, nil)
-	idSvc.EXPECT().GetByID(gomock.Any(), hhUserID).
-		Return(identity.User{UserID: hhUserID, HouseholdID: &targetHH}, nil)
+	h.EXPECT().CountMembers(gomock.Any(), inviterHH).Return(int64(1), nil)
+	// The inviter must still be a member of the invited household.
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, int64(9)).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: 9, Role: "owner"}, nil)
 	h.EXPECT().TransitionInvite(gomock.Any(), int64(55), household.StatusAccepted, hhEmail).
 		Return(household.Invite{InviteID: 55, Status: household.StatusAccepted}, nil)
-	prefs.EXPECT().MergeHouseholdStock(gomock.Any(), targetHH, inviterHH, hhEmail).Return(nil)
-	mp.EXPECT().ReassignHousehold(gomock.Any(), targetHH, inviterHH, hhEmail).Return(nil)
-	groc.EXPECT().ReassignHousehold(gomock.Any(), targetHH, inviterHH, hhEmail).Return(nil)
-	idSvc.EXPECT().SetUserHousehold(gomock.Any(), hhUserID, inviterHH, identity.HouseholdRoleMember, &targetHH).Return(nil)
-	// Membership mirror: join the new household, drop the old one.
+	// Not already a member → join as member. The caller's old membership
+	// stays — accept is add-membership, not a move.
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, hhUserID).
+		Return(household.Membership{}, domainerr.ErrNotFound)
 	h.EXPECT().JoinHousehold(gomock.Any(), inviterHH, hhUserID, identity.HouseholdRoleMember, hhEmail).
 		Return(household.Membership{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"}, nil)
-	h.EXPECT().RemoveMembership(gomock.Any(), targetHH, hhUserID).Return(nil)
+	// No merge arg → no merge calls, and the old household is kept.
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, inviterHH, hhEmail).Return(nil)
 	// invite_accepted to the inviter; member_joined to other members.
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindInviteAccepted, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
@@ -202,13 +210,22 @@ func TestResolver_AcceptHouseholdInvite(t *testing.T) {
 		Return(household.Household{HouseholdID: inviterHH}, nil)
 	// Once inside acceptInvite for member_joined fan-out, once to build
 	// the returned Household.
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), inviterHH).
-		Return([]identity.User{{UserID: 9}, {UserID: hhUserID}}, nil).Times(2)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), inviterHH).
+		Return([]household.Membership{
+			{HouseholdID: inviterHH, UserID: 9, Role: "owner"},
+			{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"},
+		}, nil).Times(2)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{9, hhUserID})).
+		Return([]identity.User{{UserID: 9}, {UserID: hhUserID}}, nil)
 
-	res, err := r.AcceptHouseholdInvite(hhCtx(), struct{ InviteID graphql.ID }{InviteID: "55"})
+	res, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55"})
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Equal(t, graphql.ID("42"), res.ID())
+	assert.True(t, res.IsActive())
 	assert.Len(t, res.Members(), 2)
 }
 
@@ -221,7 +238,10 @@ func TestResolver_AcceptHouseholdInvite_NotParty(t *testing.T) {
 		InviteID: 55, FromUserID: 9, ToUserID: 99, Status: household.StatusPending,
 	}, nil)
 
-	_, err := r.AcceptHouseholdInvite(hhCtx(), struct{ InviteID graphql.ID }{InviteID: "55"})
+	_, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55"})
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
@@ -232,18 +252,21 @@ func TestResolver_AcceptHouseholdInvite_StaleInviter(t *testing.T) {
 	r := &Resolver{HouseholdService: h, IdentityService: idSvc}
 
 	inviterHH := int64(42)
-	movedHH := int64(77)
 	h.EXPECT().GetInviteByID(gomock.Any(), int64(55)).Return(household.Invite{
 		InviteID: 55, FromUserID: 9, ToUserID: hhUserID, HouseholdID: inviterHH, Status: household.StatusPending,
 	}, nil)
 	h.EXPECT().LockHousehold(gomock.Any(), inviterHH).
 		Return(household.Household{HouseholdID: inviterHH}, nil)
-	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), inviterHH).Return(int64(1), nil)
-	// The inviter left the household the invite points at — accept conflicts.
-	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &movedHH}, nil)
+	h.EXPECT().CountMembers(gomock.Any(), inviterHH).Return(int64(1), nil)
+	// The inviter left the household the invite points at — accept
+	// conflicts even though they may be active elsewhere.
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, int64(9)).
+		Return(household.Membership{}, domainerr.ErrNotFound)
 
-	_, err := r.AcceptHouseholdInvite(hhCtx(), struct{ InviteID graphql.ID }{InviteID: "55"})
+	_, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55"})
 	assert.ErrorIs(t, err, domainerr.ErrConflict)
 }
 
@@ -299,24 +322,98 @@ func TestResolver_LeaveHousehold(t *testing.T) {
 	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
 
 	currentHH := int64(42)
-	h.EXPECT().LockHousehold(gomock.Any(), currentHH).
-		Return(household.Household{HouseholdID: currentHH}, nil)
+	ctx := testutil.WithHousehold(context.Background(), hhUserID, currentHH, hhEmail)
 	idSvc.EXPECT().GetByID(gomock.Any(), hhUserID).
 		Return(identity.User{UserID: hhUserID, HouseholdID: &currentHH, HouseholdRole: identity.HouseholdRoleOwner}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), currentHH).
+		Return(household.Household{HouseholdID: currentHH}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), currentHH, hhUserID).
+		Return(household.Membership{HouseholdID: currentHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
 	// Sole member leaving: no ownership transfer.
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), currentHH).
-		Return([]identity.User{{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleOwner}}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), currentHH).
+		Return([]household.Membership{{HouseholdID: currentHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
 	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), hhUserID, currentHH, hhEmail).
 		Return(nil, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
+	// The active household was left and no memberships remain → fresh
+	// solo household, activated.
+	h.EXPECT().ListMembershipsByUser(gomock.Any(), hhUserID).Return(nil, nil)
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
 		Return(household.Household{HouseholdID: 90}, nil)
-	idSvc.EXPECT().SetUserHousehold(gomock.Any(), hhUserID, int64(90), identity.HouseholdRoleOwner, &currentHH).Return(nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), hhUserID, identity.HouseholdRoleOwner, hhEmail).
 		Return(household.Membership{HouseholdID: 90, UserID: hhUserID, Role: "owner"}, nil)
-	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, int64(90), hhEmail).Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
 
-	ok, err := r.LeaveHousehold(hhCtx())
+	ok, err := r.LeaveHousehold(ctx, struct{ HouseholdID *graphql.ID }{})
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+// Leaving a non-active household removes only that membership — the
+// active pointer never moves, so no fallback activation runs.
+func TestResolver_LeaveHousehold_Inactive(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	auth := mock.NewMockAuthInvalidator(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
+
+	activeHH, otherHH := int64(42), int64(60)
+	ctx := testutil.WithHousehold(context.Background(), hhUserID, activeHH, hhEmail)
+	idSvc.EXPECT().GetByID(gomock.Any(), hhUserID).
+		Return(identity.User{UserID: hhUserID, HouseholdID: &activeHH}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), otherHH).
+		Return(household.Household{HouseholdID: otherHH}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), otherHH, hhUserID).
+		Return(household.Membership{HouseholdID: otherHH, UserID: hhUserID, Role: identity.HouseholdRoleMember}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), otherHH).
+		Return([]household.Membership{
+			{HouseholdID: otherHH, UserID: 9, Role: identity.HouseholdRoleOwner},
+			{HouseholdID: otherHH, UserID: hhUserID, Role: identity.HouseholdRoleMember},
+		}, nil)
+	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), hhUserID, otherHH, hhEmail).Return(nil, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), otherHH, hhUserID).Return(nil)
+	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	auth.EXPECT().InvalidateUser("test-provider", "")
+
+	leaveID := graphql.ID("60")
+	ok, err := r.LeaveHousehold(ctx, struct{ HouseholdID *graphql.ID }{HouseholdID: &leaveID})
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+// Leaving the active household while another membership remains activates
+// the earliest remaining one — no fresh household is created.
+func TestResolver_LeaveHousehold_ActivatesEarliestRemaining(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	auth := mock.NewMockAuthInvalidator(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
+
+	activeHH := int64(42)
+	ctx := testutil.WithHousehold(context.Background(), hhUserID, activeHH, hhEmail)
+	idSvc.EXPECT().GetByID(gomock.Any(), hhUserID).
+		Return(identity.User{UserID: hhUserID, HouseholdID: &activeHH}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), activeHH).
+		Return(household.Household{HouseholdID: activeHH}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), activeHH, hhUserID).
+		Return(household.Membership{HouseholdID: activeHH, UserID: hhUserID, Role: identity.HouseholdRoleMember}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), activeHH).
+		Return([]household.Membership{
+			{HouseholdID: activeHH, UserID: 9, Role: identity.HouseholdRoleOwner},
+			{HouseholdID: activeHH, UserID: hhUserID, Role: identity.HouseholdRoleMember},
+		}, nil)
+	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), hhUserID, activeHH, hhEmail).Return(nil, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), activeHH, hhUserID).Return(nil)
+	h.EXPECT().ListMembershipsByUser(gomock.Any(), hhUserID).
+		Return([]household.Membership{{HouseholdID: 60, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, int64(60), hhEmail).Return(nil)
+	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	auth.EXPECT().InvalidateUser("test-provider", "")
+
+	ok, err := r.LeaveHousehold(ctx, struct{ HouseholdID *graphql.ID }{})
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
@@ -337,6 +434,8 @@ func TestResolver_InviteHouseholdMember_RoleGate(t *testing.T) {
 	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{}, domainerr.ErrNotFound)
 	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).Return(int64(2), nil)
 	h.EXPECT().CreateInvite(gomock.Any(), hhUserID, int64(9), hhUserID, hhEmail).
 		Return(household.Invite{InviteID: 30, FromUserID: hhUserID, ToUserID: 9, HouseholdID: hhUserID, Status: household.StatusPending}, nil)
@@ -356,6 +455,8 @@ func TestResolver_InviteHouseholdMember_Full(t *testing.T) {
 	otherHH := int64(50)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 		Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{}, domainerr.ErrNotFound)
 	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).
 		Return(int64(maxHouseholdMembers), nil)
 
@@ -387,6 +488,8 @@ func TestResolver_InviteHouseholdMember_GenericTargetErrors(t *testing.T) {
 		{"duplicate pending invite", func(idSvc *mock.MockIdentityService, h *mock.MockHouseholdService) {
 			idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 				Return(identity.User{UserID: 9, HouseholdID: &otherHH, IsActive: true, IsSearchable: true}, nil)
+			h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+				Return(household.Membership{}, domainerr.ErrNotFound)
 			idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), hhUserID).Return(int64(2), nil)
 			h.EXPECT().CreateInvite(gomock.Any(), hhUserID, int64(9), hhUserID, hhEmail).
 				Return(household.Invite{}, fmt.Errorf("create invite: %w", domainerr.ErrConflict))
@@ -426,10 +529,13 @@ func TestResolver_AcceptHouseholdInvite_Full(t *testing.T) {
 	}, nil)
 	h.EXPECT().LockHousehold(gomock.Any(), inviterHH).
 		Return(household.Household{HouseholdID: inviterHH}, nil)
-	idSvc.EXPECT().CountUsersByHousehold(gomock.Any(), inviterHH).
+	h.EXPECT().CountMembers(gomock.Any(), inviterHH).
 		Return(int64(maxHouseholdMembers), nil)
 
-	_, err := r.AcceptHouseholdInvite(hhCtx(), struct{ InviteID graphql.ID }{InviteID: "55"})
+	_, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55"})
 	assert.ErrorContains(t, err, "household is full")
 }
 
@@ -442,17 +548,19 @@ func TestResolver_RenameHousehold(t *testing.T) {
 	name := "The Smiths"
 	h.EXPECT().RenameHousehold(gomock.Any(), hhUserID, name, hhEmail).
 		Return(household.Household{HouseholdID: hhUserID, Name: &name}, nil)
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), hhUserID).
-		Return([]identity.User{
-			{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleOwner},
-			{UserID: 9, HouseholdRole: identity.HouseholdRoleMember},
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).
+		Return([]household.Membership{
+			{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleOwner},
+			{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleMember},
 		}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindHouseholdRenamed, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	h.EXPECT().GetHouseholdByID(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID, Name: &name}, nil)
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), hhUserID).
-		Return([]identity.User{{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleOwner}}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).
+		Return([]household.Membership{{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), []int64{hhUserID}).
+		Return([]identity.User{{UserID: hhUserID}}, nil)
 
 	res, err := r.RenameHousehold(hhCtx(), struct{ Name string }{Name: name})
 	require.NoError(t, err)
@@ -475,22 +583,26 @@ func TestResolver_SetHouseholdRole(t *testing.T) {
 
 	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleMember}, nil)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleMember}, nil)
-	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(9), hhUserID, identity.HouseholdRoleAdmin, hhEmail).
-		Return(nil)
+		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0]}, nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), hhUserID, int64(9), identity.HouseholdRoleAdmin, hhEmail).
 		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: "admin"}, nil)
+	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(9), hhUserID, identity.HouseholdRoleAdmin, hhEmail).
+		Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(9))
 	h.EXPECT().GetHouseholdByID(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), hhUserID).
-		Return([]identity.User{
-			{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleOwner},
-			{UserID: 9, HouseholdRole: identity.HouseholdRoleAdmin},
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).
+		Return([]household.Membership{
+			{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleOwner},
+			{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleAdmin},
 		}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{hhUserID, 9})).
+		Return([]identity.User{{UserID: hhUserID}, {UserID: 9}}, nil)
 
 	res, err := r.SetHouseholdRole(hhCtx(), struct {
 		UserID graphql.ID
@@ -523,9 +635,8 @@ func TestResolver_SetHouseholdRole_Guards(t *testing.T) {
 	// A stranger gets NOT_FOUND — household membership is never leaked.
 	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
-	strangerHH := int64(50)
-	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &strangerHH}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{}, domainerr.ErrNotFound)
 	_, err = r.SetHouseholdRole(hhCtx(), struct {
 		UserID graphql.ID
 		Role   string
@@ -542,25 +653,29 @@ func TestResolver_TransferHouseholdOwnership(t *testing.T) {
 
 	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleMember}, nil)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleMember}, nil)
-	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(9), hhUserID, identity.HouseholdRoleOwner, hhEmail).Return(nil)
+		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0]}, nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), hhUserID, int64(9), identity.HouseholdRoleOwner, hhEmail).
 		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: "owner"}, nil)
-	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), hhUserID, hhUserID, identity.HouseholdRoleMember, hhEmail).Return(nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), hhUserID, hhUserID, identity.HouseholdRoleMember, hhEmail).
 		Return(household.Membership{HouseholdID: hhUserID, UserID: hhUserID, Role: "member"}, nil)
+	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(9), hhUserID, identity.HouseholdRoleOwner, hhEmail).Return(nil)
+	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), hhUserID, hhUserID, identity.HouseholdRoleMember, hhEmail).Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
 	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(9))
 	h.EXPECT().GetHouseholdByID(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), hhUserID).
-		Return([]identity.User{
-			{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleMember},
-			{UserID: 9, HouseholdRole: identity.HouseholdRoleOwner},
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).
+		Return([]household.Membership{
+			{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleMember},
+			{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleOwner},
 		}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{hhUserID, 9})).
+		Return([]identity.User{{UserID: hhUserID}, {UserID: 9}}, nil)
 
 	res, err := r.TransferHouseholdOwnership(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
 	require.NoError(t, err)
@@ -576,21 +691,27 @@ func TestResolver_RemoveHouseholdMember(t *testing.T) {
 
 	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleMember}, nil)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleMember}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0]}, nil)
 	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), int64(9), hhUserID, hhEmail).Return(nil, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), hhUserID, int64(9)).Return(nil)
+	// The removed member's active pointer was on this household and no
+	// memberships remain → fresh solo household, activated.
+	h.EXPECT().ListMembershipsByUser(gomock.Any(), int64(9)).Return(nil, nil)
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
 		Return(household.Household{HouseholdID: 90}, nil)
-	expectedHH := int64(hhUserID)
-	idSvc.EXPECT().SetUserHousehold(gomock.Any(), int64(9), int64(90), identity.HouseholdRoleOwner, &expectedHH).Return(nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), int64(9), identity.HouseholdRoleOwner, hhEmail).
 		Return(household.Membership{HouseholdID: 90, UserID: 9, Role: "owner"}, nil)
-	h.EXPECT().RemoveMembership(gomock.Any(), hhUserID, int64(9)).Return(nil)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), int64(9), int64(90), hhEmail).Return(nil)
 	// member_removed to the target; member_left to the remaining members.
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberRemoved, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), hhUserID).
-		Return([]identity.User{{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleOwner}}, nil).Times(2)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).
+		Return([]household.Membership{{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil).Times(2)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), []int64{hhUserID}).
+		Return([]identity.User{{UserID: hhUserID}}, nil)
 	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(9))
 	h.EXPECT().GetHouseholdByID(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
@@ -606,11 +727,13 @@ func TestResolver_RemoveHouseholdMember_Guards(t *testing.T) {
 	idSvc := mock.NewMockIdentityService(ctrl)
 	r := &Resolver{HouseholdService: h, IdentityService: idSvc}
 
-	// The owner cannot be removed.
+	// The owner cannot be removed — the membership role, not the pointer.
 	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleOwner}, nil)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleOwner}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0]}, nil)
 	_, err := r.RemoveHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
 	assert.Error(t, err)
 
@@ -618,8 +741,10 @@ func TestResolver_RemoveHouseholdMember_Guards(t *testing.T) {
 	adminCtx := testutil.WithHouseholdRole(context.Background(), hhUserID, hhUserID, "admin", hhEmail)
 	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
 		Return(household.Household{HouseholdID: hhUserID}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleAdmin}, nil)
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
-		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0], HouseholdRole: identity.HouseholdRoleAdmin}, nil)
+		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0]}, nil)
 	_, err = r.RemoveHouseholdMember(adminCtx, struct{ UserID graphql.ID }{UserID: "9"})
 	assert.Error(t, err)
 
@@ -642,16 +767,21 @@ func TestResolver_LeaveHousehold_OwnerTransfer(t *testing.T) {
 		Return(identity.User{UserID: hhUserID, HouseholdID: &currentHH, HouseholdRole: identity.HouseholdRoleOwner}, nil)
 	h.EXPECT().LockHousehold(gomock.Any(), currentHH).
 		Return(household.Household{HouseholdID: currentHH}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), currentHH, hhUserID).
+		Return(household.Membership{HouseholdID: currentHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
 	// Owner leaves with members remaining: the earliest admin is promoted.
-	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), currentHH).
-		Return([]identity.User{
-			{UserID: hhUserID, HouseholdRole: identity.HouseholdRoleOwner},
-			{UserID: 9, HouseholdRole: identity.HouseholdRoleMember},
-			{UserID: 10, HouseholdRole: identity.HouseholdRoleAdmin},
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), currentHH).
+		Return([]household.Membership{
+			{HouseholdID: currentHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner},
+			{HouseholdID: currentHH, UserID: 9, Role: identity.HouseholdRoleMember},
+			{HouseholdID: currentHH, UserID: 10, Role: identity.HouseholdRoleAdmin},
 		}, nil)
-	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(10), currentHH, identity.HouseholdRoleOwner, hhEmail).Return(nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), currentHH, int64(10), identity.HouseholdRoleOwner, hhEmail).
 		Return(household.Membership{HouseholdID: currentHH, UserID: 10, Role: "owner"}, nil)
+	// The successor's active pointer is on this household → role syncs.
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(10)).
+		Return(identity.User{UserID: 10, HouseholdID: &currentHH}, nil)
+	idSvc.EXPECT().SetUserHouseholdRole(gomock.Any(), int64(10), currentHH, identity.HouseholdRoleOwner, hhEmail).Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(10), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 	// A pending invite the leaver sent for this household is cancelled.
@@ -659,19 +789,20 @@ func TestResolver_LeaveHousehold_OwnerTransfer(t *testing.T) {
 		Return([]household.Invite{{InviteID: 77, FromUserID: hhUserID, ToUserID: 11, HouseholdID: currentHH}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(11), household.KindInviteCancelled, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
+	h.EXPECT().ListMembershipsByUser(gomock.Any(), hhUserID).Return(nil, nil)
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
 		Return(household.Household{HouseholdID: 90}, nil)
-	idSvc.EXPECT().SetUserHousehold(gomock.Any(), hhUserID, int64(90), identity.HouseholdRoleOwner, &currentHH).Return(nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), hhUserID, identity.HouseholdRoleOwner, hhEmail).
 		Return(household.Membership{HouseholdID: 90, UserID: hhUserID, Role: "owner"}, nil)
-	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, int64(90), hhEmail).Return(nil)
 	// member_left goes to each of the two remaining members.
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(10), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
 	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(10))
 
-	ok, err := r.LeaveHousehold(ctx)
+	ok, err := r.LeaveHousehold(ctx, struct{ HouseholdID *graphql.ID }{})
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
@@ -715,4 +846,284 @@ func TestResolver_NotificationCountAndMarkRead(t *testing.T) {
 	ok, err := r.MarkAllNotificationsRead(hhCtx())
 	require.NoError(t, err)
 	assert.True(t, ok)
+}
+
+// ---------- LEN-26: multi-household surface ----------
+
+func TestResolver_MyHouseholds(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc}
+
+	activeHH, otherHH := hhUserID, int64(60)
+	h.EXPECT().ListMyHouseholds(gomock.Any(), hhUserID).Return([]household.MyHousehold{
+		{Household: household.Household{HouseholdID: activeHH}, Role: identity.HouseholdRoleOwner},
+		{Household: household.Household{HouseholdID: otherHH}, Role: identity.HouseholdRoleMember},
+	}, nil)
+	h.EXPECT().GetHouseholdByID(gomock.Any(), activeHH).
+		Return(household.Household{HouseholdID: activeHH}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), activeHH).
+		Return([]household.Membership{{HouseholdID: activeHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), []int64{hhUserID}).
+		Return([]identity.User{{UserID: hhUserID}}, nil)
+	h.EXPECT().GetHouseholdByID(gomock.Any(), otherHH).
+		Return(household.Household{HouseholdID: otherHH}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), otherHH).
+		Return([]household.Membership{
+			{HouseholdID: otherHH, UserID: 9, Role: identity.HouseholdRoleOwner},
+			{HouseholdID: otherHH, UserID: hhUserID, Role: identity.HouseholdRoleMember},
+		}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{9, hhUserID})).
+		Return([]identity.User{{UserID: 9}, {UserID: hhUserID}}, nil)
+
+	out, err := r.MyHouseholds(hhCtx())
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+	// The caller's role is per-household, from the membership rows.
+	assert.Equal(t, "OWNER", out[0].MyRole())
+	assert.True(t, out[0].IsActive())
+	assert.Equal(t, "MEMBER", out[1].MyRole())
+	assert.False(t, out[1].IsActive())
+	// Member role comes from the membership row — the caller's active
+	// pointer role (owner) must not leak into the other household.
+	assert.Equal(t, "MEMBER", out[1].Members()[1].Role())
+	assert.True(t, out[1].Members()[1].IsMe())
+}
+
+func TestResolver_SetActiveHousehold(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	auth := mock.NewMockAuthInvalidator(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
+
+	otherHH := int64(60)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, otherHH, hhEmail).Return(nil)
+	auth.EXPECT().InvalidateUser("test-provider", "")
+	h.EXPECT().GetHouseholdByID(gomock.Any(), otherHH).
+		Return(household.Household{HouseholdID: otherHH}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), otherHH).
+		Return([]household.Membership{{HouseholdID: otherHH, UserID: hhUserID, Role: identity.HouseholdRoleMember}}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), []int64{hhUserID}).
+		Return([]identity.User{{UserID: hhUserID}}, nil)
+
+	res, err := r.SetActiveHousehold(hhCtx(), struct{ HouseholdID graphql.ID }{HouseholdID: "60"})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("60"), res.ID())
+	assert.True(t, res.IsActive())
+	assert.Equal(t, "MEMBER", res.MyRole())
+}
+
+// A household the caller does not belong to resolves as NOT_FOUND — the
+// membership guard in identity maps to conflict internally but must not
+// leak household existence to non-members.
+func TestResolver_SetActiveHousehold_NonMember(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc}
+
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, int64(60), hhEmail).
+		Return(fmt.Errorf("set active household: %w", domainerr.ErrConflict))
+
+	_, err := r.SetActiveHousehold(hhCtx(), struct{ HouseholdID graphql.ID }{HouseholdID: "60"})
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+func TestResolver_CreateHousehold(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	auth := mock.NewMockAuthInvalidator(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
+
+	name := "  Beach House  "
+	newHH := int64(77)
+	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
+		Return(household.Household{HouseholdID: newHH}, nil)
+	h.EXPECT().JoinHousehold(gomock.Any(), newHH, hhUserID, identity.HouseholdRoleOwner, hhEmail).
+		Return(household.Membership{HouseholdID: newHH, UserID: hhUserID, Role: "owner"}, nil)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, newHH, hhEmail).Return(nil)
+	h.EXPECT().RenameHousehold(gomock.Any(), newHH, "Beach House", hhEmail).
+		Return(household.Household{HouseholdID: newHH, Name: &name}, nil)
+	auth.EXPECT().InvalidateUser("test-provider", "")
+	h.EXPECT().GetHouseholdByID(gomock.Any(), newHH).
+		Return(household.Household{HouseholdID: newHH, Name: &name}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), newHH).
+		Return([]household.Membership{{HouseholdID: newHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), []int64{hhUserID}).
+		Return([]identity.User{{UserID: hhUserID}}, nil)
+
+	res, err := r.CreateHousehold(hhCtx(), struct{ Name *string }{Name: &name})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("77"), res.ID())
+	assert.Equal(t, name, *res.Name())
+	assert.True(t, res.IsActive())
+	assert.Equal(t, "OWNER", res.MyRole())
+}
+
+// Accepting with mergeFromHouseholdId moves the sole-owned household's
+// data into the joined household and dissolves the source.
+func TestResolver_AcceptHouseholdInvite_WithMerge(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	prefs := mock.NewMockUserPrefsService(ctrl)
+	mp := mock.NewMockMealPlanService(ctrl)
+	groc := mock.NewMockGroceryService(ctrl)
+	auth := mock.NewMockAuthInvalidator(ctrl)
+	r := &Resolver{
+		HouseholdService: h, IdentityService: idSvc, UserPrefsService: prefs,
+		MealPlanService: mp, GroceryService: groc, AuthInvalidator: auth,
+	}
+
+	inviterHH, sourceHH := int64(42), int64(70)
+	inv := household.Invite{InviteID: 55, FromUserID: 9, ToUserID: hhUserID, HouseholdID: inviterHH, Status: household.StatusPending}
+	h.EXPECT().GetInviteByID(gomock.Any(), int64(55)).Return(inv, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), inviterHH).
+		Return(household.Household{HouseholdID: inviterHH}, nil)
+	h.EXPECT().CountMembers(gomock.Any(), inviterHH).Return(int64(1), nil)
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, int64(9)).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: 9, Role: "owner"}, nil)
+	h.EXPECT().TransitionInvite(gomock.Any(), int64(55), household.StatusAccepted, hhEmail).
+		Return(household.Invite{InviteID: 55, Status: household.StatusAccepted}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, hhUserID).
+		Return(household.Membership{}, domainerr.ErrNotFound)
+	h.EXPECT().JoinHousehold(gomock.Any(), inviterHH, hhUserID, identity.HouseholdRoleMember, hhEmail).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"}, nil)
+	// Merge guard: caller is the source's sole member AND owner.
+	h.EXPECT().GetMembership(gomock.Any(), sourceHH, hhUserID).
+		Return(household.Membership{HouseholdID: sourceHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
+	h.EXPECT().CountMembers(gomock.Any(), sourceHH).Return(int64(1), nil)
+	prefs.EXPECT().MergeHouseholdStock(gomock.Any(), sourceHH, inviterHH, hhEmail).Return(nil)
+	mp.EXPECT().ReassignHousehold(gomock.Any(), sourceHH, inviterHH, hhEmail).Return(nil)
+	groc.EXPECT().ReassignHousehold(gomock.Any(), sourceHH, inviterHH, hhEmail).Return(nil)
+	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, inviterHH, hhEmail).Return(nil)
+	h.EXPECT().DeleteHousehold(gomock.Any(), sourceHH).Return(nil)
+	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindInviteAccepted, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), inviterHH).
+		Return([]household.Membership{
+			{HouseholdID: inviterHH, UserID: 9, Role: "owner"},
+			{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"},
+		}, nil).Times(2)
+	auth.EXPECT().InvalidateUser("test-provider", "")
+	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(9))
+	h.EXPECT().GetHouseholdByID(gomock.Any(), inviterHH).
+		Return(household.Household{HouseholdID: inviterHH}, nil)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), gomock.InAnyOrder([]int64{9, hhUserID})).
+		Return([]identity.User{{UserID: 9}, {UserID: hhUserID}}, nil)
+
+	mergeFrom := graphql.ID("70")
+	res, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55", MergeFromHouseholdID: &mergeFrom})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("42"), res.ID())
+}
+
+// Merge is rejected when the source household is shared — the other
+// members' data must never be dissolved by someone else's accept.
+func TestResolver_AcceptHouseholdInvite_MergeSharedSourceRejected(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc}
+
+	inviterHH, sourceHH := int64(42), int64(70)
+	h.EXPECT().GetInviteByID(gomock.Any(), int64(55)).Return(household.Invite{
+		InviteID: 55, FromUserID: 9, ToUserID: hhUserID, HouseholdID: inviterHH, Status: household.StatusPending,
+	}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), inviterHH).
+		Return(household.Household{HouseholdID: inviterHH}, nil)
+	h.EXPECT().CountMembers(gomock.Any(), inviterHH).Return(int64(1), nil)
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, int64(9)).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: 9, Role: "owner"}, nil)
+	h.EXPECT().TransitionInvite(gomock.Any(), int64(55), household.StatusAccepted, hhEmail).
+		Return(household.Invite{InviteID: 55, Status: household.StatusAccepted}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, hhUserID).
+		Return(household.Membership{}, domainerr.ErrNotFound)
+	h.EXPECT().JoinHousehold(gomock.Any(), inviterHH, hhUserID, identity.HouseholdRoleMember, hhEmail).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), sourceHH, hhUserID).
+		Return(household.Membership{HouseholdID: sourceHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
+	// Shared household — the merge must be rejected and the tx rolled
+	// back (invite transition included).
+	h.EXPECT().CountMembers(gomock.Any(), sourceHH).Return(int64(3), nil)
+
+	mergeFrom := graphql.ID("70")
+	_, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55", MergeFromHouseholdID: &mergeFrom})
+	assert.ErrorContains(t, err, "alone belong to")
+}
+
+// Merge is also rejected when the caller isn't a member of the source —
+// NOT_FOUND, never a leak.
+func TestResolver_AcceptHouseholdInvite_MergeStrangerSource(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc}
+
+	inviterHH, sourceHH := int64(42), int64(70)
+	h.EXPECT().GetInviteByID(gomock.Any(), int64(55)).Return(household.Invite{
+		InviteID: 55, FromUserID: 9, ToUserID: hhUserID, HouseholdID: inviterHH, Status: household.StatusPending,
+	}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), inviterHH).
+		Return(household.Household{HouseholdID: inviterHH}, nil)
+	h.EXPECT().CountMembers(gomock.Any(), inviterHH).Return(int64(1), nil)
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, int64(9)).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: 9, Role: "owner"}, nil)
+	h.EXPECT().TransitionInvite(gomock.Any(), int64(55), household.StatusAccepted, hhEmail).
+		Return(household.Invite{InviteID: 55, Status: household.StatusAccepted}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), inviterHH, hhUserID).
+		Return(household.Membership{}, domainerr.ErrNotFound)
+	h.EXPECT().JoinHousehold(gomock.Any(), inviterHH, hhUserID, identity.HouseholdRoleMember, hhEmail).
+		Return(household.Membership{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), sourceHH, hhUserID).
+		Return(household.Membership{}, domainerr.ErrNotFound)
+
+	mergeFrom := graphql.ID("70")
+	_, err := r.AcceptHouseholdInvite(hhCtx(), struct {
+		InviteID             graphql.ID
+		MergeFromHouseholdID *graphql.ID
+	}{InviteID: "55", MergeFromHouseholdID: &mergeFrom})
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+// Removing a member whose active pointer is elsewhere drops only the
+// membership — no fallback activation runs.
+func TestResolver_RemoveHouseholdMember_PointerElsewhere(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mock.NewMockHouseholdService(ctrl)
+	idSvc := mock.NewMockIdentityService(ctrl)
+	auth := mock.NewMockAuthInvalidator(ctrl)
+	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
+
+	otherHH := int64(60)
+	h.EXPECT().LockHousehold(gomock.Any(), hhUserID).
+		Return(household.Household{HouseholdID: hhUserID}, nil)
+	h.EXPECT().GetMembership(gomock.Any(), hhUserID, int64(9)).
+		Return(household.Membership{HouseholdID: hhUserID, UserID: 9, Role: identity.HouseholdRoleMember}, nil)
+	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
+		Return(identity.User{UserID: 9, HouseholdID: &otherHH}, nil)
+	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), int64(9), hhUserID, hhEmail).Return(nil, nil)
+	h.EXPECT().RemoveMembership(gomock.Any(), hhUserID, int64(9)).Return(nil)
+	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberRemoved, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhUserID).
+		Return([]household.Membership{{HouseholdID: hhUserID, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil).Times(2)
+	idSvc.EXPECT().ListUsersByIDs(gomock.Any(), []int64{hhUserID}).
+		Return([]identity.User{{UserID: hhUserID}}, nil)
+	auth.EXPECT().InvalidateUserID(gomock.Any(), int64(9))
+	h.EXPECT().GetHouseholdByID(gomock.Any(), hhUserID).
+		Return(household.Household{HouseholdID: hhUserID}, nil)
+
+	res, err := r.RemoveHouseholdMember(hhCtx(), struct{ UserID graphql.ID }{UserID: "9"})
+	require.NoError(t, err)
+	assert.Len(t, res.Members(), 1)
 }

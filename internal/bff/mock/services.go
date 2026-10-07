@@ -8777,6 +8777,20 @@ func (mr *MockHouseholdServiceMockRecorder) CreateNotification(ctx, userID, kind
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNotification", reflect.TypeOf((*MockHouseholdService)(nil).CreateNotification), ctx, userID, kind, householdID, actorUserID, inviteID, foodEventID)
 }
 
+// DeleteHousehold mocks base method.
+func (m *MockHouseholdService) DeleteHousehold(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHousehold", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHousehold indicates an expected call of DeleteHousehold.
+func (mr *MockHouseholdServiceMockRecorder) DeleteHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHousehold", reflect.TypeOf((*MockHouseholdService)(nil).DeleteHousehold), ctx, householdID)
+}
+
 // GetHouseholdByID mocks base method.
 func (m *MockHouseholdService) GetHouseholdByID(ctx context.Context, householdID int64) (household.Household, error) {
 	m.ctrl.T.Helper()

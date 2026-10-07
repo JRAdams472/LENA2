@@ -20,6 +20,12 @@ type Querier interface {
 	CreateHousehold(ctx context.Context, createdBy string) (HouseholdHousehold, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (HouseholdInvite, error)
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (HouseholdNotification, error)
+	// Dissolve-on-merge (LEN-26): removes a sole-owned household after its
+	// stock/plans/lists/events were reassigned. users.household_id is a
+	// RESTRICT FK — the caller's pointer must move off first. Remaining
+	// references (memberships, invites, deltas, routes, links) CASCADE;
+	// notification/push history SET NULLs.
+	DeleteHousehold(ctx context.Context, householdID int64) (int64, error)
 	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) (int64, error)
 	GetHouseholdByID(ctx context.Context, householdID int64) (HouseholdHousehold, error)
 	// Row lock: serialize member-count checks and membership transitions for

@@ -95,6 +95,9 @@ func TestBFF_Integration(t *testing.T) {
 	t.Run("household management", func(t *testing.T) {
 		runHouseholdManagementTests(t, srv, issuer)
 	})
+	t.Run("multi-household", func(t *testing.T) {
+		runMultiHouseholdTests(t, srv, issuer)
+	})
 	t.Run("events", func(t *testing.T) {
 		runEventTests(t, srv, issuer)
 	})
@@ -1166,6 +1169,248 @@ func runHouseholdManagementTests(t *testing.T, srv *httptest.Server, issuer *tes
 	assert.Equal(t, "OWNER", gRes.HH.MyRole)
 	require.NotNil(t, gRes.HH.Name)
 	assert.Equal(t, "Casa E", *gRes.HH.Name)
+}
+
+// runMultiHouseholdTests exercises the LEN-26 surface end to end:
+// accepting adds a membership instead of moving, myHouseholds lists both,
+// setActiveHousehold switches scope (including notification feeds),
+// createHousehold spawns a third, the merge option dissolves a sole-owned
+// source (and rejects shared ones), and leaveHousehold targets a specific
+// household without touching the active pointer.
+func runMultiHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	tokK := issuer.Token(t, "mh-k", "mh-k@example.com", "MH K")
+	tokL := issuer.Token(t, "mh-l", "mh-l@example.com", "MH L")
+
+	type hhLite struct {
+		ID       string `json:"id"`
+		IsActive bool   `json:"isActive"`
+		MyRole   string `json:"myRole"`
+	}
+	myHouseholds := func(token string) []hhLite {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, token, `{ myHouseholds { id isActive myRole } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			HHs []hhLite `json:"myHouseholds"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.HHs
+	}
+	activeID := func(token string) string {
+		t.Helper()
+		for _, hh := range myHouseholds(token) {
+			if hh.IsActive {
+				return hh.ID
+			}
+		}
+		return ""
+	}
+	notifKinds := func(token string) map[string]bool {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, token, `{ myNotifications { kind } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Notifs []struct {
+				Kind string `json:"kind"`
+			} `json:"myNotifications"`
+		}
+		decodeData(t, gr.Data, &res)
+		out := map[string]bool{}
+		for _, n := range res.Notifs {
+			out[n.Kind] = true
+		}
+		return out
+	}
+	meID := func(token string) string {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, token, `{ me { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Me struct {
+				ID string `json:"id"`
+			} `json:"me"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.Me.ID
+	}
+	invite := func(ownerTok, memberID string) string {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, ownerTok, `mutation Invite($userId: ID!) {
+			inviteHouseholdMember(userId: $userId) { id }
+		}`, map[string]any{"userId": memberID})
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Invite struct {
+				ID string `json:"id"`
+			} `json:"inviteHouseholdMember"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.Invite.ID
+	}
+	accept := func(memberTok, inviteID string, mergeFrom any) {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, memberTok, `mutation Accept($inviteId: ID!, $mergeFrom: ID) {
+			acceptHouseholdInvite(inviteId: $inviteId, mergeFromHouseholdId: $mergeFrom) { id }
+		}`, map[string]any{"inviteId": inviteID, "mergeFrom": mergeFrom})
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+	}
+
+	// --- accept adds a membership; the old household is kept ---
+	idK := meID(tokK)
+	kSolo := activeID(tokK)
+	require.NotEmpty(t, kSolo)
+	status, gr := doGraphQL(t, srv, tokK, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	inviteID := invite(tokL, idK)
+	lHH := activeID(tokL)
+	accept(tokK, inviteID, nil)
+
+	mine := myHouseholds(tokK)
+	require.Len(t, mine, 2, "accept must add a membership, not move")
+	assert.Equal(t, lHH, activeID(tokK), "accepting activates the joined household")
+	byID := map[string]hhLite{}
+	for _, hh := range mine {
+		byID[hh.ID] = hh
+	}
+	assert.Equal(t, "OWNER", byID[kSolo].MyRole, "solo household membership survives")
+	assert.Equal(t, "MEMBER", byID[lHH].MyRole)
+
+	// --- notification feed follows the active household ---
+	// K switches back to the solo household FIRST; then L's rename writes
+	// a household-scoped notice that must stay invisible until K switches
+	// back to L's.
+	status, _ = doGraphQL(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id isActive }
+	}`, map[string]any{"id": kSolo})
+	require.Equal(t, http.StatusOK, status)
+	status, _ = doGraphQL(t, srv, tokL, `mutation { renameHousehold(name: "Casa L") { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	assert.False(t, notifKinds(tokK)["HOUSEHOLD_RENAMED"], "solo feed excludes L's household notices")
+	// The user-global invite_received notice is visible in every feed.
+	assert.True(t, notifKinds(tokK)["INVITE_RECEIVED"])
+	status, _ = doGraphQL(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id isActive }
+	}`, map[string]any{"id": lHH})
+	require.Equal(t, http.StatusOK, status)
+	assert.True(t, notifKinds(tokK)["HOUSEHOLD_RENAMED"], "switching back reveals L's notices")
+
+	// --- switching to a household you don't belong to fails ---
+	status, gr = doGraphQL(t, srv, tokL, `mutation CreateSolo { createHousehold(name: "L Annex") { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var annexRes struct {
+		HH hhLite `json:"createHousehold"`
+	}
+	decodeData(t, gr.Data, &annexRes)
+	_, grErr := doGraphQLExpectErrors(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id }
+	}`, map[string]any{"id": annexRes.HH.ID})
+	require.NotEmpty(t, grErr.Errors)
+
+	// --- createHousehold spawns and activates a third household ---
+	status, gr = doGraphQL(t, srv, tokK, `mutation { createHousehold(name: "Beach House") { id name isActive myRole } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var createRes struct {
+		HH struct {
+			ID       string  `json:"id"`
+			Name     *string `json:"name"`
+			IsActive bool    `json:"isActive"`
+			MyRole   string  `json:"myRole"`
+		} `json:"createHousehold"`
+	}
+	decodeData(t, gr.Data, &createRes)
+	assert.Equal(t, "Beach House", *createRes.HH.Name)
+	assert.True(t, createRes.HH.IsActive)
+	assert.Equal(t, "OWNER", createRes.HH.MyRole)
+	require.Len(t, myHouseholds(tokK), 3)
+
+	// --- merge: sole-owned source dissolves into the joined household ---
+	tokM := issuer.Token(t, "mh-m", "mh-m@example.com", "MH M")
+	tokN := issuer.Token(t, "mh-n", "mh-n@example.com", "MH N")
+	idM := meID(tokM)
+	mSolo := activeID(tokM)
+	// Stock M's solo pantry so the merge has data to move.
+	status, gr = doGraphQL(t, srv, tokM, `{ items(page: 1, pageSize: 1) { items { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var itemsRes struct {
+		Items struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &itemsRes)
+	require.NotEmpty(t, itemsRes.Items.Items)
+	status, gr = doGraphQL(t, srv, tokM, `mutation Stock($itemId: ID!) {
+		adjustUserItem(itemId: $itemId, quantity: 2.0) { id }
+	}`, map[string]any{"itemId": itemsRes.Items.Items[0].ID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, tokM, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	accept(tokM, invite(tokN, idM), mSolo)
+
+	mine = myHouseholds(tokM)
+	require.Len(t, mine, 1, "merge must dissolve the solo source household")
+	assert.Equal(t, activeID(tokN), mine[0].ID)
+	// The moved stock is visible under N's household (now M's active).
+	status, gr = doGraphQL(t, srv, tokM, `{ userItems { pageInfo { totalCount } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var stockRes struct {
+		UI struct {
+			PageInfo struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"pageInfo"`
+		} `json:"userItems"`
+	}
+	decodeData(t, gr.Data, &stockRes)
+	assert.Equal(t, 1, stockRes.UI.PageInfo.TotalCount, "merged pantry item must land in the joined household")
+
+	// --- merge from a shared household is rejected; the invite stays
+	// pending because the whole transaction rolled back ---
+	tokO := issuer.Token(t, "mh-o", "mh-o@example.com", "MH O")
+	tokP := issuer.Token(t, "mh-p", "mh-p@example.com", "MH P")
+	tokQ := issuer.Token(t, "mh-q", "mh-q@example.com", "MH Q")
+	idO, idP := meID(tokO), meID(tokP)
+	status, gr = doGraphQL(t, srv, tokP, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	status, gr = doGraphQL(t, srv, tokO, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	accept(tokP, invite(tokO, idP), nil)
+	sharedHH := activeID(tokO) // O's original solo, now shared with P
+
+	invQ := invite(tokQ, idO)
+	_, grErr = doGraphQLExpectErrors(t, srv, tokO, `mutation Accept($inviteId: ID!, $mergeFrom: ID) {
+		acceptHouseholdInvite(inviteId: $inviteId, mergeFromHouseholdId: $mergeFrom) { id }
+	}`, map[string]any{"inviteId": invQ, "mergeFrom": sharedHH})
+	require.NotEmpty(t, grErr.Errors, "shared households must not dissolve")
+	// The rejected accept rolled the invite back to pending — a plain
+	// re-accept still works.
+	accept(tokO, invQ, nil)
+	assert.Equal(t, activeID(tokQ), activeID(tokO))
+	mine = myHouseholds(tokO)
+	require.Len(t, mine, 2, "kept the shared household plus the joined one")
+
+	// --- leaving a non-active household drops only that membership ---
+	status, gr = doGraphQL(t, srv, tokO, `mutation Leave($id: ID) {
+		leaveHousehold(householdId: $id)
+	}`, map[string]any{"id": sharedHH})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	mine = myHouseholds(tokO)
+	require.Len(t, mine, 1)
+	assert.Equal(t, activeID(tokQ), activeID(tokO), "leaving the inactive household must not move the pointer")
+	// O is no longer a member of the shared household — P still is.
+	pMine := myHouseholds(tokP)
+	require.Len(t, pMine, 2, "P keeps the shared household and its original solo")
+	sharedOK := false
+	for _, hh := range pMine {
+		if hh.ID == sharedHH {
+			sharedOK = true
+		}
+	}
+	assert.True(t, sharedOK)
 }
 
 // TestIntegrationGroceryTogglePantrySync exercises the atomic toggle +

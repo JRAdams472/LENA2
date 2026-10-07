@@ -417,6 +417,8 @@ func TestResolver_User_HouseholdSelfGated(t *testing.T) {
 	h := mock.NewMockHouseholdService(gomock.NewController(t))
 	h.EXPECT().GetHouseholdByID(gomock.Any(), hhID).
 		Return(household.Household{HouseholdID: hhID}, nil)
+	h.EXPECT().ListMembersByHousehold(gomock.Any(), hhID).
+		Return([]household.Membership{{HouseholdID: hhID, UserID: 2, Role: identity.HouseholdRoleMember}}, nil)
 	r := &Resolver{IdentityService: svc, HouseholdService: h}
 
 	// Caller resolving their own user sees the household.
