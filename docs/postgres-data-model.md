@@ -55,6 +55,35 @@ CREATE INDEX idx_users_email ON identity.users (email);
 CREATE INDEX idx_users_household ON identity.users (household_id);
 ```
 
+`users.household_id` is the **active-household pointer**, not the
+membership record — it selects which of the user's households currently
+scopes their pantry, plans, lists, events, and notification feed, and
+`users.household_role` mirrors their role in that household. Membership
+itself lives in `household.household_member` (migration `0053`), which a
+user can appear in many times:
+
+```sql
+CREATE TABLE household.household_member (
+    household_id BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
+    user_id      BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    role         VARCHAR(20) NOT NULL CHECK (role IN ('owner','admin','member')),
+    created_by   VARCHAR(100) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by   VARCHAR(100),
+    updated_at   TIMESTAMPTZ,
+    PRIMARY KEY (household_id, user_id)
+);
+CREATE INDEX idx_household_member_user ON household.household_member (user_id);
+```
+
+Member lists, per-household roles, and every household guard read
+`household_member`; the service layer keeps the `users` pointer and role
+in sync on every membership change (`accept`, `leave`, `remove`,
+`setActiveHousehold`, role promotions), so existing household-scoped
+queries keep working unchanged. `identity` is allowed to read
+`household_member` under ADR-005 — the sole documented exception to the
+schema-isolation guard.
+
 `users.provider`/`external_subject` hold the *primary* login (the first
 sign-in that created the account). Additional provider logins live in
 `identity.user_login`, and refresh-token sessions in `identity.session`:

@@ -1411,6 +1411,147 @@ func runMultiHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil
 		}
 	}
 	assert.True(t, sharedOK)
+
+	// --- pantry isolation: stock stays inside the household it was
+	// added to, even though K holds three memberships ---
+	// K's active household is "Beach House" (created and activated above).
+	kItem := itemsRes.Items.Items[0].ID
+	status, gr = doGraphQL(t, srv, tokK, `mutation Stock($itemId: ID!) {
+		adjustUserItem(itemId: $itemId, quantity: 1.0) { id }
+	}`, map[string]any{"itemId": kItem})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	pantryHas := func(token, itemID string) bool {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, token, `{ userItems(page: 1, pageSize: 100) { items { item { id } } } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			UI struct {
+				Items []struct {
+					Item struct {
+						ID string `json:"id"`
+					} `json:"item"`
+				} `json:"items"`
+			} `json:"userItems"`
+		}
+		decodeData(t, gr.Data, &res)
+		for _, ui := range res.UI.Items {
+			if ui.Item.ID == itemID {
+				return true
+			}
+		}
+		return false
+	}
+	beachHH := activeID(tokK)
+	assert.True(t, pantryHas(tokK, kItem), "stocked item must be in the active household's pantry")
+
+	status, _ = doGraphQL(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id }
+	}`, map[string]any{"id": kSolo})
+	require.Equal(t, http.StatusOK, status)
+	assert.False(t, pantryHas(tokK, kItem), "another household's pantry must not leak into the solo household")
+
+	status, _ = doGraphQL(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id }
+	}`, map[string]any{"id": lHH})
+	require.Equal(t, http.StatusOK, status)
+	assert.False(t, pantryHas(tokK, kItem), "the joined household's pantry must not leak either")
+	status, _ = doGraphQL(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id }
+	}`, map[string]any{"id": beachHH})
+	require.Equal(t, http.StatusOK, status)
+	assert.True(t, pantryHas(tokK, kItem), "switching back restores the stocked household's pantry")
+
+	// --- allergen records follow the member into every household ---
+	// K records a milk allergy; warnings name K wherever K is a member,
+	// and a household K doesn't belong to sees no warning for K.
+	adminTok := issuer.Token(t, "mh-admin", "auth@example.com", "MH Admin")
+	status, gr = doGraphQL(t, srv, adminTok, `{ allergens { id name } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var allergenRes struct {
+		Allergens []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"allergens"`
+	}
+	decodeData(t, gr.Data, &allergenRes)
+	milkID := ""
+	for _, a := range allergenRes.Allergens {
+		if a.Name == "milk" {
+			milkID = a.ID
+		}
+	}
+	require.NotEmpty(t, milkID, "seed catalog must contain the milk allergen")
+
+	status, gr = doGraphQL(t, srv, adminTok, `mutation Flag($itemId: ID!, $allergenId: ID!) {
+		setItemAllergen(itemId: $itemId, allergenId: $allergenId, kind: contains)
+	}`, map[string]any{"itemId": kItem, "allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	status, gr = doGraphQL(t, srv, tokK, `mutation Allergy($allergenId: ID!) {
+		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
+	}`, map[string]any{"allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// allergyWarnings resolve through the pantry row, which preloads the
+	// allergy context scoped to the caller's ACTIVE household members.
+	warnsK := func(token string) bool {
+		t.Helper()
+		status, gr := doGraphQL(t, srv, token, `{ userItems(page: 1, pageSize: 100) {
+			items { item { id allergyWarnings { member { displayName } } } }
+		} }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			UI struct {
+				Items []struct {
+					Item struct {
+						ID       string `json:"id"`
+						Warnings []struct {
+							Member struct {
+								DisplayName *string `json:"displayName"`
+							} `json:"member"`
+						} `json:"allergyWarnings"`
+					} `json:"item"`
+				} `json:"items"`
+			} `json:"userItems"`
+		}
+		decodeData(t, gr.Data, &res)
+		for _, ui := range res.UI.Items {
+			if ui.Item.ID != kItem {
+				continue
+			}
+			for _, w := range ui.Item.Warnings {
+				if w.Member.DisplayName != nil && *w.Member.DisplayName == "MH K" {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	assert.True(t, warnsK(tokK), "K's record must warn in Beach House")
+
+	// The same item in the joined household's pantry still warns for K —
+	// the record is user-scoped and K is a member there.
+	status, _ = doGraphQL(t, srv, tokK, `mutation Switch($id: ID!) {
+		setActiveHousehold(householdId: $id) { id }
+	}`, map[string]any{"id": lHH})
+	require.Equal(t, http.StatusOK, status)
+	status, gr = doGraphQL(t, srv, tokK, `mutation Stock($itemId: ID!) {
+		adjustUserItem(itemId: $itemId, quantity: 1.0) { id }
+	}`, map[string]any{"itemId": kItem})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	assert.True(t, warnsK(tokK), "K's record must warn in the joined household too")
+
+	// L's annex has no K membership — the same item there warns nobody.
+	status, gr = doGraphQL(t, srv, tokL, `mutation Stock($itemId: ID!) {
+		adjustUserItem(itemId: $itemId, quantity: 1.0) { id }
+	}`, map[string]any{"itemId": kItem})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	assert.False(t, warnsK(tokL), "L's annex has no K membership — no warning for K there")
 }
 
 // TestIntegrationGroceryTogglePantrySync exercises the atomic toggle +

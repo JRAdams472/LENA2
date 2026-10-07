@@ -870,15 +870,6 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 		if u.HouseholdRole == identity.HouseholdRoleAdmin && mem.Role != identity.HouseholdRoleMember {
 			return errForbidden()
 		}
-		cancelled, err := r.HouseholdService.CancelPendingInvitesFrom(ctx, targetID, u.HouseholdID, u.Email)
-		if err != nil {
-			return err
-		}
-		for _, c := range cancelled {
-			if err := r.notify(ctx, []int64{c.ToUserID}, household.KindInviteCancelled, u.HouseholdID, u.UserID, &c.InviteID); err != nil {
-				return err
-			}
-		}
 		if err := r.HouseholdService.RemoveMembership(ctx, u.HouseholdID, targetID); err != nil {
 			return err
 		}
@@ -890,27 +881,43 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 				return err
 			}
 		}
-		if err := r.notify(ctx, []int64{targetID}, household.KindMemberRemoved, u.HouseholdID, u.UserID, nil); err != nil {
-			return err
-		}
-		mems, err := r.HouseholdService.ListMembersByHousehold(ctx, u.HouseholdID)
-		if err != nil {
-			return err
-		}
-		var remaining []int64
-		for _, m := range mems {
-			if m.UserID != u.UserID {
-				remaining = append(remaining, m.UserID)
-			}
-		}
-		// To the rest of the household a removal reads the same as a leave.
-		return r.notify(ctx, remaining, household.KindMemberLeft, u.HouseholdID, targetID, nil)
+		return r.notifyHouseholdMemberRemoval(ctx, u, targetID)
 	})
 	if err != nil {
 		return nil, err
 	}
 	r.invalidateUserID(ctx, targetID)
 	return r.householdWithMembers(ctx, u.HouseholdID, u.UserID, u.HouseholdID)
+}
+
+// notifyHouseholdMemberRemoval cancels the target's pending invites from
+// this household, tells them they were removed, and tells the remaining
+// members — to them a removal reads the same as a leave. Runs inside the
+// caller's ambient transaction.
+func (r *Resolver) notifyHouseholdMemberRemoval(ctx context.Context, u currentuser.User, targetID int64) error {
+	cancelled, err := r.HouseholdService.CancelPendingInvitesFrom(ctx, targetID, u.HouseholdID, u.Email)
+	if err != nil {
+		return err
+	}
+	for _, c := range cancelled {
+		if err := r.notify(ctx, []int64{c.ToUserID}, household.KindInviteCancelled, u.HouseholdID, u.UserID, &c.InviteID); err != nil {
+			return err
+		}
+	}
+	if err := r.notify(ctx, []int64{targetID}, household.KindMemberRemoved, u.HouseholdID, u.UserID, nil); err != nil {
+		return err
+	}
+	mems, err := r.HouseholdService.ListMembersByHousehold(ctx, u.HouseholdID)
+	if err != nil {
+		return err
+	}
+	var remaining []int64
+	for _, m := range mems {
+		if m.UserID != u.UserID {
+			remaining = append(remaining, m.UserID)
+		}
+	}
+	return r.notify(ctx, remaining, household.KindMemberLeft, u.HouseholdID, targetID, nil)
 }
 
 // MyNotifications returns the caller's household notifications,
