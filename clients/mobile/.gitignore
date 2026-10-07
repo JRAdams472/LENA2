@@ -23,3 +23,6 @@ android/app/release
 
 # Firebase client config — contains the project key, do not commit.
 android/app/google-services.json
+
+# Coverage
+coverage/

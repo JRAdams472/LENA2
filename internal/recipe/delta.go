@@ -451,8 +451,11 @@ func (s *Service) SetRecipeDelta(ctx context.Context, recipeID, householdID int6
 			before = prior.snapshot()
 		}
 		after := (deltaSet{items: items, steps: steps}).snapshot()
-		return insertDeltaEvent(ctx, q, recipeID, householdID,
-			&row.RecipeDeltaID, DeltaEventSet, by, before, after)
+		return insertDeltaEvent(ctx, q, deltaEventParams{
+			recipeID: recipeID, householdID: householdID,
+			deltaID: &row.RecipeDeltaID, event: DeltaEventSet, actor: by,
+			before: before, after: after,
+		})
 	})
 	if err != nil {
 		return RecipeDelta{}, err
@@ -528,8 +531,11 @@ func (s *Service) ClearRecipeDelta(ctx context.Context, recipeID, householdID in
 		if cur == nil {
 			return fmt.Errorf("clear recipe delta: %w", domainerr.ErrNotFound)
 		}
-		if err := insertDeltaEvent(ctx, q, recipeID, householdID,
-			&cur.deltaID, DeltaEventClear, by, cur.snapshot(), nil); err != nil {
+		if err := insertDeltaEvent(ctx, q, deltaEventParams{
+			recipeID: recipeID, householdID: householdID,
+			deltaID: &cur.deltaID, event: DeltaEventClear, actor: by,
+			before: cur.snapshot(),
+		}); err != nil {
 			return fmt.Errorf("clear recipe delta: %w", err)
 		}
 		n, err := q.DeleteRecipeDelta(ctx, sqlc.DeleteRecipeDeltaParams{
@@ -565,8 +571,11 @@ func (s *Service) AcknowledgeRecipeDelta(ctx context.Context, recipeID, househol
 		if n == 0 {
 			return fmt.Errorf("acknowledge recipe delta: %w", domainerr.ErrNotFound)
 		}
-		return insertDeltaEvent(ctx, q, recipeID, householdID,
-			&cur.deltaID, DeltaEventAcknowledge, by, nil, cur.snapshot())
+		return insertDeltaEvent(ctx, q, deltaEventParams{
+			recipeID: recipeID, householdID: householdID,
+			deltaID: &cur.deltaID, event: DeltaEventAcknowledge, actor: by,
+			after: cur.snapshot(),
+		})
 	})
 }
 
@@ -695,20 +704,26 @@ func loadDeltaSet(ctx context.Context, q sqlc.Querier, recipeID, householdID int
 	return set, nil
 }
 
+// deltaEventParams carries one audit row for insertDeltaEvent.
+type deltaEventParams struct {
+	recipeID, householdID int64
+	deltaID               *int64
+	event, actor          string
+	before, after         *deltaSetSnapshot
+}
+
 // insertDeltaEvent appends one audit row inside the caller's transaction.
-func insertDeltaEvent(ctx context.Context, q sqlc.Querier,
-	recipeID, householdID int64, deltaID *int64, event, actor string,
-	before, after *deltaSetSnapshot) error {
-	detail, err := json.Marshal(deltaEventDetail{Before: before, After: after})
+func insertDeltaEvent(ctx context.Context, q sqlc.Querier, p deltaEventParams) error {
+	detail, err := json.Marshal(deltaEventDetail{Before: p.before, After: p.after})
 	if err != nil {
 		return fmt.Errorf("delta event detail: %w", err)
 	}
 	return q.InsertDeltaEvent(ctx, sqlc.InsertDeltaEventParams{
-		RecipeID:      recipeID,
-		HouseholdID:   householdID,
-		RecipeDeltaID: optInt8(deltaID),
-		Event:         event,
-		Actor:         actor,
+		RecipeID:      p.recipeID,
+		HouseholdID:   p.householdID,
+		RecipeDeltaID: optInt8(p.deltaID),
+		Event:         p.event,
+		Actor:         p.actor,
 		Detail:        detail,
 	})
 }

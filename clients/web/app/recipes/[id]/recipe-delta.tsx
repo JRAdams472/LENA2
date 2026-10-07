@@ -72,15 +72,20 @@ const eventKindChip: Record<RecipeDeltaEvent["event"], string> = {
   acknowledge: "Reviewed",
 };
 
+/** "4 lines" for n>0, null for 0 — keeps describeDeltaEvent flat. */
+function pluralPart(n: number, word: string): string | null {
+  if (n <= 0) {
+    return null;
+  }
+  const suffix = n === 1 ? "" : "s";
+  return `${n} ${word}${suffix}`;
+}
+
 /** One history line — "e2e@example.com saved the tweak set — 4 lines + 2 steps". */
 function describeDeltaEvent(e: RecipeDeltaEvent): string {
   const tweakBits = [
-    e.itemCount > 0
-      ? `${e.itemCount} line${e.itemCount === 1 ? "" : "s"}`
-      : null,
-    e.stepCount > 0
-      ? `${e.stepCount} step${e.stepCount === 1 ? "" : "s"}`
-      : null,
+    pluralPart(e.itemCount, "line"),
+    pluralPart(e.stepCount, "step"),
   ].filter(Boolean);
   const tweaks = tweakBits.length > 0 ? ` — ${tweakBits.join(" + ")}` : "";
   switch (e.event) {

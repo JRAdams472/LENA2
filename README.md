@@ -16,9 +16,9 @@ LENA2 is a personal, privacy-first household management system. It replaces scat
 - **Shop smarter** — check off grocery items while you shop; checked-off food items can update pantry stock automatically.
 - **Track wine** — maintain a wine cellar with bottles, types, countries, regions, vintages, and grape varieties.
 - **Add items on the go** — use the mobile app to scan a UPC barcode, look up catalog items, and submit missing products for approval.
-- **Share a household** — invite family members; recipes, plans, lists, events, pantry, and cellar are household-scoped, and changes notify the other members.
+- **Share households** — invite family members; recipes, plans, lists, events, pantry, and cellar are household-scoped, and changes notify the other members. One account can belong to several households and switch between them.
 
-Authentication is handled by Google sign-in via OpenID Connect or Discord/Microsoft/Facebook OAuth2 (authorization-code flows use PKCE S256); a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar, and accepting a household invite merges the new member's existing plans, lists, and events into the shared household.
+Authentication is handled by Google sign-in via OpenID Connect or Discord/Microsoft/Facebook OAuth2 (authorization-code flows use PKCE S256); a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar. A user can hold memberships in multiple households with a server-stored **active household** selecting which one they see; accepting an invite adds a membership and offers a merge that folds a solely owned household's pantry, cellar, plans, lists, and events into the shared one before dissolving it.
 
 ---
 
@@ -89,7 +89,7 @@ The web dashboard (`clients/web`) is an admin-style application with a navigatio
 
 - `/users` — user management (admin only).
 - `/items/pending` — approve or reject user-submitted items (admin only).
-- `/household` — household members, roles, and invites; each member manages their own allergy/dietary records here.
+- `/household` — household members, roles, and invites; each member manages their own allergy/dietary records here. A **Your households** section lists every membership with the active one marked — switch between them, create a new household, or leave any of them; accepting an invite while you solely own a household offers a merge.
 - `/profile` — current-user profile (name, backup email, discoverability, and your own allergy/dietary records).
 
 The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item. An hourly sweep also produces reminders: protein defrosting (scaled by weight — 48 hours up to 8 lbs, then 24 hours per additional 4 lbs), multi-day recipe prep (steps of 24h+), and pantry items nearing their expiry date. Expiry reminders include an **Add to list** action that drops a replacement onto the current grocery list.
@@ -112,7 +112,7 @@ The Flutter app (`clients/mobile`) is intended for quick, on-the-go actions:
 - **Events** — browse food events, manage dish slots (recipe or free-form, meal type, servings, serve time), and view the cooking timeline as a step-by-step checklist.
 - **Pantry** — view pantry quantities and minimums for tracked items.
 - **Scan** — use the camera to scan a barcode, look up the item by UPC, add or remove stock, or submit a missing item for admin approval.
-- **Household** — members, roles, and invites; the tab badge shows unread household notifications. Your allergy/dietary records live here too — flag rows carry warning badges that open a detail dialog naming the conflict.
+- **Household** — members, roles, and invites; the tab badge shows unread household notifications. An active-household header opens a switcher sheet covering every membership (switch, leave, or create a new one), and the same merge prompt as the web appears on invite accept. Your allergy/dietary records live here too — flag rows carry warning badges that open a detail dialog naming the conflict.
 - **Bottom navigation** — Dashboard, Grocery, Events, Scan, Pantry, Household.
 
 UPC normalization follows this rule: 12 digits go to `upc12`, 13 digits are left-padded with `0` and treated as `upc14`, and 14 digits go straight to `upc14`. Anything else is considered not found.
