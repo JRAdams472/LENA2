@@ -13,6 +13,7 @@ import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import { useColorScheme } from "@mui/material/styles";
 import { api, ApiError } from "@/lib/api";
 import { MemberAllergyKind, User } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
@@ -192,6 +193,32 @@ function AllergyCard() {
   );
 }
 
+// Light/dark/system preference — persisted by MUI in localStorage
+// (mui-mode), applied before first paint by InitColorSchemeScript.
+function AppearanceCard() {
+  const { mode, setMode } = useColorScheme();
+  return (
+    <>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Follows your device setting unless you pick one here.
+      </Typography>
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={mode ?? "system"}
+        onChange={(_e, v) => {
+          if (v === "light" || v === "system" || v === "dark") setMode(v);
+        }}
+        data-testid="appearance-mode"
+      >
+        <ToggleButton value="light">Light</ToggleButton>
+        <ToggleButton value="system">System</ToggleButton>
+        <ToggleButton value="dark">Dark</ToggleButton>
+      </ToggleButtonGroup>
+    </>
+  );
+}
+
 export default function ProfilePage() {
   const { me, isLoading, refetch } = useMe();
 
@@ -213,6 +240,12 @@ export default function ProfilePage() {
           {me.email} — {me.role === "admin" ? "Administrator" : "Member"}
         </Typography>
         <ProfileForm key={me.userID} me={me} onSaved={refetch} />
+      </Paper>
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Appearance
+        </Typography>
+        <AppearanceCard />
       </Paper>
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom>

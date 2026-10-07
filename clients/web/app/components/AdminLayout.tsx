@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { alpha, styled, useTheme } from "@mui/material/styles";
+import { styled, useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
@@ -35,11 +35,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
 import { api } from "@/lib/api";
+import { paletteFor } from "@/lib/themeVars";
 import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
 import LoginScreen from "@/app/components/LoginScreen";
 import LenaLogo from "@/app/components/LenaLogo";
+import ThemeModeButton from "@/app/components/ThemeModeButton";
 
 const DRAWER_WIDTH = 260;
 const APPBAR_HEIGHT = 96;
@@ -466,7 +468,7 @@ export default function AdminLayout({
           display: { xs: "flex", md: "none" },
           alignItems: "center",
           justifyContent: "center",
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          borderBottom: `1px solid ${paletteFor(theme).divider}`,
         }}
       >
         <LenaLogo size={24} />
@@ -530,6 +532,7 @@ export default function AdminLayout({
               {user && (
                 <>
                   <NotificationBell />
+                  <ThemeModeButton />
                   <Box
                     sx={{
                       display: "flex",
@@ -539,7 +542,7 @@ export default function AdminLayout({
                       px: 1.5,
                       py: 0.5,
                       mr: 1,
-                      bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
+                      bgcolor: `color-mix(in srgb, ${paletteFor(theme).primary.contrastText} 15%, transparent)`,
                     }}
                   >
                     <AccountCircleIcon fontSize="small" />
@@ -587,7 +590,7 @@ export default function AdminLayout({
                     ml: { xs: 0, sm: -0.5 },
                   },
                   ...(pathname === "/assistant" && {
-                    bgcolor: alpha(theme.palette.primary.contrastText, 0.15),
+                    bgcolor: `color-mix(in srgb, ${paletteFor(theme).primary.contrastText} 15%, transparent)`,
                   }),
                 }}
               >
@@ -637,7 +640,7 @@ export default function AdminLayout({
             sx={{
               height: APPBAR_HEIGHT,
               flexShrink: 0,
-              borderBottom: `1px solid ${theme.palette.divider}`,
+              borderBottom: `1px solid ${paletteFor(theme).divider}`,
             }}
           />
           {drawerContent}

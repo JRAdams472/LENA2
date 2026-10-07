@@ -3,6 +3,7 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
+import { paletteFor } from "@/lib/themeVars";
 
 interface LenaLogoProps {
   size?: number;
@@ -18,8 +19,10 @@ export default function LenaLogo({
   showWordmark = true,
 }: LenaLogoProps) {
   const theme = useTheme();
-  const resolvedIconColor = iconColor ?? theme.palette.primary.dark;
-  const resolvedTextColor = textColor ?? theme.palette.text.primary;
+  // theme.vars.* resolves to the per-scheme CSS var — theme.palette.* would
+  // stay bound to the light scheme under colorSchemeSelector:"class".
+  const resolvedIconColor = iconColor ?? paletteFor(theme).primary.dark;
+  const resolvedTextColor = textColor ?? paletteFor(theme).text.primary;
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
       <Box

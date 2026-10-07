@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
 import ProfilePage from "@/app/profile/page";
 import { api } from "@/lib/api";
 
@@ -43,12 +44,33 @@ const me = {
   household: null,
 };
 
+const theme = createTheme({
+  cssVariables: { colorSchemeSelector: "class" },
+  colorSchemes: { light: { palette: {} }, dark: { palette: {} } },
+});
+
+// jsdom has no matchMedia; useColorScheme reads it for the system scheme.
+beforeAll(() => {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+});
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <ProfilePage />
-    </QueryClientProvider>
+    <ThemeProvider theme={theme} defaultMode="system">
+      <QueryClientProvider client={qc}>
+        <ProfilePage />
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 
@@ -138,6 +160,25 @@ describe("profile page", () => {
     await waitFor(() =>
       expect(mockedApi.setMyAllergy).toHaveBeenCalledWith(2, "dietary", true)
     );
+  });
+
+  it("offers Light/System/Dark and persists the choice client-locally", async () => {
+    renderPage();
+    const group = screen.getByTestId("appearance-mode");
+    // No stored preference -> System is the selected default.
+    expect(
+      within(group).getByRole("button", { name: "System" })
+    ).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(
+      within(group).getByRole("button", { name: "Dark" })
+    );
+    await waitFor(() =>
+      expect(localStorage.getItem("mui-mode")).toBe("dark")
+    );
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    document.documentElement.classList.remove("dark");
+    localStorage.removeItem("mui-mode");
   });
 
   it("clears the record when None is picked", async () => {

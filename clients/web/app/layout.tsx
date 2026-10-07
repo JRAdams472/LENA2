@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ReactNode } from "react";
 import localFont from "next/font/local";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
+import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
 import Providers from "./providers";
 import AdminLayout from "./components/AdminLayout";
 
@@ -31,6 +32,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={nunito.variable}>
       <body>
+        {/* Sets the resolved light/dark class before paint — no flash on
+            reload; 'class' matches cssVariables.colorSchemeSelector. */}
+        <InitColorSchemeScript attribute="class" defaultMode="system" />
         <AppRouterCacheProvider>
           <Providers>
             <AdminLayout>{children}</AdminLayout>
