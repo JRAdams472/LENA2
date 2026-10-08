@@ -161,3 +161,11 @@ Signals to rank by should include but not be limited to:
 - **Web hero surfaces (P3).** Shared `EmptyState`/`SectionHeader`/`StatusChip` primitives, dashboard section headers + content fade + tile hover lift, split-brand login card, DataTable empty states, household Active/owner/member chips, motion tokens wired into MUI `transitions`.
 - **Mobile dark mode (P4).** `lenaDarkTheme()` from a shared parameterized builder, `ThemeModeController` (provider + `shared_preferences`), Appearance card on More; legibility sweep moved every direct palette/`Colors.*` read onto the color scheme.
 - **Mobile hero surfaces (P5).** Flutter `EmptyState`/`SectionHeader`/`StatusChip`/`LenaFadeIn` parity, dashboard headers + empty states + reason chips, collection empty states, vertical brand-card login, and cross-platform golden tests via a tolerant `LocalFileComparator` (absorbs Windows↔Linux AA noise, still fails above 1%).
+
+## Server-side filtering + mobile pagination (LEN-78)
+✅ Done — the client-side fetch-all class is gone; every large list is a single filtered, paginated server request (PRs #308–#312):
+- **Dead helpers + embedded lookups (P1).** Removed `getBrandList`/`fetchAllItems`/`getFoodFlavors`/`getFoodNutrients`/`getMealSlotItems`; dashboard and meal-plan slot names come from the already-embedded `MealSlot.recipe`.
+- **Web recipe pickers (P2).** Shared `RecipeAutocomplete` (debounced, `filterOptions={x=>x}`) on meal-plan slots, event dishes, and allergen suggestions; `getRecipesPaged` gained `mealType`; `getRecipes` deleted.
+- **Bottle filters (P3).** `bottles(countryId, regionId, typeId, vintageYear, favoritesOnly)` — SQL predicates shared by search and count; the web wine page's five selects + favorites + search compose into one paged request.
+- **Pantry merge (P4).** `userItems(search, itemIds, inStock, isFavorite, brandId)` — the items page no longer loops the pantry client-side; `fetchAllUserItems` deleted (zero unbounded loops remain in `api.ts`).
+- **Mobile (P5).** `PagedListView` (`fetchMore` + `updateQuery` merge) on all 8 lists; `SearchPickerField`/`SearchPickerSheet` debounced server-side pickers replace the 100/200-row recipe and bottle dropdowns.

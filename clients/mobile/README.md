@@ -170,7 +170,7 @@ gated artifacts.
 
 - `lib/theme.dart` — `lenaTheme()` + `lenaDarkTheme()`: the web's sage/cream palette, bundled Nunito, and M3 component themes; dark uses warm-charcoal surfaces with lifted sage accents per `docs/design.md`.
 - `lib/theme_mode.dart` — `ThemeModeController` (provider): system/light/dark selection persisted in `shared_preferences`; the Appearance card on `more_screen.dart` drives it.
-- `lib/widgets/` — shared UI primitives: `EmptyState`, `SectionHeader`, `StatusChip`, `LenaFadeIn` motion tokens, `LenaSkeleton`/`LenaSplash` loading states.
+- `lib/widgets/` — shared UI primitives: `EmptyState`, `SectionHeader`, `StatusChip`, `LenaFadeIn` motion tokens, `LenaSkeleton`/`LenaSplash` loading states, `PagedListView` (scroll-triggered `fetchMore` merging for every connection list), `SearchPickerField`/`SearchPickerSheet` (debounced server-side entity pickers), `RecipePickerField` (recipe-specific wrapper with `mealType`/`categoryIds`).
 - `lib/graphql_config.dart` — `GraphQLClient` with `AuthLink` (proactive session refresh) + `ErrorLink` (one-time refresh-and-retry on 401).
 - `lib/main.dart` — App entry point with `GraphQLProvider` and `AuthGate`.
 - `lib/auth/auth_service.dart` — Google sign-in, `/auth/session` exchange, secure token storage, `LENA_DEBUG_ID_TOKEN` bypass for emulator/e2e runs.

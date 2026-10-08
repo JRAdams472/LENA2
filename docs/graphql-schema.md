@@ -281,13 +281,13 @@ type GroceryRouteItem {
 | `category(id)` | `ID!` | `Category` | Single category |
 | `categories` | — | `[Category!]!` | All categories |
 | `item(id)` | `ID!` | `Item` | Single catalog item |
-| `items(page, pageSize)` | `Int, Int` | `ItemPage!` | Paginated catalog items |
+| `items(page, pageSize, search, brandId)` | `Int, Int, String, ID` | `ItemPage!` | Paginated catalog items |
 | `recipe(id)` | `ID!` | `Recipe` | Single recipe |
 | `recipes(page, pageSize, search, categoryIds, isFavorite, mealType, searchMode)` | `Int, Int, String, [ID!], Boolean, String, RecipeSearchMode` | `RecipePage!` | Paginated recipes — `searchMode: semantic` ranks embedded recipes by cosine distance + engagement (see `semanticSearchAvailable`) |
-| `userItems(page, pageSize)` | `Int, Int` | `UserItemPage!` | Current user's pantry |
+| `userItems(page, pageSize, search, itemIds, inStock, isFavorite, brandId)` | `Int, Int, String, [ID!], Boolean, Boolean, ID` | `UserItemPage!` | Current user's pantry — `inStock` = qty > 0; `search`/`itemIds`/`brandId` resolve to catalog IDs and AND together |
 | `userBottles(page, pageSize)` | `Int, Int` | `UserBottlePage!` | Current user's cellar |
 | `bottle(id)` | `ID!` | `Bottle` | Single wine bottle |
-| `bottles(page, pageSize)` | `Int, Int` | `BottlePage!` | Paginated wine bottles |
+| `bottles(page, pageSize, search, countryId, regionId, typeId, vintageYear, favoritesOnly)` | `Int, Int, String, ID, ID, ID, Int, Boolean` | `BottlePage!` | Paginated wine bottles — all filters compose server-side |
 | `mealPlan(id)` | `ID!` | `MealPlan` | Single meal plan |
 | `mealPlans(page, pageSize)` | `Int, Int` | `MealPlanPage!` | Current user's plans |
 | `groceryList(id)` | `ID!` | `GroceryList` | Single grocery list |
