@@ -146,6 +146,9 @@ type Query {
   # The authoritative walk order for a list — aisle groups in position
   # order, items sorted by manual rank then learned check-off order.
   groceryRouteGroups(groceryListId: ID!): [GroceryRouteGroup!]!
+  # Shopper integrations configured on this deployment — empty when no
+  # provider key is set; clients hide their "shop this list" affordance.
+  shopperProviders: [ShopperProvider!]!
   # Pantry items at or below min_qty, ranked by household engagement and
   # excluding anything already on the latest grocery list.
   suggestedRestockItems(limit: Int = 10): [Item!]!
@@ -368,6 +371,11 @@ type Mutation {
   # Persists the user's arrangement — entries are the items in display
   # order; an entry carrying aisleId also moves the item to that aisle.
   reorderGroceryListItems(groceryListId: ID!, entries: [GroceryReorderEntryInput!]!): Boolean!
+  # Creates a shareable shopping-list link on an external shopper service
+  # for the list's unchecked lines (includeChecked overrides). Stateless:
+  # every call mints a fresh URL; the user completes the handoff in the
+  # provider's own site/app. Null provider picks the configured service.
+  createShoppingLink(groceryListId: ID!, provider: ShopperProvider, includeChecked: Boolean): ShoppingLink!
 
   createBottle(input: CreateBottleInput!): Bottle! @admin
   updateBottle(id: ID!, input: UpdateBottleInput!): Bottle! @admin
@@ -1374,6 +1382,18 @@ input AddGroceryItemInput {
 type GroceryListPage {
   items: [GroceryList!]!
   pageInfo: PageInfo!
+}
+
+# A shopper-service integration that can accept a LENA grocery list.
+enum ShopperProvider {
+  INSTACART
+}
+
+# A shareable link to a pre-populated shopping list on the provider's
+# site — the user completes the handoff in their own session.
+type ShoppingLink {
+  provider: ShopperProvider!
+  url: String!
 }
 
 input CreateBrandInput {

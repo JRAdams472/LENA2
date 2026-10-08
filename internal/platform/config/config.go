@@ -99,6 +99,16 @@ type Config struct {
 	OCRServiceURL string `envconfig:"OCR_SERVICE_URL" default:"http://ocr:8000"`
 	// OCRTimeout caps the call to the OCR service.
 	OCRTimeout time.Duration `envconfig:"OCR_TIMEOUT" default:"20s"`
+	// InstacartAPIKey authenticates products_link calls to the Instacart
+	// Developer Platform. Empty disables the shopping integration:
+	// shopperProviders returns an empty list and createShoppingLink
+	// reports UNAVAILABLE.
+	InstacartAPIKey string `envconfig:"INSTACART_API_KEY" default:""`
+	// InstacartBaseURL selects the IDP server — connect.dev.instacart.tools
+	// for development keys, connect.instacart.com for production keys.
+	InstacartBaseURL string `envconfig:"INSTACART_BASE_URL" default:"https://connect.dev.instacart.tools"`
+	// InstacartTimeout caps one products_link call.
+	InstacartTimeout time.Duration `envconfig:"INSTACART_TIMEOUT" default:"15s"`
 	// NutritionPhotoMaxBytes is the maximum decoded image size accepted by
 	// submitItemNutritionPhoto.
 	NutritionPhotoMaxBytes int `envconfig:"NUTRITION_PHOTO_MAX_BYTES" default:"6291456"`

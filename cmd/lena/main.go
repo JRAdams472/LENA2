@@ -41,6 +41,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/instacartclient"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/platform/logger"
 	"github.com/JRAdams472/LENA2/internal/platform/ocrclient"
@@ -182,18 +183,21 @@ func run() int {
 // serverServices groups the long-lived components newServer wires into
 // the resolver and route handlers so each construction stage stays small.
 type serverServices struct {
-	IdentitySvc      *identity.Service
-	AnalyticsSvc     *analytics.Service
-	GrocerySvc       *grocery.Service
-	HouseholdSvc     *household.Service
-	InventorySvc     *inventory.Service
-	EventSvc         *event.Service
-	MealPlanSvc      *mealplan.Service
-	NotifierSvc      *notifier.Service
-	RecipeSvc        *recipe.Service
-	UserPrefsSvc     *userprefs.Service
-	WineSvc          *wine.Service
-	OCRClient        *ocrclient.Client
+	IdentitySvc  *identity.Service
+	AnalyticsSvc *analytics.Service
+	GrocerySvc   *grocery.Service
+	HouseholdSvc *household.Service
+	InventorySvc *inventory.Service
+	EventSvc     *event.Service
+	MealPlanSvc  *mealplan.Service
+	NotifierSvc  *notifier.Service
+	RecipeSvc    *recipe.Service
+	UserPrefsSvc *userprefs.Service
+	WineSvc      *wine.Service
+	OCRClient    *ocrclient.Client
+	// ShoppingClient is a bff interface so a nil *instacartclient.Client
+	// never wraps into a non-nil interface — empty disables the feature.
+	ShoppingClient   bff.ShoppingLinkClient
 	IdempotencyStore *idempotency.Store
 	RecipeImportSvc  *recipeimport.Service
 	AISvc            *ai.Service
@@ -249,6 +253,11 @@ func newDomainServices(cfg config.Config, pool *pgxpool.Pool) *serverServices {
 		UserPrefsSvc: userprefs.NewService(pool),
 		WineSvc:      wine.NewService(pool),
 		OCRClient:    ocrclient.New(cfg.OCRServiceURL, cfg.OCRTimeout),
+	}
+	// The shopping integration is opt-in: no API key means no client,
+	// shopperProviders reports [], and createShoppingLink is UNAVAILABLE.
+	if cfg.InstacartAPIKey != "" {
+		s.ShoppingClient = instacartclient.New(cfg.InstacartBaseURL, cfg.InstacartAPIKey, cfg.InstacartTimeout)
 	}
 	// Opt-outs apply to event-driven notifications too, not just sweep
 	// reminders — the gate is checked at write time.
@@ -541,6 +550,7 @@ func registerAPIRoutes(e *echo.Echo, cfg config.Config, pool *pgxpool.Pool, s *s
 			Auth:           s.Authenticator,
 			AI:             s.AISvc,
 			OCR:            s.OCRClient,
+			Shopping:       s.ShoppingClient,
 			RecipeEmbedder: s.RecipeEmbedder,
 		},
 		bff.Options{
