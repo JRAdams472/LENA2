@@ -1,0 +1,41 @@
+{
+  "moduleFloor": 70.0,
+  "enforceModules": false,
+  "minUnits": 10,
+  "surfaces": [
+    {
+      "name": "go",
+      "kind": "gocover",
+      "path": "coverage-filtered.out",
+      "module": "package",
+      "prefix": "github.com/JRAdams472/LENA2/",
+      "floor": 70.0,
+      "exclude": [
+        "**/sqlc/**",
+        "**/mock/**",
+        "cmd/testissuer/**",
+        "internal/platform/dbtx/dbtxtest/**"
+      ]
+    },
+    {
+      "name": "web",
+      "kind": "lcov",
+      "path": "clients/web/coverage/lcov.info",
+      "module": "file",
+      "floor": 75.0,
+      "exclude": [
+        "lib/ai/engines/**"
+      ]
+    },
+    {
+      "name": "mobile",
+      "kind": "lcov",
+      "path": "clients/mobile/coverage/lcov.info",
+      "module": "file",
+      "floor": 45.0,
+      "exclude": [
+        "lib/ai/gemma_binding.dart"
+      ]
+    }
+  ]
+}

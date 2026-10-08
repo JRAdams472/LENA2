@@ -1,12 +1,13 @@
-// Command coveragefilter removes gomock mock packages from a Go coverage
-// profile so the reported total reflects production and generated sqlc code.
+// Command coveragefilter removes generated packages (gomock mocks, sqlc
+// output) from a Go coverage profile so the reported total reflects
+// hand-written production code.
 //
 // Usage:
 //
 //	go run ./tools/coveragefilter < coverage.out > coverage-filtered.out
 //
 // It passes the mode header through unchanged and drops any cover block
-// whose file path contains a /mock/ directory segment.
+// whose file path contains a /mock/ or /sqlc/ directory segment.
 package main
 
 import (
@@ -16,10 +17,10 @@ import (
 	"strings"
 )
 
-// isGenerated reports whether path refers to a gomock mock package,
-// identified by a /mock/ path segment.
+// isGenerated reports whether path refers to a generated package,
+// identified by a /mock/ (gomock) or /sqlc/ (sqlc) path segment.
 func isGenerated(path string) bool {
-	return strings.Contains(path, "/mock/")
+	return strings.Contains(path, "/mock/") || strings.Contains(path, "/sqlc/")
 }
 
 func main() {
