@@ -25,11 +25,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
 )
+
+// querier is the read side of a pgx pool, abstracted so tests can fake
+// the catalog queries without a database. *pgxpool.Pool satisfies it.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// txRunner is the part of pgx.Tx apply uses; *pgx.Tx satisfies it.
+type txRunner interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
 
 // mapping is one proposed item -> ingredient link in the artifact.
 type mapping struct {
@@ -99,12 +115,15 @@ type itemRow struct {
 }
 
 func runPropose(argv []string) error {
-	fs := flag.NewFlagSet("propose", flag.ExitOnError)
+	fs := flag.NewFlagSet("propose", flag.ContinueOnError)
 	out := fs.String("out", "docs/ingredient-curation.json", "artifact path to write")
 	limit := fs.Int("limit", 0, "cap on items sent to the model (0 = all unmapped recipe items)")
 	batch := fs.Int("batch", 30, "items per LLM call")
 	all := fs.Bool("all", false, "propose for every approved catalog item lacking a link, not just recipe-used ones")
 	if err := fs.Parse(argv); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	ctx := context.Background()
@@ -139,34 +158,47 @@ func runPropose(argv []string) error {
 	}
 	slog.Info("proposing mappings", "items", len(items), "known_ingredients", len(ingredients), "model", cfg.OllamaModel)
 
-	art := artifact{GeneratedAt: time.Now().UTC(), Model: cfg.OllamaModel}
-	for i := 0; i < len(items); i += *batch {
-		end := i + *batch
+	art, err := proposeAll(ctx, prov, ingredients, items, *batch, cfg.OllamaModel)
+	if err != nil {
+		return err
+	}
+	return writeArtifact(*out, art)
+}
+
+// proposeAll runs the batch loop over the unmapped items and returns the
+// sorted artifact.
+func proposeAll(ctx context.Context, prov llm.Provider, ingredients []string, items []itemRow, batch int, model string) (artifact, error) {
+	art := artifact{GeneratedAt: time.Now().UTC(), Model: model}
+	for i := 0; i < len(items); i += batch {
+		end := i + batch
 		if end > len(items) {
 			end = len(items)
 		}
 		ms, us, err := proposeBatch(ctx, prov, ingredients, items[i:end])
 		if err != nil {
-			return fmt.Errorf("batch %d-%d: %w", i, end, err)
+			return art, fmt.Errorf("batch %d-%d: %w", i, end, err)
 		}
 		art.Mappings = append(art.Mappings, ms...)
 		art.Unresolved = append(art.Unresolved, us...)
 		slog.Info("batch complete", "range", fmt.Sprintf("%d-%d", i, end), "mapped", len(art.Mappings), "unresolved", len(art.Unresolved))
 	}
 	sort.Slice(art.Mappings, func(i, j int) bool { return art.Mappings[i].ItemName < art.Mappings[j].ItemName })
+	return art, nil
+}
 
+func writeArtifact(path string, art artifact) error {
 	raw, err := json.MarshalIndent(art, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(*out, append(raw, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
 		return err
 	}
-	slog.Info("artifact written", "path", *out, "mappings", len(art.Mappings), "unresolved", len(art.Unresolved))
+	slog.Info("artifact written", "path", path, "mappings", len(art.Mappings), "unresolved", len(art.Unresolved))
 	return nil
 }
 
-func ingredientNames(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+func ingredientNames(ctx context.Context, pool querier) ([]string, error) {
 	rows, err := pool.Query(ctx, `SELECT name FROM inventory.ingredient WHERE is_active ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -183,7 +215,7 @@ func ingredientNames(ctx context.Context, pool *pgxpool.Pool) ([]string, error) 
 	return out, rows.Err()
 }
 
-func unmappedItems(ctx context.Context, pool *pgxpool.Pool, all bool, limit int) ([]itemRow, error) {
+func unmappedItems(ctx context.Context, pool querier, all bool, limit int) ([]itemRow, error) {
 	// Recipe-used items are the only ones that must be mapped for the
 	// backfill; -all widens the sweep to the whole approved catalog.
 	q := `
@@ -297,10 +329,13 @@ Reply ONLY with JSON: {"mappings":[{"item_id":0,"ingredient":"name","confidence"
 // ---------- apply ----------
 
 func runApply(argv []string) error {
-	fs := flag.NewFlagSet("apply", flag.ExitOnError)
+	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	in := fs.String("in", "docs/ingredient-curation.json", "reviewed artifact to apply")
 	dryRun := fs.Bool("dry-run", false, "report what would change without writing")
 	if err := fs.Parse(argv); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	ctx := context.Background()
@@ -327,6 +362,12 @@ func runApply(argv []string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	return applyArtifact(ctx, tx, art, *dryRun)
+}
+
+// applyArtifact resolves ingredients, links items, backfills recipe and
+// event rows, then commits — or rolls back on a dry run.
+func applyArtifact(ctx context.Context, tx txRunner, art artifact, dryRun bool) error {
 	// Resolve every distinct ingredient name once; creation is deduped by
 	// the normalized unique index, so re-running apply is idempotent.
 	ingID := make(map[string]int64)
@@ -398,13 +439,13 @@ func runApply(argv []string) error {
 	eventFilled := tag.RowsAffected()
 
 	slog.Info("apply complete",
-		"dry_run", *dryRun,
+		"dry_run", dryRun,
 		"ingredients_resolved", len(ingID),
 		"item_links_written", linked,
 		"recipe_items_backfilled", recipeFilled,
 		"event_recipe_items_backfilled", eventFilled)
 
-	if *dryRun {
+	if dryRun {
 		return tx.Rollback(ctx)
 	}
 	return tx.Commit(ctx)
