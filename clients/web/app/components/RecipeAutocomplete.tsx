@@ -75,6 +75,7 @@ export default function RecipeAutocomplete({
 
   return (
     <Autocomplete<Recipe, false, false, false>
+      fullWidth
       size={size}
       options={merged}
       getOptionLabel={(r) => r.recipeName}
@@ -94,7 +95,7 @@ export default function RecipeAutocomplete({
           {...params}
           label={label}
           margin={size === "medium" ? "dense" : undefined}
-          fullWidth={size === "medium"}
+          fullWidth
         />
       )}
       sx={sx}
