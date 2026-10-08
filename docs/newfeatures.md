@@ -169,3 +169,8 @@ Signals to rank by should include but not be limited to:
 - **Bottle filters (P3).** `bottles(countryId, regionId, typeId, vintageYear, favoritesOnly)` — SQL predicates shared by search and count; the web wine page's five selects + favorites + search compose into one paged request.
 - **Pantry merge (P4).** `userItems(search, itemIds, inStock, isFavorite, brandId)` — the items page no longer loops the pantry client-side; `fetchAllUserItems` deleted (zero unbounded loops remain in `api.ts`).
 - **Mobile (P5).** `PagedListView` (`fetchMore` + `updateQuery` merge) on all 8 lists; `SearchPickerField`/`SearchPickerSheet` debounced server-side pickers replace the 100/200-row recipe and bottle dropdowns.
+
+## Allergy-context invariant (LEN-71)
+✅ Done — every resolver that reaches `allergens`/`allergyWarnings` now carries either a preloaded allergy context or a lazy `allergySource`; the `INTERNAL: allergy context unavailable` defect class is closed (PRs #314–#315):
+- **Lazy sources (P1).** `item(id)`'s hand-built `itemChildren` gets `firstSource(asOfItemChildren(ch), allergySrc(u))`; `recipeDeltaItemResolver` gained an `as` field propagated recipe → delta → item/ingredient so mutation-response `householdDelta` children resolve; `rateRecipe` returns a full `loadRecipeChildren` graph — its half-built children had also been silently returning `items: []`.
+- **Regression sweep (P2).** Table-driven `allergy sweep` integration subtest exercises all six allergen-bearing types (`Item`, `Ingredient`, `Recipe`, `MealSlot`, `EventRecipe`, `GroceryListItem`) across 17 entry points — single-entity lazy paths, list preloads, and nested children — asserting zero errors and non-empty warnings where a flagged fixture is in scope.
