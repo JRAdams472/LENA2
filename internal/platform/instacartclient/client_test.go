@@ -75,7 +75,7 @@ func TestCreateShoppingList(t *testing.T) {
 }
 
 func TestCreateShoppingListErrorStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, `{"error":"bad key"}`, http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -95,7 +95,7 @@ func TestCreateShoppingListErrorStatus(t *testing.T) {
 }
 
 func TestCreateShoppingListMissingURL(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
