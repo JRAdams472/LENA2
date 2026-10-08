@@ -290,14 +290,6 @@ describe("EventDetailPage", () => {
     mockFetch
       .mockResolvedValueOnce(gql({ foodEvent: gqlEventWithSteps }))
       .mockResolvedValueOnce(gql({ aiAvailable: true }))
-      .mockResolvedValueOnce(
-        gql({
-          recipes: {
-            items: [],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 },
-          },
-        })
-      )
       .mockResolvedValueOnce(gql(gqlTimeline))
       .mockResolvedValueOnce(
         gql({
@@ -378,14 +370,6 @@ describe("EventDetailPage", () => {
     mockFetch
       .mockResolvedValueOnce(gql({ foodEvent: gqlEventWithSteps }))
       .mockResolvedValueOnce(gql({ aiAvailable: true }))
-      .mockResolvedValueOnce(
-        gql({
-          recipes: {
-            items: [],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 },
-          },
-        })
-      )
       .mockResolvedValueOnce(gql(gqlTimeline))
       .mockResolvedValueOnce(
         gql({
@@ -451,14 +435,6 @@ describe("EventDetailPage", () => {
     mockFetch
       .mockResolvedValueOnce(gql({ foodEvent: gqlEvent }))
       .mockResolvedValueOnce(gql({ aiAvailable: false }))
-      .mockResolvedValueOnce(
-        gql({
-          recipes: {
-            items: [],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 },
-          },
-        })
-      )
       .mockResolvedValueOnce(gql(gqlTimeline));
 
     await renderDetailPage(

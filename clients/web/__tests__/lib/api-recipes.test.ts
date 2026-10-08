@@ -87,28 +87,19 @@ describe("api client: recipes", () => {
     setAuthTokenGetter(() => null);
   });
 
-  it("getRecipes paginates through all pages and maps rows", async () => {
-    mockFetch
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          recipes: {
-            items: [gqlRecipe({ id: "1", name: "Pancakes" })],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 201 },
-          },
-        })
+  it("getRecipesPaged maps rows", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(
+        recipesPage([
+          gqlRecipe({ id: "1", name: "Pancakes" }),
+          gqlRecipe({ id: "2", name: "Soup", items: null, steps: null }),
+        ])
       )
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          recipes: {
-            items: [gqlRecipe({ id: "2", name: "Soup", items: null, steps: null })],
-            pageInfo: { pageNumber: 2, pageSize: 200, totalCount: 201 },
-          },
-        })
-      );
+    );
 
-    const recipes = await api.getRecipes();
+    const result = await api.getRecipesPaged(1, 200);
+    const recipes = result.items;
 
-    expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(recipes).toHaveLength(2);
     expect(recipes[0].recipeName).toBe("Pancakes");
     expect(recipes[0].recipeItems?.[0].itemID).toBe(5);
@@ -119,7 +110,7 @@ describe("api client: recipes", () => {
     expect(recipes[1].recipeItems).toEqual([]);
   });
 
-  it("getRecipes maps a recipe item with a null item", async () => {
+  it("getRecipesPaged maps a recipe item with a null item", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL(
         recipesPage([
@@ -138,7 +129,7 @@ describe("api client: recipes", () => {
       )
     );
 
-    const recipes = await api.getRecipes();
+    const recipes = (await api.getRecipesPaged(1, 200)).items;
     const ri = recipes[0].recipeItems?.[0];
     expect(ri?.itemID).toBeNull();
     expect(ri?.itemName).toBeNull();
@@ -147,23 +138,15 @@ describe("api client: recipes", () => {
     expect(ri?.isOptional).toBe(true);
   });
 
-  it("getRecipes sends mealType to the recipes query", async () => {
+  it("getRecipesPaged sends mealType to the recipes query", async () => {
     mockFetch.mockResolvedValueOnce(mockGraphQL(recipesPage([gqlRecipe()])));
 
-    const recipes = await api.getRecipes("Dinner");
+    const result = await api.getRecipesPaged(1, 10, undefined, undefined, undefined, undefined, "Dinner");
 
     const body = lastRequestBody();
     expect(body.query).toContain("mealType: $mealType");
     expect(body.variables.mealType).toBe("Dinner");
-    expect(recipes).toHaveLength(1);
-  });
-
-  it("getRecipes defaults mealType to null", async () => {
-    mockFetch.mockResolvedValueOnce(mockGraphQL(recipesPage([])));
-
-    await api.getRecipes();
-
-    expect(lastRequestBody().variables.mealType).toBeNull();
+    expect(result.items).toHaveLength(1);
   });
 
   it("getRecipesPaged hits the server when no filters are given", async () => {
@@ -179,7 +162,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(2, 10);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 2, pageSize: 10, search: null, categoryIds: null, isFavorite: null, searchMode: "keyword",
+      page: 2, pageSize: 10, search: null, categoryIds: null, isFavorite: null, searchMode: "keyword", mealType: null,
     });
     expect(result.totalPages).toBe(3);
     expect(result.items[0].recipeID).toBe(1);
@@ -193,7 +176,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(1, 10, "pan");
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: "pan", categoryIds: null, isFavorite: null, searchMode: "keyword",
+      page: 1, pageSize: 10, search: "pan", categoryIds: null, isFavorite: null, searchMode: "keyword", mealType: null,
     });
     expect(result.items[0].recipeName).toBe("Pancakes");
   });
@@ -206,7 +189,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(1, 10, undefined, true);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: true, searchMode: "keyword",
+      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: true, searchMode: "keyword", mealType: null,
     });
     expect(result.items[0].recipeName).toBe("Soup");
   });
@@ -219,7 +202,7 @@ describe("api client: recipes", () => {
     const result = await api.getRecipesPaged(1, 10, undefined, undefined, [21, 40]);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: null, categoryIds: ["21", "40"], isFavorite: null, searchMode: "keyword",
+      page: 1, pageSize: 10, search: null, categoryIds: ["21", "40"], isFavorite: null, searchMode: "keyword", mealType: null,
     });
     expect(result.items[0].recipeName).toBe("Tacos");
   });
@@ -230,7 +213,7 @@ describe("api client: recipes", () => {
     await api.getRecipesPaged(1, 10, undefined, undefined, []);
 
     expect(lastRequestBody().variables).toEqual({
-      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: null, searchMode: "keyword",
+      page: 1, pageSize: 10, search: null, categoryIds: null, isFavorite: null, searchMode: "keyword", mealType: null,
     });
   });
 

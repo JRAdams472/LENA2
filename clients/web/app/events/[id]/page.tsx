@@ -36,7 +36,8 @@ import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { fmtDate, fmtQty } from "@/lib/format";
-import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item } from "@/lib/types";
+import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item, Recipe } from "@/lib/types";
+import RecipeAutocomplete from "@/app/components/RecipeAutocomplete";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "other"];
 const STEP_TYPES = ["prep", "cook", "rest", "wait", "serve", "other"];
@@ -81,6 +82,9 @@ function fixLabel(f: EventFixSuggestion): string {
 interface SlotForm {
   eventRecipeID: number | null;
   recipeID: number | null;
+  // Resolved object for the picker display — null when free-form or when
+  // the linked recipe no longer exists.
+  recipe: Recipe | null;
   mealType: string;
   time: string;
   servings: string;
@@ -151,11 +155,6 @@ export default function EventDetailPage({
     staleTime: 5 * 60 * 1000,
   });
   const aiAvailable = aiQuery.data === true || localAIReady;
-
-  const recipesQuery = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => api.getRecipes(),
-  });
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedItemSearch(itemSearch), 300);
@@ -307,6 +306,7 @@ export default function EventDetailPage({
     setForm({
       eventRecipeID: null,
       recipeID: null,
+      recipe: null,
       mealType: "dinner",
       time: slots[0] ?? "18:00",
       servings: "",
@@ -319,6 +319,7 @@ export default function EventDetailPage({
     setForm({
       eventRecipeID: r.eventRecipeID,
       recipeID: r.recipeID,
+      recipe: r.recipe ?? null,
       mealType: r.mealType,
       time: hhmmOf(r.targetTime),
       servings: r.servings != null ? String(r.servings) : "",
@@ -665,29 +666,17 @@ export default function EventDetailPage({
         <DialogContent>
           {form && (
             <>
-              <FormControl fullWidth margin="dense">
-                <InputLabel id="slot-recipe-label">Recipe</InputLabel>
-                <Select
-                  labelId="slot-recipe-label"
-                  label="Recipe"
-                  value={form.recipeID === null ? "" : String(form.recipeID)}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      recipeID: e.target.value === "" ? null : Number(e.target.value),
-                    })
-                  }
-                >
-                  <MenuItem value="">
-                    <em>Free-form (no recipe)</em>
-                  </MenuItem>
-                  {(recipesQuery.data ?? []).map((r) => (
-                    <MenuItem key={r.recipeID} value={String(r.recipeID)}>
-                      {r.recipeName}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <RecipeAutocomplete
+                size="medium"
+                value={form.recipe}
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    recipe: v,
+                    recipeID: v?.recipeID ?? null,
+                  })
+                }
+              />
               <FormControl fullWidth margin="dense">
                 <InputLabel id="slot-meal-label">Meal</InputLabel>
                 <Select
