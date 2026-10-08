@@ -37,6 +37,7 @@ func TestIntegration(t *testing.T) {
 		AuthIssuers:           issuer.URL,
 		AuthAudiences:         testutil.TestAudience,
 		LogLevel:              "error",
+		GraphQLBodyLimit:      "1M",
 		HTTPReadHeaderTimeout: 2 * time.Second,
 		HTTPReadTimeout:       3 * time.Second,
 		HTTPWriteTimeout:      4 * time.Second,
@@ -103,6 +104,32 @@ func TestIntegration(t *testing.T) {
 		require.NoError(t, json.Unmarshal(gr.Data, &data))
 		assert.Equal(t, "int@example.com", data.Me.Email)
 	})
+}
+
+// TestIntegrationRunLifecycle boots run() against the real test database
+// with an invalid port: e.Start fails immediately, so run takes the
+// serverErr branch through graceful shutdown and drain — the deepest path
+// a unit test can't reach without a pool.
+func TestIntegrationRunLifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	ctx := context.Background()
+	pool, err := testutil.SharedTestDB(t, ctx)
+	require.NoError(t, err)
+	issuer := testutil.NewTestIssuer(t)
+
+	t.Setenv("LENA_DATABASE_URL", pool.Config().ConnString())
+	t.Setenv("LENA_AUTH_ISSUERS", issuer.URL)
+	t.Setenv("LENA_AUTH_AUDIENCES", testutil.TestAudience)
+	t.Setenv("LENA_PORT", "notaport") // e.Start fails fast, exercising the serverErr path
+	t.Setenv("LENA_OTLP_ENDPOINT", "")
+	t.Setenv("LENA_AI_PROVIDER", "mock")
+	t.Setenv("LENA_PUSH_PROVIDER", "log")
+	t.Setenv("LENA_SESSION_SECRET", "")
+
+	assert.Equal(t, 1, run())
 }
 
 // httpGet issues a GET with a context so the noctx linter is satisfied.

@@ -27,11 +27,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JRAdams472/LENA2/internal/platform/config"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
 )
+
+// querier is the read side of a pgx pool, abstracted so tests can fake
+// the catalog queries without a database. *pgxpool.Pool satisfies it.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// txRunner is the part of pgx.Tx apply uses; *pgx.Tx satisfies it.
+type txRunner interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
 
 // allergenFlag is one proposed allergen on an ingredient.
 type allergenFlag struct {
@@ -107,12 +123,15 @@ type ingredientRow struct {
 }
 
 func runPropose(argv []string) error {
-	fs := flag.NewFlagSet("propose", flag.ExitOnError)
+	fs := flag.NewFlagSet("propose", flag.ContinueOnError)
 	out := fs.String("out", "docs/allergen-curation.json", "artifact path to write")
 	limit := fs.Int("limit", 0, "cap on ingredients sent to the model (0 = all)")
 	batch := fs.Int("batch", 30, "ingredients per LLM call")
 	all := fs.Bool("all", false, "re-propose for every active ingredient, not just ones with no allergen rows yet")
 	if err := fs.Parse(argv); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	ctx := context.Background()
@@ -147,34 +166,47 @@ func runPropose(argv []string) error {
 	}
 	slog.Info("proposing allergen flags", "ingredients", len(ingredients), "known_allergens", len(allergens), "model", cfg.OllamaModel)
 
-	art := artifact{GeneratedAt: time.Now().UTC(), Model: cfg.OllamaModel}
-	for i := 0; i < len(ingredients); i += *batch {
-		end := i + *batch
+	art, err := proposeAll(ctx, prov, allergens, ingredients, *batch, cfg.OllamaModel)
+	if err != nil {
+		return err
+	}
+	return writeArtifact(*out, art)
+}
+
+// proposeAll runs the batch loop over the unflagged ingredients and
+// returns the sorted artifact.
+func proposeAll(ctx context.Context, prov llm.Provider, allergens []string, ingredients []ingredientRow, batch int, model string) (artifact, error) {
+	art := artifact{GeneratedAt: time.Now().UTC(), Model: model}
+	for i := 0; i < len(ingredients); i += batch {
+		end := i + batch
 		if end > len(ingredients) {
 			end = len(ingredients)
 		}
 		ms, us, err := proposeBatch(ctx, prov, allergens, ingredients[i:end])
 		if err != nil {
-			return fmt.Errorf("batch %d-%d: %w", i, end, err)
+			return art, fmt.Errorf("batch %d-%d: %w", i, end, err)
 		}
 		art.Mappings = append(art.Mappings, ms...)
 		art.Unresolved = append(art.Unresolved, us...)
 		slog.Info("batch complete", "range", fmt.Sprintf("%d-%d", i, end), "mapped", len(art.Mappings), "unresolved", len(art.Unresolved))
 	}
 	sort.Slice(art.Mappings, func(i, j int) bool { return art.Mappings[i].IngredientName < art.Mappings[j].IngredientName })
+	return art, nil
+}
 
+func writeArtifact(path string, art artifact) error {
 	raw, err := json.MarshalIndent(art, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(*out, append(raw, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
 		return err
 	}
-	slog.Info("artifact written", "path", *out, "mappings", len(art.Mappings), "unresolved", len(art.Unresolved))
+	slog.Info("artifact written", "path", path, "mappings", len(art.Mappings), "unresolved", len(art.Unresolved))
 	return nil
 }
 
-func allergenNames(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+func allergenNames(ctx context.Context, pool querier) ([]string, error) {
 	rows, err := pool.Query(ctx, `SELECT name FROM inventory.allergen WHERE is_active ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -196,7 +228,7 @@ func normalizeName(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
-func unflaggedIngredients(ctx context.Context, pool *pgxpool.Pool, all bool, limit int) ([]ingredientRow, error) {
+func unflaggedIngredients(ctx context.Context, pool querier, all bool, limit int) ([]ingredientRow, error) {
 	// Ingredients with no allergen rows are the ones that must be flagged
 	// for the seed; -all widens the sweep for a re-review pass.
 	q := `
@@ -354,10 +386,13 @@ func convertFlags(raw []struct {
 // ---------- apply ----------
 
 func runApply(argv []string) error {
-	fs := flag.NewFlagSet("apply", flag.ExitOnError)
+	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	in := fs.String("in", "docs/allergen-curation.json", "reviewed artifact to apply")
 	dryRun := fs.Bool("dry-run", false, "report what would change without writing")
 	if err := fs.Parse(argv); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	ctx := context.Background()
@@ -384,6 +419,12 @@ func runApply(argv []string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	return applyArtifact(ctx, tx, art, *dryRun)
+}
+
+// applyArtifact resolves allergen names, upserts the flag rows, and
+// commits — or rolls back on a dry run.
+func applyArtifact(ctx context.Context, tx txRunner, art artifact, dryRun bool) error {
 	// Resolve allergen names against the seeded registry. Unknown names
 	// fail loudly: the registry is admin-managed and a typo'd allergen
 	// must never be silently created or dropped.
@@ -432,11 +473,11 @@ func runApply(argv []string) error {
 	}
 
 	slog.Info("apply complete",
-		"dry_run", *dryRun,
+		"dry_run", dryRun,
 		"allergens_resolved", len(allergenID),
 		"rows_written", written)
 
-	if *dryRun {
+	if dryRun {
 		return tx.Rollback(ctx)
 	}
 	return tx.Commit(ctx)

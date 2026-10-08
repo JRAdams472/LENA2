@@ -1,6 +1,6 @@
 module github.com/JRAdams472/LENA2
 
-go 1.26.6
+go 1.26.9
 
 require (
 	firebase.google.com/go/v4 v4.22.0
