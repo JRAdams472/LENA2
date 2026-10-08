@@ -369,3 +369,97 @@ func TestSetMyAllergy(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
+
+// expectLazyAllergyLoad stubs the full loadAllergyContext chain for item
+// 10 (resolved to ingredient 1): ingredient flag milk/contains, item flag
+// eggs/contains, member 11 "alice" allergic to milk.
+func expectLazyAllergyLoad(inv *mock.MockItemReader, ids *mock.MockIdentityService, up *mock.MockUserPrefsService) {
+	inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(7), []int64{10}).Return(map[int64]*int64{10: ingIDPtr(1)}, nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{10}).Return([]inventory.Item{{ItemID: 10, IngredientID: ingIDPtr(1)}}, nil)
+	inv.EXPECT().ListIngredientAllergensByIngredients(gomock.Any(), []int64{1}).Return(map[int64][]inventory.EntityAllergen{
+		1: {{AllergenID: 200, Kind: inventory.AllergenFlagContains}},
+	}, nil)
+	inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{10}).Return(map[int64][]inventory.EntityAllergen{
+		10: {{AllergenID: 300, Kind: inventory.AllergenFlagContains}},
+	}, nil)
+	ids.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{
+		{UserID: 11, DisplayName: "alice"},
+	}, nil)
+	up.EXPECT().ListUserAllergensByUsers(gomock.Any(), []int64{11}).Return([]userprefs.UserAllergen{
+		{UserID: 11, AllergenID: 200, Kind: userprefs.MemberAllergyKindAllergy},
+	}, nil)
+	inv.EXPECT().GetAllergensByIDs(gomock.Any(), gomock.Any()).Return(map[int64]inventory.Allergen{
+		200: testAllergen(200, "milk"),
+		300: testAllergen(300, "eggs"),
+	}, nil)
+}
+
+// A resolver carrying a lazy source but no preloaded context builds the
+// context on demand — the shape item(id) constructs after LEN-71 (ch with
+// counts only, as set via allergySrc).
+func TestItemAllergenFieldsLazySource(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	inv := mock.NewMockItemReader(ctrl)
+	ids := mock.NewMockIdentityService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	// Lazy loads are not memoized — each field call rebuilds the context,
+	// so the chain is expected once per call below.
+	expectLazyAllergyLoad(inv, ids, up)
+	expectLazyAllergyLoad(inv, ids, up)
+
+	r := &itemResolver{
+		inv: inv,
+		it:  inventory.Item{ItemID: 10},
+		ch:  &itemChildren{itemCounts: map[int64]countPair{}, brandCounts: map[int64]countPair{}},
+		as:  &allergySource{inv: inv, id: ids, up: up, householdID: 7},
+	}
+	flags, err := r.Allergens(allergyTestCtx())
+	require.NoError(t, err)
+	assert.Len(t, flags, 2)
+
+	warnings, err := r.AllergyWarnings(allergyTestCtx())
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "alice", *warnings[0].Member().DisplayName())
+	assert.Equal(t, "milk", warnings[0].Allergen().Name())
+}
+
+// recipeDeltaItemResolver's lazy fallback (rc nil or rc.items nil, e.g. a
+// mutation-response recipeResolver with no children preload) carries the
+// parent's source so allergen fields still resolve.
+func TestDeltaItemLazyFallbackCarriesSource(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	inv := mock.NewMockItemReader(ctrl)
+	ids := mock.NewMockIdentityService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	expectLazyAllergyLoad(inv, ids, up)
+	inv.EXPECT().GetItemByID(gomock.Any(), int64(10)).Return(inventory.Item{ItemID: 10}, nil)
+
+	r := &recipeDeltaItemResolver{
+		d:   recipe.DeltaItem{ItemID: ingIDPtr(10)},
+		inv: inv,
+		as:  &allergySource{inv: inv, id: ids, up: up, householdID: 7},
+	}
+	ir, err := r.Item(allergyTestCtx())
+	require.NoError(t, err)
+	require.NotNil(t, ir)
+	warnings, err := ir.AllergyWarnings(allergyTestCtx())
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "alice", *warnings[0].Member().DisplayName())
+}
+
+// The contract stays explicit: a delta-item resolver with neither a
+// preloaded context nor a source still errors rather than reporting "no
+// conflicts".
+func TestDeltaItemLazyFallbackMissingSource(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	inv := mock.NewMockItemReader(ctrl)
+	inv.EXPECT().GetItemByID(gomock.Any(), int64(10)).Return(inventory.Item{ItemID: 10}, nil)
+
+	r := &recipeDeltaItemResolver{d: recipe.DeltaItem{ItemID: ingIDPtr(10)}, inv: inv}
+	ir, err := r.Item(allergyTestCtx())
+	require.NoError(t, err)
+	_, err = ir.AllergyWarnings(allergyTestCtx())
+	assert.ErrorIs(t, err, errNoAllergyContext)
+}

@@ -101,6 +101,9 @@ func TestBFF_Integration(t *testing.T) {
 	t.Run("events", func(t *testing.T) {
 		runEventTests(t, srv, issuer)
 	})
+	t.Run("allergy lazy source", func(t *testing.T) {
+		runAllergyLazySourceTests(t, srv, issuer)
+	})
 }
 
 // runAuthorizationTests verifies that a plain member (a valid token, no
@@ -2303,6 +2306,238 @@ func runEventTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssu
 		}
 	}
 	assert.True(t, sawDeleted)
+}
+
+// runAllergyLazySourceTests covers LEN-71: every resolver path that
+// reaches allergens/allergyWarnings must have either a preloaded context
+// or a lazy allergySource — never nil. Exercises the three paths that
+// regressed: item(id), mutation-response householdDelta item children,
+// and rateRecipe (which additionally dropped `items` silently).
+func runAllergyLazySourceTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	// Admin token — recipe/delta writes and allergen flags are admin ops.
+	admin := issuer.Token(t, "als-admin", "auth@example.com", "ALS Admin")
+	status, gr := doGraphQL(t, srv, admin, `{ me { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// A catalog item + the seed "milk" allergen.
+	status, gr = doGraphQL(t, srv, admin, `{ items(page: 1, pageSize: 1) { items { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var itemsRes struct {
+		Items struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &itemsRes)
+	require.NotEmpty(t, itemsRes.Items.Items)
+	flaggedItem := itemsRes.Items.Items[0].ID
+
+	status, gr = doGraphQL(t, srv, admin, `{ allergens { id name } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var allergenRes struct {
+		Allergens []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"allergens"`
+	}
+	decodeData(t, gr.Data, &allergenRes)
+	milkID := ""
+	for _, a := range allergenRes.Allergens {
+		if a.Name == "milk" {
+			milkID = a.ID
+		}
+	}
+	require.NotEmpty(t, milkID, "seed catalog must contain the milk allergen")
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Flag($itemId: ID!, $allergenId: ID!) {
+		setItemAllergen(itemId: $itemId, allergenId: $allergenId, kind: contains)
+	}`, map[string]any{"itemId": flaggedItem, "allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// The admin's own record makes their solo household the warning source.
+	status, gr = doGraphQL(t, srv, admin, `mutation Allergy($allergenId: ID!) {
+		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
+	}`, map[string]any{"allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// --- LEN-71 repro: item(id) lazy-loads its allergy context ---
+	status, gr = doGraphQL(t, srv, admin, `query Item($id: ID!) {
+		item(id: $id) {
+			allergens { allergen { name } kind }
+			allergyWarnings { member { displayName } entityKind }
+		}
+	}`, map[string]any{"id": flaggedItem})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors, "item(id) allergen fields must resolve via the lazy source")
+	var itemRes struct {
+		Item struct {
+			Allergens []struct {
+				Allergen struct {
+					Name string `json:"name"`
+				} `json:"allergen"`
+				Kind string `json:"kind"`
+			} `json:"allergens"`
+			Warnings []struct {
+				Member struct {
+					DisplayName *string `json:"displayName"`
+				} `json:"member"`
+				EntityKind string `json:"entityKind"`
+			} `json:"allergyWarnings"`
+		} `json:"item"`
+	}
+	decodeData(t, gr.Data, &itemRes)
+	require.Len(t, itemRes.Item.Allergens, 1)
+	assert.Equal(t, "milk", itemRes.Item.Allergens[0].Allergen.Name)
+	require.Len(t, itemRes.Item.Warnings, 1)
+	require.NotNil(t, itemRes.Item.Warnings[0].Member.DisplayName)
+	assert.Equal(t, "ALS Admin", *itemRes.Item.Warnings[0].Member.DisplayName)
+
+	// --- recipe fixture for the mutation-response paths ---
+	status, gr = doGraphQL(t, srv, admin, `mutation CreateRecipe($input: CreateRecipeInput!) {
+		createRecipe(input: $input) { id items { item { id allergyWarnings { member { displayName } } } } }
+	}`, map[string]any{
+		"input": map[string]any{
+			"name":     "ALS Fixture Stew",
+			"servings": 2,
+			"items": []map[string]any{
+				{"itemId": flaggedItem, "quantity": 1.0, "unit": "cup"},
+			},
+			"steps": []map[string]any{},
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var createRes struct {
+		CreateRecipe struct {
+			ID    string `json:"id"`
+			Items []struct {
+				Item struct {
+					ID       string `json:"id"`
+					Warnings []struct {
+						Member struct {
+							DisplayName *string `json:"displayName"`
+						} `json:"member"`
+					} `json:"allergyWarnings"`
+				} `json:"item"`
+			} `json:"items"`
+		} `json:"createRecipe"`
+	}
+	decodeData(t, gr.Data, &createRes)
+	require.NotEmpty(t, createRes.CreateRecipe.ID)
+	recipeID := createRes.CreateRecipe.ID
+	require.Len(t, createRes.CreateRecipe.Items, 1, "mutation-response items must resolve")
+	require.Len(t, createRes.CreateRecipe.Items[0].Item.Warnings, 1)
+
+	// --- rateRecipe: items must not silently empty and allergen fields
+	// must resolve (previously a half-built children struct broke both) ---
+	status, gr = doGraphQL(t, srv, admin, `mutation Rate($id: ID!) {
+		rateRecipe(recipeId: $id, rating: 4) {
+			items { quantity unit }
+			allergens { allergen { name } kind }
+			allergyWarnings { member { displayName } }
+		}
+	}`, map[string]any{"id": recipeID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var rateRes struct {
+		RateRecipe struct {
+			Items []struct {
+				Quantity float64 `json:"quantity"`
+				Unit     string  `json:"unit"`
+			} `json:"items"`
+			Allergens []struct {
+				Allergen struct {
+					Name string `json:"name"`
+				} `json:"allergen"`
+				Kind string `json:"kind"`
+			} `json:"allergens"`
+			Warnings []struct {
+				Member struct {
+					DisplayName *string `json:"displayName"`
+				} `json:"member"`
+			} `json:"allergyWarnings"`
+		} `json:"rateRecipe"`
+	}
+	decodeData(t, gr.Data, &rateRes)
+	require.NotEmpty(t, rateRes.RateRecipe.Items, "rateRecipe must return the recipe's items, not an empty list")
+	require.Len(t, rateRes.RateRecipe.Warnings, 1)
+	assert.Equal(t, "ALS Admin", *rateRes.RateRecipe.Warnings[0].Member.DisplayName)
+
+	// --- householdDelta children on a mutation response carry no
+	// recipeChildren preload — the lazy source must cover them ---
+	status, gr = doGraphQL(t, srv, admin, `{ units { id name } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var unitsRes struct {
+		Units []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"units"`
+	}
+	decodeData(t, gr.Data, &unitsRes)
+	cupID := ""
+	for _, un := range unitsRes.Units {
+		if un.Name == "cup" {
+			cupID = un.ID
+		}
+	}
+	require.NotEmpty(t, cupID, "seed catalog must contain the cup unit")
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Delta($id: ID!, $itemId: ID!, $unitId: ID!) {
+		setRecipeDelta(recipeId: $id, items: [{ kind: add, itemId: $itemId, quantity: 2, unitId: $unitId }], steps: []) { id }
+	}`, map[string]any{"id": recipeID, "itemId": flaggedItem, "unitId": cupID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Update($id: ID!, $input: CreateRecipeInput!) {
+		updateRecipe(id: $id, input: $input) {
+			householdDelta {
+				items { kind item { id allergyWarnings { member { displayName } } } }
+			}
+		}
+	}`, map[string]any{
+		"id": recipeID,
+		"input": map[string]any{
+			"name":     "ALS Fixture Stew",
+			"servings": 2,
+			"items": []map[string]any{
+				{"itemId": flaggedItem, "quantity": 1.0, "unit": "cup"},
+			},
+			"steps": []map[string]any{},
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors, "delta item children on a mutation response must resolve via the lazy source")
+	var updateRes struct {
+		UpdateRecipe struct {
+			Delta struct {
+				Items []struct {
+					Kind string `json:"kind"`
+					Item struct {
+						ID       string `json:"id"`
+						Warnings []struct {
+							Member struct {
+								DisplayName *string `json:"displayName"`
+							} `json:"member"`
+						} `json:"allergyWarnings"`
+					} `json:"item"`
+				} `json:"items"`
+			} `json:"householdDelta"`
+		} `json:"updateRecipe"`
+	}
+	decodeData(t, gr.Data, &updateRes)
+	var sawAdded bool
+	for _, di := range updateRes.UpdateRecipe.Delta.Items {
+		if di.Kind == "add" && di.Item.ID == flaggedItem {
+			sawAdded = true
+			require.Len(t, di.Item.Warnings, 1, "delta item's allergyWarnings must resolve on the mutation response")
+			assert.Equal(t, "ALS Admin", *di.Item.Warnings[0].Member.DisplayName)
+		}
+	}
+	assert.True(t, sawAdded, "the added delta item must appear on householdDelta.items")
 }
 
 func TestMain(m *testing.M) {
