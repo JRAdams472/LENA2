@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import '../format.dart';
 import 'generate_grocery_dialog.dart';
 import 'grocery_list_screen.dart';
+
+const int groceryListsPageSize = 25;
 
 const String groceryListsQuery = r'''
   query GroceryLists($page: Int, $pageSize: Int) {
@@ -36,7 +39,7 @@ class GroceryListsScreen extends StatelessWidget {
           {VoidCallback? refetch, FetchMore? fetchMore}) {
         return Scaffold(
           appBar: AppBar(title: const Text('Grocery Lists')),
-          body: _body(context, result, refetch),
+          body: _body(context, result, refetch, fetchMore),
           floatingActionButton: FloatingActionButton(
             // Tabs live together in MainScreen's IndexedStack — every
             // tab FAB needs a unique heroTag or route transitions crash.
@@ -52,8 +55,8 @@ class GroceryListsScreen extends StatelessWidget {
     );
   }
 
-  Widget _body(
-      BuildContext context, QueryResult result, VoidCallback? refetch) {
+  Widget _body(BuildContext context, QueryResult result, VoidCallback? refetch,
+      FetchMore? fetchMore) {
     if (result.isLoading) {
       return const SkeletonList();
     }
@@ -61,6 +64,9 @@ class GroceryListsScreen extends StatelessWidget {
       return Center(child: Text('Error: ${result.exception.toString()}'));
     }
     final lists = result.data?['groceryLists']?['items'] as List? ?? [];
+    final total =
+        result.data?['groceryLists']?['pageInfo']?['totalCount'] as int? ??
+            lists.length;
     if (lists.isEmpty) {
       return const EmptyState(
         icon: Icons.shopping_cart_outlined,
@@ -70,9 +76,18 @@ class GroceryListsScreen extends StatelessWidget {
     }
     return RefreshIndicator(
       onRefresh: () async => refetch?.call(),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16.0),
-        itemCount: lists.length,
+      child: PagedListView(
+        loadedCount: lists.length,
+        totalCount: total,
+        onLoadMore: () async {
+          if (fetchMore == null) return;
+          await fetchMore(FetchMoreOptions(
+            variables: {
+              'page': nextPageFor(lists.length, groceryListsPageSize),
+            },
+            updateQuery: appendPageItems('groceryLists'),
+          ));
+        },
         itemBuilder: (context, index) {
           final list = lists[index] as Map<String, dynamic>;
           final id = list['id'] as String;

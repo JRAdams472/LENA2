@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:lena_mobile/main.dart' as app;
+import 'package:lena_mobile/widgets/recipe_picker.dart';
+import 'package:lena_mobile/widgets/search_picker.dart';
 
 /// LEN-48 audit: captures every reachable screen on a seeded e2e stack.
 ///
@@ -172,8 +174,8 @@ void main() {
         tester, find.widgetWithText(TextButton, 'Switch'), 'switch header');
     if (openedSwitch) {
       await shot(tester, '10a-household-switcher');
-      final openedCreate =
-          await tapIfExists(tester, find.text('New household'), 'new household');
+      final openedCreate = await tapIfExists(
+          tester, find.text('New household'), 'new household');
       if (openedCreate) {
         await shot(tester, '10b-household-create');
         await tapIfExists(
@@ -191,8 +193,8 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await shot(tester, '10c-household-invitations', const Duration(seconds: 2));
-    final openedMerge = await tapIfExists(
-        tester, find.byIcon(Icons.check), 'accept invite');
+    final openedMerge =
+        await tapIfExists(tester, find.byIcon(Icons.check), 'accept invite');
     if (openedMerge) {
       await shot(tester, '10d-household-accept-merge');
       await tapIfExists(
@@ -224,8 +226,7 @@ void main() {
       await nav(tester, 'People');
       await shot(tester, '13c-household-dark');
       await nav(tester, 'More');
-      await tapIfExists(
-          tester, find.text('Light'), 'appearance Light segment');
+      await tapIfExists(tester, find.text('Light'), 'appearance Light segment');
       await settle(tester, const Duration(seconds: 1));
     }
 
@@ -246,8 +247,7 @@ void main() {
       // LEN-59 — recipe tweaks walk on the seeded "Garlic Butter Pasta"
       // household delta: stale banner + acknowledge, household/original
       // toggle, delta badges, tweaks card, and a tweak sheet.
-      final recipeSearch =
-          find.widgetWithText(TextField, 'Search recipes');
+      final recipeSearch = find.widgetWithText(TextField, 'Search recipes');
       if (exists(recipeSearch)) {
         await tester.enterText(recipeSearch, 'pasta');
         await settle(tester);
@@ -268,15 +268,13 @@ void main() {
             // Original view for comparison, then back to household.
             await tapIfExists(
                 tester,
-                find.descendant(
-                    of: segments, matching: find.text('Original')),
+                find.descendant(of: segments, matching: find.text('Original')),
                 'original segment');
             await settle(tester);
             await shot(tester, '29-recipe-tweaks-original');
             await tapIfExists(
                 tester,
-                find.descendant(
-                    of: segments, matching: find.text('Household')),
+                find.descendant(of: segments, matching: find.text('Household')),
                 'household segment');
             await settle(tester);
             // Item tweak sheet via a row's Tweak action — while the
@@ -316,7 +314,19 @@ void main() {
       final openedPlan =
           await tapFirst(tester, find.byType(ListTile), 'first meal plan card');
       await shot(tester, '19-edit-meal-plan', const Duration(seconds: 6));
-      if (openedPlan) await back(tester);
+      if (openedPlan) {
+        // The recipe picker is a searchable bottom sheet — open it for
+        // the proof shot, then close it.
+        final picker = find.byType(RecipePickerField);
+        if (picker.evaluate().isNotEmpty) {
+          await tester.ensureVisible(picker);
+          await tester.pump();
+          await tester.tap(picker);
+          await shot(tester, '19a-recipe-picker', const Duration(seconds: 3));
+          await dismissModal(tester);
+        }
+        await back(tester);
+      }
       await back(tester);
     }
 
@@ -331,7 +341,17 @@ void main() {
               (w) => w is FloatingActionButton && w.heroTag == 'adjust'),
           'adjust bottle FAB');
       await shot(tester, '21-adjust-bottle');
-      if (openedAdjust) await back(tester);
+      if (openedAdjust) {
+        // The bottle picker is a searchable bottom sheet — open it for
+        // the proof shot, then close it.
+        final picker = find.byType(SearchPickerField);
+        if (picker.evaluate().isNotEmpty) {
+          await tester.tap(picker);
+          await shot(tester, '21a-bottle-picker', const Duration(seconds: 3));
+          await dismissModal(tester);
+        }
+        await back(tester);
+      }
 
       final openedCatalog = await tapIfExists(
           tester, find.byTooltip('Bottle catalog'), 'bottles button');

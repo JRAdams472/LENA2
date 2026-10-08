@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/recipe_picker.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
@@ -45,24 +46,6 @@ const String mealPlanQuery = r'''
         allergens {
           kind
           allergen { id name }
-        }
-      }
-    }
-  }
-''';
-
-const String recipesQuery = r'''
-  query Recipes($mealType: String) {
-    recipes(page: 1, pageSize: 100, mealType: $mealType) {
-      items {
-        id
-        name
-        categories {
-          id
-          name
-          group {
-            name
-          }
         }
       }
     }
@@ -158,10 +141,10 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   bool _isSaving = false;
   bool _isAddingSlot = false;
   bool _loaded = false;
-  List<Map<String, dynamic>> _recipes = [];
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _categoryGroups = [];
   String? _categoryFilter;
+  Map<String, dynamic>? _selectedRecipe;
   Map<String, dynamic>? _plan;
 
   Map<String, TextEditingController> _itemQtyCtrls = {};
@@ -169,7 +152,6 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   Map<String, TextEditingController> _itemSearchCtrls = {};
   Map<String, String?> _itemSelections = {};
   final _itemSearchDebouncer = Debouncer();
-  final _recipeSearchDebouncer = Debouncer();
 
   @override
   void didChangeDependencies() {
@@ -192,29 +174,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     });
   }
 
-  Future<void> _loadRecipes(String? mealType) async {
-    final client = GraphQLProvider.of(context).value;
-    final recipesResult = await client.query(
-      QueryOptions(
-        document: gql(recipesQuery),
-        variables: {
-          'mealType': (mealType != null && mealType.trim().isNotEmpty)
-              ? mealType.trim()
-              : null,
-        },
-        fetchPolicy: FetchPolicy.noCache,
-      ),
-    );
-    if (!mounted) return;
-    setState(() {
-      _recipes = (recipesResult.data?['recipes']?['items'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-    });
-  }
-
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    await _loadRecipes(_mealTypeCtrl.text);
     final groupsResult = await client
         .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
     if (!mounted) return;
@@ -303,8 +264,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     setState(() => _isAddingSlot = true);
     try {
       final client = GraphQLProvider.of(context).value;
-      final recipeId =
-          _recipeSelection?.isNotEmpty == true ? _recipeSelection : null;
+      final recipeId = _selectedRecipe?['id'] as String?;
       await client.mutate(MutationOptions(
         document: gql(addMealSlotMutation),
         variables: {
@@ -374,8 +334,6 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     await _loadData();
   }
 
-  String? _recipeSelection;
-
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -388,7 +346,6 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     _itemUnitCtrls.values.forEach((c) => c.dispose());
     _itemSearchCtrls.values.forEach((c) => c.dispose());
     _itemSearchDebouncer.dispose();
-    _recipeSearchDebouncer.dispose();
     super.dispose();
   }
 
@@ -562,8 +519,8 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               TextField(
                 controller: _mealTypeCtrl,
                 decoration: const InputDecoration(labelText: 'Meal type'),
-                onChanged: (_) => _recipeSearchDebouncer
-                    .run(() => _loadRecipes(_mealTypeCtrl.text)),
+                // Rebuild so RecipePickerField's mealType prop stays current.
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
               if (_categoryGroups.isNotEmpty)
@@ -585,24 +542,14 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                   onChanged: (v) => setState(() => _categoryFilter = v),
                 ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                isExpanded: true,
-                value: _recipeSelection,
-                decoration:
-                    const InputDecoration(labelText: 'Recipe (optional)'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('None')),
-                  ..._recipes
-                      .where((r) =>
-                          _categoryFilter == null ||
-                          (r['categories'] as List? ?? [])
-                              .any((c) => c['id'] == _categoryFilter))
-                      .map((r) => DropdownMenuItem(
-                            value: r['id'] as String,
-                            child: Text(r['name'] as String),
-                          ))
-                ],
-                onChanged: (v) => setState(() => _recipeSelection = v),
+              // Server-side searchable picker — the category filter feeds
+              // categoryIds so the narrowed set is still reachable.
+              RecipePickerField(
+                selected: _selectedRecipe,
+                mealType: _mealTypeCtrl.text,
+                categoryId: _categoryFilter,
+                label: 'Recipe (optional)',
+                onChanged: (r) => setState(() => _selectedRecipe = r),
               ),
               const SizedBox(height: 12),
               TextField(

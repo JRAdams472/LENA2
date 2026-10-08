@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import 'edit_event_screen.dart';
 import 'event_detail_screen.dart';
 
+const int foodEventsPageSize = 50;
+
 const String foodEventsQuery = r'''
-  query FoodEvents {
-    foodEvents(page: 1, pageSize: 50) {
+  query FoodEvents($page: Int) {
+    foodEvents(page: $page, pageSize: 50) {
       items {
         id
         name
@@ -35,13 +38,16 @@ class _EventsScreenState extends State<EventsScreen> {
   @override
   Widget build(BuildContext context) {
     return Query(
-      options: QueryOptions(document: gql(foodEventsQuery)),
+      options: QueryOptions(
+        document: gql(foodEventsQuery),
+        variables: const {'page': 1},
+      ),
       builder: (QueryResult result,
           {VoidCallback? refetch, FetchMore? fetchMore}) {
         _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Events')),
-          body: _body(result, refetch),
+          body: _body(result, refetch, fetchMore),
           floatingActionButton: FloatingActionButton(
             heroTag: 'fab-events',
             onPressed: () => Navigator.push(
@@ -55,7 +61,8 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  Widget _body(QueryResult result, VoidCallback? refetch) {
+  Widget _body(
+      QueryResult result, VoidCallback? refetch, FetchMore? fetchMore) {
     if (result.isLoading) {
       return const SkeletonList();
     }
@@ -64,6 +71,9 @@ class _EventsScreenState extends State<EventsScreen> {
     }
 
     final items = result.data?['foodEvents']?['items'] as List? ?? [];
+    final total =
+        result.data?['foodEvents']?['pageInfo']?['totalCount'] as int? ??
+            items.length;
     if (items.isEmpty) {
       return const EmptyState(
         icon: Icons.event,
@@ -74,9 +84,18 @@ class _EventsScreenState extends State<EventsScreen> {
 
     return RefreshIndicator(
       onRefresh: () async => refetch?.call(),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16.0),
-        itemCount: items.length,
+      child: PagedListView(
+        loadedCount: items.length,
+        totalCount: total,
+        onLoadMore: () async {
+          if (fetchMore == null) return;
+          await fetchMore(FetchMoreOptions(
+            variables: {
+              'page': nextPageFor(items.length, foodEventsPageSize),
+            },
+            updateQuery: appendPageItems('foodEvents'),
+          ));
+        },
         itemBuilder: (context, index) {
           final event = items[index] as Map<String, dynamic>;
           final isActive = event['isActive'] as bool? ?? false;

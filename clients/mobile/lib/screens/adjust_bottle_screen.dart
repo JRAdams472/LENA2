@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
-import '../widgets/skeleton.dart';
+import '../widgets/search_picker.dart';
 
-const String bottlesQuery = r'''
-  query Bottles {
-    bottles(page: 1, pageSize: 100) {
+const String bottlePickerQuery = r'''
+  query BottlePicker($search: String) {
+    bottles(page: 1, pageSize: 50, search: $search) {
       items {
         id
         vineyard
         vintageYear
-      }
-      pageInfo {
-        totalCount
       }
     }
   }
@@ -25,11 +22,17 @@ const String adjustUserBottleMutation = r'''
   }
 ''';
 
+String bottleLabel(Map<String, dynamic> b) =>
+    '${(b['vineyard'] as String?) ?? 'Unknown'} ${b['vintageYear']?.toString() ?? ''}'
+        .trim();
+
 class AdjustBottleScreen extends StatefulWidget {
   final String? bottleId;
+  final String? bottleName;
   final int? quantity;
 
-  const AdjustBottleScreen({super.key, this.bottleId, this.quantity});
+  const AdjustBottleScreen(
+      {super.key, this.bottleId, this.bottleName, this.quantity});
 
   @override
   State<AdjustBottleScreen> createState() => _AdjustBottleScreenState();
@@ -37,30 +40,15 @@ class AdjustBottleScreen extends StatefulWidget {
 
 class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
   final _quantityCtrl = TextEditingController();
-  String? _bottleId;
-  bool _loaded = false;
+  Map<String, dynamic>? _bottle;
   bool _isSaving = false;
-  List<Map<String, dynamic>> _bottles = [];
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_loaded) {
-      _loaded = true;
-      _loadData();
+  void initState() {
+    super.initState();
+    if (widget.bottleId != null) {
+      _bottle = {'id': widget.bottleId, 'vineyard': widget.bottleName};
     }
-  }
-
-  Future<void> _loadData() async {
-    final client = GraphQLProvider.of(context).value;
-    final result =
-        await client.query(QueryOptions(document: gql(bottlesQuery)));
-    setState(() {
-      _bottles = (result.data?['bottles']?['items'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-      _bottleId = widget.bottleId ??
-          (_bottles.isNotEmpty ? _bottles.first['id'] as String : null);
-    });
     if (widget.quantity != null) {
       _quantityCtrl.text = widget.quantity.toString();
     }
@@ -73,14 +61,14 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    if (_bottleId == null) return;
+    if (_bottle == null) return;
     setState(() => _isSaving = true);
     try {
       final client = GraphQLProvider.of(context).value;
       await client.mutate(MutationOptions(
         document: gql(adjustUserBottleMutation),
         variables: {
-          'bottleId': _bottleId,
+          'bottleId': _bottle!['id'],
           'quantity': int.tryParse(_quantityCtrl.text) ?? 0,
         },
       ));
@@ -92,32 +80,23 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_bottles.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Adjust Holding')),
-        body: const SkeletonForm(),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Adjust Holding')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
-            DropdownButtonFormField<String?>(
-              isExpanded: true,
-              value: _bottleId,
-              decoration: const InputDecoration(labelText: 'Bottle'),
-              items: _bottles
-                  .map((b) => DropdownMenuItem(
-                        value: b['id'] as String,
-                        child: Text(
-                          '${(b['vineyard'] as String?) ?? 'Unknown'} ${b['vintageYear']?.toString() ?? ''}',
-                        ),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _bottleId = v),
+            SearchPickerField(
+              label: 'Bottle',
+              displayText: _bottle == null ? '' : bottleLabel(_bottle!),
+              hintText: 'Select a bottle',
+              sheetTitle: 'Search bottles',
+              document: bottlePickerQuery,
+              connectionField: 'bottles',
+              searchEntityType: 'bottle',
+              variablesFor: (term) => {'search': term.isEmpty ? null : term},
+              itemLabel: bottleLabel,
+              onChanged: (b) => setState(() => _bottle = b),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -127,7 +106,8 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _isSaving ? null : () => _save(context),
+              onPressed:
+                  (_isSaving || _bottle == null) ? null : () => _save(context),
               child: _isSaving
                   ? const SizedBox(
                       height: 16,
