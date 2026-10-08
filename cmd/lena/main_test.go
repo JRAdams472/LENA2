@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -286,6 +289,124 @@ func TestWireAuth(t *testing.T) {
 			t.Fatalf("wireAuth err = %v", err)
 		}
 	})
+}
+
+func TestRunEarlyExits(t *testing.T) {
+	// run() returns a code rather than exiting so every failure path is
+	// exercisable. Each subtest pins the env vars it relies on — ambient
+	// LENA_* settings on a dev machine must not leak in.
+	t.Run("unparseable env fails config load", func(t *testing.T) {
+		t.Setenv("LENA_ANALYTICS_HALF_LIFE_DAYS", "not-a-float")
+		if code := run(); code != 1 {
+			t.Errorf("run() = %d, want 1 on config load error", code)
+		}
+	})
+
+	t.Run("missing required config fails validation", func(t *testing.T) {
+		t.Setenv("LENA_DATABASE_URL", "")
+		t.Setenv("LENA_AUTH_AUDIENCES", "")
+		t.Setenv("LENA_MICROSOFT_CLIENT_ID", "")
+		t.Setenv("LENA_FACEBOOK_CLIENT_ID", "")
+		if code := run(); code != 1 {
+			t.Errorf("run() = %d, want 1 on validation error", code)
+		}
+	})
+
+	t.Run("unreachable database fails pool setup", func(t *testing.T) {
+		// Port 1 refuses connections immediately; connect_timeout bounds
+		// the ping in case the refusal is swallowed by a firewall.
+		t.Setenv("LENA_DATABASE_URL", "postgres://127.0.0.1:1/lena_test?connect_timeout=1")
+		t.Setenv("LENA_AUTH_AUDIENCES", "ci-aud")
+		t.Setenv("LENA_AUTH_ISSUERS", "")
+		t.Setenv("LENA_SESSION_SECRET", "")
+		t.Setenv("LENA_MICROSOFT_CLIENT_ID", "")
+		t.Setenv("LENA_FACEBOOK_CLIENT_ID", "")
+		if code := run(); code != 1 {
+			t.Errorf("run() = %d, want 1 on pool ping failure", code)
+		}
+	})
+}
+
+func TestNewServerErrors(t *testing.T) {
+	log := logger.New("error")
+
+	t.Run("auth misconfiguration propagates", func(t *testing.T) {
+		// No issuers/audiences and no code-exchange client IDs —
+		// NewAuthenticator refuses an empty trust set.
+		_, _, err := newServer(config.Config{AIProvider: "mock"}, lazyPool(t), log, nil)
+		if err == nil {
+			t.Error("newServer with empty auth config should error")
+		}
+	})
+
+	t.Run("push misconfiguration propagates", func(t *testing.T) {
+		cfg := config.Config{
+			AIProvider:    "mock",
+			AuthIssuers:   "https://issuer.test",
+			AuthAudiences: "aud",
+			PushProvider:  "bogus",
+		}
+		_, _, err := newServer(cfg, lazyPool(t), log, nil)
+		if err == nil || !strings.Contains(err.Error(), "unknown LENA_PUSH_PROVIDER") {
+			t.Errorf("newServer err = %v, want wirePush error", err)
+		}
+	})
+}
+
+func TestNewEchoReadiness(t *testing.T) {
+	// The lazy pool parses but never dials, so the ping fails fast and
+	// /ready reports 503 without leaking the driver error.
+	e, err := newEcho(config.Config{}, logger.New("error"), nil, lazyPool(t), nil)
+	if err != nil {
+		t.Fatalf("newEcho: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ready", nil)
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("/ready with dead pool = %d, want 503", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "connect") {
+		t.Error("/ready must not leak the database error string")
+	}
+}
+
+// TestMainEntry exercises main() itself via the helper-process pattern:
+// the child rewrites its argv and calls main(), which exits with the
+// healthcheck/run result code. The parent's test binary args stay valid
+// because the rewrite happens inside the child.
+func TestMainEntry(t *testing.T) {
+	if mode := os.Getenv("LENA_TEST_MAIN"); mode != "" {
+		if mode == "healthcheck" {
+			os.Args = []string{"lena", "-healthcheck"}
+		} else {
+			os.Args = []string{"lena"}
+		}
+		main()
+		return // unreachable — main() always os.Exits
+	}
+
+	for _, mode := range []string{"run", "healthcheck"} {
+		t.Run(mode, func(t *testing.T) {
+			//nolint:gosec // re-execs the test binary itself — the standard main() test pattern
+			cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=^TestMainEntry$")
+			// Strip ambient LENA_* so the child's run() deterministically
+			// fails validation; pin PORT so healthcheck can't hit a real
+			// dev server listening on 8080.
+			env := []string{"LENA_TEST_MAIN=" + mode, "LENA_PORT=1"}
+			for _, kv := range os.Environ() {
+				if !strings.HasPrefix(kv, "LENA_") {
+					env = append(env, kv)
+				}
+			}
+			cmd.Env = env
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				t.Errorf("main(%s) err = %v, want exit code 1", mode, err)
+			}
+		})
+	}
 }
 
 func TestRegisterAuthRoutes(t *testing.T) {
