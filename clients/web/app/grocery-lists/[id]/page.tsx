@@ -202,7 +202,7 @@ export function ShopLinkDialog({
       <DialogContent>
         <Typography variant="body2" color="text.secondary">
           {excludedChecked
-            ? "Unchecked items from this list are ready on Instacart — checked items were left off."
+            ? "Unchecked items from this list are ready on Instacart. Checked items were left off."
             : "Items from this list are ready on Instacart."}{" "}
           Open the link to pick a store and finish checking out there.
         </Typography>
