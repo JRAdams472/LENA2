@@ -223,50 +223,93 @@ describe("api client: bottles", () => {
     expect(result).toBeNull();
   });
 
-  it("getBottlesByCountryId filters fetched bottles", async () => {
+  it("getBottlesPaged passes filter variables in a single query", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        bottlesPage([gqlBottle(), gqlBottle({ id: "2", countryId: "9" })])
-      )
+      mockGraphQL(bottlesPage([gqlBottle()], 57))
     );
 
-    const bottles = await api.getBottlesByCountryId(3);
-    expect(bottles).toHaveLength(1);
-    expect(bottles[0].bottleID).toBe(1);
+    const result = await api.getBottlesPaged(2, 25, {
+      search: "napa",
+      countryId: 3,
+      regionId: 4,
+      typeId: 2,
+      vintageYear: 2020,
+      favoritesOnly: true,
+    });
+
+    const body = lastRequestBody();
+    expect(body.query).toContain(
+      "bottles(page: $page, pageSize: $pageSize, search: $search, countryId: $countryId, regionId: $regionId, typeId: $typeId, vintageYear: $vintageYear, favoritesOnly: $favoritesOnly)"
+    );
+    expect(body.variables).toEqual({
+      page: 2,
+      pageSize: 25,
+      search: "napa",
+      countryId: "3",
+      regionId: "4",
+      typeId: "2",
+      vintageYear: 2020,
+      favoritesOnly: true,
+    });
+    expect(result.totalCount).toBe(57);
+    expect(result.items[0].bottleID).toBe(1);
   });
 
-  it("getBottlesByRegionId filters fetched bottles", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        bottlesPage([gqlBottle(), gqlBottle({ id: "2", regionId: "9" })])
-      )
-    );
+  it("getBottlesPaged sends nulls for omitted filters", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])));
 
-    const bottles = await api.getBottlesByRegionId(4);
-    expect(bottles).toHaveLength(1);
+    await api.getBottlesPaged(1, 25);
+
+    expect(lastRequestBody().variables).toEqual({
+      page: 1,
+      pageSize: 25,
+      search: null,
+      countryId: null,
+      regionId: null,
+      typeId: null,
+      vintageYear: null,
+      favoritesOnly: null,
+    });
   });
 
-  it("getBottlesByTypeId filters fetched bottles", async () => {
+  it("getBottlesByCountryId issues one filtered query", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        bottlesPage([gqlBottle(), gqlBottle({ id: "2", typeId: "9" })])
-      )
+      mockGraphQL(bottlesPage([gqlBottle()]))
     );
 
-    const bottles = await api.getBottlesByTypeId(2);
-    expect(bottles).toHaveLength(1);
+    const result = await api.getBottlesByCountryId(3);
+    expect(lastRequestBody().variables.countryId).toBe("3");
+    expect(result.items).toHaveLength(1);
   });
 
-  it("getBottlesByVintageYear filters fetched bottles", async () => {
+  it("getBottlesByRegionId issues one filtered query", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        bottlesPage([gqlBottle(), gqlBottle({ id: "2", vintageYear: 1999 })])
-      )
+      mockGraphQL(bottlesPage([gqlBottle()]))
     );
 
-    const bottles = await api.getBottlesByVintageYear(2020);
-    expect(bottles).toHaveLength(1);
-    expect(bottles[0].vintageYear).toBe(2020);
+    const result = await api.getBottlesByRegionId(4);
+    expect(lastRequestBody().variables.regionId).toBe("4");
+    expect(result.items).toHaveLength(1);
+  });
+
+  it("getBottlesByTypeId issues one filtered query", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(bottlesPage([gqlBottle()]))
+    );
+
+    const result = await api.getBottlesByTypeId(2);
+    expect(lastRequestBody().variables.typeId).toBe("2");
+    expect(result.items).toHaveLength(1);
+  });
+
+  it("getBottlesByVintageYear issues one filtered query", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL(bottlesPage([gqlBottle()]))
+    );
+
+    const result = await api.getBottlesByVintageYear(2020);
+    expect(lastRequestBody().variables.vintageYear).toBe(2020);
+    expect(result.items[0].vintageYear).toBe(2020);
   });
 
   it("searchBottles issues a ranked server-side query", async () => {
@@ -277,11 +320,9 @@ describe("api client: bottles", () => {
     );
 
     const bottles = await api.searchBottles("napa");
-    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.query).toContain("bottles(page: 1");
+    const body = lastRequestBody();
     expect(body.query).toContain("search: $search");
-    expect(body.variables).toEqual({ search: "napa" });
+    expect(body.variables.search).toBe("napa");
     expect(bottles).toHaveLength(1);
     expect(bottles[0].vineyard).toBe("Napa Valley");
   });
@@ -298,89 +339,14 @@ describe("api client: bottles", () => {
     expect(await api.getBottleCount()).toBe(42);
   });
 
-  it("getFavoriteBottles filters favorites and merges user bottle prefs", async () => {
-    mockFetch
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          userBottles: {
-            items: [
-              {
-                id: "10",
-                bottle: gqlBottle({ id: "1" }),
-                bottleNumber: 3,
-                quantity: 2,
-                purchaseAt: "2026-01-01",
-                purchasePrice: 25.5,
-                storageTemp: 55,
-                location: "cellar",
-                notes: "gift",
-                isFavorite: false,
-              },
-            ],
-            pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 201 },
-          },
-        })
-      )
-      .mockResolvedValueOnce(
-        mockGraphQL({
-          userBottles: {
-            items: [
-              {
-                id: "11",
-                bottle: gqlBottle({ id: "2", vineyard: "Sonoma" }),
-                bottleNumber: null,
-                quantity: 1,
-                purchaseAt: null,
-                purchasePrice: null,
-                storageTemp: null,
-                location: null,
-                notes: null,
-                isFavorite: true,
-              },
-            ],
-            pageInfo: { pageNumber: 2, pageSize: 200, totalCount: 201 },
-          },
-        })
-      );
-
-    const bottles = await api.getFavoriteBottles();
-
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(bottles).toHaveLength(1);
-    expect(bottles[0].bottleID).toBe(2);
-    expect(bottles[0].quantity).toBe(1);
-    expect(bottles[0].isFavorite).toBe(true);
-  });
-
-  it("getFavoriteBottles maps user bottle fields onto the bottle", async () => {
+  it("getFavoriteBottles issues one favorites-only query", async () => {
     mockFetch.mockResolvedValueOnce(
-      mockGraphQL({
-        userBottles: {
-          items: [
-            {
-              id: "10",
-              bottle: gqlBottle(),
-              bottleNumber: 7,
-              quantity: 3,
-              purchaseAt: "2026-01-01",
-              purchasePrice: 19.99,
-              storageTemp: 55,
-              location: "rack",
-              notes: "n",
-              isFavorite: true,
-            },
-          ],
-          pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 },
-        },
-      })
+      mockGraphQL(bottlesPage([gqlBottle()]))
     );
 
-    const bottles = await api.getFavoriteBottles();
-    expect(bottles[0].bottleNumber).toBe(7);
-    expect(bottles[0].purchasePrice).toBe(19.99);
-    expect(bottles[0].storageTemp).toBe(55);
-    expect(bottles[0].location).toBe("rack");
-    expect(bottles[0].notes).toBe("n");
+    const result = await api.getFavoriteBottles();
+    expect(lastRequestBody().variables.favoritesOnly).toBe(true);
+    expect(result.items).toHaveLength(1);
   });
 });
 

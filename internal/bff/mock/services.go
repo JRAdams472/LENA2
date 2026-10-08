@@ -9760,18 +9760,18 @@ func (mr *MockBottleReaderMockRecorder) CountBottles(ctx any) *gomock.Call {
 }
 
 // CountSearchBottles mocks base method.
-func (m *MockBottleReader) CountSearchBottles(ctx context.Context, term string) (int64, error) {
+func (m *MockBottleReader) CountSearchBottles(ctx context.Context, term string, filters wine.BottleFilters, favoriteIDs []int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, term)
+	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, term, filters, favoriteIDs)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountSearchBottles indicates an expected call of CountSearchBottles.
-func (mr *MockBottleReaderMockRecorder) CountSearchBottles(ctx, term any) *gomock.Call {
+func (mr *MockBottleReaderMockRecorder) CountSearchBottles(ctx, term, filters, favoriteIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockBottleReader)(nil).CountSearchBottles), ctx, term)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockBottleReader)(nil).CountSearchBottles), ctx, term, filters, favoriteIDs)
 }
 
 // GetBottleByID mocks base method.
@@ -10075,18 +10075,18 @@ func (mr *MockBottleReaderMockRecorder) MatchBottleIDs(ctx, term any) *gomock.Ca
 }
 
 // SearchBottles mocks base method.
-func (m *MockBottleReader) SearchBottles(ctx context.Context, term string, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error) {
+func (m *MockBottleReader) SearchBottles(ctx context.Context, term string, filters wine.BottleFilters, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchBottles", ctx, term, rank, limit, offset)
+	ret := m.ctrl.Call(m, "SearchBottles", ctx, term, filters, rank, limit, offset)
 	ret0, _ := ret[0].([]wine.Bottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SearchBottles indicates an expected call of SearchBottles.
-func (mr *MockBottleReaderMockRecorder) SearchBottles(ctx, term, rank, limit, offset any) *gomock.Call {
+func (mr *MockBottleReaderMockRecorder) SearchBottles(ctx, term, filters, rank, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockBottleReader)(nil).SearchBottles), ctx, term, rank, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockBottleReader)(nil).SearchBottles), ctx, term, filters, rank, limit, offset)
 }
 
 // MockBottleWriter is a mock of BottleWriter interface.
@@ -10572,18 +10572,18 @@ func (mr *MockWineServiceMockRecorder) CountBottles(ctx any) *gomock.Call {
 }
 
 // CountSearchBottles mocks base method.
-func (m *MockWineService) CountSearchBottles(ctx context.Context, term string) (int64, error) {
+func (m *MockWineService) CountSearchBottles(ctx context.Context, term string, filters wine.BottleFilters, favoriteIDs []int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, term)
+	ret := m.ctrl.Call(m, "CountSearchBottles", ctx, term, filters, favoriteIDs)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountSearchBottles indicates an expected call of CountSearchBottles.
-func (mr *MockWineServiceMockRecorder) CountSearchBottles(ctx, term any) *gomock.Call {
+func (mr *MockWineServiceMockRecorder) CountSearchBottles(ctx, term, filters, favoriteIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockWineService)(nil).CountSearchBottles), ctx, term)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSearchBottles", reflect.TypeOf((*MockWineService)(nil).CountSearchBottles), ctx, term, filters, favoriteIDs)
 }
 
 // CreateBottle mocks base method.
@@ -11118,18 +11118,18 @@ func (mr *MockWineServiceMockRecorder) RemoveBottleGrapeVariety(ctx, bottleID, g
 }
 
 // SearchBottles mocks base method.
-func (m *MockWineService) SearchBottles(ctx context.Context, term string, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error) {
+func (m *MockWineService) SearchBottles(ctx context.Context, term string, filters wine.BottleFilters, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchBottles", ctx, term, rank, limit, offset)
+	ret := m.ctrl.Call(m, "SearchBottles", ctx, term, filters, rank, limit, offset)
 	ret0, _ := ret[0].([]wine.Bottle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SearchBottles indicates an expected call of SearchBottles.
-func (mr *MockWineServiceMockRecorder) SearchBottles(ctx, term, rank, limit, offset any) *gomock.Call {
+func (mr *MockWineServiceMockRecorder) SearchBottles(ctx, term, filters, rank, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockWineService)(nil).SearchBottles), ctx, term, rank, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBottles", reflect.TypeOf((*MockWineService)(nil).SearchBottles), ctx, term, filters, rank, limit, offset)
 }
 
 // UpdateBottle mocks base method.

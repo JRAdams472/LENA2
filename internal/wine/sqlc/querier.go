@@ -6,13 +6,13 @@ package sqlc
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CountBottles(ctx context.Context) (int64, error)
-	CountSearchBottles(ctx context.Context, search pgtype.Text) (int64, error)
+	// Must apply the exact same predicates as SearchBottles so pageInfo.totalCount
+	// agrees with the returned rows.
+	CountSearchBottles(ctx context.Context, arg CountSearchBottlesParams) (int64, error)
 	CreateBottle(ctx context.Context, arg CreateBottleParams) (WineBottle, error)
 	CreateBottleFlavorProfile(ctx context.Context, arg CreateBottleFlavorProfileParams) (WineBottleFlavorProfile, error)
 	CreateBottleGrapeVariety(ctx context.Context, arg CreateBottleGrapeVarietyParams) (WineBottleGrapeVariety, error)
@@ -57,7 +57,9 @@ type Querier interface {
 	MatchBottleIDs(ctx context.Context, lower string) ([]int64, error)
 	// Engagement-ranked bottle browse/search. The term and prior-search-term
 	// tiers match a haystack of vineyard + type/country/region names (all
-	// same-schema joins). Tiers from BFF-computed ID arrays:
+	// same-schema joins). Optional structured filters (country, region, type,
+	// vintage, favorites) narrow the catalog before ranking. Tiers from
+	// BFF-computed ID arrays:
 	//   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
 	//   match, 4 global-popular, 5 rest.
 	SearchBottles(ctx context.Context, arg SearchBottlesParams) ([]WineBottle, error)

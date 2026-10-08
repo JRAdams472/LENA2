@@ -33,11 +33,17 @@ func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*b
 
 // Bottles resolves a paginated list of wine bottles, ordered by engagement
 // tier and optionally filtered by a term matched against vineyard and
-// type/country/region names.
+// type/country/region names, plus optional structured filters and a
+// favorites-only scope built from the caller's favorite ID list.
 func (r *Resolver) Bottles(ctx context.Context, args struct {
-	Page     int32
-	PageSize int32
-	Search   *string
+	Page          int32
+	PageSize      int32
+	Search        *string
+	CountryID     *graphql.ID
+	RegionID      *graphql.ID
+	TypeID        *graphql.ID
+	VintageYear   *int32
+	FavoritesOnly *bool
 }) (*bottlePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -45,6 +51,21 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
 	term := strings.TrimSpace(derefString(args.Search))
+	filters := wine.BottleFilters{
+		VintageYear: args.VintageYear,
+	}
+	if filters.CountryID, err = parseOptID(args.CountryID); err != nil {
+		return nil, err
+	}
+	if filters.RegionID, err = parseOptID(args.RegionID); err != nil {
+		return nil, err
+	}
+	if filters.TypeID, err = parseOptID(args.TypeID); err != nil {
+		return nil, err
+	}
+	if args.FavoritesOnly != nil {
+		filters.FavoritesOnly = *args.FavoritesOnly
+	}
 	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityBottle)
 	if err != nil {
 		return nil, err
@@ -53,7 +74,7 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	bottles, err := r.WineService.SearchBottles(ctx, term, wine.RankParams{
+	bottles, err := r.WineService.SearchBottles(ctx, term, filters, wine.RankParams{
 		FavoriteIDs:  favIDs,
 		PersonalIDs:  eng.PersonalIDs,
 		HouseholdIDs: eng.HouseholdIDs,
@@ -63,7 +84,7 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.WineService.CountSearchBottles(ctx, term)
+	total, err := r.WineService.CountSearchBottles(ctx, term, filters, favIDs)
 	if err != nil {
 		return nil, err
 	}

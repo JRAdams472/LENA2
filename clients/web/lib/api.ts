@@ -5,6 +5,7 @@ import {
   Brand,
   Category,
   Bottle,
+  BottleFilters,
   BottleGrapeVariety,
   BottleFlavorProfile,
   Country,
@@ -766,11 +767,6 @@ interface GqlUserBottle {
   location: string | null;
   notes: string | null;
   isFavorite: boolean;
-}
-
-interface GqlUserBottlePage {
-  items: GqlUserBottle[];
-  pageInfo: GqlPageInfo;
 }
 
 interface GqlWineType {
@@ -2188,22 +2184,6 @@ async function fetchAllUserItems(search?: string): Promise<GqlUserItem[]> {
   return out;
 }
 
-async function fetchAllBottles(): Promise<GqlBottle[]> {
-  const pageSize = 200;
-  let page = 1;
-  const out: GqlBottle[] = [];
-  for (;;) {
-    const data = await request<{ bottles: GqlBottlePage }>(
-      `query ($page: Int, $pageSize: Int) { bottles(page: $page, pageSize: $pageSize) { items { ${BOTTLE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-      { page, pageSize }
-    );
-    out.push(...data.bottles.items);
-    if (out.length >= data.bottles.pageInfo.totalCount || data.bottles.items.length === 0) break;
-    page += 1;
-  }
-  return out;
-}
-
 function pagedSlice<T>(all: T[], pageNumber: number, pageSize: number): PagedResult<T> {
   const start = (pageNumber - 1) * pageSize;
   return {
@@ -3243,10 +3223,28 @@ export const api = {
   },
 
   // Wine
-  getBottlesPaged: async (pageNumber: number, pageSize: number): Promise<PagedResult<Bottle>> => {
+  getBottlesPaged: async (
+    pageNumber: number,
+    pageSize: number,
+    filters: BottleFilters = {}
+  ): Promise<PagedResult<Bottle>> => {
     const data = await request<{ bottles: GqlBottlePage }>(
-      `query ($page: Int, $pageSize: Int) { bottles(page: $page, pageSize: $pageSize) { items { ${BOTTLE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-      { page: pageNumber, pageSize }
+      `query ($page: Int, $pageSize: Int, $search: String, $countryId: ID, $regionId: ID, $typeId: ID, $vintageYear: Int, $favoritesOnly: Boolean) {
+        bottles(page: $page, pageSize: $pageSize, search: $search, countryId: $countryId, regionId: $regionId, typeId: $typeId, vintageYear: $vintageYear, favoritesOnly: $favoritesOnly) {
+          items { ${BOTTLE_FIELDS} }
+          pageInfo { pageNumber pageSize totalCount }
+        }
+      }`,
+      {
+        page: pageNumber,
+        pageSize,
+        search: filters.search?.trim() || null,
+        countryId: filters.countryId != null ? String(filters.countryId) : null,
+        regionId: filters.regionId != null ? String(filters.regionId) : null,
+        typeId: filters.typeId != null ? String(filters.typeId) : null,
+        vintageYear: filters.vintageYear ?? null,
+        favoritesOnly: filters.favoritesOnly ?? null,
+      }
     );
     return toPaged(data.bottles.items.map((b) => toBottle(b)), data.bottles.pageInfo);
   },
@@ -3312,61 +3310,24 @@ export const api = {
     return null;
   },
 
-  getBottlesByCountryId: async (countryId: number): Promise<Bottle[]> =>
-    (await fetchAllBottles())
-      .filter((b) => num(b.countryId) === countryId)
-      .map((b) => toBottle(b)),
+  getBottlesByCountryId: async (countryId: number): Promise<PagedResult<Bottle>> =>
+    api.getBottlesPaged(1, 200, { countryId }),
 
-  getBottlesByRegionId: async (regionId: number): Promise<Bottle[]> =>
-    (await fetchAllBottles())
-      .filter((b) => num(b.regionId) === regionId)
-      .map((b) => toBottle(b)),
+  getBottlesByRegionId: async (regionId: number): Promise<PagedResult<Bottle>> =>
+    api.getBottlesPaged(1, 200, { regionId }),
 
-  getBottlesByTypeId: async (typeId: number): Promise<Bottle[]> =>
-    (await fetchAllBottles())
-      .filter((b) => num(b.typeId) === typeId)
-      .map((b) => toBottle(b)),
+  getBottlesByTypeId: async (typeId: number): Promise<PagedResult<Bottle>> =>
+    api.getBottlesPaged(1, 200, { typeId }),
 
-  getBottlesByVintageYear: async (year: number): Promise<Bottle[]> =>
-    (await fetchAllBottles())
-      .filter((b) => b.vintageYear === year)
-      .map((b) => toBottle(b)),
+  getBottlesByVintageYear: async (year: number): Promise<PagedResult<Bottle>> =>
+    api.getBottlesPaged(1, 200, { vintageYear: year }),
 
-  getFavoriteBottles: async (): Promise<Bottle[]> => {
-    const pageSize = 200;
-    let page = 1;
-    const out: Bottle[] = [];
-    for (;;) {
-      const data = await request<{ userBottles: GqlUserBottlePage }>(
-        `query ($page: Int, $pageSize: Int) {
-          userBottles(page: $page, pageSize: $pageSize) {
-            items { id bottleNumber quantity purchaseAt purchasePrice storageTemp location notes isFavorite bottle { ${BOTTLE_FIELDS} } }
-            pageInfo { pageNumber pageSize totalCount }
-          }
-        }`,
-        { page, pageSize }
-      );
-      out.push(
-        ...data.userBottles.items
-          .filter((ub) => ub.isFavorite)
-          .map((ub) => toBottle(ub.bottle, ub))
-      );
-      if (
-        page * pageSize >= data.userBottles.pageInfo.totalCount ||
-        data.userBottles.items.length === 0
-      )
-        break;
-      page += 1;
-    }
-    return out;
-  },
+  getFavoriteBottles: async (): Promise<PagedResult<Bottle>> =>
+    api.getBottlesPaged(1, 200, { favoritesOnly: true }),
 
   searchBottles: async (searchTerm: string): Promise<Bottle[]> => {
-    const data = await request<{ bottles: GqlBottlePage }>(
-      `query ($search: String) { bottles(page: 1, pageSize: 50, search: $search) { items { ${BOTTLE_FIELDS} } } }`,
-      { search: searchTerm.trim() || null }
-    );
-    return (data.bottles.items ?? []).map((b) => toBottle(b));
+    const page = await api.getBottlesPaged(1, 50, { search: searchTerm });
+    return page.items;
   },
 
   getBottleCount: async (): Promise<number> => {

@@ -419,7 +419,7 @@ func TestIntegrationSearchBottlesRanking(t *testing.T) {
 		GlobalIDs:    []int64{globalID},
 		SearchTerms:  []string{"qz8 bbb"},
 	}
-	got, err := svc.SearchBottles(ctx, "qz8", rank, 20, 0)
+	got, err := svc.SearchBottles(ctx, "qz8", BottleFilters{}, rank, 20, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 5)
 	want := []int64{favID, personalID, householdID2, searchedID, globalID}
@@ -427,12 +427,12 @@ func TestIntegrationSearchBottlesRanking(t *testing.T) {
 		assert.Equal(t, want[i], b.BottleID, "position %d", i)
 	}
 
-	total, err := svc.CountSearchBottles(ctx, "qz8")
+	total, err := svc.CountSearchBottles(ctx, "qz8", BottleFilters{}, rank.FavoriteIDs)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), total)
 
 	t.Run("cold start orders by vineyard", func(t *testing.T) {
-		got, err := svc.SearchBottles(ctx, "qz8", RankParams{}, 20, 0)
+		got, err := svc.SearchBottles(ctx, "qz8", BottleFilters{}, RankParams{}, 20, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 5)
 		for i, b := range got {
@@ -441,12 +441,60 @@ func TestIntegrationSearchBottlesRanking(t *testing.T) {
 	})
 
 	t.Run("term matches type and region names", func(t *testing.T) {
-		got, err := svc.SearchBottles(ctx, "rank type", RankParams{}, 20, 0)
+		got, err := svc.SearchBottles(ctx, "rank type", BottleFilters{}, RankParams{}, 20, 0)
 		require.NoError(t, err)
 		assert.Len(t, got, 5)
-		got, err = svc.SearchBottles(ctx, "rank region", RankParams{}, 20, 0)
+		got, err = svc.SearchBottles(ctx, "rank region", BottleFilters{}, RankParams{}, 20, 0)
 		require.NoError(t, err)
 		assert.Len(t, got, 5)
+	})
+
+	t.Run("structured filters narrow rows and count agrees", func(t *testing.T) {
+		otherCountry, err := svc.CreateCountry(ctx, "IT Filter Country", "IFC", "", itBy)
+		require.NoError(t, err)
+		otherRegion, err := svc.CreateRegion(ctx, Region{CountryID: otherCountry.CountryID, Name: "IT Filter Region"}, itBy)
+		require.NoError(t, err)
+		otherType, err := svc.CreateType(ctx, "IT Filter Type", "", itBy)
+		require.NoError(t, err)
+		other, err := svc.CreateBottle(ctx, Bottle{
+			TypeID: otherType.TypeID, CountryID: otherCountry.CountryID, RegionID: otherRegion.RegionID,
+			VintageYear: 2010, Vineyard: "QZ8 Other", BottleSize: "750ml",
+		}, itBy)
+		require.NoError(t, err)
+		year2010 := int32(2010)
+
+		cases := []struct {
+			name    string
+			filters BottleFilters
+			want    int
+		}{
+			{"country", BottleFilters{CountryID: &country.CountryID}, 5},
+			{"other country", BottleFilters{CountryID: &otherCountry.CountryID}, 1},
+			{"region", BottleFilters{RegionID: &region.RegionID}, 5},
+			{"type", BottleFilters{TypeID: &wtype.TypeID}, 5},
+			{"other type", BottleFilters{TypeID: &otherType.TypeID}, 1},
+			{"vintage", BottleFilters{VintageYear: &year2010}, 1},
+			{"favorites only", BottleFilters{FavoritesOnly: true}, 1},
+			{"no filters", BottleFilters{}, 6},
+		}
+		for _, tc := range cases {
+			got, err := svc.SearchBottles(ctx, "qz8", tc.filters, rank, 20, 0)
+			require.NoError(t, err, tc.name)
+			assert.Len(t, got, tc.want, tc.name)
+			total, err := svc.CountSearchBottles(ctx, "qz8", tc.filters, rank.FavoriteIDs)
+			require.NoError(t, err, tc.name)
+			assert.Equal(t, int64(tc.want), total, tc.name)
+		}
+
+		got, err = svc.SearchBottles(ctx, "qz8", BottleFilters{
+			CountryID:   &otherCountry.CountryID,
+			RegionID:    &otherRegion.RegionID,
+			TypeID:      &otherType.TypeID,
+			VintageYear: &year2010,
+		}, RankParams{}, 20, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, other.BottleID, got[0].BottleID)
 	})
 
 	t.Run("MatchBottleIDs feeds include_ids", func(t *testing.T) {
