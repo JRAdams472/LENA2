@@ -109,15 +109,28 @@ SELECT COUNT(*)
 FROM userprefs.household_item
 WHERE household_id = $1
   AND ($2::bigint[] IS NULL OR item_id = ANY($2::bigint[]))
+  AND ($3::bool IS DISTINCT FROM TRUE OR current_qty > 0)
+  AND ($4::bool IS DISTINCT FROM TRUE OR item_id = ANY($5::bigint[]))
 `
 
 type CountSearchHouseholdItemsParams struct {
-	HouseholdID int64   `json:"household_id"`
-	IncludeIds  []int64 `json:"include_ids"`
+	HouseholdID   int64       `json:"household_id"`
+	IncludeIds    []int64     `json:"include_ids"`
+	InStock       pgtype.Bool `json:"in_stock"`
+	FavoritesOnly pgtype.Bool `json:"favorites_only"`
+	FavoriteIds   []int64     `json:"favorite_ids"`
 }
 
+// Same predicates as SearchHouseholdItems so pageInfo.totalCount agrees
+// with the returned rows.
 func (q *Queries) CountSearchHouseholdItems(ctx context.Context, arg CountSearchHouseholdItemsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countSearchHouseholdItems, arg.HouseholdID, arg.IncludeIds)
+	row := q.db.QueryRow(ctx, countSearchHouseholdItems,
+		arg.HouseholdID,
+		arg.IncludeIds,
+		arg.InStock,
+		arg.FavoritesOnly,
+		arg.FavoriteIds,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -979,41 +992,49 @@ SELECT household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at
 FROM userprefs.household_item
 WHERE household_id = $1
   AND ($2::bigint[] IS NULL OR item_id = ANY($2::bigint[]))
+  AND ($3::bool IS DISTINCT FROM TRUE OR current_qty > 0)
+  AND ($4::bool IS DISTINCT FROM TRUE OR item_id = ANY($5::bigint[]))
 ORDER BY
   CASE
     WHEN expires_at IS NOT NULL AND expires_at <= now() + interval '7 days' THEN 0
-    WHEN item_id = ANY($3::bigint[]) THEN 1
-    WHEN item_id = ANY($4::bigint[]) THEN 2
-    WHEN item_id = ANY($5::bigint[]) THEN 3
+    WHEN item_id = ANY($5::bigint[]) THEN 1
+    WHEN item_id = ANY($6::bigint[]) THEN 2
+    WHEN item_id = ANY($7::bigint[]) THEN 3
     ELSE 4
   END,
   expires_at ASC NULLS LAST,
-  array_position($4::bigint[], item_id),
-  array_position($5::bigint[], item_id),
+  array_position($6::bigint[], item_id),
+  array_position($7::bigint[], item_id),
   updated_at DESC NULLS LAST,
   household_item_id
-LIMIT $7::int OFFSET $6::int
+LIMIT $9::int OFFSET $8::int
 `
 
 type SearchHouseholdItemsParams struct {
-	HouseholdID  int64   `json:"household_id"`
-	IncludeIds   []int64 `json:"include_ids"`
-	FavoriteIds  []int64 `json:"favorite_ids"`
-	PersonalIds  []int64 `json:"personal_ids"`
-	HouseholdIds []int64 `json:"household_ids"`
-	Offset       int32   `json:"offset"`
-	Limit        int32   `json:"limit"`
+	HouseholdID   int64       `json:"household_id"`
+	IncludeIds    []int64     `json:"include_ids"`
+	InStock       pgtype.Bool `json:"in_stock"`
+	FavoritesOnly pgtype.Bool `json:"favorites_only"`
+	FavoriteIds   []int64     `json:"favorite_ids"`
+	PersonalIds   []int64     `json:"personal_ids"`
+	HouseholdIds  []int64     `json:"household_ids"`
+	Offset        int32       `json:"offset"`
+	Limit         int32       `json:"limit"`
 }
 
 // Ranked pantry listing. Tiers: 0 expiring within 7 days (smallest
 // expires_at first — urgency over habit), 1 the caller's favorite catalog
 // items, 2 personally-used, 3 household-used, 4 rest by recency.
-// include_ids scopes by catalog item (the BFF resolves a name term to item
-// IDs because this schema cannot join inventory). NULL means no filter.
+// include_ids scopes by catalog item (the BFF resolves a name term, a
+// brand, or an explicit ID set to item IDs because this schema cannot
+// join inventory). NULL means no filter. in_stock and favorites_only are
+// optional predicate gates.
 func (q *Queries) SearchHouseholdItems(ctx context.Context, arg SearchHouseholdItemsParams) ([]UserprefsHouseholdItem, error) {
 	rows, err := q.db.Query(ctx, searchHouseholdItems,
 		arg.HouseholdID,
 		arg.IncludeIds,
+		arg.InStock,
+		arg.FavoritesOnly,
 		arg.FavoriteIds,
 		arg.PersonalIds,
 		arg.HouseholdIds,

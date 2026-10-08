@@ -32,6 +32,17 @@ func upCtx() context.Context {
 	return testutil.WithUser(context.Background(), upUserID, upEmail)
 }
 
+// userItemsArgs mirrors the anonymous args struct on Resolver.UserItems.
+type userItemsArgs struct {
+	Page       int32
+	PageSize   int32
+	Search     *string
+	ItemIDs    *[]graphql.ID
+	InStock    *bool
+	IsFavorite *bool
+	BrandID    *graphql.ID
+}
+
 func TestResolver_UserItems_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
@@ -47,7 +58,9 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 		{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 3, MinQty: &minQty, PurchaseAt: &purchaseAt, Notes: "restock"},
 		{HouseholdItemID: 6, HouseholdID: upUserID, ItemID: 43, CurrentQty: 0.5},
 	}, nil)
-	up.EXPECT().CountSearchHouseholdItems(gomock.Any(), upUserID, []int64(nil)).Return(int64(5), nil)
+	up.EXPECT().CountSearchHouseholdItems(gomock.Any(), userprefs.PantrySearch{
+		HouseholdID: upUserID, FavoriteIDs: []int64{42}, Limit: 20, Offset: 40,
+	}).Return(int64(5), nil)
 	up.EXPECT().ListItemFavorites(gomock.Any(), upUserID, []int64{42, 43}).Return(map[int64]bool{42: true}, nil)
 	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{42, 43}).Return([]inventory.Item{
 		{ItemID: 42, Name: "Flour", CategoryID: 1},
@@ -59,11 +72,7 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 	inv.EXPECT().ResolveItemIngredients(gomock.Any(), upUserID, []int64{42, 43}).Return(map[int64]*int64{42: nil, 43: nil}, nil)
 	inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{42, 43}).Return(nil, nil)
 
-	res, err := r.UserItems(upCtx(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
-	}{Page: 3, PageSize: 20})
+	res, err := r.UserItems(upCtx(), userItemsArgs{Page: 3, PageSize: 20})
 	require.NoError(t, err)
 	require.NotNil(t, res)
 
@@ -88,13 +97,64 @@ func TestResolver_UserItems_Happy(t *testing.T) {
 	assert.Equal(t, int32(5), pi.TotalCount())
 }
 
+func TestResolver_UserItems_Filters(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{UserPrefsService: up, InventoryService: inv}
+
+	// brand → IDs intersects with explicit itemIds → [42]
+	brandID := graphql.ID("7")
+	itemIDs := []graphql.ID{"42", "99"}
+	inStock, isFav := true, true
+	inv.EXPECT().MatchItemIDsByBrand(gomock.Any(), int64(7), upUserID).Return([]int64{42, 77}, nil)
+	up.EXPECT().ListFavoriteItemIDs(gomock.Any(), upUserID).Return([]int64{42}, nil)
+	up.EXPECT().SearchHouseholdItems(gomock.Any(), userprefs.PantrySearch{
+		HouseholdID: upUserID, IncludeIDs: []int64{42},
+		InStock: true, FavoritesOnly: true, FavoriteIDs: []int64{42},
+		Limit: 10, Offset: 0,
+	}).Return([]userprefs.HouseholdItem{
+		{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 3},
+	}, nil)
+	up.EXPECT().CountSearchHouseholdItems(gomock.Any(), userprefs.PantrySearch{
+		HouseholdID: upUserID, IncludeIDs: []int64{42},
+		InStock: true, FavoritesOnly: true, FavoriteIDs: []int64{42},
+		Limit: 10, Offset: 0,
+	}).Return(int64(1), nil)
+	up.EXPECT().ListItemFavorites(gomock.Any(), upUserID, []int64{42}).Return(map[int64]bool{42: true}, nil)
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{42}).Return([]inventory.Item{
+		{ItemID: 42, Name: "Flour", CategoryID: 1},
+	}, nil)
+	inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return(nil, nil)
+	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{42}).Return(nil, nil)
+	inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{42}).Return(nil, nil)
+	inv.EXPECT().ResolveItemIngredients(gomock.Any(), upUserID, []int64{42}).Return(map[int64]*int64{42: nil}, nil)
+	inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{42}).Return(nil, nil)
+
+	res, err := r.UserItems(upCtx(), userItemsArgs{
+		Page: 1, PageSize: 10,
+		BrandID: &brandID, ItemIDs: &itemIDs,
+		InStock: &inStock, IsFavorite: &isFav,
+	})
+	require.NoError(t, err)
+	require.Len(t, res.Items(), 1)
+	assert.Equal(t, int32(1), res.PageInfo().TotalCount())
+}
+
+func TestResolver_UserItems_InvalidBrandID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{UserPrefsService: up, InventoryService: inv}
+
+	bad := graphql.ID("abc")
+	_, err := r.UserItems(upCtx(), userItemsArgs{Page: 1, PageSize: 10, BrandID: &bad})
+	require.Error(t, err)
+}
+
 func TestResolver_UserItems_Unauthorized(t *testing.T) {
 	r := &Resolver{}
-	res, err := r.UserItems(context.Background(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
-	}{Page: 1, PageSize: 10})
+	res, err := r.UserItems(context.Background(), userItemsArgs{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
 }
@@ -107,11 +167,7 @@ func TestResolver_UserItems_ServiceError(t *testing.T) {
 	up.EXPECT().ListFavoriteItemIDs(gomock.Any(), upUserID).Return(nil, nil)
 	up.EXPECT().SearchHouseholdItems(gomock.Any(), gomock.Any()).Return(nil, errUpBoom)
 
-	res, err := r.UserItems(upCtx(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
-	}{Page: 1, PageSize: 10})
+	res, err := r.UserItems(upCtx(), userItemsArgs{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)
 }

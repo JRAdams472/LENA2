@@ -198,15 +198,18 @@ func (s *Service) CountHouseholdItems(ctx context.Context, householdID int64) (i
 // PantrySearch carries the filter and ranking inputs for
 // SearchHouseholdItems. IncludeIDs scopes by catalog item (nil = no
 // filter); Favorite/Personal/Household IDs are pre-sorted engagement arrays
-// the BFF computes from analytics and favorites.
+// the BFF computes from analytics and favorites. InStock/FavoritesOnly are
+// optional predicate gates (false = unconstrained).
 type PantrySearch struct {
-	HouseholdID  int64
-	IncludeIDs   []int64
-	FavoriteIDs  []int64
-	PersonalIDs  []int64
-	HouseholdIDs []int64
-	Limit        int32
-	Offset       int32
+	HouseholdID   int64
+	IncludeIDs    []int64
+	InStock       bool
+	FavoritesOnly bool
+	FavoriteIDs   []int64
+	PersonalIDs   []int64
+	HouseholdIDs  []int64
+	Limit         int32
+	Offset        int32
 }
 
 // SearchHouseholdItems returns one page of the household's pantry rows,
@@ -214,13 +217,15 @@ type PantrySearch struct {
 // recency.
 func (s *Service) SearchHouseholdItems(ctx context.Context, arg PantrySearch) ([]HouseholdItem, error) {
 	rows, err := s.q.SearchHouseholdItems(ctx, sqlc.SearchHouseholdItemsParams{
-		HouseholdID:  arg.HouseholdID,
-		IncludeIds:   arg.IncludeIDs,
-		FavoriteIds:  arg.FavoriteIDs,
-		PersonalIds:  arg.PersonalIDs,
-		HouseholdIds: arg.HouseholdIDs,
-		Limit:        arg.Limit,
-		Offset:       arg.Offset,
+		HouseholdID:   arg.HouseholdID,
+		IncludeIds:    arg.IncludeIDs,
+		InStock:       boolOrNull(arg.InStock),
+		FavoritesOnly: boolOrNull(arg.FavoritesOnly),
+		FavoriteIds:   arg.FavoriteIDs,
+		PersonalIds:   arg.PersonalIDs,
+		HouseholdIds:  arg.HouseholdIDs,
+		Limit:         arg.Limit,
+		Offset:        arg.Offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search household items: %w", err)
@@ -237,11 +242,14 @@ func (s *Service) SearchHouseholdItems(ctx context.Context, arg PantrySearch) ([
 }
 
 // CountSearchHouseholdItems returns the un-paged match count for the same
-// filters as SearchHouseholdItems.
-func (s *Service) CountSearchHouseholdItems(ctx context.Context, householdID int64, includeIDs []int64) (int64, error) {
+// filters as SearchHouseholdItems (Limit/Offset ignored).
+func (s *Service) CountSearchHouseholdItems(ctx context.Context, arg PantrySearch) (int64, error) {
 	n, err := s.q.CountSearchHouseholdItems(ctx, sqlc.CountSearchHouseholdItemsParams{
-		HouseholdID: householdID,
-		IncludeIds:  includeIDs,
+		HouseholdID:   arg.HouseholdID,
+		IncludeIds:    arg.IncludeIDs,
+		InStock:       boolOrNull(arg.InStock),
+		FavoritesOnly: boolOrNull(arg.FavoritesOnly),
+		FavoriteIds:   arg.FavoriteIDs,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("count search household items: %w", err)
@@ -725,6 +733,10 @@ func optNumeric(f *float64) (pgtype.Numeric, error) {
 		return pgtype.Numeric{}, nil
 	}
 	return numericFromFloat64(*f)
+}
+
+func boolOrNull(v bool) pgtype.Bool {
+	return pgtype.Bool{Bool: v, Valid: true}
 }
 
 func optInt4(v *int32) pgtype.Int4 {

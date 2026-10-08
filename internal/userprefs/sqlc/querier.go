@@ -16,6 +16,8 @@ type Querier interface {
 	CountHouseholdBottles(ctx context.Context, householdID int64) (int64, error)
 	CountHouseholdItems(ctx context.Context, householdID int64) (int64, error)
 	CountSearchHouseholdBottles(ctx context.Context, arg CountSearchHouseholdBottlesParams) (int64, error)
+	// Same predicates as SearchHouseholdItems so pageInfo.totalCount agrees
+	// with the returned rows.
 	CountSearchHouseholdItems(ctx context.Context, arg CountSearchHouseholdItemsParams) (int64, error)
 	DeleteHouseholdBottle(ctx context.Context, arg DeleteHouseholdBottleParams) (int64, error)
 	DeleteHouseholdItem(ctx context.Context, arg DeleteHouseholdItemParams) (int64, error)
@@ -70,8 +72,10 @@ type Querier interface {
 	// Ranked pantry listing. Tiers: 0 expiring within 7 days (smallest
 	// expires_at first — urgency over habit), 1 the caller's favorite catalog
 	// items, 2 personally-used, 3 household-used, 4 rest by recency.
-	// include_ids scopes by catalog item (the BFF resolves a name term to item
-	// IDs because this schema cannot join inventory). NULL means no filter.
+	// include_ids scopes by catalog item (the BFF resolves a name term, a
+	// brand, or an explicit ID set to item IDs because this schema cannot
+	// join inventory). NULL means no filter. in_stock and favorites_only are
+	// optional predicate gates.
 	SearchHouseholdItems(ctx context.Context, arg SearchHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	SetUserBottleFavorite(ctx context.Context, arg SetUserBottleFavoriteParams) (UserprefsUserBottleFavorite, error)
 	// ---------- per-user favorites (never household-scoped) ----------

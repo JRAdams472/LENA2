@@ -143,35 +143,46 @@ describe("api client: items", () => {
     expect(result.pageNumber).toBe(2);
   });
 
-  it("getItemsPaged filters the pantry path via userItems", async () => {
+  it("getItemsPaged sends pantry filters server-side via userItems", async () => {
+    // The server filters/orders/pages — the mock returns the already-filtered
+    // page; the client must not slice or filter it again.
     const userItems = [
       gqlUserItem("1", {
         item: gqlItem({ id: "1", name: "Whole Milk", brand: { id: "1", name: "Acme" } }),
         currentQty: 2,
         isFavorite: true,
       }),
-      gqlUserItem("2", {
-        item: gqlItem({ id: "2", name: "Skim Milk", brand: { id: "2", name: "Beta" } }),
-        currentQty: 0,
-        isFavorite: false,
-      }),
-      gqlUserItem("3", {
-        item: gqlItem({ id: "3", name: "Bread", brand: null }),
-        currentQty: 5,
-        isFavorite: false,
-      }),
     ];
-    mockFetch.mockResolvedValueOnce(mockGraphQL(userItemsPage(userItems)));
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        userItems: {
+          items: userItems,
+          pageInfo: { pageNumber: 2, pageSize: 10, totalCount: 11 },
+        },
+      })
+    );
 
-    const result = await api.getItemsPaged(1, 10, "milk", 1, true, true);
+    const result = await api.getItemsPaged(2, 10, "milk", 1, true, true);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const body = lastRequestBody();
     expect(body.query).toContain("userItems(page: $page");
-    expect(body.variables.search).toBe("milk");
+    expect(body.query).toContain("brandId: $brandId");
+    expect(body.query).toContain("inStock: $inStock");
+    expect(body.query).toContain("isFavorite: $isFavorite");
+    expect(body.variables).toEqual({
+      page: 2,
+      pageSize: 10,
+      search: "milk",
+      brandId: "1",
+      inStock: true,
+      isFavorite: true,
+    });
     expect(result.items).toHaveLength(1);
     expect(result.items[0].name).toBe("Whole Milk");
-    expect(result.totalCount).toBe(1);
+    expect(result.pageNumber).toBe(2);
+    expect(result.totalCount).toBe(11);
+    expect(result.totalPages).toBe(2);
   });
 
   it("getItemsPaged handles an item with null brand and category", async () => {

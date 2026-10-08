@@ -76,11 +76,17 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 
 // UserItems resolves the current household's pantry items with the current
 // user's per-item favorite flags, ordered expiring-soon → favorite →
-// engagement tier → recency.
+// engagement tier → recency. The pantry schema cannot join inventory, so
+// search terms, brands and explicit item IDs all resolve to catalog IDs
+// here and AND together into include_ids.
 func (r *Resolver) UserItems(ctx context.Context, args struct {
-	Page     int32
-	PageSize int32
-	Search   *string
+	Page       int32
+	PageSize   int32
+	Search     *string
+	ItemIDs    *[]graphql.ID
+	InStock    *bool
+	IsFavorite *bool
+	BrandID    *graphql.ID
 }) (*userItemPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -88,13 +94,41 @@ func (r *Resolver) UserItems(ctx context.Context, args struct {
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
 	var includeIDs []int64
+	scoped := false
+	scopeBy := func(ids []int64) {
+		if !scoped {
+			includeIDs = ids
+			scoped = true
+			return
+		}
+		includeIDs = intersectIDs(includeIDs, ids)
+	}
 	if term := strings.TrimSpace(derefString(args.Search)); term != "" {
 		// The pantry schema cannot join inventory — resolve the term to
 		// catalog item IDs here and scope the holding query by them.
-		includeIDs, err = r.InventoryService.MatchItemIDs(ctx, term, u.UserID)
+		ids, err := r.InventoryService.MatchItemIDs(ctx, term, u.UserID)
 		if err != nil {
 			return nil, err
 		}
+		scopeBy(ids)
+	}
+	if args.BrandID != nil {
+		brandID, err := parseID(string(*args.BrandID))
+		if err != nil {
+			return nil, err
+		}
+		ids, err := r.InventoryService.MatchItemIDsByBrand(ctx, brandID, u.UserID)
+		if err != nil {
+			return nil, err
+		}
+		scopeBy(ids)
+	}
+	if args.ItemIDs != nil {
+		ids, err := parseIDs(*args.ItemIDs)
+		if err != nil {
+			return nil, err
+		}
+		scopeBy(ids)
 	}
 	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityItem)
 	if err != nil {
@@ -104,19 +138,22 @@ func (r *Resolver) UserItems(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	items, err := r.UserPrefsService.SearchHouseholdItems(ctx, userprefs.PantrySearch{
-		HouseholdID:  u.HouseholdID,
-		IncludeIDs:   includeIDs,
-		FavoriteIDs:  favIDs,
-		PersonalIDs:  eng.PersonalIDs,
-		HouseholdIDs: eng.HouseholdIDs,
-		Limit:        pageSize,
-		Offset:       (page - 1) * pageSize,
-	})
+	search := userprefs.PantrySearch{
+		HouseholdID:   u.HouseholdID,
+		IncludeIDs:    includeIDs,
+		InStock:       args.InStock != nil && *args.InStock,
+		FavoritesOnly: args.IsFavorite != nil && *args.IsFavorite,
+		FavoriteIDs:   favIDs,
+		PersonalIDs:   eng.PersonalIDs,
+		HouseholdIDs:  eng.HouseholdIDs,
+		Limit:         pageSize,
+		Offset:        (page - 1) * pageSize,
+	}
+	items, err := r.UserPrefsService.SearchHouseholdItems(ctx, search)
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.UserPrefsService.CountSearchHouseholdItems(ctx, u.HouseholdID, includeIDs)
+	total, err := r.UserPrefsService.CountSearchHouseholdItems(ctx, search)
 	if err != nil {
 		return nil, err
 	}

@@ -57,12 +57,16 @@ WHERE household_id = $1;
 -- Ranked pantry listing. Tiers: 0 expiring within 7 days (smallest
 -- expires_at first — urgency over habit), 1 the caller's favorite catalog
 -- items, 2 personally-used, 3 household-used, 4 rest by recency.
--- include_ids scopes by catalog item (the BFF resolves a name term to item
--- IDs because this schema cannot join inventory). NULL means no filter.
+-- include_ids scopes by catalog item (the BFF resolves a name term, a
+-- brand, or an explicit ID set to item IDs because this schema cannot
+-- join inventory). NULL means no filter. in_stock and favorites_only are
+-- optional predicate gates.
 SELECT *
 FROM userprefs.household_item
 WHERE household_id = $1
   AND (sqlc.arg(include_ids)::bigint[] IS NULL OR item_id = ANY(sqlc.arg(include_ids)::bigint[]))
+  AND (sqlc.narg('in_stock')::bool IS DISTINCT FROM TRUE OR current_qty > 0)
+  AND (sqlc.narg('favorites_only')::bool IS DISTINCT FROM TRUE OR item_id = ANY(sqlc.arg(favorite_ids)::bigint[]))
 ORDER BY
   CASE
     WHEN expires_at IS NOT NULL AND expires_at <= now() + interval '7 days' THEN 0
@@ -79,10 +83,14 @@ ORDER BY
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 
 -- name: CountSearchHouseholdItems :one
+-- Same predicates as SearchHouseholdItems so pageInfo.totalCount agrees
+-- with the returned rows.
 SELECT COUNT(*)
 FROM userprefs.household_item
 WHERE household_id = $1
-  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR item_id = ANY(sqlc.arg(include_ids)::bigint[]));
+  AND (sqlc.arg(include_ids)::bigint[] IS NULL OR item_id = ANY(sqlc.arg(include_ids)::bigint[]))
+  AND (sqlc.narg('in_stock')::bool IS DISTINCT FROM TRUE OR current_qty > 0)
+  AND (sqlc.narg('favorites_only')::bool IS DISTINCT FROM TRUE OR item_id = ANY(sqlc.arg(favorite_ids)::bigint[]));
 
 -- name: DeleteHouseholdItem :execrows
 DELETE FROM userprefs.household_item
