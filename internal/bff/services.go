@@ -18,6 +18,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/notifier"
 	"github.com/JRAdams472/LENA2/internal/ocrimport"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/instacartclient"
 	"github.com/JRAdams472/LENA2/internal/platform/llm"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -694,3 +695,14 @@ type AIService interface {
 }
 
 var _ AIService = (*ai.Service)(nil)
+
+// ShoppingLinkClient creates a shareable shopping-list link with an
+// external shopper provider (the Instacart Developer Platform
+// products_link endpoint). A nil client means the deployment has no
+// shopper integration configured; shopperProviders reports an empty
+// list and createShoppingLink fails with UNAVAILABLE.
+type ShoppingLinkClient interface {
+	CreateShoppingList(ctx context.Context, req instacartclient.ShoppingListRequest) (string, error)
+}
+
+var _ ShoppingLinkClient = (*instacartclient.Client)(nil)

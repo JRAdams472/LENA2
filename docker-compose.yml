@@ -167,6 +167,11 @@ services:
       LENA_GRAPHQL_TIMEOUT: ${LENA_GRAPHQL_TIMEOUT:-10s}
       LENA_GRAPHQL_AI_TIMEOUT: ${LENA_GRAPHQL_AI_TIMEOUT:-120s}
       LENA_HTTP_WRITE_TIMEOUT: ${LENA_HTTP_WRITE_TIMEOUT:-30s}
+      # Instacart "shop this list" integration (optional; empty key
+      # disables it — the API key never leaves the server).
+      LENA_INSTACART_API_KEY: ${LENA_INSTACART_API_KEY:-}
+      LENA_INSTACART_BASE_URL: ${LENA_INSTACART_BASE_URL:-https://connect.dev.instacart.tools}
+      LENA_INSTACART_TIMEOUT: ${LENA_INSTACART_TIMEOUT:-15s}
     volumes:
       - import_data:/data/import
     # edge for caddy, default for db/ocr/ollama, observability for jaeger.

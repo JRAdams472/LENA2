@@ -59,6 +59,7 @@ type Resolver struct {
 	AuthInvalidator        AuthInvalidator
 	AIService              AIService
 	OCRClient              OCRClient
+	ShoppingClient         ShoppingLinkClient
 	RecipeEmbedder         RecipeEmbedder
 	IdemStore              IdempotencyStore
 	NutritionPhotoMaxBytes int
@@ -73,12 +74,13 @@ type Resolver struct {
 	// ocrInFlight tracks in-flight nutrition-OCR jobs per user so one
 	// member cannot hold more than one at a time; uploads throttles
 	// upload mutations per user.
-	ocrMu       sync.Mutex
-	ocrInFlight map[int64]int
-	uploads     *userRateLimiter
-	aiCalls     *userRateLimiter
-	aiToolCalls *userRateLimiter
-	invites     *userRateLimiter
+	ocrMu         sync.Mutex
+	ocrInFlight   map[int64]int
+	uploads       *userRateLimiter
+	aiCalls       *userRateLimiter
+	aiToolCalls   *userRateLimiter
+	invites       *userRateLimiter
+	shoppingLinks *userRateLimiter
 }
 
 // asyncWorkerCap bounds the number of in-flight background tasks.
@@ -106,6 +108,7 @@ type Services struct {
 	Auth           AuthInvalidator
 	AI             AIService
 	OCR            OCRClient
+	Shopping       ShoppingLinkClient
 	RecipeEmbedder RecipeEmbedder
 }
 
@@ -144,12 +147,14 @@ func NewResolver(pool dbtx.Pool, svc Services, opts Options) *Resolver {
 		AuthInvalidator:        svc.Auth,
 		AIService:              svc.AI,
 		OCRClient:              svc.OCR,
+		ShoppingClient:         svc.Shopping,
 		RecipeEmbedder:         svc.RecipeEmbedder,
 		NutritionPhotoMaxBytes: opts.NutritionPhotoMaxBytes,
 		RecipeScanMaxBytes:     opts.RecipeScanMaxBytes,
 		IdemStore:              opts.Idempotency,
 		uploads:                newUserRateLimiter(uploadRate),
 		invites:                newUserRateLimiter(10),
+		shoppingLinks:          newUserRateLimiter(10),
 	}
 }
 
@@ -222,6 +227,18 @@ func (r *Resolver) inviteLimiter() *userRateLimiter {
 		r.invites = newUserRateLimiter(10)
 	}
 	return r.invites
+}
+
+// shoppingLimiter bounds createShoppingLink calls per user so a busy
+// client cannot burn through the deployment's IDP quota. Lazily built so
+// Resolver literals in tests still work.
+func (r *Resolver) shoppingLimiter() *userRateLimiter {
+	r.ocrMu.Lock()
+	defer r.ocrMu.Unlock()
+	if r.shoppingLinks == nil {
+		r.shoppingLinks = newUserRateLimiter(10)
+	}
+	return r.shoppingLinks
 }
 
 // Shutdown drains in-flight background work before returning: it waits

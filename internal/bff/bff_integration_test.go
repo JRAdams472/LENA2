@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,11 +26,48 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
+	"github.com/JRAdams472/LENA2/internal/platform/instacartclient"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
+
+// fakeIDP is a stub Instacart Developer Platform server: it records every
+// products_link request body (plus the Authorization header) and returns a
+// deterministic products_link_url.
+type fakeIDP struct {
+	*httptest.Server
+	mu   sync.Mutex
+	reqs []map[string]any
+}
+
+func newFakeIDP(t *testing.T) *fakeIDP {
+	f := &fakeIDP{}
+	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		body["_auth"] = r.Header.Get("Authorization")
+		f.mu.Lock()
+		f.reqs = append(f.reqs, body)
+		f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"products_link_url":"https://instacart.test/list/abc123"}`))
+	}))
+	t.Cleanup(f.Close)
+	return f
+}
+
+// last returns the most recent recorded request, or nil.
+func (f *fakeIDP) last() map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.reqs) == 0 {
+		return nil
+	}
+	return f.reqs[len(f.reqs)-1]
+}
 
 type graphqlResponse struct {
 	Data   json.RawMessage `json:"data"`
@@ -48,6 +87,10 @@ func TestBFF_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	issuer := testutil.NewTestIssuer(t)
+
+	// The shopping-link subtest exercises the real instacartclient against
+	// this stub, so the resolver gets a configured provider end to end.
+	idp := newFakeIDP(t)
 
 	identitySvc := identity.NewService(pool)
 	// The authenticator writes household.households, so it needs the real
@@ -70,6 +113,7 @@ func TestBFF_Integration(t *testing.T) {
 		Identity:  identitySvc,
 		Household: household.NewService(pool),
 		Auth:      authenticator,
+		Shopping:  instacartclient.New(idp.URL, "test-key", 5*time.Second),
 	}, Options{})
 
 	e := echo.New()
@@ -106,6 +150,9 @@ func TestBFF_Integration(t *testing.T) {
 	})
 	t.Run("allergy sweep", func(t *testing.T) {
 		runAllergySweepTests(t, srv, issuer)
+	})
+	t.Run("shopping link", func(t *testing.T) {
+		runShoppingLinkTests(t, srv, issuer, idp)
 	})
 }
 
@@ -2816,6 +2863,169 @@ func runAllergySweepTests(t *testing.T, srv *httptest.Server, issuer *testutil.T
 				"%s should surface the milk-flagged fixture's warning", row.name)
 		})
 	}
+}
+
+// runShoppingLinkTests exercises createShoppingLink end to end: a real
+// resolver wired to a stub Instacart IDP server, with a real grocery list
+// built through the generate path.
+func runShoppingLinkTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer, idp *fakeIDP) {
+	// The fixture needs createRecipe, which is @admin — the same trade the
+	// allergy sweep makes; the feature itself is not role-gated.
+	user := issuer.Token(t, "shop-admin", "auth@example.com", "Shop Admin")
+
+	status, gr := doGraphQL(t, srv, user, `{ shopperProviders }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var providersRes struct {
+		ShopperProviders []string `json:"shopperProviders"`
+	}
+	decodeData(t, gr.Data, &providersRes)
+	assert.Equal(t, []string{"INSTACART"}, providersRes.ShopperProviders)
+
+	// Fixture: a catalog item on a recipe, planned, generated into a list,
+	// plus a manual line — the two name-resolution paths.
+	status, gr = doGraphQL(t, srv, user, `{ items(page: 1, pageSize: 1) { items { id name } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var itemsRes struct {
+		Items struct {
+			Items []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &itemsRes)
+	require.NotEmpty(t, itemsRes.Items.Items)
+	catalogItem := itemsRes.Items.Items[0]
+
+	status, gr = doGraphQL(t, srv, user, `mutation R($input: CreateRecipeInput!) {
+		createRecipe(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{
+		"name": "Shop Fixture Soup", "servings": 2,
+		"items": []map[string]any{{"itemId": catalogItem.ID, "quantity": 1.0, "unit": "cup"}},
+		"steps": []map[string]any{},
+	}})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var recRes struct {
+		CreateRecipe struct {
+			ID string `json:"id"`
+		} `json:"createRecipe"`
+	}
+	decodeData(t, gr.Data, &recRes)
+
+	status, gr = doGraphQL(t, srv, user, `mutation P($input: CreateMealPlanInput!) {
+		createMealPlan(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{"name": "Shop Plan", "weekStartDate": "2026-10-12"}})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var planRes struct {
+		CreateMealPlan struct {
+			ID string `json:"id"`
+		} `json:"createMealPlan"`
+	}
+	decodeData(t, gr.Data, &planRes)
+
+	status, gr = doGraphQL(t, srv, user, `mutation S($input: AddMealSlotInput!) {
+		addMealSlot(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{
+		"mealPlanId": planRes.CreateMealPlan.ID, "dayOfWeek": 1,
+		"mealType": "Dinner", "recipeId": recRes.CreateRecipe.ID, "servings": 2,
+	}})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, user, `mutation G($planId: ID!) {
+		generateGroceryList(mealPlanId: $planId) { id items { id isChecked manualItemName } }
+	}`, map[string]any{"planId": planRes.CreateMealPlan.ID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var listRes struct {
+		GenerateGroceryList struct {
+			ID    string `json:"id"`
+			Items []struct {
+				ID             string  `json:"id"`
+				IsChecked      bool    `json:"isChecked"`
+				ManualItemName *string `json:"manualItemName"`
+			} `json:"items"`
+		} `json:"generateGroceryList"`
+	}
+	decodeData(t, gr.Data, &listRes)
+	listID := listRes.GenerateGroceryList.ID
+	require.NotEmpty(t, listID)
+	require.NotEmpty(t, listRes.GenerateGroceryList.Items)
+
+	status, gr = doGraphQL(t, srv, user, `mutation M($input: AddGroceryItemInput!) {
+		addGroceryItem(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{
+		"groceryListId": listID, "manualItemName": "Paper towels", "quantity": 1.0, "unit": "each",
+	}})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// Check off the first generated line so unchecked filtering is visible
+	// in the request body.
+	checkedLine := listRes.GenerateGroceryList.Items[0].ID
+	status, gr = doGraphQL(t, srv, user, `mutation T($id: ID!) {
+		toggleGroceryItemChecked(groceryListItemId: $id) { isChecked }
+	}`, map[string]any{"id": checkedLine})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, user, `mutation L($id: ID!) {
+		createShoppingLink(groceryListId: $id) { provider url }
+	}`, map[string]any{"id": listID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var linkRes struct {
+		CreateShoppingLink struct {
+			Provider string `json:"provider"`
+			URL      string `json:"url"`
+		} `json:"createShoppingLink"`
+	}
+	decodeData(t, gr.Data, &linkRes)
+	assert.Equal(t, "INSTACART", linkRes.CreateShoppingLink.Provider)
+	assert.Equal(t, "https://instacart.test/list/abc123", linkRes.CreateShoppingLink.URL)
+
+	// The stub saw a Bearer-authed products_link POST whose line_items
+	// ship the unchecked manual line and exclude the checked recipe line.
+	req := idp.last()
+	require.NotNil(t, req, "IDP stub received no request")
+	assert.Equal(t, "Bearer test-key", req["_auth"])
+	assert.Equal(t, "shopping_list", req["link_type"])
+	lines, ok := req["line_items"].([]any)
+	require.True(t, ok)
+	require.Len(t, lines, 1, "only the unchecked manual line should ship")
+	line := lines[0].(map[string]any)
+	assert.Equal(t, "Paper towels", line["name"])
+	assert.Equal(t, []any{map[string]any{"quantity": 1.0, "unit": "each"}}, line["line_item_measurements"])
+
+	// includeChecked ships both lines; the catalog line carries its UPCs,
+	// brand filter, and cup measurement for exact-match shopping.
+	status, gr = doGraphQL(t, srv, user, `mutation L($id: ID!) {
+		createShoppingLink(groceryListId: $id, includeChecked: true) { url }
+	}`, map[string]any{"id": listID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	lines, ok = idp.last()["line_items"].([]any)
+	require.True(t, ok)
+	require.Len(t, lines, 2, "includeChecked should ship every line")
+	byName := map[string]map[string]any{}
+	for _, l := range lines {
+		byName[l.(map[string]any)["name"].(string)] = l.(map[string]any)
+	}
+	cat := byName[catalogItem.Name]
+	require.NotNil(t, cat, "checked catalog line should ship with includeChecked")
+	assert.NotEmpty(t, cat["upcs"], "catalog line should carry its UPCs")
+	assert.NotNil(t, cat["filters"], "catalog line should carry brand filters")
+
+	// An unknown provider value is rejected — enum literals fail at
+	// schema-validation time, before the resolver runs.
+	status, gr = doGraphQLExpectErrors(t, srv, user, `mutation L($id: ID!) {
+		createShoppingLink(groceryListId: $id, provider: BOGUS) { url }
+	}`, map[string]any{"id": listID})
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, gr.Errors)
 }
 
 func TestMain(m *testing.M) {
