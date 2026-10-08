@@ -628,6 +628,24 @@ func distinctIDs[T any](xs []T, f func(T) *int64) []int64 {
 	return ids
 }
 
+// intersectIDs returns the IDs present in both slices, preserving a's
+// order. Used when a listing can be scoped by several ID sets (search
+// term, brand, explicit IDs) — the intersection is the only correct
+// combination since each set is an AND filter.
+func intersectIDs(a, b []int64) []int64 {
+	in := make(map[int64]bool, len(b))
+	for _, id := range b {
+		in[id] = true
+	}
+	out := make([]int64, 0, len(a))
+	for _, id := range a {
+		if in[id] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // itemChildren holds inventory rows batch-loaded for a list response so
 // nested item field resolvers do not issue a query per row. When a child
 // resolver's ch field is nil it falls back to lazy service calls.

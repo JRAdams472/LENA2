@@ -499,7 +499,7 @@ func TestIntegrationSearchHouseholdItemsRanking(t *testing.T) {
 		assert.Equal(t, want[i], hi.ItemID, "position %d", i)
 	}
 
-	total, err := svc.CountSearchHouseholdItems(ctx, householdID, nil)
+	total, err := svc.CountSearchHouseholdItems(ctx, PantrySearch{HouseholdID: householdID})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), total)
 
@@ -509,9 +509,49 @@ func TestIntegrationSearchHouseholdItemsRanking(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Len(t, got, 2)
-		n, err := svc.CountSearchHouseholdItems(ctx, householdID, []int64{plainID, favID})
+		n, err := svc.CountSearchHouseholdItems(ctx, PantrySearch{
+			HouseholdID: householdID, IncludeIDs: []int64{plainID, favID},
+		})
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), n)
+	})
+
+	t.Run("in_stock and favorites_only gate rows and count agrees", func(t *testing.T) {
+		emptyID := createTestItem(ctx, t, pool)
+		_, err := svc.UpsertHouseholdItem(ctx, HouseholdItem{
+			HouseholdID: householdID, ItemID: emptyID, CurrentQty: 0,
+		}, itBy)
+		require.NoError(t, err)
+
+		inStock := PantrySearch{HouseholdID: householdID, InStock: true, Limit: 20}
+		got, err := svc.SearchHouseholdItems(ctx, inStock)
+		require.NoError(t, err)
+		for _, hi := range got {
+			assert.NotEqual(t, emptyID, hi.ItemID, "empty row must be filtered")
+		}
+		assert.Len(t, got, 5)
+		n, err := svc.CountSearchHouseholdItems(ctx, inStock)
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), n)
+
+		favOnly := PantrySearch{HouseholdID: householdID, FavoritesOnly: true, FavoriteIDs: []int64{favID}, Limit: 20}
+		got, err = svc.SearchHouseholdItems(ctx, favOnly)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, favID, got[0].ItemID)
+		n, err = svc.CountSearchHouseholdItems(ctx, favOnly)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), n)
+
+		// Composed: in-stock AND favorites-only AND include_ids.
+		composed := PantrySearch{
+			HouseholdID: householdID, IncludeIDs: []int64{favID, emptyID},
+			InStock: true, FavoritesOnly: true, FavoriteIDs: []int64{favID}, Limit: 20,
+		}
+		got, err = svc.SearchHouseholdItems(ctx, composed)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, favID, got[0].ItemID)
 	})
 }
 

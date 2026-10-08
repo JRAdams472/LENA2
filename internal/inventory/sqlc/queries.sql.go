@@ -2572,6 +2572,41 @@ func (q *Queries) MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]i
 	return items, nil
 }
 
+const matchItemIDsByBrand = `-- name: MatchItemIDsByBrand :many
+SELECT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND brand_id = $2
+LIMIT 1000
+`
+
+type MatchItemIDsByBrandParams struct {
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	BrandID           pgtype.Int8 `json:"brand_id"`
+}
+
+// IDs of visible items for a brand — same cross-schema feed as
+// MatchItemIDs, scoped by brand instead of a name term.
+func (q *Queries) MatchItemIDsByBrand(ctx context.Context, arg MatchItemIDsByBrandParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, matchItemIDsByBrand, arg.SubmittedByUserID, arg.BrandID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var item_id int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const matchItemIDsByTerms = `-- name: MatchItemIDsByTerms :many
 SELECT DISTINCT item_id
 FROM inventory.item

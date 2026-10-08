@@ -134,6 +134,9 @@ type Querier interface {
 	// IDs of visible items whose name matches the term — feeds include_ids on
 	// household-scoped queries that cannot join this schema (pantry search).
 	MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]int64, error)
+	// IDs of visible items for a brand — same cross-schema feed as
+	// MatchItemIDs, scoped by brand instead of a name term.
+	MatchItemIDsByBrand(ctx context.Context, arg MatchItemIDsByBrandParams) ([]int64, error)
 	// Items matching any of the user's prior search terms — the "searched"
 	// engagement tier resolved to IDs so it can join the ranked set. One
 	// per-page scan, only run when the user has recorded terms.

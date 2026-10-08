@@ -463,6 +463,15 @@ WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND lower(name) LIKE '%' || lower($2) || '%'
 LIMIT 1000;
 
+-- name: MatchItemIDsByBrand :many
+-- IDs of visible items for a brand — same cross-schema feed as
+-- MatchItemIDs, scoped by brand instead of a name term.
+SELECT item_id
+FROM inventory.item
+WHERE (status = 'approved' OR submitted_by_user_id = $1)
+  AND brand_id = $2
+LIMIT 1000;
+
 -- name: UpdateIngredient :one
 UPDATE inventory.ingredient
 SET name            = $2,

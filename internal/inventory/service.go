@@ -774,6 +774,19 @@ func (s *Service) MatchItemIDs(ctx context.Context, term string, userID int64) (
 	return ids, nil
 }
 
+// MatchItemIDsByBrand returns IDs of items visible to the given user for a
+// brand — same cross-schema feed as MatchItemIDs, scoped by brand.
+func (s *Service) MatchItemIDsByBrand(ctx context.Context, brandID int64, userID int64) ([]int64, error) {
+	ids, err := s.q.MatchItemIDsByBrand(ctx, sqlc.MatchItemIDsByBrandParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		BrandID:           pgtype.Int8{Int64: brandID, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("match item ids by brand: %w", err)
+	}
+	return ids, nil
+}
+
 // UpdateItem modifies an existing item. All business logic about who can
 // modify catalog data lives in Go, not in SQL triggers or procedures.
 func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by string) error {

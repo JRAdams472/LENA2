@@ -2155,34 +2155,8 @@ const STORE_FIELDS = `
   aisles { id name position }
 `;
 
-/* ------------------------------------------------------------------ */
-/* Helpers to page through the API for client-side filtering           */
-/* ------------------------------------------------------------------ */
-
 // Catalog order is engagement-ranked by the server (favorites → personal →
 // household → global → name); preserve it — never re-sort fetched pages.
-
-async function fetchAllUserItems(search?: string): Promise<GqlUserItem[]> {
-  const pageSize = 200;
-  let page = 1;
-  const term = (search ?? "").trim();
-  const out: GqlUserItem[] = [];
-  for (;;) {
-    const data = await request<{ userItems: GqlUserItemPage }>(
-      `query ($page: Int, $pageSize: Int, $search: String) {
-        userItems(page: $page, pageSize: $pageSize, search: $search) {
-          items { id currentQty minQty purchaseAt expiresAt notes isFavorite item { ${ITEM_FIELDS} } }
-          pageInfo { pageNumber pageSize totalCount }
-        }
-      }`,
-      { page, pageSize, search: term || null }
-    );
-    out.push(...data.userItems.items);
-    if (out.length >= data.userItems.pageInfo.totalCount || data.userItems.items.length === 0) break;
-    page += 1;
-  }
-  return out;
-}
 
 function pagedSlice<T>(all: T[], pageNumber: number, pageSize: number): PagedResult<T> {
   const start = (pageNumber - 1) * pageSize;
@@ -2528,28 +2502,54 @@ export const api = {
   ): Promise<PagedResult<Item>> => {
     const term = (search ?? "").trim();
     if (inStock || isFavorite) {
-      // Pantry-scoped filters drive from userItems — ranked server-side, and a
-      // household pantry is small enough to filter and page client-side.
-      const userItems = await fetchAllUserItems(term);
-      let rows = userItems.map((ui) => ({ ui, item: toItem(ui.item, ui) }));
-      if (brandId) rows = rows.filter((r) => num(r.ui.item.brand?.id) === brandId);
-      if (inStock) rows = rows.filter((r) => r.item.currentQuantity > 0);
-      if (isFavorite) rows = rows.filter((r) => r.item.isFavorite);
-      return pagedSlice(rows.map((r) => r.item), pageNumber, pageSize);
-    }
-    const [data, userItems] = await Promise.all([
-      request<{ items: GqlItemPage }>(
-        `query ($page: Int, $pageSize: Int, $search: String, $brandId: ID) {
-          items(page: $page, pageSize: $pageSize, search: $search, brandId: $brandId) {
-            items { ${ITEM_FIELDS} }
+      // Pantry-scoped filters drive from userItems — the server ranks, filters,
+      // and pages the household pantry (stock/favorite/brand predicates in SQL).
+      const data = await request<{ userItems: GqlUserItemPage }>(
+        `query ($page: Int, $pageSize: Int, $search: String, $brandId: ID, $inStock: Boolean, $isFavorite: Boolean) {
+          userItems(page: $page, pageSize: $pageSize, search: $search, brandId: $brandId, inStock: $inStock, isFavorite: $isFavorite) {
+            items { id currentQty minQty purchaseAt expiresAt notes isFavorite item { ${ITEM_FIELDS} } }
             pageInfo { pageNumber pageSize totalCount }
           }
         }`,
-        { page: pageNumber, pageSize, search: term || null, brandId: brandId ? String(brandId) : null }
-      ),
-      fetchAllUserItems(),
-    ]);
-    const prefs = new Map(userItems.map((ui) => [num(ui.item.id), ui]));
+        {
+          page: pageNumber,
+          pageSize,
+          search: term || null,
+          brandId: brandId ? String(brandId) : null,
+          inStock: inStock ?? null,
+          isFavorite: isFavorite ?? null,
+        }
+      );
+      return toPaged(
+        data.userItems.items.map((ui) => toItem(ui.item, ui)),
+        data.userItems.pageInfo
+      );
+    }
+    const data = await request<{ items: GqlItemPage }>(
+      `query ($page: Int, $pageSize: Int, $search: String, $brandId: ID) {
+        items(page: $page, pageSize: $pageSize, search: $search, brandId: $brandId) {
+          items { ${ITEM_FIELDS} }
+          pageInfo { pageNumber pageSize totalCount }
+        }
+      }`,
+      { page: pageNumber, pageSize, search: term || null, brandId: brandId ? String(brandId) : null }
+    );
+    // Household state only for the rows on this page — a second request bounded
+    // by pageSize instead of fetching the whole pantry.
+    const itemIDs = data.items.items.map((i) => num(i.id));
+    const rows = itemIDs.length
+      ? (
+          await request<{ userItems: GqlUserItemPage }>(
+            `query ($itemIds: [ID!], $pageSize: Int) {
+              userItems(page: 1, pageSize: $pageSize, itemIds: $itemIds) {
+                items { id currentQty minQty purchaseAt expiresAt notes isFavorite item { id } }
+              }
+            }`,
+            { itemIds: itemIDs.map(String), pageSize: itemIDs.length }
+          )
+        ).userItems.items
+      : [];
+    const prefs = new Map(rows.map((ui) => [num(ui.item.id), ui]));
     return toPaged(
       data.items.items.map((i) => toItem(i, prefs.get(num(i.id)))),
       data.items.pageInfo

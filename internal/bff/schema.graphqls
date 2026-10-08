@@ -121,7 +121,7 @@ type Query {
   recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String, searchMode: RecipeSearchMode = keyword): RecipePage!
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
-  userItems(page: Int = 1, pageSize: Int = 25, search: String): UserItemPage!
+  userItems(page: Int = 1, pageSize: Int = 25, search: String, itemIds: [ID!], inStock: Boolean, isFavorite: Boolean, brandId: ID): UserItemPage!
   userBottles(page: Int = 1, pageSize: Int = 25, search: String): UserBottlePage!
   bottle(id: ID!): Bottle
   bottles(page: Int = 1, pageSize: Int = 25, search: String, countryId: ID, regionId: ID, typeId: ID, vintageYear: Int, favoritesOnly: Boolean): BottlePage!

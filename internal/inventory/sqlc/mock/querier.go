@@ -1342,6 +1342,21 @@ func (mr *MockQuerierMockRecorder) MatchItemIDs(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDs", reflect.TypeOf((*MockQuerier)(nil).MatchItemIDs), ctx, arg)
 }
 
+// MatchItemIDsByBrand mocks base method.
+func (m *MockQuerier) MatchItemIDsByBrand(ctx context.Context, arg sqlc.MatchItemIDsByBrandParams) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MatchItemIDsByBrand", ctx, arg)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchItemIDsByBrand indicates an expected call of MatchItemIDsByBrand.
+func (mr *MockQuerierMockRecorder) MatchItemIDsByBrand(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchItemIDsByBrand", reflect.TypeOf((*MockQuerier)(nil).MatchItemIDsByBrand), ctx, arg)
+}
+
 // MatchItemIDsByTerms mocks base method.
 func (m *MockQuerier) MatchItemIDsByTerms(ctx context.Context, arg sqlc.MatchItemIDsByTermsParams) ([]int64, error) {
 	m.ctrl.T.Helper()
