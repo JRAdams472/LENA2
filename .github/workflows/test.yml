@@ -19,10 +19,6 @@ env:
   REGISTRY: ghcr.io
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: e2e-client
   NEXT_PUBLIC_API_BASE_URL: /graphql
-  # Baseline total statement coverage measured on production code and
-  # generated sqlc code; gomock packages are filtered out of the profile by
-  # tools/coveragefilter. Raise as coverage improves.
-  GO_COVERAGE_MIN: "60"
 
 jobs:
   go:
@@ -59,13 +55,9 @@ jobs:
           go test -race -count=1 -timeout 20m -coverprofile=coverage.out -covermode=atomic -coverpkg="$coverpkg" ./cmd/... ./internal/...
 
       - name: Filter generated code from coverage
+        # Drops gomock and sqlc packages so the profile reflects
+        # hand-written code; tools/coveragegate enforces the floors.
         run: go run ./tools/coveragefilter < coverage.out > coverage-filtered.out
-
-      - name: Enforce coverage baseline
-        run: |
-          total=$(go tool cover -func=coverage-filtered.out | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
-          echo "Total statement coverage: ${total}% (minimum ${GO_COVERAGE_MIN}%)"
-          awk -v t="$total" -v m="$GO_COVERAGE_MIN" 'BEGIN { exit !(t+0 >= m+0) }'
 
       - name: Upload Go coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -251,9 +243,50 @@ jobs:
         working-directory: clients/mobile
         run: flutter analyze
 
-      - name: Run Flutter tests
+      - name: Run Flutter tests with coverage
         working-directory: clients/mobile
-        run: flutter test
+        run: flutter test --coverage
+
+      - name: Upload Flutter coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: flutter-coverage
+          path: clients/mobile/coverage
+          retention-days: 2
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: [go, web, mobile]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      # Each artifact downloads to the path the gate config expects; the
+      # jest and flutter artifacts both contain lcov.info so they must
+      # land in their own directories.
+      - name: Download Go coverage profile
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: go-coverage
+          path: .
+
+      - name: Download web coverage profile
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jest-coverage
+          path: clients/web/coverage
+
+      - name: Download mobile coverage profile
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: flutter-coverage
+          path: clients/mobile/coverage
+
+      - name: Enforce coverage floors
+        run: go run ./tools/coveragegate
 
   docker:
     name: docker ${{ matrix.image }}
