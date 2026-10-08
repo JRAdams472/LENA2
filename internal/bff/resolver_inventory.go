@@ -417,7 +417,7 @@ func (r *Resolver) Item(ctx context.Context, args struct{ ID graphql.ID }) (*ite
 			return nil, err
 		}
 	}
-	return &itemResolver{inv: r.InventoryService, it: it, ch: ch, as: asOfItemChildren(ch)}, nil
+	return &itemResolver{inv: r.InventoryService, it: it, ch: ch, as: firstSource(asOfItemChildren(ch), r.allergySrc(u))}, nil
 }
 
 // Items resolves a paginated list of catalog items.

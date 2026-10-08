@@ -68,7 +68,7 @@ func (r *recipeResolver) HouseholdDelta(ctx context.Context) (*recipeDeltaResolv
 	if err != nil || d == nil {
 		return nil, err
 	}
-	return &recipeDeltaResolver{delta: d, rec: r.recipe, rc: r.rc, inv: r.inv}, nil
+	return &recipeDeltaResolver{delta: d, rec: r.recipe, rc: r.rc, inv: r.inv, as: r.as}, nil
 }
 
 // recipeDeltaResolver resolves RecipeDelta fields.
@@ -77,6 +77,7 @@ type recipeDeltaResolver struct {
 	rec   recipe.Recipe
 	rc    *recipeChildren
 	inv   ItemReader
+	as    *allergySource
 }
 
 func (d *recipeDeltaResolver) ID() graphql.ID {
@@ -120,7 +121,7 @@ func (d *recipeDeltaResolver) UpdatedAt() *graphql.Time {
 func (d *recipeDeltaResolver) Items() []*recipeDeltaItemResolver {
 	out := make([]*recipeDeltaItemResolver, len(d.delta.Items))
 	for i := range d.delta.Items {
-		out[i] = &recipeDeltaItemResolver{d: d.delta.Items[i], rc: d.rc, inv: d.inv}
+		out[i] = &recipeDeltaItemResolver{d: d.delta.Items[i], rc: d.rc, inv: d.inv, as: d.as}
 	}
 	return out
 }
@@ -141,6 +142,7 @@ type recipeDeltaItemResolver struct {
 	d   recipe.DeltaItem
 	rc  *recipeChildren
 	inv ItemReader
+	as  *allergySource
 }
 
 func (r *recipeDeltaItemResolver) ID() graphql.ID {
@@ -163,7 +165,7 @@ func (r *recipeDeltaItemResolver) Item(ctx context.Context) (*itemResolver, erro
 	}
 	if r.rc != nil && r.rc.items != nil {
 		if it, ok := r.rc.items[*r.d.ItemID]; ok {
-			return &itemResolver{inv: r.inv, it: it, ch: r.rc.itemChildren, as: asOfRecipeChildren(r.rc)}, nil
+			return &itemResolver{inv: r.inv, it: it, ch: r.rc.itemChildren, as: firstSource(asOfRecipeChildren(r.rc), r.as)}, nil
 		}
 		return nil, nil
 	}
@@ -171,7 +173,7 @@ func (r *recipeDeltaItemResolver) Item(ctx context.Context) (*itemResolver, erro
 	if err != nil {
 		return nil, err
 	}
-	return &itemResolver{inv: r.inv, it: it}, nil
+	return &itemResolver{inv: r.inv, it: it, as: r.as}, nil
 }
 
 func (r *recipeDeltaItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
@@ -180,7 +182,7 @@ func (r *recipeDeltaItemResolver) Ingredient(ctx context.Context) (*ingredientRe
 	}
 	if r.rc != nil && r.rc.ingredients != nil {
 		if in, ok := r.rc.ingredients[*r.d.IngredientID]; ok {
-			return &ingredientResolver{inv: r.inv, in: in, as: asOfRecipeChildren(r.rc)}, nil
+			return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfRecipeChildren(r.rc), r.as)}, nil
 		}
 		return nil, nil
 	}
@@ -188,7 +190,7 @@ func (r *recipeDeltaItemResolver) Ingredient(ctx context.Context) (*ingredientRe
 	if err != nil {
 		return nil, err
 	}
-	return &ingredientResolver{inv: r.inv, in: in}, nil
+	return &ingredientResolver{inv: r.inv, in: in, as: r.as}, nil
 }
 
 func (r *recipeDeltaItemResolver) Quantity() *float64 { return r.d.Quantity }
@@ -417,7 +419,7 @@ func (r *Resolver) deltaResolverFor(ctx context.Context, u currentuser.User, rec
 	if err != nil {
 		return nil, err
 	}
-	return &recipeDeltaResolver{delta: &d, rec: rec, rc: rc, inv: r.InventoryService}, nil
+	return &recipeDeltaResolver{delta: &d, rec: rec, rc: rc, inv: r.InventoryService, as: firstSource(asOfRecipeChildren(rc), r.allergySrc(u))}, nil
 }
 
 // ---------- delta event log (LEN-58) ----------

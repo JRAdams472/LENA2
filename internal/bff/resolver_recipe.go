@@ -589,18 +589,14 @@ func (r *Resolver) RateRecipe(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	rc := &recipeChildren{
-		recipeCounts: make(map[int64]countPair),
-		myRatings:    make(map[int64]int16),
-		summaries:    make(map[int64]recipe.RatingSummary),
+	rc, err := loadRecipeChildren(ctx, r.childLoaders(), u.UserID, u.HouseholdID, []int64{id}, nil, nil)
+	if err != nil {
+		return nil, err
 	}
 	if err := loadRecipeSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id}, rc); err != nil {
 		return nil, err
 	}
-	if err := loadRecipeRatings(ctx, r.RecipeService, u.UserID, []int64{id}, rc); err != nil {
-		return nil, err
-	}
-	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc, as: asOfRecipeChildren(rc)}, nil
+	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc, as: firstSource(asOfRecipeChildren(rc), r.allergySrc(u))}, nil
 }
 
 // courseCategoryName is the category group whose members double as meal

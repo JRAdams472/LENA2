@@ -733,6 +733,13 @@ func TestResolver_Recipe_RateRecipe(t *testing.T) {
 			Return(recipe.RecipeRating{UserID: 11, RecipeID: 9, Rating: 5}, nil)
 		rec.EXPECT().GetRecipeByID(gomock.Any(), int64(9)).
 			Return(recipe.Recipe{RecipeID: 9, Name: "Soup", IsActive: true}, nil)
+		// loadRecipeChildren now populates the response's children (LEN-71):
+		// recipe rows, deltas, and ratings all batch-load.
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{9}).
+			Return([]recipe.Recipe{{RecipeID: 9, Name: "Soup", IsActive: true}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
+		rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{9}).Return(nil, nil)
 		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{9}).
 			Return([]recipe.RecipeRating{{UserID: 11, RecipeID: 9, Rating: 5}}, nil)
 		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{9}).
