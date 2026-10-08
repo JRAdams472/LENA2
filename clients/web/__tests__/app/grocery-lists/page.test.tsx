@@ -206,6 +206,9 @@ describe("grocery list detail page", () => {
       if (body.query.includes("suggestedRestockItems")) {
         return Promise.resolve(gql({ suggestedRestockItems: [] }));
       }
+      if (body.query.includes("shopperProviders")) {
+        return Promise.resolve(gql({ shopperProviders: [] }));
+      }
       return Promise.resolve(gql({ groceryList: list }));
     });
   });
@@ -246,6 +249,9 @@ describe("grocery list detail page", () => {
       if (body.query.includes("suggestedRestockItems")) {
         return Promise.resolve(gql({ suggestedRestockItems: [] }));
       }
+      if (body.query.includes("shopperProviders")) {
+        return Promise.resolve(gql({ shopperProviders: [] }));
+      }
       return Promise.resolve(gql({ groceryList: list }));
     });
     await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
@@ -270,6 +276,9 @@ describe("grocery list detail page", () => {
       }
       if (body.query.includes("suggestedRestockItems")) {
         return Promise.resolve(gql({ suggestedRestockItems: [] }));
+      }
+      if (body.query.includes("shopperProviders")) {
+        return Promise.resolve(gql({ shopperProviders: [] }));
       }
       return Promise.resolve(gql({ groceryList: list }));
     });
@@ -311,6 +320,130 @@ describe("grocery list detail page", () => {
     fireEvent.click(deleteButton);
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteGroceryItem"))).toBe(true);
+    });
+  });
+
+  describe("shop with Instacart", () => {
+    const link = {
+      provider: "INSTACART",
+      url: "https://instacart.example.com/list/abc123",
+    };
+
+    function mockShop(opts: {
+      providers?: string[];
+      linkError?: string;
+      listOverride?: object;
+    } = {}) {
+      const providers = opts.providers ?? ["INSTACART"];
+      const theList = opts.listOverride ?? list;
+      mockFetch.mockImplementation((_, init) => {
+        const body = JSON.parse((init as RequestInit).body as string);
+        if (body.query.includes("createShoppingLink")) {
+          if (opts.linkError) {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              headers: { get: () => "application/json" },
+              json: async () => ({ errors: [{ message: opts.linkError }] }),
+            });
+          }
+          return Promise.resolve(gql({ createShoppingLink: link }));
+        }
+        if (body.query.includes("shopperProviders")) {
+          return Promise.resolve(gql({ shopperProviders: providers }));
+        }
+        if (body.query.includes("groceryRouteGroups")) {
+          return Promise.resolve(gql({ groceryRouteGroups: routeGroups }));
+        }
+        if (body.query.includes("groceryStores")) {
+          return Promise.resolve(gql({ groceryStores: [] }));
+        }
+        if (body.query.includes("suggestedRestockItems")) {
+          return Promise.resolve(gql({ suggestedRestockItems: [] }));
+        }
+        return Promise.resolve(gql({ groceryList: theList }));
+      });
+    }
+
+    it("hides the action when no provider is configured", async () => {
+      mockShop({ providers: [] });
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+      expect(
+        screen.queryByRole("button", { name: "Shop with Instacart" })
+      ).not.toBeInTheDocument();
+    });
+
+    it("creates a link and shows it in a dialog", async () => {
+      mockShop();
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Shop with Instacart" }));
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("createShoppingLink"))).toBe(true)
+      );
+
+      await screen.findByRole("dialog");
+      expect(
+        screen.getByDisplayValue("https://instacart.example.com/list/abc123")
+      ).toBeInTheDocument();
+    });
+
+    it("notes when checked items were left off the link", async () => {
+      const checkedList = {
+        ...list,
+        items: [{ ...list.items[0], isChecked: true }],
+      };
+      mockShop({ listOverride: checkedList });
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Shop with Instacart" }));
+      await waitFor(() =>
+        expect(
+          screen.getByText(/checked items were left off/i)
+        ).toBeInTheDocument()
+      );
+    });
+
+    it("opens the link in a new tab and copies it", async () => {
+      const openSpy = jest.spyOn(window, "open").mockImplementation(() => null);
+      const writeText = jest.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+      mockShop();
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Shop with Instacart" }));
+      await screen.findByRole("dialog");
+
+      fireEvent.click(screen.getByRole("button", { name: /open instacart/i }));
+      expect(openSpy).toHaveBeenCalledWith(
+        "https://instacart.example.com/list/abc123",
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith("https://instacart.example.com/list/abc123")
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument()
+      );
+    });
+
+    it("shows the error when the mutation fails", async () => {
+      mockShop({ linkError: "shopping provider unavailable" });
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Shop with Instacart" }));
+      await waitFor(() =>
+        expect(screen.getByText(/shopping provider unavailable/)).toBeInTheDocument()
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 });

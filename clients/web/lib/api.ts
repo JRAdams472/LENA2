@@ -37,6 +37,8 @@ import {
   GroceryList,
   GroceryListItem,
   GroceryRouteGroup,
+  ShopperProvider,
+  ShoppingLink,
   Store,
   StoreAisle,
   Household,
@@ -4433,6 +4435,33 @@ export const api = {
       { groceryListItemId: String(id), itemId: String(itemId) }
     );
     return toGroceryListItem(0, data.checkGroceryItemWithBrand);
+  },
+
+  // shopperProviders is the capability probe — an empty list means no
+  // provider key is installed and shopping actions should stay hidden.
+  getShopperProviders: async (): Promise<ShopperProvider[]> => {
+    const data = await request<{ shopperProviders: ShopperProvider[] }>(
+      `query { shopperProviders }`
+    );
+    return data.shopperProviders ?? [];
+  },
+
+  // Stateless: every call asks the provider for a fresh link. Checked
+  // items ship to the provider only when includeChecked is set.
+  createShoppingLink: async (
+    groceryListId: number,
+    provider: ShopperProvider = "INSTACART",
+    includeChecked = false
+  ): Promise<ShoppingLink> => {
+    const data = await request<{ createShoppingLink: ShoppingLink }>(
+      `mutation ($groceryListId: ID!, $provider: ShopperProvider, $includeChecked: Boolean) {
+        createShoppingLink(groceryListId: $groceryListId, provider: $provider, includeChecked: $includeChecked) {
+          provider url
+        }
+      }`,
+      { groceryListId: String(groceryListId), provider, includeChecked }
+    );
+    return data.createShoppingLink;
   },
 
   deleteGroceryListItem: async (id: number): Promise<void> => {
