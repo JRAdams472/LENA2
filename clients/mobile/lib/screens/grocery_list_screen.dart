@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/skeleton.dart';
 import '../allergy.dart';
 import '../format.dart';
@@ -11,6 +13,7 @@ const String groceryRoutingQuery = r'''
       store { id name }
     }
     groceryStores { id name aisles { id name position } }
+    shopperProviders
     groceryRouteGroups(groceryListId: $id) {
       aisle { id name position }
       items {
@@ -101,6 +104,15 @@ const String reorderGroceryListItemsMutation = r'''
   }
 ''';
 
+const String createShoppingLinkMutation = r'''
+  mutation CreateShoppingLink($groceryListId: ID!, $provider: ShopperProvider, $includeChecked: Boolean) {
+    createShoppingLink(groceryListId: $groceryListId, provider: $provider, includeChecked: $includeChecked) {
+      provider
+      url
+    }
+  }
+''';
+
 /// The server owns ordering — the app renders groceryRouteGroups verbatim so
 /// the phone and the web always show the same arrangement. A null aisle is the
 /// trailing unassigned bucket ("Other items" on web).
@@ -179,6 +191,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
   final _manualCtrl = TextEditingController();
   final _qtyCtrl = TextEditingController();
   final _unitCtrl = TextEditingController();
+  bool _shopping = false;
 
   Future<void> _toggle(
     BuildContext context,
@@ -247,6 +260,42 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     _qtyCtrl.clear();
     _unitCtrl.clear();
     refetch?.call();
+  }
+
+  /// Pushes the list to the configured shopper provider and hands the
+  /// returned link to the user. Mobile sends unchecked lines only — the
+  /// web's includeChecked escape hatch stays out of the compact UI.
+  Future<void> _shop(BuildContext context, bool hasChecked) async {
+    if (_shopping) return;
+    setState(() => _shopping = true);
+    try {
+      final client = GraphQLProvider.of(context).value;
+      final result = await client.mutate(MutationOptions(
+        document: gql(createShoppingLinkMutation),
+        variables: {'groceryListId': widget.listId, 'provider': 'INSTACART'},
+      ));
+      if (!context.mounted) return;
+      final link = result.data?['createShoppingLink'] as Map<String, dynamic>?;
+      if (result.hasException || link == null) {
+        // Server messages are already sanitized for clients.
+        final msg = result.exception?.graphqlErrors.isNotEmpty == true
+            ? result.exception!.graphqlErrors.first.message
+            : 'Could not create the Instacart link';
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
+        return;
+      }
+      setState(() => _shopping = false);
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ShopLinkDialog(
+          url: link['url'] as String,
+          excludedChecked: hasChecked,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _shopping = false);
+    }
   }
 
   Future<void> _setStore(
@@ -337,10 +386,29 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           {VoidCallback? refetch, FetchMore? fetchMore}) {
         final list = result.data?['groceryList'] as Map<String, dynamic>?;
         final storeId = (list?['store'] as Map?)?['id'] as String?;
+        final canShop = (result.data?['shopperProviders'] as List? ?? const [])
+            .contains('INSTACART');
+        final hasChecked = (result.data?['groceryRouteGroups'] as List? ??
+                const [])
+            .expand((g) => (g as Map)['items'] as List? ?? const [])
+            .any((ri) => ((ri as Map)['item'] as Map?)?['isChecked'] == true);
         return Scaffold(
           appBar: AppBar(
             title: const Text('Grocery List'),
             actions: [
+              if (canShop)
+                IconButton(
+                  tooltip: 'Shop with Instacart',
+                  onPressed:
+                      _shopping ? null : () => _shop(context, hasChecked),
+                  icon: _shopping
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.shopping_cart_checkout),
+                ),
               _storePicker(context, result, storeId, refetch),
             ],
           ),
@@ -672,6 +740,71 @@ class _BrandPickDialogState extends State<_BrandPickDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Hands the freshly generated provider link to the user — checkout happens
+/// on the provider's site, so the dialog's only job is to move the URL out
+/// of LENA (open externally or copy) and state the link's scope.
+class ShopLinkDialog extends StatelessWidget {
+  final String url;
+  final bool excludedChecked;
+
+  const ShopLinkDialog({
+    super.key,
+    required this.url,
+    this.excludedChecked = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Shop with Instacart'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            excludedChecked
+                ? 'Unchecked items from this list are ready on Instacart. '
+                    'Checked items were left off.'
+                : 'Items from this list are ready on Instacart.',
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Open the link to pick a store and finish checking out there.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          SelectableText(
+            url,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton.icon(
+          icon: const Icon(Icons.copy),
+          label: const Text('Copy link'),
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: url));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Link copied')),
+              );
+            }
+          },
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Open Instacart'),
+          onPressed: () => launchUrl(
+            Uri.parse(url),
+            mode: LaunchMode.externalApplication,
+          ),
         ),
       ],
     );

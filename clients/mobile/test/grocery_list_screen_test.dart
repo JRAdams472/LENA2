@@ -1,6 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:url_launcher_platform_interface/link.dart';
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 import 'package:lena_mobile/graphql_config.dart';
 import 'package:lena_mobile/screens/grocery_list_screen.dart';
 
@@ -16,6 +24,73 @@ Map<String, dynamic> routeGroup(
           },
       ],
     };
+
+const _linkUrl = 'https://instacart.example.com/list/abc123';
+
+/// A real GraphQLClient whose HttpLink terminates at a MockClient — the
+/// Query widget and client.mutate run their normal pipelines.
+class _MockGraphQL {
+  _MockGraphQL(this.responder);
+  final Map<String, dynamic> Function(Map<String, dynamic> body) responder;
+  final requests = <Map<String, dynamic>>[];
+  late final client = GraphQLClient(
+    cache: GraphQLCache(),
+    link: HttpLink(
+      'http://test/graphql',
+      httpClient: http_testing.MockClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        requests.add(body);
+        return http.Response(
+          jsonEncode(responder(body)),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    ),
+  );
+}
+
+// The normalized cache requires __typename on every object the response
+// returns; fields the fixture omits resolve as null.
+Map<String, dynamic> _routingResponse(
+  List<String> providers, {
+  bool checked = false,
+}) =>
+    {
+      'data': {
+        '__typename': 'Query',
+        'groceryList': {'__typename': 'GroceryList', 'id': '1', 'store': null},
+        'groceryStores': [],
+        'shopperProviders': providers,
+        'groceryRouteGroups': [
+          {
+            '__typename': 'GroceryRouteGroup',
+            'aisle': null,
+            'items': [
+              {
+                '__typename': 'GroceryRouteItem',
+                'suggested': false,
+                'item': {
+                  '__typename': 'GroceryListItem',
+                  'id': '10',
+                  'isChecked': checked,
+                  'manualItemName': 'Milk',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+Future<void> _pumpShop(WidgetTester tester, _MockGraphQL mock) {
+  return tester.pumpWidget(
+    GraphQLProvider(
+      client: ValueNotifier(mock.client),
+      child: const MaterialApp(home: GroceryListScreen(listId: '1')),
+    ),
+  );
+}
 
 void main() {
   group('groceryReorderEntries', () {
@@ -138,4 +213,182 @@ void main() {
     expect(find.text('Grocery List'), findsOneWidget);
     expect(find.byType(Scaffold), findsOneWidget);
   });
+
+  group('Shop with Instacart', () {
+    testWidgets('hides the action when no provider is configured',
+        (tester) async {
+      final mock = _MockGraphQL((body) =>
+          body['query'].toString().contains('groceryRouteGroups')
+              ? _routingResponse([])
+              : {});
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Shop with Instacart'), findsNothing);
+    });
+
+    testWidgets('creates the link and shows it in a dialog', (tester) async {
+      final mock = _MockGraphQL((body) {
+        if (body['query'].toString().contains('groceryRouteGroups')) {
+          return _routingResponse(['INSTACART']);
+        }
+        if (body['query'].toString().contains('createShoppingLink')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'createShoppingLink': {
+                '__typename': 'ShoppingLink',
+                'provider': 'INSTACART',
+                'url': _linkUrl
+              },
+            },
+          };
+        }
+        return {};
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Shop with Instacart'));
+      await tester.pumpAndSettle();
+
+      final mutation = mock.requests.firstWhere(
+        (r) => r['query'].toString().contains('createShoppingLink'),
+      );
+      expect(mutation['variables']['groceryListId'], '1');
+      expect(mutation['variables']['provider'], 'INSTACART');
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is SelectableText && w.data == _linkUrl,
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('notes when checked items were left off the link',
+        (tester) async {
+      final mock = _MockGraphQL((body) {
+        if (body['query'].toString().contains('groceryRouteGroups')) {
+          return _routingResponse(['INSTACART'], checked: true);
+        }
+        return {
+          'data': {
+            '__typename': 'Mutation',
+            'createShoppingLink': {
+              '__typename': 'ShoppingLink',
+              'provider': 'INSTACART',
+              'url': _linkUrl
+            },
+          },
+        };
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Shop with Instacart'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Checked items were left off'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('opens the link externally and copies it', (tester) async {
+      final launched = <String>[];
+      PreferredLaunchMode? launchedMode;
+      final fakeLauncher = _FakeUrlLauncher(launched, (m) => launchedMode = m);
+      UrlLauncherPlatform.instance = fakeLauncher;
+      addTearDown(() => UrlLauncherPlatform.instance = _previousLauncher);
+
+      String? copied;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = call.arguments['text'] as String;
+        }
+        return null;
+      });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+
+      final mock = _MockGraphQL((body) {
+        if (body['query'].toString().contains('groceryRouteGroups')) {
+          return _routingResponse(['INSTACART']);
+        }
+        return {
+          'data': {
+            '__typename': 'Mutation',
+            'createShoppingLink': {
+              '__typename': 'ShoppingLink',
+              'provider': 'INSTACART',
+              'url': _linkUrl
+            },
+          },
+        };
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Shop with Instacart'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open Instacart'));
+      await tester.pump();
+      expect(launched, [_linkUrl]);
+      expect(launchedMode, PreferredLaunchMode.externalApplication);
+
+      await tester.tap(find.text('Copy link'));
+      await tester.pump();
+      expect(copied, _linkUrl);
+      expect(find.text('Link copied'), findsOneWidget);
+    });
+
+    testWidgets('shows a snackbar when the mutation fails', (tester) async {
+      final mock = _MockGraphQL((body) {
+        if (body['query'].toString().contains('groceryRouteGroups')) {
+          return _routingResponse(['INSTACART']);
+        }
+        return {
+          'errors': [
+            {'message': 'shopping provider unavailable'},
+          ],
+        };
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Shop with Instacart'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('shopping provider unavailable'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+  });
 }
+
+class _FakeUrlLauncher extends UrlLauncherPlatform
+    with MockPlatformInterfaceMixin {
+  _FakeUrlLauncher(this.urls, this.onMode);
+  final List<String> urls;
+  final void Function(PreferredLaunchMode) onMode;
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) async {
+    urls.add(url);
+    onMode(options.mode);
+    return true;
+  }
+}
+
+UrlLauncherPlatform get _previousLauncher => _platformInstance;
+
+// url_launcher_platform_interface keeps a single static instance; capture it
+// once so the test can restore the real implementation afterwards.
+final UrlLauncherPlatform _platformInstance = UrlLauncherPlatform.instance;
