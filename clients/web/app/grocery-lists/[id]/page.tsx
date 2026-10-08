@@ -26,12 +26,15 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import ShoppingCartCheckoutIcon from "@mui/icons-material/ShoppingCartCheckout";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import { api } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, fmtDate, fmtQty, sizeBadge, stripSize } from "@/lib/format";
-import { GroceryListItem, GroceryRouteGroup, Store, StoreAisle } from "@/lib/types";
+import { GroceryListItem, GroceryRouteGroup, ShoppingLink, Store, StoreAisle } from "@/lib/types";
 
 function brandItemLabel(item: { name: string; brand?: string | null }): string {
   return brandedName(item.brand, item.name);
@@ -164,6 +167,66 @@ function BrandPickDialog({
       <DialogActions>
         <Button onClick={onSkip}>Check off without a brand</Button>
         <Button onClick={onClose}>Cancel</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ShopLinkDialog hands the freshly generated provider link to the user —
+// checkout happens on the provider's site, so the dialog's only job is
+// to move the URL out of LENA (open or copy) and state the link's scope.
+export function ShopLinkDialog({
+  link,
+  excludedChecked,
+  onClose,
+}: {
+  link: ShoppingLink;
+  excludedChecked: boolean;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopied(true);
+    } catch {
+      // Clipboard unavailable (non-secure context) — the read-only
+      // field remains selectable for a manual copy.
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Shop with Instacart</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary">
+          {excludedChecked
+            ? "Unchecked items from this list are ready on Instacart — checked items were left off."
+            : "Items from this list are ready on Instacart."}{" "}
+          Open the link to pick a store and finish checking out there.
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          label="Shopping link"
+          value={link.url}
+          slotProps={{ input: { readOnly: true } }}
+          onFocus={(e) => e.target.select()}
+          sx={{ mt: 2 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button startIcon={<ContentCopyIcon />} onClick={copy}>
+          {copied ? "Copied" : "Copy link"}
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<OpenInNewIcon />}
+          onClick={() => window.open(link.url, "_blank", "noopener,noreferrer")}
+        >
+          Open Instacart
+        </Button>
       </DialogActions>
     </Dialog>
   );
@@ -510,6 +573,26 @@ export default function GroceryListDetailPage({
     queryFn: () => api.getSuggestedRestockItems(10),
   });
 
+  const providersQuery = useQuery({
+    queryKey: ["shopperProviders"],
+    queryFn: () => api.getShopperProviders(),
+  });
+
+  // excludedChecked is captured when the link is created — the server
+  // snapshot, not the live list state, decides what the dialog can say.
+  const [shopResult, setShopResult] = useState<{
+    link: ShoppingLink;
+    excludedChecked: boolean;
+  } | null>(null);
+  const shopMutation = useMutation({
+    mutationFn: () => api.createShoppingLink(listId, "INSTACART"),
+    onSuccess: (link) =>
+      setShopResult({
+        link,
+        excludedChecked: (listQuery.data?.groceryListItems ?? []).some((i) => i.isChecked),
+      }),
+  });
+
   const setStoreMutation = useMutation({
     mutationFn: (storeId: number | null) => api.setGroceryListStore(listId, storeId),
     onSuccess: () => {
@@ -709,10 +792,27 @@ export default function GroceryListDetailPage({
               Edit aisles
             </Button>
           )}
+          {(providersQuery.data ?? []).includes("INSTACART") && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={
+                shopMutation.isPending ? (
+                  <CircularProgress size={16} />
+                ) : (
+                  <ShoppingCartCheckoutIcon />
+                )
+              }
+              disabled={shopMutation.isPending}
+              onClick={() => shopMutation.mutate()}
+            >
+              Shop with Instacart
+            </Button>
+          )}
         </Box>
-        {setStoreMutation.error && (
+        {(setStoreMutation.error || shopMutation.error) && (
           <Alert severity="error" sx={{ mt: 1 }}>
-            {(setStoreMutation.error as Error).message}
+            {((setStoreMutation.error ?? shopMutation.error) as Error).message}
           </Alert>
         )}
       </Paper>
@@ -913,6 +1013,13 @@ export default function GroceryListDetailPage({
 
       {layoutStore && (
         <StoreLayoutDialog store={layoutStore} onClose={() => setLayoutStore(null)} />
+      )}
+      {shopResult && (
+        <ShopLinkDialog
+          link={shopResult.link}
+          excludedChecked={shopResult.excludedChecked}
+          onClose={() => setShopResult(null)}
+        />
       )}
     </Box>
   );

@@ -812,6 +812,17 @@ export interface GroceryListItem extends AuditableEntity {
   allergyWarnings?: AllergyWarning[];
 }
 
+// ShopperProvider identifies an external service that can turn a LENA
+// grocery list into a shareable shopping link on the provider's site.
+export type ShopperProvider = "INSTACART";
+
+// A freshly generated provider link — stateless, never persisted; each
+// createShoppingLink call returns a new URL.
+export interface ShoppingLink {
+  provider: ShopperProvider;
+  url: string;
+}
+
 export interface RecipeImportDraftItem {
   quantity: number | null;
   unit: string | null;
