@@ -269,6 +269,14 @@ type GroceryRouteItem {
   item: GroceryListItem!
   suggested: Boolean!     # aisle inferred from learned order, not assigned
 }
+
+# Provider-generated shopping links (LEN-15). The URL is created
+# statelessly per call — LENA never persists it.
+enum ShopperProvider { INSTACART }
+type ShoppingLink {
+  provider: ShopperProvider!
+  url: String!            # shareable products-link URL on the provider's site
+}
 ```
 
 ## Queries
@@ -294,6 +302,7 @@ type GroceryRouteItem {
 | `groceryLists(page, pageSize)` | `Int, Int` | `GroceryListPage!` | Current user's lists |
 | `groceryStores` | — | `[Store!]!` | Household's stores with aisles |
 | `groceryRouteGroups(groceryListId)` | `ID!` | `[GroceryRouteGroup!]!` | Server-computed route grouping |
+| `shopperProviders` | — | `[ShopperProvider!]!` | Shopping-link providers configured server-side (empty = feature off) |
 | `foodEvent(id)` | `ID!` | `FoodEvent` | Single household event |
 | `foodEvents(page, pageSize)` | `Int, Int` | `FoodEventPage!` | Household's events |
 | `eventTimeline(foodEventId)` | `ID!` | `EventTimeline` | Backwards-scheduled master timeline |
@@ -378,6 +387,10 @@ Store routing — all household-scoped:
 - `assignItemToAisle(storeId: ID!, aisleId: ID, itemId: ID, ingredientId: ID, manualItemName: String): Boolean!` — exactly one identity arg; `aisleId: null` unassigns
 - `setGroceryListStore(groceryListId: ID!, storeId: ID): GroceryList!` — `storeId: null` clears; new lists inherit the household's most recent store
 - `reorderGroceryListItems(groceryListId: ID!, entries: [GroceryReorderEntryInput!]!): Boolean!` — entries are the post-drag display order; an entry's `aisleId` moves that item (null = no change), so a cross-aisle drag lands rank + assignment atomically
+
+Shopping links (household-scoped, rate-limited 10/min per user):
+
+- `createShoppingLink(groceryListId: ID!, provider: ShopperProvider, includeChecked: Boolean): ShoppingLink!` — pushes unchecked lines (all lines when `includeChecked`) to the provider and returns a shareable link URL; checkout happens on the provider's site. Line names resolve bound item → usual brand → ingredient → manual text; branded lines carry `upcs` + `brand_filters`; units map onto the provider's whitelist (unknown weight/volume units are omitted rather than misread). Requires `LENA_INSTACART_API_KEY` — clients should gate on `shopperProviders`.
 
 ### Events (household-scoped)
 

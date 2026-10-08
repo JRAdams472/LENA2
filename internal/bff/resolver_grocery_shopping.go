@@ -105,45 +105,73 @@ func shoppingLineItems(gc *groceryChildren, listID int64, includeChecked bool) [
 		if li.IsChecked && !includeChecked {
 			continue
 		}
-		it := groceryLineItem(gc, li)
-		var name string
-		switch {
-		case it != nil:
-			name = it.Name
-		case li.IngredientID != nil:
-			if ing, ok := gc.ingredients[*li.IngredientID]; ok {
-				name = ing.Name
-			}
-		default:
-			name = li.ManualItemName
+		if line, ok := shoppingLine(gc, li); ok {
+			out = append(out, line)
 		}
-		if name = strings.TrimSpace(name); name == "" {
-			continue
-		}
-		line := instacartclient.LineItem{Name: name}
-		if it != nil {
-			if it.Upc12 != "" {
-				line.UPCs = append(line.UPCs, it.Upc12)
-			}
-			if it.Upc14 != "" {
-				line.UPCs = append(line.UPCs, it.Upc14)
-			}
-			if it.BrandID != nil && gc.ch != nil {
-				if b, ok := gc.ch.brands[*it.BrandID]; ok && b.Name != "" {
-					line.Filters = &instacartclient.Filters{BrandFilters: []string{b.Name}}
-				}
-			}
-		}
-		if m, ok := instacartMeasurement(gc, li); ok {
-			line.LineItemMeasurements = []instacartclient.Measurement{m}
-			line.DisplayText = fmt.Sprintf("%s %s %s",
-				strconv.FormatFloat(li.QuantityNeeded, 'f', -1, 64), unitDisplayName(gc, li), name)
-		} else {
-			line.DisplayText = name
-		}
-		out = append(out, line)
 	}
 	return out
+}
+
+// shoppingLine maps one grocery line to an IDP line item; ok is false when
+// the line has no usable name and should be skipped.
+func shoppingLine(gc *groceryChildren, li grocery.GroceryListItem) (instacartclient.LineItem, bool) {
+	it := groceryLineItem(gc, li)
+	name := strings.TrimSpace(shoppingLineName(gc, li, it))
+	if name == "" {
+		return instacartclient.LineItem{}, false
+	}
+	line := instacartclient.LineItem{Name: name, UPCs: itemUPCs(it), Filters: brandFilter(gc, it)}
+	if m, ok := instacartMeasurement(gc, li); ok {
+		line.LineItemMeasurements = []instacartclient.Measurement{m}
+		line.DisplayText = fmt.Sprintf("%s %s %s",
+			strconv.FormatFloat(li.QuantityNeeded, 'f', -1, 64), unitDisplayName(gc, li), name)
+	} else {
+		line.DisplayText = name
+	}
+	return line, true
+}
+
+// shoppingLineName resolves the display/product name: bound or usual-brand
+// item first, then the ingredient, then manual text. An ingredient-bound
+// line whose ingredient failed to load has no name — it is skipped rather
+// than falling back to manual text it may not carry.
+func shoppingLineName(gc *groceryChildren, li grocery.GroceryListItem, it *inventory.Item) string {
+	if it != nil {
+		return it.Name
+	}
+	if li.IngredientID != nil {
+		if ing, ok := gc.ingredients[*li.IngredientID]; ok {
+			return ing.Name
+		}
+		return ""
+	}
+	return li.ManualItemName
+}
+
+// itemUPCs collects the catalog item's UPCs for exact-match prioritization.
+func itemUPCs(it *inventory.Item) []string {
+	if it == nil {
+		return nil
+	}
+	var upcs []string
+	if it.Upc12 != "" {
+		upcs = append(upcs, it.Upc12)
+	}
+	if it.Upc14 != "" {
+		upcs = append(upcs, it.Upc14)
+	}
+	return upcs
+}
+
+// brandFilter maps the item's brand onto an IDP brand_filters filter.
+func brandFilter(gc *groceryChildren, it *inventory.Item) *instacartclient.Filters {
+	if it == nil || it.BrandID == nil || gc.ch == nil {
+		return nil
+	}
+	if b, ok := gc.ch.brands[*it.BrandID]; ok && b.Name != "" {
+		return &instacartclient.Filters{BrandFilters: []string{b.Name}}
+	}
+	return nil
 }
 
 // groceryLineItem picks the catalog item a grocery line should shop for:

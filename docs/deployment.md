@@ -213,6 +213,13 @@ LENA_PUSH_PROVIDER=log
 LENA_PUSH_POLL_INTERVAL=5s        # outbox poll cadence
 LENA_PUSH_MAX_ATTEMPTS=5          # exponential-backoff retries before `failed`
 # LENA_FCM_CREDENTIALS_FILE=/run/secrets/fcm-service-account.json
+
+# Shopping-link provider (Instacart Developer Platform). Empty key disables
+# the feature — `shopperProviders` returns [] and clients hide the action.
+# The key stays server-side; clients only ever see the returned link URL.
+LENA_INSTACART_API_KEY=
+LENA_INSTACART_BASE_URL=https://connect.dev.instacart.tools  # dev server; swap for prod
+LENA_INSTACART_TIMEOUT=10s
 ```
 
 ## 5. Build & Run
