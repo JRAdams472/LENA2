@@ -28,6 +28,7 @@ import { api, asEntity } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, brandSuffix, fmtDate, fmtQty } from "@/lib/format";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
+import RecipeAutocomplete from "@/app/components/RecipeAutocomplete";
 import {
   AuditableEntity,
   MealSlot,
@@ -79,11 +80,6 @@ function SlotDialog({
 }) {
   const queryClient = useQueryClient();
   const { slot, day, mealType } = state;
-
-  const recipesQuery = useQuery({
-    queryKey: ["recipes", "meal-slot", mealType],
-    queryFn: () => api.getRecipes(MEAL_TYPES[mealType]),
-  });
 
   const groupsQuery = useQuery({
     queryKey: ["recipe-category-groups"],
@@ -148,11 +144,9 @@ function SlotDialog({
     }
   }, [debouncedBrandInput]);
 
-  const [recipeId, setRecipeId] = useState<string>(
-    slot?.recipeID ? String(slot.recipeID) : ""
-  );
+  const [recipe, setRecipe] = useState<Recipe | null>(slot?.recipe ?? null);
 
-  const selectedRecipeId = recipeId === "" ? null : Number(recipeId);
+  const selectedRecipeId = recipe?.recipeID ?? null;
 
   const recipeDetailQuery = useQuery({
     queryKey: ["recipe", selectedRecipeId],
@@ -160,11 +154,7 @@ function SlotDialog({
     enabled: selectedRecipeId !== null,
   });
 
-  const selectedRecipe =
-    recipeDetailQuery.data ??
-    (selectedRecipeId
-      ? recipesQuery.data?.find((r) => r.recipeID === selectedRecipeId)
-      : null);
+  const selectedRecipe = recipeDetailQuery.data ?? recipe;
   const [selectedOptionalIds, setSelectedOptionalIds] = useState<string[]>(
     () =>
       (slot?.mealSlotItems?.filter((i) => i.isFromRecipe) ?? []).map((i) =>
@@ -256,11 +246,12 @@ function SlotDialog({
   const createRecipeMutation = useMutation({
     mutationFn: (row: Record<string, unknown>) =>
       api.createRecipe(asEntity<Omit<Recipe, keyof AuditableEntity>>(row)),
-    onSuccess: (recipe) => {
-      setRecipeId(String(recipe.recipeID));
+    onSuccess: (created) => {
+      setRecipe(created);
       setSelectedOptionalIds([]);
       setAdhoc([]);
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["recipe-autocomplete"] });
       setRecipeDialogOpen(false);
     },
   });
@@ -360,43 +351,25 @@ function SlotDialog({
               </Select>
             </FormControl>
           )}
-          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
-            <InputLabel id="recipe-select-label">Recipe</InputLabel>
-            <Select
-              labelId="recipe-select-label"
-              label="Recipe"
-              value={recipeId}
-              onChange={(e) => {
-                setRecipeId(e.target.value as string);
-                setSelectedOptionalIds([]);
-                if (e.target.value !== "")
-                  void api.recordSelection("recipe", Number(e.target.value));
-              }}
-            >
-              <MenuItem value="">
-                <em>No recipe</em>
-              </MenuItem>
-              {(recipesQuery.data ?? [])
-                .filter(
-                  (r) =>
-                    categoryFilter === "" ||
-                    (r.categories ?? []).some(
-                      (c) => String(c.categoryID) === categoryFilter
-                    )
-                )
-                .map((r) => (
-                  <MenuItem key={r.recipeID} value={String(r.recipeID)}>
-                    {r.recipeName}
-                  </MenuItem>
-                ))}
-            </Select>
-          </FormControl>
+          <RecipeAutocomplete
+            value={recipe}
+            onChange={(v) => {
+              setRecipe(v);
+              setSelectedOptionalIds([]);
+              if (v) void api.recordSelection("recipe", v.recipeID);
+            }}
+            mealType={MEAL_TYPES[mealType]}
+            categoryIds={
+              categoryFilter === "" ? undefined : [Number(categoryFilter)]
+            }
+            sx={{ mb: 1 }}
+          />
           <Button size="small" onClick={() => setRecipeDialogOpen(true)}>
             + Create New Recipe
           </Button>
         </Box>
 
-        {recipeId !== "" && optionalItems.length > 0 && (
+        {recipe !== null && optionalItems.length > 0 && (
           <FormControl fullWidth size="small" sx={{ mb: 2 }}>
             <InputLabel id="optional-select-label">Include Optional Ingredients</InputLabel>
             <Select

@@ -3651,37 +3651,18 @@ export const api = {
   },
 
   // Recipes
-  getRecipes: async (mealType?: string): Promise<Recipe[]> => {
-    const pageSize = 200;
-    let page = 1;
-    const out: Recipe[] = [];
-    for (;;) {
-      const data = await request<{ recipes: GqlRecipePage }>(
-        `query ($page: Int, $pageSize: Int, $mealType: String) { recipes(page: $page, pageSize: $pageSize, mealType: $mealType) { items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-        { page, pageSize, mealType: mealType ?? null }
-      );
-      out.push(...data.recipes.items.map(toRecipe));
-      if (
-        page * pageSize >= data.recipes.pageInfo.totalCount ||
-        data.recipes.items.length === 0
-      )
-        break;
-      page += 1;
-    }
-    return out;
-  },
-
   getRecipesPaged: async (
     pageNumber: number,
     pageSize: number,
     search?: string,
     isFavorite?: boolean,
     categoryIds?: number[],
-    searchMode?: "keyword" | "semantic"
+    searchMode?: "keyword" | "semantic",
+    mealType?: string
   ): Promise<PagedResult<Recipe>> => {
     const data = await request<{ recipes: GqlRecipePage }>(
-      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean, $searchMode: RecipeSearchMode) {
-        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite, searchMode: $searchMode) {
+      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean, $searchMode: RecipeSearchMode, $mealType: String) {
+        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite, searchMode: $searchMode, mealType: $mealType) {
           items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount }
         }
       }`,
@@ -3692,6 +3673,7 @@ export const api = {
         categoryIds: categoryIds?.length ? categoryIds.map(String) : null,
         isFavorite: isFavorite ?? null,
         searchMode: searchMode ?? "keyword",
+        mealType: mealType ?? null,
       }
     );
     const items = data.recipes.items.map(toRecipe);

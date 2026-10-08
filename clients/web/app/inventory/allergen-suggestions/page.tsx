@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -53,9 +53,18 @@ export default function AllergenSuggestionsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const [recipeInput, setRecipeInput] = useState("");
+  const [debouncedRecipeInput, setDebouncedRecipeInput] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedRecipeInput(recipeInput), 300);
+    return () => clearTimeout(t);
+  }, [recipeInput]);
+
   const recipesQuery = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => api.getRecipes(),
+    queryKey: ["recipe-autocomplete", debouncedRecipeInput],
+    queryFn: () =>
+      api.getRecipesPaged(1, 25, debouncedRecipeInput || undefined),
   });
 
   const queueQuery = useQuery({
@@ -127,10 +136,20 @@ export default function AllergenSuggestionsPage() {
           <Autocomplete<Recipe>
             sx={{ minWidth: 320, flexGrow: 1, maxWidth: 480 }}
             size="small"
-            options={recipesQuery.data ?? []}
+            options={
+              recipe &&
+              !(recipesQuery.data?.items ?? []).some(
+                (o) => o.recipeID === recipe.recipeID
+              )
+                ? [recipe, ...(recipesQuery.data?.items ?? [])]
+                : (recipesQuery.data?.items ?? [])
+            }
             loading={recipesQuery.isLoading}
             getOptionLabel={(r) => r.recipeName}
             isOptionEqualToValue={(o, v) => o.recipeID === v.recipeID}
+            filterOptions={(x) => x}
+            inputValue={recipeInput}
+            onInputChange={(_, v) => setRecipeInput(v)}
             value={recipe}
             onChange={(_, v) => setRecipe(v)}
             renderInput={(params) => <TextField {...params} label="Recipe" />}
