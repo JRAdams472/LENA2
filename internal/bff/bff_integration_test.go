@@ -104,6 +104,9 @@ func TestBFF_Integration(t *testing.T) {
 	t.Run("allergy lazy source", func(t *testing.T) {
 		runAllergyLazySourceTests(t, srv, issuer)
 	})
+	t.Run("allergy sweep", func(t *testing.T) {
+		runAllergySweepTests(t, srv, issuer)
+	})
 }
 
 // runAuthorizationTests verifies that a plain member (a valid token, no
@@ -2538,6 +2541,281 @@ func runAllergyLazySourceTests(t *testing.T, srv *httptest.Server, issuer *testu
 		}
 	}
 	assert.True(t, sawAdded, "the added delta item must appear on householdDelta.items")
+}
+
+// countAllergyWarnings walks decoded GraphQL data and sums the length of
+// every allergyWarnings array — a cheap proxy for the LEN-71 invariant:
+// every allergen-bearing node in the response resolved its warnings list.
+func countAllergyWarnings(v any) int {
+	switch t := v.(type) {
+	case map[string]any:
+		n := 0
+		for k, val := range t {
+			if k == "allergyWarnings" {
+				if arr, ok := val.([]any); ok {
+					n += len(arr)
+					continue
+				}
+			}
+			n += countAllergyWarnings(val)
+		}
+		return n
+	case []any:
+		n := 0
+		for _, e := range t {
+			n += countAllergyWarnings(e)
+		}
+		return n
+	}
+	return 0
+}
+
+// runAllergySweepTests is the LEN-71 P2 structural regression sweep: every
+// public entry point that can reach allergen-bearing fields must return
+// zero errors — never "allergy context unavailable" — and rows that
+// deterministically reach the milk-flagged fixture must report at least
+// one warning for the allergic household member.
+func runAllergySweepTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer) {
+	admin := issuer.Token(t, "swp-admin", "auth@example.com", "SWP Admin")
+	status, gr := doGraphQL(t, srv, admin, `{ me { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// Catalog item index 1 (index 0 is already milk-flagged by the lazy
+	// source subtest) and catalog ingredient index 0, both flagged milk.
+	status, gr = doGraphQL(t, srv, admin, `{ items(page: 1, pageSize: 2) { items { id } } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var itemsRes struct {
+		Items struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"items"`
+	}
+	decodeData(t, gr.Data, &itemsRes)
+	require.GreaterOrEqual(t, len(itemsRes.Items.Items), 2)
+	flaggedItem := itemsRes.Items.Items[1].ID
+
+	// The seed catalog ships no base ingredients — create one.
+	status, gr = doGraphQL(t, srv, admin, `mutation Ing($input: CreateIngredientInput!) {
+		createIngredient(input: $input) { id }
+	}`, map[string]any{"input": map[string]any{"name": "Sweep Flour"}})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var ingredientRes struct {
+		CreateIngredient struct {
+			ID string `json:"id"`
+		} `json:"createIngredient"`
+	}
+	decodeData(t, gr.Data, &ingredientRes)
+	flaggedIngredient := ingredientRes.CreateIngredient.ID
+	require.NotEmpty(t, flaggedIngredient)
+
+	status, gr = doGraphQL(t, srv, admin, `{ allergens { id name } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	var allergenRes struct {
+		Allergens []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"allergens"`
+	}
+	decodeData(t, gr.Data, &allergenRes)
+	milkID := ""
+	for _, a := range allergenRes.Allergens {
+		if a.Name == "milk" {
+			milkID = a.ID
+		}
+	}
+	require.NotEmpty(t, milkID, "seed catalog must contain the milk allergen")
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Flag($itemId: ID!, $ingredientId: ID!, $allergenId: ID!) {
+		item: setItemAllergen(itemId: $itemId, allergenId: $allergenId, kind: contains)
+		ingredient: setIngredientAllergen(ingredientId: $ingredientId, allergenId: $allergenId, kind: contains)
+	}`, map[string]any{"itemId": flaggedItem, "ingredientId": flaggedIngredient, "allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Allergy($allergenId: ID!) {
+		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
+	}`, map[string]any{"allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// Fixture graph: recipe containing the flagged item, a meal-plan slot
+	// on it, an event dish on it, a grocery line for it, and a pantry row.
+	status, gr = doGraphQL(t, srv, admin, `mutation CreateRecipe($input: CreateRecipeInput!) {
+		createRecipe(input: $input) { id }
+	}`, map[string]any{
+		"input": map[string]any{
+			"name":     "Sweep Fixture Soup",
+			"servings": 2,
+			"items": []map[string]any{
+				{"itemId": flaggedItem, "quantity": 1.0, "unit": "cup"},
+			},
+			"steps": []map[string]any{},
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var createRes struct {
+		CreateRecipe struct {
+			ID string `json:"id"`
+		} `json:"createRecipe"`
+	}
+	decodeData(t, gr.Data, &createRes)
+	recipeID := createRes.CreateRecipe.ID
+	require.NotEmpty(t, recipeID)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Plan($input: CreateMealPlanInput!) {
+		createMealPlan(input: $input) { id }
+	}`, map[string]any{
+		"input": map[string]any{"name": "Sweep Plan", "weekStartDate": "2026-10-12"},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var planRes struct {
+		CreateMealPlan struct {
+			ID string `json:"id"`
+		} `json:"createMealPlan"`
+	}
+	decodeData(t, gr.Data, &planRes)
+	planID := planRes.CreateMealPlan.ID
+	require.NotEmpty(t, planID)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Slot($input: AddMealSlotInput!) {
+		addMealSlot(input: $input) { id }
+	}`, map[string]any{
+		"input": map[string]any{
+			"mealPlanId": planID,
+			"dayOfWeek":  1,
+			"mealType":   "Dinner",
+			"recipeId":   recipeID,
+			"servings":   2,
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Event($input: CreateFoodEventInput!) {
+		createFoodEvent(input: $input) { id }
+	}`, map[string]any{
+		"input": map[string]any{"name": "Sweep Feast", "eventDate": "2026-11-26"},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var eventRes struct {
+		CreateFoodEvent struct {
+			ID string `json:"id"`
+		} `json:"createFoodEvent"`
+	}
+	decodeData(t, gr.Data, &eventRes)
+	eventID := eventRes.CreateFoodEvent.ID
+	require.NotEmpty(t, eventID)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Dish($input: AddEventRecipeInput!) {
+		addEventRecipe(input: $input) { id }
+	}`, map[string]any{
+		"input": map[string]any{
+			"foodEventId": eventID,
+			"recipeId":    recipeID,
+			"mealType":    "dinner",
+			"targetTime":  "2026-11-26T18:00:00Z",
+			"servings":    4,
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// generateGroceryList creates the household's first list from the plan
+	// — the flagged recipe's lines land on it — then a direct line for the
+	// flagged catalog item.
+	status, gr = doGraphQL(t, srv, admin, `mutation GenList($planId: ID!) {
+		generateGroceryList(mealPlanId: $planId) { id }
+	}`, map[string]any{"planId": planID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var listRes struct {
+		GenerateGroceryList struct {
+			ID string `json:"id"`
+		} `json:"generateGroceryList"`
+	}
+	decodeData(t, gr.Data, &listRes)
+	groceryListID := listRes.GenerateGroceryList.ID
+	require.NotEmpty(t, groceryListID)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Grocery($input: AddGroceryItemInput!) {
+		addGroceryItem(input: $input) { id }
+	}`, map[string]any{
+		"input": map[string]any{
+			"groceryListId": groceryListID,
+			"itemId":        flaggedItem,
+			"quantity":      1.0,
+			"unit":          "cup",
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, admin, `mutation Pantry($itemId: ID!) {
+		adjustUserItem(itemId: $itemId, quantity: 2) { id }
+	}`, map[string]any{"itemId": flaggedItem})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	warnings := `{ member { id } entityKind }`
+	flags := `{ allergen { name } kind }`
+	rows := []struct {
+		name        string
+		query       string
+		vars        map[string]any
+		minWarnings int
+	}{
+		{"item(id) lazy", `query($id: ID!) { item(id: $id) { allergens ` + flags + ` allergyWarnings ` + warnings + ` } }`,
+			map[string]any{"id": flaggedItem}, 1},
+		{"items preload", `query { items(page: 1, pageSize: 50) { items { allergens ` + flags + ` allergyWarnings ` + warnings + ` } } }`,
+			nil, 1},
+		{"ingredient(id)", `query($id: ID!) { ingredient(id: $id) { allergens ` + flags + ` allergyWarnings ` + warnings + ` } }`,
+			map[string]any{"id": flaggedIngredient}, 1},
+		{"ingredients preload", `query { ingredients(search: "Sweep Flour") { items { allergens ` + flags + ` allergyWarnings ` + warnings + ` } } }`,
+			nil, 1},
+		{"recipe(id)", `query($id: ID!) { recipe(id: $id) { allergens ` + flags + ` allergyWarnings ` + warnings + ` items { item { allergens ` + flags + ` } } } }`,
+			map[string]any{"id": recipeID}, 1},
+		{"recipes preload", `query { recipes(search: "Sweep Fixture Soup") { items { allergens ` + flags + ` allergyWarnings ` + warnings + ` items { item { allergens ` + flags + ` } } } } }`,
+			nil, 1},
+		{"scaledRecipe", `query($id: ID!) { scaledRecipe(id: $id, servings: 4) { allergens ` + flags + ` allergyWarnings ` + warnings + ` } }`,
+			map[string]any{"id": recipeID}, 1},
+		{"recommendedRecipes", `query { recommendedRecipes(limit: 5) { recipe { allergens ` + flags + ` allergyWarnings ` + warnings + ` } } }`,
+			nil, 0},
+		{"userItems nested item", `query { userItems(page: 1, pageSize: 50) { items { item { allergens ` + flags + ` allergyWarnings ` + warnings + ` } } } }`,
+			nil, 1},
+		{"pendingItems", `query { pendingItems(page: 1, pageSize: 10) { items { allergens ` + flags + ` allergyWarnings ` + warnings + ` } } }`,
+			nil, 0},
+		{"mealPlan(id) slots", `query($id: ID!) { mealPlan(id: $id) { slots { allergens ` + flags + ` allergyWarnings ` + warnings + ` recipe { allergens ` + flags + ` } items { item { allergens ` + flags + ` } } } } }`,
+			map[string]any{"id": planID}, 1},
+		{"mealPlans preload", `query { mealPlans(page: 1, pageSize: 10) { items { slots { allergyWarnings ` + warnings + ` } } } }`,
+			nil, 1},
+		{"foodEvent(id) dishes", `query($id: ID!) { foodEvent(id: $id) { recipes { allergens ` + flags + ` allergyWarnings ` + warnings + ` recipe { allergens ` + flags + ` } } } }`,
+			map[string]any{"id": eventID}, 1},
+		{"foodEvents preload", `query { foodEvents(page: 1, pageSize: 10) { items { recipes { allergyWarnings ` + warnings + ` } } } }`,
+			nil, 1},
+		{"groceryList(id) lines", `query($id: ID!) { groceryList(id: $id) { items { allergens ` + flags + ` allergyWarnings ` + warnings + ` item { allergens ` + flags + ` } } } }`,
+			map[string]any{"id": groceryListID}, 1},
+		{"groceryLists preload", `query { groceryLists(page: 1, pageSize: 10) { items { items { allergyWarnings ` + warnings + ` } } } }`,
+			nil, 1},
+		{"groceryRouteGroups", `query($id: ID!) { groceryRouteGroups(groceryListId: $id) { items { item { allergens ` + flags + ` allergyWarnings ` + warnings + ` } } } }`,
+			map[string]any{"id": groceryListID}, 1},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			status, gr := doGraphQL(t, srv, admin, row.query, row.vars)
+			require.Equal(t, http.StatusOK, status)
+			require.Empty(t, gr.Errors, "%s must not error (allergy context unavailable regression)", row.name)
+			var payload map[string]any
+			decodeData(t, gr.Data, &payload)
+			assert.GreaterOrEqual(t, countAllergyWarnings(payload), row.minWarnings,
+				"%s should surface the milk-flagged fixture's warning", row.name)
+		})
+	}
 }
 
 func TestMain(m *testing.M) {
