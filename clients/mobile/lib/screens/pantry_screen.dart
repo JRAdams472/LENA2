@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
+
+const int pantryPageSize = 25;
 
 const String pantryQuery = r'''
   query Pantry($page: Int, $pageSize: Int, $search: String) {
@@ -81,7 +84,7 @@ class _PantryScreenState extends State<PantryScreen> {
               ),
               builder: (QueryResult result,
                   {VoidCallback? refetch, FetchMore? fetchMore}) {
-                return _body(context, result, refetch);
+                return _body(context, result, refetch, fetchMore);
               },
             ),
           ),
@@ -90,8 +93,8 @@ class _PantryScreenState extends State<PantryScreen> {
     );
   }
 
-  Widget _body(
-      BuildContext context, QueryResult result, VoidCallback? refetch) {
+  Widget _body(BuildContext context, QueryResult result, VoidCallback? refetch,
+      FetchMore? fetchMore) {
     if (result.isLoading) {
       return const SkeletonList();
     }
@@ -99,6 +102,9 @@ class _PantryScreenState extends State<PantryScreen> {
       return Center(child: Text('Error: ${result.exception.toString()}'));
     }
     final items = result.data?['userItems']?['items'] as List? ?? [];
+    final total =
+        result.data?['userItems']?['pageInfo']?['totalCount'] as int? ??
+            items.length;
     if (items.isEmpty) {
       return const EmptyState(
         icon: Icons.kitchen_outlined,
@@ -108,9 +114,16 @@ class _PantryScreenState extends State<PantryScreen> {
     }
     return RefreshIndicator(
       onRefresh: () async => refetch?.call(),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16.0),
-        itemCount: items.length,
+      child: PagedListView(
+        loadedCount: items.length,
+        totalCount: total,
+        onLoadMore: () async {
+          if (fetchMore == null) return;
+          await fetchMore(FetchMoreOptions(
+            variables: {'page': nextPageFor(items.length, pantryPageSize)},
+            updateQuery: appendPageItems('userItems'),
+          ));
+        },
         itemBuilder: (context, index) {
           final item = items[index] as Map<String, dynamic>;
           final name = item['item']?['name'] as String? ?? 'Unknown';

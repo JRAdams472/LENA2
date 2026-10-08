@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import 'edit_bottle_screen.dart';
 
+const int bottlesPageSize = 50;
+
 const String bottlesQuery = r'''
-  query Bottles($search: String) {
-    bottles(page: 1, pageSize: 50, search: $search) {
+  query Bottles($page: Int, $search: String) {
+    bottles(page: $page, pageSize: 50, search: $search) {
       items {
         id
         vineyard
@@ -70,7 +73,10 @@ class _BottlesScreenState extends State<BottlesScreen> {
             child: Query(
               options: QueryOptions(
                 document: gql(bottlesQuery),
-                variables: {'search': _search.isEmpty ? null : _search},
+                variables: {
+                  'page': 1,
+                  'search': _search.isEmpty ? null : _search,
+                },
               ),
               builder: (QueryResult result,
                   {VoidCallback? refetch, FetchMore? fetchMore}) {
@@ -83,10 +89,22 @@ class _BottlesScreenState extends State<BottlesScreen> {
                 }
 
                 final items = result.data?['bottles']?['items'] as List? ?? [];
+                final total = result.data?['bottles']?['pageInfo']
+                        ?['totalCount'] as int? ??
+                    items.length;
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: items.length,
+                return PagedListView(
+                  loadedCount: items.length,
+                  totalCount: total,
+                  onLoadMore: () async {
+                    if (fetchMore == null) return;
+                    await fetchMore(FetchMoreOptions(
+                      variables: {
+                        'page': nextPageFor(items.length, bottlesPageSize),
+                      },
+                      updateQuery: appendPageItems('bottles'),
+                    ));
+                  },
                   itemBuilder: (context, index) {
                     final bottle = items[index] as Map<String, dynamic>;
                     final name = (bottle['vineyard'] as String?) ?? 'Unknown';

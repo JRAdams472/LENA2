@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import 'edit_item_screen.dart';
 
+const int itemsPageSize = 50;
+
 const String itemsQuery = r'''
-  query Items($search: String) {
-    items(page: 1, pageSize: 50, search: $search) {
+  query Items($page: Int, $search: String) {
+    items(page: $page, pageSize: 50, search: $search) {
       items {
         id
         name
@@ -77,7 +80,10 @@ class _ItemsScreenState extends State<ItemsScreen> {
             child: Query(
               options: QueryOptions(
                 document: gql(itemsQuery),
-                variables: {'search': _search.isEmpty ? null : _search},
+                variables: {
+                  'page': 1,
+                  'search': _search.isEmpty ? null : _search,
+                },
               ),
               builder: (QueryResult result,
                   {VoidCallback? refetch, FetchMore? fetchMore}) {
@@ -90,10 +96,22 @@ class _ItemsScreenState extends State<ItemsScreen> {
                 }
 
                 final items = result.data?['items']?['items'] as List? ?? [];
+                final total =
+                    result.data?['items']?['pageInfo']?['totalCount'] as int? ??
+                        items.length;
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: items.length,
+                return PagedListView(
+                  loadedCount: items.length,
+                  totalCount: total,
+                  onLoadMore: () async {
+                    if (fetchMore == null) return;
+                    await fetchMore(FetchMoreOptions(
+                      variables: {
+                        'page': nextPageFor(items.length, itemsPageSize),
+                      },
+                      updateQuery: appendPageItems('items'),
+                    ));
+                  },
                   itemBuilder: (context, index) {
                     final item = items[index] as Map<String, dynamic>;
                     final brand = item['brand']?['name'] as String?;

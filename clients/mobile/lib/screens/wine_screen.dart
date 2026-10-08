@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import 'adjust_bottle_screen.dart';
 import 'bottles_screen.dart';
 
+const int userBottlesPageSize = 25;
+
 const String userBottlesQuery = r'''
-  query UserBottles {
-    userBottles(page: 1, pageSize: 25) {
+  query UserBottles($page: Int) {
+    userBottles(page: $page, pageSize: 25) {
       items {
         id
         bottle {
@@ -78,10 +81,22 @@ class WineScreen extends StatelessWidget {
           }
 
           final items = result.data?['userBottles']?['items'] as List? ?? [];
+          final total =
+              result.data?['userBottles']?['pageInfo']?['totalCount'] as int? ??
+                  items.length;
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: items.length,
+          return PagedListView(
+            loadedCount: items.length,
+            totalCount: total,
+            onLoadMore: () async {
+              if (fetchMore == null) return;
+              await fetchMore(FetchMoreOptions(
+                variables: {
+                  'page': nextPageFor(items.length, userBottlesPageSize),
+                },
+                updateQuery: appendPageItems('userBottles'),
+              ));
+            },
             itemBuilder: (context, index) {
               final item = items[index] as Map<String, dynamic>;
               final bottle = item['bottle'] as Map<String, dynamic>?;
@@ -109,6 +124,7 @@ class WineScreen extends StatelessWidget {
                             MaterialPageRoute(
                               builder: (_) => AdjustBottleScreen(
                                 bottleId: bottleId,
+                                bottleName: '$name $year'.trim(),
                                 quantity: item['quantity'] as int?,
                               ),
                             ),

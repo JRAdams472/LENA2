@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/recipe_picker.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
@@ -36,17 +37,6 @@ const String foodEventQuery = r'''
           kind
           allergen { id name }
         }
-      }
-    }
-  }
-''';
-
-const String recipesQuery = r'''
-  query Recipes {
-    recipes(page: 1, pageSize: 200) {
-      items {
-        id
-        name
       }
     }
   }
@@ -114,7 +104,7 @@ class EventDetailScreen extends StatefulWidget {
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
   Map<String, dynamic>? _event;
-  List<Map<String, dynamic>> _recipes = [];
+
   bool _loading = true;
   String? _error;
 
@@ -131,15 +121,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       _error = null;
     });
     try {
-      final results = await Future.wait([
-        client.query(QueryOptions(
-          document: gql(foodEventQuery),
-          variables: {'id': widget.foodEventId},
-          fetchPolicy: FetchPolicy.networkOnly,
-        )),
-        client.query(QueryOptions(document: gql(recipesQuery))),
-      ]);
-      final event = results[0].data?['foodEvent'] as Map<String, dynamic>?;
+      // The slot dialog's recipe picker searches server-side — no eager
+      // recipe fetch needed here.
+      final result = await client.query(QueryOptions(
+        document: gql(foodEventQuery),
+        variables: {'id': widget.foodEventId},
+        fetchPolicy: FetchPolicy.networkOnly,
+      ));
+      final event = result.data?['foodEvent'] as Map<String, dynamic>?;
       if (event == null) {
         setState(() {
           _error = 'Event not found.';
@@ -149,8 +138,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
       setState(() {
         _event = event;
-        _recipes = (results[1].data?['recipes']?['items'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
         _loading = false;
       });
     } catch (e) {
@@ -205,7 +192,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       builder: (_) => _SlotDialog(
         event: _event!,
         slot: slot,
-        recipes: _recipes,
       ),
     );
     if (saved == true) await _load();
@@ -363,12 +349,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 class _SlotDialog extends StatefulWidget {
   final Map<String, dynamic> event;
   final Map<String, dynamic>? slot;
-  final List<Map<String, dynamic>> recipes;
 
   const _SlotDialog({
     required this.event,
     required this.slot,
-    required this.recipes,
   });
 
   @override
@@ -376,7 +360,7 @@ class _SlotDialog extends StatefulWidget {
 }
 
 class _SlotDialogState extends State<_SlotDialog> {
-  String? _recipeId;
+  Map<String, dynamic>? _selectedRecipe;
   String _mealType = 'dinner';
   late String _time;
   final _servingsCtrl = TextEditingController();
@@ -392,7 +376,7 @@ class _SlotDialogState extends State<_SlotDialog> {
     super.initState();
     final slot = widget.slot;
     if (slot != null) {
-      _recipeId = (slot['recipe'] as Map?)?['id'] as String?;
+      _selectedRecipe = (slot['recipe'] as Map?)?.cast<String, dynamic>();
       _mealType = (slot['mealType'] as String?) ?? 'dinner';
       _time = hhmmOf(slot['targetTime'] as String?);
       _servingsCtrl.text = (slot['servings'] as int?)?.toString() ?? '';
@@ -427,7 +411,7 @@ class _SlotDialogState extends State<_SlotDialog> {
           variables: {
             'input': {
               'foodEventId': widget.event['id'] as String,
-              'recipeId': _recipeId,
+              'recipeId': _selectedRecipe?['id'],
               'mealType': _mealType,
               'targetTime': targetTime,
               'servings': servings,
@@ -436,8 +420,9 @@ class _SlotDialogState extends State<_SlotDialog> {
           },
         ));
         if (result.hasException) throw result.exception!;
-        if (_recipeId != null) {
-          recordSelection(client, 'recipe', _recipeId!);
+        final recipeId = _selectedRecipe?['id'] as String?;
+        if (recipeId != null) {
+          recordSelection(client, 'recipe', recipeId);
         }
       } else {
         final result = await client.mutate(MutationOptions(
@@ -445,7 +430,7 @@ class _SlotDialogState extends State<_SlotDialog> {
           variables: {
             'id': widget.slot!['id'] as String,
             'input': {
-              'recipeId': _recipeId,
+              'recipeId': _selectedRecipe?['id'],
               'mealType': _mealType,
               'targetTime': targetTime,
               'servings': servings,
@@ -471,23 +456,10 @@ class _SlotDialogState extends State<_SlotDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<String?>(
-              isExpanded: true,
-              initialValue: _recipeId,
-              decoration: const InputDecoration(labelText: 'Recipe'),
-              items: [
-                const DropdownMenuItem(
-                  value: null,
-                  child: Text('Free-form dish'),
-                ),
-                ...widget.recipes.map(
-                  (r) => DropdownMenuItem(
-                    value: r['id'] as String,
-                    child: Text(r['name'] as String),
-                  ),
-                ),
-              ],
-              onChanged: (v) => setState(() => _recipeId = v),
+            RecipePickerField(
+              selected: _selectedRecipe,
+              noneLabel: 'Free-form dish',
+              onChanged: (r) => setState(() => _selectedRecipe = r),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(

@@ -6,6 +6,7 @@ import 'package:lena_mobile/screens/bottles_screen.dart';
 import 'package:lena_mobile/screens/edit_meal_plan_screen.dart';
 import 'package:lena_mobile/screens/items_screen.dart';
 import 'package:lena_mobile/screens/pantry_screen.dart';
+import 'package:lena_mobile/widgets/recipe_picker.dart';
 
 /// graphql_flutter leaves [Operation.operationName] null on single-operation
 /// documents, so the name has to come from the document AST.
@@ -174,7 +175,8 @@ void main() {
     expect(searches.single.variables['term'], 'merlot');
   });
 
-  testWidgets('EditMealPlanScreen meal type re-queries recipes with mealType',
+  testWidgets(
+      'EditMealPlanScreen recipe picker queries server-side with mealType',
       (tester) async {
     final link = _CaptureLink({
       'MealPlan': {
@@ -187,8 +189,13 @@ void main() {
           'slots': <dynamic>[],
         },
       },
-      'Recipes': {
-        'recipes': {'__typename': 'RecipePage', 'items': <dynamic>[]},
+      'RecipePicker': {
+        'recipes': {
+          '__typename': 'RecipePage',
+          'items': [
+            {'__typename': 'Recipe', 'id': '9', 'name': 'Pancakes'},
+          ],
+        },
       },
       'RecipeCategoryGroups': {
         'recipeCategoryGroups': <dynamic>[],
@@ -203,13 +210,20 @@ void main() {
 
     await tester.enterText(
         find.widgetWithText(TextField, 'Meal type'), 'Dinner');
-    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump();
 
-    final recipes = link.byName('Recipes');
-    expect(recipes, isNotEmpty);
-    expect(recipes.first.variables['mealType'], isNull);
-    expect(recipes.any((r) => r.variables['mealType'] == 'Dinner'), isTrue);
+    // No eager recipes fetch — the picker queries on open with the meal
+    // type as a server-side variable.
+    expect(link.byName('Recipes'), isEmpty);
+    await tester.ensureVisible(find.byType(RecipePickerField));
+    await tester.tap(find.byType(RecipePickerField));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final picks = link.byName('RecipePicker');
+    expect(picks, isNotEmpty);
+    expect(picks.first.variables['mealType'], 'Dinner');
+    expect(find.text('Pancakes'), findsOneWidget);
   });
 
   testWidgets('debounce collapses rapid input into one RecordSearch',

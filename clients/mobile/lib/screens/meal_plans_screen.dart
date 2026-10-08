@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../format.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import 'edit_meal_plan_screen.dart';
 
+const int mealPlansPageSize = 25;
+
 const String mealPlansQuery = r'''
-  query MealPlans {
-    mealPlans(page: 1, pageSize: 25) {
+  query MealPlans($page: Int) {
+    mealPlans(page: $page, pageSize: 25) {
       items {
         id
         name
@@ -28,7 +31,10 @@ class MealPlansScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Meal Plans')),
       body: Query(
-        options: QueryOptions(document: gql(mealPlansQuery)),
+        options: QueryOptions(
+          document: gql(mealPlansQuery),
+          variables: const {'page': 1},
+        ),
         builder: (QueryResult result,
             {VoidCallback? refetch, FetchMore? fetchMore}) {
           if (result.isLoading) {
@@ -39,10 +45,22 @@ class MealPlansScreen extends StatelessWidget {
           }
 
           final items = result.data?['mealPlans']?['items'] as List? ?? [];
+          final total =
+              result.data?['mealPlans']?['pageInfo']?['totalCount'] as int? ??
+                  items.length;
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: items.length,
+          return PagedListView(
+            loadedCount: items.length,
+            totalCount: total,
+            onLoadMore: () async {
+              if (fetchMore == null) return;
+              await fetchMore(FetchMoreOptions(
+                variables: {
+                  'page': nextPageFor(items.length, mealPlansPageSize),
+                },
+                updateQuery: appendPageItems('mealPlans'),
+              ));
+            },
             itemBuilder: (context, index) {
               final item = items[index] as Map<String, dynamic>;
               final isActive = item['isActive'] as bool? ?? false;

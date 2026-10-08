@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../theme.dart';
 import 'edit_recipe_screen.dart';
 
+const int recipesPageSize = 25;
+
 const String recipesQuery = r'''
-  query Recipes($search: String, $categoryIds: [ID!], $isFavorite: Boolean) {
-    recipes(page: 1, pageSize: 25, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite) {
+  query Recipes($page: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean) {
+    recipes(page: $page, pageSize: 25, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite) {
       items {
         id
         name
@@ -78,6 +81,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   }
 
   Map<String, dynamic> get _variables => {
+        'page': 1,
         'search': _search.isEmpty ? null : _search,
         'categoryIds':
             _selectedCategoryIds.isEmpty ? null : _selectedCategoryIds.toList(),
@@ -281,6 +285,9 @@ class _RecipesScreenState extends State<RecipesScreen> {
                 }
 
                 final items = result.data?['recipes']?['items'] as List? ?? [];
+                final total = result.data?['recipes']?['pageInfo']
+                        ?['totalCount'] as int? ??
+                    items.length;
 
                 if (items.isEmpty) {
                   return const EmptyState(
@@ -290,9 +297,18 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: items.length,
+                return PagedListView(
+                  loadedCount: items.length,
+                  totalCount: total,
+                  onLoadMore: () async {
+                    if (fetchMore == null) return;
+                    await fetchMore(FetchMoreOptions(
+                      variables: {
+                        'page': nextPageFor(items.length, recipesPageSize),
+                      },
+                      updateQuery: appendPageItems('recipes'),
+                    ));
+                  },
                   itemBuilder: (context, index) {
                     final item = items[index] as Map<String, dynamic>;
                     final description = item['description'] as String?;
