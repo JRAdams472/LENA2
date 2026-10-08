@@ -190,12 +190,6 @@ export default function Dashboard() {
     enabled: !!activePlanId,
   });
 
-  const recipesQuery = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => api.getRecipes(),
-    enabled: !!activePlanId,
-  });
-
   const suggestionsQuery = useQuery({
     queryKey: ["recommendedRecipes"],
     queryFn: () => api.getRecommendedRecipes(10),
@@ -233,23 +227,12 @@ export default function Dashboard() {
     return planQuery.data.mealSlots.filter((s) => s.dayOfWeek === todayDay);
   }, [planQuery.data, todayDay]);
 
-  const recipeName = (recipeId: number | null) => {
-    if (!recipeId) return "Nothing planned";
-    return (
-      recipesQuery.data?.find((r) => r.recipeID === recipeId)?.recipeName ??
-      `Recipe ${recipeId}`
-    );
-  };
-
   if (plansQuery.isLoading) return <DashboardSkeleton />;
   if (plansQuery.error)
     return <Alert severity="error">{(plansQuery.error as Error).message}</Alert>;
-  if (planQuery.isLoading || recipesQuery.isLoading)
-    return <DashboardSkeleton />;
+  if (planQuery.isLoading) return <DashboardSkeleton />;
   if (planQuery.error)
     return <Alert severity="error">{(planQuery.error as Error).message}</Alert>;
-  if (recipesQuery.error)
-    return <Alert severity="error">{(recipesQuery.error as Error).message}</Alert>;
 
   return (
     // Skeleton unmounts first; content fades in — the spec'd crossfade.
@@ -363,7 +346,8 @@ export default function Dashboard() {
                   </Box>
                   {slot ? (
                     <Typography variant="body2">
-                      {slot.recipe?.recipeName ?? recipeName(slot.recipeID)}
+                      {slot.recipe?.recipeName ??
+                        (slot.recipeID ? `Recipe ${slot.recipeID}` : "Nothing planned")}
                     </Typography>
                   ) : (
                     <Box
