@@ -381,28 +381,6 @@ describe("api client: food flavors and nutrients", () => {
     setAuthTokenGetter(() => null);
   });
 
-  it("getFoodFlavors flattens item flavors and attaches the item", async () => {
-    mockFetch.mockResolvedValueOnce(mockGraphQL(itemsPage([gqlItem()])));
-
-    const flavors = await api.getFoodFlavors();
-
-    expect(flavors).toHaveLength(1);
-    expect(flavors[0].foodId).toBe(1);
-    expect(flavors[0].flavorId).toBe(7);
-    expect(flavors[0].item?.name).toBe("Milk");
-  });
-
-  it("getFoodNutrients flattens item nutrients", async () => {
-    mockFetch.mockResolvedValueOnce(mockGraphQL(itemsPage([gqlItem()])));
-
-    const nutrients = await api.getFoodNutrients();
-
-    expect(nutrients).toHaveLength(1);
-    expect(nutrients[0].foodId).toBe(1);
-    expect(nutrients[0].nutrientId).toBe(5);
-    expect(nutrients[0].amountPerServing).toBe(120);
-  });
-
   it("createFoodFlavor posts ids and intensity", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({

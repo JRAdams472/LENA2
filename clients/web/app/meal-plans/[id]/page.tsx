@@ -692,11 +692,6 @@ export default function MealPlanDetailPage({
     queryFn: () => api.getMealPlan(planId),
   });
 
-  const recipesQuery = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => api.getRecipes(),
-  });
-
   const nutritionQuery = useQuery({
     queryKey: ["mealPlanNutrition", planId],
     queryFn: () => api.getMealPlanNutrition(planId),
@@ -742,10 +737,6 @@ export default function MealPlanDetailPage({
     return name + qty;
   };
 
-  const recipeName = (rid: number | null) =>
-    recipesQuery.data?.find((r) => r.recipeID === rid)?.recipeName ??
-    (rid ? `Recipe ${rid}` : "");
-
   const mealNutrition = (day: number, mealType: number) =>
     nutritionQuery.data?.meals.find(
       (m) => m.dayOfWeek === day && m.mealType === mealType
@@ -774,7 +765,7 @@ export default function MealPlanDetailPage({
       >
         {slot?.recipeID ? (
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {recipeName(slot.recipeID)}
+            {slot.recipe?.recipeName ?? `Recipe ${slot.recipeID}`}
           </Typography>
         ) : (
           <Typography variant="body2" color="text.secondary">

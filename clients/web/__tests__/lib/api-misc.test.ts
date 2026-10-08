@@ -92,15 +92,6 @@ function gqlMealPlan(over: Record<string, unknown> = {}) {
   };
 }
 
-function mealPlansPage(items: object[], totalCount = items.length) {
-  return {
-    mealPlans: {
-      items,
-      pageInfo: { pageNumber: 1, pageSize: 200, totalCount },
-    },
-  };
-}
-
 describe("api client: auth and helpers", () => {
   beforeEach(() => {
     mockFetch.mockReset();
@@ -150,7 +141,7 @@ describe("api client: auth and helpers", () => {
       },
     });
 
-    const error = await api.getBrandList().catch((e) => e);
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).message).toBe("HTTP 500");
   });
@@ -162,7 +153,7 @@ describe("api client: auth and helpers", () => {
       mockGraphQLErrors([{ message: "forbidden", code: "UNAUTHORIZED" }])
     );
 
-    await api.getBrandList().catch(() => undefined);
+    await api.getBrandsPaged(1, 100).catch(() => undefined);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
     setOnUnauthorized(() => undefined);
   });
@@ -174,7 +165,7 @@ describe("api client: auth and helpers", () => {
       mockGraphQLErrors([{ message: "bad", code: "BAD_USER_INPUT" }])
     );
 
-    await api.getBrandList().catch(() => undefined);
+    await api.getBrandsPaged(1, 100).catch(() => undefined);
     expect(onUnauthorized).not.toHaveBeenCalled();
     setOnUnauthorized(() => undefined);
   });
@@ -189,7 +180,7 @@ describe("api client: auth and helpers", () => {
       text: async () => "Forbidden",
     });
 
-    await api.getBrandList().catch(() => undefined);
+    await api.getBrandsPaged(1, 100).catch(() => undefined);
     expect(onUnauthorized).not.toHaveBeenCalled();
     setOnUnauthorized(() => undefined);
   });
@@ -484,45 +475,6 @@ describe("api client: meal plans and slots", () => {
 
     await api.deleteMealSlot(1, 10);
     expect(lastRequestBody().variables).toEqual({ slotId: "10" });
-  });
-
-  it("getMealSlotItems finds the slot across plans", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        mealPlansPage([
-          gqlMealPlan({
-            slots: [
-              gqlSlot({
-                id: "10",
-                items: [
-                  {
-                    id: "20",
-                    item: gqlItem(),
-                    quantity: 1,
-                    unit: "ea",
-                    isFromRecipe: false,
-                  },
-                ],
-              }),
-            ],
-          }),
-        ])
-      )
-    );
-
-    const items = await api.getMealSlotItems(10);
-    expect(items).toHaveLength(1);
-    expect(items[0].mealSlotItemID).toBe(20);
-    expect(items[0].itemID).toBe(1);
-  });
-
-  it("getMealSlotItems returns empty when the slot is not found", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(mealPlansPage([gqlMealPlan()]))
-    );
-
-    const items = await api.getMealSlotItems(999);
-    expect(items).toEqual([]);
   });
 
   it("addMealSlotItem posts the input and maps the result", async () => {

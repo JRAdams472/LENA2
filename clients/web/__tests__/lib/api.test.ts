@@ -205,7 +205,7 @@ describe("api client", () => {
       ])
     );
 
-    const error = await api.getBrandList().catch((e) => e);
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).message).toBe(
       "first problem; second problem"
@@ -222,7 +222,7 @@ describe("api client", () => {
       text: async () => "Unauthorized",
     });
 
-    const error = await api.getBrandList().catch((e) => e);
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(401);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
@@ -235,7 +235,7 @@ describe("api client", () => {
       mockGraphQLErrors([{ message: "not signed in", code: "UNAUTHENTICATED" }])
     );
 
-    const error = await api.getBrandList().catch((e) => e);
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
@@ -264,14 +264,14 @@ describe("api client", () => {
         })
       );
 
-    const result = await api.getBrandList();
+    const result = await api.getBrandsPaged(1, 100);
     expect(refresher).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledTimes(2);
     const [, retryInit] = mockFetch.mock.calls[1];
     expect((retryInit as RequestInit).headers).toEqual(
       expect.objectContaining({ Authorization: "Bearer fresh-access" })
     );
-    expect(result[0].brandName).toBe("Acme");
+    expect(result.items[0].brandName).toBe("Acme");
   });
 
   it("single-flights concurrent refreshes", async () => {
@@ -319,7 +319,7 @@ describe("api client", () => {
       text: async () => "Unauthorized",
     });
 
-    const error = await api.getBrandList().catch((e) => e);
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect((error as ApiError).status).toBe(401);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
@@ -327,7 +327,7 @@ describe("api client", () => {
   it("throws ApiError when the response contains no data", async () => {
     mockFetch.mockResolvedValueOnce(mockGraphQL(null));
 
-    const error = await api.getBrandList().catch((e) => e);
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).message).toContain("no data");
   });
@@ -339,7 +339,7 @@ describe("api client: brands", () => {
     setAuthTokenGetter(() => null);
   });
 
-  it("getBrandList maps rows across pages", async () => {
+  it("getBrandsPaged maps a page of rows", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({
         brands: {
@@ -349,8 +349,8 @@ describe("api client: brands", () => {
       })
     );
 
-    const brands = await api.getBrandList();
-    expect(brands).toEqual([{ brandID: 7, brandName: "Acme", selectionCount: 0, personalSelectionCount: 0 }]);
+    const result = await api.getBrandsPaged(1, 100);
+    expect(result.items).toEqual([{ brandID: 7, brandName: "Acme", selectionCount: 0, personalSelectionCount: 0 }]);
   });
 
   it("getBrands delegates to searchBrands", async () => {
