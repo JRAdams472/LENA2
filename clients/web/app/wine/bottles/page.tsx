@@ -68,7 +68,10 @@ export default function BottlesPage() {
   const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPageNumber(1);
+    }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
@@ -99,7 +102,7 @@ export default function BottlesPage() {
     queryFn: () => api.getVintages(),
   });
 
-  const listQuery = useQuery<Bottle[] | PagedResult<Bottle>>({
+  const listQuery = useQuery<PagedResult<Bottle>>({
     queryKey: [
       "bottles",
       countryId,
@@ -111,15 +114,15 @@ export default function BottlesPage() {
       pageNumber,
       pageSize,
     ],
-    queryFn: () => {
-      if (favorites) return api.getFavoriteBottles();
-      if (debouncedSearch.trim()) return api.searchBottles(debouncedSearch.trim());
-      if (countryId) return api.getBottlesByCountryId(Number(countryId));
-      if (regionId) return api.getBottlesByRegionId(Number(regionId));
-      if (typeId) return api.getBottlesByTypeId(Number(typeId));
-      if (vintageYear) return api.getBottlesByVintageYear(Number(vintageYear));
-      return api.getBottlesPaged(pageNumber, pageSize);
-    },
+    queryFn: () =>
+      api.getBottlesPaged(pageNumber, pageSize, {
+        search: debouncedSearch,
+        countryId: countryId ? Number(countryId) : undefined,
+        regionId: regionId ? Number(regionId) : undefined,
+        typeId: typeId ? Number(typeId) : undefined,
+        vintageYear: vintageYear ? Number(vintageYear) : undefined,
+        favoritesOnly: favorites || undefined,
+      }),
     placeholderData: (prev) => prev,
   });
 
@@ -181,16 +184,8 @@ export default function BottlesPage() {
   const types = typesQuery.data ?? [];
   const vintages = vintagesQuery.data ?? [];
 
-  const listData = listQuery.data;
-  const pagedData = listData && !Array.isArray(listData) ? (listData as PagedResult<Bottle>) : undefined;
-  const rows = pagedData?.items ?? (listData as Bottle[] | undefined) ?? [];
-  const isDefaultList =
-    !favorites &&
-    !debouncedSearch.trim() &&
-    !countryId &&
-    !regionId &&
-    !typeId &&
-    !vintageYear;
+  const pagedData = listQuery.data;
+  const rows = pagedData?.items ?? [];
 
   return (
     <Box>
@@ -207,7 +202,7 @@ export default function BottlesPage() {
           <InputLabel>Country</InputLabel>
           <Select
             value={countryId}
-            onChange={(e) => setCountryId(e.target.value)}
+            onChange={(e) => { setCountryId(e.target.value); setPageNumber(1); }}
             label="Country"
           >
             <MenuItem value="">All</MenuItem>
@@ -223,7 +218,7 @@ export default function BottlesPage() {
           <InputLabel>Region</InputLabel>
           <Select
             value={regionId}
-            onChange={(e) => setRegionId(e.target.value)}
+            onChange={(e) => { setRegionId(e.target.value); setPageNumber(1); }}
             label="Region"
           >
             <MenuItem value="">All</MenuItem>
@@ -239,7 +234,7 @@ export default function BottlesPage() {
           <InputLabel>Type</InputLabel>
           <Select
             value={typeId}
-            onChange={(e) => setTypeId(e.target.value)}
+            onChange={(e) => { setTypeId(e.target.value); setPageNumber(1); }}
             label="Type"
           >
             <MenuItem value="">All</MenuItem>
@@ -255,7 +250,7 @@ export default function BottlesPage() {
           <InputLabel>Vintage</InputLabel>
           <Select
             value={vintageYear}
-            onChange={(e) => setVintageYear(e.target.value)}
+            onChange={(e) => { setVintageYear(e.target.value); setPageNumber(1); }}
             label="Vintage"
           >
             <MenuItem value="">All</MenuItem>
@@ -271,7 +266,7 @@ export default function BottlesPage() {
           control={
             <Switch
               checked={favorites}
-              onChange={(e) => setFavorites(e.target.checked)}
+              onChange={(e) => { setFavorites(e.target.checked); setPageNumber(1); }}
             />
           }
           label="Favorites"
@@ -309,7 +304,7 @@ export default function BottlesPage() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         pagination={
-          isDefaultList && pagedData
+          pagedData
             ? {
                 pageNumber,
                 pageSize,

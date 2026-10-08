@@ -35,10 +35,50 @@ WHERE (
       coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
     )) > 0
   )
+  AND (
+    $2::bigint IS NULL
+    OR b.country_id = $2::bigint
+  )
+  AND (
+    $3::bigint IS NULL
+    OR b.region_id = $3::bigint
+  )
+  AND (
+    $4::bigint IS NULL
+    OR b.type_id = $4::bigint
+  )
+  AND (
+    $5::int IS NULL
+    OR b.vintage_year = $5::int
+  )
+  AND (
+    $6::bool IS DISTINCT FROM TRUE
+    OR b.bottle_id = ANY($7::bigint[])
+  )
 `
 
-func (q *Queries) CountSearchBottles(ctx context.Context, search pgtype.Text) (int64, error) {
-	row := q.db.QueryRow(ctx, countSearchBottles, search)
+type CountSearchBottlesParams struct {
+	Search        pgtype.Text `json:"search"`
+	CountryID     pgtype.Int8 `json:"country_id"`
+	RegionID      pgtype.Int8 `json:"region_id"`
+	TypeID        pgtype.Int8 `json:"type_id"`
+	VintageYear   pgtype.Int4 `json:"vintage_year"`
+	FavoritesOnly pgtype.Bool `json:"favorites_only"`
+	FavoriteIds   []int64     `json:"favorite_ids"`
+}
+
+// Must apply the exact same predicates as SearchBottles so pageInfo.totalCount
+// agrees with the returned rows.
+func (q *Queries) CountSearchBottles(ctx context.Context, arg CountSearchBottlesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchBottles,
+		arg.Search,
+		arg.CountryID,
+		arg.RegionID,
+		arg.TypeID,
+		arg.VintageYear,
+		arg.FavoritesOnly,
+		arg.FavoriteIds,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -1155,50 +1195,82 @@ WHERE (
       coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
     )) > 0
   )
+  AND (
+    $2::bigint IS NULL
+    OR b.country_id = $2::bigint
+  )
+  AND (
+    $3::bigint IS NULL
+    OR b.region_id = $3::bigint
+  )
+  AND (
+    $4::bigint IS NULL
+    OR b.type_id = $4::bigint
+  )
+  AND (
+    $5::int IS NULL
+    OR b.vintage_year = $5::int
+  )
+  AND (
+    $6::bool IS DISTINCT FROM TRUE
+    OR b.bottle_id = ANY($7::bigint[])
+  )
 ORDER BY
   CASE
-    WHEN b.bottle_id = ANY($2::bigint[]) THEN 0
-    WHEN b.bottle_id = ANY($3::bigint[]) THEN 1
-    WHEN b.bottle_id = ANY($4::bigint[]) THEN 2
+    WHEN b.bottle_id = ANY($7::bigint[]) THEN 0
+    WHEN b.bottle_id = ANY($8::bigint[]) THEN 1
+    WHEN b.bottle_id = ANY($9::bigint[]) THEN 2
     WHEN EXISTS (
-      SELECT 1 FROM unnest($5::text[]) term
+      SELECT 1 FROM unnest($10::text[]) term
       WHERE position(lower(term) in lower(
         coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
       )) > 0
     ) THEN 3
-    WHEN b.bottle_id = ANY($6::bigint[]) THEN 4
+    WHEN b.bottle_id = ANY($11::bigint[]) THEN 4
     ELSE 5
   END,
-  array_position($2::bigint[], b.bottle_id),
-  array_position($3::bigint[], b.bottle_id),
-  array_position($4::bigint[], b.bottle_id),
-  array_position($6::bigint[], b.bottle_id),
+  array_position($7::bigint[], b.bottle_id),
+  array_position($8::bigint[], b.bottle_id),
+  array_position($9::bigint[], b.bottle_id),
+  array_position($11::bigint[], b.bottle_id),
   lower(coalesce(b.vineyard, '')),
   b.vintage_year,
   b.bottle_id
-LIMIT $8::int OFFSET $7::int
+LIMIT $13::int OFFSET $12::int
 `
 
 type SearchBottlesParams struct {
-	Search       pgtype.Text `json:"search"`
-	FavoriteIds  []int64     `json:"favorite_ids"`
-	PersonalIds  []int64     `json:"personal_ids"`
-	HouseholdIds []int64     `json:"household_ids"`
-	SearchTerms  []string    `json:"search_terms"`
-	GlobalIds    []int64     `json:"global_ids"`
-	Offset       int32       `json:"offset"`
-	Limit        int32       `json:"limit"`
+	Search        pgtype.Text `json:"search"`
+	CountryID     pgtype.Int8 `json:"country_id"`
+	RegionID      pgtype.Int8 `json:"region_id"`
+	TypeID        pgtype.Int8 `json:"type_id"`
+	VintageYear   pgtype.Int4 `json:"vintage_year"`
+	FavoritesOnly pgtype.Bool `json:"favorites_only"`
+	FavoriteIds   []int64     `json:"favorite_ids"`
+	PersonalIds   []int64     `json:"personal_ids"`
+	HouseholdIds  []int64     `json:"household_ids"`
+	SearchTerms   []string    `json:"search_terms"`
+	GlobalIds     []int64     `json:"global_ids"`
+	Offset        int32       `json:"offset"`
+	Limit         int32       `json:"limit"`
 }
 
 // Engagement-ranked bottle browse/search. The term and prior-search-term
 // tiers match a haystack of vineyard + type/country/region names (all
-// same-schema joins). Tiers from BFF-computed ID arrays:
+// same-schema joins). Optional structured filters (country, region, type,
+// vintage, favorites) narrow the catalog before ranking. Tiers from
+// BFF-computed ID arrays:
 //
 //	0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
 //	match, 4 global-popular, 5 rest.
 func (q *Queries) SearchBottles(ctx context.Context, arg SearchBottlesParams) ([]WineBottle, error) {
 	rows, err := q.db.Query(ctx, searchBottles,
 		arg.Search,
+		arg.CountryID,
+		arg.RegionID,
+		arg.TypeID,
+		arg.VintageYear,
+		arg.FavoritesOnly,
 		arg.FavoriteIds,
 		arg.PersonalIds,
 		arg.HouseholdIds,

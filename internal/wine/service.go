@@ -734,19 +734,36 @@ type RankParams struct {
 	SearchTerms  []string
 }
 
+// BottleFilters carries optional catalog filters for SearchBottles. Nil
+// fields leave the corresponding predicate unconstrained; FavoritesOnly
+// restricts rows to rank.FavoriteIDs.
+type BottleFilters struct {
+	CountryID     *int64
+	RegionID      *int64
+	TypeID        *int64
+	VintageYear   *int32
+	FavoritesOnly bool
+}
+
 // SearchBottles returns one page of bottles filtered by an optional term —
-// matched against vineyard and type/country/region names — ordered by
-// engagement tier before paging. Pass an empty term to rank the catalog.
-func (s *Service) SearchBottles(ctx context.Context, term string, rank RankParams, limit, offset int32) ([]Bottle, error) {
+// matched against vineyard and type/country/region names — plus any
+// structured filters, ordered by engagement tier before paging. Pass an
+// empty term to rank the catalog.
+func (s *Service) SearchBottles(ctx context.Context, term string, filters BottleFilters, rank RankParams, limit, offset int32) ([]Bottle, error) {
 	rows, err := s.q.SearchBottles(ctx, sqlc.SearchBottlesParams{
-		Search:       textOrNull(term),
-		FavoriteIds:  rank.FavoriteIDs,
-		PersonalIds:  rank.PersonalIDs,
-		HouseholdIds: rank.HouseholdIDs,
-		SearchTerms:  rank.SearchTerms,
-		GlobalIds:    rank.GlobalIDs,
-		Limit:        limit,
-		Offset:       offset,
+		Search:        textOrNull(term),
+		CountryID:     optInt8(filters.CountryID),
+		RegionID:      optInt8(filters.RegionID),
+		TypeID:        optInt8(filters.TypeID),
+		VintageYear:   optInt4(filters.VintageYear),
+		FavoritesOnly: optBool(&filters.FavoritesOnly),
+		FavoriteIds:   rank.FavoriteIDs,
+		PersonalIds:   rank.PersonalIDs,
+		HouseholdIds:  rank.HouseholdIDs,
+		SearchTerms:   rank.SearchTerms,
+		GlobalIds:     rank.GlobalIDs,
+		Limit:         limit,
+		Offset:        offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search bottles: %w", err)
@@ -762,10 +779,18 @@ func (s *Service) SearchBottles(ctx context.Context, term string, rank RankParam
 	return out, nil
 }
 
-// CountSearchBottles returns the un-paged match count for the same term
-// filter as SearchBottles.
-func (s *Service) CountSearchBottles(ctx context.Context, term string) (int64, error) {
-	n, err := s.q.CountSearchBottles(ctx, textOrNull(term))
+// CountSearchBottles returns the un-paged match count for the same term,
+// structured filters and favorites scope as SearchBottles.
+func (s *Service) CountSearchBottles(ctx context.Context, term string, filters BottleFilters, favoriteIDs []int64) (int64, error) {
+	n, err := s.q.CountSearchBottles(ctx, sqlc.CountSearchBottlesParams{
+		Search:        textOrNull(term),
+		CountryID:     optInt8(filters.CountryID),
+		RegionID:      optInt8(filters.RegionID),
+		TypeID:        optInt8(filters.TypeID),
+		VintageYear:   optInt4(filters.VintageYear),
+		FavoritesOnly: optBool(&filters.FavoritesOnly),
+		FavoriteIds:   favoriteIDs,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("count search bottles: %w", err)
 	}
@@ -971,6 +996,20 @@ func optInt2(v *int16) pgtype.Int2 {
 		return pgtype.Int2{}
 	}
 	return pgtype.Int2{Int16: *v, Valid: true}
+}
+
+func optInt4(v *int32) pgtype.Int4 {
+	if v == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: *v, Valid: true}
+}
+
+func optInt8(v *int64) pgtype.Int8 {
+	if v == nil {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *v, Valid: true}
 }
 
 func boolOrNull(v bool) pgtype.Bool {

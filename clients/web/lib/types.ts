@@ -6,6 +6,15 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface BottleFilters {
+  search?: string;
+  countryId?: number;
+  regionId?: number;
+  typeId?: number;
+  vintageYear?: number;
+  favoritesOnly?: boolean;
+}
+
 export interface AuditableEntity {
   createdBy: string;
   createDate: string;

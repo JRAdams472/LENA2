@@ -83,7 +83,9 @@ FROM wine.bottle;
 -- name: SearchBottles :many
 -- Engagement-ranked bottle browse/search. The term and prior-search-term
 -- tiers match a haystack of vineyard + type/country/region names (all
--- same-schema joins). Tiers from BFF-computed ID arrays:
+-- same-schema joins). Optional structured filters (country, region, type,
+-- vintage, favorites) narrow the catalog before ranking. Tiers from
+-- BFF-computed ID arrays:
 --   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
 --   match, 4 global-popular, 5 rest.
 SELECT b.*
@@ -96,6 +98,26 @@ WHERE (
     OR position(lower(sqlc.narg('search')) in lower(
       coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
     )) > 0
+  )
+  AND (
+    sqlc.narg('country_id')::bigint IS NULL
+    OR b.country_id = sqlc.narg('country_id')::bigint
+  )
+  AND (
+    sqlc.narg('region_id')::bigint IS NULL
+    OR b.region_id = sqlc.narg('region_id')::bigint
+  )
+  AND (
+    sqlc.narg('type_id')::bigint IS NULL
+    OR b.type_id = sqlc.narg('type_id')::bigint
+  )
+  AND (
+    sqlc.narg('vintage_year')::int IS NULL
+    OR b.vintage_year = sqlc.narg('vintage_year')::int
+  )
+  AND (
+    sqlc.narg('favorites_only')::bool IS DISTINCT FROM TRUE
+    OR b.bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[])
   )
 ORDER BY
   CASE
@@ -121,6 +143,8 @@ ORDER BY
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 
 -- name: CountSearchBottles :one
+-- Must apply the exact same predicates as SearchBottles so pageInfo.totalCount
+-- agrees with the returned rows.
 SELECT COUNT(*)
 FROM wine.bottle b
 JOIN wine.type t ON t.type_id = b.type_id
@@ -131,6 +155,26 @@ WHERE (
     OR position(lower(sqlc.narg('search')) in lower(
       coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
     )) > 0
+  )
+  AND (
+    sqlc.narg('country_id')::bigint IS NULL
+    OR b.country_id = sqlc.narg('country_id')::bigint
+  )
+  AND (
+    sqlc.narg('region_id')::bigint IS NULL
+    OR b.region_id = sqlc.narg('region_id')::bigint
+  )
+  AND (
+    sqlc.narg('type_id')::bigint IS NULL
+    OR b.type_id = sqlc.narg('type_id')::bigint
+  )
+  AND (
+    sqlc.narg('vintage_year')::int IS NULL
+    OR b.vintage_year = sqlc.narg('vintage_year')::int
+  )
+  AND (
+    sqlc.narg('favorites_only')::bool IS DISTINCT FROM TRUE
+    OR b.bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[])
   );
 
 -- name: MatchBottleIDs :many

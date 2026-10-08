@@ -228,19 +228,15 @@ func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{WineService: m, UserPrefsService: up}
 
-	m.EXPECT().SearchBottles(gomock.Any(), "", wine.RankParams{FavoriteIDs: []int64{1}}, int32(10), int32(0)).Return([]wine.Bottle{
+	m.EXPECT().SearchBottles(gomock.Any(), "", wine.BottleFilters{}, wine.RankParams{FavoriteIDs: []int64{1}}, int32(10), int32(0)).Return([]wine.Bottle{
 		{BottleID: 1, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020, BottleSize: "750ml"},
 	}, nil)
-	m.EXPECT().CountSearchBottles(gomock.Any(), "").Return(int64(5), nil)
+	m.EXPECT().CountSearchBottles(gomock.Any(), "", wine.BottleFilters{}, []int64{1}).Return(int64(5), nil)
 	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), wineUserID).Return([]int64{1}, nil)
 	m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
 	m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
 
-	res, err := r.Bottles(wineCtx(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
-	}{Page: 1, PageSize: 10})
+	res, err := r.Bottles(wineCtx(), bottleArgs{Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	items := res.Items()
@@ -250,6 +246,64 @@ func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 	assert.Equal(t, int32(1), pi.PageNumber())
 	assert.Equal(t, int32(10), pi.PageSize())
 	assert.Equal(t, int32(5), pi.TotalCount())
+}
+
+// bottleArgs mirrors the anonymous args struct on Resolver.Bottles.
+type bottleArgs struct {
+	Page          int32
+	PageSize      int32
+	Search        *string
+	CountryID     *graphql.ID
+	RegionID      *graphql.ID
+	TypeID        *graphql.ID
+	VintageYear   *int32
+	FavoritesOnly *bool
+}
+
+func TestResolver_Wine_Bottles_Filters(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	m := mock.NewMockWineService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{WineService: m, UserPrefsService: up}
+
+	countryID, regionID, typeID := graphql.ID("7"), graphql.ID("8"), graphql.ID("9")
+	year := int32(2019)
+	favs := true
+	wantFilters := wine.BottleFilters{
+		CountryID:     int64Ptr(7),
+		RegionID:      int64Ptr(8),
+		TypeID:        int64Ptr(9),
+		VintageYear:   &year,
+		FavoritesOnly: true,
+	}
+	m.EXPECT().SearchBottles(gomock.Any(), "ch", wantFilters, wine.RankParams{FavoriteIDs: []int64{4}}, int32(25), int32(0)).Return([]wine.Bottle{
+		{BottleID: 4, TypeID: 9, CountryID: 7, RegionID: 8, VintageYear: 2019, BottleSize: "750ml"},
+	}, nil)
+	m.EXPECT().CountSearchBottles(gomock.Any(), "ch", wantFilters, []int64{4}).Return(int64(1), nil)
+	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), wineUserID).Return([]int64{4}, nil)
+	m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{4}).Return(nil, nil)
+	m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{4}).Return(nil, nil)
+
+	term := "ch"
+	res, err := r.Bottles(wineCtx(), bottleArgs{
+		Page: 1, PageSize: 25, Search: &term,
+		CountryID: &countryID, RegionID: &regionID, TypeID: &typeID,
+		VintageYear: &year, FavoritesOnly: &favs,
+	})
+	require.NoError(t, err)
+	require.Len(t, res.Items(), 1)
+	assert.Equal(t, int32(1), res.PageInfo().TotalCount())
+}
+
+func TestResolver_Wine_Bottles_Filters_InvalidID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	m := mock.NewMockWineService(ctrl)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{WineService: m, UserPrefsService: up}
+
+	bad := graphql.ID("abc")
+	_, err := r.Bottles(wineCtx(), bottleArgs{Page: 1, PageSize: 25, CountryID: &bad})
+	require.Error(t, err)
 }
 
 func TestResolver_Wine_Type_Mutations(t *testing.T) {
@@ -726,10 +780,7 @@ func TestResolver_Wine_Unauthorized(t *testing.T) {
 			return (&Resolver{}).Bottle(ctx, struct{ ID graphql.ID }{ID: "101"})
 		}},
 		{"Bottles", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).Bottles(ctx, struct {
-				Page, PageSize int32
-				Search         *string
-			}{Page: 1, PageSize: 10})
+			return (&Resolver{}).Bottles(ctx, bottleArgs{Page: 1, PageSize: 10})
 		}},
 		{"CreateType", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).CreateType(ctx, struct{ Input createTypeInput }{Input: createTypeInput{Name: "Red"}})

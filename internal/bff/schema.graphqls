@@ -124,7 +124,7 @@ type Query {
   userItems(page: Int = 1, pageSize: Int = 25, search: String): UserItemPage!
   userBottles(page: Int = 1, pageSize: Int = 25, search: String): UserBottlePage!
   bottle(id: ID!): Bottle
-  bottles(page: Int = 1, pageSize: Int = 25, search: String): BottlePage!
+  bottles(page: Int = 1, pageSize: Int = 25, search: String, countryId: ID, regionId: ID, typeId: ID, vintageYear: Int, favoritesOnly: Boolean): BottlePage!
   types: [WineType!]!
   countries: [Country!]!
   regions(countryId: ID!): [Region!]!
