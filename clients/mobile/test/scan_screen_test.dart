@@ -191,11 +191,12 @@ class _ScannerHarness {
   }
 }
 
-Future<void> _pumpScan(WidgetTester tester, _MockGraphQL mock) {
+Future<void> _pumpScan(WidgetTester tester, _MockGraphQL mock,
+    {String? debugScanUpcs}) {
   return tester.pumpWidget(
     GraphQLProvider(
       client: ValueNotifier(mock.client),
-      child: const MaterialApp(home: ScanScreen()),
+      child: MaterialApp(home: ScanScreen(debugScanUpcs: debugScanUpcs)),
     ),
   );
 }
@@ -521,6 +522,57 @@ void main() {
 
       expect(find.text('Center a barcode in the camera view'), findsOneWidget);
       expect(find.text('Whole Milk'), findsNothing);
+    });
+  });
+
+  group('debug scan seam', () {
+    testWidgets('hides the simulate action with no UPCs configured',
+        (tester) async {
+      _ScannerHarness().install();
+      final mock = _MockGraphQL(_scanResponder);
+      await _pumpScan(tester, mock);
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Simulate scan (debug)'), findsNothing);
+    });
+
+    testWidgets('picked UPC drives the real lookup pipeline', (tester) async {
+      _ScannerHarness().install();
+      final mock = _MockGraphQL(_scanResponder);
+      await _pumpScan(tester, mock,
+          debugScanUpcs: '012345678905, 036000291452');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Simulate scan (debug)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('012345678905'), findsOneWidget);
+      expect(find.text('036000291452'), findsOneWidget);
+
+      await tester.tap(find.text('012345678905'));
+      await tester.pumpAndSettle();
+
+      final lookups = mock.matching('itemByUpc');
+      expect(lookups, hasLength(1));
+      expect((lookups.single['variables'] as Map)['code'], '012345678905');
+      expect(find.text('Whole Milk'), findsOneWidget);
+      expect(find.text('Add to Pantry'), findsOneWidget);
+    });
+
+    testWidgets('unparseable debug UPC surfaces an error, no lookup',
+        (tester) async {
+      _ScannerHarness().install();
+      final mock = _MockGraphQL(_scanResponder);
+      await _pumpScan(tester, mock, debugScanUpcs: 'not-a-upc');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Simulate scan (debug)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('not-a-upc'));
+      await tester.pumpAndSettle();
+
+      expect(mock.matching('itemByUpc'), isEmpty);
+      expect(find.textContaining('Bad debug UPC'), findsOneWidget);
     });
   });
 }

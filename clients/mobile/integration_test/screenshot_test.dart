@@ -140,7 +140,24 @@ void main() {
       debugPrint('tap target missing: grocery list tile');
     }
     await shot(tester, '04-grocery-list', const Duration(seconds: 6));
-    if (openedList) await back(tester);
+    if (openedList) {
+      // Store routing UI: the store dropdown and a row's move-to-aisle
+      // menu — the surfaces the routing docs describe.
+      final storeDropdown = find.byType(DropdownButton<String?>);
+      if (exists(storeDropdown)) {
+        await tester.tap(storeDropdown);
+        await shot(
+            tester, '04a-grocery-store-picker', const Duration(seconds: 2));
+        await dismissModal(tester);
+      }
+      if (await tapFirst(
+          tester, find.byTooltip('Move to aisle'), 'aisle menu')) {
+        await shot(
+            tester, '04b-grocery-move-aisle', const Duration(seconds: 2));
+        await dismissModal(tester);
+      }
+      await back(tester);
+    }
 
     await nav(tester, 'Events');
     await shot(tester, '05-events');
@@ -214,15 +231,31 @@ void main() {
     await nav(tester, 'More');
     await shot(tester, '13-more');
 
-    // LEN-74: dark mode — the More Appearance card flips the scheme;
-    // re-shoot key surfaces dark, then restore light for the rest of
-    // the walk.
+    // LEN-74/LEN-105: dark mode — the More Appearance card flips the
+    // scheme; re-shoot the priority surfaces dark, then restore light
+    // for the rest of the walk.
     if (await tapIfExists(
         tester, find.text('Dark'), 'appearance Dark segment')) {
       await settle(tester);
       await shot(tester, '13a-more-dark', const Duration(seconds: 2));
       await nav(tester, 'Home');
       await shot(tester, '13b-dashboard-dark');
+      await nav(tester, 'Grocery');
+      await shot(tester, '13d-grocery-dark');
+      final darkListTiles = find.byType(ListTile);
+      if (exists(darkListTiles)) {
+        await tester.tap(darkListTiles.last);
+        await shot(tester, '13e-grocery-list-dark', const Duration(seconds: 6));
+        await back(tester);
+      }
+      await nav(tester, 'Events');
+      await shot(tester, '13f-events-dark');
+      await nav(tester, 'Scan');
+      await shot(tester, '13g-scan-dark', const Duration(seconds: 3));
+      await nav(tester, 'Pantry');
+      await shot(tester, '13h-pantry-dark');
+      await nav(tester, 'Ask Dot');
+      await shot(tester, '13i-assistant-dark');
       await nav(tester, 'People');
       await shot(tester, '13c-household-dark');
       await nav(tester, 'More');
@@ -381,6 +414,54 @@ void main() {
     // â”€â”€ Scan last: camera behavior on emulator is itself a finding â”€â”€â”€
     await nav(tester, 'Scan');
     await shot(tester, '26-scan', const Duration(seconds: 6));
+
+    // LEN-105 debug-only seam: the app-bar simulate action offers the
+    // LENA_DEBUG_SCAN_UPC list; each code drives the real
+    // detect->lookup pipeline (linked -> found card, unlinked -> link
+    // prompt, unknown -> submit form). Absent entirely in release builds.
+    final simScan = find.byTooltip('Simulate scan (debug)');
+    final simOptions = find.byType(SimpleDialogOption);
+    if (exists(simScan)) {
+      // 1st configured UPC — linked item: quantity + add/remove card.
+      await tester.tap(simScan);
+      await settle(tester, const Duration(seconds: 1));
+      if (exists(simOptions)) {
+        await tester.tap(simOptions.at(0));
+        await shot(tester, '26a-scan-found', const Duration(seconds: 6));
+        // Real write path — the "added to pantry" message, then the
+        // auto-reset back to the camera.
+        if (await tapIfExists(
+            tester, find.text('Add to Pantry'), 'add to pantry')) {
+          await shot(tester, '26b-scan-added', const Duration(seconds: 1));
+          await settle(tester, const Duration(seconds: 3));
+        }
+        await tapIfExists(tester, find.text('Scan another'), 'scan another');
+        await settle(tester, const Duration(seconds: 2));
+      }
+      // 2nd configured UPC — unlinked item: link-ingredient prompt.
+      if (simOptions.evaluate().length >= 2) {
+        await tester.tap(simScan);
+        await settle(tester, const Duration(seconds: 1));
+        await tester.tap(simOptions.at(1));
+        await shot(tester, '26c-scan-unlinked', const Duration(seconds: 6));
+        if (await tapIfExists(
+            tester, find.text('Link ingredient'), 'link ingredient')) {
+          await shot(
+              tester, '26d-scan-link-ingredient', const Duration(seconds: 4));
+          await dismissModal(tester);
+          await settle(tester, const Duration(seconds: 1));
+        }
+        await tapIfExists(tester, find.text('Scan another'), 'scan another');
+        await settle(tester, const Duration(seconds: 2));
+      }
+      // 3rd configured UPC — unknown item: submit-for-approval form.
+      if (simOptions.evaluate().length >= 3) {
+        await tester.tap(simScan);
+        await settle(tester, const Duration(seconds: 1));
+        await tester.tap(simOptions.at(2));
+        await shot(tester, '26e-scan-submit', const Duration(seconds: 6));
+      }
+    }
 
     debugPrint('done');
   }, timeout: const Timeout(Duration(minutes: 15)));

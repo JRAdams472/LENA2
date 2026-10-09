@@ -556,4 +556,39 @@ for kw, allergen, kind in [
         )
 print("allergen demo data seeded")
 
+# LEN-105: UPC-bearing catalog items for the mobile scan walk. One linked
+# to an ingredient (found/adjust state), one explicitly unlinked
+# (link-ingredient prompt); an unseeded UPC drives the submit form. The
+# demo walk passes all three via LENA_DEBUG_SCAN_UPC.
+SCAN_LINKED_UPC = "012345678905"
+SCAN_UNLINKED_UPC = "036000291452"
+if "milk" in items:
+    gql(
+        ADMIN,
+        "mutation($id: ID!, $i: UpdateItemInput!) { updateItem(id: $id, input: $i) { id } }",
+        {"id": items["milk"][0], "i": {"upc12": SCAN_LINKED_UPC}},
+    )
+    gql(
+        ADMIN,
+        "mutation($i: ID!, $g: ID) { setItemIngredient(itemId: $i, ingredientId: $g) }",
+        {"i": items["milk"][0], "g": get_ing("milk")},
+    )
+if "bread" in items:
+    gql(
+        ADMIN,
+        "mutation($id: ID!, $i: UpdateItemInput!) { updateItem(id: $id, input: $i) { id } }",
+        {"id": items["bread"][0], "i": {"upc12": SCAN_UNLINKED_UPC}},
+    )
+    gql(
+        ADMIN,
+        "mutation($i: ID!) { setItemIngredient(itemId: $i, ingredientId: null) }",
+        {"i": items["bread"][0]},
+    )
+print("scan UPCs seeded:", SCAN_LINKED_UPC, SCAN_UNLINKED_UPC)
+
+# 21+ birthdate on the demo admin unlocks the sommelier/cocktail AI
+# surfaces for screenshots (schema gates them at 21+).
+gql(ADMIN, 'mutation { updateMyProfile(input: {birthdate: "1990-04-15"}) { id } }')
+print("birthdate set on demo admin")
+
 print(json.dumps({"planId": plan_id, "groceryListId": glist["id"], "eventId": ev_id}))

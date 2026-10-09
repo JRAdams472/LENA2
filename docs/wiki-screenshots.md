@@ -66,6 +66,11 @@ surfaces and the profile editor render).
   `internal/bff/schema.graphqls` (`gql()` raises on unknown fields).
 - `eventDate` is `YYYY-MM-DD`; `targetTime` is a UTC timestamp **whose date
   must equal the event date** or the resolver rejects it.
+- Also seeds: a 21+ `birthdate` on the demo admin (unlocks sommelier /
+  cocktail AI surfaces) and UPCs on two catalog items for the mobile scan
+  walk — `012345678905` linked to an ingredient (found/adjust card),
+  `036000291452` left unlinked (link-ingredient prompt); any other UPC
+  exercises the submit-for-approval form.
 
 ## 3. Capture
 
@@ -94,8 +99,39 @@ Hard-won details:
   `scrollIntoViewIfNeeded` → click → wait for rendered text → `fullPage`.
 - Field names drift — if a `waitFor` times out, check the page source for
   the actual label rather than guessing.
+- **Dark pass:** after the light and 390px sets, the script re-shoots the
+  priority surfaces (dashboard, assistant + answer, events + timeline,
+  grocery list, recipes, meal plan, notifications, household, items) in a
+  context with `colorScheme: 'dark'` **and** `localStorage['mui-mode'] =
+  'dark'` — the app resolves its MUI cssVariables theme from that key, so
+  emulation alone is not enough. `*-dark.png` names are the wiki gallery
+  set; `login` shoots both schemes.
+- Store routing shots drive real dialogs: the Store select, the "Edit
+  aisles" layout dialog, and a row's "item actions" → "Move to …" menu.
 
-## 4. Publish to the wiki
+## 4. Mobile walk
+
+```bash
+cd clients/mobile
+flutter drive \
+  --driver=test_driver/integration_test.dart \
+  --target=integration_test/screenshot_test.dart \
+  -d <emulator> \
+  --dart-define=LENA_API_URL=http://10.0.2.2/graphql \
+  --dart-define=LENA_DEBUG_ID_TOKEN=<test-issuer token> \
+  --dart-define=LENA_DEBUG_SCAN_UPC=012345678905,036000291452,999999999999
+```
+
+- `LENA_DEBUG_SCAN_UPC` (debug builds only, `kDebugMode`-gated) adds a
+  "Simulate scan" app-bar action on the Scan tab — it feeds each comma-
+  separated code through the real detect→lookup pipeline, so the
+  found/adjust, link-ingredient, and submit-for-approval shots are real
+  UI on an emulator with no camera barcode to read.
+- Shots land in `mobile-shots/` on the host; the walk covers every tab,
+  the More destinations, scan states, and a dark pass over the priority
+  tabs.
+
+## 5. Publish to the wiki
 
 ```bash
 cp wiki-shots/*.png /path/to/LENA2.wiki/images/
@@ -110,7 +146,7 @@ cd /path/to/LENA2.wiki && git add -A && git commit -m "…" && git push origin m
 - Re-verify any wiki claims while you're in there: screenshots have already
   caught docs describing features that don't exist yet.
 
-## 5. Teardown
+## 6. Teardown
 
 ```bash
 LENA_DB_PASSWORD=e2e-change-me \
@@ -119,7 +155,7 @@ LENA_DB_PASSWORD=e2e-change-me \
 # add -v to also delete the isolated volumes
 ```
 
-## Gotchas observed the first time through
+## Gotchas observed
 
 | Symptom | Cause / fix |
 |---|---|
@@ -134,7 +170,29 @@ LENA_DB_PASSWORD=e2e-change-me \
 
 ## Shot → page map (canonical set)
 
-dashboard, recipes, recipe-detail, meal-plans, meal-plan-week,
-grocery-lists, grocery-list, events, event-detail, event-timeline,
-wine-bottles, household, inventory-items — placed on the matching wiki
-pages (Home + Dashboard share `dashboard.png`).
+Light: dashboard, recipes, recipe-detail(+ingredients+tweaks+allergy-warning),
+recipe-categories-admin, recipe-category-filter, recipes-semantic,
+meal-plans, meal-plan-week, grocery-lists, grocery-list(+brand-picker,
+store-picker, edit-aisles, move-aisle), notification-settings,
+notification-bell, events, event-detail, event-timeline, assistant,
+assistant-answer, wine-bottles, household, inventory-items,
+ingredients-admin, allergen-registry, allergen-suggestions,
+profile(+allergies), all admin/catalog pages (brands, flavor-profiles,
+food-flavors, food-nutrients, nutrient-types, wine catalogs, users,
+pending items/recipes), recipe-import-review when the queue is live.
+
+Dark (`*-dark.png`): dashboard, assistant(+answer), events, event-detail,
+event-timeline, grocery-list, recipes, recipe-detail, meal-plan-week,
+notification-settings, household, inventory-items, login.
+
+390px mobile-web pass: dashboard, recipes, recipe-detail, meal-plan-week,
+grocery-list, assistant, household, inventory-items (`*-mobile.png`).
+
+Mobile emulator walk (`mobile-shots/`): every tab, household switcher /
+create / invitations / accept-merge, notification settings, generate
+grocery dialog, grocery store picker + move-aisle menu, event detail +
+timeline + edit, recipe filter/edit/tweaks set, meal plan + recipe picker,
+wine + bottle picker + catalog + edit, items + edit item, scan idle +
+simulated found/added/unlinked/link-ingredient/submit states, and a dark
+pass over the More/dashboard/grocery(+list)/events/scan/pantry/assistant/
+household tabs.
