@@ -127,6 +127,17 @@ flutter drive \
   separated code through the real detect→lookup pipeline, so the
   found/adjust, link-ingredient, and submit-for-approval shots are real
   UI on an emulator with no camera barcode to read.
+- **Grant camera before the walk** — `flutter drive` can't tap the native
+  permission dialog: `adb -s <emulator> install -r build/app/outputs/
+  flutter-apk/app-debug.apk` then `adb -s <emulator> shell pm grant
+  com.example.lena_mobile android.permission.CAMERA` (reinstalls preserve
+  the grant).
+- **Mint the token fresh** — the test-issuer `id_token` lives 1 hour; a
+  stale one signs the walk out mid-run (shots degrade to the login
+  screen — check sizes).
+- **Clear stale sessions** — secure storage survives reinstalls; if the
+  walk starts signed-out anyway, `adb shell pm clear com.example.lena_mobile`
+  then re-install + re-grant.
 - Shots land in `mobile-shots/` on the host; the walk covers every tab,
   the More destinations, scan states, and a dark pass over the priority
   tabs.

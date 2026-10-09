@@ -49,7 +49,7 @@ Map<String, dynamic> _catalogItem({
       '__typename': 'Item',
       'id': '5',
       'name': 'Whole Milk',
-      'brand': 'StoreBrand',
+      'brand': {'__typename': 'Brand', 'id': '9', 'name': 'StoreBrand'},
       'upc12': '012345678905',
       'upc14': null,
       'unit': 'gal',
