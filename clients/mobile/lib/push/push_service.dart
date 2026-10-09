@@ -35,6 +35,7 @@ abstract class MessagingClient {
 }
 
 /// Production client over FirebaseMessaging.
+// coverage:ignore-start platform plugin wrapper
 class FirebaseMessagingClient implements MessagingClient {
   FirebaseMessagingClient(this._messaging);
   final FirebaseMessaging _messaging;
@@ -69,6 +70,7 @@ class FirebaseMessagingClient implements MessagingClient {
     return m == null ? null : _wrap(m);
   }
 }
+// coverage:ignore-end
 
 /// Foreground heads-up display — a local notification while the app is
 /// visible (FCM doesn't show banners for onMessage). Narrow seam so tests
@@ -80,6 +82,7 @@ abstract class HeadsUpNotifier {
 
 /// Production notifier over flutter_local_notifications on the app's
 /// default channel.
+// coverage:ignore-start platform plugin wrapper
 class LocalHeadsUpNotifier implements HeadsUpNotifier {
   LocalHeadsUpNotifier(this._plugin);
   final FlutterLocalNotificationsPlugin _plugin;
@@ -121,6 +124,7 @@ class LocalHeadsUpNotifier implements HeadsUpNotifier {
     );
   }
 }
+// coverage:ignore-end
 
 const _registeredTokenKey = 'push.registered_token';
 const _platform = 'android';

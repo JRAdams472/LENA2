@@ -304,4 +304,129 @@ void main() {
     expect(find.byType(HouseholdScreen), findsOneWidget);
     await messaging.close();
   });
+
+  test('create() falls back to a disabled service without Firebase', () async {
+    // No google-services.json in tests → Firebase.initializeApp throws and
+    // the app keeps running with push disabled rather than crashing.
+    final prefs = await _prefs();
+    final svc = await PushService.create(prefs: prefs);
+
+    expect(svc.isEnabled, isFalse);
+    await svc.start(); // no-op
+    await svc.unregister();
+    await svc.dispose();
+  });
+
+  test('a messaging-backed service reports enabled', () async {
+    final svc = _service(
+        _FakeMessaging(), _FakeNotifier(), await _prefs(), _CaptureLink({}));
+    expect(svc.isEnabled, isTrue);
+  });
+
+  test('start is idempotent — a second call does not re-register', () async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final link = _CaptureLink({
+      'RegisterDeviceToken': {'registerDeviceToken': true},
+    });
+    final svc = _service(messaging, _FakeNotifier(), prefs, link);
+
+    await svc.start();
+    await svc.start();
+
+    expect(messaging.permissionRequests, 1);
+    expect(link.byName('RegisterDeviceToken'), hasLength(1));
+    await messaging.close();
+  });
+
+  test('a null device token registers nothing', () async {
+    final messaging = _FakeMessaging()..token = null;
+    final prefs = await _prefs();
+    final link = _CaptureLink({});
+    final svc = _service(messaging, _FakeNotifier(), prefs, link);
+
+    await svc.start();
+
+    expect(messaging.permissionRequests, 1);
+    expect(link.byName('RegisterDeviceToken'), isEmpty);
+    expect(prefs.getString('push.registered_token'), isNull);
+    await messaging.close();
+  });
+
+  test('unregister swallows mutation errors but still clears the token',
+      () async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final link = _CaptureLink(
+      {
+        'RegisterDeviceToken': {'registerDeviceToken': true},
+      },
+      errors: {
+        'UnregisterDeviceToken': [const GraphQLError(message: 'down')],
+      },
+    );
+    final svc = _service(messaging, _FakeNotifier(), prefs, link);
+    await svc.start();
+    expect(prefs.getString('push.registered_token'), 'tok-1');
+
+    await svc.unregister();
+
+    expect(link.byName('UnregisterDeviceToken'), hasLength(1));
+    expect(prefs.getString('push.registered_token'), isNull);
+    await messaging.close();
+  });
+
+  test('start after unregister re-registers the token', () async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final link = _CaptureLink({
+      'RegisterDeviceToken': {'registerDeviceToken': true},
+      'UnregisterDeviceToken': {'unregisterDeviceToken': true},
+    });
+    final svc = _service(messaging, _FakeNotifier(), prefs, link);
+
+    await svc.start();
+    await svc.unregister();
+    await svc.start();
+
+    expect(messaging.permissionRequests, 2);
+    expect(link.byName('RegisterDeviceToken'), hasLength(2));
+    await messaging.close();
+  });
+
+  test('dispose cancels the stream subscriptions', () async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final link = _CaptureLink({
+      'RegisterDeviceToken': {'registerDeviceToken': true},
+    });
+    final svc = _service(messaging, _FakeNotifier(), prefs, link);
+    await svc.start();
+    await svc.dispose();
+
+    // Events after dispose no longer reach the service.
+    messaging.refresh.add('tok-2');
+    await pumpEventQueue();
+    expect(link.byName('RegisterDeviceToken'), hasLength(1));
+    await messaging.close();
+  });
+
+  test('a push tap without a navigator is ignored', () async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final svc = _service(messaging, _FakeNotifier(), prefs, _CaptureLink({}));
+    await svc.start();
+
+    // No navigatorKey — the envelope is dropped quietly.
+    messaging.opened.add(const PushEnvelope(data: {'recipeId': 'r-1'}));
+    await pumpEventQueue();
+    await messaging.close();
+  });
+
+  test('PushEnvelope defaults to an empty payload', () {
+    const e = PushEnvelope(title: 't', body: 'b');
+    expect(e.title, 't');
+    expect(e.body, 'b');
+    expect(e.data, isEmpty);
+  });
 }
