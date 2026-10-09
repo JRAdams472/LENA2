@@ -132,9 +132,10 @@ class EditMealPlanScreen extends StatefulWidget {
 class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   final _nameCtrl = TextEditingController();
   final _dateCtrl = TextEditingController();
+  static const _mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
   int _weekStartDay = 0;
   int _slotDay = 0;
-  final _mealTypeCtrl = TextEditingController();
+  String _slotMealType = 'Dinner';
   final _servingsCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
 
@@ -271,7 +272,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
           'input': {
             'mealPlanId': widget.mealPlanId,
             'dayOfWeek': _slotDay,
-            'mealType': _mealTypeCtrl.text,
+            'mealType': _slotMealType,
             'recipeId': recipeId,
             'servings': _servingsCtrl.text.isEmpty
                 ? null
@@ -283,7 +284,6 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
       if (recipeId != null) {
         recordSelection(client, 'recipe', recipeId);
       }
-      _mealTypeCtrl.clear();
       _servingsCtrl.clear();
       _noteCtrl.clear();
       await _loadData();
@@ -338,8 +338,6 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _dateCtrl.dispose();
-
-    _mealTypeCtrl.dispose();
     _servingsCtrl.dispose();
     _noteCtrl.dispose();
     _itemQtyCtrls.values.forEach((c) => c.dispose());
@@ -516,11 +514,19 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
                 onChanged: (v) => setState(() => _slotDay = v ?? 0),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _mealTypeCtrl,
-                decoration: const InputDecoration(labelText: 'Meal type'),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _slotMealType,
+                decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Meal type',
+                ),
+                items: [
+                  for (final t in _mealTypes)
+                    DropdownMenuItem(value: t, child: Text(t)),
+                ],
                 // Rebuild so RecipePickerField's mealType prop stays current.
-                onChanged: (_) => setState(() {}),
+                onChanged: (v) => setState(() => _slotMealType = v ?? 'Dinner'),
               ),
               const SizedBox(height: 12),
               if (_categoryGroups.isNotEmpty)
@@ -546,7 +552,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               // categoryIds so the narrowed set is still reachable.
               RecipePickerField(
                 selected: _selectedRecipe,
-                mealType: _mealTypeCtrl.text,
+                mealType: _slotMealType,
                 categoryId: _categoryFilter,
                 label: 'Recipe (optional)',
                 onChanged: (r) => setState(() => _selectedRecipe = r),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../format.dart';
+import '../widgets/adaptive_detail.dart';
 import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import 'edit_meal_plan_screen.dart';
+import 'meal_plan_week_screen.dart';
 
 const int mealPlansPageSize = 25;
 
@@ -23,82 +25,115 @@ const String mealPlansQuery = r'''
   }
 ''';
 
-class MealPlansScreen extends StatelessWidget {
+class MealPlansScreen extends StatefulWidget {
   const MealPlansScreen({super.key});
 
   @override
+  State<MealPlansScreen> createState() => _MealPlansScreenState();
+}
+
+class _MealPlansScreenState extends State<MealPlansScreen> {
+  String? _selectedId;
+  bool _creating = false;
+
+  Widget? _detailPane() {
+    if (_creating) {
+      return const EditMealPlanScreen(key: ValueKey('new'));
+    }
+    if (_selectedId == null) return null;
+    return MealPlanWeekScreen(
+        key: ValueKey(_selectedId), mealPlanId: _selectedId!);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final listPane = Query(
+      options: QueryOptions(
+        document: gql(mealPlansQuery),
+        variables: const {'page': 1},
+      ),
+      builder: (QueryResult result,
+          {VoidCallback? refetch, FetchMore? fetchMore}) {
+        if (result.isLoading) {
+          return const SkeletonList();
+        }
+        if (result.hasException) {
+          return Center(child: Text('Error: ${result.exception.toString()}'));
+        }
+
+        final items = result.data?['mealPlans']?['items'] as List? ?? [];
+        final total =
+            result.data?['mealPlans']?['pageInfo']?['totalCount'] as int? ??
+                items.length;
+
+        return PagedListView(
+          loadedCount: items.length,
+          totalCount: total,
+          onLoadMore: () async {
+            if (fetchMore == null) return;
+            await fetchMore(FetchMoreOptions(
+              variables: {
+                'page': nextPageFor(items.length, mealPlansPageSize),
+              },
+              updateQuery: appendPageItems('mealPlans'),
+            ));
+          },
+          itemBuilder: (context, index) {
+            final item = items[index] as Map<String, dynamic>;
+            final isActive = item['isActive'] as bool? ?? false;
+            // Auto-named plans embed the raw ISO date — swap it for the
+            // localized date and drop the subtitle so the row carries
+            // the date once.
+            final name = item['name'] as String;
+            final rawDate = item['weekStartDate'] as String? ?? '';
+            final pretty = fmtIso(rawDate);
+            final hasDateInName = pretty.isNotEmpty && name.contains(rawDate);
+            final title =
+                hasDateInName ? name.replaceAll(rawDate, pretty) : name;
+            return Card(
+              child: ListTile(
+                dense: true,
+                title: Text(title),
+                subtitle: hasDateInName || pretty.isEmpty
+                    ? null
+                    : Text('Week starting $pretty'),
+                trailing: isActive ? const Chip(label: Text('Active')) : null,
+                onTap: () => openOrSelect(
+                  context,
+                  select: () => setState(() {
+                    _selectedId = item['id'] as String;
+                    _creating = false;
+                  }),
+                  builder: (_) =>
+                      MealPlanWeekScreen(mealPlanId: item['id'] as String),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('Meal Plans')),
-      body: Query(
-        options: QueryOptions(
-          document: gql(mealPlansQuery),
-          variables: const {'page': 1},
-        ),
-        builder: (QueryResult result,
-            {VoidCallback? refetch, FetchMore? fetchMore}) {
-          if (result.isLoading) {
-            return const SkeletonList();
-          }
-          if (result.hasException) {
-            return Center(child: Text('Error: ${result.exception.toString()}'));
-          }
-
-          final items = result.data?['mealPlans']?['items'] as List? ?? [];
-          final total =
-              result.data?['mealPlans']?['pageInfo']?['totalCount'] as int? ??
-                  items.length;
-
-          return PagedListView(
-            loadedCount: items.length,
-            totalCount: total,
-            onLoadMore: () async {
-              if (fetchMore == null) return;
-              await fetchMore(FetchMoreOptions(
-                variables: {
-                  'page': nextPageFor(items.length, mealPlansPageSize),
-                },
-                updateQuery: appendPageItems('mealPlans'),
-              ));
-            },
-            itemBuilder: (context, index) {
-              final item = items[index] as Map<String, dynamic>;
-              final isActive = item['isActive'] as bool? ?? false;
-              // Auto-named plans embed the raw ISO date — swap it for the
-              // localized date and drop the subtitle so the row carries
-              // the date once.
-              final name = item['name'] as String;
-              final rawDate = item['weekStartDate'] as String? ?? '';
-              final pretty = fmtIso(rawDate);
-              final hasDateInName = pretty.isNotEmpty && name.contains(rawDate);
-              final title =
-                  hasDateInName ? name.replaceAll(rawDate, pretty) : name;
-              return Card(
-                child: ListTile(
-                  dense: true,
-                  title: Text(title),
-                  subtitle: hasDateInName || pretty.isEmpty
-                      ? null
-                      : Text('Week starting $pretty'),
-                  trailing: isActive ? const Chip(label: Text('Active')) : null,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          EditMealPlanScreen(mealPlanId: item['id'] as String),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        },
+      body: AdaptiveDetail(
+        list: listPane,
+        detail: _detailPane(),
+        placeholderIcon: Icons.calendar_month,
+        placeholderTitle: 'Select a plan',
+        onDetailClosed: () => setState(() {
+          _selectedId = null;
+          _creating = false;
+        }),
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab-meal-plans',
-        onPressed: () => Navigator.push(
+        onPressed: () => openOrSelect(
           context,
-          MaterialPageRoute(builder: (_) => const EditMealPlanScreen()),
+          select: () => setState(() {
+            _creating = true;
+            _selectedId = null;
+          }),
+          builder: (_) => const EditMealPlanScreen(),
         ),
         child: const Icon(Icons.add),
       ),

@@ -26,6 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Route docker.io pulls through Google's mirror
+        # Shared runner egress IPs hit Docker Hub's anonymous pull-rate
+        # cap; mirror.gcr.io proxies docker.io and dodges the limit.
+        run: |
+          echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -97,6 +104,13 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Route docker.io pulls through Google's mirror
+        # Shared runner egress IPs hit Docker Hub's anonymous pull-rate
+        # cap; mirror.gcr.io proxies docker.io and dodges the limit.
+        run: |
+          echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -156,6 +170,13 @@ jobs:
       LENA_AUTH_AUDIENCES: e2e-client,lena-e2e-client
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Route docker.io pulls through Google's mirror
+        # Shared runner egress IPs hit Docker Hub's anonymous pull-rate
+        # cap; mirror.gcr.io proxies docker.io and dodges the limit.
+        run: |
+          echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
 
       - name: Start the application stack
         # --profile seed enables the one-shot db-seed job the e2e suite needs.
@@ -308,6 +329,13 @@ jobs:
             dockerfile: clients/web/Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Route docker.io pulls through Google's mirror
+        # Shared runner egress IPs hit Docker Hub's anonymous pull-rate
+        # cap; mirror.gcr.io proxies docker.io and dodges the limit.
+        run: |
+          echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
 
       - name: Docker meta
         id: meta

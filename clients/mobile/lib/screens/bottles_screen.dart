@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/adaptive_detail.dart';
 import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
@@ -34,6 +35,14 @@ class _BottlesScreenState extends State<BottlesScreen> {
   final _searchCtrl = TextEditingController();
   final _debouncer = Debouncer();
   String _search = '';
+  String? _selectedId;
+  bool _creating = false;
+
+  Widget? _detailPane() {
+    if (_creating) return const EditBottleScreen(key: ValueKey('new'));
+    if (_selectedId == null) return null;
+    return EditBottleScreen(key: ValueKey(_selectedId), bottleId: _selectedId);
+  }
 
   @override
   void dispose() {
@@ -54,87 +63,104 @@ class _BottlesScreenState extends State<BottlesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Bottles')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Search bottles',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: _onSearchChanged,
+    final listPane = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Search bottles',
+              prefixIcon: Icon(Icons.search),
             ),
+            onChanged: _onSearchChanged,
           ),
-          Expanded(
-            child: Query(
-              options: QueryOptions(
-                document: gql(bottlesQuery),
-                variables: {
-                  'page': 1,
-                  'search': _search.isEmpty ? null : _search,
-                },
-              ),
-              builder: (QueryResult result,
-                  {VoidCallback? refetch, FetchMore? fetchMore}) {
-                if (result.isLoading) {
-                  return const SkeletonList();
-                }
-                if (result.hasException) {
-                  return Center(
-                      child: Text('Error: ${result.exception.toString()}'));
-                }
-
-                final items = result.data?['bottles']?['items'] as List? ?? [];
-                final total = result.data?['bottles']?['pageInfo']
-                        ?['totalCount'] as int? ??
-                    items.length;
-
-                return PagedListView(
-                  loadedCount: items.length,
-                  totalCount: total,
-                  onLoadMore: () async {
-                    if (fetchMore == null) return;
-                    await fetchMore(FetchMoreOptions(
-                      variables: {
-                        'page': nextPageFor(items.length, bottlesPageSize),
-                      },
-                      updateQuery: appendPageItems('bottles'),
-                    ));
-                  },
-                  itemBuilder: (context, index) {
-                    final bottle = items[index] as Map<String, dynamic>;
-                    final name = (bottle['vineyard'] as String?) ?? 'Unknown';
-                    final year = bottle['vintageYear']?.toString() ?? '';
-                    return Card(
-                      child: ListTile(
-                        dense: true,
-                        title: Text('$name $year'.trim()),
-                        subtitle: Text(bottle['bottleSize'] as String? ?? ''),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => EditBottleScreen(
-                                bottleId: bottle['id'] as String),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
+        ),
+        Expanded(
+          child: Query(
+            options: QueryOptions(
+              document: gql(bottlesQuery),
+              variables: {
+                'page': 1,
+                'search': _search.isEmpty ? null : _search,
               },
             ),
+            builder: (QueryResult result,
+                {VoidCallback? refetch, FetchMore? fetchMore}) {
+              if (result.isLoading) {
+                return const SkeletonList();
+              }
+              if (result.hasException) {
+                return Center(
+                    child: Text('Error: ${result.exception.toString()}'));
+              }
+
+              final items = result.data?['bottles']?['items'] as List? ?? [];
+              final total =
+                  result.data?['bottles']?['pageInfo']?['totalCount'] as int? ??
+                      items.length;
+
+              return PagedListView(
+                loadedCount: items.length,
+                totalCount: total,
+                onLoadMore: () async {
+                  if (fetchMore == null) return;
+                  await fetchMore(FetchMoreOptions(
+                    variables: {
+                      'page': nextPageFor(items.length, bottlesPageSize),
+                    },
+                    updateQuery: appendPageItems('bottles'),
+                  ));
+                },
+                itemBuilder: (context, index) {
+                  final bottle = items[index] as Map<String, dynamic>;
+                  final name = (bottle['vineyard'] as String?) ?? 'Unknown';
+                  final year = bottle['vintageYear']?.toString() ?? '';
+                  return Card(
+                    child: ListTile(
+                      dense: true,
+                      title: Text('$name $year'.trim()),
+                      subtitle: Text(bottle['bottleSize'] as String? ?? ''),
+                      onTap: () => openOrSelect(
+                        context,
+                        select: () => setState(() {
+                          _selectedId = bottle['id'] as String;
+                          _creating = false;
+                        }),
+                        builder: (_) =>
+                            EditBottleScreen(bottleId: bottle['id'] as String),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-        ],
+        ),
+      ],
+    );
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Bottles')),
+      body: AdaptiveDetail(
+        list: listPane,
+        detail: _detailPane(),
+        placeholderIcon: Icons.wine_bar,
+        placeholderTitle: 'Select a bottle',
+        onDetailClosed: () => setState(() {
+          _selectedId = null;
+          _creating = false;
+        }),
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab-bottles',
-        onPressed: () => Navigator.push(
+        onPressed: () => openOrSelect(
           context,
-          MaterialPageRoute(builder: (_) => const EditBottleScreen()),
+          select: () => setState(() {
+            _creating = true;
+            _selectedId = null;
+          }),
+          builder: (_) => const EditBottleScreen(),
         ),
         child: const Icon(Icons.add),
       ),
