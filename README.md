@@ -39,7 +39,7 @@ It is a single-tenant application: you run your own instance and your data lives
 
 | Layer | Technology |
 |---|---|
-| **Backend** | Go 1.27, Echo, `graphql-go`, sqlc, PostgreSQL 18 + pgvector |
+| **Backend** | Go 1.26, Echo, `graphql-go`, sqlc, PostgreSQL 18 + pgvector |
 | **Web app** | Next.js 16 (App Router), TypeScript, Material UI, React Query |
 | **Mobile app** | Flutter 3.47+, `google_sign_in`, `graphql_flutter`, `mobile_scanner` |
 | **Database** | PostgreSQL 18 with schema-per-domain, pgvector for recipe embeddings |
@@ -254,8 +254,11 @@ docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile seed up
 ```bash
 cd clients/mobile
 flutter analyze
-flutter test
+flutter test --coverage
 ```
+
+All three surfaces feed `tools/coveragegate` — see `docs/testing.md` §
+Coverage gate for the enforced floors and exclusion policy.
 
 A screenshot walk (`integration_test/screenshot_test.dart`) captures all 27
 reachable screens on an emulator against the seeded `lena2shots` stack —
@@ -278,12 +281,19 @@ PNGs land in `clients/mobile/mobile-shots/` when the walk completes.
 `.github/workflows/test.yml` runs on pushes to `main`, `phase-*`, `mobile-redesign-*`, and `len-*`/`LEN-*` (ticket) branches, and on PRs targeting `main`:
 
 - **Go** — build, vet, `gofmt`, tests with coverage.
+- **Lint** — `golangci-lint` (incl. `gosec`), plus a `pip-audit` gate on the
+  pinned OCR dependencies (`ocr-import` job).
 - **Web** — TypeScript, ESLint, Jest, Next.js build.
 - **E2E** — Playwright suite against the Docker stack.
-- **Mobile** — `flutter pub get`, `flutter analyze`, `flutter test`.
-- **Docker** — builds and pushes `lena2-api` and `lena2-web` images.
+- **Mobile** — `flutter pub get`, `flutter analyze`, `flutter test --coverage`.
+- **Coverage** — `tools/coveragegate` enforces the floors in
+  `tools/coveragegate/floors.json` across all three surfaces: every Go
+  package and every web/mobile source file must clear 70% (tiny files
+  exempt), with surface totals at go ≥70 / web ≥75 / mobile ≥70. Generated
+  code (sqlc, gomock, platform-plugin wrappers) is excluded via the config.
+- **Docker** — builds `lena2-api` and `lena2-web` images.
 
-`.github/workflows/ci.yml` and `.github/workflows/docker.yml` cover linting and image publishing.
+`.github/workflows/cleanup.yml` purges old workflow artifacts on a schedule.
 
 ---
 

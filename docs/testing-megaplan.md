@@ -7,6 +7,14 @@ created: 2026-09-05T04:47:12Z
 
 A phased, end-to-end plan to bring LENA2's unit and integration test coverage to (and beyond) the level of the original LENA project, split by backend, frontend, and Playwright e2e workstreams.
 
+> **Status — completed (LEN-93).** All phases shipped; the Phase 6 coverage
+> gate landed as `tools/coveragegate` + `tools/coveragegate/floors.json` and
+> now enforces ≥70% per Go package and per web/mobile file
+> (`enforceModules: true`), with surface floors go ≥70 / web ≥75 / mobile
+> ≥70. Mobile (`clients/mobile/test`) joined the plan as phases LEN-97–101.
+> See `docs/testing.md` § Coverage gate for the live policy; this document is
+> kept as the historical plan record.
+
 ## 1. Objective
 
 Add comprehensive, maintainable unit and integration tests to the LENA2 project that meet or exceed the coverage and depth of the original LENA project:
