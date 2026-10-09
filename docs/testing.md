@@ -150,6 +150,67 @@ Key points:
 - CI runs the suite on `ubuntu-latest` inside the `e2e` job and uploads the
   HTML report (always) and `test-results/` on failure.
 
+### Journey specs
+
+These specs drive whole user journeys against the real stack; per-module
+branches stay in the Jest/Go unit suites.
+
+| Spec | Journey |
+| --- | --- |
+| `events.spec.ts` | Create a food event, add dishes with serve times, generate the cooking timeline; ordered steps and oven conflict warnings |
+| `grocery-checkoff.spec.ts` | Generate a list from a meal plan, check a line off (persists on reload, writes back to pantry quantity), regenerate and keep manual ordering |
+| `household.spec.ts` | Primary user invites a second user (separate browser context), accept with the merge prompt, shared data visible, household switcher |
+| `allergies.spec.ts` | Allergen + member allergy + ingredient `contains` flag; warning chip on the recipe list and member-naming alert on detail |
+| `recipe-tweaks.spec.ts` | Household swap tweak, Original/Household toggle and delta badge, canonical edit → stale banner → Mark reviewed |
+| `pantry.spec.ts` | Quantity and minimum on `/inventory/items` (the web pantry; there is no `/pantry` route) |
+| `admin.spec.ts` | Approve/reject member-submitted items, accept an AI allergen suggestion, members turned away |
+| `ai-surfaces.spec.ts` | Suggest Meals fills an open slot, Suggest Fixes applies a timeline fix, wine pairing gated on a 21+ birthdate |
+| `notification-settings.spec.ts` | Turn off and mute the household category; a member joining no longer raises the bell count |
+
+The expiry reminder's "Add to list" action is covered by
+`notifications.spec.ts`.
+
+Journey-spec conventions:
+
+- `LENA_AI_PROVIDER=mock` (set in `docker-compose.e2e.yml`) answers JSON-mode
+  AI calls with a deterministic pick from the request context (first open
+  dinner slot, a `shift_serve` fix for the last conflicting dish, a
+  `contains` flag on the first unflagged line). See `cannedJSONReply` in
+  `cmd/lena/main.go`.
+- Specs that change memberships or unread counts mint their own test-issuer
+  identities (any `sub`/`email` is provisioned on first use) so they don't
+  disturb `auth.spec.ts`'s cross-user checks when running in parallel.
+- The BFF dedups byte-identical mutation bodies for 30 seconds, even across
+  runs. Repeated calls (invite → leave → invite) need distinct bodies; the
+  specs vary the GraphQL operation name.
+- Tests marked `test.fail()` pin known product defects. They pass while the
+  bug exists and start failing once it's fixed; remove the marker then.
+- On a long-lived database, leftover rows from many runs can push fresh rows
+  off the first page of lists (meal plans, restock top-10). If unrelated
+  specs start missing rows, reset with `down -v`.
+
+## Mobile journey test
+
+`clients/mobile/integration_test/journeys_test.dart` uses the same
+`flutter drive` harness as the screenshot walk, with assertions: sign-in
+lands on the dashboard showing today's seeded slot, the Grocery tab opens the
+seeded list and a check-off persists, and People accepts an invite and
+switches households. It seeds over GraphQL and never opens the Scan tab, so
+it runs on an emulator without a camera.
+
+```sh
+cd clients/mobile
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/journeys_test.dart -d <emulator> \
+  --dart-define=LENA_API_URL=http://10.0.2.2/graphql \
+  --dart-define=LENA_DEBUG_ID_TOKEN=<token for the app user> \
+  --dart-define=LENA_E2E_INVITER_TOKEN=<token for a second user>
+```
+
+Mint both tokens from the test issuer, for example `sub=e2e-user-1` for the
+app and `sub=e2e-mobile-inviter&email=e2e-mobile-inviter@example.com` for
+the inviter.
+
 ## Mobile screenshot walk
 
 `clients/mobile/integration_test/screenshot_test.dart` drives every reachable
