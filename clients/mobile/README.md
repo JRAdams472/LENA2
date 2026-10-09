@@ -175,7 +175,11 @@ gated artifacts.
 - `lib/main.dart` — App entry point with `GraphQLProvider` and `AuthGate`.
 - `lib/auth/auth_service.dart` — Google sign-in, `/auth/session` exchange, secure token storage, `LENA_DEBUG_ID_TOKEN` bypass for emulator/e2e runs.
 - `lib/screens/login_screen.dart` — split-card sign-in: sage brand panel over the Google button, theme-aware in both schemes.
-- `lib/screens/main_screen.dart` — Bottom-nav shell.
+- `lib/responsive.dart` — Material 3 breakpoints (compact <600, medium 600–839, expanded ≥840), `context.isMedium`/`isExpanded`/`isWide` helpers, and `ConstrainedContent` (max-840dp centered wrapper).
+- `lib/widgets/adaptive_detail.dart` — two-pane master/detail host: a 360dp list pane + detail pane at expanded widths (detail runs in a nested `Navigator` so pushes/pops stay pane-scoped), plain `Navigator.push` on compact. `openOrSelect` is the tap helper screens call.
+- `lib/screens/main_screen.dart` — shell: `BottomNavigationBar` on compact, `NavigationRail` + `IndexedStack` on medium/expanded; same eight lazy-built destinations either way.
+- `lib/screens/meal_plan_week_screen.dart` — week-oriented plan view: 7-day × meal-type grid on wide panes, scrolling day sections on narrow; slot add/edit/remove, server `suggestMeals` sheet, `nutrition` sheet.
+- `lib/screens/cook_mode_screen.dart` — cook mode: full-screen `PageView` of effective-view steps with big type, step-type/hands-off badges, `durationMinutes` countdown chips, and `wakelock_plus` keep-awake (enable on init, disable on dispose). Ingredients are a left rail on wide panes, a bottom sheet on narrow.
 - `lib/screens/dashboard_screen.dart` + `dashboard_content.dart` — Dashboard GraphQL wrapper + the greeting/meals/recommendations layout; display logic lives in pure helpers under `lib/dashboard_helpers.dart`.
 - `lib/screens/grocery_lists_screen.dart` + `grocery_list_screen.dart` — Grocery list list/detail; the detail screen renders the server's `groceryRouteGroups` verbatim (aisle-grouped, per-group `ReorderableListView`, "move to aisle" menu, store picker). Ingredient-only lines show a `usual:` caption once a brand is remembered; the first check-off opens a brand picker (`checkGroceryItemWithBrand`) that records the household's usual.
 - `lib/screens/pantry_screen.dart` — Pantry quantities.

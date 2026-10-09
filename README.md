@@ -113,7 +113,10 @@ The Flutter app (`clients/mobile`) is intended for quick, on-the-go actions:
 - **Pantry** — view pantry quantities and minimums for tracked items.
 - **Scan** — use the camera to scan a barcode, look up the item by UPC, add or remove stock, or submit a missing item for admin approval.
 - **Household** — members, roles, and invites; the tab badge shows unread household notifications. An active-household header opens a switcher sheet covering every membership (switch, leave, or create a new one), and the same merge prompt as the web appears on invite accept. Your allergy/dietary records live here too — flag rows carry warning badges that open a detail dialog naming the conflict.
-- **Bottom navigation** — Dashboard, Grocery, Events, Scan, Pantry, Household.
+- **Meal plans** — a week view presents the plan as a 7-day × Breakfast/Lunch/Dinner grid on wide panes and scrolling day sections on phones; slots add/edit/remove in place, **Suggest meals** proposes recipes from the server's AI (reasons + expiring items), and a **Nutrition** sheet renders aggregate nutrients and warnings.
+- **Cook mode** — a full-screen step pager on recipes: big `N / total` counter, headline instructions, step-type and hands-off badges, and tap-to-start countdown chips for timed steps. The screen stays awake while cooking (`wakelock_plus`); ingredients sit in a side rail on wide screens or a bottom sheet on phones.
+- **Adaptive layouts** — Material 3 breakpoints (`lib/responsive.dart`): bottom navigation under 600dp, a `NavigationRail` at 600dp+, and list screens (recipes, meal plans, grocery, events, pantry items, bottles) split into a two-pane master/detail (`AdaptiveDetail`) at 840dp+. Form content caps at 840dp centered.
+- **Navigation** — Dashboard, Grocery, Events, Scan, Pantry, Household, Ask Dot, and More — bottom bar on phones, rail on tablets.
 
 UPC normalization follows this rule: 12 digits go to `upc12`, 13 digits are left-padded with `0` and treated as `upc14`, and 14 digits go straight to `upc14`. Anything else is considered not found.
 
