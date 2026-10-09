@@ -446,6 +446,233 @@ describe("grocery list detail page", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
+
+  describe("store aisles and restock", () => {
+    const aisles = [
+      { id: "1", name: "Produce", position: 0 },
+      { id: "2", name: "Dairy", position: 1 },
+    ];
+    const store = { id: "7", name: "Costco", aisles };
+    const storedList = { ...list, store };
+    // The list's item sits inside the Produce aisle group so the move and
+    // unassign paths both see a real target/source aisle.
+    const groupedRoutes = [
+      { aisle: aisles[0], items: [routeGroups[0].items[0]] },
+      { aisle: null, items: [] },
+    ];
+
+    function mockStore(opts: { restock?: object[] } = {}) {
+      mockFetch.mockImplementation((_, init) => {
+        const body = JSON.parse((init as RequestInit).body as string);
+        if (body.query.includes("assignItemToAisle")) {
+          return Promise.resolve(gql({ assignItemToAisle: true }));
+        }
+        if (body.query.includes("reorderGroceryListItems")) {
+          return Promise.resolve(gql({ reorderGroceryListItems: true }));
+        }
+        if (body.query.includes("createStoreAisle")) {
+          return Promise.resolve(
+            gql({ createStoreAisle: { id: "9", name: "Bakery", position: 2 } })
+          );
+        }
+        if (body.query.includes("renameStoreAisle")) {
+          return Promise.resolve(
+            gql({ renameStoreAisle: { id: "1", name: "Fresh", position: 0 } })
+          );
+        }
+        if (body.query.includes("deleteStoreAisle")) {
+          return Promise.resolve(gql({ deleteStoreAisle: true }));
+        }
+        if (body.query.includes("reorderStoreAisles")) {
+          return Promise.resolve(gql({ reorderStoreAisles: aisles }));
+        }
+        if (body.query.includes("addGroceryItem")) {
+          return Promise.resolve(
+            gql({
+              addGroceryItem: {
+                id: "11",
+                manualItemName: null,
+                quantityNeeded: 1,
+                unitOfMeasure: "",
+                source: "pantry",
+                isChecked: false,
+                item: null,
+              },
+            })
+          );
+        }
+        if (body.query.includes("groceryRouteGroups")) {
+          return Promise.resolve(gql({ groceryRouteGroups: groupedRoutes }));
+        }
+        if (body.query.includes("groceryStores")) {
+          return Promise.resolve(gql({ groceryStores: [store] }));
+        }
+        if (body.query.includes("suggestedRestockItems")) {
+          return Promise.resolve(
+            gql({ suggestedRestockItems: opts.restock ?? [] })
+          );
+        }
+        if (body.query.includes("shopperProviders")) {
+          return Promise.resolve(gql({ shopperProviders: [] }));
+        }
+        return Promise.resolve(gql({ groceryList: storedList }));
+      });
+    }
+
+    it("moves an item to unassigned, clearing its aisle", async () => {
+      mockStore();
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByLabelText("item actions"));
+      fireEvent.click(await screen.findByText("Move to unassigned"));
+      await waitFor(() => {
+        const bodies = getBodies();
+        expect(bodies.some((b) => b.query.includes("assignItemToAisle"))).toBe(true);
+        expect(
+          bodies.some((b) => b.query.includes("reorderGroceryListItems"))
+        ).toBe(true);
+      });
+    });
+
+    it("moves an item to another aisle", async () => {
+      mockStore();
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByLabelText("item actions"));
+      fireEvent.click(await screen.findByText("Move to Dairy"));
+      await waitFor(() => {
+        expect(
+          getBodies().some((b) => b.query.includes("reorderGroceryListItems"))
+        ).toBe(true);
+      });
+    });
+
+    it("manages the store's aisle layout", async () => {
+      mockStore();
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Milk"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit aisles" }));
+      await screen.findByText(/Costco — aisle layout/);
+
+      const upButtons = screen.getAllByLabelText("move aisle up");
+      const downButtons = screen.getAllByLabelText("move aisle down");
+      expect(upButtons[0]).toBeDisabled();
+      expect(downButtons[downButtons.length - 1]).toBeDisabled();
+
+      fireEvent.click(downButtons[0]);
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("reorderStoreAisles"))).toBe(true)
+      );
+
+      fireEvent.change(screen.getByDisplayValue("Produce"), { target: { value: "Fresh" } });
+      fireEvent.blur(screen.getByDisplayValue("Fresh"));
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("renameStoreAisle"))).toBe(true)
+      );
+
+      fireEvent.click(screen.getAllByLabelText("delete aisle")[0]);
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("deleteStoreAisle"))).toBe(true)
+      );
+
+      fireEvent.change(screen.getByLabelText("New aisle"), { target: { value: "Bakery" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("createStoreAisle"))).toBe(true)
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("lists restock suggestions and adds one", async () => {
+      mockStore({
+        restock: [
+          {
+            id: "9",
+            name: "Olive Oil 500ml",
+            upc12: null,
+            upc14: null,
+            unit: "ml",
+            brand: { id: "8", name: "Pure" },
+            category: null,
+            nutrients: [],
+            flavors: [],
+          },
+        ],
+      });
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Time to restock"));
+
+      const addButtons = screen.getAllByRole("button", { name: "Add" });
+      fireEvent.click(addButtons[addButtons.length - 1]);
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("addGroceryItem"))).toBe(true)
+      );
+    });
+
+    it("asks for a brand when checking an ingredient-only line", async () => {
+      const ingredientOnly = {
+        id: "12",
+        manualItemName: null,
+        quantityNeeded: 1,
+        unitOfMeasure: "",
+        source: "meal-plan",
+        isChecked: false,
+        item: null,
+        ingredient: { id: "4", name: "Tomato" },
+        usualBrand: null,
+      };
+      mockFetch.mockImplementation((_, init) => {
+        const body = JSON.parse((init as RequestInit).body as string);
+        if (body.query.includes("toggleGroceryItemChecked")) {
+          return Promise.resolve(
+            gql({ toggleGroceryItemChecked: { ...ingredientOnly, isChecked: true } })
+          );
+        }
+        if (body.query.includes("groceryRouteGroups")) {
+          return Promise.resolve(
+            gql({
+              groceryRouteGroups: [
+                { aisle: null, items: [{ suggested: false, item: ingredientOnly }] },
+              ],
+            })
+          );
+        }
+        if (body.query.includes("groceryStores")) {
+          return Promise.resolve(gql({ groceryStores: [] }));
+        }
+        if (body.query.includes("suggestedRestockItems")) {
+          return Promise.resolve(gql({ suggestedRestockItems: [] }));
+        }
+        if (body.query.includes("shopperProviders")) {
+          return Promise.resolve(gql({ shopperProviders: [] }));
+        }
+        return Promise.resolve(
+          gql({ groceryList: { ...list, items: [ingredientOnly] } })
+        );
+      });
+      await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Tomato"));
+
+      fireEvent.click(screen.getByRole("checkbox"));
+      await screen.findByText(/Which Tomato did you buy/);
+      // Toggling must NOT fire yet — the dialog intercepts it.
+      expect(
+        getBodies().some((b) => b.query.includes("toggleGroceryItemChecked"))
+      ).toBe(false);
+
+      fireEvent.click(screen.getByRole("button", { name: "Check off without a brand" }));
+      await waitFor(() =>
+        expect(
+          getBodies().some((b) => b.query.includes("toggleGroceryItemChecked"))
+        ).toBe(true)
+      );
+    });
+  });
 });
 
 describe("reorderEntries", () => {

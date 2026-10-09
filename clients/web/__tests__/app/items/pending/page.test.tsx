@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PendingItemsPage from "@/app/items/pending/page";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Item } from "@/lib/types";
 jest.mock("../../../../app/auth/useMe");
 import { useMe } from "@/app/auth/useMe";
@@ -126,5 +126,137 @@ describe("pending items admin page", () => {
     expect(rows).toHaveLength(1);
     expect(within(rows[0]).getByRole("button", { name: /approve/i })).toBeInTheDocument();
     expect(within(rows[0]).getByRole("button", { name: /reject/i })).toBeInTheDocument();
+  });
+
+  it("approves an item through the confirm dialog", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [{ ...baseItem, submittedByMe: true }],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+    mockedApi.approveItem.mockResolvedValue({ ...baseItem, status: "approved" });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Milk")).toBeInTheDocument());
+    expect(screen.getByText("You")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    expect(screen.getByText(/will become visible to all users/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(mockedApi.approveItem).toHaveBeenCalledWith(1));
+  });
+
+  it("rejects an item through the confirm dialog", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [baseItem],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+    mockedApi.rejectItem.mockResolvedValue({ ...baseItem, status: "rejected" });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Milk")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /reject/i }));
+    expect(screen.getByText(/will be marked rejected/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(mockedApi.rejectItem).toHaveBeenCalledWith(1));
+  });
+
+  it("cancels the confirm dialog", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [baseItem],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Milk")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    await waitFor(() =>
+      expect(screen.queryByText(/will become visible/)).not.toBeInTheDocument()
+    );
+    expect(mockedApi.approveItem).not.toHaveBeenCalled();
+  });
+
+  it("shows the api error when approve fails", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [baseItem],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+    mockedApi.approveItem.mockRejectedValue(new ApiError(409, "already approved"));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Milk")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(screen.getByText("already approved")).toBeInTheDocument());
+  });
+
+  it("renders nutrient summary and upc fallbacks", async () => {
+    const withNutrients: Item = {
+      ...baseItem,
+      upc12: null,
+      upc14: "12345678901234",
+      foodNutrients: [
+        { nutrientType: { nutrientName: "Calories" }, amountPerServing: 120 },
+        { nutrientType: { nutrientName: "Protein" }, amountPerServing: 8 },
+        { nutrientType: { nutrientName: "Fat" }, amountPerServing: 5 },
+        { nutrientType: { nutrientName: "Carbs" }, amountPerServing: 12 },
+      ] as Item["foodNutrients"],
+    };
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [withNutrients],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+
+    renderPage();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Calories: 120, Protein: 8, Fat: 5 \(\+1 more\)/)
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByText("12345678901234")).toBeInTheDocument();
+  });
+
+  it("paginates through the pending list", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [baseItem],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 50,
+      totalPages: 2,
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Milk")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+    await waitFor(() =>
+      expect(mockedApi.getPendingItems).toHaveBeenCalledWith(2, 25)
+    );
   });
 });
