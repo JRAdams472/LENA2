@@ -14,13 +14,22 @@ Widget _app({required Widget home}) => GraphQLProvider(
       ),
     );
 
+/// Pumps MainScreen at an explicit viewport size — the default test
+/// surface (800×600) lands in the medium window class, which would show
+/// the NavigationRail instead of the bottom nav.
+Future<void> _pumpMain(WidgetTester tester,
+    {Size size = const Size(400, 800)}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(_app(home: const MainScreen()));
+}
+
 void main() {
   testWidgets(
     'MainScreen bottom nav has Home, Grocery, Events, Scan, Pantry, People, Ask Dot, and More',
     (tester) async {
-      await tester.pumpWidget(
-        _app(home: const MainScreen()),
-      );
+      await _pumpMain(tester);
       await tester.pump();
 
       final nav =
@@ -44,9 +53,7 @@ void main() {
   testWidgets(
     'the More tab links to recipes, meal plans, wine, and items',
     (tester) async {
-      await tester.pumpWidget(
-        _app(home: const MainScreen()),
-      );
+      await _pumpMain(tester);
       await tester.pump();
 
       await tester.tap(find.descendant(
@@ -65,9 +72,7 @@ void main() {
   testWidgets(
     'tapping the People tab shows the household screen',
     (tester) async {
-      await tester.pumpWidget(
-        _app(home: const MainScreen()),
-      );
+      await _pumpMain(tester);
       await tester.pump();
 
       await tester.tap(find.descendant(
@@ -81,11 +86,45 @@ void main() {
   );
 
   testWidgets(
+    'wide layouts swap the bottom nav for a NavigationRail',
+    (tester) async {
+      await _pumpMain(tester, size: const Size(1280, 800));
+      await tester.pump();
+
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(BottomNavigationBar), findsNothing);
+
+      // Rail destinations drive the same tab switching.
+      await tester.tap(find.descendant(
+        of: find.byType(NavigationRail),
+        matching: find.text('Pantry'),
+      ));
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: find.byType(IndexedStack),
+          matching: find.byType(Scaffold),
+        ),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets(
+    'compact layouts keep the BottomNavigationBar',
+    (tester) async {
+      await _pumpMain(tester, size: const Size(500, 800));
+      await tester.pump();
+
+      expect(find.byType(BottomNavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+    },
+  );
+
+  testWidgets(
     'unvisited tabs are not built — Scan never mounts at launch',
     (tester) async {
-      await tester.pumpWidget(
-        _app(home: const MainScreen()),
-      );
+      await _pumpMain(tester);
       await tester.pump();
 
       // ScanScreen builds lazily on first visit so its CAMERA

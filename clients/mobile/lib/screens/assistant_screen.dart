@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
@@ -282,7 +284,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 10),
                           constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.8,
+                            maxWidth: math.min(
+                                MediaQuery.of(context).size.width * 0.8, 720),
                           ),
                           decoration: BoxDecoration(
                             color: m.isUser

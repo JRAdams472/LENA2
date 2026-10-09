@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../responsive.dart';
 import '../widgets/skeleton.dart';
 
 import 'dashboard_content.dart';
@@ -110,7 +111,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Dashboard')),
-          body: _body(context, result, refetch),
+          body:
+              ConstrainedContent(child: _body(context, result, refetch)),
         );
       },
     );
