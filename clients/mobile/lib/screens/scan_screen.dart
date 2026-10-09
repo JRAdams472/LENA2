@@ -9,7 +9,10 @@ const String itemByUpcQuery = r'''
     itemByUpc(code: $code) {
       id
       name
-      brand
+      brand {
+        id
+        name
+      }
       upc12
       upc14
       unit
@@ -113,7 +116,11 @@ class _ScanScreenState extends State<ScanScreen> {
 
   String get _debugScanUpcs => widget.debugScanUpcs ?? _envScanUpcs;
 
-  final _scanner = MobileScannerController(autoStart: true);
+  // autoStart is off: the MobileScanner widget calls controller.start()
+  // unguarded on every (re)mount, which throws when a previous start is
+  // still in flight on devices with slow/absent cameras. We drive
+  // start/stop through the guarded helpers instead.
+  final _scanner = MobileScannerController(autoStart: false);
   final _qtyCtrl = TextEditingController(text: '1');
   final _nameCtrl = TextEditingController();
   final _unitCtrl = TextEditingController();
@@ -126,6 +133,12 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _showSubmit = false;
   String? _message;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _startScanner();
+  }
 
   void _addNutrient() {
     setState(() {
@@ -143,6 +156,22 @@ class _ScanScreenState extends State<ScanScreen> {
     setState(() {});
   }
 
+  /// Camera controllers on devices with no usable camera can sit in
+  /// "initializing" indefinitely — start/stop then throw
+  /// MobileScannerException. Swallow it: autoStart still lands the
+  /// scanner when a real camera comes up.
+  Future<void> _stopScanner() async {
+    try {
+      await _scanner.stop();
+    } on MobileScannerException catch (_) {}
+  }
+
+  Future<void> _startScanner() async {
+    try {
+      await _scanner.start();
+    } on MobileScannerException catch (_) {}
+  }
+
   Future<void> _onDetect(BarcodeCapture capture) async {
     final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null || raw.isEmpty) return;
@@ -155,7 +184,7 @@ class _ScanScreenState extends State<ScanScreen> {
       return;
     }
 
-    await _scanner.stop();
+    await _stopScanner();
     _lookup(normalized);
   }
 
@@ -325,7 +354,7 @@ class _ScanScreenState extends State<ScanScreen> {
       _message = null;
       _error = null;
     });
-    _scanner.start();
+    _startScanner();
   }
 
   void _resetAfterDelay() {
@@ -361,7 +390,7 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() => _error = 'Bad debug UPC: $code');
       return;
     }
-    await _scanner.stop();
+    await _stopScanner();
     await _lookup(normalized);
   }
 
@@ -557,7 +586,7 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget _foundView() {
     final item = _foundItem!;
     final name = item['name'] as String? ?? 'Unknown';
-    final brand = item['brand'] as String?;
+    final brand = (item['brand'] as Map<String, dynamic>?)?['name'] as String?;
     final unit = item['unit'] as String? ?? '';
     final upc =
         item['upc12'] as String? ?? item['upc14'] as String? ?? _upc ?? '';

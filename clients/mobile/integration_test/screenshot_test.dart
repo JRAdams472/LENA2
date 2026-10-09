@@ -134,6 +134,10 @@ void main() {
     final listTiles = find.byType(ListTile);
     var openedList = false;
     if (exists(listTiles)) {
+      // The last tile can sit under the bottom nav — bring it fully
+      // into view so the tap doesn't hit-test against the nav bar.
+      await tester.ensureVisible(listTiles.last);
+      await tester.pump();
       await tester.tap(listTiles.last);
       openedList = true;
     } else {
@@ -244,6 +248,8 @@ void main() {
       await shot(tester, '13d-grocery-dark');
       final darkListTiles = find.byType(ListTile);
       if (exists(darkListTiles)) {
+        await tester.ensureVisible(darkListTiles.last);
+        await tester.pump();
         await tester.tap(darkListTiles.last);
         await shot(tester, '13e-grocery-list-dark', const Duration(seconds: 6));
         await back(tester);
@@ -420,45 +426,62 @@ void main() {
     // detect->lookup pipeline (linked -> found card, unlinked -> link
     // prompt, unknown -> submit form). Absent entirely in release builds.
     final simScan = find.byTooltip('Simulate scan (debug)');
-    final simOptions = find.byType(SimpleDialogOption);
     if (exists(simScan)) {
+      // Open the chooser and tap the idx-th configured UPC — the option
+      // count is only knowable while the dialog is on screen.
+      Future<bool> simPick(int idx) async {
+        await tester.tap(simScan);
+        await settle(tester, const Duration(seconds: 1));
+        final opts = find.byType(SimpleDialogOption);
+        if (opts.evaluate().length <= idx) {
+          await dismissModal(tester);
+          return false;
+        }
+        await tester.tap(opts.at(idx));
+        return true;
+      }
+
+      // Taps below the found card's fold need ensureVisible.
+      Future<bool> tapVisible(
+          WidgetTester t, Finder f, String label) async {
+        if (!exists(f)) {
+          debugPrint('tap target missing: $label');
+          return false;
+        }
+        await t.ensureVisible(f);
+        await t.pump();
+        await t.tap(f);
+        return true;
+      }
+
       // 1st configured UPC — linked item: quantity + add/remove card.
-      await tester.tap(simScan);
-      await settle(tester, const Duration(seconds: 1));
-      if (exists(simOptions)) {
-        await tester.tap(simOptions.at(0));
+      if (await simPick(0)) {
         await shot(tester, '26a-scan-found', const Duration(seconds: 6));
         // Real write path — the "added to pantry" message, then the
         // auto-reset back to the camera.
-        if (await tapIfExists(
+        if (await tapVisible(
             tester, find.text('Add to Pantry'), 'add to pantry')) {
           await shot(tester, '26b-scan-added', const Duration(seconds: 1));
           await settle(tester, const Duration(seconds: 3));
         }
-        await tapIfExists(tester, find.text('Scan another'), 'scan another');
+        await tapVisible(tester, find.text('Scan another'), 'scan another');
         await settle(tester, const Duration(seconds: 2));
       }
       // 2nd configured UPC — unlinked item: link-ingredient prompt.
-      if (simOptions.evaluate().length >= 2) {
-        await tester.tap(simScan);
-        await settle(tester, const Duration(seconds: 1));
-        await tester.tap(simOptions.at(1));
+      if (await simPick(1)) {
         await shot(tester, '26c-scan-unlinked', const Duration(seconds: 6));
-        if (await tapIfExists(
+        if (await tapVisible(
             tester, find.text('Link ingredient'), 'link ingredient')) {
           await shot(
               tester, '26d-scan-link-ingredient', const Duration(seconds: 4));
           await dismissModal(tester);
           await settle(tester, const Duration(seconds: 1));
         }
-        await tapIfExists(tester, find.text('Scan another'), 'scan another');
+        await tapVisible(tester, find.text('Scan another'), 'scan another');
         await settle(tester, const Duration(seconds: 2));
       }
       // 3rd configured UPC — unknown item: submit-for-approval form.
-      if (simOptions.evaluate().length >= 3) {
-        await tester.tap(simScan);
-        await settle(tester, const Duration(seconds: 1));
-        await tester.tap(simOptions.at(2));
+      if (await simPick(2)) {
         await shot(tester, '26e-scan-submit', const Duration(seconds: 6));
       }
     }
