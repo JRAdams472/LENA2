@@ -4,6 +4,7 @@ import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
 import '../recipe_delta.dart';
+import 'cook_mode_screen.dart';
 import 'recipe_tweaks.dart';
 
 const String itemsQuery = r'''
@@ -385,7 +386,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         final me = data['me'] as Map<String, dynamic>?;
         _canTweak = me?['household'] != null;
         _applyRecipe(data);
-        final delta = (data['recipe'] as Map<String, dynamic>?)?['householdDelta'];
+        final delta =
+            (data['recipe'] as Map<String, dynamic>?)?['householdDelta'];
         // Canonical rows feed base labels for tweak descriptions and the
         // canonical edit form — fetch them whenever a delta exists (the
         // effective list alone can't name a removed/swapped line).
@@ -420,8 +422,10 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     if (recipe == null) return;
     final delta = recipe['householdDelta'] as Map<String, dynamic>?;
     setState(() {
-      _viewItems = (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
-      _viewSteps = (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
+      _viewItems =
+          (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
+      _viewSteps =
+          (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
       _delta = delta;
       _rawDeltaItems =
           (delta?['items'] as List? ?? []).cast<Map<String, dynamic>>();
@@ -436,16 +440,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   /// must seed from canonical data, not the household's effective rows.
   void _applyCanonicalBase(Map<String, dynamic>? recipe) {
     if (recipe == null) return;
-    final items =
-        (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
-    final steps =
-        (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
+    final items = (recipe['items'] as List? ?? []).cast<Map<String, dynamic>>();
+    final steps = (recipe['steps'] as List? ?? []).cast<Map<String, dynamic>>();
     setState(() {
       _itemBaseLabels = {
         for (final i in items)
           i['id'] as String: ((i['ingredient']?['name'] ??
-                  i['item']?['name'] ??
-                  'line ${i['id']}') as String),
+              i['item']?['name'] ??
+              'line ${i['id']}') as String),
       };
       _stepBaseNumbers = {
         for (final s in steps)
@@ -459,36 +461,36 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   void _fillForm(Map<String, dynamic> recipe) {
     _formFilled = true;
-        final item = (recipe['items'] as List?)?[0] as Map<String, dynamic>?;
-        final step = (recipe['steps'] as List?)?[0] as Map<String, dynamic>?;
-        setState(() {
-          _nameCtrl.text = (recipe['name'] as String?) ?? '';
-          _descCtrl.text = (recipe['description'] as String?) ?? '';
-          _servingsCtrl.text = recipe['servings']?.toString() ?? '';
-          _prepCtrl.text = recipe['prepTimeMinutes']?.toString() ?? '';
-          _cookCtrl.text = recipe['cookTimeMinutes']?.toString() ?? '';
-          _itemId = item?['item']?['id'] as String?;
-          _ingredientId = item?['ingredient']?['id'] as String?;
-          final recipeItem = item?['item'] as Map<String, dynamic>?;
-          if (recipeItem != null && !_items.any((i) => i['id'] == _itemId)) {
-            _items = [recipeItem, ..._items];
-          }
-          final recipeIngredient = item?['ingredient'] as Map<String, dynamic>?;
-          if (recipeIngredient != null &&
-              !_ingredients.any((i) => i['id'] == _ingredientId)) {
-            _ingredients = [recipeIngredient, ..._ingredients];
-          }
-          _qtyCtrl.text = item?['quantity']?.toString() ?? '';
-          _unitCtrl.text = (item?['unit'] as String?) ?? '';
-          _stepCtrl.text = (step?['instruction'] as String?) ?? '';
-          _isFavorite = (recipe['isFavorite'] as bool?) ?? false;
-          _selectedCategoryIds
-            ..clear()
-            ..addAll((recipe['categories'] as List? ?? [])
-                .map((c) => c['id'] as String));
-          _allergyWarnings = allergyWarningsOf(recipe);
-          _allergenFlags = allergenFlagsOf(recipe);
-        });
+    final item = (recipe['items'] as List?)?[0] as Map<String, dynamic>?;
+    final step = (recipe['steps'] as List?)?[0] as Map<String, dynamic>?;
+    setState(() {
+      _nameCtrl.text = (recipe['name'] as String?) ?? '';
+      _descCtrl.text = (recipe['description'] as String?) ?? '';
+      _servingsCtrl.text = recipe['servings']?.toString() ?? '';
+      _prepCtrl.text = recipe['prepTimeMinutes']?.toString() ?? '';
+      _cookCtrl.text = recipe['cookTimeMinutes']?.toString() ?? '';
+      _itemId = item?['item']?['id'] as String?;
+      _ingredientId = item?['ingredient']?['id'] as String?;
+      final recipeItem = item?['item'] as Map<String, dynamic>?;
+      if (recipeItem != null && !_items.any((i) => i['id'] == _itemId)) {
+        _items = [recipeItem, ..._items];
+      }
+      final recipeIngredient = item?['ingredient'] as Map<String, dynamic>?;
+      if (recipeIngredient != null &&
+          !_ingredients.any((i) => i['id'] == _ingredientId)) {
+        _ingredients = [recipeIngredient, ..._ingredients];
+      }
+      _qtyCtrl.text = item?['quantity']?.toString() ?? '';
+      _unitCtrl.text = (item?['unit'] as String?) ?? '';
+      _stepCtrl.text = (step?['instruction'] as String?) ?? '';
+      _isFavorite = (recipe['isFavorite'] as bool?) ?? false;
+      _selectedCategoryIds
+        ..clear()
+        ..addAll((recipe['categories'] as List? ?? [])
+            .map((c) => c['id'] as String));
+      _allergyWarnings = allergyWarningsOf(recipe);
+      _allergenFlags = allergenFlagsOf(recipe);
+    });
   }
 
   Future<void> _setCategories(Set<String> next) async {
@@ -631,8 +633,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   void _applyItemDraft(DeltaItemDraft draft) {
     setState(() {
       if (draft.recipeItemId != null) {
-        _itemDrafts
-            .removeWhere((d) => d.recipeItemId == draft.recipeItemId);
+        _itemDrafts.removeWhere((d) => d.recipeItemId == draft.recipeItemId);
       }
       _itemDrafts.add(draft);
     });
@@ -648,7 +649,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   }
 
   Future<void> _tweakItem(Map<String, dynamic> line) async {
-    final label = (line['ingredient']?['name'] ?? line['item']?['name'] ??
+    final label = (line['ingredient']?['name'] ??
+        line['item']?['name'] ??
         'this line') as String;
     final draft = await showItemTweakSheet(
       context: context,
@@ -693,8 +695,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   /// "2 cup milk" — quantity + unit + ingredient/item name.
   String _lineLabel(Map<String, dynamic> line) {
-    final name = (line['ingredient']?['name'] ?? line['item']?['name'] ?? '')
-        as String;
+    final name =
+        (line['ingredient']?['name'] ?? line['item']?['name'] ?? '') as String;
     final qty = line['quantity'];
     final unit = line['unit'] as String?;
     final bits = [
@@ -729,8 +731,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                   Chip(
                     label: Text(deltaKindLabels[deltaKind]!),
                     visualDensity: VisualDensity.compact,
-                    labelStyle: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onPrimary),
+                    labelStyle: theme.textTheme.labelSmall
+                        ?.copyWith(color: theme.colorScheme.onPrimary),
                     backgroundColor: theme.colorScheme.primary,
                   ),
               ],
@@ -739,8 +741,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           if (tweakable)
             TextButton(
               onPressed: onTweak,
-              style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
               child: const Text('Tweak'),
             ),
         ],
@@ -830,6 +831,16 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         actions: widget.recipeId == null
             ? null
             : [
+                IconButton(
+                  icon: const Icon(Icons.soup_kitchen_outlined),
+                  tooltip: 'Cook mode',
+                  // Root navigator — cook mode takes over the whole screen
+                  // even when the editor sits inside a two-pane detail.
+                  onPressed: () => Navigator.of(context, rootNavigator: true)
+                      .push(MaterialPageRoute(
+                    builder: (_) => CookModeScreen(recipeId: widget.recipeId!),
+                  )),
+                ),
                 IconButton(
                   icon: Icon(_isFavorite ? Icons.star : Icons.star_border),
                   onPressed: _isTogglingFavorite ? null : _toggleFavorite,
@@ -922,9 +933,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                         Text(
                           'The original recipe changed since your tweaks '
                           'were saved — review and mark as checked when '
-                          'happy.${((_delta?['orphanedItemCount'] as num? ?? 0) +
-                                  (_delta?['orphanedStepCount'] as num? ?? 0)) >
-                              0 ? ' Some tweaks no longer apply.' : ''}',
+                          'happy.${((_delta?['orphanedItemCount'] as num? ?? 0) + (_delta?['orphanedStepCount'] as num? ?? 0)) > 0 ? ' Some tweaks no longer apply.' : ''}',
                         ),
                         Align(
                           alignment: Alignment.centerRight,
@@ -946,8 +955,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                       visualDensity: VisualDensity.compact,
                       labelStyle:
                           Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color:
-                                    Theme.of(context).colorScheme.primary,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                       side: BorderSide(
                           color: Theme.of(context).colorScheme.primary),
@@ -987,8 +995,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
               for (final step in _viewSteps)
                 _contentsRow(
                   icon: Icons.format_list_numbered,
-                  label:
-                      '${step['stepNumber']}. ${step['instruction']}',
+                  label: '${step['stepNumber']}. ${step['instruction']}',
                   deltaKind: step['deltaKind'] as String?,
                   tweakable: _view == 'effective' && step['id'] != '0',
                   onTweak: () => _tweakStep(step),

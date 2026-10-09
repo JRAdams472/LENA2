@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/adaptive_detail.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
@@ -25,8 +26,15 @@ const String groceryListsQuery = r'''
   }
 ''';
 
-class GroceryListsScreen extends StatelessWidget {
+class GroceryListsScreen extends StatefulWidget {
   const GroceryListsScreen({super.key});
+
+  @override
+  State<GroceryListsScreen> createState() => _GroceryListsScreenState();
+}
+
+class _GroceryListsScreenState extends State<GroceryListsScreen> {
+  String? _selectedId;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +47,16 @@ class GroceryListsScreen extends StatelessWidget {
           {VoidCallback? refetch, FetchMore? fetchMore}) {
         return Scaffold(
           appBar: AppBar(title: const Text('Grocery Lists')),
-          body: _body(context, result, refetch, fetchMore),
+          body: AdaptiveDetail(
+            list: _body(context, result, refetch, fetchMore),
+            detail: _selectedId == null
+                ? null
+                : GroceryListScreen(
+                    key: ValueKey(_selectedId), listId: _selectedId!),
+            placeholderIcon: Icons.shopping_cart_outlined,
+            placeholderTitle: 'Select a list',
+            onDetailClosed: () => setState(() => _selectedId = null),
+          ),
           floatingActionButton: FloatingActionButton(
             // Tabs live together in MainScreen's IndexedStack — every
             // tab FAB needs a unique heroTag or route transitions crash.
@@ -97,11 +114,10 @@ class GroceryListsScreen extends StatelessWidget {
               title: Text('List ${index + 1}'),
               subtitle: Text('Generated ${fmtIso(generatedAt)}'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
+              onTap: () => openOrSelect(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => GroceryListScreen(listId: id),
-                ),
+                select: () => setState(() => _selectedId = id),
+                builder: (_) => GroceryListScreen(listId: id),
               ),
             ),
           );

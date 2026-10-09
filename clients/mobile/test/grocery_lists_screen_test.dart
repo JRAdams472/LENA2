@@ -141,6 +141,46 @@ void main() {
       expect(find.text('Grocery List'), findsOneWidget);
     });
 
+    testWidgets('expanded width keeps the list and shows the detail inline',
+        (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final mock = _MockGraphQL((body) {
+        final q = body['query'] as String;
+        if (q.contains('groceryRouteGroups')) {
+          return {
+            'data': {
+              '__typename': 'Query',
+              'groceryList': {
+                '__typename': 'GroceryList',
+                'id': '1',
+                'store': null,
+              },
+              'groceryStores': [],
+              'shopperProviders': [],
+              'groceryRouteGroups': [],
+            },
+          };
+        }
+        return _listsResponse([_list('1', '2026-10-04T18:48:42Z')]);
+      });
+      await _pump(tester, mock);
+      await tester.pumpAndSettle();
+
+      // Nothing selected — placeholder occupies the detail pane.
+      expect(find.text('Select a list'), findsOneWidget);
+
+      await tester.tap(find.text('List 1'));
+      await tester.pumpAndSettle();
+
+      // Inline pane: list stays visible next to the detail screen.
+      expect(find.text('List 1'), findsOneWidget);
+      expect(find.text('Grocery List'), findsOneWidget);
+      expect(find.text('Select a list'), findsNothing);
+    });
+
     testWidgets('fetches page 2 when the list fills beyond the viewport',
         (tester) async {
       final page1 = [

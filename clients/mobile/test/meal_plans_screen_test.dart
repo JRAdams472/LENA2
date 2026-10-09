@@ -6,6 +6,7 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:lena_mobile/screens/edit_meal_plan_screen.dart';
+import 'package:lena_mobile/screens/meal_plan_week_screen.dart';
 import 'package:lena_mobile/screens/meal_plans_screen.dart';
 import 'package:lena_mobile/widgets/paged_list_view.dart';
 import 'package:lena_mobile/widgets/skeleton.dart';
@@ -349,8 +350,7 @@ void main() {
       expect(find.text('Create Meal Plan'), findsOneWidget);
     });
 
-    testWidgets('tapping a plan pushes EditMealPlanScreen in edit mode',
-        (tester) async {
+    testWidgets('tapping a plan pushes MealPlanWeekScreen', (tester) async {
       final cap = _Capture()
         ..onRequest = (query) {
           if (query.contains('mealPlans(')) {
@@ -368,8 +368,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Late October'));
       await tester.pumpAndSettle();
-      expect(find.byType(EditMealPlanScreen), findsOneWidget);
-      expect(find.text('Edit Meal Plan'), findsOneWidget);
+      expect(find.byType(MealPlanWeekScreen), findsOneWidget);
     });
   });
 
@@ -478,12 +477,14 @@ void main() {
       await pumpEditor(tester, cap, mealPlanId: 'p1');
 
       await tester.dragUntilVisible(
-        find.widgetWithText(TextField, 'Meal type'),
+        find.text('Meal type'),
         find.byType(ListView).last,
         const Offset(0, -200),
       );
-      await tester.enterText(
-          find.widgetWithText(TextField, 'Meal type'), 'brunch');
+      await tester.tap(find.text('Meal type'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Lunch').last);
+      await tester.pumpAndSettle();
 
       // Pick a recipe through the search sheet — InputDecorator renders
       // the label twice, so take .first; tapAt bypasses hit-test misses
@@ -510,7 +511,7 @@ void main() {
 
       final req = cap.lastMatching('addMealSlot')!;
       expect(req['variables'], contains('"mealPlanId":"p1"'));
-      expect(req['variables'], contains('"mealType":"brunch"'));
+      expect(req['variables'], contains('"mealType":"Lunch"'));
       expect(req['variables'], contains('"recipeId":"r7"'));
       expect(req['variables'], contains('"servings":6'));
       expect(req['variables'], contains('"replacementNote":"Light lunch"'));
@@ -524,19 +525,21 @@ void main() {
       final cap = _editorCap(plan: planDetail());
       await pumpEditor(tester, cap, mealPlanId: 'p1');
       await tester.dragUntilVisible(
-        find.widgetWithText(TextField, 'Meal type'),
+        find.text('Meal type'),
         find.byType(ListView).last,
         const Offset(0, -200),
       );
-      await tester.enterText(
-          find.widgetWithText(TextField, 'Meal type'), 'snack');
+      await tester.tap(find.text('Meal type'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Breakfast').last);
+      await tester.pumpAndSettle();
       final addSlotButton = find.widgetWithText(ElevatedButton, 'Add Slot');
       await tester.ensureVisible(addSlotButton);
       await tester.tap(addSlotButton);
       await tester.pumpAndSettle();
 
       final req = cap.lastMatching('addMealSlot')!;
-      expect(req['variables'], contains('"mealType":"snack"'));
+      expect(req['variables'], contains('"mealType":"Breakfast"'));
       expect(req['variables'], contains('"recipeId":null'));
       expect(req['variables'], contains('"servings":null'));
       expect(cap.countOf('recordSelection'), 0);
@@ -573,8 +576,7 @@ void main() {
       // Select Milk via the slot item dropdown's onChanged — driving the
       // callback exercises the same state path without the overlay tap.
       final itemDropdown = find.byWidgetPredicate((w) =>
-          w is DropdownButtonFormField &&
-          w.decoration.labelText == 'Item');
+          w is DropdownButtonFormField && w.decoration.labelText == 'Item');
       tester
           .widget<DropdownButtonFormField<String?>>(itemDropdown)
           .onChanged
