@@ -368,6 +368,380 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
     });
   });
+
+  group('list interactions', () {
+    Map<String, dynamic> aisle(String id, String name, int position) => {
+          '__typename': 'StoreAisle',
+          'id': id,
+          'name': name,
+          'position': position,
+        };
+
+    Map<String, dynamic> routeItem(
+      String id, {
+      Map<String, dynamic>? item,
+      Map<String, dynamic>? ingredient,
+      Map<String, dynamic>? usualBrand,
+      bool checked = false,
+      bool suggested = false,
+    }) =>
+        {
+          '__typename': 'GroceryRouteItem',
+          'suggested': suggested,
+          'item': {
+            '__typename': 'GroceryListItem',
+            'id': id,
+            'item': item,
+            'ingredient': ingredient,
+            'usualBrand': usualBrand,
+            'manualItemName':
+                item == null && ingredient == null ? 'Manual $id' : null,
+            'quantityNeeded': 2,
+            'unitOfMeasure': 'cup',
+            'source': 'manual',
+            'isChecked': checked,
+            'allergyWarnings': [],
+            'allergens': [],
+          },
+        };
+
+    Map<String, dynamic> detailResponse({
+      Map<String, dynamic>? store,
+      List<Map<String, dynamic>> stores = const [],
+      List<Map<String, dynamic>> groups = const [],
+    }) =>
+        {
+          'data': {
+            '__typename': 'Query',
+            'groceryList': {
+              '__typename': 'GroceryList',
+              'id': '1',
+              'store': store,
+            },
+            'groceryStores': stores,
+            'shopperProviders': [],
+            'groceryRouteGroups': groups,
+          },
+        };
+
+    Map<String, dynamic> storeWithAisles() => {
+          '__typename': 'GroceryStore',
+          'id': '7',
+          'name': 'Costco',
+          'aisles': [aisle('1', 'Produce', 0), aisle('2', 'Dairy', 1)],
+        };
+
+    List<Map<String, dynamic>> matching(_MockGraphQL mock, String needle) =>
+        mock.requests
+            .where((b) => (b['query'] as String).contains(needle))
+            .toList();
+
+    testWidgets('shows the error state when the query fails', (tester) async {
+      final mock = _MockGraphQL((_) => {
+            'errors': [
+              {'message': 'boom'},
+            ],
+          });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Error:'), findsOneWidget);
+    });
+
+    testWidgets('checking a bound item toggles it', (tester) async {
+      final mock = _MockGraphQL((body) {
+        if ((body['query'] as String).contains('toggleGroceryItemChecked')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'toggleGroceryItemChecked': {
+                '__typename': 'GroceryListItem',
+                'id': '10',
+                'isChecked': true,
+              },
+            },
+          };
+        }
+        return detailResponse(groups: [
+          {
+            '__typename': 'GroceryRouteGroup',
+            'aisle': null,
+            'items': [
+              routeItem('10', item: {
+                '__typename': 'Item',
+                'id': '5',
+                'name': 'Milk',
+              }),
+            ],
+          },
+        ]);
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Milk'));
+      await tester.pumpAndSettle();
+
+      final toggles = matching(mock, 'toggleGroceryItemChecked');
+      expect(toggles, hasLength(1));
+      expect((toggles.single['variables'] as Map)['groceryListItemId'], '10');
+      // Refetch fired after the mutation.
+      expect(matching(mock, 'groceryRouteGroups').length, greaterThan(1));
+    });
+
+    testWidgets('ingredient-only line prompts for a brand pick',
+        (tester) async {
+      final mock = _MockGraphQL((body) {
+        final q = body['query'] as String;
+        if (q.contains('checkGroceryItemWithBrand')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'checkGroceryItemWithBrand': {
+                '__typename': 'GroceryListItem',
+                'id': '11',
+                'isChecked': true,
+              },
+            },
+          };
+        }
+        if (q.contains('items(')) {
+          return {
+            'data': {
+              '__typename': 'Query',
+              'items': {
+                '__typename': 'ItemPage',
+                'items': [
+                  {
+                    '__typename': 'Item',
+                    'id': '20',
+                    'name': 'Roma Tomatoes',
+                    'brand': {
+                      '__typename': 'Brand',
+                      'id': '8',
+                      'name': 'Muir Glen',
+                    },
+                  },
+                ],
+              },
+            },
+          };
+        }
+        return detailResponse(groups: [
+          {
+            '__typename': 'GroceryRouteGroup',
+            'aisle': null,
+            'items': [
+              routeItem('11', ingredient: {
+                '__typename': 'Ingredient',
+                'id': '4',
+                'name': 'Tomato',
+              }),
+            ],
+          },
+        ]);
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Tomato'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Which Tomato did you buy?'), findsOneWidget);
+      expect(find.text('Roma Tomatoes'), findsOneWidget);
+      expect(find.text('Muir Glen'), findsOneWidget);
+
+      await tester.tap(find.text('Roma Tomatoes'));
+      await tester.pumpAndSettle();
+
+      final checks = matching(mock, 'checkGroceryItemWithBrand');
+      expect(checks, hasLength(1));
+      final vars = checks.single['variables'] as Map;
+      expect(vars['groceryListItemId'], '11');
+      expect(vars['itemId'], '20');
+    });
+
+    testWidgets('cancelling the brand pick sends no mutation', (tester) async {
+      final mock = _MockGraphQL((body) {
+        final q = body['query'] as String;
+        if (q.contains('items(')) {
+          return {
+            'data': {
+              '__typename': 'Query',
+              'items': {'__typename': 'ItemPage', 'items': []},
+            },
+          };
+        }
+        return detailResponse(groups: [
+          {
+            '__typename': 'GroceryRouteGroup',
+            'aisle': null,
+            'items': [
+              routeItem('11', ingredient: {
+                '__typename': 'Ingredient',
+                'id': '4',
+                'name': 'Tomato',
+              }),
+            ],
+          },
+        ]);
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Tomato'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(matching(mock, 'checkGroceryItemWithBrand'), isEmpty);
+    });
+
+    testWidgets('adds a manual item', (tester) async {
+      final mock = _MockGraphQL((body) {
+        if ((body['query'] as String).contains('addGroceryItem')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'addGroceryItem': {
+                '__typename': 'GroceryListItem',
+                'id': '30',
+              },
+            },
+          };
+        }
+        return detailResponse(groups: const []);
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).at(0), 'Flour');
+      await tester.enterText(find.byType(TextField).at(1), '2');
+      await tester.enterText(find.byType(TextField).at(2), 'cup');
+      await tester.ensureVisible(find.text('Add'));
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+
+      final adds = matching(mock, 'addGroceryItem');
+      expect(adds, hasLength(1));
+      final input = (adds.single['variables'] as Map)['input'] as Map;
+      expect(input['groceryListId'], '1');
+      expect(input['manualItemName'], 'Flour');
+      expect(input['quantity'], 2);
+      expect(input['unit'], 'cup');
+    });
+
+    testWidgets('empty add form is a no-op', (tester) async {
+      final mock = _MockGraphQL((_) => detailResponse(groups: const []));
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Add'));
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      expect(matching(mock, 'addGroceryItem'), isEmpty);
+    });
+
+    testWidgets('store picker sets the list store', (tester) async {
+      final mock = _MockGraphQL((body) {
+        if ((body['query'] as String).contains('setGroceryListStore')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'setGroceryListStore': {
+                '__typename': 'GroceryList',
+                'id': '1',
+              },
+            },
+          };
+        }
+        return detailResponse(stores: [storeWithAisles()]);
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(DropdownButton<String?>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Costco').last);
+      await tester.pumpAndSettle();
+
+      final sets = matching(mock, 'setGroceryListStore');
+      expect(sets, hasLength(1));
+      final vars = sets.single['variables'] as Map;
+      expect(vars['groceryListId'], '1');
+      expect(vars['storeId'], '7');
+    });
+
+    testWidgets('move-to-unassigned calls assignItemToAisle then reorders',
+        (tester) async {
+      final mock = _MockGraphQL((body) {
+        final q = body['query'] as String;
+        if (q.contains('assignItemToAisle')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'assignItemToAisle': true,
+            },
+          };
+        }
+        if (q.contains('reorderGroceryListItems')) {
+          return {
+            'data': {
+              '__typename': 'Mutation',
+              'reorderGroceryListItems': true,
+            },
+          };
+        }
+        return detailResponse(
+          store: {'__typename': 'GroceryStore', 'id': '7', 'name': 'Costco'},
+          stores: [storeWithAisles()],
+          groups: [
+            {
+              '__typename': 'GroceryRouteGroup',
+              'aisle': aisle('1', 'Produce', 0),
+              'items': [
+                routeItem('10', item: {
+                  '__typename': 'Item',
+                  'id': '5',
+                  'name': 'Milk',
+                }),
+              ],
+            },
+            {
+              '__typename': 'GroceryRouteGroup',
+              'aisle': null,
+              'items': [
+                routeItem('12', item: {
+                  '__typename': 'Item',
+                  'id': '6',
+                  'name': 'Bread',
+                }),
+              ],
+            },
+          ],
+        );
+      });
+      await _pumpShop(tester, mock);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Move to aisle').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Move to unassigned'));
+      await tester.pumpAndSettle();
+
+      final assigns = matching(mock, 'assignItemToAisle');
+      expect(assigns, hasLength(1));
+      final avars = assigns.single['variables'] as Map;
+      expect(avars['storeId'], '7');
+      expect(avars['aisleId'], isNull);
+      expect(avars['itemId'], '5');
+
+      final reorders = matching(mock, 'reorderGroceryListItems');
+      expect(reorders, hasLength(1));
+      final entries = (reorders.single['variables'] as Map)['entries'] as List;
+      final moved = entries
+          .firstWhere((e) => (e as Map)['groceryListItemId'] == '10') as Map;
+      expect(moved['aisleId'], isNull);
+    });
+  });
 }
 
 class _FakeUrlLauncher extends UrlLauncherPlatform

@@ -613,12 +613,16 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       onChanged: (_) => _toggle(context, item, refetch),
       secondary: storeAisles.isEmpty
           ? null
-          : PopupMenuButton<String?>(
+          // PopupMenuItem pops the route with its value — a null value reads
+          // as dismissal and never reaches onSelected, so unassigned uses a
+          // sentinel instead.
+          : PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: 'Move to aisle',
               onSelected: (aisleId) {
-                final target = groups
-                    .indexWhere((g) => (g['aisle'] as Map?)?['id'] == aisleId);
+                final target = groups.indexWhere((g) =>
+                    (g['aisle'] as Map?)?['id'] ==
+                    (aisleId.isEmpty ? null : aisleId));
                 final idx = target == -1 ? groups.length - 1 : target;
                 final count = target == -1
                     ? 0
@@ -628,13 +632,13 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
               },
               itemBuilder: (_) => [
                 ...storeAisles.map(
-                  (a) => PopupMenuItem<String?>(
+                  (a) => PopupMenuItem<String>(
                     value: a['id'] as String,
                     child: Text('Move to ${a['name']}'),
                   ),
                 ),
-                const PopupMenuItem<String?>(
-                  value: null,
+                const PopupMenuItem<String>(
+                  value: '',
                   child: Text('Move to unassigned'),
                 ),
               ],
