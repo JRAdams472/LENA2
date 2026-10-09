@@ -694,13 +694,13 @@ func buildIPExtractor(cidrs []string) echo.IPExtractor {
 // cannedMockHandler drives LENA_AI_PROVIDER=mock for e2e and demos: the
 // first turn requests one real tool (so the UI's "looked up" trace is
 // exercised end-to-end), the turn after a tool result returns a fixed
-// answer, and JSON-mode calls from the suggesters get every known envelope
-// empty.
+// answer, and JSON-mode calls from the suggesters get a deterministic
+// pick from their own context (see cannedJSONReply).
 func cannedMockHandler(req llm.Request) (llm.Response, error) {
 	if req.JSONMode {
 		return llm.Response{Message: llm.Message{
 			Role:    llm.RoleAssistant,
-			Content: `{"suggestions":[],"pairings":[],"fixes":[]}`,
+			Content: cannedJSONReply(req),
 		}}, nil
 	}
 	if len(req.Messages) > 0 && req.Messages[len(req.Messages)-1].Role == llm.RoleTool {
@@ -723,4 +723,150 @@ func cannedMockHandler(req llm.Request) (llm.Response, error) {
 		Role:    llm.RoleAssistant,
 		Content: "Hi! I'm Dot's canned demo answer — no tools needed for that one.",
 	}}, nil
+}
+
+// cannedEmptyJSON is every suggester envelope, empty.
+const cannedEmptyJSON = `{"suggestions":[],"pairings":[],"fixes":[],"flags":[]}`
+
+// cannedMockContext probes the suggesters' context payloads: a meal plan
+// with candidates, an event timeline, or an allergen registry.
+type cannedMockContext struct {
+	Plan *struct {
+		Slots []struct {
+			DayOfWeek int16  `json:"dayOfWeek"`
+			MealType  string `json:"mealType"`
+		} `json:"slots"`
+	} `json:"plan"`
+	Candidates []struct {
+		ID int64 `json:"id"`
+	} `json:"candidates"`
+	FoodEventID            int64 `json:"foodEventId"`
+	SlotGranularityMinutes int   `json:"slotGranularityMinutes"`
+	Allergens              []struct {
+		ID int64 `json:"id"`
+	} `json:"allergens"`
+	Recipes []struct {
+		EventRecipeID int64 `json:"eventRecipeId"`
+		Steps         []struct {
+			Conflicts []string `json:"conflicts"`
+		} `json:"steps"`
+		Items []struct {
+			ItemID       *int64 `json:"itemId"`
+			IngredientID *int64 `json:"ingredientId"`
+			Flags        []struct {
+				AllergenID int64 `json:"allergenId"`
+			} `json:"flags"`
+		} `json:"items"`
+	} `json:"recipes"`
+}
+
+// cannedJSONReply answers JSON-mode suggester calls deterministically so
+// e2e can drive a non-empty suggestion: the first open Dinner cell gets
+// the first candidate recipe, the last conflicting event dish gets a
+// one-hour serve shift, and the first unflagged recipe line gets the
+// first registry allergen. Unrecognised context gets empty envelopes.
+func cannedJSONReply(req llm.Request) string {
+	var ctxJSON string
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		if req.Messages[i].Role == llm.RoleUser {
+			ctxJSON = req.Messages[i].Content
+			break
+		}
+	}
+	var c cannedMockContext
+	if ctxJSON == "" || json.Unmarshal([]byte(ctxJSON), &c) != nil {
+		return cannedEmptyJSON
+	}
+	var reply any
+	switch {
+	case c.Plan != nil && len(c.Candidates) > 0:
+		reply = cannedMealSuggestion(c)
+	case c.FoodEventID != 0:
+		reply = cannedEventFix(c)
+	case len(c.Allergens) > 0:
+		reply = cannedAllergenFlag(c)
+	}
+	if reply == nil {
+		return cannedEmptyJSON
+	}
+	b, err := json.Marshal(reply)
+	if err != nil {
+		return cannedEmptyJSON
+	}
+	return string(b)
+}
+
+func cannedMealSuggestion(c cannedMockContext) any {
+	occupied := map[int16]bool{}
+	for _, s := range c.Plan.Slots {
+		if strings.EqualFold(strings.TrimSpace(s.MealType), "dinner") {
+			occupied[s.DayOfWeek] = true
+		}
+	}
+	for day := int16(0); day < 7; day++ {
+		if occupied[day] {
+			continue
+		}
+		return map[string]any{"suggestions": []map[string]any{{
+			"recipeId":  c.Candidates[0].ID,
+			"dayOfWeek": day,
+			"mealType":  "Dinner",
+			"reason":    "mock provider pick",
+		}}}
+	}
+	return nil
+}
+
+func cannedEventFix(c cannedMockContext) any {
+	gran := c.SlotGranularityMinutes
+	if gran <= 0 {
+		gran = 15
+	}
+	minutes := (60 + gran - 1) / gran * gran
+	for i := len(c.Recipes) - 1; i >= 0; i-- {
+		for _, s := range c.Recipes[i].Steps {
+			if len(s.Conflicts) == 0 {
+				continue
+			}
+			return map[string]any{"fixes": []map[string]any{{
+				"eventRecipeId": c.Recipes[i].EventRecipeID,
+				"action":        "shift_serve",
+				"minutes":       minutes,
+				"reason":        "mock provider: stagger the shared appliance",
+			}}}
+		}
+	}
+	return nil
+}
+
+func cannedAllergenFlag(c cannedMockContext) any {
+	allergenID := c.Allergens[0].ID
+	for _, r := range c.Recipes {
+		for _, it := range r.Items {
+			flagged := false
+			for _, f := range it.Flags {
+				if f.AllergenID == allergenID {
+					flagged = true
+				}
+			}
+			if flagged {
+				continue
+			}
+			kind, id := "ingredient", it.IngredientID
+			if id == nil {
+				kind, id = "item", it.ItemID
+			}
+			if id == nil {
+				continue
+			}
+			return map[string]any{"flags": []map[string]any{{
+				"targetKind": kind,
+				"targetId":   *id,
+				"allergenId": allergenID,
+				"kind":       "contains",
+				"reason":     "mock provider flag",
+			}}}
+		}
+	}
+	return nil
 }

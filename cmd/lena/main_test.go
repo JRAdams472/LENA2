@@ -119,6 +119,30 @@ func TestCannedMockHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("JSON mode picks from suggester context", func(t *testing.T) {
+		cases := []struct{ name, ctx, want string }{
+			{"meal", `{"plan":{"slots":[{"dayOfWeek":0,"mealType":"Dinner"}]},"candidates":[{"id":42}]}`,
+				`"suggestions":[{"dayOfWeek":1,"mealType":"Dinner","reason":"mock provider pick","recipeId":42}]`},
+			{"event", `{"foodEventId":3,"slotGranularityMinutes":45,"recipes":[{"eventRecipeId":7,"steps":[{"conflicts":["x"]}]},{"eventRecipeId":8,"steps":[{"conflicts":["x"]}]}]}`,
+				`"eventRecipeId":8,"minutes":90`},
+			{"allergen", `{"allergens":[{"id":5}],"recipes":[{"id":1,"items":[{"ingredientId":9,"flags":[{"allergenId":5}]},{"itemId":11}]}]}`,
+				`"allergenId":5,"kind":"contains","reason":"mock provider flag","targetId":11,"targetKind":"item"`},
+			{"no conflicts", `{"foodEventId":3,"recipes":[{"eventRecipeId":7,"steps":[{}]}]}`, `"fixes":[]`},
+		}
+		for _, tc := range cases {
+			resp, err := cannedMockHandler(llm.Request{JSONMode: true, Messages: []llm.Message{
+				{Role: llm.RoleSystem, Content: "prompt"},
+				{Role: llm.RoleUser, Content: tc.ctx},
+			}})
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.name, err)
+			}
+			if !strings.Contains(resp.Message.Content, tc.want) {
+				t.Errorf("%s: reply = %q, want substring %q", tc.name, resp.Message.Content, tc.want)
+			}
+		}
+	})
+
 	t.Run("after tool result returns canned answer", func(t *testing.T) {
 		resp, err := cannedMockHandler(llm.Request{Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: "hi"},
