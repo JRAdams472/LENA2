@@ -5,6 +5,7 @@ import '../widgets/adaptive_detail.dart';
 import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
 import 'edit_meal_plan_screen.dart';
+import 'meal_plan_week_screen.dart';
 
 const int mealPlansPageSize = 25;
 
@@ -40,8 +41,8 @@ class _MealPlansScreenState extends State<MealPlansScreen> {
       return const EditMealPlanScreen(key: ValueKey('new'));
     }
     if (_selectedId == null) return null;
-    return EditMealPlanScreen(
-        key: ValueKey(_selectedId), mealPlanId: _selectedId);
+    return MealPlanWeekScreen(
+        key: ValueKey(_selectedId), mealPlanId: _selectedId!);
   }
 
   @override
@@ -104,7 +105,7 @@ class _MealPlansScreenState extends State<MealPlansScreen> {
                     _creating = false;
                   }),
                   builder: (_) =>
-                      EditMealPlanScreen(mealPlanId: item['id'] as String),
+                      MealPlanWeekScreen(mealPlanId: item['id'] as String),
                 ),
               ),
             );

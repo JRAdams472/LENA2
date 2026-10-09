@@ -208,9 +208,17 @@ void main() {
         .pumpWidget(_app(link, const EditMealPlanScreen(mealPlanId: '1')));
     await tester.pump();
 
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Meal type'), 'Dinner');
-    await tester.pump();
+    // Meal type is a dropdown now — pick Lunch so the picker's
+    // server-side mealType variable is provably driven by it.
+    await tester.dragUntilVisible(
+      find.text('Meal type'),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    await tester.tap(find.text('Meal type'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lunch').last);
+    await tester.pumpAndSettle();
 
     // No eager recipes fetch — the picker queries on open with the meal
     // type as a server-side variable.
@@ -222,7 +230,7 @@ void main() {
 
     final picks = link.byName('RecipePicker');
     expect(picks, isNotEmpty);
-    expect(picks.first.variables['mealType'], 'Dinner');
+    expect(picks.first.variables['mealType'], 'Lunch');
     expect(find.text('Pancakes'), findsOneWidget);
   });
 
