@@ -193,8 +193,12 @@ gated artifacts.
 
 ```bash
 flutter analyze
-flutter test
+flutter test --coverage
 ```
+
+`tools/coveragegate` enforces a 70% per-file floor on `lib/` — only
+`lib/ai/gemma_binding.dart` (a platform-plugin wrapper that cannot run
+under `flutter test`) is excluded, via `tools/coveragegate/floors.json`.
 
 ### Screenshot walk
 
