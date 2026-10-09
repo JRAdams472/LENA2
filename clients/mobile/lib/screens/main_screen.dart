@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../push/push_service.dart';
+import '../responsive.dart';
 import 'assistant_screen.dart';
 import 'dashboard_screen.dart';
 import 'events_screen.dart';
@@ -86,24 +87,86 @@ class _MainScreenState extends State<MainScreen> {
     super.dispose();
   }
 
+  void _select(int i) {
+    setState(() {
+      _index = i;
+      _visited.add(i);
+    });
+    // Opening the Household tab auto-marks notifications read;
+    // re-poll so the badge clears without waiting for the interval.
+    _loadUnread();
+  }
+
+  Widget get _badgePeopleIcon => Badge(
+        isLabelVisible: _unreadNotifications > 0,
+        label: Text('$_unreadNotifications'),
+        child: const Icon(Icons.group),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final body = IndexedStack(
+      index: _index,
+      children: [for (var i = 0; i < _builders.length; i++) _tab(i)],
+    );
+
+    // Tablets and landscape phones get a NavigationRail; compact
+    // portrait keeps the bottom bar.
+    if (context.isWide) {
+      return Scaffold(
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: _index,
+              onDestinationSelected: _select,
+              labelType: NavigationRailLabelType.all,
+              destinations: [
+                const NavigationRailDestination(
+                  icon: Icon(Icons.dashboard),
+                  label: Text('Home'),
+                ),
+                const NavigationRailDestination(
+                  icon: Icon(Icons.shopping_cart),
+                  label: Text('Grocery'),
+                ),
+                const NavigationRailDestination(
+                  icon: Icon(Icons.event),
+                  label: Text('Events'),
+                ),
+                const NavigationRailDestination(
+                  icon: Icon(Icons.qr_code_scanner),
+                  label: Text('Scan'),
+                ),
+                const NavigationRailDestination(
+                  icon: Icon(Icons.kitchen),
+                  label: Text('Pantry'),
+                ),
+                NavigationRailDestination(
+                  icon: _badgePeopleIcon,
+                  label: const Text('People'),
+                ),
+                const NavigationRailDestination(
+                  icon: Icon(Icons.auto_awesome),
+                  label: Text('Ask Dot'),
+                ),
+                const NavigationRailDestination(
+                  icon: Icon(Icons.more_horiz),
+                  label: Text('More'),
+                ),
+              ],
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(child: body),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [for (var i = 0; i < _builders.length; i++) _tab(i)],
-      ),
+      body: body,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
-        onTap: (i) {
-          setState(() {
-            _index = i;
-            _visited.add(i);
-          });
-          // Opening the Household tab auto-marks notifications read;
-          // re-poll so the badge clears without waiting for the interval.
-          _loadUnread();
-        },
+        onTap: _select,
         type: BottomNavigationBarType.fixed,
         // Eight fixed destinations can't fit full labels — show the
         // selected label only and keep every label ≤7 chars.
@@ -131,11 +194,7 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Pantry',
           ),
           BottomNavigationBarItem(
-            icon: Badge(
-              isLabelVisible: _unreadNotifications > 0,
-              label: Text('$_unreadNotifications'),
-              child: const Icon(Icons.group),
-            ),
+            icon: _badgePeopleIcon,
             label: 'People',
           ),
           const BottomNavigationBarItem(

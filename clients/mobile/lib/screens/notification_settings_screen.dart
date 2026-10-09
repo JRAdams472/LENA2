@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../responsive.dart';
 import '../widgets/skeleton.dart';
 
 const String notificationPrefsQuery = r'''
@@ -240,7 +241,7 @@ class _NotificationSettingsScreenState
         _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Notification settings')),
-          body: _body(context, result),
+          body: ConstrainedContent(child: _body(context, result)),
         );
       },
     );

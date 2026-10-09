@@ -7,6 +7,7 @@ import '../widgets/status_chip.dart';
 
 import '../allergy.dart';
 import '../notification_links.dart';
+import '../responsive.dart';
 import 'grocery_lists_screen.dart';
 import 'notification_settings_screen.dart';
 
@@ -646,7 +647,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               ),
             ],
           ),
-          body: _body(context, result),
+          body: ConstrainedContent(child: _body(context, result)),
         );
       },
     );
