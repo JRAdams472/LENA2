@@ -197,4 +197,146 @@ void main() {
       expect(find.text('push disabled upstream'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'Snooze opens the mute menu and mutes the category',
+    (tester) async {
+      final link = _CaptureLink({
+        'NotificationPrefs': {'myNotificationPreferences': _prefs},
+        'MuteNotifications': {'muteNotifications': true},
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      // Second Snooze button = the household row.
+      await tester.tap(find.text('Snooze').at(1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Mute for 1 hour'), findsOneWidget);
+      expect(find.text('Mute for 8 hours'), findsOneWidget);
+      expect(find.text('Mute for 1 day'), findsOneWidget);
+      expect(find.text('Mute for 1 week'), findsOneWidget);
+
+      await tester.tap(find.text('Mute for 8 hours'));
+      await tester.pumpAndSettle();
+
+      final calls = link.byName('MuteNotifications');
+      expect(calls, hasLength(1));
+      expect(calls.single.variables['category'], 'household');
+      final until = DateTime.parse(calls.single.variables['until'] as String);
+      expect(
+        until.difference(DateTime.now()).inMinutes,
+        greaterThan(8 * 60 - 5),
+      );
+    },
+  );
+
+  testWidgets(
+    'the _all Snooze sends a null category (global mute)',
+    (tester) async {
+      final link = _CaptureLink({
+        'NotificationPrefs': {'myNotificationPreferences': _prefs},
+        'MuteNotifications': {'muteNotifications': true},
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Snooze').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mute for 1 hour'));
+      await tester.pumpAndSettle();
+
+      final calls = link.byName('MuteNotifications');
+      expect(calls, hasLength(1));
+      expect(calls.single.variables['category'], isNull);
+    },
+  );
+
+  testWidgets(
+    'a muted row shows the expiry and clears via the bell icon',
+    (tester) async {
+      final mutedPrefs = [
+        _prefs[0],
+        {
+          'category': 'household',
+          'label': 'Household',
+          'enabled': true,
+          'pushEnabled': true,
+          'mutedUntil': DateTime.now()
+              .add(const Duration(hours: 2))
+              .toUtc()
+              .toIso8601String(),
+        },
+      ];
+      final link = _CaptureLink({
+        'NotificationPrefs': {'myNotificationPreferences': mutedPrefs},
+        'ClearNotificationMute': {'clearNotificationMute': true},
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Muted until'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Clear mute'));
+      await tester.pumpAndSettle();
+
+      final calls = link.byName('ClearNotificationMute');
+      expect(calls, hasLength(1));
+      expect(calls.single.variables['category'], 'household');
+    },
+  );
+
+  testWidgets(
+    'an expired mute renders as a normal row',
+    (tester) async {
+      final mutedPrefs = [
+        {
+          'category': 'household',
+          'label': 'Household',
+          'enabled': true,
+          'pushEnabled': false,
+          'mutedUntil': DateTime.now()
+              .subtract(const Duration(hours: 2))
+              .toUtc()
+              .toIso8601String(),
+        },
+      ];
+      final link = _CaptureLink({
+        'NotificationPrefs': {'myNotificationPreferences': mutedPrefs},
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Muted until'), findsNothing);
+      expect(find.text('Delivered'), findsOneWidget);
+    },
+  );
+
+  testWidgets('the query error state renders', (tester) async {
+    final link = _CaptureLink(
+      const {},
+      errors: {
+        'NotificationPrefs': [const GraphQLError(message: 'boom')],
+      },
+    );
+    await tester.pumpWidget(_app(link));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Error:'), findsOneWidget);
+  });
+
+  testWidgets('a successful mutation refetches the prefs', (tester) async {
+    final link = _CaptureLink({
+      'NotificationPrefs': {'myNotificationPreferences': _prefs},
+      'SetCategoryEnabled': {'setNotificationCategoryEnabled': true},
+    });
+    await tester.pumpWidget(_app(link));
+    await tester.pumpAndSettle();
+
+    final before = link.byName('NotificationPrefs').length;
+    await tester.tap(find.byType(Switch).at(4));
+    await tester.pumpAndSettle();
+
+    expect(link.byName('NotificationPrefs').length, greaterThan(before));
+  });
 }
