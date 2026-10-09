@@ -7,10 +7,9 @@
 //	go run ./tools/coveragegate [-config tools/coveragegate/floors.json]
 //
 // Floors and exclusions live in the config file so every exception to the
-// coverage policy is auditable in one place. Per-module violations are
-// reported; they fail the run only when "enforceModules" is true in the
-// config (flipped once remediation lands). Per-surface totals always
-// enforce their floor.
+// coverage policy is auditable in one place. Per-module violations fail the
+// run when "enforceModules" is true in the config (the steady state since
+// LEN-101). Per-surface totals always enforce their floor.
 package main
 
 import (

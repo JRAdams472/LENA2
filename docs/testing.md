@@ -38,9 +38,10 @@ Notes:
 - Coverage policy: generated code — `internal/*/sqlc` query output and all
   `*/mock` packages (gomock, generated via mockgen) — is excluded from the
   gate by `tools/coveragefilter`. Everything hand-written counts.
-- Coverage gate: CI fails below `GO_COVERAGE_MIN` (currently 60%) in
-  `.github/workflows/test.yml`, applied to the filtered profile. Raise it as
-  coverage improves.
+- Coverage gate: `tools/coveragegate` enforces the floors in
+  `tools/coveragegate/floors.json` — see [Coverage gate](#coverage-gate)
+  below. The Go profile is measured per-package after filtering; per-package
+  and overall floors are both blocking.
 
 ### Test helpers (`internal/testutil`)
 
@@ -114,8 +115,9 @@ npm run test:coverage    # with coverage + threshold gate
   that item-list API calls issue **two** GraphQL requests (`items` +
   `userItems`); the `beforeEach` in `api.test.ts` mocks a default empty
   `userItems` response.
-- Coverage thresholds are baselines in `jest.config.mjs`; raise them as
-  coverage grows.
+- Coverage thresholds in `jest.config.mjs` are a 70% global baseline; the
+  binding per-file + per-surface floors are enforced by `coveragegate` (see
+  [Coverage gate](#coverage-gate)).
 
 ## End-to-end (Playwright) tests
 
@@ -238,15 +240,52 @@ flutter drive --driver=test_driver/integration_test.dart \
   tabs stay alive in `MainScreen`'s `IndexedStack`, so two default-tag FABs
   crash route pushes with a duplicate-hero assert.
 
+## Coverage gate
+
+`tools/coveragegate` is the single enforcement point for coverage across all
+three surfaces. It runs as the `coverage` job in `test.yml` after the `go`,
+`web`, and `mobile` jobs upload their profiles, and it **fails the build**
+when any floor is missed.
+
+Floors live in `tools/coveragegate/floors.json` so every exception is
+auditable in one file:
+
+- **Per-surface floor** (`floor`, blocking): Go ≥70% (on the filtered
+  profile, per-package rollup), web ≥75% (lcov lines), mobile ≥70% (lcov
+  lines).
+- **Per-module floor** (`moduleFloor` = 70%, blocking via
+  `enforceModules: true`): every Go package and every web/mobile source
+  *file* must individually clear 70%.
+- **`minUnits` = 10**: modules with fewer than 10 coverable units
+  (statements for Go, lines for lcov) are exempt — tiny files would make the
+  floor noisy without adding signal.
+- **Exclusions** (`exclude`, per surface): generated code only —
+  `**/sqlc/**`, `**/mock/**`, `cmd/testissuer/**`,
+  `internal/platform/dbtx/dbtxtest/**` (Go), `lib/ai/engines/**` (web),
+  `lib/ai/gemma_binding.dart` (mobile, a thin platform-plugin wrapper that
+  cannot execute under `flutter test`). New exclusions belong here, not in
+  inline suppressions, except for platform-only wrappers that use
+  `// coverage:ignore-start/end` (see `push/push_service.dart`).
+
+Local run (after producing each profile as described in the sections above):
+
+```sh
+go run ./tools/coveragegate    # reads all three profiles + floors.json
+```
+
+The report prints every module sorted by coverage, marks `BELOW MODULE
+FLOOR` violators, and ends with `COVERAGE GATE: PASS|FAIL`.
+
 ## CI layout
 
 - `.github/workflows/test.yml` — one workflow, per-layer jobs: `go` (build,
-  vet, gofmt, tests + `GO_COVERAGE_MIN` gate), `lint` (golangci-lint incl.
+  vet, gofmt, tests + coverage profile), `lint` (golangci-lint incl.
   `gosec`; see `.golangci.yml`), `ocr-import` (incl. a `pip-audit` gate on
   `tools/ocr/requirements.txt` — pinned OCR deps must not carry known
   CVEs), `web` (tsc, eslint, Jest, next build), `mobile` (`flutter
-  analyze` + `flutter test`), `docker` (image builds), `e2e` (Playwright
-  + report artifacts).
+  analyze` + `flutter test --coverage`), `coverage` (`tools/coveragegate`
+  floors across all three surfaces), `docker` (image builds), `e2e`
+  (Playwright + report artifacts).
 - `.github/workflows/cleanup.yml` — scheduled purge of old workflow
   artifacts.
 
