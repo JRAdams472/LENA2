@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom";
 import { Suspense } from "react";
+import userEvent from "@testing-library/user-event";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -446,5 +447,309 @@ describe("EventDetailPage", () => {
     expect(
       screen.queryByRole("button", { name: "Suggest Fixes" })
     ).not.toBeInTheDocument();
+  });
+
+  describe("expanded slot management", () => {
+    const gqlEventFull = {
+      ...gqlEvent,
+      recipes: [
+        {
+          ...gqlEventWithSteps.recipes[0],
+          recipe: {
+            id: "5",
+            name: "Turkey",
+            description: null,
+            servings: 12,
+            prepTimeMinutes: null,
+            cookTimeMinutes: 240,
+            isFavorite: false,
+            items: [],
+            steps: [],
+            categories: [],
+            allergens: [],
+            allergyWarnings: [],
+          },
+          baseServings: 12,
+          scalingFactor: 0.67,
+          items: [
+            {
+              id: "60",
+              quantity: 2,
+              baseQuantity: 2,
+              unit: "lb",
+              section: "main",
+              displayOrder: 0,
+              notes: null,
+              isOptional: false,
+              item: { id: "1", name: "Turkey breast" },
+              ingredient: null,
+            },
+          ],
+        },
+      ],
+    };
+
+    const searchItem = {
+      id: "1",
+      name: "Turkey breast",
+      upc12: null,
+      upc14: null,
+      unit: "lb",
+      brand: null,
+      category: null,
+      nutrients: [],
+      flavors: [],
+    };
+
+    const newStep = {
+      id: "51",
+      stepNumber: 2,
+      instruction: "Rest",
+      durationMinutes: 20,
+      stepType: null,
+      isPassive: true,
+      dependsOnStepNumber: null,
+      appliance: null,
+    };
+
+    function mockDetail() {
+      mockFetch.mockImplementation((_, init) => {
+        const body = JSON.parse((init as RequestInit).body as string);
+        // Step/item mutation names contain the add/remove/updateEventRecipe
+        // prefixes — check the longer names first.
+        if (body.query.includes("addEventRecipeStep")) {
+          return Promise.resolve(gql({ addEventRecipeStep: newStep }));
+        }
+        if (body.query.includes("updateEventRecipeStep")) {
+          return Promise.resolve(
+            gql({ updateEventRecipeStep: gqlEventWithSteps.recipes[0].steps[0] })
+          );
+        }
+        if (body.query.includes("removeEventRecipeStep")) {
+          return Promise.resolve(gql({ removeEventRecipeStep: true }));
+        }
+        if (body.query.includes("addEventRecipeItem")) {
+          return Promise.resolve(
+            gql({
+              addEventRecipeItem: {
+                id: "61",
+                quantity: 3,
+                baseQuantity: 3,
+                unit: "lb",
+                section: null,
+                displayOrder: 1,
+                notes: null,
+                isOptional: false,
+                item: { id: "1", name: "Turkey breast" },
+                ingredient: null,
+              },
+            })
+          );
+        }
+        if (body.query.includes("updateEventRecipeItem")) {
+          return Promise.resolve(
+            gql({ updateEventRecipeItem: gqlEventFull.recipes[0].items[0] })
+          );
+        }
+        if (body.query.includes("removeEventRecipeItem")) {
+          return Promise.resolve(gql({ removeEventRecipeItem: true }));
+        }
+        if (body.query.includes("syncEventRecipe")) {
+          return Promise.resolve(
+            gql({ syncEventRecipe: gqlEventFull.recipes[0] })
+          );
+        }
+        if (body.query.includes("updateEventRecipe")) {
+          return Promise.resolve(
+            gql({ updateEventRecipe: gqlEventFull.recipes[0] })
+          );
+        }
+        if (body.query.includes("removeEventRecipe")) {
+          return Promise.resolve(gql({ removeEventRecipe: true }));
+        }
+        if (body.query.includes("items(")) {
+          return Promise.resolve(gql({ items: { items: [searchItem] } }));
+        }
+        if (body.query.includes("recordSelection")) {
+          return Promise.resolve(gql({ recordSelection: true }));
+        }
+        if (body.query.includes("aiAvailable")) {
+          return Promise.resolve(gql({ aiAvailable: false }));
+        }
+        if (body.query.includes("eventTimeline")) {
+          return Promise.resolve(gql(gqlTimeline));
+        }
+        // `recipes(` with paren — the foodEvent query selects `recipes {`
+        // on the event itself and must not be intercepted.
+        if (body.query.includes("recipes(")) {
+          return Promise.resolve(
+            gql({ recipes: { items: [], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 } } })
+          );
+        }
+        return Promise.resolve(gql({ foodEvent: gqlEventFull }));
+      });
+    }
+
+    async function renderExpanded() {
+      await renderDetailPage(
+        <EventDetailPage params={Promise.resolve({ id: "3" })} />
+      );
+      await waitFor(() => screen.getByText("Friendsgiving"));
+      // The steps-count button toggles the expanded row.
+      fireEvent.click(screen.getByRole("button", { name: /^1 ▼$/ }));
+      await screen.findByText(/Event-specific steps/);
+    }
+
+    it("expands a slot to show steps, scaled items, and sync", async () => {
+      mockDetail();
+      window.confirm = jest.fn(() => true);
+      await renderExpanded();
+
+      expect(screen.getByText("Roast turkey")).toBeInTheDocument();
+      expect(screen.getByText("Turkey breast")).toBeInTheDocument();
+      expect(
+        screen.getByText(/scaled for 8 servings \(recipe makes 12\)/)
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Sync from recipe" }));
+      await waitFor(() =>
+        expect(getBodies().some((b) => b.query.includes("syncEventRecipe"))).toBe(true)
+      );
+    });
+
+    it("adds a step through the dialog", async () => {
+      mockDetail();
+      await renderExpanded();
+
+      fireEvent.click(screen.getByRole("button", { name: "Add step" }));
+      await screen.findByText("Add Step");
+      fireEvent.change(screen.getByLabelText("Instruction"), {
+        target: { value: "Rest" },
+      });
+      fireEvent.change(screen.getByLabelText("Duration (minutes)"), {
+        target: { value: "20" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Hands-off/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => {
+        const body = getBodies().find((b) => b.query.includes("addEventRecipeStep"));
+        expect(body?.variables.input.instruction).toBe("Rest");
+        expect(body?.variables.input.durationMinutes).toBe(20);
+        expect(body?.variables.input.isPassive).toBe(true);
+      });
+    });
+
+    it("edits and removes a step", async () => {
+      mockDetail();
+      await renderExpanded();
+
+      fireEvent.click(screen.getByLabelText("Edit step"));
+      await screen.findByText("Edit Step");
+      fireEvent.change(screen.getByLabelText("Instruction"), {
+        target: { value: "Roast low and slow" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => {
+        const body = getBodies().find((b) => b.query.includes("updateEventRecipeStep"));
+        expect(body?.variables.id).toBe("50");
+        expect(body?.variables.input.instruction).toBe("Roast low and slow");
+      });
+
+      fireEvent.click(screen.getByLabelText("Delete step"));
+      await waitFor(() =>
+        expect(
+          getBodies().some((b) => b.query.includes("removeEventRecipeStep"))
+        ).toBe(true)
+      );
+    });
+
+    it("adds an ingredient through the dialog", async () => {
+      mockDetail();
+      await renderExpanded();
+
+      fireEvent.click(screen.getByRole("button", { name: "Add ingredient" }));
+      await screen.findByText("Add Ingredient");
+
+      // MUI Autocomplete needs real keystrokes to reach onInputChange.
+      const itemInput = screen.getByLabelText("Item");
+      await userEvent.type(itemInput, "tur");
+      await waitFor(
+        () => expect(getBodies().some((b) => b.query.includes("items("))).toBe(true),
+        { timeout: 3000 }
+      );
+      await userEvent.click(
+        await screen.findByRole("option", { name: /Turkey breast/ })
+      );
+
+      fireEvent.change(screen.getByLabelText("Quantity (per recipe serving)"), {
+        target: { value: "3" },
+      });
+      fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "lb" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => {
+        const body = getBodies().find((b) => b.query.includes("addEventRecipeItem"));
+        expect(body?.variables.input.itemId).toBe("1");
+        expect(body?.variables.input.quantity).toBe(3);
+      });
+    });
+
+    it("edits and removes an ingredient", async () => {
+      mockDetail();
+      await renderExpanded();
+
+      fireEvent.click(screen.getByLabelText("Edit ingredient"));
+      await screen.findByText("Edit Ingredient");
+      fireEvent.change(screen.getByLabelText("Quantity (per recipe serving)"), {
+        target: { value: "4" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(
+          getBodies().some((b) => b.query.includes("updateEventRecipeItem"))
+        ).toBe(true)
+      );
+
+      fireEvent.click(screen.getByLabelText("Delete ingredient"));
+      await waitFor(() =>
+        expect(
+          getBodies().some((b) => b.query.includes("removeEventRecipeItem"))
+        ).toBe(true)
+      );
+    });
+
+    it("edits a dish slot", async () => {
+      mockDetail();
+      await renderDetailPage(
+        <EventDetailPage params={Promise.resolve({ id: "3" })} />
+      );
+      await waitFor(() => screen.getByText("Friendsgiving"));
+
+      fireEvent.click(screen.getByLabelText("Edit"));
+      await screen.findByText("Edit Dish");
+      fireEvent.change(screen.getByLabelText("Servings"), {
+        target: { value: "10" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => {
+        const body = getBodies().find((b) => b.query.includes("updateEventRecipe"));
+        expect(body?.variables.id).toBe("9");
+        expect(body?.variables.input.servings).toBe(10);
+      });
+    });
+
+    it("removes a dish slot", async () => {
+      mockDetail();
+      await renderDetailPage(
+        <EventDetailPage params={Promise.resolve({ id: "3" })} />
+      );
+      await waitFor(() => screen.getByText("Friendsgiving"));
+
+      fireEvent.click(screen.getByLabelText("Delete"));
+      await waitFor(() =>
+        expect(
+          getBodies().some((b) => b.query.includes("removeEventRecipe"))
+        ).toBe(true)
+      );
+    });
   });
 });
