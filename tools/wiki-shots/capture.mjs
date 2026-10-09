@@ -442,10 +442,9 @@ console.log("shot: assistant-answer-dark");
 await dshot("events-dark", "/events", "Autumn Dinner Party");
 await dshot("event-detail-dark", "/events/1", "Autumn Dinner Party");
 // Timeline recomputes on demand — the dark pass clicks GENERATE again.
-await dpage.getByRole("button", { name: /generate timeline/i }).first().then(async (b) => {
-  await b.scrollIntoViewIfNeeded();
-  await b.click();
-});
+const darkGenBtn = dpage.getByRole("button", { name: /generate timeline/i }).first();
+await darkGenBtn.scrollIntoViewIfNeeded();
+await darkGenBtn.click();
 await dpage.getByText("start by", { exact: false }).first().waitFor({ timeout: 20000 });
 await dpage.waitForTimeout(800);
 await dpage.screenshot({ path: `${OUT}/event-timeline-dark.png`, fullPage: true });

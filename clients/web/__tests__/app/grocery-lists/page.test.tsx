@@ -557,6 +557,15 @@ describe("grocery list detail page", () => {
       fireEvent.click(screen.getByRole("button", { name: "Edit aisles" }));
       await screen.findByText(/Costco — aisle layout/);
 
+      // The dialog binds store.aisles — the list query must select them.
+      // Mocks return the full fixture regardless of the selection set, so
+      // pin the request text to keep an `aisles` omission from regressing.
+      expect(
+        getBodies().some(
+          (b) => b.query.includes("groceryList(") && b.query.includes("aisles")
+        )
+      ).toBe(true);
+
       const upButtons = screen.getAllByLabelText("move aisle up");
       const downButtons = screen.getAllByLabelText("move aisle down");
       expect(upButtons[0]).toBeDisabled();

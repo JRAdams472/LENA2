@@ -2140,9 +2140,14 @@ const FOOD_EVENT_FIELDS = `
   recipes { ${EVENT_RECIPE_FIELDS} }
 `;
 
+const STORE_FIELDS = `
+  id name
+  aisles { id name position }
+`;
+
 const GROCERY_LIST_FIELDS = `
   id generatedAt
-  store { id name }
+  store { ${STORE_FIELDS} }
   items {
     id manualItemName quantityNeeded unitOfMeasure source isChecked
           ingredient { id name }
@@ -2150,11 +2155,6 @@ const GROCERY_LIST_FIELDS = `
     item { ${ITEM_FIELDS} }
     ${ALLERGY_FIELDS}
   }
-`;
-
-const STORE_FIELDS = `
-  id name
-  aisles { id name position }
 `;
 
 // Catalog order is engagement-ranked by the server (favorites → personal →
