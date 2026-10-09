@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/adaptive_detail.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
@@ -62,6 +63,16 @@ class _RecipesScreenState extends State<RecipesScreen> {
   String _search = '';
   bool _favoritesOnly = false;
   final Set<String> _selectedCategoryIds = {};
+  String? _selectedId;
+  bool _creating = false;
+
+  Widget? _detailPane() {
+    if (_creating) {
+      return const EditRecipeScreen(key: ValueKey('new'));
+    }
+    if (_selectedId == null) return null;
+    return EditRecipeScreen(key: ValueKey(_selectedId), recipeId: _selectedId);
+  }
 
   @override
   void dispose() {
@@ -217,6 +228,126 @@ class _RecipesScreenState extends State<RecipesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final listPane = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: 'Search recipes',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchCtrl.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        _onSearchChanged('');
+                      },
+                    ),
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: _onSearchChanged,
+          ),
+        ),
+        Expanded(
+          child: Query(
+            options: QueryOptions(
+              document: gql(recipesQuery),
+              variables: _variables,
+            ),
+            builder: (QueryResult result,
+                {VoidCallback? refetch, FetchMore? fetchMore}) {
+              if (result.isLoading) {
+                return const SkeletonList();
+              }
+              if (result.hasException) {
+                return Center(
+                    child: Text('Error: ${result.exception.toString()}'));
+              }
+
+              final items = result.data?['recipes']?['items'] as List? ?? [];
+              final total =
+                  result.data?['recipes']?['pageInfo']?['totalCount'] as int? ??
+                      items.length;
+
+              if (items.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.restaurant_menu,
+                  title: 'No recipes found',
+                  description: 'Try a different search or filter.',
+                );
+              }
+
+              return PagedListView(
+                loadedCount: items.length,
+                totalCount: total,
+                onLoadMore: () async {
+                  if (fetchMore == null) return;
+                  await fetchMore(FetchMoreOptions(
+                    variables: {
+                      'page': nextPageFor(items.length, recipesPageSize),
+                    },
+                    updateQuery: appendPageItems('recipes'),
+                  ));
+                },
+                itemBuilder: (context, index) {
+                  final item = items[index] as Map<String, dynamic>;
+                  final description = item['description'] as String?;
+                  final isFavorite = item['isFavorite'] as bool? ?? false;
+                  return Card(
+                    child: ListTile(
+                      dense: true,
+                      title: Text(item['name'] as String),
+                      subtitle: description != null && description.isNotEmpty
+                          ? Text(description,
+                              maxLines: 2, overflow: TextOverflow.ellipsis)
+                          : null,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Serves ${item['servings'] ?? '-'}'),
+                          Mutation(
+                            options: MutationOptions(
+                              document: gql(setRecipeFavorite),
+                              onCompleted: (_) => refetch?.call(),
+                            ),
+                            builder:
+                                (RunMutation runMutation, QueryResult? result) {
+                              return IconButton(
+                                icon: Icon(isFavorite
+                                    ? Icons.star
+                                    : Icons.star_border),
+                                onPressed: () => runMutation({
+                                  'recipeId': item['id'],
+                                  'isFavorite': !isFavorite,
+                                }),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      onTap: () => openOrSelect(
+                        context,
+                        select: () => setState(() {
+                          _selectedId = item['id'] as String;
+                          _creating = false;
+                        }),
+                        builder: (_) =>
+                            EditRecipeScreen(recipeId: item['id'] as String),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recipes'),
@@ -244,128 +375,25 @@ class _RecipesScreenState extends State<RecipesScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search recipes',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchCtrl.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          _onSearchChanged('');
-                        },
-                      ),
-                border: const OutlineInputBorder(),
-                isDense: true,
-              ),
-              onChanged: _onSearchChanged,
-            ),
-          ),
-          Expanded(
-            child: Query(
-              options: QueryOptions(
-                document: gql(recipesQuery),
-                variables: _variables,
-              ),
-              builder: (QueryResult result,
-                  {VoidCallback? refetch, FetchMore? fetchMore}) {
-                if (result.isLoading) {
-                  return const SkeletonList();
-                }
-                if (result.hasException) {
-                  return Center(
-                      child: Text('Error: ${result.exception.toString()}'));
-                }
-
-                final items = result.data?['recipes']?['items'] as List? ?? [];
-                final total = result.data?['recipes']?['pageInfo']
-                        ?['totalCount'] as int? ??
-                    items.length;
-
-                if (items.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.restaurant_menu,
-                    title: 'No recipes found',
-                    description: 'Try a different search or filter.',
-                  );
-                }
-
-                return PagedListView(
-                  loadedCount: items.length,
-                  totalCount: total,
-                  onLoadMore: () async {
-                    if (fetchMore == null) return;
-                    await fetchMore(FetchMoreOptions(
-                      variables: {
-                        'page': nextPageFor(items.length, recipesPageSize),
-                      },
-                      updateQuery: appendPageItems('recipes'),
-                    ));
-                  },
-                  itemBuilder: (context, index) {
-                    final item = items[index] as Map<String, dynamic>;
-                    final description = item['description'] as String?;
-                    final isFavorite = item['isFavorite'] as bool? ?? false;
-                    return Card(
-                      child: ListTile(
-                        dense: true,
-                        title: Text(item['name'] as String),
-                        subtitle: description != null && description.isNotEmpty
-                            ? Text(description,
-                                maxLines: 2, overflow: TextOverflow.ellipsis)
-                            : null,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('Serves ${item['servings'] ?? '-'}'),
-                            Mutation(
-                              options: MutationOptions(
-                                document: gql(setRecipeFavorite),
-                                onCompleted: (_) => refetch?.call(),
-                              ),
-                              builder: (RunMutation runMutation,
-                                  QueryResult? result) {
-                                return IconButton(
-                                  icon: Icon(isFavorite
-                                      ? Icons.star
-                                      : Icons.star_border),
-                                  onPressed: () => runMutation({
-                                    'recipeId': item['id'],
-                                    'isFavorite': !isFavorite,
-                                  }),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => EditRecipeScreen(
-                                recipeId: item['id'] as String),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+      body: AdaptiveDetail(
+        list: listPane,
+        detail: _detailPane(),
+        placeholderIcon: Icons.restaurant_menu,
+        placeholderTitle: 'Select a recipe',
+        onDetailClosed: () => setState(() {
+          _selectedId = null;
+          _creating = false;
+        }),
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab-recipes',
-        onPressed: () => Navigator.push(
+        onPressed: () => openOrSelect(
           context,
-          MaterialPageRoute(builder: (_) => const EditRecipeScreen()),
+          select: () => setState(() {
+            _creating = true;
+            _selectedId = null;
+          }),
+          builder: (_) => const EditRecipeScreen(),
         ),
         child: const Icon(Icons.add),
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../widgets/adaptive_detail.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/paged_list_view.dart';
 import '../widgets/skeleton.dart';
@@ -34,6 +35,7 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   VoidCallback? _refetch;
+  String? _selectedId;
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +49,16 @@ class _EventsScreenState extends State<EventsScreen> {
         _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Events')),
-          body: _body(result, refetch, fetchMore),
+          body: AdaptiveDetail(
+            list: _body(result, refetch, fetchMore),
+            detail: _selectedId == null
+                ? null
+                : EventDetailScreen(
+                    key: ValueKey(_selectedId), foodEventId: _selectedId!),
+            placeholderIcon: Icons.event,
+            placeholderTitle: 'Select an event',
+            onDetailClosed: () => setState(() => _selectedId = null),
+          ),
           floatingActionButton: FloatingActionButton(
             heroTag: 'fab-events',
             onPressed: () => Navigator.push(
@@ -108,13 +119,13 @@ class _EventsScreenState extends State<EventsScreen> {
                 '${event['eventDate']} · $granularity-min schedule',
               ),
               trailing: Chip(label: Text(isActive ? 'Active' : 'Inactive')),
-              onTap: () => Navigator.push(
+              onTap: () => openOrSelect(
                 context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      EventDetailScreen(foodEventId: event['id'] as String),
-                ),
-              ).then((_) => refetch?.call()),
+                select: () =>
+                    setState(() => _selectedId = event['id'] as String),
+                builder: (_) =>
+                    EventDetailScreen(foodEventId: event['id'] as String),
+              )?.then((_) => refetch?.call()),
             ),
           );
         },

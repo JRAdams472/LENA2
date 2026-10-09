@@ -111,8 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _refetch = refetch;
         return Scaffold(
           appBar: AppBar(title: const Text('Dashboard')),
-          body:
-              ConstrainedContent(child: _body(context, result, refetch)),
+          body: ConstrainedContent(child: _body(context, result, refetch)),
         );
       },
     );

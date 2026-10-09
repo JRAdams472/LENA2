@@ -827,14 +827,12 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                   children: [
                     StatusChip(
                       label: role,
-                      tone: isElevated
-                          ? StatusTone.primary
-                          : StatusTone.neutral,
+                      tone:
+                          isElevated ? StatusTone.primary : StatusTone.neutral,
                     ),
                     if (m['isMe'] == true) ...[
                       const SizedBox(width: 6),
-                      Text('you',
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text('you', style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ],
                 ),
