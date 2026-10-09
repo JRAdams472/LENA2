@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -88,13 +89,30 @@ Map<String, dynamic>? resolvedIngredientOf(Map<String, dynamic> item) {
 }
 
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key});
+  const ScanScreen({super.key, @visibleForTesting this.debugScanUpcs});
+
+  /// Comma-separated UPCs for the debug simulate-scan action; defaults to
+  /// the LENA_DEBUG_SCAN_UPC dart-define. Inert in release builds.
+  @visibleForTesting
+  final String? debugScanUpcs;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
 class _ScanScreenState extends State<ScanScreen> {
+  // Debug-only simulated scans (LEN-105): a comma-separated UPC list
+  // passed via --dart-define=LENA_DEBUG_SCAN_UPC drives the real
+  // detect->lookup pipeline from an app bar action, for emulator
+  // screenshot walks and manual testing. kDebugMode is tree-shaken out
+  // of release builds, so the action can never ship.
+  static const _envScanUpcs = String.fromEnvironment(
+    'LENA_DEBUG_SCAN_UPC',
+    defaultValue: '',
+  );
+
+  String get _debugScanUpcs => widget.debugScanUpcs ?? _envScanUpcs;
+
   final _scanner = MobileScannerController(autoStart: true);
   final _qtyCtrl = TextEditingController(text: '1');
   final _nameCtrl = TextEditingController();
@@ -314,6 +332,39 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(seconds: 2), _reset);
   }
 
+  /// Debug-only (LEN-105): offers each LENA_DEBUG_SCAN_UPC entry as a
+  /// chooser and feeds the pick through the same normalize/stop/lookup
+  /// path a real BarcodeCapture takes. Never built in release.
+  Future<void> _simulateScanPrompt() async {
+    final codes = _debugScanUpcs
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (codes.isEmpty) return;
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Simulate scan'),
+        children: [
+          for (final c in codes)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(c),
+              child: Text(c),
+            ),
+        ],
+      ),
+    );
+    if (code == null || !mounted) return;
+    final normalized = normalizeUpc(code);
+    if (normalized == null) {
+      setState(() => _error = 'Bad debug UPC: $code');
+      return;
+    }
+    await _scanner.stop();
+    await _lookup(normalized);
+  }
+
   @override
   void dispose() {
     _scanner.dispose();
@@ -328,7 +379,17 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan Item')),
+      appBar: AppBar(
+        title: const Text('Scan Item'),
+        actions: [
+          if (kDebugMode && _debugScanUpcs.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.developer_mode),
+              tooltip: 'Simulate scan (debug)',
+              onPressed: _simulateScanPrompt,
+            ),
+        ],
+      ),
       body: _body(),
     );
   }

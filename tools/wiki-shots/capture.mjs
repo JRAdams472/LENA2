@@ -234,6 +234,30 @@ await page.waitForTimeout(600);
 await page.screenshot({ path: `${OUT}/grocery-brand-picker.png` });
 console.log("shot: grocery-brand-picker");
 await page.keyboard.press("Escape");
+
+// Store routing UI: the store picker, the per-store aisle layout dialog,
+// and a row's "Move to" menu — the surfaces the routing docs cover.
+await page.goto(`${BASE}/grocery-lists/${listId}`, { waitUntil: "domcontentloaded" });
+await page.getByText("Time to restock", { exact: false }).first().waitFor({ timeout: 30000 });
+await page.getByLabel("Store").click();
+await page.getByRole("option").first().waitFor({ timeout: 10000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/grocery-store-picker.png` });
+console.log("shot: grocery-store-picker");
+await page.keyboard.press("Escape");
+await page.getByRole("button", { name: "Edit aisles" }).click();
+await page.getByText("aisle layout", { exact: false }).first().waitFor({ timeout: 10000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/grocery-edit-aisles.png` });
+console.log("shot: grocery-edit-aisles");
+await page.keyboard.press("Escape");
+await page.getByRole("button", { name: "item actions" }).first().click();
+await page.getByText("Move to", { exact: false }).first().waitFor({ timeout: 10000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/grocery-move-aisle.png` });
+console.log("shot: grocery-move-aisle");
+await page.keyboard.press("Escape");
+
 await shot("ingredients-admin", "/inventory/ingredients", "garlic");
 
 // Allergen admin pages. Member records + curated item flags come from
@@ -383,19 +407,81 @@ await mpage.screenshot({ path: `${OUT}/inventory-items-mobile.png` });
 console.log("shot: inventory-items-mobile");
 await mctx.close();
 
-// Signed-out login screen for Getting-Started — a fresh context with no
-// seeded token shows the real sign-in buttons.
-const anon = await browser.newContext({
+// Dark-mode pass (LEN-105): the priority surfaces re-shot with the dark
+// color scheme. The theme resolves from localStorage `mui-mode` (MUI
+// cssVariables default key) with prefers-color-scheme as the "system"
+// fallback — set both so the pass is deterministic.
+const dctx = await browser.newContext({
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 2,
+  colorScheme: "dark",
 });
-const loginPage = await anon.newPage();
-await loginPage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
-await loginPage.getByText("Sign in", { exact: false }).first().waitFor({ timeout: 20000 });
-await loginPage.waitForTimeout(800);
-await loginPage.screenshot({ path: `${OUT}/login.png` });
-console.log("shot: login");
-await anon.close();
+await dctx.addInitScript(
+  (t) => {
+    window.localStorage.setItem("lena_id_token", t);
+    window.localStorage.setItem("mui-mode", "dark");
+  },
+  id_token
+);
+const dpage = await dctx.newPage();
+async function dshot(name, path, waitFor) {
+  await dpage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+  await dpage.getByText(waitFor, { exact: false }).first().waitFor({ timeout: 60000 });
+  await dpage.waitForTimeout(1200);
+  await dpage.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+  console.log("shot:", name);
+}
+await dshot("dashboard-dark", "/", "Time to restock");
+await dshot("assistant-dark", "/assistant", "Ask Dot");
+await dpage.getByPlaceholder("Ask Dot").fill("What can I cook tonight?");
+await dpage.getByRole("button", { name: /ask|send/i }).first().click();
+await dpage.getByText("mock provider", { exact: false }).first().waitFor({ timeout: 30000 });
+await dpage.waitForTimeout(400);
+await dpage.screenshot({ path: `${OUT}/assistant-answer-dark.png` });
+console.log("shot: assistant-answer-dark");
+await dshot("events-dark", "/events", "Autumn Dinner Party");
+await dshot("event-detail-dark", "/events/1", "Autumn Dinner Party");
+// Timeline recomputes on demand — the dark pass clicks GENERATE again.
+await dpage.getByRole("button", { name: /generate timeline/i }).first().then(async (b) => {
+  await b.scrollIntoViewIfNeeded();
+  await b.click();
+});
+await dpage.getByText("start by", { exact: false }).first().waitFor({ timeout: 20000 });
+await dpage.waitForTimeout(800);
+await dpage.screenshot({ path: `${OUT}/event-timeline-dark.png`, fullPage: true });
+console.log("shot: event-timeline-dark");
+await dshot("grocery-list-dark", `/grocery-lists/${listId}`, "Time to restock");
+await dshot("recipes-dark", "/recipes", "Herb Roast Chicken");
+await dshot("recipe-detail-dark", `/recipes/${roastId}`, "Herb Roast Chicken");
+await dshot("meal-plan-week-dark", `/meal-plans/${planId}`, "Week of");
+await dshot("notification-settings-dark", "/notifications", "Expiring pantry items");
+await dshot("household-dark", "/household", "E2E Member");
+await dpage.goto(`${BASE}/inventory/items`, { waitUntil: "domcontentloaded" });
+await dpage.getByText("ADD TO INVENTORY", { exact: false }).first().waitFor({ timeout: 120000 });
+await dpage.waitForTimeout(800);
+await dpage.screenshot({ path: `${OUT}/inventory-items-dark.png` });
+console.log("shot: inventory-items-dark");
+await dctx.close();
+
+// Signed-out login screen for Getting-Started — a fresh context with no
+// seeded token shows the real sign-in buttons. Dark twin for the
+// themes gallery.
+for (const scheme of ["light", "dark"]) {
+  const anon = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 2,
+    colorScheme: scheme,
+  });
+  await anon.addInitScript((s) => window.localStorage.setItem("mui-mode", s), scheme);
+  const loginPage = await anon.newPage();
+  await loginPage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  await loginPage.getByText("Sign in", { exact: false }).first().waitFor({ timeout: 20000 });
+  await loginPage.waitForTimeout(800);
+  const suffix = scheme === "dark" ? "-dark" : "";
+  await loginPage.screenshot({ path: `${OUT}/login${suffix}.png` });
+  console.log("shot: login" + suffix);
+  await anon.close();
+}
 
 await browser.close();
 console.log("done ->", OUT);
