@@ -31,15 +31,18 @@ class _CaptureLink extends Link {
   final List<Request> requests = [];
   final Map<String, Map<String, dynamic>> responses;
   final Map<String, List<GraphQLError>> errors;
+  final Map<String, Map<String, dynamic> Function(Request)> fns;
 
-  _CaptureLink(this.responses, {this.errors = const {}});
+  _CaptureLink(this.responses,
+      {this.errors = const {}, this.fns = const {}});
 
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
     requests.add(request);
     final op = _opName(request);
     yield Response(
-      data: _withTypename(responses[op] ?? <String, dynamic>{})
+      data: _withTypename(
+              fns[op]?.call(request) ?? responses[op] ?? <String, dynamic>{})
           as Map<String, dynamic>,
       errors: errors[op],
       response: const <String, dynamic>{},
@@ -378,8 +381,12 @@ void main() {
       final page1 = [
         for (var i = 0; i < 25; i++) _recipe(id: 'r$i', name: 'Recipe $i'),
       ];
-      final link = _CaptureLink({
-        'Recipes': _list(page1, 50),
+      final page2Items = [
+        for (var i = 25; i < 50; i++) _recipe(id: 'r$i', name: 'Recipe $i'),
+      ];
+      final link = _CaptureLink({}, fns: {
+        'Recipes': (req) =>
+            _list(req.variables['page'] == 2 ? page2Items : page1, 50),
       });
       await tester.pumpWidget(_app(link));
       await tester.pumpAndSettle();
