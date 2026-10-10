@@ -17,6 +17,11 @@ const customJestConfig = {
     "components/**/*.{ts,tsx}",
     "!**/*.d.ts",
     "!**/node_modules/**",
+    // Public marketing/docs surface — static content pages exempted from
+    // the coverage gate per LEN-121 (member-app code stays measured).
+    "!app/docs/**",
+    "!app/components/marketing/**",
+    "!app/page.tsx",
   ],
   // 70% minimum gate — matches the coveragegate per-module floor (LEN-93).
   coverageThreshold: {
