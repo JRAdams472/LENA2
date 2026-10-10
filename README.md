@@ -53,11 +53,11 @@ The web and mobile clients talk to a single **GraphQL Backend-for-Frontend (BFF)
 
 ## Web functionality
 
-The web dashboard (`clients/web`) is an admin-style application with a navigation drawer. It exposes the following areas:
+The web client (`clients/web`) serves two surfaces: a **public site** at `/` — a customer-facing landing page plus `/docs/*` product guides mirroring the wiki — and the **member application** under `/member/*` (auth-gated, navigation drawer). Legacy top-level URLs permanently redirect to `/member/...`. The member app exposes the following areas:
 
 ### Dashboard
 
-- `/` — today’s meal-plan slots with friendly empty-slot prompts, analytics-driven recipe suggestion cards (ingredient overlap, rating recency, category affinity, and household trending), pending household invites, and a **Time to restock** card listing depleted pantry items ranked by household engagement.
+- `/member` — today’s meal-plan slots with friendly empty-slot prompts, analytics-driven recipe suggestion cards (ingredient overlap, rating recency, category affinity, and household trending), pending household invites, and a **Time to restock** card listing depleted pantry items ranked by household engagement.
 
 ### Food inventory
 

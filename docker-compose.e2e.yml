@@ -55,7 +55,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/graphql}
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: e2e-client
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-e2e-client}
 
   # e2e still needs the seeded catalog; the db-grant service sets the
   # lena_app password with this value.
