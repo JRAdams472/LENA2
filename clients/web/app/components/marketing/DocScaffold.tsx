@@ -1,3 +1,5 @@
+"use client";
+
 import { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -47,14 +49,7 @@ export function Section({
       <Typography component="h2" variant="h5" sx={{ fontWeight: 600 }} gutterBottom>
         {title}
       </Typography>
-      <Typography
-        variant="body1"
-        color="text.secondary"
-        component="div"
-        sx={{ maxWidth: "65ch" }}
-      >
-        {children}
-      </Typography>
+      <Box sx={{ maxWidth: "65ch" }}>{children}</Box>
     </Box>
   );
 }
@@ -156,14 +151,126 @@ export function Callout({ children }: { children: ReactNode }) {
   );
 }
 
-export function DocLink({ href, children }: { href: string; children: ReactNode }) {
+export function P({ children }: { children: ReactNode }) {
   return (
-    <Typography
-      component={Link}
-      href={href}
-      color="primary.main"
-      sx={{ fontWeight: 600, textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+    <Typography variant="body1" color="text.secondary" component="div" sx={{ mb: 1.5 }}>
+      {children}
+    </Typography>
+  );
+}
+
+export function DocSub({ children }: { children: ReactNode }) {
+  return (
+    <Typography component="h3" variant="h6" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
+      {children}
+    </Typography>
+  );
+}
+
+export function DocList({
+  ordered = false,
+  items,
+}: {
+  ordered?: boolean;
+  items: ReactNode[];
+}) {
+  return (
+    <Box
+      component={ordered ? "ol" : "ul"}
+      sx={{
+        m: 0,
+        mt: 1.5,
+        pl: 3,
+        "& li": { mb: 0.75 },
+      }}
     >
+      {items.map((item, i) => (
+        // eslint-disable-next-line @eslint-react/no-array-index-key -- static docs content
+        <Typography key={i} component="li" variant="body1" color="text.secondary">
+          {item}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
+export function DocTable({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
+  return (
+    <Paper
+      variant="outlined"
+      component="table"
+      sx={{
+        display: "block",
+        overflowX: "auto",
+        borderCollapse: "collapse",
+        my: 2,
+        "& th, & td": {
+          px: 2,
+          py: 1.25,
+          textAlign: "left",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        },
+        "& th": { fontWeight: 700 },
+        "& tr:last-child td": { borderBottom: 0 },
+      }}
+    >
+      <thead>
+        <tr>
+          {head.map((h) => (
+            <Typography key={h} component="th" variant="body2">
+              {h}
+            </Typography>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- static docs content
+          <tr key={i}>
+            {row.map((cell, j) => (
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- static docs content
+              <Typography key={j} component="td" variant="body2" color="text.secondary">
+                {cell}
+              </Typography>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </Paper>
+  );
+}
+
+export function DocLink({
+  href,
+  external = false,
+  children,
+}: {
+  href: string;
+  external?: boolean;
+  children: ReactNode;
+}) {
+  const sx = {
+    fontWeight: 600,
+    textDecoration: "none",
+    "&:hover": { textDecoration: "underline" },
+  } as const;
+  if (external) {
+    return (
+      <Typography
+        component="a"
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        color="primary.main"
+        sx={sx}
+      >
+        {children}
+      </Typography>
+    );
+  }
+  return (
+    <Typography component={Link} href={href} color="primary.main" sx={sx}>
       {children}
     </Typography>
   );
