@@ -1,7 +1,12 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import LandingPage from "@/app/components/marketing/LandingPage";
 
-// Placeholder until the LEN-123 marketing landing lands: send everyone to
-// the member app, which gates unauthenticated visitors on the login screen.
+export const metadata: Metadata = {
+  title: "LENA — the household kitchen, kept",
+  description:
+    "Recipes, pantry, meal plans, grocery lists, and the wine cellar in one place your whole household shares.",
+};
+
 export default function RootPage() {
-  redirect("/member");
+  return <LandingPage />;
 }
