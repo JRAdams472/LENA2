@@ -34,23 +34,24 @@ export default function DocsIndex() {
               .filter((item) => item.href !== "/docs")
               .map((item) =>
                 item.live ? (
-                  <Paper
+                  <Link
                     key={item.href}
-                    component={Link}
                     href={item.href}
-                    variant="outlined"
-                    sx={{
-                      p: 2,
-                      textDecoration: "none",
-                      color: "text.primary",
-                      display: "block",
-                      "&:hover": { borderColor: "primary.main" },
-                    }}
+                    style={{ textDecoration: "none" }}
                   >
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      {item.label}
-                    </Typography>
-                  </Paper>
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 2,
+                        color: "text.primary",
+                        "&:hover": { borderColor: "primary.main" },
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        {item.label}
+                      </Typography>
+                    </Paper>
+                  </Link>
                 ) : (
                   <Paper
                     key={item.href}
