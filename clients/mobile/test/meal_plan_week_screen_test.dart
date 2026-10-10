@@ -173,6 +173,23 @@ void main() {
       expect(find.text('Sat'), findsOneWidget);
     });
 
+    testWidgets('tablet pane width keeps all seven days visible',
+        (tester) async {
+      // AdaptiveDetail's right pane on a 1280x800 tablet is ~920dp wide —
+      // narrower than 72 + 7*140dp of fixed columns. The grid must shrink
+      // columns toward the 110dp floor so Saturday isn't clipped.
+      tester.view.physicalSize = const Size(920, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final cap = _Capture();
+      await tester.pumpWidget(_harness(cap));
+      await tester.pumpAndSettle();
+      for (final d in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
+        expect(find.text(d), findsOneWidget);
+      }
+      expect(tester.getTopRight(find.text('Sat')).dx, lessThanOrEqualTo(920.0));
+    });
+
     testWidgets('tapping a slot opens detail and Remove mutates',
         (tester) async {
       tester.view.physicalSize = const Size(400, 800);

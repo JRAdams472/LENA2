@@ -385,52 +385,58 @@ class _MealPlanWeekScreenState extends State<MealPlanWeekScreen> {
     );
   }
 
-  /// 7-column day grid for wide panes. Column width is fixed so the grid
-  /// scrolls horizontally instead of squashing cells below readability —
+  /// 7-column day grid for wide panes. Column width adapts to the pane —
   /// inside a two-pane layout this screen may be narrower than the window
-  /// even at expanded breakpoints.
+  /// even at expanded breakpoints (e.g. ~920dp next to AdaptiveDetail's
+  /// 360dp list). Columns shrink toward a 110dp floor so all seven days
+  /// stay visible; below that the grid scrolls horizontally instead of
+  /// squashing cells below readability.
   Widget _grid() {
-    const colWidth = 140.0;
     final rows = _rows;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final colWidth = ((constraints.maxWidth - 72) / 7).clamp(110.0, 140.0);
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(width: 72),
-                for (final d in _orderedDays)
-                  SizedBox(
-                    width: colWidth,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Text(weekdayName(d),
-                          style: Theme.of(context).textTheme.labelLarge),
-                    ),
+                Row(
+                  children: [
+                    const SizedBox(width: 72),
+                    for (final d in _orderedDays)
+                      SizedBox(
+                        width: colWidth,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Text(weekdayName(d),
+                              style: Theme.of(context).textTheme.labelLarge),
+                        ),
+                      ),
+                  ],
+                ),
+                for (final row in rows)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 72,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Text(row,
+                              style: Theme.of(context).textTheme.labelMedium),
+                        ),
+                      ),
+                      for (final d in _orderedDays)
+                        SizedBox(width: colWidth, child: _cell(d, row)),
+                    ],
                   ),
               ],
             ),
-            for (final row in rows)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 72,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Text(row,
-                          style: Theme.of(context).textTheme.labelMedium),
-                    ),
-                  ),
-                  for (final d in _orderedDays)
-                    SizedBox(width: colWidth, child: _cell(d, row)),
-                ],
-              ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
