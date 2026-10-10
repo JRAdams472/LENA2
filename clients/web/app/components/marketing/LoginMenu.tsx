@@ -1,21 +1,34 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Popover from "@mui/material/Popover";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
 import { paletteFor } from "@/lib/themeVars";
+import { useAuth } from "@/app/auth/AuthProvider";
 import ProviderButtons from "@/app/components/ProviderButtons";
 
 // The marketing site's sign-in affordance: a paper button on the sage
 // header that opens the shared provider buttons in a popover. Successful
-// sign-in flips useAuth; the landing page then routes to /member.
+// sign-in flips useAuth and routes to the member app.
 export default function LoginMenu() {
   const theme = useTheme();
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const wasAuthedRef = useRef(isAuthenticated);
+
+  // Route to the member app only when auth flips during this session —
+  // a signed-in member can still read the public docs without being
+  // bounced back out.
+  useEffect(() => {
+    if (!wasAuthedRef.current && isAuthenticated) router.replace("/member");
+    wasAuthedRef.current = isAuthenticated;
+  }, [isAuthenticated, router]);
 
   return (
     <>
