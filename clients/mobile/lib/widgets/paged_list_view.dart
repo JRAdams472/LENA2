@@ -11,10 +11,15 @@ UpdateQuery appendPageItems(String field) {
     if (prevPage == null || morePage == null) {
       return more ?? previous;
     }
+    // Skip rows already merged — a re-requested page must not re-append
+    // (LEN-104). Rows without an `id` key always append.
+    final prevItems = prevPage['items'] as List? ?? [];
+    final prevIds = {for (final it in prevItems) if (it is Map) it['id']};
     final merged = Map<String, dynamic>.from(morePage);
     merged['items'] = [
-      ...(prevPage['items'] as List? ?? []),
-      ...(morePage['items'] as List? ?? []),
+      ...prevItems,
+      ...(morePage['items'] as List? ?? [])
+          .where((it) => it is! Map || !prevIds.contains(it['id'])),
     ];
     return {...?previous, field: merged};
   };
@@ -65,7 +70,14 @@ class _PagedListViewState extends State<PagedListView> {
     try {
       await widget.onLoadMore();
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      // The merged page reaches this widget a frame after onLoadMore's
+      // future resolves (query rebroadcast → builder rebuild). Keep the
+      // flag through that frame so a metrics notification can't re-fire
+      // the previous onLoadMore closure, whose captured item list is
+      // stale and would re-request the same page (LEN-104).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _loadingMore = false);
+      });
     }
   }
 

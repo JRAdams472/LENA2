@@ -222,9 +222,8 @@ void main() {
       await tester.drag(find.byType(Scrollable).last, const Offset(0, -3000));
       await _settle(tester);
 
-      // The tail row is rendered; a back-to-back metrics notification can
-      // race a second page-2 merge, so the row may appear more than once.
-      expect(find.text('Screaming Eagle 2015'), findsWidgets);
+      // The tail row renders exactly once (LEN-104).
+      expect(find.text('Screaming Eagle 2015'), findsOneWidget);
       final pages =
           link.byName('UserBottles').map((r) => r.variables['page']).toList();
       expect(pages, contains(2));
@@ -400,7 +399,7 @@ void main() {
       await tester.drag(find.byType(Scrollable).last, const Offset(0, -3000));
       await _settle(tester);
 
-      expect(find.text('Penfolds 2018'), findsWidgets);
+      expect(find.text('Penfolds 2018'), findsOneWidget);
       expect(
         link.byName('Bottles').map((r) => r.variables['page']),
         contains(2),

@@ -33,7 +33,10 @@ void main() {
       };
       final more = {
         'recipes': {
-          'items': _rows(2),
+          'items': [
+            {'id': '2'},
+            {'id': '3'},
+          ],
           'pageInfo': {'totalCount': 4, 'pageNumber': 2},
         }
       };
@@ -52,6 +55,30 @@ void main() {
       };
       expect(merge(null, more), more);
       expect(merge(more, null), more);
+    });
+
+    test('skips rows whose id is already present', () {
+      final prev = {
+        'recipes': {
+          'items': _rows(2),
+          'pageInfo': {'totalCount': 4},
+        }
+      };
+      final more = {
+        'recipes': {
+          'items': [
+            {'id': '1'},
+            {'id': '2'},
+          ],
+          'pageInfo': {'totalCount': 4, 'pageNumber': 2},
+        }
+      };
+      final merged = merge(prev, more)!;
+      // '1' is already present — only '2' appends.
+      expect((merged['recipes'] as Map)['items'], hasLength(3));
+      // Re-merging the same page appends nothing (LEN-104 hardening).
+      final remerged = merge(merged, more)!;
+      expect((remerged['recipes'] as Map)['items'], hasLength(3));
     });
   });
 
@@ -117,6 +144,70 @@ void main() {
       // After the load resolves, a subsequent page is allowed.
       await tester.pump(const Duration(milliseconds: 50));
       expect(calls, greaterThanOrEqualTo(1));
+    });
+
+    testWidgets(
+        'does not re-fire onLoadMore between fetch resolve and next frame',
+        (tester) async {
+      var calls = 0;
+      final gate = Completer<void>();
+      await tester.pumpWidget(_wrap(PagedListView(
+        loadedCount: 1,
+        totalCount: 2,
+        onLoadMore: () {
+          calls++;
+          return gate.future;
+        },
+        itemBuilder: (_, i) => Text('row $i'),
+      )));
+      // Simulate the underfilled-viewport scroll notification that
+      // triggers the first load in production.
+      final ctx = tester.element(find.byType(ListView));
+      ScrollUpdateNotification(
+        metrics: FixedScrollMetrics(
+          minScrollExtent: 0,
+          maxScrollExtent: 100,
+          pixels: 0,
+          viewportDimension: 600,
+          axisDirection: AxisDirection.down,
+          devicePixelRatio: 1,
+        ),
+        context: ctx,
+      ).dispatch(ctx);
+      expect(calls, 1);
+
+      gate.complete();
+      // Let the future's continuations run without advancing a frame —
+      // the merged page hasn't reached the widget yet, so a metrics
+      // notification here must not re-fire the stale onLoadMore (LEN-104).
+      await tester.idle();
+      ScrollUpdateNotification(
+        metrics: FixedScrollMetrics(
+          minScrollExtent: 0,
+          maxScrollExtent: 100,
+          pixels: 0,
+          viewportDimension: 600,
+          axisDirection: AxisDirection.down,
+          devicePixelRatio: 1,
+        ),
+        context: ctx,
+      ).dispatch(ctx);
+      expect(calls, 1);
+
+      // After the frame, the flag re-arms — a new notification may load.
+      await tester.pump();
+      ScrollUpdateNotification(
+        metrics: FixedScrollMetrics(
+          minScrollExtent: 0,
+          maxScrollExtent: 100,
+          pixels: 0,
+          viewportDimension: 600,
+          axisDirection: AxisDirection.down,
+          devicePixelRatio: 1,
+        ),
+        context: ctx,
+      ).dispatch(ctx);
+      expect(calls, 2);
     });
   });
 }
