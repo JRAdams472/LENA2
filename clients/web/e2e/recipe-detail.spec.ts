@@ -27,7 +27,7 @@ test.describe("recipe detail", () => {
     const recipeId = created.createRecipe.id;
 
     try {
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
 
       // Header fields.
       await expect(
@@ -129,7 +129,7 @@ test.describe("recipe detail", () => {
     const recipeId = recipe.createRecipe.id;
 
     try {
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
       await expect(
         page.getByRole("heading", { name: recipeName })
       ).toBeVisible();

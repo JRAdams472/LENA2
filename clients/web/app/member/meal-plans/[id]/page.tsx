@@ -673,7 +673,7 @@ export default function MealPlanDetailPage({
   const generateGroceryListMutation = useMutation({
     mutationFn: () => api.generateGroceryList(planId),
     onSuccess: (list) => {
-      router.push(`/grocery-lists/${list.groceryListID}`);
+      router.push(`/member/grocery-lists/${list.groceryListID}`);
     },
   });
 

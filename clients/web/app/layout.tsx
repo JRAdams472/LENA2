@@ -4,7 +4,6 @@ import localFont from "next/font/local";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
 import Providers from "./providers";
-import AdminLayout from "./components/AdminLayout";
 
 // Nunito is self-hosted from the same TTFs the mobile app bundles
 // (clients/mobile/assets/fonts) — no Google Fonts fetch at build or runtime.
@@ -20,8 +19,9 @@ const nunito = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "LENA Admin",
-  description: "LENA Inventory and Wine Admin",
+  title: "LENA",
+  description:
+    "LENA is a household food assistant: shared recipes, pantry, meal plans, grocery lists, food events, and a wine cellar.",
 };
 
 // Nonce-based CSP requires every page to render per-request — a static
@@ -36,9 +36,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             reload; 'class' matches cssVariables.colorSchemeSelector. */}
         <InitColorSchemeScript attribute="class" defaultMode="system" />
         <AppRouterCacheProvider>
-          <Providers>
-            <AdminLayout>{children}</AdminLayout>
-          </Providers>
+          <Providers>{children}</Providers>
         </AppRouterCacheProvider>
       </body>
     </html>

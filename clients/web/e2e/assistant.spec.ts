@@ -7,7 +7,7 @@ test.describe("assistant", () => {
   test("asks a question and shows the answer plus tool trace", async ({
     page,
   }) => {
-    await page.goto("/assistant");
+    await page.goto("/member/assistant");
 
     await expect(
       page.getByRole("heading", { name: "Ask Dot" })
@@ -26,7 +26,7 @@ test.describe("assistant", () => {
   });
 
   test("navigates from the header", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/member");
     await page.getByRole("link", { name: "Ask Dot" }).first().click();
     await expect(page).toHaveURL(/\/assistant/);
     await expect(

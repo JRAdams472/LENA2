@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import RecipeCategoriesPage from "@/app/recipes/categories/page";
+import RecipeCategoriesPage from "@/app/member/recipes/categories/page";
 
 jest.mock("../../../app/auth/useMe");
 import { useMe } from "../../../app/auth/useMe";
@@ -12,7 +12,7 @@ const mockFetch = global.fetch as jest.Mock;
 
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({ push: jest.fn() })),
-  usePathname: jest.fn(() => "/recipes/categories"),
+  usePathname: jest.fn(() => "/member/recipes/categories"),
 }));
 
 function gql(data: object) {

@@ -33,9 +33,9 @@ const QUICK_PROMPTS = [
 ];
 
 const CAPABILITIES = [
-  { label: "Suggest meals", href: "/meal-plans" },
-  { label: "Cocktail ideas", href: "/recipes" },
-  { label: "Wine pairing", href: "/recipes" },
+  { label: "Suggest meals", href: "/member/meal-plans" },
+  { label: "Cocktail ideas", href: "/member/recipes" },
+  { label: "Wine pairing", href: "/member/recipes" },
 ];
 
 export default function AssistantPage() {

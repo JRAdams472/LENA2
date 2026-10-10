@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import AssistantPage from "@/app/assistant/page";
+import AssistantPage from "@/app/member/assistant/page";
 import { useAssistant, type AssistantController } from "../../../lib/ai/useAssistant";
 
 jest.mock("../../../lib/ai/useAssistant", () => ({

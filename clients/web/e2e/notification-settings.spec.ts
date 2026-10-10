@@ -131,7 +131,7 @@ test.describe("notification settings", () => {
       await expect.poll(() => unread(request, primaryToken)).toBeGreaterThan(before);
       await leaveIfMember(request, secondToken, target);
 
-      await page.goto("/notifications");
+      await page.goto("/member/notifications");
       await expect(enabled).toBeChecked();
       await enabled.click();
       await expect(enabled).not.toBeChecked();

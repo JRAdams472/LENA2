@@ -81,7 +81,7 @@ describe("login screen", () => {
     fireEvent.click(screen.getByTestId("google-login"));
     await waitFor(() => {
       expect(sessionStorage.getItem("lena_id_token")).toBe(makeToken());
-      expect(mockPush).toHaveBeenCalledWith("/");
+      expect(mockPush).toHaveBeenCalledWith("/member");
     });
   });
 

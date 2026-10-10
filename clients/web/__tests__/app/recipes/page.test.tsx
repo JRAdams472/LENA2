@@ -2,8 +2,8 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import RecipesPage from "@/app/recipes/page";
-import RecipeDetailPage from "@/app/recipes/[id]/page";
+import RecipesPage from "@/app/member/recipes/page";
+import RecipeDetailPage from "@/app/member/recipes/[id]/page";
 
 jest.mock("../../../app/auth/useMe");
 import { useMe } from "../../../app/auth/useMe";
@@ -15,7 +15,7 @@ const mockFetch = global.fetch as jest.Mock;
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({ push: jest.fn() })),
   useParams: jest.fn(() => ({ id: "1" })),
-  usePathname: jest.fn(() => "/recipes"),
+  usePathname: jest.fn(() => "/member/recipes"),
 }));
 
 function gql(data: object) {

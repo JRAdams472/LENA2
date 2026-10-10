@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ItemRow } from "@/app/grocery-lists/[id]/page";
+import { ItemRow } from "@/app/member/grocery-lists/[id]/page";
 import { GroceryListItem } from "@/lib/types";
 
 const mockFetch = global.fetch as jest.Mock;

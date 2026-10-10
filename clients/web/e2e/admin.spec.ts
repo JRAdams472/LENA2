@@ -38,7 +38,7 @@ test.describe("admin review", () => {
       ids.push(await submitPending(request, memberToken, cat.createCategory.id, approveName));
       ids.push(await submitPending(request, memberToken, cat.createCategory.id, rejectName));
 
-      await page.goto("/items/pending");
+      await page.goto("/member/items/pending");
       for (const [name, action] of [
         [approveName, "Approve"],
         [rejectName, "Reject"],
@@ -113,7 +113,7 @@ test.describe("admin review", () => {
     let acceptedAllergenId: string | null = null;
 
     try {
-      await page.goto("/inventory/allergen-suggestions");
+      await page.goto("/member/inventory/allergen-suggestions");
       await page.getByLabel("Recipe").fill(recipeName);
       await page.getByRole("option", { name: recipeName }).click();
       await page.getByRole("button", { name: "Suggest flags" }).click();
@@ -179,7 +179,7 @@ test.describe("admin review", () => {
     );
     const page = await ctx.newPage();
     try {
-      await page.goto("/items/pending");
+      await page.goto("/member/items/pending");
       await expect(
         page.getByText("Forbidden: this page requires the admin role.")
       ).toBeVisible();
@@ -212,7 +212,7 @@ test.describe("admin review", () => {
     );
     const page = await ctx.newPage();
     try {
-      await page.goto("/inventory/allergen-suggestions");
+      await page.goto("/member/inventory/allergen-suggestions");
       await expect(page.getByText(SECOND_USER.email).first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Suggest flags" })).toHaveCount(0, {
         timeout: 5_000,

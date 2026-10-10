@@ -133,7 +133,7 @@ export default function EventsPage() {
     <Button
       size="small"
       component={Link}
-      href={`/events/${row.foodEventID as number}`}
+      href={`/member/events/${row.foodEventID as number}`}
     >
       Manage
     </Button>

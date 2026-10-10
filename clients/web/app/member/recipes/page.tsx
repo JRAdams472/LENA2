@@ -249,7 +249,7 @@ export default function RecipesPage() {
     <Button
       size="small"
       component={Link}
-      href={`/recipes/${row.recipeID as number}`}
+      href={`/member/recipes/${row.recipeID as number}`}
     >
       Manage
     </Button>
@@ -261,7 +261,7 @@ export default function RecipesPage() {
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setUploadSuccess(null)}>
           {uploadSuccess}{" "}
           {uploadImportId !== null && (
-            <Link href={`/recipes/pending/${uploadImportId}`}>Review import</Link>
+            <Link href={`/member/recipes/pending/${uploadImportId}`}>Review import</Link>
           )}
         </Alert>
       )}
@@ -473,7 +473,7 @@ export default function RecipesPage() {
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <Button
                   component={Link}
-                  href={`/recipes/${c.recipe.recipeID}`}
+                  href={`/member/recipes/${c.recipe.recipeID}`}
                   size="small"
                 >
                   {c.recipe.recipeName}

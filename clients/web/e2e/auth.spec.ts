@@ -6,7 +6,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("auth", () => {
   test("unauthenticated users see the login screen", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/member");
     await expect(
       page.getByText(
         "Sign in to manage inventory, recipes, and meal plans."

@@ -59,7 +59,7 @@ export default function GroceryListsPage() {
       ),
     onSuccess: (list) => {
       queryClient.invalidateQueries({ queryKey: ["groceryLists"] });
-      router.push(`/grocery-lists/${list.groceryListID}`);
+      router.push(`/member/grocery-lists/${list.groceryListID}`);
     },
   });
 
@@ -77,7 +77,7 @@ export default function GroceryListsPage() {
     <Button
       size="small"
       component={Link}
-      href={`/grocery-lists/${row.groceryListID as number}`}
+      href={`/member/grocery-lists/${row.groceryListID as number}`}
     >
       View
     </Button>

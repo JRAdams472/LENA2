@@ -155,7 +155,7 @@ test.describe("grocery check-off", () => {
         }
       );
 
-      await page.goto(`/grocery-lists/${listId}`);
+      await page.goto(`/member/grocery-lists/${listId}`);
       await expect(page.getByText(itemName)).toBeVisible();
       let [m, g] = await rowIndex(page, [manualName, itemName]);
       expect(m).toBeGreaterThanOrEqual(0);

@@ -79,7 +79,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push("/");
+      router.push("/member");
     }
   }, [isAuthenticated, router]);
 

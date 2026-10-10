@@ -39,7 +39,7 @@ test.describe("recipe categories", () => {
 
     try {
       // Opening the detail page records a recipe view for engagement ranking.
-      await page.goto(`/recipes/${viewed.id}`);
+      await page.goto(`/member/recipes/${viewed.id}`);
       await expect(page.getByRole("heading", { name: viewedName })).toBeVisible();
 
       // Assign "Dinner" (Course — exclusive group) via the category picker.
@@ -50,7 +50,7 @@ test.describe("recipe categories", () => {
 
       // Filter the list by the same category: assigned recipe stays, the
       // uncategorized one drops out.
-      await page.goto("/recipes");
+      await page.goto("/member/recipes");
       await page.getByLabel("Search").fill(tag);
       await page
         .getByRole("combobox", { name: "Course" })

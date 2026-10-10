@@ -70,7 +70,7 @@ test.describe("AI surfaces (mock provider)", () => {
 
     try {
       expect(await slotCount()).toBe(0);
-      await page.goto(`/meal-plans/${planId}`);
+      await page.goto(`/member/meal-plans/${planId}`);
       await page.getByRole("button", { name: "Suggest Meals" }).click();
       await expect(page.getByText("Suggested for your week")).toBeVisible();
       await expect(page.getByText("mock provider pick").first()).toBeVisible();
@@ -130,7 +130,7 @@ test.describe("AI surfaces (mock provider)", () => {
       }
       expect(await conflicts()).toBeGreaterThan(0);
 
-      await page.goto(`/events/${eventId}`);
+      await page.goto(`/member/events/${eventId}`);
       await page.getByRole("button", { name: "Generate Timeline" }).click();
       await page.getByRole("button", { name: "Suggest Fixes" }).click();
       const apply = page.getByRole("button", { name: "Apply" }).first();
@@ -168,7 +168,7 @@ test.describe("AI surfaces (mock provider)", () => {
 
     try {
       await setBirthdate("");
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
       await expect(page.getByRole("button", { name: "Tweak" }).first()).toBeVisible();
       await expect(pairing).toHaveCount(0);
 

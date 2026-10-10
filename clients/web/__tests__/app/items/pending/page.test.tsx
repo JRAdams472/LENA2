@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import PendingItemsPage from "@/app/items/pending/page";
+import PendingItemsPage from "@/app/member/items/pending/page";
 import { api, ApiError } from "@/lib/api";
 import { Item } from "@/lib/types";
 jest.mock("../../../../app/auth/useMe");

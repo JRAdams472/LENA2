@@ -71,7 +71,7 @@ test.describe("semantic recipe search", () => {
 
       // The UI toggle exists (semanticSearchAvailable is true in e2e) and
       // drives the same result.
-      await page.goto("/recipes");
+      await page.goto("/member/recipes");
       await page.getByLabel("Semantic").click();
       await page.getByLabel("Search").fill("tomato pasta dinner");
       await expect(

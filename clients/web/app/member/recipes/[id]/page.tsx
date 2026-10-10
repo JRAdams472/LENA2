@@ -53,7 +53,7 @@ import {
   ItemTweakEditor,
   RecipeDeltaPanel,
   StepTweakEditor,
-} from "@/app/recipes/[id]/recipe-delta";
+} from "@/app/member/recipes/[id]/recipe-delta";
 import { isOfDrinkingAge } from "@/lib/age";
 import { useMe } from "@/app/auth/useMe";
 

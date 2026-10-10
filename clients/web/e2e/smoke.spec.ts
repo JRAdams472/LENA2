@@ -4,7 +4,7 @@ const API_URL = `${process.env.E2E_BASE_URL ?? "http://localhost"}/graphql`;
 
 test.describe("smoke", () => {
   test("authenticated dashboard loads with navigation", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/member");
 
     await expect(page).toHaveTitle(/LENA/);
     await expect(page.getByText("Inventory").first()).toBeVisible();
@@ -13,7 +13,7 @@ test.describe("smoke", () => {
   });
 
   test("navigation links work", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/member");
     await page.getByText("Inventory").first().click();
     await page.getByRole("link", { name: "Categories" }).first().click();
     await expect(page).toHaveURL(/\/inventory\/categories/);

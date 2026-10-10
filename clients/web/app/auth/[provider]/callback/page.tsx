@@ -56,12 +56,12 @@ function OAuthCallback() {
     }
 
     signInWithProvider(provider, code, nonce, verifier)
-      .then(() => router.push("/"))
+      .then(() => router.push("/member"))
       .catch(() => setError("Sign-in failed. Please try again."));
   }, [provider, params, signInWithProvider, router, fail]);
 
   useEffect(() => {
-    if (isAuthenticated) router.push("/");
+    if (isAuthenticated) router.push("/member");
   }, [isAuthenticated, router]);
 
   return (

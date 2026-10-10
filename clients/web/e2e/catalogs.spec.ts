@@ -19,14 +19,14 @@ interface Catalog {
 const catalogs: Catalog[] = [
   {
     name: "Brands",
-    url: "/inventory/brands",
+    url: "/member/inventory/brands",
     fields: [{ label: "Brand Name", value: unique("E2E Brand") }],
     rowText: "",
     search: true,
   },
   {
     name: "Categories",
-    url: "/inventory/categories",
+    url: "/member/inventory/categories",
     fields: [
       { label: "Name", value: unique("E2E Category") },
       { label: "Description", value: "created by e2e" },
@@ -35,13 +35,13 @@ const catalogs: Catalog[] = [
   },
   {
     name: "Flavor Profiles",
-    url: "/inventory/flavor-profiles",
+    url: "/member/inventory/flavor-profiles",
     fields: [{ label: "Flavor Name", value: unique("E2E Flavor") }],
     rowText: "",
   },
   {
     name: "Nutrient Types",
-    url: "/inventory/nutrient-types",
+    url: "/member/inventory/nutrient-types",
     fields: [
       { label: "Nutrient Name", value: unique("E2E Nutrient") },
       { label: "Unit of Measure", value: "mg" },
@@ -50,7 +50,7 @@ const catalogs: Catalog[] = [
   },
   {
     name: "Countries",
-    url: "/wine/countries",
+    url: "/member/wine/countries",
     fields: [
       { label: "Country Name", value: unique("E2E Country") },
       { label: "Country Code", value: uniqueCode() },
@@ -59,25 +59,25 @@ const catalogs: Catalog[] = [
   },
   {
     name: "Types",
-    url: "/wine/types",
+    url: "/member/wine/types",
     fields: [{ label: "Type Name", value: unique("E2E Type") }],
     rowText: "",
   },
   {
     name: "Vintages",
-    url: "/wine/vintages",
+    url: "/member/wine/vintages",
     fields: [{ label: "Year", value: "2001" }],
     rowText: "2001",
   },
   {
     name: "Grape Varieties",
-    url: "/wine/grape-varieties",
+    url: "/member/wine/grape-varieties",
     fields: [{ label: "Name", value: unique("E2E Grape") }],
     rowText: "",
   },
   {
     name: "Wine Flavor Profiles",
-    url: "/wine/wine-flavor-profiles",
+    url: "/member/wine/wine-flavor-profiles",
     fields: [{ label: "Name", value: unique("E2E Wine Flavor") }],
     rowText: "",
   },
@@ -150,7 +150,7 @@ test("catalog CRUD: Regions (needs a country)", async ({
   const regionName = unique("E2E Region");
 
   try {
-    await page.goto("/wine/regions");
+    await page.goto("/member/wine/regions");
     await createViaDialog(page, [
       { label: "Region Name", value: regionName },
       { label: "Country ID", value: countryId },

@@ -71,7 +71,7 @@ test.describe("food events", () => {
 
     try {
       // Create the event through the UI.
-      await page.goto("/events");
+      await page.goto("/member/events");
       await page.getByRole("button", { name: "Create", exact: true }).click();
       const createDialog = page.getByRole("dialog");
       await createDialog.getByLabel("Name").fill(eventName);

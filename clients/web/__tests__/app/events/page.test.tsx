@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import EventsPage from "@/app/events/page";
-import EventDetailPage from "@/app/events/[id]/page";
+import EventsPage from "@/app/member/events/page";
+import EventDetailPage from "@/app/member/events/[id]/page";
 
 const mockFetch = global.fetch as jest.Mock;
 const mockPush = jest.fn();
@@ -228,7 +228,7 @@ describe("EventDetailPage", () => {
     await waitFor(() =>
       expect(getBodies().some((b) => b.query.includes("deleteFoodEvent"))).toBe(true)
     );
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/events"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/member/events"));
   });
 
   const gqlEventWithSteps = {

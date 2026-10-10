@@ -104,7 +104,7 @@ test.describe("grocery store routing", () => {
         .filter({ has: page.getByRole("heading", { name: heading }) });
 
     try {
-      await page.goto(`/grocery-lists/${listId}`);
+      await page.goto(`/member/grocery-lists/${listId}`);
 
       // The picker shows the persisted store and the list renders in
       // server-computed route groups.

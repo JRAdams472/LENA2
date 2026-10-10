@@ -9,7 +9,7 @@ test.describe("meal plans", () => {
     const token = await mintToken(request);
     const planName = unique("E2E Plan");
 
-    await page.goto("/meal-plans");
+    await page.goto("/member/meal-plans");
     await page
       .getByRole("button", { name: "Create", exact: true })
       .click();
@@ -28,7 +28,7 @@ test.describe("meal plans", () => {
 
     try {
       // Generate a grocery list for the plan via the grocery-lists page.
-      await page.goto("/grocery-lists");
+      await page.goto("/member/grocery-lists");
       await page
         .getByRole("button", { name: "Create", exact: true })
         .click();
@@ -82,7 +82,7 @@ test.describe("meal plans", () => {
   test("edit and delete a meal plan", async ({ page }) => {
     const planName = unique("E2E PlanEdit");
 
-    await page.goto("/meal-plans");
+    await page.goto("/member/meal-plans");
     await page
       .getByRole("button", { name: "Create", exact: true })
       .click();

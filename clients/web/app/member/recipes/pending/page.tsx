@@ -93,7 +93,7 @@ export default function PendingRecipesPage() {
                 <TableCell>{ri.createDate ? new Date(ri.createDate).toLocaleString() : "—"}</TableCell>
                 <TableCell>{ri.lastUpdatedDate ? new Date(ri.lastUpdatedDate).toLocaleString() : "—"}</TableCell>
                 <TableCell align="right">
-                  <Button size="small" component={Link} href={`/recipes/pending/${ri.recipeImportID}`}>
+                  <Button size="small" component={Link} href={`/member/recipes/pending/${ri.recipeImportID}`}>
                     Review
                   </Button>
                 </TableCell>
