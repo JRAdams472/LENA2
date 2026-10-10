@@ -208,7 +208,7 @@ export default function EventDetailPage({
 
   const deleteEventMutation = useMutation({
     mutationFn: () => api.deleteFoodEvent(eventId),
-    onSuccess: () => router.push("/events"),
+    onSuccess: () => router.push("/member/events"),
   });
 
   const saveStepMutation = useMutation({

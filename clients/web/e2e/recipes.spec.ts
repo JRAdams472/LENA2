@@ -5,7 +5,7 @@ test.describe("recipes", () => {
   test("create, edit, and delete a recipe", async ({ page }) => {
     const name = unique("E2E Recipe");
 
-    await page.goto("/recipes");
+    await page.goto("/member/recipes");
     await page
       .getByRole("button", { name: "Create", exact: true })
       .click();
@@ -34,7 +34,7 @@ test.describe("recipes", () => {
     await expect(page).toHaveURL(/\/recipes\/\d+/);
 
     // Back to the list, delete the recipe.
-    await page.goto("/recipes");
+    await page.goto("/member/recipes");
     await page.getByLabel("Search").fill(name);
     const row2 = page.getByRole("row", { name: new RegExp(name) });
     await expect(row2).toBeVisible();

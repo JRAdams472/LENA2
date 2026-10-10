@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import BottlesPage from "@/app/wine/bottles/page";
+import BottlesPage from "@/app/member/wine/bottles/page";
 
 const mockFetch = global.fetch as jest.Mock;
 

@@ -46,7 +46,7 @@ test.describe("wine", () => {
     let bottleId: string | null = null;
 
     try {
-      await page.goto("/wine/bottles");
+      await page.goto("/member/wine/bottles");
       await page
         .getByRole("button", { name: "Create", exact: true })
         .click();

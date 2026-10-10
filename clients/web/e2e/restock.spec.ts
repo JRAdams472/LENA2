@@ -118,7 +118,7 @@ test.describe("restock suggestions", () => {
       expect(ids).not.toContain(quietId);
 
       // The list page renders the suggestion and can add it in one click.
-      await page.goto(`/grocery-lists/${list.generateGroceryList.id}`);
+      await page.goto(`/member/grocery-lists/${list.generateGroceryList.id}`);
       await expect(page.getByText("Time to restock")).toBeVisible();
       const row = page
         .locator("div")

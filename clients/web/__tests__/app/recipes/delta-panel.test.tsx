@@ -7,7 +7,7 @@ import {
   ItemTweakEditor,
   RecipeDeltaPanel,
   StepTweakEditor,
-} from "@/app/recipes/[id]/recipe-delta";
+} from "@/app/member/recipes/[id]/recipe-delta";
 import { api } from "@/lib/api";
 import { DeltaDraft, ItemDraft, StepDraft } from "@/lib/delta";
 import { RecipeItem, RecipeStep, Unit } from "@/lib/types";

@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import MealPlansPage from "@/app/meal-plans/page";
-import MealPlanDetailPage from "@/app/meal-plans/[id]/page";
+import MealPlansPage from "@/app/member/meal-plans/page";
+import MealPlanDetailPage from "@/app/member/meal-plans/[id]/page";
 
 const mockFetch = global.fetch as jest.Mock;
 const mockPush = jest.fn();
@@ -13,7 +13,7 @@ const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({ push: mockPush })),
   useParams: jest.fn(() => ({ id: "1" })),
-  usePathname: jest.fn(() => "/meal-plans"),
+  usePathname: jest.fn(() => "/member/meal-plans"),
 }));
 
 function gql(data: object) {
@@ -224,7 +224,7 @@ describe("meal plan detail page", () => {
     fireEvent.click(screen.getByRole("button", { name: /generate grocery list/i }));
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("generateGroceryList"))).toBe(true);
-      expect(mockPush).toHaveBeenCalledWith("/grocery-lists/2");
+      expect(mockPush).toHaveBeenCalledWith("/member/grocery-lists/2");
     });
   });
 

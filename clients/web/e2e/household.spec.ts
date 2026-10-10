@@ -115,12 +115,12 @@ test.describe("household invites", () => {
 
     try {
       // Before joining, the second user can't see the primary's plan.
-      await secondPage.goto("/meal-plans");
+      await secondPage.goto("/member/meal-plans");
       await expect(secondPage.getByText(JOINER.email).first()).toBeVisible();
       await expect(secondPage.getByText(planName)).toHaveCount(0);
 
       // PRIMARY_USER invites through the search box.
-      await page.goto("/household");
+      await page.goto("/member/household");
       await page.getByLabel("Name or email").fill(JOINER.name);
       await page.getByRole("button", { name: "Search", exact: true }).click();
       const hit = page
@@ -141,7 +141,7 @@ test.describe("household invites", () => {
 
       // JOINER accepts in its own browser context; the sole-owned
       // spare home triggers the merge prompt.
-      await secondPage.goto("/household");
+      await secondPage.goto("/member/household");
       const invitations = secondPage
         .locator("div")
         .filter({ has: secondPage.getByText("Invitations", { exact: true }) })
@@ -165,11 +165,11 @@ test.describe("household invites", () => {
         .toEqual({ active: target.id, spareGone: true });
 
       // Shared household data is now visible to the second user.
-      await secondPage.goto("/meal-plans");
+      await secondPage.goto("/member/meal-plans");
       await expect(secondPage.getByText(planName)).toBeVisible();
 
       // Switcher: create another home (it becomes active), then switch back.
-      await secondPage.goto("/household");
+      await secondPage.goto("/member/household");
       await secondPage.getByRole("button", { name: "New household" }).click();
       const create = secondPage.getByRole("dialog", { name: "New household" });
       await create.getByLabel("Household name").fill(extraName);

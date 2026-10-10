@@ -106,7 +106,7 @@ describe("OAuth callback page", () => {
     await waitFor(() =>
       expect(mockSignIn).toHaveBeenCalledWith("discord", "abc", "nc", "ver")
     );
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/member"));
     // The one-shot PKCE artifacts are cleared from session storage.
     expect(window.sessionStorage.getItem(oauthStateKey("discord"))).toBeNull();
     expect(window.sessionStorage.getItem(oauthVerifierKey("discord"))).toBeNull();
@@ -126,6 +126,6 @@ describe("OAuth callback page", () => {
 
   it("redirects already-authenticated users home", async () => {
     setup({ provider: "gitlab", authenticated: true });
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/member"));
   });
 });

@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
-import ProfilePage from "@/app/profile/page";
+import ProfilePage from "@/app/member/profile/page";
 import { api } from "@/lib/api";
 
 jest.mock("../../../app/auth/useMe");

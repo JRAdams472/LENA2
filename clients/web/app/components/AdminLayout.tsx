@@ -66,48 +66,48 @@ interface NavItem {
 type NavEntry = { label: string; href?: string; adminOnly?: boolean; children?: NavItem[] };
 
 const CORE_NAV: NavEntry[] = [
-  { label: "Dashboard", href: "/" },
+  { label: "Dashboard", href: "/member" },
   {
     label: "Meal Planning",
     children: [
-      { label: "Weekly Plan", href: "/meal-plans" },
-      { label: "Events", href: "/events" },
-      { label: "Grocery Lists", href: "/grocery-lists" },
+      { label: "Weekly Plan", href: "/member/meal-plans" },
+      { label: "Events", href: "/member/events" },
+      { label: "Grocery Lists", href: "/member/grocery-lists" },
     ],
   },
   {
     label: "Recipes",
     children: [
-      { label: "Recipes", href: "/recipes" },
-      { label: "Categories", href: "/recipes/categories", adminOnly: true },
-      { label: "Pending Reviews", href: "/recipes/pending", adminOnly: true },
+      { label: "Recipes", href: "/member/recipes" },
+      { label: "Categories", href: "/member/recipes/categories", adminOnly: true },
+      { label: "Pending Reviews", href: "/member/recipes/pending", adminOnly: true },
     ],
   },
   {
     label: "Inventory",
     children: [
-      { label: "Items", href: "/inventory/items" },
-      { label: "Ingredients", href: "/inventory/ingredients", adminOnly: true },
-      { label: "Allergens", href: "/inventory/allergens", adminOnly: true },
-      { label: "Allergen Suggestions", href: "/inventory/allergen-suggestions", adminOnly: true },
-      { label: "Brands", href: "/inventory/brands" },
-      { label: "Categories", href: "/inventory/categories" },
-      { label: "Food Flavors", href: "/inventory/food-flavors" },
-      { label: "Food Nutrients", href: "/inventory/food-nutrients" },
-      { label: "Nutrient Types", href: "/inventory/nutrient-types" },
-      { label: "Flavor Profiles", href: "/inventory/flavor-profiles" },
+      { label: "Items", href: "/member/inventory/items" },
+      { label: "Ingredients", href: "/member/inventory/ingredients", adminOnly: true },
+      { label: "Allergens", href: "/member/inventory/allergens", adminOnly: true },
+      { label: "Allergen Suggestions", href: "/member/inventory/allergen-suggestions", adminOnly: true },
+      { label: "Brands", href: "/member/inventory/brands" },
+      { label: "Categories", href: "/member/inventory/categories" },
+      { label: "Food Flavors", href: "/member/inventory/food-flavors" },
+      { label: "Food Nutrients", href: "/member/inventory/food-nutrients" },
+      { label: "Nutrient Types", href: "/member/inventory/nutrient-types" },
+      { label: "Flavor Profiles", href: "/member/inventory/flavor-profiles" },
     ],
   },
   {
     label: "Wine",
     children: [
-      { label: "Bottles", href: "/wine/bottles" },
-      { label: "Countries", href: "/wine/countries" },
-      { label: "Regions", href: "/wine/regions" },
-      { label: "Types", href: "/wine/types" },
-      { label: "Vintages", href: "/wine/vintages" },
-      { label: "Grape Varieties", href: "/wine/grape-varieties" },
-      { label: "Wine Flavor Profiles", href: "/wine/wine-flavor-profiles" },
+      { label: "Bottles", href: "/member/wine/bottles" },
+      { label: "Countries", href: "/member/wine/countries" },
+      { label: "Regions", href: "/member/wine/regions" },
+      { label: "Types", href: "/member/wine/types" },
+      { label: "Vintages", href: "/member/wine/vintages" },
+      { label: "Grape Varieties", href: "/member/wine/grape-varieties" },
+      { label: "Wine Flavor Profiles", href: "/member/wine/wine-flavor-profiles" },
     ],
   },
 ];
@@ -118,15 +118,15 @@ const BOTTOM_NAV: NavEntry[] = [
     label: "Administration",
     adminOnly: true,
     children: [
-      { label: "Users", href: "/users", adminOnly: true },
-      { label: "Pending Items", href: "/items/pending", adminOnly: true },
+      { label: "Users", href: "/member/users", adminOnly: true },
+      { label: "Pending Items", href: "/member/items/pending", adminOnly: true },
     ],
   },
   {
     label: "Account",
     children: [
-      { label: "Household", href: "/household" },
-      { label: "Profile", href: "/profile" },
+      { label: "Household", href: "/member/household" },
+      { label: "Profile", href: "/member/profile" },
     ],
   },
 ];
@@ -244,7 +244,7 @@ function NotificationBell() {
                     .addItemToCurrentGroceryList(n.itemId as number)
                     .then(() => {
                       setAnchor(null);
-                      router.push("/grocery-lists");
+                      router.push("/member/grocery-lists");
                     })
                     .catch(() => {});
                 }}
@@ -258,7 +258,7 @@ function NotificationBell() {
         <MenuItem
           onClick={() => {
             setAnchor(null);
-            router.push("/notifications");
+            router.push("/member/notifications");
           }}
         >
           <ListItemIcon>
@@ -274,10 +274,10 @@ function NotificationBell() {
 // Reminders deep-link to their subject; event notifications to the
 // event; household activity to the household page.
 function notificationHref(n: HouseholdNotification): string {
-  if (n.recipeId != null) return `/recipes/${n.recipeId}`;
-  if (n.foodEventId != null) return `/events/${n.foodEventId}`;
-  if (n.itemId != null) return "/inventory/items";
-  return "/household";
+  if (n.recipeId != null) return `/member/recipes/${n.recipeId}`;
+  if (n.foodEventId != null) return `/member/events/${n.foodEventId}`;
+  if (n.itemId != null) return "/member/inventory/items";
+  return "/member/household";
 }
 
 function navGroupIcon(label: string) {
@@ -573,11 +573,11 @@ export default function AdminLayout({
             >
               <Button
                 component={Link}
-                href="/assistant"
+                href="/member/assistant"
                 color="inherit"
                 startIcon={<AutoAwesomeIcon />}
                 aria-label="Ask Dot"
-                aria-current={pathname === "/assistant" ? "page" : undefined}
+                aria-current={pathname === "/member/assistant" ? "page" : undefined}
                 sx={{
                   textTransform: "none",
                   fontWeight: 600,
@@ -589,7 +589,7 @@ export default function AdminLayout({
                     mr: { xs: 0, sm: 1 },
                     ml: { xs: 0, sm: -0.5 },
                   },
-                  ...(pathname === "/assistant" && {
+                  ...(pathname === "/member/assistant" && {
                     bgcolor: `color-mix(in srgb, ${paletteFor(theme).primary.contrastText} 15%, transparent)`,
                   }),
                 }}

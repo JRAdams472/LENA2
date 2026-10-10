@@ -16,7 +16,7 @@ setup("authenticate as the e2e user", async ({ browser, request, baseURL }) => {
     token
   );
   const page = await context.newPage();
-  await page.goto("/");
+  await page.goto("/member");
 
   // The authenticated layout shows the signed-in user's email.
   await expect(

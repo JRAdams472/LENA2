@@ -26,7 +26,7 @@ test.describe("meal plan detail", () => {
     const planId = created.createMealPlan.id;
 
     try {
-      await page.goto(`/meal-plans/${planId}`);
+      await page.goto(`/member/meal-plans/${planId}`);
 
       // Header and weekly grid.
       await expect(

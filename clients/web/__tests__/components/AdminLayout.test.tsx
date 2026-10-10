@@ -158,7 +158,7 @@ describe("AdminLayout", () => {
     );
 
     const askDot = screen.getAllByRole("link", { name: "Ask Dot" })[0];
-    expect(askDot).toHaveAttribute("href", "/assistant");
+    expect(askDot).toHaveAttribute("href", "/member/assistant");
 
     // The assistant moved out of the sidebar's main navigation.
     const mainNav = screen.getAllByLabelText("main navigation")[0];
@@ -204,7 +204,7 @@ describe("AdminLayout", () => {
 
   it("auto-expands the group containing the active route", async () => {
     signIn();
-    mockedUsePathname.mockReturnValue("/inventory/categories");
+    mockedUsePathname.mockReturnValue("/member/inventory/categories");
     renderLayout();
 
     await waitFor(() =>
@@ -272,7 +272,7 @@ describe("AdminLayout", () => {
         return typeof body === "string" && body.includes("addItemToCurrentGroceryList");
       })
     ).toBe(true);
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/grocery-lists"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/member/grocery-lists"));
   });
 
   it("deep-links reminder notifications and exposes settings", async () => {
@@ -288,14 +288,14 @@ describe("AdminLayout", () => {
     await act(async () => {
       fireEvent.click(screen.getByText("Defrost protein for Oct 3"));
     });
-    expect(mockPush).toHaveBeenCalledWith("/recipes/7");
+    expect(mockPush).toHaveBeenCalledWith("/member/recipes/7");
 
     // Settings entry navigates to the preferences page.
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "notifications" }));
     });
     fireEvent.click(await screen.findByText("Notification settings"));
-    expect(mockPush).toHaveBeenCalledWith("/notifications");
+    expect(mockPush).toHaveBeenCalledWith("/member/notifications");
   });
 
   it("signs out and returns to the login screen", async () => {

@@ -113,7 +113,7 @@ export default function MealPlansPage() {
     <Button
       size="small"
       component={Link}
-      href={`/meal-plans/${row.mealPlanID as number}`}
+      href={`/member/meal-plans/${row.mealPlanID as number}`}
     >
       Manage
     </Button>

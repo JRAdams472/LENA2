@@ -44,7 +44,7 @@ test.describe("recipe household tweaks", () => {
     const recipeId = recipe.createRecipe.id;
 
     try {
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
       const line = page.getByRole("row").filter({ hasText: butter });
       await expect(line).toBeVisible();
 
@@ -178,7 +178,7 @@ test.describe("recipe household tweaks", () => {
         }`,
         { id: recipeId, input: recipeInput("Melt the fat over low heat") }
       );
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
       await expect(page.getByRole("heading", { name: recipeName })).toBeVisible();
       await expect(page.getByRole("row").filter({ hasText: oil })).toBeVisible();
     } finally {

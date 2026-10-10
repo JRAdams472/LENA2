@@ -47,7 +47,7 @@ test.describe("pantry quantities", () => {
     };
 
     try {
-      await page.goto("/inventory/items");
+      await page.goto("/member/inventory/items");
       await page.getByLabel("Search").fill(name);
       const row = page.getByRole("row", { name: new RegExp(name) });
       await expect(row).toBeVisible();
@@ -146,7 +146,7 @@ test.describe("pantry quantities", () => {
     };
 
     try {
-      await page.goto("/inventory/items");
+      await page.goto("/member/inventory/items");
       await page.getByLabel("Search").fill(name);
       const row = page.getByRole("row", { name: new RegExp(name) });
       await expect(row).toBeVisible();

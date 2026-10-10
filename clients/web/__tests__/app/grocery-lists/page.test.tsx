@@ -3,8 +3,8 @@ import { Suspense } from "react";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import GroceryListsPage from "@/app/grocery-lists/page";
-import GroceryListDetailPage, { reorderEntries } from "@/app/grocery-lists/[id]/page";
+import GroceryListsPage from "@/app/member/grocery-lists/page";
+import GroceryListDetailPage, { reorderEntries } from "@/app/member/grocery-lists/[id]/page";
 import { GroceryRouteGroup, GroceryListItem } from "@/lib/types";
 
 const mockFetch = global.fetch as jest.Mock;
@@ -13,7 +13,7 @@ const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({ push: mockPush })),
   useParams: jest.fn(() => ({ id: "1" })),
-  usePathname: jest.fn(() => "/grocery-lists"),
+  usePathname: jest.fn(() => "/member/grocery-lists"),
 }));
 
 function gql(data: object) {
@@ -106,7 +106,7 @@ describe("grocery lists page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("generateGroceryList"))).toBe(true);
-      expect(mockPush).toHaveBeenCalledWith("/grocery-lists/2");
+      expect(mockPush).toHaveBeenCalledWith("/member/grocery-lists/2");
     });
   });
 });

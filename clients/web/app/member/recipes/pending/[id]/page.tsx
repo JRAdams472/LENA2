@@ -322,14 +322,14 @@ export default function PendingRecipeDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipe-import", id] });
       queryClient.invalidateQueries({ queryKey: ["pending-recipe-imports"] });
-      router.push("/recipes/pending");
+      router.push("/member/recipes/pending");
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to approve"),
   });
 
   const rejectMutation = useMutation({
     mutationFn: () => api.rejectRecipeImport(id),
-    onSuccess: () => router.push("/recipes/pending"),
+    onSuccess: () => router.push("/member/recipes/pending"),
     onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to reject"),
   });
 

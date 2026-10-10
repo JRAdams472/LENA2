@@ -2,12 +2,12 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import CountriesPage from "@/app/wine/countries/page";
-import GrapeVarietiesPage from "@/app/wine/grape-varieties/page";
-import RegionsPage from "@/app/wine/regions/page";
-import TypesPage from "@/app/wine/types/page";
-import VintagesPage from "@/app/wine/vintages/page";
-import WineFlavorProfilesPage from "@/app/wine/wine-flavor-profiles/page";
+import CountriesPage from "@/app/member/wine/countries/page";
+import GrapeVarietiesPage from "@/app/member/wine/grape-varieties/page";
+import RegionsPage from "@/app/member/wine/regions/page";
+import TypesPage from "@/app/member/wine/types/page";
+import VintagesPage from "@/app/member/wine/vintages/page";
+import WineFlavorProfilesPage from "@/app/member/wine/wine-flavor-profiles/page";
 
 const mockFetch = global.fetch as jest.Mock;
 

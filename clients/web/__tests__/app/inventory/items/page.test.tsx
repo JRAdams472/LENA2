@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import ItemsPage from "@/app/inventory/items/page";
+import ItemsPage from "@/app/member/inventory/items/page";
 
 jest.mock("../../../../app/auth/useMe");
 import { useMe } from "../../../../app/auth/useMe";

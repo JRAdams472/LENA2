@@ -49,7 +49,7 @@ test.describe("allergy warnings", () => {
 
     try {
       // Without a member record or a flag, nothing warns.
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
       await expect(page.getByRole("heading", { name: recipeName })).toBeVisible();
       await expect(page.getByTestId("allergy-warning-alert")).toHaveCount(0);
 
@@ -70,7 +70,7 @@ test.describe("allergy warnings", () => {
       );
 
       // Recipe list row carries the warning chip.
-      await page.goto("/recipes");
+      await page.goto("/member/recipes");
       await page.getByLabel("Search").fill(recipeName);
       const row = page.getByRole("row", { name: new RegExp(recipeName) });
       await expect(row.getByTestId("allergy-warning-chip")).toHaveText(
@@ -78,7 +78,7 @@ test.describe("allergy warnings", () => {
       );
 
       // Detail alert names the member, allergen, and flag kind.
-      await page.goto(`/recipes/${recipeId}`);
+      await page.goto(`/member/recipes/${recipeId}`);
       const alert = page.getByTestId("allergy-warning-alert");
       await expect(alert).toBeVisible();
       await expect(alert).toContainText(

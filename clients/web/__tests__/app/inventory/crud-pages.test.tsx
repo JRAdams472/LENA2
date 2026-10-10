@@ -2,11 +2,11 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import BrandsPage from "@/app/inventory/brands/page";
-import FlavorProfilesPage from "@/app/inventory/flavor-profiles/page";
-import FoodFlavorsPage from "@/app/inventory/food-flavors/page";
-import FoodNutrientsPage from "@/app/inventory/food-nutrients/page";
-import NutrientTypesPage from "@/app/inventory/nutrient-types/page";
+import BrandsPage from "@/app/member/inventory/brands/page";
+import FlavorProfilesPage from "@/app/member/inventory/flavor-profiles/page";
+import FoodFlavorsPage from "@/app/member/inventory/food-flavors/page";
+import FoodNutrientsPage from "@/app/member/inventory/food-nutrients/page";
+import NutrientTypesPage from "@/app/member/inventory/nutrient-types/page";
 
 const mockFetch = global.fetch as jest.Mock;
 

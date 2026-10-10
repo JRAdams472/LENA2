@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import PendingRecipeDetailPage from "@/app/recipes/pending/[id]/page";
+import PendingRecipeDetailPage from "@/app/member/recipes/pending/[id]/page";
 
 jest.mock("../../../../../app/auth/useMe");
 import { useMe } from "../../../../../app/auth/useMe";
@@ -15,7 +15,7 @@ const mockFetch = global.fetch as jest.Mock;
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({ push: mockPush })),
   useParams: jest.fn(() => ({ id: "1" })),
-  usePathname: jest.fn(() => "/recipes/pending/1"),
+  usePathname: jest.fn(() => "/member/recipes/pending/1"),
 }));
 
 function gql(data: object) {
@@ -248,7 +248,7 @@ describe("pending recipe detail page", () => {
     const approveIdx = bodies.findIndex((b) => b.query.includes("approveRecipeImport"));
     expect(updateIdx).toBeGreaterThanOrEqual(0);
     expect(updateIdx).toBeLessThan(approveIdx);
-    expect(mockPush).toHaveBeenCalledWith("/recipes/pending");
+    expect(mockPush).toHaveBeenCalledWith("/member/recipes/pending");
   });
 
   it("rejects the import", async () => {
@@ -269,7 +269,7 @@ describe("pending recipe detail page", () => {
     await waitFor(() =>
       expect(getBodies().some((b) => b.query.includes("rejectRecipeImport"))).toBe(true)
     );
-    expect(mockPush).toHaveBeenCalledWith("/recipes/pending");
+    expect(mockPush).toHaveBeenCalledWith("/member/recipes/pending");
   });
 
   it("cancelling the reject dialog does not reject", async () => {

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import UsersPage from "@/app/users/page";
+import UsersPage from "@/app/member/users/page";
 import { api } from "@/lib/api";
 import { User } from "@/lib/types";
 // jest.mock specifiers are not rewritten by the SWC path transform, so

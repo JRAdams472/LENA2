@@ -82,7 +82,7 @@ test.describe("notification manager", () => {
       expect(sweep.triggerNotificationSweep).toBeGreaterThanOrEqual(1);
 
       // The bell shows the reminder with its server-rendered text.
-      await page.goto("/");
+      await page.goto("/member");
       await page.getByLabel("notifications").click();
       await expect(
         page.getByText(`${itemName} expires soon`)
@@ -132,7 +132,7 @@ test.describe("notification manager", () => {
         }
       }
       expect(targetList).not.toBeNull();
-      await page.goto(`/grocery-lists/${targetList}`);
+      await page.goto(`/member/grocery-lists/${targetList}`);
       await expect(page.getByText(itemName)).toBeVisible();
     } finally {
       // Disable the expiry category so reruns don't pile up reminders
@@ -164,7 +164,7 @@ test.describe("notification manager", () => {
   }) => {
     const token = await mintToken(request);
     try {
-      await page.goto("/notifications");
+      await page.goto("/member/notifications");
       await expect(
         page.getByText("Expiring pantry items")
       ).toBeVisible();

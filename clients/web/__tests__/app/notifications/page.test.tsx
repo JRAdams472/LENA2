@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import NotificationsPage from "@/app/notifications/page";
+import NotificationsPage from "@/app/member/notifications/page";
 import { api } from "@/lib/api";
 
 jest.mock("../../../lib/api", () => ({

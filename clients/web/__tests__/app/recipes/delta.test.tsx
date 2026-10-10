@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import RecipeDetailPage from "@/app/recipes/[id]/page";
+import RecipeDetailPage from "@/app/member/recipes/[id]/page";
 
 jest.mock("../../../app/auth/useMe");
 import { useMe } from "../../../app/auth/useMe";
@@ -13,7 +13,7 @@ const mockFetch = global.fetch as jest.Mock;
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({ push: jest.fn() })),
   useParams: jest.fn(() => ({ id: "1" })),
-  usePathname: jest.fn(() => "/recipes/1"),
+  usePathname: jest.fn(() => "/member/recipes/1"),
 }));
 
 // AI suggestions hook into a client-side engine store — stub it quiet.
