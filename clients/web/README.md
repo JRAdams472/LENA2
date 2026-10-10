@@ -55,6 +55,25 @@ A Next.js (App Router) TypeScript frontend for LENA.
    client's **Authorized JavaScript origins** (`http://localhost:3000` for
    dev; the production origin as well).
 
+## Site structure
+
+The app serves two surfaces:
+
+- **Public site** — `/` is the customer-facing landing page and `/docs/*`
+  mirrors the wiki's guides (29 content pages plus an index, generated at
+  author time by `tools/wiki-docs/md2docs.mjs`). The header's **Log in**
+  opens the shared provider buttons in a popover; signing in routes to
+  `/member`. Authenticated visitors to `/` are redirected to `/member`.
+- **Member app** — everything authenticated lives under `/member/*` behind
+  `app/member/layout.tsx` (the former root `AdminLayout` gate). Old
+  top-level URLs (`/recipes`, `/meal-plans`, etc.) permanently redirect to
+  `/member/...` via `next.config.ts`. OAuth callbacks stay at
+  `/auth/{provider}/callback` — the provider-registered redirect URIs.
+
+Screenshots for the docs pages are vendored under `public/images/` — the
+Dockerfile copies `public/` into the standalone image so they ship in
+production.
+
 ## Sign-in providers
 
 Google sign-in uses the OIDC ID token as the bearer directly. Discord,
@@ -102,5 +121,5 @@ npm run build
 
 - Next.js (App Router, `output: "standalone"`)
 - TypeScript
-- Material UI — `colorSchemes` light/dark (toggle in the AppBar and on `/profile`); Nunito self-hosted via `next/font/local`; theme + tokens per `docs/design.md`
+- Material UI — `colorSchemes` light/dark (toggle in the AppBar and on `/member/profile`); Nunito self-hosted via `next/font/local`; theme + tokens per `docs/design.md`
 - React Query
