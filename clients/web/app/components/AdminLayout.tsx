@@ -40,6 +40,7 @@ import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
 import ApprovalGate from "@/app/components/ApprovalGate";
+import AppSwitchPrompt from "@/app/components/AppSwitchPrompt";
 import LoginScreen from "@/app/components/LoginScreen";
 import LenaLogo from "@/app/components/LenaLogo";
 import ThemeModeButton from "@/app/components/ThemeModeButton";
@@ -520,6 +521,7 @@ export default function AdminLayout({
           <IconButton
             color="inherit"
             edge="start"
+            aria-label="Open navigation"
             onClick={() => setMobileOpen(!mobileOpen)}
             sx={{ mr: 2, display: { md: "none" }, alignSelf: "center" }}
           >
@@ -662,6 +664,7 @@ export default function AdminLayout({
       </Box>
 
       <Main>{children}</Main>
+      <AppSwitchPrompt />
     </Box>
   );
 }
