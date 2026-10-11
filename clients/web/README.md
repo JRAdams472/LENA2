@@ -74,6 +74,32 @@ Screenshots for the docs pages are vendored under `public/images/` — the
 Dockerfile copies `public/` into the standalone image so they ship in
 production.
 
+## Responsive behavior
+
+The public site is fully usable on phones: the header collapses into a
+hamburger drawer (which hosts the full docs tree on `/docs/*`), and every
+landing/docs section reflows to one column.
+
+The member app is usable at ~375px as a fallback for the Flutter app —
+the primary mobile experience — rather than a first-class mobile UI:
+
+- `AdminLayout` swaps the permanent drawer for a temporary hamburger below
+  `md`.
+- `DataTable` renders rows as stacked cards below `sm`.
+- `CrudDialog` goes `fullScreen` below `sm`.
+- Grocery-list rows keep their HTML5 drag handles on desktop but expose
+  up/down buttons on narrow viewports (touch browsers never fire HTML5
+  drag); both paths share `reorderGroceryListItems`.
+- `AppSwitchPrompt` — a one-time banner inside member chrome — nudges
+  phone-sized visitors toward the Flutter app. Dismissal persists per
+  device in `localStorage` (`lena_app_prompt_dismissed`) and the prompt
+  never appears on the public site. Wire a store link once the app is
+  published.
+
+`playwright.config.ts` defines a `mobile` project (375×812 viewport) that
+runs `e2e/responsive.spec.ts` — the desktop `chromium` project ignores it.
+Run it with `npx playwright test --project=mobile`.
+
 ## Sign-in providers
 
 Google sign-in uses the OIDC ID token as the bearer directly. Discord,

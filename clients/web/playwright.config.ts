@@ -23,6 +23,19 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: AUTH_FILE },
+      testIgnore: /responsive\.spec\.ts/,
+      dependencies: ["setup"],
+    },
+    {
+      // LEN-30: the ~375px fallback experience — runs only the responsive
+      // spec since it re-verifies journeys the desktop specs already own.
+      name: "mobile",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 375, height: 812 },
+        storageState: AUTH_FILE,
+      },
+      testMatch: /responsive\.spec\.ts/,
       dependencies: ["setup"],
     },
   ],
