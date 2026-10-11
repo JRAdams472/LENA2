@@ -11,6 +11,14 @@ enum Role {
   admin
 }
 
+# Admin approval lifecycle on identity.users.approval_status (LEN-127) —
+# distinct from isActive, which keeps its banned/disabled semantics.
+enum UserApprovalStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
 # Catalog object classes tracked by analytics.
 enum EntityType {
   item
@@ -154,6 +162,8 @@ type Query {
   suggestedRestockItems(limit: Int = 10): [Item!]!
   # Admin-only: paged list of all registered users.
   users(page: Int = 1, pageSize: Int = 25): UserPage! @admin
+  # Admin-only: accounts awaiting approval, oldest request first.
+  pendingUsers(page: Int = 1, pageSize: Int = 25): UserPage! @admin
   # Admin-only: a single recipe import job.
   recipeImport(id: ID!): RecipeImport @admin
   # Admin-only: paged list of recipe imports.
@@ -393,6 +403,11 @@ type Mutation {
   # admins, and removing the last active admin.
   setUserRole(userId: ID!, role: Role!): User! @admin
   setUserActive(userId: ID!, isActive: Boolean!): User! @admin
+  # Admin-only approval gate (LEN-127). approveUser grants member access;
+  # denyUser records a durable denial that no self-retry can undo. Same
+  # self-modification and protected-admin guards as setUserRole.
+  approveUser(userId: ID!): User! @admin
+  denyUser(userId: ID!): User! @admin
 
   # Household membership: invite by user id, accept/decline received
   # invites, cancel sent ones, or leave the current household.
@@ -509,6 +524,9 @@ type User {
   birthdate: String
   role: Role!
   isActive: Boolean!
+  # Admin-approval lifecycle: new sign-ins are PENDING until an admin
+  # approves or denies them. Distinct from isActive (ban/disable).
+  approvalStatus: UserApprovalStatus!
   # True when the user's email is in LENA_PROTECTED_EMAILS: such admins
   # can never be demoted or banned via the API.
   isProtected: Boolean!
@@ -554,6 +572,7 @@ enum NotificationKind {
   PROTEIN_DEFROST
   MEAL_PREP_ADVANCE
   ITEM_EXPIRING
+  ACCESS_REQUESTED
 }
 
 # Restricted user projection for household flows — intentionally omits

@@ -135,6 +135,9 @@ services:
       LENA_ADMIN_EMAILS: ${LENA_ADMIN_EMAILS:-}
       # Protected admins can never be demoted or banned via the API.
       LENA_PROTECTED_EMAILS: ${LENA_PROTECTED_EMAILS:-}
+      # Approval barrier (LEN-127): first-time sign-ins stay pending until
+      # an admin approves them. Defaults on; e2e/dev stacks set false.
+      LENA_REQUIRE_MEMBER_APPROVAL: ${LENA_REQUIRE_MEMBER_APPROVAL:-true}
       # Trusted proxy CIDRs for X-Forwarded-For parsing. Must match caddy's
       # pinned ipv4_address below; the API never publishes a host port, so
       # only Caddy can reach it with a rewritten XFF.

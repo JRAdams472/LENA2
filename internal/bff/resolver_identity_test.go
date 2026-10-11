@@ -22,11 +22,12 @@ import (
 
 // fakeIdentityService is an in-memory IdentityService for resolver tests.
 type fakeIdentityService struct {
-	users      map[int64]identity.User
-	protected  map[string]bool
-	roleErr    error
-	activeErr  error
-	profileErr error
+	users       map[int64]identity.User
+	protected   map[string]bool
+	roleErr     error
+	activeErr   error
+	profileErr  error
+	approvalErr error
 	// memberships mirrors household_member for LEN-26: user → household →
 	// role. When nil, a user's household_id counts as their only membership
 	// (the P1 1:1 invariant).
@@ -90,6 +91,43 @@ func (f *fakeIdentityService) AdminSetActive(_ context.Context, _, targetID int6
 	}
 	u := f.users[targetID]
 	u.IsActive = active
+	f.users[targetID] = u
+	return nil
+}
+
+func (f *fakeIdentityService) ListPendingUsers(_ context.Context, limit, offset int32) ([]identity.User, error) {
+	var out []identity.User
+	for _, u := range f.users {
+		if u.IsPending() {
+			out = append(out, u)
+		}
+	}
+	if int(offset) >= len(out) {
+		return nil, nil
+	}
+	out = out[offset:]
+	if int(limit) < len(out) {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (f *fakeIdentityService) CountPendingUsers(context.Context) (int64, error) {
+	var n int64
+	for _, u := range f.users {
+		if u.IsPending() {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *fakeIdentityService) AdminSetApproval(_ context.Context, _, targetID int64, status, _ string) error {
+	if f.approvalErr != nil {
+		return f.approvalErr
+	}
+	u := f.users[targetID]
+	u.ApprovalStatus = status
 	f.users[targetID] = u
 	return nil
 }
@@ -436,4 +474,71 @@ func TestResolver_User_HouseholdSelfGated(t *testing.T) {
 	hh, err = other.Household(adminCtx())
 	require.NoError(t, err)
 	assert.Nil(t, hh)
+}
+
+func TestResolver_PendingUsers_AdminOnly(t *testing.T) {
+	r := &Resolver{IdentityService: newFakeIdentityService(
+		identity.User{UserID: 1, Email: "admin@example.com", Role: identity.RoleAdmin, IsActive: true},
+		identity.User{UserID: 2, Email: "new@example.com", Role: identity.RoleMember, IsActive: true, ApprovalStatus: identity.StatusPending},
+		identity.User{UserID: 3, Email: "old@example.com", Role: identity.RoleMember, IsActive: true, ApprovalStatus: identity.StatusApproved},
+	)}
+	args := func() struct {
+		Page     int32
+		PageSize int32
+	} {
+		return struct {
+			Page     int32
+			PageSize int32
+		}{Page: 1, PageSize: 25}
+	}
+
+	// Unauthenticated and non-admin are rejected like the users list.
+	_, err := r.PendingUsers(context.Background(), args())
+	assert.EqualError(t, err, "unauthorized")
+	_, err = r.PendingUsers(testutil.WithUser(context.Background(), 2, "m@example.com"), args())
+	assert.EqualError(t, err, "forbidden: admin role required")
+
+	page, err := r.PendingUsers(adminCtx(), args())
+	require.NoError(t, err)
+	require.Len(t, page.Items(), 1)
+	assert.Equal(t, "new@example.com", page.Items()[0].Email())
+	assert.Equal(t, "PENDING", page.Items()[0].ApprovalStatus())
+	assert.Equal(t, int32(1), page.PageInfo().TotalCount())
+}
+
+func TestResolver_ApproveDenyUser(t *testing.T) {
+	svc := newFakeIdentityService(
+		identity.User{UserID: 1, Email: "admin@example.com", Role: identity.RoleAdmin, IsActive: true},
+		identity.User{UserID: 2, Email: "new@example.com", Role: identity.RoleMember, IsActive: true, ApprovalStatus: identity.StatusPending},
+	)
+	auth := &fakeAuthInvalidator{}
+	r := &Resolver{IdentityService: svc, AuthInvalidator: auth}
+	args := func(id string) struct{ UserID graphql.ID } {
+		return struct{ UserID graphql.ID }{UserID: graphql.ID(id)}
+	}
+
+	// Non-admin cannot approve.
+	_, err := r.ApproveUser(testutil.WithUser(context.Background(), 3, "x@x.com"), args("2"))
+	assert.EqualError(t, err, "forbidden: admin role required")
+
+	// Approve flips the status and evicts the cached identity.
+	got, err := r.ApproveUser(adminCtx(), args("2"))
+	require.NoError(t, err)
+	assert.Equal(t, "APPROVED", got.ApprovalStatus())
+	assert.Equal(t, []int64{2}, auth.userIDs)
+
+	// Deny records the durable status and evicts again.
+	got, err = r.DenyUser(adminCtx(), args("2"))
+	require.NoError(t, err)
+	assert.Equal(t, "DENIED", got.ApprovalStatus())
+	assert.Equal(t, []int64{2, 2}, auth.userIDs)
+
+	// Guard errors map to FORBIDDEN.
+	svc.approvalErr = identity.ErrProtectedUser
+	_, err = r.DenyUser(adminCtx(), args("2"))
+	assert.ErrorContains(t, err, "protected admin")
+
+	svc.approvalErr = identity.ErrSelfModification
+	_, err = r.ApproveUser(adminCtx(), args("1"))
+	assert.ErrorContains(t, err, "your own role")
 }

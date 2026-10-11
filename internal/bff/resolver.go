@@ -591,6 +591,10 @@ func (r *userResolver) Role() string { return r.u.Role }
 
 func (r *userResolver) IsActive() bool { return r.u.IsActive }
 
+// ApprovalStatus exposes the LEN-127 approval lifecycle as the schema's
+// UserApprovalStatus enum (stored lowercase, serialized uppercase).
+func (r *userResolver) ApprovalStatus() string { return strings.ToUpper(r.u.ApprovalStatus) }
+
 func (r *userResolver) IsProtected() bool { return r.protected }
 
 func (r *userResolver) LastLoginAt() *graphql.Time {
