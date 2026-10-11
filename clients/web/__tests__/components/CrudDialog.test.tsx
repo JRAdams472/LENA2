@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
+
+jest.mock("@mui/material/useMediaQuery", () => ({
+  __esModule: true,
+  default: jest.fn(() => false),
+}));
+const mockUseMediaQuery = useMediaQuery as jest.Mock;
 
 interface Row {
   name: string;
@@ -36,6 +43,8 @@ function renderDialog(
 }
 
 describe("CrudDialog", () => {
+  beforeEach(() => mockUseMediaQuery.mockReturnValue(false));
+
   it("renders all field types", () => {
     renderDialog();
 
@@ -154,5 +163,21 @@ describe("CrudDialog", () => {
     renderDialog({ error: new Error("Save failed") });
 
     expect(screen.getByRole("alert")).toHaveTextContent("Save failed");
+  });
+
+  it("goes full-screen below the sm breakpoint", () => {
+    mockUseMediaQuery.mockReturnValue(true);
+    renderDialog();
+
+    expect(
+      document.querySelector(".MuiDialog-paperFullScreen")
+    ).not.toBeNull();
+  });
+
+  it("stays a floating dialog at sm and up", () => {
+    mockUseMediaQuery.mockReturnValue(false);
+    renderDialog();
+
+    expect(document.querySelector(".MuiDialog-paperFullScreen")).toBeNull();
   });
 });

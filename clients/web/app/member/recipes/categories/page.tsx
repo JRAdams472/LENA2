@@ -20,6 +20,7 @@ import Switch from "@mui/material/Switch";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
@@ -166,6 +167,7 @@ export default function RecipeCategoriesPage() {
             </Button>
           )}
         </Box>
+        <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -205,6 +207,7 @@ export default function RecipeCategoriesPage() {
             ))}
           </TableBody>
         </Table>
+        </TableContainer>
       </Paper>
 
       <Paper sx={{ p: 3 }}>
@@ -239,6 +242,7 @@ export default function RecipeCategoriesPage() {
           )}
         </Box>
         {selectedGroup && (
+          <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -272,6 +276,7 @@ export default function RecipeCategoriesPage() {
               ))}
             </TableBody>
           </Table>
+          </TableContainer>
         )}
       </Paper>
 
