@@ -1028,6 +1028,7 @@ interface GqlStore {
 interface GqlGroceryList {
   id: string;
   generatedAt: string;
+  mealPlan: { id: string; name: string } | null;
   store: GqlStore | null;
   items: GqlGroceryListItem[];
 }
@@ -2028,7 +2029,8 @@ function toGroceryList(g: GqlGroceryList): GroceryList {
   return {
     ...audit(),
     groceryListID: listID,
-    mealPlanID: null,
+    mealPlanID: g.mealPlan ? num(g.mealPlan.id) : null,
+    mealPlanName: g.mealPlan?.name ?? null,
     generatedDate: g.generatedAt,
     groceryListItems: (g.items ?? []).map((i) => toGroceryListItem(listID, i)),
     store: g.store ? toStore(g.store) : null,
@@ -2181,6 +2183,7 @@ const STORE_FIELDS = `
 
 const GROCERY_LIST_FIELDS = `
   id generatedAt
+  mealPlan { id name }
   store { ${STORE_FIELDS} }
   items {
     id manualItemName quantityNeeded unitOfMeasure source isChecked
@@ -4440,13 +4443,10 @@ export const api = {
     return toGroceryList(data.groceryList);
   },
 
-  generateGroceryList: async (mealPlanId?: number): Promise<GroceryList> => {
-    if (mealPlanId === undefined) {
-      throw new ApiError(400, "generateGroceryList requires a mealPlanId");
-    }
+  generateGroceryList: async (mealPlanId?: number | null): Promise<GroceryList> => {
     const data = await request<{ generateGroceryList: GqlGroceryList }>(
-      `mutation ($mealPlanId: ID!) { generateGroceryList(mealPlanId: $mealPlanId) { ${GROCERY_LIST_FIELDS} } }`,
-      { mealPlanId: String(mealPlanId) }
+      `mutation ($mealPlanId: ID) { generateGroceryList(mealPlanId: $mealPlanId) { ${GROCERY_LIST_FIELDS} } }`,
+      { mealPlanId: mealPlanId == null ? null : String(mealPlanId) }
     );
     return toGroceryList(data.generateGroceryList);
   },

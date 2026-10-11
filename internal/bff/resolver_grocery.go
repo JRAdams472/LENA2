@@ -98,6 +98,21 @@ func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, 
 	return gc, nil
 }
 
+// loadGroceryPlans batch-loads the source meal plan for every list that
+// has one — once per distinct plan, so the mealPlan field resolver never
+// queries per list row. Manual lists contribute nothing to the map.
+func loadGroceryPlans(ctx context.Context, mp MealPlanService, householdID int64, lists []grocery.GroceryList) (map[int64]mealplan.MealPlan, error) {
+	plans := make(map[int64]mealplan.MealPlan)
+	for _, planID := range distinctIDs(lists, func(l grocery.GroceryList) *int64 { return l.MealPlanID }) {
+		plan, err := mp.GetMealPlanByID(ctx, planID, householdID)
+		if err != nil {
+			return nil, err
+		}
+		plans[planID] = plan
+	}
+	return plans, nil
+}
+
 // GroceryList resolves a single grocery list by ID.
 func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }) (*groceryListResolver, error) {
 	u, err := userFromContext(ctx)
@@ -118,7 +133,36 @@ func (r *Resolver) GroceryList(ctx context.Context, args struct{ ID graphql.ID }
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[id], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, usualItems: gc.usualItems, ch: gc.ch}, nil
+	plans, err := loadGroceryPlans(ctx, r.MealPlanService, u.HouseholdID, []grocery.GroceryList{list})
+	if err != nil {
+		return nil, err
+	}
+	return r.newGroceryListResolver(u, list, gc, plans), nil
+}
+
+// newGroceryListResolver builds a list resolver preloaded with the
+// batch-loaded children and source plans — every construction site
+// shares this so the service references and per-user sources stay
+// consistent.
+func (r *Resolver) newGroceryListResolver(u currentuser.User, list grocery.GroceryList, gc *groceryChildren, plans map[int64]mealplan.MealPlan) *groceryListResolver {
+	return &groceryListResolver{
+		g:           r.GroceryService,
+		inv:         r.InventoryService,
+		mp:          r.MealPlanService,
+		rec:         r.RecipeService,
+		up:          r.UserPrefsService,
+		user:        u,
+		as:          r.allergySrc(u),
+		householdID: u.HouseholdID,
+		list:        list,
+		items:       gc.itemsByList[list.GroceryListID],
+		catItems:    gc.items,
+		units:       gc.units,
+		ingredients: gc.ingredients,
+		usualItems:  gc.usualItems,
+		plans:       plans,
+		ch:          gc.ch,
+	}
 }
 
 // GroceryLists resolves the current household's grocery lists.
@@ -143,7 +187,11 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListPageResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, lists: lists, itemsByList: gc.itemsByList, items: gc.items, units: gc.units, ingredients: gc.ingredients, usualItems: gc.usualItems, ch: gc.ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+	plans, err := loadGroceryPlans(ctx, r.MealPlanService, u.HouseholdID, lists)
+	if err != nil {
+		return nil, err
+	}
+	return &groceryListPageResolver{r: r, u: u, lists: lists, gc: gc, plans: plans, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
 // GenerateGroceryList generates a grocery list from a meal plan. The BFF
@@ -151,39 +199,53 @@ func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 // inventory, so the whole expansion — slots to recipe items, per-item
 // totals, pantry-stock subtraction, and the list write — is composed here
 // inside one unit of work.
-func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPlanID graphql.ID }) (*groceryListResolver, error) {
+func (r *Resolver) GenerateGroceryList(ctx context.Context, args struct{ MealPlanID *graphql.ID }) (*groceryListResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	mealPlanID, err := parseID(string(args.MealPlanID))
-	if err != nil {
-		return nil, err
-	}
-	// Verify the plan belongs to the caller before creating a list linked
-	// to it — otherwise the mutation is an existence oracle on
-	// users' plan IDs via the FK error.
-	if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.HouseholdID); err != nil {
-		return nil, err
-	}
-
 	var list grocery.GroceryList
 	var needs []groceryNeed
-	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
-		var err error
-		list, needs, err = r.generateGroceryListTx(ctx, u, mealPlanID)
-		return err
-	}); err != nil {
-		return nil, err
+	if args.MealPlanID == nil {
+		// Manual list — detached from any meal plan.
+		if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+			var cerr error
+			list, cerr = r.GroceryService.CreateGroceryList(ctx, u.HouseholdID, nil, u.Email)
+			return cerr
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		mealPlanID, err := parseID(string(*args.MealPlanID))
+		if err != nil {
+			return nil, err
+		}
+		// Verify the plan belongs to the caller before creating a list linked
+		// to it — otherwise the mutation is an existence oracle on
+		// users' plan IDs via the FK error.
+		if _, err := r.MealPlanService.GetMealPlanByID(ctx, mealPlanID, u.HouseholdID); err != nil {
+			return nil, err
+		}
+		if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+			var err error
+			list, needs, err = r.generateGroceryListTx(ctx, u, mealPlanID)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		r.recordGroceryNeedEvents(u, needs)
 	}
-	r.recordGroceryNeedEvents(u, needs)
 	// Preload the freshly generated list's children so nested resolvers
 	// never fall back to per-row queries.
 	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{list.GroceryListID})
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[list.GroceryListID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, usualItems: gc.usualItems, ch: gc.ch}, nil
+	plans, err := loadGroceryPlans(ctx, r.MealPlanService, u.HouseholdID, []grocery.GroceryList{list})
+	if err != nil {
+		return nil, err
+	}
+	return r.newGroceryListResolver(u, list, gc, plans), nil
 }
 
 // generateGroceryListTx is the transactional core of GenerateGroceryList:
@@ -863,6 +925,11 @@ func (r *Resolver) parseGroceryItemInput(ctx context.Context, in addGroceryItemI
 type groceryListResolver struct {
 	g           GroceryService
 	inv         ItemReader
+	mp          MealPlanService
+	rec         RecipeService
+	up          UserPrefsService
+	user        currentuser.User
+	as          *allergySource
 	householdID int64
 	list        grocery.GroceryList
 	items       []grocery.GroceryListItem
@@ -870,11 +937,25 @@ type groceryListResolver struct {
 	units       map[int64]inventory.Unit
 	ingredients map[int64]inventory.Ingredient
 	usualItems  map[int64]int64
+	plans       map[int64]mealplan.MealPlan
 	ch          *itemChildren
 }
 
 func (r *groceryListResolver) ID() graphql.ID {
 	return graphql.ID(strconv.FormatInt(r.list.GroceryListID, 10))
+}
+
+// MealPlan resolves the plan this list was generated from — null for
+// manual lists (created without a meal plan).
+func (r *groceryListResolver) MealPlan() *mealPlanResolver {
+	if r.list.MealPlanID == nil {
+		return nil
+	}
+	plan, ok := r.plans[*r.list.MealPlanID]
+	if !ok {
+		return nil
+	}
+	return &mealPlanResolver{mp: r.mp, inv: r.inv, rec: r.rec, up: r.up, user: r.user, plan: plan, as: r.as}
 }
 
 func (r *groceryListResolver) GeneratedAt() graphql.Time {
@@ -1074,25 +1155,20 @@ func (r *groceryListItemResolver) AllergyWarnings(ctx context.Context) ([]*aller
 }
 
 type groceryListPageResolver struct {
-	g           GroceryService
-	inv         ItemReader
-	householdID int64
-	lists       []grocery.GroceryList
-	itemsByList map[int64][]grocery.GroceryListItem
-	items       map[int64]inventory.Item
-	units       map[int64]inventory.Unit
-	ingredients map[int64]inventory.Ingredient
-	usualItems  map[int64]int64
-	ch          *itemChildren
-	page        int32
-	pageSize    int32
-	total       int32
+	r        *Resolver
+	u        currentuser.User
+	lists    []grocery.GroceryList
+	gc       *groceryChildren
+	plans    map[int64]mealplan.MealPlan
+	page     int32
+	pageSize int32
+	total    int32
 }
 
 func (r *groceryListPageResolver) Items() []*groceryListResolver {
 	out := make([]*groceryListResolver, len(r.lists))
 	for i := range r.lists {
-		out[i] = &groceryListResolver{g: r.g, inv: r.inv, householdID: r.householdID, list: r.lists[i], items: r.itemsByList[r.lists[i].GroceryListID], catItems: r.items, units: r.units, ingredients: r.ingredients, usualItems: r.usualItems, ch: r.ch}
+		out[i] = r.r.newGroceryListResolver(r.u, r.lists[i], r.gc, r.plans)
 	}
 	return out
 }

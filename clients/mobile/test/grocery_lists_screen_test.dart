@@ -58,10 +58,19 @@ Map<String, dynamic> _listsResponse(
       },
     };
 
-Map<String, dynamic> _list(String id, String generatedAt) => {
+Map<String, dynamic> _list(String id, String generatedAt,
+        {Map<String, dynamic>? mealPlan}) =>
+    {
       '__typename': 'GroceryList',
       'id': id,
       'generatedAt': generatedAt,
+      'mealPlan': mealPlan,
+    };
+
+Map<String, dynamic> _plan(String id, String name) => {
+      '__typename': 'MealPlan',
+      'id': id,
+      'name': name,
     };
 
 Future<void> _pump(WidgetTester tester, _MockGraphQL mock) {
@@ -99,18 +108,22 @@ void main() {
       await _pump(tester, mock);
       await tester.pumpAndSettle();
       expect(find.text('No grocery lists yet'), findsOneWidget);
-      expect(find.text('Generate one from a meal plan.'), findsOneWidget);
+      expect(find.text('Create one manually or from a meal plan.'),
+          findsOneWidget);
     });
 
-    testWidgets('renders generated dates for a populated list', (tester) async {
+    testWidgets('renders generated dates and source labels', (tester) async {
       final mock = _MockGraphQL((_) => _listsResponse([
             _list('1', '2026-10-04T18:48:42Z'),
-            _list('2', '2026-10-10T08:00:00Z'),
+            _list('2', '2026-10-10T08:00:00Z',
+                mealPlan: _plan('7', 'Week of Oct 5')),
           ]));
       await _pump(tester, mock);
       await tester.pumpAndSettle();
-      expect(find.text('List 1'), findsOneWidget);
-      expect(find.text('List 2'), findsOneWidget);
+      // A plan-less list labels itself "Manual list"; a generated one
+      // carries the plan's name.
+      expect(find.text('Manual list'), findsOneWidget);
+      expect(find.text('Week of Oct 5'), findsOneWidget);
       expect(find.textContaining('Generated'), findsNWidgets(2));
     });
 
@@ -132,11 +145,12 @@ void main() {
             },
           };
         }
-        return _listsResponse([_list('1', '2026-10-04T18:48:42Z')]);
+        return _listsResponse(
+            [_list('1', '2026-10-04T18:48:42Z', mealPlan: _plan('7', 'Wk 37'))]);
       });
       await _pump(tester, mock);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('List 1'));
+      await tester.tap(find.text('Wk 37'));
       await tester.pumpAndSettle();
       expect(find.text('Grocery List'), findsOneWidget);
     });
@@ -164,7 +178,8 @@ void main() {
             },
           };
         }
-        return _listsResponse([_list('1', '2026-10-04T18:48:42Z')]);
+        return _listsResponse(
+            [_list('1', '2026-10-04T18:48:42Z', mealPlan: _plan('7', 'Wk 37'))]);
       });
       await _pump(tester, mock);
       await tester.pumpAndSettle();
@@ -172,11 +187,11 @@ void main() {
       // Nothing selected — placeholder occupies the detail pane.
       expect(find.text('Select a list'), findsOneWidget);
 
-      await tester.tap(find.text('List 1'));
+      await tester.tap(find.text('Wk 37'));
       await tester.pumpAndSettle();
 
       // Inline pane: list stays visible next to the detail screen.
-      expect(find.text('List 1'), findsOneWidget);
+      expect(find.text('Wk 37'), findsOneWidget);
       expect(find.text('Grocery List'), findsOneWidget);
       expect(find.text('Select a list'), findsNothing);
     });
@@ -194,7 +209,10 @@ void main() {
               '__typename': 'Query',
               'groceryLists': {
                 '__typename': 'GroceryListPage',
-                'items': [_list('26', '2026-10-05T00:00:00Z')],
+                'items': [
+                  _list('26', '2026-10-05T00:00:00Z',
+                      mealPlan: _plan('9', 'Week of Oct 19'))
+                ],
                 'pageInfo': {
                   '__typename': 'PageInfo',
                   'pageNumber': 2,
@@ -219,7 +237,7 @@ void main() {
           .map((b) => (b['variables'] as Map)['page'])
           .toSet();
       expect(pages, contains(2));
-      expect(find.text('List 26'), findsOneWidget);
+      expect(find.text('Week of Oct 19'), findsOneWidget);
     });
 
     testWidgets('pull-to-refresh refetches the list', (tester) async {
@@ -275,6 +293,7 @@ void main() {
       expect(find.text('Generate Grocery List'), findsOneWidget);
       await tester.tap(find.byType(DropdownButtonFormField<String?>));
       await tester.pumpAndSettle();
+      expect(find.text('Manual list (no meal plan)'), findsWidgets);
       expect(find.text('Week of Oct 5'), findsWidgets);
       expect(find.text('Week of Oct 12'), findsWidgets);
     });
@@ -303,7 +322,7 @@ void main() {
       expect(mock.matching('groceryLists').length, greaterThan(1));
     });
 
-    testWidgets('generate without a selected plan sends no mutation',
+    testWidgets('the default manual option sends a null mealPlanId',
         (tester) async {
       final mock = _MockGraphQL(dialogResponse);
       await _pump(tester, mock);
@@ -312,8 +331,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Generate'));
       await tester.pumpAndSettle();
-      expect(mock.matching('generateGroceryList'), isEmpty);
-      expect(find.text('Generate Grocery List'), findsOneWidget);
+      final mutations = mock.matching('generateGroceryList');
+      expect(mutations, hasLength(1));
+      expect((mutations.single['variables'] as Map)['mealPlanId'], isNull);
+      expect(find.text('Generate Grocery List'), findsNothing);
     });
 
     testWidgets('cancel dismisses without generating', (tester) async {

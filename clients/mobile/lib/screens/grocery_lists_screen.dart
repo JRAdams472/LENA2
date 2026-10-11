@@ -16,6 +16,10 @@ const String groceryListsQuery = r'''
       items {
         id
         generatedAt
+        mealPlan {
+          id
+          name
+        }
       }
       pageInfo {
         pageNumber
@@ -88,7 +92,7 @@ class _GroceryListsScreenState extends State<GroceryListsScreen> {
       return const EmptyState(
         icon: Icons.shopping_cart_outlined,
         title: 'No grocery lists yet',
-        description: 'Generate one from a meal plan.',
+        description: 'Create one manually or from a meal plan.',
       );
     }
     return RefreshIndicator(
@@ -109,9 +113,11 @@ class _GroceryListsScreenState extends State<GroceryListsScreen> {
           final list = lists[index] as Map<String, dynamic>;
           final id = list['id'] as String;
           final generatedAt = list['generatedAt'] as String? ?? '';
+          final planName = list['mealPlan']?['name'] as String?;
           return Card(
             child: ListTile(
-              title: Text('List ${index + 1}'),
+              title: Text(planName ?? 'Manual list',
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text('Generated ${fmtIso(generatedAt)}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => openOrSelect(

@@ -360,7 +360,10 @@ type Mutation {
   addMealSlotItem(input: AddMealSlotItemInput!): MealSlotItem!
   removeMealSlotItem(slotItemId: ID!): Boolean!
 
-  generateGroceryList(mealPlanId: ID!): GroceryList!
+  # With a meal plan: generates (or regenerates in place) the plan's list
+  # from its slots minus pantry stock. With null: creates an empty manual
+  # list detached from any plan.
+  generateGroceryList(mealPlanId: ID): GroceryList!
   recordSelection(entityType: EntityType!, entityId: ID!): Boolean!
   recordView(entityType: EntityType!, entityId: ID!): Boolean!
   recordSearch(entityType: EntityType!, term: String!): Boolean!
@@ -1332,6 +1335,8 @@ type TimelineStep {
 type GroceryList {
   id: ID!
   generatedAt: Time!
+  # The plan this list was generated from; null for manual lists.
+  mealPlan: MealPlan
   items: [GroceryListItem!]!
   store: Store
 }

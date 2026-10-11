@@ -153,7 +153,7 @@ func (r *Resolver) AddItemToCurrentGroceryList(ctx context.Context, args struct 
 		return nil, err
 	}
 	if len(lists) == 0 {
-		return nil, badInputf("no grocery list yet — generate one from the meal plan first")
+		return nil, badInputf("no grocery list yet — create one first")
 	}
 	it, err := r.GroceryService.AddGroceryListItem(ctx, grocery.GroceryListItem{
 		GroceryListID:  lists[0].GroceryListID,

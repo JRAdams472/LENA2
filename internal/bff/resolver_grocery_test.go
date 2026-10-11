@@ -233,9 +233,11 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	mealPlanID := int64(55)
 	recipeID := int64(7)
 	servings := int32(4)
-	// The plan must belong to the caller before a list is linked to it.
+	// The plan must belong to the caller before a list is linked to it;
+	// the source plan is also preloaded for the mealPlan field resolver.
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
-		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil)
+		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID, Name: "Week 37"}, nil).
+		Times(2)
 	// No prior list for this plan — falls through to creation.
 	g.EXPECT().GetLatestGroceryListByPlan(gomock.Any(), mealPlanID, grocUserID).
 		Return(grocery.GroceryList{}, domainerr.ErrNotFound)
@@ -267,9 +269,29 @@ func TestResolver_GenerateGroceryList_Happy(t *testing.T) {
 	// The returned resolver preloads the new list's children.
 	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{21}, grocUserID).Return(nil, nil)
 
-	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID *graphql.ID }{MealPlanID: ptrToGrocID("55")})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("21"), res.ID())
+	// The source plan resolves off the preloaded map — no extra query.
+	require.NotNil(t, res.MealPlan())
+	assert.Equal(t, graphql.ID("55"), res.MealPlan().ID())
+}
+
+// A null mealPlanId creates an empty manual list — no plan check, no
+// needs expansion.
+func TestResolver_GenerateGroceryList_Manual(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	r := &Resolver{GroceryService: g, MealPlanService: mock.NewMockMealPlanService(ctrl)}
+
+	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, (*int64)(nil), grocEmail).
+		Return(grocery.GroceryList{GroceryListID: 31, HouseholdID: grocUserID}, nil)
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{31}, grocUserID).Return(nil, nil)
+
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID *graphql.ID }{MealPlanID: nil})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("31"), res.ID())
+	assert.Nil(t, res.MealPlan(), "manual lists have no source plan")
 }
 
 // A second generation for the same plan reuses the existing list:
@@ -289,7 +311,8 @@ func TestResolver_GenerateGroceryList_RegeneratesInPlace(t *testing.T) {
 	recipeID := int64(7)
 	servings := int32(4)
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
-		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil)
+		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil).
+		Times(2)
 	g.EXPECT().GetLatestGroceryListByPlan(gomock.Any(), mealPlanID, grocUserID).
 		Return(grocery.GroceryList{GroceryListID: 21, HouseholdID: grocUserID, MealPlanID: &mealPlanID}, nil)
 	mp.EXPECT().ListMealSlotsForPlan(gomock.Any(), mealPlanID, grocUserID).
@@ -311,14 +334,14 @@ func TestResolver_GenerateGroceryList_RegeneratesInPlace(t *testing.T) {
 		})
 	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{21}, grocUserID).Return(nil, nil)
 
-	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID *graphql.ID }{MealPlanID: ptrToGrocID("55")})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("21"), res.ID())
 }
 
 func TestResolver_GenerateGroceryList_Unauthorized(t *testing.T) {
 	r := &Resolver{}
-	res, err := r.GenerateGroceryList(context.Background(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	res, err := r.GenerateGroceryList(context.Background(), struct{ MealPlanID *graphql.ID }{MealPlanID: ptrToGrocID("55")})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
 }
@@ -335,7 +358,7 @@ func TestResolver_GenerateGroceryList_ServiceError(t *testing.T) {
 		Return(grocery.GroceryList{}, domainerr.ErrNotFound)
 	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, gomock.Any(), grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
 
-	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID *graphql.ID }{MealPlanID: ptrToGrocID("55")})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errGrocBoom)
 }
@@ -350,7 +373,7 @@ func TestResolver_GenerateGroceryList_ForeignPlanRejected(t *testing.T) {
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), int64(55), grocUserID).
 		Return(mealplan.MealPlan{}, errGrocBoom)
 
-	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID *graphql.ID }{MealPlanID: ptrToGrocID("55")})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errGrocBoom)
 }
@@ -629,7 +652,8 @@ func TestResolver_GenerateGroceryList_IngredientNeeds(t *testing.T) {
 	servings := int32(4)
 	ingredientID := int64(9)
 	mp.EXPECT().GetMealPlanByID(gomock.Any(), mealPlanID, grocUserID).
-		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil)
+		Return(mealplan.MealPlan{MealPlanID: mealPlanID, HouseholdID: grocUserID}, nil).
+		Times(2)
 	g.EXPECT().GetLatestGroceryListByPlan(gomock.Any(), mealPlanID, grocUserID).
 		Return(grocery.GroceryList{}, domainerr.ErrNotFound)
 	g.EXPECT().CreateGroceryList(gomock.Any(), grocUserID, &mealPlanID, grocEmail).
@@ -662,7 +686,7 @@ func TestResolver_GenerateGroceryList_IngredientNeeds(t *testing.T) {
 		})
 	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{21}, grocUserID).Return(nil, nil)
 
-	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID graphql.ID }{MealPlanID: "55"})
+	res, err := r.GenerateGroceryList(grocCtx(), struct{ MealPlanID *graphql.ID }{MealPlanID: ptrToGrocID("55")})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("21"), res.ID())
 }
@@ -705,8 +729,9 @@ func TestResolver_DeleteGroceryItem_ServiceError(t *testing.T) {
 	assert.ErrorIs(t, err, errGrocBoom)
 }
 
-func ptrToGrocInt64(v int64) *int64    { return &v }
-func ptrToGrocString(v string) *string { return &v }
+func ptrToGrocInt64(v int64) *int64        { return &v }
+func ptrToGrocString(v string) *string     { return &v }
+func ptrToGrocID(v graphql.ID) *graphql.ID { return &v }
 
 func TestResolver_SuggestedRestockItems(t *testing.T) {
 	t.Run("ranks engaged low-pantry items, excludes on-list and unengaged", func(t *testing.T) {
