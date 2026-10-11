@@ -2,14 +2,17 @@
 
 import { ReactNode, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -18,6 +21,7 @@ import { paletteFor } from "@/lib/themeVars";
 import LenaLogo from "@/app/components/LenaLogo";
 import ThemeModeButton from "@/app/components/ThemeModeButton";
 import LoginMenu from "@/app/components/marketing/LoginMenu";
+import { DocsNavList } from "@/app/components/marketing/DocsNav";
 
 const NAV = [
   { label: "Docs", href: "/docs" },
@@ -28,7 +32,11 @@ const APPBAR_HEIGHT = 64;
 
 export default function MarketingShell({ children }: { children: ReactNode }) {
   const theme = useTheme();
+  const pathname = usePathname() ?? "";
   const [navOpen, setNavOpen] = useState(false);
+  // The docs rail is hidden on phones — on /docs routes the drawer carries
+  // the docs tree so every page stays reachable, with site links below.
+  const onDocs = pathname.startsWith("/docs");
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
@@ -78,8 +86,25 @@ export default function MarketingShell({ children }: { children: ReactNode }) {
         onClose={() => setNavOpen(false)}
         sx={{ display: { md: "none" } }}
       >
-        <Box sx={{ width: 240, p: 1 }} role="navigation" aria-label="Site">
-          <List dense>
+        <Box
+          sx={{ width: 260, p: 1 }}
+          role="navigation"
+          aria-label={onDocs ? "Documentation" : "Site"}
+        >
+          {onDocs && <DocsNavList onNavigate={() => setNavOpen(false)} />}
+          {onDocs && <Divider sx={{ my: 1 }} />}
+          <List
+            dense
+            subheader={
+              onDocs ? (
+                <ListSubheader
+                  sx={{ bgcolor: "transparent", fontWeight: 700, lineHeight: "40px" }}
+                >
+                  Site
+                </ListSubheader>
+              ) : undefined
+            }
+          >
             {NAV.map((item) => (
               <ListItemButton
                 key={item.label}
