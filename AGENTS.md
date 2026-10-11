@@ -5,6 +5,7 @@
 - Each major rewrite phase is developed on its own branch named `phase-<N>` (e.g. `phase-5`).
   - The mobile redesign used a self-describing named series instead: `mobile-redesign-p0` through `mobile-redesign-p5`.
 - **Ticket-prefixed names (required):** branches and PR titles must start with the Linear ticket number — `LEN-11-close-out` / `LEN-11: Close-out — docs, wiki, full UAT loop`. Every plan gets a Linear ticket and each phase a subticket; keep them linked.
+- **One PR per phase subticket (required):** each phase lands as its own PR opened from its own ticket-prefixed branch — never batch multiple phase tickets into a single PR.
 - Do not push commits directly to `main`.
 - Before opening a pull request, run `go mod tidy` and commit any `go.mod`/`go.sum` changes — CI fails the lint job when they are not tidy.
 - When a phase is complete, open a pull request against `main` and summarize the changes.

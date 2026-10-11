@@ -11,12 +11,12 @@ import {
 } from "@/app/components/marketing/DocScaffold";
 
 export const metadata: Metadata = {
-  title: "Households & Members — LENA docs",
+  title: "Households — LENA docs",
 };
 
 export default function Page() {
   return (
-    <DocPage title={"Households & Members"} intro={"A household is the shared space everything in LENA lives in. All recipes, meal plans, grocery lists, pantry stock, events, and wine belong to the household — not to individual people — so everyone sees and works with the same data."}>
+    <DocPage title={"Households"} intro={"A household is the shared space everything in LENA lives in. All recipes, meal plans, grocery lists, pantry stock, events, and wine belong to the household — not to individual people — so everyone sees and works with the same data."}>
       <Section title={"The Household page"}>
         <P>{<Fragment key={0}>{"Open "}<strong key={0}>{"Household"}</strong>{" in the sidebar (web) or tap the "}<strong key={1}>{"People"}</strong>{" tab (mobile) to see:"}</Fragment>}</P>
         <DocList items={[
@@ -58,16 +58,17 @@ export default function Page() {
       <Section title={"Roles"}>
         <P>{<Fragment key={20}>{"Members carry roles (shown as chips next to their names), and a role is per household — you can be the owner of one household and a regular member of another. Regular members can plan, cook, shop, and edit shared data. Some admin-only surfaces exist — managing users and reviewing pending items/recipe imports — for the accounts designated as admins."}</Fragment>}</P>
         <P>{<Fragment key={21}>{"Admins get a "}<strong key={0}>{"Users"}</strong>{" page under "}<strong key={1}>{"Administration"}</strong>{": per-user role assignment (member ↔ admin), account status, last sign-in, and ban controls — an admin's own row can't be banned."}</Fragment>}</P>
-        <Screenshot src={"/images/users-admin.png"} alt={"The Users admin page — roles, status, and bans"} device="web" />
+        <P>{<Fragment key={22}>{"When the access-approval barrier is on, the same page opens with an "}<strong key={0}>{"Access requests"}</strong>{" queue: every new sign-in waits there as "}<code key={1}>{"pending"}</code>{" (a matching chip shows in the Status column) until an admin approves or denies it. Denied users can be approved later from the main table — a denial is a hold, not a deletion. Each new request also lands in the notification bell for every admin."}</Fragment>}</P>
+        <Screenshot src={"/images/users-access-requests.png"} alt={"The Users admin page — access requests, roles, status, and bans"} device="web" />
       </Section>
       <Section title={"Allergies are per member"}>
-        <P>{<Fragment key={22}>{"Each member records their own "}<DocLink key={0} href="/docs/allergy-tracking">{"allergies and dietary restrictions"}</DocLink>{" on the Household page — warnings name the person they protect, so a flag on dinner is never anonymous. Records follow the "}<em key={1}>{"person"}</em>{": if someone belongs to two households, their allergies warn in both."}</Fragment>}</P>
+        <P>{<Fragment key={23}>{"Each member records their own "}<DocLink key={0} href="/docs/allergy-tracking">{"allergies and dietary restrictions"}</DocLink>{" on the Household page — warnings name the person they protect, so a flag on dinner is never anonymous. Records follow the "}<em key={1}>{"person"}</em>{": if someone belongs to two households, their allergies warn in both."}</Fragment>}</P>
       </Section>
       <Section title={"Notifications between members"}>
-        <P>{<Fragment key={23}>{"When one member changes something shared, the "}<em key={0}>{"other members of that household"}</em>{" get a notification — so if you regenerate the grocery list, your partner sees it instead of being surprised by it at the store."}</Fragment>}</P>
+        <P>{<Fragment key={24}>{"When one member changes something shared, the "}<em key={0}>{"other members of that household"}</em>{" get a notification — so if you regenerate the grocery list, your partner sees it instead of being surprised by it at the store."}</Fragment>}</P>
       </Section>
       <Section title={"Leaving and merging"}>
-        <P>{<Fragment key={24}>{"Households are meant to be long-lived, but people move. Use "}<strong key={0}>{"Leave"}</strong>{" on the Your households card (or the mobile switcher sheet) to drop a single membership — the rest of your households are untouched. If your household situation consolidates (two homes become one), the invite + merge flow is the tool: invite everyone to the household you want to keep, and those who solely own their old household can merge its contents in."}</Fragment>}</P>
+        <P>{<Fragment key={25}>{"Households are meant to be long-lived, but people move. Use "}<strong key={0}>{"Leave"}</strong>{" on the Your households card (or the mobile switcher sheet) to drop a single membership — the rest of your households are untouched. If your household situation consolidates (two homes become one), the invite + merge flow is the tool: invite everyone to the household you want to keep, and those who solely own their old household can merge its contents in."}</Fragment>}</P>
       </Section>
     </DocPage>
   );
