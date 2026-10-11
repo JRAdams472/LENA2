@@ -238,7 +238,7 @@ ${parts.join("\n")}
 }
 `;
 
-const outPath = `${new URL("../clients/web/app/docs/", import.meta.url).pathname.replace(/^/([A-Za-z]:)/, "$1")}${slug}/page.tsx`;
+const outPath = `${new URL("../../clients/web/app/docs/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")}${slug}/page.tsx`;
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, out);
 console.log("wrote", outPath, `(${bodyBlocks.length} blocks)`);
