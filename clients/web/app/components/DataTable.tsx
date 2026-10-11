@@ -27,6 +27,7 @@ import Fade from "@mui/material/Fade";
 import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
 import { FieldDef } from "./CrudDialog";
 import EmptyState from "./EmptyState";
+import { lineClamp } from "@/lib/themeVars";
 
 interface DataTableProps<T extends object> {
   title: string;
@@ -346,12 +347,7 @@ export default function DataTable<T extends object>({
                         <Box
                           // Long names clamp at two lines instead of ballooning
                           // the row height (W-24).
-                          sx={{
-                            display: "-webkit-box",
-                            WebkitBoxOrient: "vertical",
-                            WebkitLineClamp: 2,
-                            overflow: "hidden",
-                          }}
+                          sx={lineClamp(2)}
                         >
                           {col.render ? col.render(row) : displayText(value, col.type)}
                         </Box>

@@ -27,7 +27,7 @@ import {
   Theme,
 } from "@mui/material/styles";
 import { Recipe } from "@/lib/types";
-import { paletteFor } from "@/lib/themeVars";
+import { lineClamp, paletteFor } from "@/lib/themeVars";
 import Fade from "@mui/material/Fade";
 import SectionHeader from "@/app/components/SectionHeader";
 import StatusChip from "@/app/components/StatusChip";
@@ -463,7 +463,11 @@ export default function Dashboard() {
                       {createElement(suggestionIcon(s.recipe))}
                     </Box>
                     <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Typography variant="subtitle2" component="div">
+                      <Typography
+                        variant="subtitle2"
+                        component="div"
+                        sx={lineClamp(2)}
+                      >
                         <Link href={`/member/recipes/${s.recipe.recipeID}`}>
                           {s.recipe.recipeName}
                         </Link>
@@ -525,7 +529,10 @@ export default function Dashboard() {
                         flexShrink: 0,
                       }}
                     />
-                    <Typography variant="body2" sx={{ minWidth: 0 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ minWidth: 0, ...lineClamp(2) }}
+                    >
                       {stripSize(it.name, size, it.brand)}
                       {it.brand && (
                         <Typography

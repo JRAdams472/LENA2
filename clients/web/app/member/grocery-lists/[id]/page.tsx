@@ -38,6 +38,7 @@ import { useTheme } from "@mui/material/styles";
 import { api } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, fmtDate, fmtQty, sizeBadge, stripSize } from "@/lib/format";
+import { lineClamp } from "@/lib/themeVars";
 import { GroceryListItem, GroceryRouteGroup, ShoppingLink, Store, StoreAisle } from "@/lib/types";
 
 function brandItemLabel(item: { name: string; brand?: string | null }): string {
@@ -389,6 +390,7 @@ export function ItemRow({
                 sx={{
                   minWidth: 0,
                   textDecoration: item.isChecked ? "line-through" : "none",
+                  ...lineClamp(2),
                 }}
               >
                 {itemName(item)}

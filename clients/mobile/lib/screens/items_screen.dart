@@ -131,7 +131,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   return Card(
                     child: ListTile(
                       dense: true,
-                      title: Text(item['name'] as String),
+                      title: Text(item['name'] as String,
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
                       subtitle: subtitle.isEmpty ? null : Text(subtitle),
                       onTap: () => openOrSelect(
                         context,

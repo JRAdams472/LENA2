@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ItemRow } from "@/app/member/grocery-lists/[id]/page";
 import { GroceryListItem } from "@/lib/types";
+import { hasLineClamp } from "../../../test-utils";
 
 const mockFetch = global.fetch as jest.Mock;
 
@@ -73,6 +74,15 @@ describe("ItemRow", () => {
     render(<ItemRow item={item} listId={1} />, { wrapper: Wrapper });
 
     expect(screen.getByText("Item 99")).toBeInTheDocument();
+  });
+
+  it("clamps a long item name at two lines", () => {
+    const longName = `Organic Free-Range ${"Very-Long-Adjective ".repeat(6)}Milk`;
+    const item = baseGroceryItem({ itemID: 1, itemName: longName });
+
+    render(<ItemRow item={item} listId={1} />, { wrapper: Wrapper });
+
+    expect(hasLineClamp(screen.getByText(longName))).toBe(true);
   });
 
   it("shows the ingredient name as the primary label", () => {

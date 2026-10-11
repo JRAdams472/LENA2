@@ -588,7 +588,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       key: ValueKey('grocery-item-$id'),
       title: Row(
         children: [
-          Expanded(child: Text('$name — $quantity $unit')),
+          Expanded(
+              child: Text('$name — $quantity $unit',
+                  maxLines: 2, overflow: TextOverflow.ellipsis)),
           AllergyWarningBadge(warnings: allergyWarningsOf(item)),
           if (suggested)
             Padding(
@@ -728,7 +730,8 @@ class _BrandPickDialogState extends State<_BrandPickDialog> {
                   children: [
                     for (final it in _results)
                       ListTile(
-                        title: Text(it['name'] as String? ?? ''),
+                        title: Text(it['name'] as String? ?? '',
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
                         subtitle: (it['brand'] as Map?)?['name'] != null
                             ? Text((it['brand'] as Map)['name'] as String)
                             : null,

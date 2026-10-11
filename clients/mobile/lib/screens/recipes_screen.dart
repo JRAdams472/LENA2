@@ -300,7 +300,8 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   return Card(
                     child: ListTile(
                       dense: true,
-                      title: Text(item['name'] as String),
+                      title: Text(item['name'] as String,
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
                       subtitle: description != null && description.isNotEmpty
                           ? Text(description,
                               maxLines: 2, overflow: TextOverflow.ellipsis)

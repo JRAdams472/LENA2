@@ -35,7 +35,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
 import { api, isApiErrorKind } from "@/lib/api";
-import { paletteFor } from "@/lib/themeVars";
+import { lineClamp, paletteFor } from "@/lib/themeVars";
 import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
@@ -231,11 +231,14 @@ function NotificationBell() {
               primary={notificationText(n)}
               secondary={
                 <>
-                  {n.body}
+                  <Box component="span" sx={lineClamp(2)}>
+                    {n.body}
+                  </Box>
                   {n.body ? <br /> : null}
                   {timeAgo(n.createdAt)}
                 </>
               }
+              slotProps={{ primary: { sx: lineClamp(2) } }}
             />
             {n.kind === "ITEM_EXPIRING" && n.itemId != null && (
               <Button

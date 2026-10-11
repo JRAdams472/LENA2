@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Dashboard from "@/app/member/page";
+import { hasLineClamp } from "../../test-utils";
 
 // jest.mock specifiers are not rewritten by the SWC path transform, so
 // the "@/..." alias cannot be used here — mock the resolved path instead.
@@ -158,6 +159,63 @@ describe("dashboard page", () => {
     expect(screen.getByText("Stew")).toBeInTheDocument();
     expect(screen.getByText(/Similar to your menu/)).toBeInTheDocument();
     expect(screen.getByText(/Due for a revisit/)).toBeInTheDocument();
+  });
+
+  it("clamps long restock and suggestion names at two lines", async () => {
+    const longName = `Aunt Beru's Extremely Long-Named ${"Family-Recipe ".repeat(5)}Casserole`;
+    const longItem = `Organic ${"Super-Duper-Long-Brand ".repeat(5)}Oat Milk`;
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("suggestedRestockItems")) {
+        return Promise.resolve(
+          gql({
+            suggestedRestockItems: [
+              {
+                id: "5",
+                name: longItem,
+                brand: null,
+                upc12: null,
+                upc14: null,
+                unit: "ea",
+                category: null,
+                nutrients: [],
+                flavors: [],
+              },
+            ],
+          })
+        );
+      }
+      if (body.query.includes("recommendedRecipes")) {
+        return Promise.resolve(
+          gql({
+            recommendedRecipes: [
+              {
+                recipe: { ...plan.slots[0].recipe, id: "9", name: longName },
+                reason: "ingredient_overlap",
+                score: 0.8,
+              },
+            ],
+          })
+        );
+      }
+      if (body.query.includes("recipes")) {
+        return Promise.resolve(
+          gql({ recipes: { items: [plan.slots[0].recipe], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 } } })
+        );
+      }
+      if (body.query.includes("mealPlan(")) {
+        return Promise.resolve(gql({ mealPlan: plan }));
+      }
+      return Promise.resolve(
+        gql({ mealPlans: { items: [plan], pageInfo: { pageNumber: 1, pageSize: 1000, totalCount: 1 } } })
+      );
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText(longName)).toBeInTheDocument());
+    expect(hasLineClamp(screen.getByText(longName))).toBe(true);
+    await waitFor(() => expect(screen.getByText(new RegExp(longItem.slice(0, 30)))).toBeInTheDocument());
+    expect(hasLineClamp(screen.getByText(new RegExp(longItem.slice(0, 30))))).toBe(true);
   });
 
   it("shows pending household invites and accepts one", async () => {
