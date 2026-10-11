@@ -1757,7 +1757,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	uctx := currentuser.WithUser(ctx, currentuser.User{UserID: userID, HouseholdID: userID, Email: "grocery-gen@example.com"})
 	planID := graphql.ID(strconv.FormatInt(plan.MealPlanID, 10))
 
-	res, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
+	res, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID *graphql.ID }{MealPlanID: &planID})
 	require.NoError(t, err)
 	items, err := res.Items(ctx)
 	require.NoError(t, err)
@@ -1769,7 +1769,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 		HouseholdID: userID, ItemID: flour.ItemID, CurrentQty: 10,
 	}, "it")
 	require.NoError(t, err)
-	res2, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
+	res2, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID *graphql.ID }{MealPlanID: &planID})
 	require.NoError(t, err)
 	items2, err := res2.Items(ctx)
 	require.NoError(t, err)
@@ -1798,7 +1798,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 		HouseholdID: userID, ItemID: flour.ItemID, CurrentQty: 0,
 	}, "it")
 	require.NoError(t, err)
-	res3, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID graphql.ID }{MealPlanID: planID})
+	res3, err := resolver.GenerateGroceryList(uctx, struct{ MealPlanID *graphql.ID }{MealPlanID: &planID})
 	require.NoError(t, err)
 	assert.Equal(t, res.ID(), res3.ID())
 	items3, err := res3.Items(ctx)

@@ -264,7 +264,11 @@ func (r *Resolver) SetGroceryListStore(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListResolver{g: r.GroceryService, inv: r.InventoryService, householdID: u.HouseholdID, list: list, items: gc.itemsByList[listID], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}, nil
+	plans, err := loadGroceryPlans(ctx, r.MealPlanService, u.HouseholdID, []grocery.GroceryList{list})
+	if err != nil {
+		return nil, err
+	}
+	return r.newGroceryListResolver(u, list, gc, plans), nil
 }
 
 // ReorderGroceryListItems persists the user's arrangement: every entry

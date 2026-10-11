@@ -1,6 +1,11 @@
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 
 const mockFetch = global.fetch as jest.Mock;
+
+function lastRequestBody() {
+  const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+  return JSON.parse((init as RequestInit).body as string);
+}
 
 function mockGraphQL(data: object, status = 200) {
   return {
@@ -68,11 +73,24 @@ describe("meal plan and grocery api client", () => {
     expect(nutrition.dailyTotals).toHaveLength(1);
   });
 
-  it("generateGroceryList requires a meal plan id", async () => {
-    const error = await api.generateGroceryList().catch((e) => e);
-    expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).message).toContain("requires a mealPlanId");
-    expect(mockFetch).not.toHaveBeenCalled();
+  it("generateGroceryList posts null for a manual list", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        generateGroceryList: {
+          id: "3",
+          generatedAt: "2026-09-01T00:00:00Z",
+          mealPlan: null,
+          items: [],
+        },
+      })
+    );
+
+    const list = await api.generateGroceryList();
+
+    expect(lastRequestBody().variables.mealPlanId).toBeNull();
+    expect(list.groceryListID).toBe(3);
+    expect(list.mealPlanID).toBeNull();
+    expect(list.mealPlanName).toBeNull();
   });
 
   it("generateGroceryList posts with a meal plan id", async () => {
@@ -81,6 +99,7 @@ describe("meal plan and grocery api client", () => {
         generateGroceryList: {
           id: "2",
           generatedAt: "2026-09-01T00:00:00Z",
+          mealPlan: { id: "5", name: "Week 37" },
           items: [],
         },
       })
@@ -95,7 +114,10 @@ describe("meal plan and grocery api client", () => {
         headers: expect.objectContaining({ Accept: "application/json" }),
       })
     );
+    expect(lastRequestBody().variables.mealPlanId).toBe("5");
     expect(list.groceryListID).toBe(2);
+    expect(list.mealPlanID).toBe(5);
+    expect(list.mealPlanName).toBe("Week 37");
   });
 
   it("getGroceryLists fetches all lists", async () => {

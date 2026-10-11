@@ -73,13 +73,23 @@ describe("grocery lists page", () => {
       const body = JSON.parse((init as RequestInit).body as string);
       if (body.query.includes("generateGroceryList")) {
         return Promise.resolve(
-          gql({ generateGroceryList: { id: "2", generatedAt: "2024-01-02T00:00:00Z", items: [] } })
+          gql({ generateGroceryList: { id: "2", generatedAt: "2024-01-02T00:00:00Z", mealPlan: null, items: [] } })
+        );
+      }
+      if (body.query.includes("mealPlans")) {
+        return Promise.resolve(
+          gql({
+            mealPlans: {
+              items: [{ id: "9", name: "Week 37" }],
+              pageInfo: { pageNumber: 1, pageSize: 100, totalCount: 1 },
+            },
+          })
         );
       }
       return Promise.resolve(
         gql({
           groceryLists: {
-            items: [{ id: "1", generatedAt: "2024-01-01T00:00:00Z", items: [] }],
+            items: [{ id: "1", generatedAt: "2024-01-01T00:00:00Z", mealPlan: null, items: [] }],
             pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 },
           },
         })
@@ -87,27 +97,78 @@ describe("grocery lists page", () => {
     });
   });
 
-  it("lists grocery lists", async () => {
+  it("lists grocery lists and labels manual lists", async () => {
     renderPage(<GroceryListsPage />);
     await waitFor(() =>
       expect(
         screen.getByText(new Date(2024, 0, 1).toLocaleDateString())
       ).toBeInTheDocument()
     );
+    expect(screen.getByText("Manual list")).toBeInTheDocument();
   });
 
-  it("generates a grocery list", async () => {
+  it("creates a manual list when no plan is selected", async () => {
     renderPage(<GroceryListsPage />);
     await waitFor(() =>
       screen.getByText(new Date(2024, 0, 1).toLocaleDateString())
     );
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
-    fireEvent.change(screen.getByLabelText("Meal Plan ID (optional)"), { target: { value: "1" } });
+    await screen.findByText("Manual list (no meal plan)");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(getBodies().some((b) => b.query.includes("generateGroceryList"))).toBe(true);
+      const bodies = getBodies();
+      const gen = bodies.find((b) => b.query.includes("generateGroceryList"));
+      expect(gen).toBeTruthy();
+      expect(gen.variables.mealPlanId).toBeNull();
       expect(mockPush).toHaveBeenCalledWith("/member/grocery-lists/2");
     });
+  });
+
+  it("generates a grocery list from a picked plan", async () => {
+    renderPage(<GroceryListsPage />);
+    await waitFor(() =>
+      screen.getByText(new Date(2024, 0, 1).toLocaleDateString())
+    );
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    const select = await screen.findByLabelText("Meal plan");
+    fireEvent.mouseDown(select);
+    fireEvent.click(await screen.findByText("Week 37"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const gen = getBodies().find((b) => b.query.includes("generateGroceryList"));
+      expect(gen).toBeTruthy();
+      expect(gen.variables.mealPlanId).toBe("9");
+      expect(mockPush).toHaveBeenCalledWith("/member/grocery-lists/2");
+    });
+  });
+
+  it("keeps the dialog open when the save fails", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("generateGroceryList")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => "application/json" },
+          json: async () => ({ errors: [{ message: "boom" }] }),
+        });
+      }
+      if (body.query.includes("mealPlans")) {
+        return Promise.resolve(
+          gql({ mealPlans: { items: [], pageInfo: { pageNumber: 1, pageSize: 100, totalCount: 0 } } })
+        );
+      }
+      return Promise.resolve(
+        gql({ groceryLists: { items: [], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 } } })
+      );
+    });
+    renderPage(<GroceryListsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /create/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(screen.getByRole("dialog")).toBeInTheDocument()
+    );
+    expect(await screen.findByText("boom")).toBeInTheDocument();
   });
 });
 

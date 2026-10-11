@@ -16,7 +16,7 @@ const String mealPlansQuery = r'''
 ''';
 
 const String generateGroceryListMutation = r'''
-  mutation GenerateGroceryList($mealPlanId: ID!) {
+  mutation GenerateGroceryList($mealPlanId: ID) {
     generateGroceryList(mealPlanId: $mealPlanId) {
       id
     }
@@ -33,7 +33,10 @@ class GenerateGroceryDialog extends StatefulWidget {
 }
 
 class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
-  String? _mealPlanId;
+  // Empty string is the "manual list" selection — a real meal plan carries
+  // its id. Defaults to manual so Save works without touching the dropdown.
+  static const String _manual = '';
+  String? _mealPlanId = _manual;
   bool _isSaving = false;
 
   Future<List<Map<String, dynamic>>> _loadMealPlans() async {
@@ -45,13 +48,15 @@ class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
   }
 
   Future<void> _generate() async {
-    if (_mealPlanId == null || _mealPlanId!.isEmpty) return;
+    if (_mealPlanId == null) return;
     setState(() => _isSaving = true);
     try {
       final client = GraphQLProvider.of(context).value;
       await client.mutate(MutationOptions(
         document: gql(generateGroceryListMutation),
-        variables: {'mealPlanId': _mealPlanId},
+        variables: {
+          'mealPlanId': _mealPlanId!.isEmpty ? null : _mealPlanId,
+        },
       ));
       if (mounted) {
         Navigator.pop(context);
@@ -84,12 +89,16 @@ class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
             isExpanded: true,
             value: _mealPlanId,
             decoration: const InputDecoration(labelText: 'Meal plan'),
-            items: plans
-                .map((p) => DropdownMenuItem(
-                      value: p['id'] as String,
-                      child: Text(p['name'] as String),
-                    ))
-                .toList(),
+            items: [
+              const DropdownMenuItem(
+                value: _manual,
+                child: Text('Manual list (no meal plan)'),
+              ),
+              ...plans.map((p) => DropdownMenuItem(
+                    value: p['id'] as String,
+                    child: Text(p['name'] as String),
+                  )),
+            ],
             onChanged: (v) => setState(() => _mealPlanId = v),
           ),
           actions: [

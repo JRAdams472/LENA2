@@ -767,7 +767,9 @@ export interface MealPlanNutrition {
 
 export interface GroceryList extends AuditableEntity {
   groceryListID: number;
+  // Source plan for generated lists; null on manual lists.
   mealPlanID: number | null;
+  mealPlanName?: string | null;
   generatedDate: string;
   groceryListItems?: GroceryListItem[];
   store?: Store | null;
