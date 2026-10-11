@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -92,6 +93,19 @@ func (q *Queries) CountLoginsByUser(ctx context.Context, userID int64) (int64, e
 	return count, err
 }
 
+const countPendingUsers = `-- name: CountPendingUsers :one
+SELECT count(*)
+FROM identity.users
+WHERE approval_status = 'pending'
+`
+
+func (q *Queries) CountPendingUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT count(*)
 FROM identity.users
@@ -139,7 +153,7 @@ func (q *Queries) DeleteLoginsByProvider(ctx context.Context, arg DeleteLoginsBy
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
 FROM identity.users
 WHERE user_id = $1
 `
@@ -167,12 +181,13 @@ func (q *Queries) GetUserByID(ctx context.Context, userID int64) (IdentityUser, 
 		&i.IsSearchable,
 		&i.HouseholdRole,
 		&i.Birthdate,
+		&i.ApprovalStatus,
 	)
 	return i, err
 }
 
 const getUserByLogin = `-- name: GetUserByLogin :one
-SELECT u.user_id, u.provider, u.external_subject, u.email, u.display_name, u.is_active, u.last_login_at, u.created_by, u.created_at, u.updated_by, u.updated_at, u.role, u.first_name, u.last_name, u.backup_email, u.household_id, u.is_searchable, u.household_role, u.birthdate
+SELECT u.user_id, u.provider, u.external_subject, u.email, u.display_name, u.is_active, u.last_login_at, u.created_by, u.created_at, u.updated_by, u.updated_at, u.role, u.first_name, u.last_name, u.backup_email, u.household_id, u.is_searchable, u.household_role, u.birthdate, u.approval_status
 FROM identity.users AS u
 JOIN identity.user_login AS l ON l.user_id = u.user_id
 WHERE l.provider = $1
@@ -209,12 +224,13 @@ func (q *Queries) GetUserByLogin(ctx context.Context, arg GetUserByLoginParams) 
 		&i.IsSearchable,
 		&i.HouseholdRole,
 		&i.Birthdate,
+		&i.ApprovalStatus,
 	)
 	return i, err
 }
 
 const getUserByProviderSubject = `-- name: GetUserByProviderSubject :one
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
 FROM identity.users
 WHERE provider = $1
   AND external_subject = $2
@@ -248,6 +264,7 @@ func (q *Queries) GetUserByProviderSubject(ctx context.Context, arg GetUserByPro
 		&i.IsSearchable,
 		&i.HouseholdRole,
 		&i.Birthdate,
+		&i.ApprovalStatus,
 	)
 	return i, err
 }
@@ -297,6 +314,34 @@ func (q *Queries) InsertLogin(ctx context.Context, arg InsertLoginParams) (Ident
 	return i, err
 }
 
+const listActiveAdminIDs = `-- name: ListActiveAdminIDs :many
+SELECT user_id
+FROM identity.users
+WHERE role = 'admin'
+  AND is_active
+`
+
+// Recipients for access-request notifications: every active site admin.
+func (q *Queries) ListActiveAdminIDs(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listActiveAdminIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var user_id int64
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLoginsByUser = `-- name: ListLoginsByUser :many
 SELECT user_login_id, user_id, provider, external_subject, email, display_name, last_login_at, created_at
 FROM identity.user_login
@@ -333,8 +378,62 @@ func (q *Queries) ListLoginsByUser(ctx context.Context, userID int64) ([]Identit
 	return items, nil
 }
 
+const listPendingUsers = `-- name: ListPendingUsers :many
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
+FROM identity.users
+WHERE approval_status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2
+`
+
+type ListPendingUsersParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListPendingUsers(ctx context.Context, arg ListPendingUsersParams) ([]IdentityUser, error) {
+	rows, err := q.db.Query(ctx, listPendingUsers, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityUser{}
+	for rows.Next() {
+		var i IdentityUser
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Provider,
+			&i.ExternalSubject,
+			&i.Email,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.LastLoginAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.Role,
+			&i.FirstName,
+			&i.LastName,
+			&i.BackupEmail,
+			&i.HouseholdID,
+			&i.IsSearchable,
+			&i.HouseholdRole,
+			&i.Birthdate,
+			&i.ApprovalStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
 FROM identity.users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -374,6 +473,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 			&i.IsSearchable,
 			&i.HouseholdRole,
 			&i.Birthdate,
+			&i.ApprovalStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -386,7 +486,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]Identit
 }
 
 const listUsersByHousehold = `-- name: ListUsersByHousehold :many
-SELECT u.user_id, u.provider, u.external_subject, u.email, u.display_name, u.is_active, u.last_login_at, u.created_by, u.created_at, u.updated_by, u.updated_at, u.role, u.first_name, u.last_name, u.backup_email, u.household_id, u.is_searchable, u.household_role, u.birthdate
+SELECT u.user_id, u.provider, u.external_subject, u.email, u.display_name, u.is_active, u.last_login_at, u.created_by, u.created_at, u.updated_by, u.updated_at, u.role, u.first_name, u.last_name, u.backup_email, u.household_id, u.is_searchable, u.household_role, u.birthdate, u.approval_status
 FROM identity.users u
 JOIN household.household_member hm
   ON hm.user_id = u.user_id
@@ -427,6 +527,7 @@ func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID int64) (
 			&i.IsSearchable,
 			&i.HouseholdRole,
 			&i.Birthdate,
+			&i.ApprovalStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -439,7 +540,7 @@ func (q *Queries) ListUsersByHousehold(ctx context.Context, householdID int64) (
 }
 
 const listUsersByIDs = `-- name: ListUsersByIDs :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
 FROM identity.users
 WHERE user_id = ANY($1::bigint[])
 `
@@ -473,6 +574,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 			&i.IsSearchable,
 			&i.HouseholdRole,
 			&i.Birthdate,
+			&i.ApprovalStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -500,7 +602,7 @@ func (q *Queries) RevokeUserSessions(ctx context.Context, userID int64) error {
 }
 
 const searchUsers = `-- name: SearchUsers :many
-SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
+SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
 FROM identity.users u
 WHERE is_active
   AND is_searchable
@@ -567,6 +669,7 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Ide
 			&i.IsSearchable,
 			&i.HouseholdRole,
 			&i.Birthdate,
+			&i.ApprovalStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -607,6 +710,28 @@ type SetActiveHouseholdParams struct {
 // row in the same statement so the two columns can never diverge.
 func (q *Queries) SetActiveHousehold(ctx context.Context, arg SetActiveHouseholdParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setActiveHousehold, arg.HouseholdID, arg.UserID, arg.By)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setApprovalStatus = `-- name: SetApprovalStatus :execrows
+UPDATE identity.users
+SET approval_status = $2,
+    updated_by      = $3,
+    updated_at      = now()
+WHERE user_id = $1
+`
+
+type SetApprovalStatusParams struct {
+	UserID         int64       `json:"user_id"`
+	ApprovalStatus string      `json:"approval_status"`
+	UpdatedBy      pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) SetApprovalStatus(ctx context.Context, arg SetApprovalStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setApprovalStatus, arg.UserID, arg.ApprovalStatus, arg.UpdatedBy)
 	if err != nil {
 		return 0, err
 	}
@@ -880,11 +1005,12 @@ INSERT INTO identity.users (
     external_subject,
     email,
     display_name,
+    approval_status,
     last_login_at,
     created_by,
     updated_by
 )
-VALUES ($1, $2, $3, $4, now(), $5, $6)
+VALUES ($1, $2, $3, $4, 'pending', now(), $5, $6)
 ON CONFLICT (provider, external_subject)
     DO UPDATE SET
         -- An empty email claim must never blank out a stored address.
@@ -893,7 +1019,7 @@ ON CONFLICT (provider, external_subject)
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
-RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate
+RETURNING user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status, (xmax = 0) AS inserted
 `
 
 type UpsertUserParams struct {
@@ -905,7 +1031,36 @@ type UpsertUserParams struct {
 	UpdatedBy       pgtype.Text `json:"updated_by"`
 }
 
-func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error) {
+type UpsertUserRow struct {
+	UserID          int64              `json:"user_id"`
+	Provider        string             `json:"provider"`
+	ExternalSubject string             `json:"external_subject"`
+	Email           string             `json:"email"`
+	DisplayName     pgtype.Text        `json:"display_name"`
+	IsActive        bool               `json:"is_active"`
+	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
+	CreatedBy       string             `json:"created_by"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedBy       pgtype.Text        `json:"updated_by"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	Role            string             `json:"role"`
+	FirstName       pgtype.Text        `json:"first_name"`
+	LastName        pgtype.Text        `json:"last_name"`
+	BackupEmail     pgtype.Text        `json:"backup_email"`
+	HouseholdID     pgtype.Int8        `json:"household_id"`
+	IsSearchable    bool               `json:"is_searchable"`
+	HouseholdRole   string             `json:"household_role"`
+	Birthdate       pgtype.Date        `json:"birthdate"`
+	ApprovalStatus  string             `json:"approval_status"`
+	Inserted        bool               `json:"inserted"`
+}
+
+// New user rows land as 'pending' — the approval barrier (LEN-127). The
+// approval gate in the BFF decides whether the account stays pending; the
+// conflict branch preserves whatever status an admin already assigned.
+// `xmax = 0` is the canonical "inserted, not updated" upsert signal: a fresh
+// INSERT carries no xmax, while the ON CONFLICT UPDATE stamps it.
+func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error) {
 	row := q.db.QueryRow(ctx, upsertUser,
 		arg.Provider,
 		arg.ExternalSubject,
@@ -914,7 +1069,7 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (Identit
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
-	var i IdentityUser
+	var i UpsertUserRow
 	err := row.Scan(
 		&i.UserID,
 		&i.Provider,
@@ -935,6 +1090,8 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (Identit
 		&i.IsSearchable,
 		&i.HouseholdRole,
 		&i.Birthdate,
+		&i.ApprovalStatus,
+		&i.Inserted,
 	)
 	return i, err
 }
