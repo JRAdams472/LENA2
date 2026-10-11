@@ -206,6 +206,12 @@ func MustUser(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email strin
 	if err != nil {
 		t.Fatalf("create test user: %v", err)
 	}
+	// UpsertUser lands new rows 'pending' (LEN-127); fixtures model
+	// approved members like a real sign-in would resolve to.
+	if _, err := pool.Exec(ctx,
+		`UPDATE identity.users SET approval_status = 'approved' WHERE user_id = $1`, u.UserID); err != nil {
+		t.Fatalf("approve test user: %v", err)
+	}
 	// Mirror the authenticator's default-household path: create the row,
 	// then assign it only while household_id is still NULL so an already
 	// joined household is never overwritten. Explicit IDs bypass the

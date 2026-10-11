@@ -142,6 +142,15 @@ var (
 	ErrLastAdmin    = domainerr.ErrLastAdmin
 )
 
+// Approval status values persisted on identity.users.approval_status
+// (LEN-127). They are intentionally separate from is_active, which keeps
+// its banned/disabled semantics.
+const (
+	StatusPending  = "pending"
+	StatusApproved = "approved"
+	StatusDenied   = "denied"
+)
+
 // User is the identity module's view of a user row.
 type User struct {
 	UserID          int64
@@ -154,7 +163,14 @@ type User struct {
 	BackupEmail     string
 	IsActive        bool
 	Role            string
-	LastLoginAt     *time.Time
+	// ApprovalStatus is the admin-approval lifecycle: pending, approved,
+	// or denied (LEN-127). Rows predating the column are approved.
+	ApprovalStatus string
+	// JustCreated is true only on the UpsertUser call that inserted the
+	// row — callers use it to fire once-per-account side effects like the
+	// admin access-request notification.
+	JustCreated bool
+	LastLoginAt *time.Time
 	// HouseholdID is nil for users created before the household feature
 	// backfills or before the authenticator ensures a default household.
 	HouseholdID *int64
@@ -170,6 +186,15 @@ type User struct {
 
 // IsAdmin reports whether the user holds the admin role.
 func (u User) IsAdmin() bool { return u.Role == RoleAdmin }
+
+// IsApproved reports whether the account cleared the admin approval gate.
+func (u User) IsApproved() bool { return u.ApprovalStatus == StatusApproved }
+
+// IsPending reports whether the account is awaiting admin review.
+func (u User) IsPending() bool { return u.ApprovalStatus == StatusPending }
+
+// IsDenied reports whether an admin denied the access request.
+func (u User) IsDenied() bool { return u.ApprovalStatus == StatusDenied }
 
 // IsProtected reports whether the user is in the issuer-scoped protected
 // list: protected admins can never be demoted or deactivated.
@@ -224,7 +249,9 @@ func (s *Service) upsertLoginTx(ctx context.Context, provider, subject, email, d
 		if _, err := s.q.UpsertLogin(ctx, upsertLoginParams(u.UserID, provider, subject, email, displayName)); err != nil {
 			return User{}, err
 		}
-		return toUser(u), nil
+		out := toUserFromUpsert(u)
+		out.JustCreated = u.Inserted
+		return out, nil
 	default:
 		return User{}, err
 	}
@@ -428,6 +455,89 @@ func (s *Service) ListUsers(ctx context.Context, limit, offset int32) ([]User, e
 		users = append(users, toUser(row))
 	}
 	return users, nil
+}
+
+// ListPendingUsers returns accounts awaiting admin approval, oldest first.
+func (s *Service) ListPendingUsers(ctx context.Context, limit, offset int32) ([]User, error) {
+	rows, err := s.q.ListPendingUsers(ctx, sqlc.ListPendingUsersParams{Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, fmt.Errorf("list pending users: %w", domainerr.FromStorage(err))
+	}
+	return toUsers(rows), nil
+}
+
+// CountPendingUsers returns how many accounts are awaiting approval.
+func (s *Service) CountPendingUsers(ctx context.Context) (int64, error) {
+	n, err := s.q.CountPendingUsers(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count pending users: %w", domainerr.FromStorage(err))
+	}
+	return n, nil
+}
+
+// ListActiveAdminIDs returns the recipients for access-request
+// notifications — every active site admin.
+func (s *Service) ListActiveAdminIDs(ctx context.Context) ([]int64, error) {
+	ids, err := s.q.ListActiveAdminIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active admin ids: %w", domainerr.FromStorage(err))
+	}
+	return ids, nil
+}
+
+// CountActiveAdmins returns the number of active site admins — the
+// zero-admin bootstrap check in the BFF gate uses it.
+func (s *Service) CountActiveAdmins(ctx context.Context) (int64, error) {
+	n, err := s.q.CountActiveAdmins(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count active admins: %w", domainerr.FromStorage(err))
+	}
+	return n, nil
+}
+
+// SetApprovalStatus writes an approval decision without admin-mutation
+// guards — the authenticator uses it for auto-approval paths (admin-email
+// allowlist, zero-admin bootstrap, gate disabled).
+func (s *Service) SetApprovalStatus(ctx context.Context, userID int64, status, by string) error {
+	n, err := s.q.SetApprovalStatus(ctx, sqlc.SetApprovalStatusParams{
+		UserID:         userID,
+		ApprovalStatus: status,
+		UpdatedBy:      textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set approval status: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set approval status: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// AdminSetApproval records an approve/deny decision on behalf of actorID,
+// enforcing the self/protected guards. Denying a previously approved user
+// kills every live session immediately.
+func (s *Service) AdminSetApproval(ctx context.Context, actorID, targetID int64, status, by string) error {
+	if status != StatusApproved && status != StatusDenied {
+		return fmt.Errorf("invalid approval status %q", status)
+	}
+	target, err := s.GetByID(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if err := s.checkAdminMutation(actorID, target); err != nil {
+		return err
+	}
+	return s.InTx(ctx, func(tx *Service) error {
+		if err := tx.SetApprovalStatus(ctx, targetID, status, by); err != nil {
+			return err
+		}
+		if status == StatusDenied {
+			if err := tx.q.RevokeUserSessions(ctx, targetID); err != nil {
+				return fmt.Errorf("revoke user sessions: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // CountUsers returns the total number of user rows.
@@ -697,6 +807,41 @@ func toUser(row sqlc.IdentityUser) User {
 		BackupEmail:     row.BackupEmail.String,
 		IsActive:        row.IsActive,
 		Role:            row.Role,
+		ApprovalStatus:  row.ApprovalStatus,
+		HouseholdRole:   row.HouseholdRole,
+		IsSearchable:    row.IsSearchable,
+		CreatedAt:       row.CreatedAt,
+	}
+	if row.HouseholdID.Valid {
+		id := row.HouseholdID.Int64
+		u.HouseholdID = &id
+	}
+	if row.LastLoginAt.Valid {
+		t := row.LastLoginAt.Time
+		u.LastLoginAt = &t
+	}
+	if row.Birthdate.Valid {
+		t := row.Birthdate.Time
+		u.Birthdate = &t
+	}
+	return u
+}
+
+// toUserFromUpsert maps the upsert row (table fields + the inserted flag)
+// to the service User; the caller sets JustCreated from row.Inserted.
+func toUserFromUpsert(row sqlc.UpsertUserRow) User {
+	u := User{
+		UserID:          row.UserID,
+		Provider:        row.Provider,
+		ExternalSubject: row.ExternalSubject,
+		Email:           row.Email,
+		DisplayName:     row.DisplayName.String,
+		FirstName:       row.FirstName.String,
+		LastName:        row.LastName.String,
+		BackupEmail:     row.BackupEmail.String,
+		IsActive:        row.IsActive,
+		Role:            row.Role,
+		ApprovalStatus:  row.ApprovalStatus,
 		HouseholdRole:   row.HouseholdRole,
 		IsSearchable:    row.IsSearchable,
 		CreatedAt:       row.CreatedAt,

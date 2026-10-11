@@ -72,6 +72,9 @@ const (
 	KindEventCreated     NotificationKind = "event_created"
 	KindEventUpdated     NotificationKind = "event_updated"
 	KindEventDeleted     NotificationKind = "event_deleted"
+	// KindAccessRequested notifies every site admin that a new member is
+	// awaiting approval (LEN-127). It is user-global (household_id NULL).
+	KindAccessRequested NotificationKind = "access_requested"
 )
 
 // Notification is an in-app household event surfaced to a user via the

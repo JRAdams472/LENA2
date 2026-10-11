@@ -321,6 +321,7 @@ type IdentityUser struct {
 	IsSearchable    bool               `json:"is_searchable"`
 	HouseholdRole   string             `json:"household_role"`
 	Birthdate       pgtype.Date        `json:"birthdate"`
+	ApprovalStatus  string             `json:"approval_status"`
 }
 
 type IdentityUserLogin struct {

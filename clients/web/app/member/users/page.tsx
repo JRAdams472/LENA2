@@ -36,6 +36,7 @@ export default function UsersPage() {
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ user: User; action: "ban" | "unban" } | null>(null);
+  const [denyTarget, setDenyTarget] = useState<User | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-users", page],
@@ -43,8 +44,15 @@ export default function UsersPage() {
     enabled: isAdmin,
   });
 
+  const { data: pending } = useQuery({
+    queryKey: ["admin-pending-users"],
+    queryFn: () => api.getPendingUsers(1, 100),
+    enabled: isAdmin,
+  });
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-pending-users"] });
     refetchMe();
   };
 
@@ -57,6 +65,20 @@ export default function UsersPage() {
     },
     onError: (e) =>
       setError(e instanceof ApiError ? e.message : "Failed to update role"),
+  });
+
+  const approvalMutation = useMutation({
+    mutationFn: ({ userId, approve }: { userId: number; approve: boolean }) =>
+      approve ? api.approveUser(userId) : api.denyUser(userId),
+    onSuccess: () => {
+      setError(null);
+      setDenyTarget(null);
+      invalidate();
+    },
+    onError: (e) => {
+      setError(e instanceof ApiError ? e.message : "Failed to update approval");
+      setDenyTarget(null);
+    },
   });
 
   const activeMutation = useMutation({
@@ -97,6 +119,51 @@ export default function UsersPage() {
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
+      )}
+      {(pending?.items.length ?? 0) > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Access requests ({pending!.totalCount})
+          </Typography>
+          <TableContainer>
+            <Table size="small">
+              <TableBody>
+                {pending!.items.map((u) => (
+                  <TableRow key={u.userID}>
+                    <TableCell>{u.email}</TableCell>
+                    <TableCell>{fullName(u)}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        disabled={approvalMutation.isPending}
+                        onClick={() =>
+                          approvalMutation.mutate({ userId: u.userID, approve: true })
+                        }
+                        sx={{ mr: 1 }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        disabled={approvalMutation.isPending}
+                        onClick={() => setDenyTarget(u)}
+                      >
+                        Deny
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          {pending!.totalCount > pending!.items.length && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Showing the first {pending!.items.length} of {pending!.totalCount} pending requests.
+            </Typography>
+          )}
+        </Box>
       )}
       <TableContainer>
         <Table size="small">
@@ -142,7 +209,15 @@ export default function UsersPage() {
                       size="small"
                       label={u.isActive ? "Active" : "Banned"}
                       color={u.isActive ? "success" : "error"}
+                      sx={{ mr: 0.5 }}
                     />
+                    {u.approvalStatus && u.approvalStatus !== "APPROVED" && (
+                      <Chip
+                        size="small"
+                        label={u.approvalStatus === "PENDING" ? "Pending" : "Denied"}
+                        color={u.approvalStatus === "PENDING" ? "warning" : "default"}
+                      />
+                    )}
                   </TableCell>
                   <TableCell>
                     {u.lastLoginAt
@@ -150,6 +225,18 @@ export default function UsersPage() {
                       : "Never"}
                   </TableCell>
                   <TableCell align="right">
+                    {u.approvalStatus === "DENIED" && (
+                      <Button
+                        size="small"
+                        disabled={locked || approvalMutation.isPending}
+                        onClick={() =>
+                          approvalMutation.mutate({ userId: u.userID, approve: true })
+                        }
+                        sx={{ mr: 1 }}
+                      >
+                        Approve
+                      </Button>
+                    )}
                     <Tooltip title={locked ? reason : ""}>
                       <span>
                         <Button
@@ -209,6 +296,29 @@ export default function UsersPage() {
             }
           >
             Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={denyTarget !== null} onClose={() => setDenyTarget(null)}>
+        <DialogTitle>Deny access?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {denyTarget?.email} will be blocked from using LENA. You can approve
+            them later from this page.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDenyTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() =>
+              denyTarget &&
+              approvalMutation.mutate({ userId: denyTarget.userID, approve: false })
+            }
+          >
+            Deny
           </Button>
         </DialogActions>
       </Dialog>

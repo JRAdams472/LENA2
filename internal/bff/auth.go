@@ -45,6 +45,11 @@ type AuthConfig struct {
 	// separator). A bare email is accepted only when exactly one issuer is
 	// configured and is implicitly scoped to that issuer.
 	AdminEmails []string
+	// RequireApproval gates first-time sign-ins behind admin review
+	// (LENA_REQUIRE_MEMBER_APPROVAL, default on). When false, new users
+	// are auto-approved at provision time — the pre-LEN-127 behavior kept
+	// for e2e and dev stacks.
+	RequireApproval bool
 }
 
 // identityStore is the subset of identity.Service the authenticator needs;
@@ -54,6 +59,9 @@ type identityStore interface {
 	SetUserRole(ctx context.Context, userID int64, role string) error
 	GetByID(ctx context.Context, userID int64) (identity.User, error)
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string, expected *int64) error
+	SetApprovalStatus(ctx context.Context, userID int64, status, by string) error
+	CountActiveAdmins(ctx context.Context) (int64, error)
+	ListActiveAdminIDs(ctx context.Context) ([]int64, error)
 }
 
 // sessionValidator is the subset of *session.Service the authenticator
@@ -89,10 +97,11 @@ func isSessionAuth(ctx context.Context) bool {
 
 // householdStore is the subset of household.Service the authenticator needs
 // to ensure every resolved user has a default household and matching
-// membership row (LEN-26).
+// membership row (LEN-26), plus notification fan-out for access requests.
 type householdStore interface {
 	CreateHousehold(ctx context.Context, by string) (household.Household, error)
 	JoinHousehold(ctx context.Context, householdID, userID int64, role, by string) (household.Membership, error)
+	CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID *int64, actorUserID *int64, inviteID *int64, foodEventID *int64) error
 }
 
 // Authenticator validates OIDC ID tokens and resolves the current user.
@@ -102,6 +111,7 @@ type Authenticator struct {
 	sessions            sessionValidator
 	audiencesByIssuer   map[string][]string
 	adminEmailsByIssuer map[string][]string
+	requireApproval     bool
 	httpc               *http.Client
 
 	// jwks is guarded by an RW mutex: cache hits never block on a network
@@ -168,10 +178,12 @@ const (
 // "the identity store is unreachable", and "the issuer's JWKS endpoint is
 // unreachable", mapping each to the appropriate HTTP status code.
 var (
-	errTokenInvalid  = errors.New("invalid token")
-	errKeyDiscovery  = errors.New("key discovery failed")
-	errIdentityStore = errors.New("identity store unavailable")
-	errAccountBanned = errors.New("account is disabled")
+	errTokenInvalid   = errors.New("invalid token")
+	errKeyDiscovery   = errors.New("key discovery failed")
+	errIdentityStore  = errors.New("identity store unavailable")
+	errAccountBanned  = errors.New("account is disabled")
+	errAccountPending = errors.New("account_pending")
+	errAccountDenied  = errors.New("account_denied")
 )
 
 // NewAuthenticator creates an Authenticator backed by the given identity
@@ -192,6 +204,7 @@ func NewAuthenticator(cfg AuthConfig, identitySvc identityStore, householdSvc ho
 		households:          householdSvc,
 		audiencesByIssuer:   audiences,
 		adminEmailsByIssuer: adminEmails,
+		requireApproval:     cfg.RequireApproval,
 		httpc: &http.Client{
 			Timeout: 10 * time.Second,
 			// OIDC discovery and JWKS endpoints must be fetched directly:
@@ -302,11 +315,19 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 			user, viaSession, err := a.authenticate(ctx, raw)
 			if err != nil {
 				a.logAuthError(c, err)
-				if errors.Is(err, errKeyDiscovery) || errors.Is(err, errIdentityStore) {
+				switch {
+				case errors.Is(err, errKeyDiscovery), errors.Is(err, errIdentityStore):
 					c.Response().Header().Set("Retry-After", "5")
 					return echo.NewHTTPError(http.StatusServiceUnavailable, err.Error())
+				// Pending and denied are 403s with machine-readable bodies so
+				// clients render the approval gate instead of logging out.
+				case errors.Is(err, errAccountPending):
+					return echo.NewHTTPError(http.StatusForbidden, "account_pending")
+				case errors.Is(err, errAccountDenied):
+					return echo.NewHTTPError(http.StatusForbidden, "account_denied")
+				default:
+					return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 				}
-				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 			}
 
 			if viaSession {
@@ -393,13 +414,22 @@ func (a *Authenticator) authenticateSession(ctx context.Context, raw string, unv
 	if err != nil {
 		return currentuser.User{}, fmt.Errorf("%w: load session user: %w", errIdentityStore, err)
 	}
+	// Status can flip after the session was minted: deny/revoke kills
+	// refresh families immediately, but outstanding access tokens keep
+	// working until their TTL — re-checking here closes that window.
+	if !u.IsActive {
+		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
+	}
+	if u.IsPending() {
+		return currentuser.User{}, errAccountPending
+	}
+	if u.IsDenied() {
+		return currentuser.User{}, errAccountDenied
+	}
 	if u.HouseholdID == nil {
 		if err := a.ensureDefaultHousehold(ctx, &u); err != nil {
 			return currentuser.User{}, fmt.Errorf("%w: ensure household: %w", errIdentityStore, err)
 		}
-	}
-	if !u.IsActive {
-		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
 	}
 
 	cu := toCurrentUser(u)
@@ -564,21 +594,69 @@ func (a *Authenticator) provisionUser(ctx context.Context, claims oidcClaims) (c
 		return currentuser.User{}, fmt.Errorf("%w: upsert user: %w", errIdentityStore, err)
 	}
 
+	// Banned users are rejected on every request: the JWT stays
+	// cryptographically valid until expiry, but the API refuses to serve
+	// the account while is_active is false. Checked before the approval
+	// gate so an explicit ban always wins over every other state.
+	if !u.IsActive {
+		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
+	}
+
+	// Approval gate (LEN-127). New user rows land 'pending'; they must be
+	// resolved to 'approved' before any household data is provisioned or
+	// served. Three paths approve automatically:
+	//   1. the gate is disabled (e2e/dev stacks),
+	//   2. the verified email is in LENA_ADMIN_EMAILS, or
+	//   3. the deployment has zero active admins — the first sign-in
+	//      bootstraps as admin so a fresh install can never lock out.
+	// A denied status is an explicit admin decision and is never undone
+	// here — not even by the admin allowlist.
+	if u.IsPending() {
+		adminListed := emailVerified && containsFold(a.adminEmailsByIssuer[issuer], u.Email)
+		switch {
+		case !a.requireApproval || adminListed:
+			if err := a.approveProvisionedUser(ctx, &u); err != nil {
+				return currentuser.User{}, err
+			}
+		default:
+			admins, err := a.identity.CountActiveAdmins(ctx)
+			if err != nil {
+				return currentuser.User{}, fmt.Errorf("%w: count admins: %w", errIdentityStore, err)
+			}
+			if admins == 0 {
+				if err := a.approveProvisionedUser(ctx, &u); err != nil {
+					return currentuser.User{}, err
+				}
+				if err := a.identity.SetUserRole(ctx, u.UserID, identity.RoleAdmin); err != nil {
+					return currentuser.User{}, fmt.Errorf("%w: bootstrap admin user: %w", errIdentityStore, err)
+				}
+				u.Role = identity.RoleAdmin
+				slog.Default().Info("audit",
+					"action", "bootstrap_admin",
+					"actor", u.Email,
+					"target_id", u.UserID,
+					"provider", issuer,
+				)
+			} else {
+				if u.JustCreated {
+					a.notifyAdminsOfAccessRequest(ctx, u)
+				}
+				return currentuser.User{}, errAccountPending
+			}
+		}
+	}
+	if u.IsDenied() {
+		return currentuser.User{}, errAccountDenied
+	}
+
 	// Every user must carry a household before any household-scoped data
 	// is served. Users created before migration 0028 (or upserted between
 	// the schema change and this deploy) get a default household here, on
-	// the cache-miss path only.
+	// the cache-miss path only. Pending users never reach this point.
 	if u.HouseholdID == nil {
 		if err := a.ensureDefaultHousehold(ctx, &u); err != nil {
 			return currentuser.User{}, fmt.Errorf("%w: ensure household: %w", errIdentityStore, err)
 		}
-	}
-
-	// Banned users are rejected on every request: the JWT stays
-	// cryptographically valid until expiry, but the API refuses to serve
-	// the account while is_active is false.
-	if !u.IsActive {
-		return currentuser.User{}, fmt.Errorf("%w: account is disabled", errAccountBanned)
 	}
 
 	// Bootstrap admin access: users whose provider-verified email is
@@ -610,6 +688,46 @@ func (a *Authenticator) provisionUser(ctx context.Context, claims oidcClaims) (c
 	}
 	a.cacheUser(issuer, subject, cu, ttl)
 	return cu, nil
+}
+
+// approveProvisionedUser flips a pending user to approved inside the
+// provisioning path — used by the gate-disabled, admin-allowlist, and
+// zero-admin bootstrap paths.
+func (a *Authenticator) approveProvisionedUser(ctx context.Context, u *identity.User) error {
+	if err := a.identity.SetApprovalStatus(ctx, u.UserID, identity.StatusApproved, u.Email); err != nil {
+		return fmt.Errorf("%w: approve user: %w", errIdentityStore, err)
+	}
+	u.ApprovalStatus = identity.StatusApproved
+	return nil
+}
+
+// notifyAdminsOfAccessRequest fans an in-app access-request notification
+// out to every active site admin. Best-effort: a delivery failure is
+// logged but never blocks the pending response the new user sees.
+func (a *Authenticator) notifyAdminsOfAccessRequest(ctx context.Context, u identity.User) {
+	adminIDs, err := a.identity.ListActiveAdminIDs(ctx)
+	if err != nil {
+		slog.Default().Error("access request notification fan-out failed",
+			"reason", err.Error(),
+			"target_id", u.UserID,
+		)
+		return
+	}
+	for _, id := range adminIDs {
+		if err := a.households.CreateNotification(ctx, id, household.KindAccessRequested, nil, &u.UserID, nil, nil); err != nil {
+			slog.Default().Warn("access request notification delivery failed",
+				"admin_id", id,
+				"target_id", u.UserID,
+				"reason", err.Error(),
+			)
+		}
+	}
+	slog.Default().Info("audit",
+		"action", "access_request",
+		"actor", u.Email,
+		"target_id", u.UserID,
+		"provider", u.Provider,
+	)
 }
 
 // toCurrentUser projects the identity row into the request-scoped user.

@@ -75,16 +75,22 @@ SET last_login_at = now()
 WHERE user_id = $1;
 
 -- name: UpsertUser :one
+-- New user rows land as 'pending' — the approval barrier (LEN-127). The
+-- approval gate in the BFF decides whether the account stays pending; the
+-- conflict branch preserves whatever status an admin already assigned.
+-- `xmax = 0` is the canonical "inserted, not updated" upsert signal: a fresh
+-- INSERT carries no xmax, while the ON CONFLICT UPDATE stamps it.
 INSERT INTO identity.users (
     provider,
     external_subject,
     email,
     display_name,
+    approval_status,
     last_login_at,
     created_by,
     updated_by
 )
-VALUES ($1, $2, $3, $4, now(), $5, $6)
+VALUES ($1, $2, $3, $4, 'pending', now(), $5, $6)
 ON CONFLICT (provider, external_subject)
     DO UPDATE SET
         -- An empty email claim must never blank out a stored address.
@@ -93,7 +99,7 @@ ON CONFLICT (provider, external_subject)
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
-RETURNING *;
+RETURNING *, (xmax = 0) AS inserted;
 
 -- name: ConditionalSetUserRole :execrows
 UPDATE identity.users AS u
@@ -137,6 +143,32 @@ SELECT count(*)
 FROM identity.users
 WHERE role = 'admin'
   AND is_active;
+
+-- name: ListActiveAdminIDs :many
+-- Recipients for access-request notifications: every active site admin.
+SELECT user_id
+FROM identity.users
+WHERE role = 'admin'
+  AND is_active;
+
+-- name: SetApprovalStatus :execrows
+UPDATE identity.users
+SET approval_status = $2,
+    updated_by      = $3,
+    updated_at      = now()
+WHERE user_id = $1;
+
+-- name: ListPendingUsers :many
+SELECT *
+FROM identity.users
+WHERE approval_status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2;
+
+-- name: CountPendingUsers :one
+SELECT count(*)
+FROM identity.users
+WHERE approval_status = 'pending';
 
 -- name: ConditionalSetUserActive :execrows
 UPDATE identity.users AS u

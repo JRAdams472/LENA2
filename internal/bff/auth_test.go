@@ -39,6 +39,11 @@ type fakeIdentityStore struct {
 	getByIDErr     error
 	householdErr   error
 	householdCalls int32
+	adminCount     int64
+	adminIDs       []int64
+	approvalErr    error
+	statusCalls    int32
+	lastStatus     string
 }
 
 func (f *fakeIdentityStore) UpsertUser(_ context.Context, provider, subject, email, _ string) (identity.User, error) {
@@ -79,11 +84,34 @@ func (f *fakeIdentityStore) SetUserHousehold(_ context.Context, userID, househol
 	return nil
 }
 
+func (f *fakeIdentityStore) SetApprovalStatus(_ context.Context, userID int64, status, _ string) error {
+	atomic.AddInt32(&f.statusCalls, 1)
+	f.lastUserID = userID
+	f.lastStatus = status
+	if f.approvalErr != nil {
+		return f.approvalErr
+	}
+	f.user.ApprovalStatus = status
+	return nil
+}
+
+func (f *fakeIdentityStore) CountActiveAdmins(context.Context) (int64, error) {
+	return f.adminCount, nil
+}
+
+func (f *fakeIdentityStore) ListActiveAdminIDs(context.Context) ([]int64, error) {
+	return f.adminIDs, nil
+}
+
 // fakeHouseholdStore records CreateHousehold calls for assertions.
 type fakeHouseholdStore struct {
 	createErr   error
 	createCalls int32
 	nextID      int64
+	notifCalls  int32
+	notifIDs    []int64
+	notifKind   household.NotificationKind
+	notifErr    error
 }
 
 func (f *fakeHouseholdStore) CreateHousehold(_ context.Context, _ string) (household.Household, error) {
@@ -100,6 +128,13 @@ func (f *fakeHouseholdStore) CreateHousehold(_ context.Context, _ string) (house
 
 func (f *fakeHouseholdStore) JoinHousehold(_ context.Context, householdID, userID int64, role, _ string) (household.Membership, error) {
 	return household.Membership{HouseholdID: householdID, UserID: userID, Role: role}, nil
+}
+
+func (f *fakeHouseholdStore) CreateNotification(_ context.Context, userID int64, kind household.NotificationKind, _ *int64, _ *int64, _ *int64, _ *int64) error {
+	atomic.AddInt32(&f.notifCalls, 1)
+	f.notifIDs = append(f.notifIDs, userID)
+	f.notifKind = kind
+	return f.notifErr
 }
 
 // jwksIssuer is a test OIDC issuer serving discovery + a swappable JWKS.
@@ -715,4 +750,181 @@ func TestHashSubject(t *testing.T) {
 	assert.Equal(t, want, got)
 	assert.Equal(t, 16, len(got))
 	assert.NotContains(t, got, "1234567890123456")
+}
+
+// --- LEN-127 approval gate ---
+
+func TestProvisionApprovalGate(t *testing.T) {
+	priv, set := newJWKSKey(t, "key-a")
+	iss := newJWKSIssuer(t, set)
+	cfg := func(extra ...func(*AuthConfig)) AuthConfig {
+		c := AuthConfig{
+			Issuers:         []string{iss.server.URL},
+			Audiences:       []string{"lena-client"},
+			RequireApproval: true,
+		}
+		for _, f := range extra {
+			f(&c)
+		}
+		return c
+	}
+	pending := func() *fakeIdentityStore {
+		return &fakeIdentityStore{
+			user:       identity.User{UserID: 11, Role: identity.RoleMember, ApprovalStatus: identity.StatusPending, JustCreated: true},
+			adminCount: 1,
+			adminIDs:   []int64{1},
+		}
+	}
+	token := func(email string) string {
+		return signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-11", email,
+			map[string]any{"email_verified": true})
+	}
+
+	t.Run("new user is pending, not provisioned, admins notified", func(t *testing.T) {
+		store := pending()
+		hh := &fakeHouseholdStore{}
+		a := mustNewAuthenticatorWithHouseholds(t, cfg(), store, hh)
+
+		_, _, err := a.authenticate(context.Background(), token("new@example.com"))
+		require.ErrorIs(t, err, errAccountPending)
+		// No household is provisioned and nothing is cached for a pending user.
+		assert.Zero(t, atomic.LoadInt32(&hh.createCalls))
+		assert.Zero(t, atomic.LoadInt32(&store.householdCalls))
+		assert.Equal(t, []int64{1}, hh.notifIDs)
+		assert.Equal(t, household.KindAccessRequested, hh.notifKind)
+	})
+
+	t.Run("repeat pending request does not re-notify", func(t *testing.T) {
+		store := pending()
+		hh := &fakeHouseholdStore{}
+		a := mustNewAuthenticatorWithHouseholds(t, cfg(), store, hh)
+
+		raw := token("new@example.com")
+		_, _, err := a.authenticate(context.Background(), raw)
+		require.ErrorIs(t, err, errAccountPending)
+		// Second sign-in: the row exists, so JustCreated is false and no
+		// duplicate admin notification fires.
+		store.user.JustCreated = false
+		_, _, err = a.authenticate(context.Background(), raw)
+		require.ErrorIs(t, err, errAccountPending)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&hh.notifCalls))
+	})
+
+	t.Run("denied user gets a distinct error and no retry", func(t *testing.T) {
+		store := &fakeIdentityStore{user: identity.User{
+			UserID: 11, Role: identity.RoleMember, ApprovalStatus: identity.StatusDenied,
+		}}
+		a := mustNewAuthenticator(t, cfg(), store)
+		_, _, err := a.authenticate(context.Background(), token("new@example.com"))
+		require.ErrorIs(t, err, errAccountDenied)
+	})
+
+	t.Run("gate disabled auto-approves", func(t *testing.T) {
+		store := pending()
+		a := mustNewAuthenticator(t, cfg(func(c *AuthConfig) { c.RequireApproval = false }), store)
+		u, _, err := a.authenticate(context.Background(), token("new@example.com"))
+		require.NoError(t, err)
+		assert.Equal(t, int64(11), u.UserID)
+		assert.Equal(t, identity.StatusApproved, store.lastStatus)
+	})
+
+	t.Run("admin allowlist email auto-approves", func(t *testing.T) {
+		store := pending()
+		a := mustNewAuthenticator(t, cfg(func(c *AuthConfig) {
+			c.AdminEmails = []string{"boss@example.com"}
+		}), store)
+		u, _, err := a.authenticate(context.Background(), token("boss@example.com"))
+		require.NoError(t, err)
+		assert.True(t, u.IsAdmin)
+		assert.Equal(t, identity.StatusApproved, store.lastStatus)
+		assert.Equal(t, identity.RoleAdmin, store.lastRole)
+	})
+
+	t.Run("zero admins bootstraps the first sign-in as admin", func(t *testing.T) {
+		store := pending()
+		store.adminCount = 0
+		hh := &fakeHouseholdStore{}
+		a := mustNewAuthenticatorWithHouseholds(t, cfg(), store, hh)
+		u, _, err := a.authenticate(context.Background(), token("first@example.com"))
+		require.NoError(t, err)
+		assert.True(t, u.IsAdmin)
+		assert.Equal(t, identity.RoleAdmin, store.lastRole)
+		assert.Zero(t, atomic.LoadInt32(&hh.notifCalls))
+	})
+
+	t.Run("unverified email never skips the gate via allowlist", func(t *testing.T) {
+		store := pending()
+		a := mustNewAuthenticator(t, cfg(func(c *AuthConfig) {
+			c.AdminEmails = []string{"boss@example.com"}
+		}), store)
+		raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-11", "boss@example.com", nil)
+		_, _, err := a.authenticate(context.Background(), raw)
+		require.ErrorIs(t, err, errAccountPending)
+	})
+}
+
+func TestProvisionApprovalGate_Middleware(t *testing.T) {
+	priv, set := newJWKSKey(t, "key-a")
+	iss := newJWKSIssuer(t, set)
+
+	for _, tc := range []struct {
+		name   string
+		status string
+		code   int
+		body   string
+	}{
+		{"pending", identity.StatusPending, http.StatusForbidden, "account_pending"},
+		{"denied", identity.StatusDenied, http.StatusForbidden, "account_denied"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeIdentityStore{
+				user:       identity.User{UserID: 11, ApprovalStatus: tc.status},
+				adminCount: 1,
+			}
+			a := mustNewAuthenticator(t, AuthConfig{
+				Issuers:         []string{iss.server.URL},
+				Audiences:       []string{"lena-client"},
+				RequireApproval: true,
+			}, store)
+
+			e := echo.New()
+			e.Use(a.Middleware())
+			e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+
+			raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-11", "u@example.com", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)
+			req.Header.Set(echo.HeaderAuthorization, "Bearer "+raw)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, tc.code, rec.Code)
+			assert.Contains(t, rec.Body.String(), tc.body)
+		})
+	}
+}
+
+func TestAuthenticateSession_ApprovalStatus(t *testing.T) {
+	hhID := int64(9)
+	cfg := AuthConfig{
+		Issuers:   []string{"https://accounts.google.com"},
+		Audiences: []string{"lena-client"},
+	}
+	for _, tc := range []struct {
+		name   string
+		status string
+		want   error
+	}{
+		{"pending", identity.StatusPending, errAccountPending},
+		{"denied", identity.StatusDenied, errAccountDenied},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeIdentityStore{user: identity.User{
+				UserID: 7, IsActive: true, HouseholdID: &hhID, ApprovalStatus: tc.status,
+			}}
+			a := mustNewAuthenticator(t, cfg, store)
+			a.SetSessions(&fakeSessionValidator{enabled: true, userID: 7})
+			_, _, err := a.authenticate(context.Background(), signLenaToken(t, "7"))
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
 }

@@ -25,7 +25,12 @@ type Config struct {
 	// never be demoted or deactivated (banned) — the escape hatch that
 	// keeps an owner from being locked out of their own deployment.
 	ProtectedEmails string `envconfig:"PROTECTED_EMAILS" default:""`
-	AuthIssuers     string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
+	// RequireMemberApproval gates first-time sign-ins behind admin review
+	// (LEN-127): a new account stays 'pending' — and gets no household or
+	// app data — until an admin approves it. Defaults to true; e2e and dev
+	// stacks set it false to preserve the old auto-admit behavior.
+	RequireMemberApproval bool   `envconfig:"REQUIRE_MEMBER_APPROVAL" default:"true"`
+	AuthIssuers           string `envconfig:"AUTH_ISSUERS" default:"https://accounts.google.com"`
 	// TrustedProxyCIDRs is a comma-separated list of trusted proxy CIDRs
 	// for X-Forwarded-For parsing. Leave empty to trust loopback only.
 	TrustedProxyCIDRs  string `envconfig:"TRUSTED_PROXY_CIDRS" default:""`

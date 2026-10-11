@@ -101,6 +101,21 @@ func (mr *MockQuerierMockRecorder) CountLoginsByUser(ctx, userID any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountLoginsByUser", reflect.TypeOf((*MockQuerier)(nil).CountLoginsByUser), ctx, userID)
 }
 
+// CountPendingUsers mocks base method.
+func (m *MockQuerier) CountPendingUsers(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPendingUsers", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPendingUsers indicates an expected call of CountPendingUsers.
+func (mr *MockQuerierMockRecorder) CountPendingUsers(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPendingUsers", reflect.TypeOf((*MockQuerier)(nil).CountPendingUsers), ctx)
+}
+
 // CountUsers mocks base method.
 func (m *MockQuerier) CountUsers(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -206,6 +221,21 @@ func (mr *MockQuerierMockRecorder) InsertLogin(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogin", reflect.TypeOf((*MockQuerier)(nil).InsertLogin), ctx, arg)
 }
 
+// ListActiveAdminIDs mocks base method.
+func (m *MockQuerier) ListActiveAdminIDs(ctx context.Context) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListActiveAdminIDs", ctx)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListActiveAdminIDs indicates an expected call of ListActiveAdminIDs.
+func (mr *MockQuerierMockRecorder) ListActiveAdminIDs(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActiveAdminIDs", reflect.TypeOf((*MockQuerier)(nil).ListActiveAdminIDs), ctx)
+}
+
 // ListLoginsByUser mocks base method.
 func (m *MockQuerier) ListLoginsByUser(ctx context.Context, userID int64) ([]sqlc.IdentityUserLogin, error) {
 	m.ctrl.T.Helper()
@@ -219,6 +249,21 @@ func (m *MockQuerier) ListLoginsByUser(ctx context.Context, userID int64) ([]sql
 func (mr *MockQuerierMockRecorder) ListLoginsByUser(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLoginsByUser", reflect.TypeOf((*MockQuerier)(nil).ListLoginsByUser), ctx, userID)
+}
+
+// ListPendingUsers mocks base method.
+func (m *MockQuerier) ListPendingUsers(ctx context.Context, arg sqlc.ListPendingUsersParams) ([]sqlc.IdentityUser, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPendingUsers", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.IdentityUser)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPendingUsers indicates an expected call of ListPendingUsers.
+func (mr *MockQuerierMockRecorder) ListPendingUsers(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPendingUsers", reflect.TypeOf((*MockQuerier)(nil).ListPendingUsers), ctx, arg)
 }
 
 // ListUsers mocks base method.
@@ -308,6 +353,21 @@ func (m *MockQuerier) SetActiveHousehold(ctx context.Context, arg sqlc.SetActive
 func (mr *MockQuerierMockRecorder) SetActiveHousehold(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetActiveHousehold", reflect.TypeOf((*MockQuerier)(nil).SetActiveHousehold), ctx, arg)
+}
+
+// SetApprovalStatus mocks base method.
+func (m *MockQuerier) SetApprovalStatus(ctx context.Context, arg sqlc.SetApprovalStatusParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetApprovalStatus", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetApprovalStatus indicates an expected call of SetApprovalStatus.
+func (mr *MockQuerierMockRecorder) SetApprovalStatus(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetApprovalStatus", reflect.TypeOf((*MockQuerier)(nil).SetApprovalStatus), ctx, arg)
 }
 
 // SetUserActive mocks base method.
@@ -446,10 +506,10 @@ func (mr *MockQuerierMockRecorder) UpsertLogin(ctx, arg any) *gomock.Call {
 }
 
 // UpsertUser mocks base method.
-func (m *MockQuerier) UpsertUser(ctx context.Context, arg sqlc.UpsertUserParams) (sqlc.IdentityUser, error) {
+func (m *MockQuerier) UpsertUser(ctx context.Context, arg sqlc.UpsertUserParams) (sqlc.UpsertUserRow, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertUser", ctx, arg)
-	ret0, _ := ret[0].(sqlc.IdentityUser)
+	ret0, _ := ret[0].(sqlc.UpsertUserRow)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

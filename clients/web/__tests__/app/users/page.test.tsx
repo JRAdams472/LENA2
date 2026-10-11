@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import UsersPage from "@/app/member/users/page";
 import { api } from "@/lib/api";
@@ -11,6 +11,9 @@ import { useMe } from "@/app/auth/useMe";
 jest.mock("../../../lib/api", () => ({
   api: {
     getUsers: jest.fn(),
+    getPendingUsers: jest.fn(),
+    approveUser: jest.fn(),
+    denyUser: jest.fn(),
     setUserRole: jest.fn(),
     setUserActive: jest.fn(),
   },
@@ -65,11 +68,78 @@ describe("users admin page", () => {
     jest.clearAllMocks();
   });
 
+  const emptyPage = {
+    items: [] as User[],
+    pageNumber: 1,
+    pageSize: 25,
+    totalCount: 0,
+    totalPages: 1,
+  };
+
+  function mockPending(items: User[]) {
+    mockedApi.getPendingUsers.mockResolvedValue({
+      ...emptyPage,
+      items,
+      totalCount: items.length,
+    });
+  }
+
   it("shows Forbidden for non-admins", () => {
     mockedUseMe.mockReturnValue(meReturn(member, false));
     renderPage();
     expect(screen.getByText(/Forbidden/i)).toBeInTheDocument();
     expect(mockedApi.getUsers).not.toHaveBeenCalled();
+  });
+
+  it("lists pending access requests and approves them", async () => {
+    const pendingUser = { ...member, userID: 9, email: "new@example.com", approvalStatus: "PENDING" as const };
+    mockedUseMe.mockReturnValue(meReturn(admin, true));
+    mockedApi.getUsers.mockResolvedValue({ ...emptyPage, items: [admin], totalCount: 1 });
+    mockPending([pendingUser]);
+    mockedApi.approveUser.mockResolvedValue({ ...pendingUser, approvalStatus: "APPROVED" });
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText("new@example.com")).toBeInTheDocument()
+    );
+    expect(screen.getByText(/Access requests \(1\)/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Approve$/ }));
+    await waitFor(() =>
+      expect(mockedApi.approveUser).toHaveBeenCalledWith(9)
+    );
+  });
+
+  it("denies a pending user after confirmation", async () => {
+    const pendingUser = { ...member, userID: 9, email: "new@example.com", approvalStatus: "PENDING" as const };
+    mockedUseMe.mockReturnValue(meReturn(admin, true));
+    mockedApi.getUsers.mockResolvedValue({ ...emptyPage, items: [admin], totalCount: 1 });
+    mockPending([pendingUser]);
+    mockedApi.denyUser.mockResolvedValue({ ...pendingUser, approvalStatus: "DENIED" });
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText("new@example.com")).toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Deny$/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Deny$/ }));
+    await waitFor(() =>
+      expect(mockedApi.denyUser).toHaveBeenCalledWith(9)
+    );
+  });
+
+  it("hides the requests section when nobody is pending", async () => {
+    mockedUseMe.mockReturnValue(meReturn(admin, true));
+    mockedApi.getUsers.mockResolvedValue({ ...emptyPage, items: [admin], totalCount: 1 });
+    mockPending([]);
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/Access requests/)).not.toBeInTheDocument();
   });
 
   it("lists users for admins", async () => {

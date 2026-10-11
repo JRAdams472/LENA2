@@ -431,9 +431,10 @@ func (s *serverServices) wireAuth(cfg config.Config, pool *pgxpool.Pool, log *sl
 	issuers, audiences = bff.TrustIssuer(issuers, audiences, bff.FacebookIssuer(), cfg.FacebookClientID)
 
 	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
-		Issuers:     issuers,
-		Audiences:   audiences,
-		AdminEmails: splitAndTrim(cfg.AdminEmails),
+		Issuers:         issuers,
+		Audiences:       audiences,
+		AdminEmails:     splitAndTrim(cfg.AdminEmails),
+		RequireApproval: cfg.RequireMemberApproval,
 	}, s.IdentitySvc, s.HouseholdSvc)
 	if err != nil {
 		return fmt.Errorf("auth config: %w", err)

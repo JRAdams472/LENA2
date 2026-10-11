@@ -37,6 +37,71 @@ func (r *Resolver) Users(ctx context.Context, args struct {
 	return &userPageResolver{items: out, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
+// PendingUsers returns accounts awaiting admin approval, oldest first.
+// Admin-only.
+func (r *Resolver) PendingUsers(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*userPageResolver, error) {
+	if _, err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page, pageSize := pageArgs(args.Page, args.PageSize)
+	users, err := r.IdentityService.ListPendingUsers(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.IdentityService.CountPendingUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*userResolver, len(users))
+	for i, u := range users {
+		out[i] = &userResolver{u: u, protected: r.IdentityService.IsProtected(u.Provider, u.Email), root: r}
+	}
+	return &userPageResolver{items: out, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// ApproveUser grants a pending (or denied) account member access.
+// Admin-only; same guards as SetUserRole.
+func (r *Resolver) ApproveUser(ctx context.Context, args struct {
+	UserID graphql.ID
+}) (*userResolver, error) {
+	return r.setUserApproval(ctx, args.UserID, identity.StatusApproved, "approve_user")
+}
+
+// DenyUser records a durable denial — the account cannot self-retry into
+// access. Admin-only; same guards as SetUserRole.
+func (r *Resolver) DenyUser(ctx context.Context, args struct {
+	UserID graphql.ID
+}) (*userResolver, error) {
+	return r.setUserApproval(ctx, args.UserID, identity.StatusDenied, "deny_user")
+}
+
+// setUserApproval is the shared approve/deny mutation path.
+func (r *Resolver) setUserApproval(ctx context.Context, userID graphql.ID, status, action string) (*userResolver, error) {
+	actor, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	targetID, err := parseID(string(userID))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.IdentityService.AdminSetApproval(ctx, actor.UserID, targetID, status, actor.Email); err != nil {
+		return nil, mapAdminGuardError(err)
+	}
+	// Evict the cached identity so the decision applies on the target's
+	// next request instead of up to userCacheTTL later.
+	r.invalidateUserID(ctx, targetID)
+	slog.Default().Info("audit",
+		"action", action,
+		"actor", actor.Email,
+		"target_id", targetID,
+	)
+	return r.userByID(ctx, targetID)
+}
+
 // SetUserRole changes another user's role. Admin-only; rejects
 // self-modification, protected admins, and removing the last active admin.
 func (r *Resolver) SetUserRole(ctx context.Context, args struct {

@@ -78,6 +78,14 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 	}
 	u, err := h.provision.ProvisionUser(ctx, ident.provider, ident.subject, ident.email, ident.name, ident.emailVerified)
 	if err != nil {
+		// Pending/denied keep their machine-readable 403 signal so the
+		// client lands on the approval gate instead of a login error.
+		switch {
+		case errors.Is(err, errAccountPending):
+			return echo.NewHTTPError(http.StatusForbidden, "account_pending")
+		case errors.Is(err, errAccountDenied):
+			return echo.NewHTTPError(http.StatusForbidden, "account_denied")
+		}
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid "+name+" credential")
 	}
 	iss, err := h.sessions.Issue(ctx, u.UserID, req.Device)

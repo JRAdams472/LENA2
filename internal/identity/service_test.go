@@ -49,14 +49,14 @@ func TestUpsertUser(t *testing.T) {
 		svc, mq := newService(t)
 		missLogin(mq)
 		mq.EXPECT().UpsertUser(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.IdentityUser, error) {
+			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.UpsertUserRow, error) {
 				assert.Equal(t, "entra", arg.Provider)
 				assert.Equal(t, "sub-123", arg.ExternalSubject)
 				assert.Equal(t, "a@b.com", arg.Email)
 				assert.Equal(t, pgtype.Text{String: "Alice", Valid: true}, arg.DisplayName)
 				assert.Equal(t, "a@b.com", arg.CreatedBy)
 				assert.Equal(t, pgtype.Text{String: "a@b.com", Valid: true}, arg.UpdatedBy)
-				return sqlc.IdentityUser{
+				return sqlc.UpsertUserRow{
 					UserID:          42,
 					Provider:        arg.Provider,
 					ExternalSubject: arg.ExternalSubject,
@@ -119,7 +119,7 @@ func TestUpsertUser(t *testing.T) {
 			Role:            RoleMember,
 		}, nil)
 		expectLogin(mq)
-		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.IdentityUser{UserID: 42}, nil)
+		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.UpsertUserRow{UserID: 42}, nil)
 		mq.EXPECT().GetUserByID(ctx, int64(42)).Return(sqlc.IdentityUser{
 			UserID: 42, Provider: "entra", ExternalSubject: "sub-123", Role: RoleMember,
 		}, nil)
@@ -133,9 +133,9 @@ func TestUpsertUser(t *testing.T) {
 		svc, mq := newService(t)
 		missLogin(mq)
 		mq.EXPECT().UpsertUser(ctx, gomock.Any()).DoAndReturn(
-			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.IdentityUser, error) {
+			func(_ context.Context, arg sqlc.UpsertUserParams) (sqlc.UpsertUserRow, error) {
 				assert.False(t, arg.DisplayName.Valid)
-				return sqlc.IdentityUser{UserID: 43, Provider: arg.Provider, Email: arg.Email, Role: RoleMember}, nil
+				return sqlc.UpsertUserRow{UserID: 43, Provider: arg.Provider, Email: arg.Email, Role: RoleMember}, nil
 			})
 		expectLogin(mq)
 
@@ -149,7 +149,7 @@ func TestUpsertUser(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		svc, mq := newService(t)
 		missLogin(mq)
-		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.IdentityUser{}, errDB)
+		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.UpsertUserRow{}, errDB)
 
 		_, err := svc.UpsertUser(ctx, "entra", "sub-123", "a@b.com", "Alice")
 		require.Error(t, err)
@@ -644,5 +644,126 @@ func TestHouseholdQueries(t *testing.T) {
 		users, err := svc.ListUsersByIDs(ctx, nil)
 		require.NoError(t, err)
 		assert.Empty(t, users)
+	})
+}
+
+func TestApprovalStatus(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("new sign-in lands pending and flagged JustCreated", func(t *testing.T) {
+		svc, mq := newService(t)
+		missLogin(mq)
+		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.UpsertUserRow{
+			UserID: 42, Provider: "google", ExternalSubject: "g-sub",
+			Email: "n@b.com", Role: RoleMember, IsActive: true,
+			ApprovalStatus: StatusPending, Inserted: true,
+		}, nil)
+		expectLogin(mq)
+
+		got, err := svc.UpsertUser(ctx, "google", "g-sub", "n@b.com", "New")
+		require.NoError(t, err)
+		assert.True(t, got.JustCreated)
+		assert.True(t, got.IsPending())
+		assert.False(t, got.IsApproved())
+	})
+
+	t.Run("returning sign-in is not JustCreated", func(t *testing.T) {
+		svc, mq := newService(t)
+		missLogin(mq)
+		mq.EXPECT().UpsertUser(ctx, gomock.Any()).Return(sqlc.UpsertUserRow{
+			UserID: 42, ApprovalStatus: StatusApproved, Inserted: false,
+		}, nil)
+		expectLogin(mq)
+
+		got, err := svc.UpsertUser(ctx, "google", "g-sub", "n@b.com", "New")
+		require.NoError(t, err)
+		assert.False(t, got.JustCreated)
+		assert.True(t, got.IsApproved())
+	})
+
+	t.Run("list pending and count", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListPendingUsers(ctx, sqlc.ListPendingUsersParams{Limit: 10, Offset: 0}).
+			Return([]sqlc.IdentityUser{{UserID: 5, Email: "p@b.com", ApprovalStatus: StatusPending}}, nil)
+		mq.EXPECT().CountPendingUsers(ctx).Return(int64(3), nil)
+
+		users, err := svc.ListPendingUsers(ctx, 10, 0)
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.True(t, users[0].IsPending())
+		n, err := svc.CountPendingUsers(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), n)
+	})
+
+	t.Run("count active admins", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().CountActiveAdmins(ctx).Return(int64(2), nil)
+		n, err := svc.CountActiveAdmins(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), n)
+	})
+
+	t.Run("list active admin ids", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().ListActiveAdminIDs(ctx).Return([]int64{1, 7}, nil)
+		ids, err := svc.ListActiveAdminIDs(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{1, 7}, ids)
+	})
+
+	t.Run("set approval status unguarded", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetApprovalStatus(ctx, sqlc.SetApprovalStatusParams{
+			UserID:         9,
+			ApprovalStatus: StatusApproved,
+			UpdatedBy:      pgtype.Text{String: "system", Valid: true},
+		}).Return(int64(1), nil)
+		require.NoError(t, svc.SetApprovalStatus(ctx, 9, StatusApproved, "system"))
+	})
+
+	t.Run("admin approve updates status without session revoke", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		mq.EXPECT().SetApprovalStatus(ctx, sqlc.SetApprovalStatusParams{
+			UserID:         2,
+			ApprovalStatus: StatusApproved,
+			UpdatedBy:      pgtype.Text{String: "admin@b.com", Valid: true},
+		}).Return(int64(1), nil)
+
+		require.NoError(t, svc.AdminSetApproval(ctx, 1, 2, StatusApproved, "admin@b.com"))
+	})
+
+	t.Run("admin deny revokes sessions", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		mq.EXPECT().SetApprovalStatus(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, arg sqlc.SetApprovalStatusParams) (int64, error) {
+				assert.Equal(t, StatusDenied, arg.ApprovalStatus)
+				return 1, nil
+			})
+		mq.EXPECT().RevokeUserSessions(ctx, int64(2)).Return(nil)
+
+		require.NoError(t, svc.AdminSetApproval(ctx, 1, 2, StatusDenied, "admin@b.com"))
+	})
+
+	t.Run("cannot approve or deny self", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a@b.com"), nil).Times(2)
+		assert.ErrorIs(t, svc.AdminSetApproval(ctx, 2, 2, StatusApproved, "a@b.com"), ErrSelfModification)
+		assert.ErrorIs(t, svc.AdminSetApproval(ctx, 2, 2, StatusDenied, "a@b.com"), ErrSelfModification)
+	})
+
+	t.Run("cannot deny a protected admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		svc = svc.WithProtectedEmails([]string{"boss@example.com"})
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "BOSS@example.com"), nil)
+		assert.ErrorIs(t, svc.AdminSetApproval(ctx, 1, 2, StatusDenied, "a@b.com"), ErrProtectedUser)
+	})
+
+	t.Run("invalid status rejected before touching the store", func(t *testing.T) {
+		svc, _ := newService(t)
+		err := svc.AdminSetApproval(ctx, 1, 2, "bogus", "a@b.com")
+		assert.ErrorContains(t, err, "invalid approval status")
 	})
 }

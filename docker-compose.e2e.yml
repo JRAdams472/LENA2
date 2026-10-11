@@ -32,6 +32,9 @@ services:
       # The e2e suite mints tokens from testissuer, so the bootstrap admin
       # email must be qualified to that issuer.
       LENA_ADMIN_EMAILS: http://testissuer:8085:e2e@example.com
+      # Approval barrier off for e2e: the suite signs in seeded users and
+      # would otherwise stall on the pending-approval screen.
+      LENA_REQUIRE_MEMBER_APPROVAL: "false"
       # The whole e2e suite authenticates as the same user, so the default
       # per-user GraphQL rate limit would 429 mid-run; disable it here.
       LENA_GRAPHQL_RATE_LIMIT_PER_MINUTE: "0"

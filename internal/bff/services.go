@@ -494,6 +494,9 @@ type UserAdmin interface {
 	CountUsers(ctx context.Context) (int64, error)
 	AdminSetRole(ctx context.Context, actorID, targetID int64, role string) error
 	AdminSetActive(ctx context.Context, actorID, targetID int64, active bool, by string) error
+	ListPendingUsers(ctx context.Context, limit, offset int32) ([]identity.User, error)
+	CountPendingUsers(ctx context.Context) (int64, error)
+	AdminSetApproval(ctx context.Context, actorID, targetID int64, status, by string) error
 }
 
 // IdentityService is the subset of *identity.Service used by the resolver

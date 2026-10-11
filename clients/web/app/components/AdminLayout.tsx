@@ -34,11 +34,12 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
-import { api } from "@/lib/api";
+import { api, isApiErrorKind } from "@/lib/api";
 import { paletteFor } from "@/lib/themeVars";
 import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
+import ApprovalGate from "@/app/components/ApprovalGate";
 import LoginScreen from "@/app/components/LoginScreen";
 import LenaLogo from "@/app/components/LenaLogo";
 import ThemeModeButton from "@/app/components/ThemeModeButton";
@@ -274,6 +275,7 @@ function NotificationBell() {
 // Reminders deep-link to their subject; event notifications to the
 // event; household activity to the household page.
 function notificationHref(n: HouseholdNotification): string {
+  if (n.kind === "ACCESS_REQUESTED") return "/member/users";
   if (n.recipeId != null) return `/member/recipes/${n.recipeId}`;
   if (n.foodEventId != null) return `/member/events/${n.foodEventId}`;
   if (n.itemId != null) return "/member/inventory/items";
@@ -314,6 +316,8 @@ function notificationText(n: HouseholdNotification): string {
       return `${actor} left your household`;
     case "MEMBER_REMOVED":
       return "You were removed from a household";
+    case "ACCESS_REQUESTED":
+      return `${actor} requested access to LENA`;
     case "ROLE_CHANGED":
       return `${actor} changed a household role`;
     case "HOUSEHOLD_RENAMED":
@@ -343,7 +347,7 @@ export default function AdminLayout({
   const theme = useTheme();
   const pathname = usePathname() ?? "";
   const { user, signOut } = useAuth();
-  const { isAdmin } = useMe();
+  const { isAdmin, error: meError } = useMe();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(
@@ -370,6 +374,16 @@ export default function AdminLayout({
 
   if (!user) {
     return <LoginScreen />;
+  }
+
+  // The ID token is valid but the account sits behind the admin-approval
+  // barrier (LEN-127) — render the gate instead of any member chrome so
+  // no household data mounts for a pending/denied user.
+  if (isApiErrorKind(meError, "account_pending")) {
+    return <ApprovalGate />;
+  }
+  if (isApiErrorKind(meError, "account_denied")) {
+    return <ApprovalGate denied />;
   }
 
   const renderNavGroup = (group: NavEntry, caption: boolean) => {

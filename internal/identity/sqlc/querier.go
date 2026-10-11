@@ -13,6 +13,7 @@ type Querier interface {
 	ConditionalSetUserRole(ctx context.Context, arg ConditionalSetUserRoleParams) (int64, error)
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountLoginsByUser(ctx context.Context, userID int64) (int64, error)
+	CountPendingUsers(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Membership table is the source of truth (LEN-26): a member's active
 	// pointer (users.household_id) may sit on a different household.
@@ -26,7 +27,10 @@ type Querier interface {
 	// Link flow: strict insert — a conflict means the provider identity is
 	// already bound (to this or another user) and surfaces as ErrConflict.
 	InsertLogin(ctx context.Context, arg InsertLoginParams) (IdentityUserLogin, error)
+	// Recipients for access-request notifications: every active site admin.
+	ListActiveAdminIDs(ctx context.Context) ([]int64, error)
 	ListLoginsByUser(ctx context.Context, userID int64) ([]IdentityUserLogin, error)
+	ListPendingUsers(ctx context.Context, arg ListPendingUsersParams) ([]IdentityUser, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]IdentityUser, error)
 	// Members of a household regardless of which household their active
 	// pointer currently sits on. household_role on the returned rows is the
@@ -49,6 +53,7 @@ type Querier interface {
 	// makes "not a member" lose with zero rows; role syncs from the membership
 	// row in the same statement so the two columns can never diverge.
 	SetActiveHousehold(ctx context.Context, arg SetActiveHouseholdParams) (int64, error)
+	SetApprovalStatus(ctx context.Context, arg SetApprovalStatusParams) (int64, error)
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) (int64, error)
 	// Conditional update: the expected-household guard turns a concurrent
 	// accept/leave race into a zero-row conflict instead of a lost update.
@@ -68,7 +73,12 @@ type Querier interface {
 	// First sign-in creates the mapping; subsequent sign-ins refresh the
 	// cached provider claims and the sign-in timestamp.
 	UpsertLogin(ctx context.Context, arg UpsertLoginParams) (IdentityUserLogin, error)
-	UpsertUser(ctx context.Context, arg UpsertUserParams) (IdentityUser, error)
+	// New user rows land as 'pending' — the approval barrier (LEN-127). The
+	// approval gate in the BFF decides whether the account stays pending; the
+	// conflict branch preserves whatever status an admin already assigned.
+	// `xmax = 0` is the canonical "inserted, not updated" upsert signal: a fresh
+	// INSERT carries no xmax, while the ON CONFLICT UPDATE stamps it.
+	UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

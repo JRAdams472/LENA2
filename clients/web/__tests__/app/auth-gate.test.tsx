@@ -146,6 +146,62 @@ describe("auth gate", () => {
     expect(localStorage.getItem("lena_id_token")).toBeNull();
   });
 
+  function mockGraphqlForbidden(message: string) {
+    mockFetch.mockImplementation((input) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/auth/session/revoke"))
+        return Promise.resolve({ ok: true, status: 204 });
+      if (url.includes("/auth/session"))
+        return Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve("") });
+      // GraphQL requests: the approval-gate 403 body.
+      return Promise.resolve({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve(JSON.stringify({ message })),
+      });
+    });
+  }
+
+  it("shows the pending-approval screen for a 403 account_pending", async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    sessionStorage.setItem("lena_id_token", makeToken("new@example.com", future));
+    mockGraphqlForbidden("account_pending");
+
+    render(
+      <AuthProvider>
+        <AdminLayout>
+          <div data-testid="app-content">App</div>
+        </AdminLayout>
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Access request sent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("app-content")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  });
+
+  it("shows the denied screen for a 403 account_denied", async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    sessionStorage.setItem("lena_id_token", makeToken("blocked@example.com", future));
+    mockGraphqlForbidden("account_denied");
+
+    render(
+      <AuthProvider>
+        <AdminLayout>
+          <div data-testid="app-content">App</div>
+        </AdminLayout>
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Access not granted")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("app-content")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  });
+
   it("migrates a legacy localStorage token into sessionStorage", async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     const token = makeToken("legacy@example.com", future);
