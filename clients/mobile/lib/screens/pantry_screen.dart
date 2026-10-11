@@ -132,7 +132,7 @@ class _PantryScreenState extends State<PantryScreen> {
           final notes = item['notes'] as String?;
           return Card(
             child: ListTile(
-              title: Text(name),
+              title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                 'Qty: $qty ${min != null ? '(min: $min)' : ''}${notes != null && notes.isNotEmpty ? '\n$notes' : ''}',
               ),

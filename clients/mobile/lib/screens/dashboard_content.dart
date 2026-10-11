@@ -68,41 +68,41 @@ class DashboardContent extends StatelessWidget {
       onRefresh: () async => onRefresh?.call(),
       child: LenaFadeIn(
         child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        children: [
-          _greetingHeader(context, name),
-          if (incomingInvites.isNotEmpty || unread > 0) ...[
-            const SizedBox(height: 12),
-            for (final inv in incomingInvites)
-              Card(
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                child: ListTile(
-                  leading: const Icon(Icons.mail_outline),
-                  title: Text(
-                    '${_inviteSender(inv['fromUser'] as Map<String, dynamic>?)} invited you to their household',
-                  ),
-                  subtitle: const Text('Open the Household tab to respond'),
-                ),
-              ),
-            if (unread > 0)
-              Card(
-                child: ListTile(
-                  leading: Badge(
-                    label: Text('$unread'),
-                    child: const Icon(Icons.notifications_outlined),
-                  ),
-                  title: Text(
-                    unread == 1
-                        ? '1 unread household notification'
-                        : '$unread unread household notifications',
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            _greetingHeader(context, name),
+            if (incomingInvites.isNotEmpty || unread > 0) ...[
+              const SizedBox(height: 12),
+              for (final inv in incomingInvites)
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  child: ListTile(
+                    leading: const Icon(Icons.mail_outline),
+                    title: Text(
+                      '${_inviteSender(inv['fromUser'] as Map<String, dynamic>?)} invited you to their household',
+                    ),
+                    subtitle: const Text('Open the Household tab to respond'),
                   ),
                 ),
-              ),
-          ],
-          const SizedBox(height: 20),
-          _todaysMeals(context, slots),
-          const SizedBox(height: 20),
-          _suggestions(context, recommendations),
+              if (unread > 0)
+                Card(
+                  child: ListTile(
+                    leading: Badge(
+                      label: Text('$unread'),
+                      child: const Icon(Icons.notifications_outlined),
+                    ),
+                    title: Text(
+                      unread == 1
+                          ? '1 unread household notification'
+                          : '$unread unread household notifications',
+                    ),
+                  ),
+                ),
+            ],
+            const SizedBox(height: 20),
+            _todaysMeals(context, slots),
+            const SizedBox(height: 20),
+            _suggestions(context, recommendations),
           ],
         ),
       ),
@@ -228,6 +228,8 @@ class DashboardContent extends StatelessWidget {
                   Text(
                     recipe?['name'] as String? ?? 'Unknown recipe',
                     style: Theme.of(context).textTheme.titleSmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   if (detail.isNotEmpty)
                     Text(detail, style: Theme.of(context).textTheme.bodySmall),
@@ -263,8 +265,7 @@ class DashboardContent extends StatelessWidget {
             child: EmptyState(
               icon: Icons.lightbulb_outline,
               title: 'Nothing to suggest yet',
-              description:
-                  'Rate a few recipes and we\'ll get ideas flowing.',
+              description: 'Rate a few recipes and we\'ll get ideas flowing.',
             ),
           )
         else ...[
@@ -315,6 +316,8 @@ class DashboardContent extends StatelessWidget {
               Text(
                 recipe?['name'] as String? ?? 'Unknown',
                 style: Theme.of(context).textTheme.titleLarge,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
               if (meta.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -378,6 +381,8 @@ class DashboardContent extends StatelessWidget {
                     Text(
                       recipe?['name'] as String? ?? 'Unknown',
                       style: Theme.of(context).textTheme.titleSmall,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     if (meta.isNotEmpty)
                       Text(

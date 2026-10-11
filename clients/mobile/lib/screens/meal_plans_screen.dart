@@ -93,7 +93,8 @@ class _MealPlansScreenState extends State<MealPlansScreen> {
             return Card(
               child: ListTile(
                 dense: true,
-                title: Text(title),
+                title:
+                    Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: hasDateInName || pretty.isEmpty
                     ? null
                     : Text('Week starting $pretty'),
