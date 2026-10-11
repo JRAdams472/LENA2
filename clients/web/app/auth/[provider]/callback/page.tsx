@@ -6,6 +6,8 @@ import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/app/auth/AuthProvider";
+import ApprovalGate from "@/app/components/ApprovalGate";
+import { isApiErrorKind } from "@/lib/api";
 import {
   isOAuthProvider,
   oauthNonceKey,
@@ -21,6 +23,7 @@ function OAuthCallback() {
   const routeParams = useParams<{ provider: string }>();
   const { signInWithProvider, isAuthenticated } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const [gate, setGate] = useState<"pending" | "denied" | null>(null);
   const ranRef = useRef(false);
 
   const fail = useCallback(
@@ -57,12 +60,22 @@ function OAuthCallback() {
 
     signInWithProvider(provider, code, nonce, verifier)
       .then(() => router.push("/member"))
-      .catch(() => setError("Sign-in failed. Please try again."));
+      .catch((e) => {
+        if (isApiErrorKind(e, "account_pending")) setGate("pending");
+        else if (isApiErrorKind(e, "account_denied")) setGate("denied");
+        else setError("Sign-in failed. Please try again.");
+      });
   }, [provider, params, signInWithProvider, router, fail]);
 
   useEffect(() => {
     if (isAuthenticated) router.push("/member");
   }, [isAuthenticated, router]);
+
+  // New accounts land behind the admin-approval barrier — the session
+  // exchange itself 403s, so show the gate here rather than an error.
+  if (gate) {
+    return <ApprovalGate denied={gate === "denied"} />;
+  }
 
   return (
     <Box

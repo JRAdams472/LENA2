@@ -22,6 +22,8 @@ export interface AuditableEntity {
   lastUpdatedDate: string | null;
 }
 
+export type UserApprovalStatus = "PENDING" | "APPROVED" | "DENIED";
+
 export interface User {
   userID: number;
   email: string;
@@ -33,6 +35,9 @@ export interface User {
   birthdate: string | null;
   role: "member" | "admin";
   isActive: boolean;
+  // Admin-approval lifecycle (LEN-127); distinct from isActive's
+  // banned/disabled flag. Absent in projections that omit it.
+  approvalStatus?: UserApprovalStatus | null;
   isProtected: boolean;
   lastLoginAt: string | null;
   externalSubject: string | null;
@@ -69,7 +74,8 @@ export type NotificationKind =
   | "EVENT_DELETED"
   | "PROTEIN_DEFROST"
   | "MEAL_PREP_ADVANCE"
-  | "ITEM_EXPIRING";
+  | "ITEM_EXPIRING"
+  | "ACCESS_REQUESTED";
 
 // A member entry pairs the restricted user projection with household
 // role metadata — roles never appear on HouseholdUser itself so invite

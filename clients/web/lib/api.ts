@@ -80,11 +80,32 @@ const API_BASE_URL =
 
 export class ApiError extends Error {
   status: number;
+  // Machine-readable signal from the API body, when it carries one —
+  // e.g. "account_pending"/"account_denied" from the LEN-127 approval
+  // gate. Clients branch on this instead of string-matching messages.
+  kind: string | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, kind: string | null = null) {
     super(message);
     this.status = status;
     this.name = "ApiError";
+    this.kind = kind;
+  }
+}
+
+export function isApiErrorKind(e: unknown, kind: string): boolean {
+  return e instanceof ApiError && e.kind === kind;
+}
+
+// The approval-gate signals the API returns with a 403 body.
+const ACCOUNT_GATE_KINDS = new Set(["account_pending", "account_denied"]);
+
+function accountGateKind(body: string): string | null {
+  try {
+    const msg = (JSON.parse(body) as { message?: string }).message;
+    return msg && ACCOUNT_GATE_KINDS.has(msg) ? msg : null;
+  } catch {
+    return null;
   }
 }
 
@@ -209,7 +230,16 @@ export async function createProviderSession(
     body: JSON.stringify({ code, nonce, device: device ?? "web", codeVerifier }),
   });
   if (!res.ok) {
-    throw new Error(`${provider} sign-in failed (HTTP ${res.status})`);
+    // Approval-gate 403s carry a machine-readable body — surface it so
+    // the callback page can show the pending/denied screen rather than
+    // a generic sign-in failure.
+    const text = await res.text().catch(() => "");
+    const kind = res.status === 403 ? accountGateKind(text) : null;
+    throw new ApiError(
+      res.status,
+      `${provider} sign-in failed (HTTP ${res.status})`,
+      kind
+    );
   }
   return (await res.json()) as SessionBundle;
 }
@@ -319,11 +349,13 @@ async function request<T>(
   }
 
   if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    // 403 approval-gate responses must not trigger the 401 logout path.
+    const kind = res.status === 403 ? accountGateKind(text) : null;
     if (res.status === 401) {
       onUnauthorized?.();
     }
-    const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || `HTTP ${res.status}`);
+    throw new ApiError(res.status, text || `HTTP ${res.status}`, kind);
   }
 
   const payload = (await res.json()) as GraphQLResponse<T>;
@@ -1025,6 +1057,7 @@ interface GqlUser {
   birthdate?: string | null;
   role: string;
   isActive: boolean;
+  approvalStatus?: string | null;
   isProtected: boolean;
   lastLoginAt: string | null;
   isSearchable?: boolean;
@@ -1105,6 +1138,7 @@ const toUser = (u: GqlUser): User => ({
   birthdate: u.birthdate ?? null,
   role: u.role === "admin" ? "admin" : "member",
   isActive: u.isActive !== false,
+  approvalStatus: (u.approvalStatus as User["approvalStatus"]) ?? null,
   isProtected: u.isProtected === true,
   lastLoginAt: u.lastLoginAt ?? null,
   externalSubject: null,
@@ -2458,7 +2492,7 @@ export const api = {
     pageSize: number
   ): Promise<PagedResult<User>> => {
     const data = await request<{ users: GqlUserPage }>(
-      `query ($page: Int, $pageSize: Int) { users(page: $page, pageSize: $pageSize) { items { id email displayName firstName lastName backupEmail role isActive isProtected lastLoginAt } pageInfo { pageNumber pageSize totalCount } } }`,
+      `query ($page: Int, $pageSize: Int) { users(page: $page, pageSize: $pageSize) { items { id email displayName firstName lastName backupEmail role isActive approvalStatus isProtected lastLoginAt } pageInfo { pageNumber pageSize totalCount } } }`,
       { page, pageSize }
     );
     return {
@@ -2468,6 +2502,39 @@ export const api = {
       totalCount: data.users.pageInfo.totalCount,
       totalPages: Math.ceil(data.users.pageInfo.totalCount / data.users.pageInfo.pageSize) || 1,
     };
+  },
+
+  getPendingUsers: async (
+    page: number,
+    pageSize: number
+  ): Promise<PagedResult<User>> => {
+    const data = await request<{ pendingUsers: GqlUserPage }>(
+      `query ($page: Int, $pageSize: Int) { pendingUsers(page: $page, pageSize: $pageSize) { items { id email displayName firstName lastName role isActive approvalStatus isProtected lastLoginAt } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
+    );
+    return {
+      items: data.pendingUsers.items.map(toUser),
+      pageNumber: data.pendingUsers.pageInfo.pageNumber,
+      pageSize: data.pendingUsers.pageInfo.pageSize,
+      totalCount: data.pendingUsers.pageInfo.totalCount,
+      totalPages: Math.ceil(data.pendingUsers.pageInfo.totalCount / data.pendingUsers.pageInfo.pageSize) || 1,
+    };
+  },
+
+  approveUser: async (userId: number): Promise<User> => {
+    const data = await request<{ approveUser: GqlUser }>(
+      `mutation ($userId: ID!) { approveUser(userId: $userId) { id email role isActive approvalStatus } }`,
+      { userId: String(userId) }
+    );
+    return toUser(data.approveUser);
+  },
+
+  denyUser: async (userId: number): Promise<User> => {
+    const data = await request<{ denyUser: GqlUser }>(
+      `mutation ($userId: ID!) { denyUser(userId: $userId) { id email role isActive approvalStatus } }`,
+      { userId: String(userId) }
+    );
+    return toUser(data.denyUser);
   },
 
   setUserRole: async (userId: number, role: "member" | "admin"): Promise<User> => {

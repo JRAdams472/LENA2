@@ -2,6 +2,7 @@ import {
   api,
   asEntity,
   ApiError,
+  isApiErrorKind,
   setAuthTokenGetter,
   setOnUnauthorized,
 } from "@/lib/api";
@@ -122,6 +123,7 @@ describe("api client: auth and helpers", () => {
       isSearchable: true,
       household: null,
       birthdate: null,
+      approvalStatus: null,
     });
   });
 
@@ -129,6 +131,34 @@ describe("api client: auth and helpers", () => {
     expect(asEntity<{ a: number }>({ a: 1 })).toEqual({ a: 1 });
     expect(() => asEntity(null)).toThrow(TypeError);
     expect(() => asEntity("x")).toThrow(TypeError);
+  });
+
+  it("classifies approval-gate 403 bodies on ApiError.kind", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ message: "account_pending" }),
+    });
+
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).kind).toBe("account_pending");
+    expect(isApiErrorKind(error, "account_pending")).toBe(true);
+    expect(isApiErrorKind(error, "account_denied")).toBe(false);
+  });
+
+  it("leaves kind null for other 403 bodies", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ message: "Forbidden" }),
+    });
+
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
+    expect((error as ApiError).kind).toBeNull();
   });
 
   it("uses the HTTP status text fallback when the body read fails", async () => {
