@@ -9,29 +9,14 @@ import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
 import { DOCS_NAV } from "@/app/components/marketing/docsModel";
 
-// Left rail for /docs — same visual treatment as the member drawer:
-// paper surface, 10px item radius, sage-tinted active state.
-export default function DocsNav() {
+// The nav groups themselves, without the rail chrome — shared by the
+// sticky desktop rail and the marketing hamburger drawer on phones,
+// where the rail is hidden entirely.
+export function DocsNavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname() ?? "";
 
   return (
-    <Box
-      component="nav"
-      aria-label="Documentation"
-      sx={{
-        width: 260,
-        flexShrink: 0,
-        borderRight: 1,
-        borderColor: "divider",
-        bgcolor: "background.paper",
-        display: { xs: "none", md: "block" },
-        overflowY: "auto",
-        position: "sticky",
-        top: 64,
-        alignSelf: "flex-start",
-        height: "calc(100vh - 64px)",
-      }}
-    >
+    <>
       {DOCS_NAV.map((group) => (
         <List
           key={group.label}
@@ -69,6 +54,7 @@ export default function DocsNav() {
                 href={item.href}
                 selected={selected}
                 aria-current={selected ? "page" : undefined}
+                onClick={onNavigate}
                 sx={{ borderRadius: 2.5, mx: 1.5, px: 2, py: 1 }}
               >
                 <ListItemText primary={item.label} />
@@ -77,6 +63,32 @@ export default function DocsNav() {
           })}
         </List>
       ))}
+    </>
+  );
+}
+
+// Left rail for /docs — same visual treatment as the member drawer:
+// paper surface, 10px item radius, sage-tinted active state.
+export default function DocsNav() {
+  return (
+    <Box
+      component="nav"
+      aria-label="Documentation"
+      sx={{
+        width: 260,
+        flexShrink: 0,
+        borderRight: 1,
+        borderColor: "divider",
+        bgcolor: "background.paper",
+        display: { xs: "none", md: "block" },
+        overflowY: "auto",
+        position: "sticky",
+        top: 64,
+        alignSelf: "flex-start",
+        height: "calc(100vh - 64px)",
+      }}
+    >
+      <DocsNavList />
     </Box>
   );
 }
