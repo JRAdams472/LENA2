@@ -87,7 +87,7 @@ The web client (`clients/web`) serves two surfaces: a **public site** at `/` —
 
 ### Administration
 
-- `/users` — user management (admin only).
+- `/users` — user management (admin only): roles, ban/unban, and the **Access requests** queue that approves or denies new sign-ins held at the member-approval barrier.
 - `/items/pending` — approve or reject user-submitted items (admin only).
 - `/household` — household members, roles, and invites; each member manages their own allergy/dietary records here. A **Your households** section lists every membership with the active one marked — switch between them, create a new household, or leave any of them; accepting an invite while you solely own a household offers a merge.
 - `/profile` — current-user profile (name, backup email, discoverability, and your own allergy/dietary records).
@@ -211,6 +211,8 @@ LENA2 uses Google OIDC ID tokens:
 **Sessions.** Set `LENA_SESSION_SECRET` (≥32 bytes; the API refuses to boot with a weaker one) and sign-in exchanges the provider credential for a LENA session: a short-lived signed access token (`iss=lena`, ~15 min) plus a rotating refresh token (~30 days, stored only as a hash). Clients refresh instead of re-signing in with a provider; replaying a rotated token revokes the whole session family, and admin deactivation revokes a user's sessions immediately. Unset keeps OIDC-only mode. See `docs/auth-oidc.md` §8 and `docs/refresh-tokens-plan.md`.
 
 Initial admins are promoted by adding their email to `LENA_ADMIN_EMAILS`. Protected admins can be listed in `LENA_PROTECTED_EMAILS` so they cannot be banned or demoted.
+
+**Member approval barrier** (`LENA_REQUIRE_MEMBER_APPROVAL`, default `true`). First-time sign-ins are provisioned with `approval_status = pending` and receive HTTP 403 `account_pending` before any household data is created or served — the clients show an "Access request sent" screen and every active admin gets an in-app notification. Admins approve or deny requests from `/member/users` (`pendingUsers` / `approveUser` / `denyUser` in the schema); denied accounts get `account_denied` on every subsequent sign-in. Three paths bypass the barrier: the flag is off (e2e/dev stacks set it `false`), the verified email is in `LENA_ADMIN_EMAILS`, or the deployment has zero active admins — that first sign-in bootstraps as admin so a fresh install can never lock out. The barrier is distinct from banning (`is_active`): a banned user gets 401, a pending or denied one gets 403.
 
 ## API idempotency
 
