@@ -188,6 +188,103 @@ void main() {
     expect(storage.map['refresh_token'], 'rt-keep');
   });
 
+  test('a pending sign-in flags the gate and keeps the credential', () async {
+    final storage = MemStorage();
+    final svc = makeService(
+      storage,
+      (req) => http.Response('{"message":"account_pending"}', 403),
+      googleSignIn: () async => googleToken,
+    );
+    await svc.ready;
+
+    await svc.signIn();
+
+    expect(svc.accountGate, 'pending');
+    expect(svc.isSignedIn, isTrue,
+        reason: 'provider token stays as the bearer');
+    expect(svc.idToken, googleToken);
+  });
+
+  test('a denied sign-in flags the denied gate', () async {
+    final storage = MemStorage();
+    final svc = makeService(
+      storage,
+      (req) => http.Response('{"message":"account_denied"}', 403),
+      googleSignIn: () async => googleToken,
+    );
+    await svc.ready;
+
+    await svc.signIn();
+
+    expect(svc.accountGate, 'denied');
+  });
+
+  test('a gate 403 on refresh keeps the session tokens', () async {
+    final storage = MemStorage()
+      ..map['id_token'] = expiredAccess
+      ..map['refresh_token'] = 'rt-keep';
+    final svc = makeService(
+      storage,
+      (req) => http.Response('{"message":"account_pending"}', 403),
+    );
+    await svc.ready;
+
+    expect(svc.accountGate, 'pending');
+    expect(svc.isSignedIn, isTrue,
+        reason: 'the account is alive behind the barrier');
+    expect(storage.map['refresh_token'], 'rt-keep');
+  });
+
+  test('a non-gate 403 on refresh still signs out', () async {
+    final storage = MemStorage()
+      ..map['id_token'] = expiredAccess
+      ..map['refresh_token'] = 'rt-dead';
+    final svc = makeService(
+      storage,
+      (req) => http.Response('{"message":"forbidden"}', 403),
+    );
+    await svc.ready;
+
+    expect(svc.accountGate, isNull);
+    expect(svc.isSignedIn, isFalse);
+    expect(storage.map, isEmpty);
+  });
+
+  test('sign-out clears the gate state', () async {
+    final storage = MemStorage();
+    final svc = makeService(
+      storage,
+      (req) => req.url.path == '/auth/session'
+          ? http.Response('{"message":"account_pending"}', 403)
+          : http.Response('', 204),
+      googleSignIn: () async => googleToken,
+    );
+    await svc.ready;
+    await svc.signIn();
+    expect(svc.accountGate, 'pending');
+
+    await svc.signOut();
+
+    expect(svc.accountGate, isNull);
+    expect(svc.isSignedIn, isFalse);
+  });
+
+  test('flagAccountGate notifies listeners once per state change', () async {
+    final storage = MemStorage();
+    final svc = makeService(storage, (req) => http.Response('', 404));
+    await svc.ready;
+    var notified = 0;
+    svc.addListener(() => notified++);
+
+    svc.flagAccountGate('pending');
+    svc.flagAccountGate('pending');
+    svc.flagAccountGate('bogus');
+    svc.flagAccountGate('denied');
+
+    expect(svc.accountGate, 'denied');
+    expect(notified, 2);
+  });
+
   test('sign-out revokes the refresh token and clears storage', () async {
     final storage = MemStorage()
       ..map['id_token'] = liveAccess

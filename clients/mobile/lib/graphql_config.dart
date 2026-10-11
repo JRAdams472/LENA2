@@ -37,6 +37,17 @@ final ErrorLink errorLink = ErrorLink(
   // HTTP 401 with a live refresh token: rotate once and replay the
   // request; a failed rotation signs out.
   onException: (request, forward, exception) {
+    // Approval barrier (LEN-127): a 403 carrying account_pending /
+    // account_denied flips the app to the gate screen. The credential
+    // stays valid — this is not a sign-out.
+    if (exception is ServerException && exception.statusCode == 403) {
+      final message = exception.parsedResponse?.data?['message'];
+      if (message is String &&
+          message.startsWith('account_') &&
+          message.length > 'account_'.length) {
+        authService.flagAccountGate(message.substring('account_'.length));
+      }
+    }
     if (exception is ServerException &&
         exception.statusCode == 401 &&
         _retriedRequests[request] == null) {

@@ -55,6 +55,10 @@ class AuthService extends ChangeNotifier {
   String? _refreshToken;
   bool _isLoading = true;
   String? _lastError;
+  // Admin-approval barrier (LEN-127): 'pending' | 'denied' | null. Set
+  // when the API answers 403 with the machine-readable gate body — the
+  // user keeps their credential but the app shows the gate screen.
+  String? _accountGate;
   Future<bool>? _refreshFuture;
   late final Future<void> _initFuture;
 
@@ -99,6 +103,19 @@ class AuthService extends ChangeNotifier {
       _idToken != null && (!_isExpired || _refreshToken != null);
   String? get idToken => _idToken;
   String? get lastError => _lastError;
+  // 'pending' | 'denied' | null — AuthGate renders the approval screen
+  // for the first two regardless of sign-in state.
+  String? get accountGate => _accountGate;
+
+  /// Called from the GraphQL error link when a request 403s with an
+  /// approval-gate body — covers stored-credential sign-ins where the
+  /// gate only surfaces on the first API call.
+  void flagAccountGate(String kind) {
+    if (kind != 'pending' && kind != 'denied') return;
+    if (_accountGate == kind) return;
+    _accountGate = kind;
+    notifyListeners();
+  }
 
   /// Runs at the top of signOut while the bearer is still valid — the push
   /// service hooks this to unregister the device token before the session
@@ -158,6 +175,7 @@ class AuthService extends ChangeNotifier {
   Future<void> signIn() async {
     _isLoading = true;
     _lastError = null;
+    _accountGate = null;
     notifyListeners();
     try {
       // Debug builds seeded with LENA_DEBUG_ID_TOKEN (screenshot/e2e
@@ -200,15 +218,36 @@ class AuthService extends ChangeNotifier {
         final body = json.decode(res.body) as Map<String, dynamic>;
         _idToken = body['accessToken'] as String;
         _refreshToken = body['refreshToken'] as String;
+        _accountGate = null;
         await _storage.write(_tokenKey, _idToken);
         await _storage.write(_refreshKey, _refreshToken);
         return;
       }
+      // Approval gate: the exchange refuses a session for pending and
+      // denied accounts. Flag the state; the provider token still lands
+      // as the bearer so GraphQL 403s keep reporting the same gate.
+      _flagGateFromBody(res.statusCode, res.body);
     } catch (e) {
       debugPrint('session exchange failed, using provider token: $e');
     }
     _idToken = googleToken;
     await _storage.write(_tokenKey, _idToken);
+  }
+
+  // A 403 with {"message":"account_pending"|"account_denied"} marks the
+  // gate state; every other status/body is ignored.
+  void _flagGateFromBody(int statusCode, String body) {
+    if (statusCode != 403) return;
+    try {
+      final message = (json.decode(body) as Map<String, dynamic>)['message'];
+      if (message == 'account_pending') {
+        _accountGate = 'pending';
+      } else if (message == 'account_denied') {
+        _accountGate = 'denied';
+      }
+    } catch (_) {
+      // Non-JSON 403 — not a gate response.
+    }
   }
 
   /// Rotates the stored refresh token into a new credential pair.
@@ -225,6 +264,7 @@ class AuthService extends ChangeNotifier {
     final rt = _refreshToken;
     if (rt == null) return false;
     int status;
+    String bodyText = '';
     try {
       final res = await _http
           .post(
@@ -234,10 +274,12 @@ class AuthService extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 10));
       status = res.statusCode;
+      bodyText = res.body;
       if (status == 200) {
         final body = json.decode(res.body) as Map<String, dynamic>;
         _idToken = body['accessToken'] as String;
         _refreshToken = body['refreshToken'] as String;
+        _accountGate = null;
         await _storage.write(_tokenKey, _idToken);
         await _storage.write(_refreshKey, _refreshToken);
         notifyListeners();
@@ -246,6 +288,16 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       debugPrint('session refresh failed (transport): $e');
       return false;
+    }
+    if (status == 403) {
+      // A gate 403 keeps the credentials — the account is alive, just
+      // held at the barrier. Only non-gate 403s drop the session.
+      final gateBefore = _accountGate;
+      _flagGateFromBody(status, bodyText);
+      if (_accountGate != null) {
+        if (_accountGate != gateBefore) notifyListeners();
+        return false;
+      }
     }
     if (status == 401 || status == 403) {
       await _clearTokens();
@@ -257,6 +309,7 @@ class AuthService extends ChangeNotifier {
   Future<void> _clearTokens() async {
     _idToken = null;
     _refreshToken = null;
+    _accountGate = null;
     try {
       await _storage.delete(_tokenKey);
       await _storage.delete(_refreshKey);
