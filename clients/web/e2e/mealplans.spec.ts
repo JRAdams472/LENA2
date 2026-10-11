@@ -33,7 +33,8 @@ test.describe("meal plans", () => {
         .getByRole("button", { name: "Create", exact: true })
         .click();
       const genDialog = page.getByRole("dialog");
-      await genDialog.getByLabel("Meal Plan ID (optional)").fill(planId);
+      await genDialog.getByLabel("Meal plan").click();
+      await page.getByRole("option", { name: planName }).click();
       await genDialog.getByRole("button", { name: "Save" }).click();
 
       // Success navigates to the new list's detail page.
@@ -77,6 +78,31 @@ test.describe("meal plans", () => {
         { id: planId }
       ).catch(() => undefined);
     }
+  });
+
+  test("create a manual grocery list without a meal plan", async ({
+    page,
+  }) => {
+    await page.goto("/member/grocery-lists");
+    await page
+      .getByRole("button", { name: "Create", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    // The manual option is the default selection.
+    await expect(
+      dialog.getByLabel("Meal plan")
+    ).toContainText("Manual list (no meal plan)");
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    // Success navigates to the new (empty) list's detail page.
+    await expect(page).toHaveURL(/\/grocery-lists\/\d+/);
+    await expect(
+      page.getByRole("heading", { name: "Grocery List" })
+    ).toBeVisible();
+
+    // The lists page labels it "Manual list".
+    await page.goto("/member/grocery-lists");
+    await expect(page.getByText("Manual list").first()).toBeVisible();
   });
 
   test("edit and delete a meal plan", async ({ page }) => {
