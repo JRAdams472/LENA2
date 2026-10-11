@@ -4,6 +4,7 @@ import 'package:gql/ast.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:lena_mobile/graphql_config.dart';
 import 'package:lena_mobile/screens/recipes_screen.dart';
+import 'package:lena_mobile/screens/recipe_view_screen.dart';
 import 'package:lena_mobile/screens/edit_recipe_screen.dart';
 import 'package:lena_mobile/screens/edit_meal_plan_screen.dart';
 import 'package:lena_mobile/widgets/paged_list_view.dart';
@@ -404,7 +405,7 @@ void main() {
       expect(page2, isNotEmpty);
     });
 
-    testWidgets('row tap navigates to EditRecipeScreen', (tester) async {
+    testWidgets('row tap navigates to RecipeViewScreen', (tester) async {
       final link = _CaptureLink({
         'Recipes': _list([_recipe(id: 'r1', name: 'Pasta')], 1),
       });
@@ -415,7 +416,173 @@ void main() {
       await tester.pump();
       await tester.pump();
 
+      expect(find.byType(RecipeViewScreen), findsOneWidget);
+      expect(find.byType(EditRecipeScreen), findsNothing);
+    });
+
+    testWidgets('recipe view shows ingredients and steps', (tester) async {
+      final link = _CaptureLink({
+        'Recipes': _list([_recipe(id: 'r1', name: 'Pasta')], 1),
+        'RecipeView': {
+          'recipe': {
+            'id': 'r1',
+            'name': 'Pasta',
+            'items': [
+              {
+                'id': 'i1',
+                'section': 'For the sauce',
+                'displayOrder': 0,
+                'quantity': 2,
+                'unit': 'cups',
+                'isOptional': false,
+                'notes': null,
+                'item': {'id': 'x', 'name': 'Flour'},
+                'ingredient': null,
+              },
+              {
+                'id': 'i2',
+                'section': null,
+                'displayOrder': 1,
+                'quantity': 1,
+                'unit': 'tsp',
+                'isOptional': true,
+                'notes': null,
+                'item': null,
+                'ingredient': {'id': 'y', 'name': 'salt'},
+              },
+            ],
+            'steps': [
+              {
+                'id': 's2',
+                'stepNumber': 2,
+                'instruction': 'Serve',
+                'durationMinutes': null,
+              },
+              {
+                'id': 's1',
+                'stepNumber': 1,
+                'instruction': 'Boil water',
+                'durationMinutes': 10,
+              },
+            ],
+          },
+        },
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pasta'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecipeViewScreen), findsOneWidget);
+      expect(find.text('Ingredients'), findsOneWidget);
+      expect(find.text('For the sauce'), findsOneWidget);
+      expect(find.text('2 cups Flour'), findsOneWidget);
+      expect(find.text('1 tsp salt (optional)'), findsOneWidget);
+      expect(find.text('1. Boil water'), findsOneWidget);
+      expect(find.text('10 min'), findsOneWidget);
+      expect(find.text('2. Serve'), findsOneWidget);
+    });
+
+    testWidgets('recipe view Edit action pushes the editor', (tester) async {
+      final link = _CaptureLink({
+        'Recipes': _list([_recipe(id: 'r1', name: 'Pasta')], 1),
+        'RecipeView': {
+          'recipe': {
+            'id': 'r1',
+            'name': 'Pasta',
+            'items': const <dynamic>[],
+            'steps': const <dynamic>[],
+          },
+        },
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pasta'));
+      await tester.pumpAndSettle();
+      expect(find.byType(RecipeViewScreen), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Edit'));
+      await tester.pump();
+      await tester.pump();
+
       expect(find.byType(EditRecipeScreen), findsOneWidget);
+    });
+
+    testWidgets(
+        'back from the view preserves search text, results, and scroll',
+        (tester) async {
+      final page1 = [
+        for (var i = 0; i < 25; i++)
+          _recipe(id: 'r$i', name: 'Pasta $i'),
+      ];
+      final page2 = [
+        for (var i = 25; i < 40; i++)
+          _recipe(id: 'r$i', name: 'Pasta $i'),
+      ];
+      final link = _CaptureLink(
+        {
+          'RecordSearch': {'recordSearch': true},
+          'RecipeView': {
+            'recipe': {
+              'id': 'r1',
+              'name': 'Pasta 24',
+              'items': const <dynamic>[],
+              'steps': const <dynamic>[],
+            },
+          },
+        },
+        fns: {
+          'Recipes': (req) =>
+              _list(req.variables['page'] == 2 ? page2 : page1, 40),
+        },
+      );
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      // Search text + a scroll position to preserve.
+      await tester.enterText(find.byType(TextField), 'pasta');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      final scrollable = find
+          .descendant(
+            of: find.byType(PagedListView),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('Pasta 24'),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+      final before = tester.state<ScrollableState>(scrollable).position.pixels;
+      expect(before, greaterThan(0));
+
+      // Open the view (pushed route on compact widths), then go back.
+      await tester.tap(find.text('Pasta 24'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(RecipeViewScreen), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecipeViewScreen), findsNothing);
+      // The list widget stayed mounted — controller text, filtered rows,
+      // and scroll offset are untouched.
+      expect(find.text('pasta'), findsOneWidget);
+      expect(tester.state<ScrollableState>(scrollable).position.pixels,
+          before);
+      // And the search results are the filtered set, not a refetched list.
+      expect(find.text('Pasta 24'), findsOneWidget);
+      expect(
+        link.byName('Recipes').where((r) => r.variables['search'] == 'pasta'),
+        isNotEmpty,
+      );
     });
 
     testWidgets('FAB navigates to the create form', (tester) async {

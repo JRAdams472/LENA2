@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import RecipesPage from "@/app/member/recipes/page";
@@ -151,7 +151,7 @@ describe("recipes page", () => {
     renderPage(<RecipesPage />);
     await waitFor(() => screen.getByText("Pasta"));
     const row = screen.getByText("Pasta").closest("tr")!;
-    fireEvent.click(row.querySelectorAll("button")[0]);
+    fireEvent.click(row.querySelector('[data-testid="row-edit-button"]')!);
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Pasta Updated" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
@@ -163,11 +163,69 @@ describe("recipes page", () => {
     renderPage(<RecipesPage />);
     await waitFor(() => screen.getByText("Pasta"));
     const row = screen.getByText("Pasta").closest("tr")!;
-    const buttons = row.querySelectorAll("button");
-    fireEvent.click(buttons[1]);
+    fireEvent.click(row.querySelector('[data-testid="row-delete-button"]')!);
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteRecipe") && b.variables.id === "1")).toBe(true);
     });
+  });
+
+  it("previews ingredients and steps from the name and description cells", async () => {
+    const detailed = {
+      ...recipe,
+      items: [
+        {
+          id: "11", quantity: 2, unit: "cups", section: "For the sauce",
+          displayOrder: 0, notes: null, isOptional: false, deltaKind: null,
+          item: { id: "5", name: "Flour", brand: { id: "1", name: "Ahold" } },
+          ingredient: null,
+        },
+        {
+          id: "12", quantity: 1, unit: "tsp", section: null,
+          displayOrder: 1, notes: null, isOptional: true, deltaKind: null,
+          item: null,
+          ingredient: { id: "7", name: "salt" },
+        },
+      ],
+      steps: [
+        { stepNumber: 2, instruction: "Serve", durationMinutes: null },
+        { stepNumber: 1, instruction: "Boil water", durationMinutes: 10 },
+      ],
+    };
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("recipe(")) {
+        return Promise.resolve(gql({ recipe: detailed }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      return Promise.resolve(
+        gql({ recipes: { items: [recipe], pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 } } })
+      );
+    });
+
+    renderPage(<RecipesPage />);
+    // Name cell opens the preview.
+    fireEvent.click(await screen.findByRole("button", { name: "Pasta" }));
+    await screen.findByText("For the sauce");
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Ingredients")).toBeInTheDocument();
+    expect(within(dialog).getByText("2 cups Ahold — Flour")).toBeInTheDocument();
+    expect(within(dialog).getByText("1 tsp salt (optional)")).toBeInTheDocument();
+    // Steps sorted by stepNumber, duration shown as secondary.
+    expect(within(dialog).getByText("1. Boil water")).toBeInTheDocument();
+    expect(within(dialog).getByText("10 min")).toBeInTheDocument();
+    expect(within(dialog).getByText("2. Serve")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+
+    // Description cell opens the same preview.
+    fireEvent.click(screen.getByRole("button", { name: "Delicious" }));
+    await waitFor(() =>
+      expect(screen.getByRole("dialog")).toBeInTheDocument()
+    );
   });
 
   it("offers cocktail ideas to a 21+ user and applies the in-stock toggle", async () => {

@@ -7,6 +7,7 @@ import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../theme.dart';
 import 'edit_recipe_screen.dart';
+import 'recipe_view_screen.dart';
 
 const int recipesPageSize = 25;
 
@@ -71,7 +72,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
       return const EditRecipeScreen(key: ValueKey('new'));
     }
     if (_selectedId == null) return null;
-    return EditRecipeScreen(key: ValueKey(_selectedId), recipeId: _selectedId);
+    return RecipeViewScreen(key: ValueKey(_selectedId), recipeId: _selectedId!);
   }
 
   @override
@@ -337,7 +338,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                           _creating = false;
                         }),
                         builder: (_) =>
-                            EditRecipeScreen(recipeId: item['id'] as String),
+                            RecipeViewScreen(recipeId: item['id'] as String),
                       ),
                     ),
                   );

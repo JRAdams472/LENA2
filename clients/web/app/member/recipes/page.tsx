@@ -28,6 +28,7 @@ import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, asEntity, ApiError } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
+import RecipePreviewDialog from "./RecipePreviewDialog";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { CocktailSuggestion, Recipe } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
@@ -86,6 +87,7 @@ export default function RecipesPage() {
   const [isCreate, setIsCreate] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [previewId, setPreviewId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
@@ -245,6 +247,33 @@ export default function RecipesPage() {
     setDialogOpen(false);
   };
 
+  // Name/description cells open the read-only ingredients+steps preview.
+  const previewLink = (key: "recipeName" | "description") => (row: RecipeRow) => {
+    const text = row[key];
+    if (!text) return "—";
+    return (
+      <Button
+        variant="text"
+        size="small"
+        onClick={() => setPreviewId(row.recipeID)}
+        sx={{
+          p: 0,
+          minWidth: 0,
+          justifyContent: "flex-start",
+          textAlign: "left",
+          textTransform: "none",
+        }}
+      >
+        {text}
+      </Button>
+    );
+  };
+  const tableFields = recipeTableFields.map((f) =>
+    f.key === "recipeName" || f.key === "description"
+      ? { ...f, render: previewLink(f.key) }
+      : f
+  );
+
   const extraActions = (row: Record<string, unknown>) => (
     <Button
       size="small"
@@ -372,7 +401,7 @@ export default function RecipesPage() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
-        fields={recipeTableFields}
+        fields={tableFields}
         pagination={
           listQuery.data
             ? {
@@ -387,6 +416,10 @@ export default function RecipesPage() {
         }
       />
       )}
+      <RecipePreviewDialog
+        recipeId={previewId}
+        onClose={() => setPreviewId(null)}
+      />
       <CrudDialog
         open={dialogOpen}
         title={isCreate ? "Create Recipe" : "Edit Recipe"}
