@@ -237,4 +237,56 @@ describe("ItemRow brand-picked check-off", () => {
 
     expect(screen.queryByTestId("allergy-warning-chip")).not.toBeInTheDocument();
   });
+
+  it("shows up/down controls instead of the drag handle when reorder is set", () => {
+    render(
+      <ItemRow
+        item={baseGroceryItem({ manualItemName: "Apples" })}
+        listId={1}
+        draggable
+        reorder={{
+          canMoveUp: true,
+          canMoveDown: true,
+          onMoveUp: jest.fn(),
+          onMoveDown: jest.fn(),
+        }}
+      />,
+      { wrapper: Wrapper }
+    );
+
+    expect(
+      screen.getByRole("button", { name: /move item up/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /move item down/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /drag to reorder/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("fires the reorder callbacks and honors disabled bounds", () => {
+    const onMoveUp = jest.fn();
+    const onMoveDown = jest.fn();
+    render(
+      <ItemRow
+        item={baseGroceryItem({ manualItemName: "Apples" })}
+        listId={1}
+        reorder={{
+          canMoveUp: false,
+          canMoveDown: true,
+          onMoveUp,
+          onMoveDown,
+        }}
+      />,
+      { wrapper: Wrapper }
+    );
+
+    const up = screen.getByRole("button", { name: /move item up/i });
+    const down = screen.getByRole("button", { name: /move item down/i });
+    expect(up).toBeDisabled();
+    fireEvent.click(down);
+    expect(onMoveDown).toHaveBeenCalledTimes(1);
+    expect(onMoveUp).not.toHaveBeenCalled();
+  });
 });

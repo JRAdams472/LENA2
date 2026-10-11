@@ -26,11 +26,15 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import ShoppingCartCheckoutIcon from "@mui/icons-material/ShoppingCartCheckout";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { api } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, fmtDate, fmtQty, sizeBadge, stripSize } from "@/lib/format";
@@ -241,6 +245,7 @@ export function ItemRow({
   onMoveToAisle,
   onDragStart,
   onDragOverRow,
+  reorder,
 }: {
   item: GroceryListItem;
   listId: number;
@@ -250,6 +255,14 @@ export function ItemRow({
   onMoveToAisle?: (item: GroceryListItem, aisleID: number | null) => void;
   onDragStart?: (itemID: number) => void;
   onDragOverRow?: (e: React.DragEvent, itemID: number) => void;
+  // Touch fallback for the drag handle — HTML5 drag never fires on phone
+  // browsers, so narrow viewports get up/down buttons instead.
+  reorder?: {
+    canMoveUp: boolean;
+    canMoveDown: boolean;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+  };
 }) {
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -313,7 +326,7 @@ export function ItemRow({
         borderColor: "divider",
       }}
     >
-      {draggable && (
+      {draggable && !reorder && (
         <IconButton
           size="small"
           aria-label="drag to reorder"
@@ -327,7 +340,33 @@ export function ItemRow({
           <DragIndicatorIcon fontSize="small" />
         </IconButton>
       )}
+      {reorder && (
+        <Box sx={{ display: "flex", flexDirection: "column", mr: -0.5 }}>
+          <IconButton
+            size="small"
+            aria-label="move item up"
+            disabled={!reorder.canMoveUp}
+            onClick={reorder.onMoveUp}
+            sx={{ p: 0.25 }}
+          >
+            <KeyboardArrowUpIcon fontSize="small" />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label="move item down"
+            disabled={!reorder.canMoveDown}
+            onClick={reorder.onMoveDown}
+            sx={{ p: 0.25 }}
+          >
+            <KeyboardArrowDownIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )}
       <FormControlLabel
+        // The label must be free to shrink below its content width — a
+        // long name plus the allergy chip otherwise pushes the action
+        // icons off the right edge of the card on phones.
+        sx={{ flexGrow: 1, minWidth: 0, mr: 0 }}
         control={
           <Checkbox
             checked={item.isChecked}
@@ -335,12 +374,20 @@ export function ItemRow({
           />
         }
         label={
-          <Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 1,
+              }}
+            >
               <Typography
                 variant="body1"
                 color={item.isChecked ? "text.secondary" : "text.primary"}
                 sx={{
+                  minWidth: 0,
                   textDecoration: item.isChecked ? "line-through" : "none",
                 }}
               >
@@ -369,7 +416,6 @@ export function ItemRow({
           </Box>
         }
       />
-      <Box sx={{ flexGrow: 1 }} />
       {aisles.length > 0 && (
         <>
           <IconButton
@@ -724,6 +770,12 @@ export default function GroceryListDetailPage({
   };
 
   const groups = routeQuery.data ?? [];
+  // Only groups with rows render; drag drops and the narrow-viewport arrow
+  // buttons must translate a visible-group position back to its index in
+  // `groups`, so keep both views around.
+  const visibleGroups = groups.filter((g) => g.items.length > 0);
+  const theme = useTheme();
+  const isNarrow = useMediaQuery(theme.breakpoints.down("sm"));
   const store = listQuery.data?.store ?? null;
   // The list's store field doesn't select aisles — they come from
   // groceryStores. store?.aisles maps missing to [] so fall back whenever
@@ -820,7 +872,11 @@ export default function GroceryListDetailPage({
       {routeQuery.isLoading ? (
         <CircularProgress />
       ) : (
-        groups.filter((g) => g.items.length > 0).map((group, gi) => (
+        visibleGroups.map((group, vi) => {
+          // Reorder targets are positions in `groups` — the unfiltered
+          // array — so translate the visible index back before use.
+          const gi = groups.indexOf(group);
+          return (
           <Paper key={group.aisle?.aisleID ?? "unassigned"} sx={{ p: 3, mb: 3 }}>
             <Typography variant="h5" gutterBottom>
               {group.aisle?.name ?? "Other items"}
@@ -841,13 +897,45 @@ export default function GroceryListDetailPage({
                   item={ri.item}
                   listId={listId}
                   suggested={ri.suggested}
-                  draggable
+                  draggable={!isNarrow}
                   aisles={storeAisles}
                   onMoveToAisle={moveToAisle}
                   onDragStart={(itemID) => {
                     dragItemRef.current = itemID;
                   }}
                   onDragOverRow={(e) => e.preventDefault()}
+                  reorder={
+                    isNarrow
+                      ? {
+                          canMoveUp: ii > 0 || vi > 0,
+                          canMoveDown:
+                            ii < group.items.length - 1 ||
+                            vi < visibleGroups.length - 1,
+                          onMoveUp: () => {
+                            const id = ri.item.groceryListItemID;
+                            if (ii > 0) {
+                              submitOrder(id, gi, ii - 1);
+                            } else {
+                              const prev = visibleGroups[vi - 1];
+                              if (prev) {
+                                submitOrder(id, groups.indexOf(prev), prev.items.length);
+                              }
+                            }
+                          },
+                          onMoveDown: () => {
+                            const id = ri.item.groceryListItemID;
+                            if (ii < group.items.length - 1) {
+                              submitOrder(id, gi, ii + 1);
+                            } else {
+                              const next = visibleGroups[vi + 1];
+                              if (next) {
+                                submitOrder(id, groups.indexOf(next), 0);
+                              }
+                            }
+                          },
+                        }
+                      : undefined
+                  }
                 />
               </Box>
             ))}
@@ -865,7 +953,8 @@ export default function GroceryListDetailPage({
               }}
             />
           </Paper>
-        ))
+          );
+        })
       )}
       {reorderMutation.error && (
         <Alert severity="error" sx={{ mb: 2 }}>

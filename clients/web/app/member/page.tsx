@@ -390,6 +390,9 @@ export default function Dashboard() {
         <Paper
           sx={{
             p: 2,
+            // Grid children default to min-width:auto — a wide row would
+            // otherwise push this card past the phone viewport.
+            minWidth: 0,
             gridColumn: {
               md:
                 (restockQuery.data ?? []).length === 0 ? "1 / -1" : "auto",
@@ -432,6 +435,7 @@ export default function Dashboard() {
                       p: 1.5,
                       display: "flex",
                       alignItems: "center",
+                      flexWrap: "wrap",
                       gap: 1.5,
                       transition: theme.transitions.create(
                         ["transform", "border-color"],
@@ -490,7 +494,7 @@ export default function Dashboard() {
         </Paper>
 
         {(restockQuery.data ?? []).length > 0 && (
-          <Paper sx={{ p: 2 }}>
+          <Paper sx={{ p: 2, minWidth: 0 }}>
             <SectionHeader
               title="Time to restock"
               action={
@@ -505,7 +509,12 @@ export default function Dashboard() {
                 return (
                   <Box
                     key={it.itemID}
-                    sx={{ display: "flex", alignItems: "center", gap: 1.25 }}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 1.25,
+                    }}
                   >
                     <Box
                       sx={{

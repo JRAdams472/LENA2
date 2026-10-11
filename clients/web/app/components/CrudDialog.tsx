@@ -10,6 +10,8 @@ import Alert from "@mui/material/Alert";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 export interface FieldDef<T = Record<string, unknown>> {
   key: Extract<keyof T, string>;
@@ -58,8 +60,13 @@ export default function CrudDialog<T = Record<string, unknown>>({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const theme = useTheme();
+  // Phone-sized viewports get the full screen — a floating dialog leaves
+  // too little room for fields, and the keyboard pushes buttons away.
+  const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth fullScreen={fullScreen} maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         {error && (
