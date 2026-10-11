@@ -45,10 +45,9 @@ test.describe("phone-sized member experience", () => {
     await page.getByRole("button", { name: "Create" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    // fullScreen below sm — the paper fills the viewport.
-    await expect(dialog.locator(".MuiDialog-paper")).toHaveClass(
-      /MuiDialog-paperFullScreen/
-    );
+    // fullScreen below sm — the dialog paper fills the viewport (the
+    // paper element itself carries role="dialog").
+    await expect(dialog).toHaveClass(/MuiDialog-paperFullScreen/);
 
     const name = `E2E Mobile Category ${randomInt(10000, 99999)}`;
     await dialog.getByLabel("Name").fill(name);

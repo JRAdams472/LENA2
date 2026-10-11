@@ -56,24 +56,25 @@ export default function Page() {
         ]} />
       </Section>
       <Section title={"Where things live"}>
-        <P>{<Fragment key={21}>{"The web app's left sidebar is split into two zones. The top zone is your day-to-day kitchen work:"}</Fragment>}</P>
-        <DocTable head={["Section","What you'll find"]} rows={[[<Fragment key={22}><strong key={0}>{"Dashboard"}</strong></Fragment>, <Fragment key={23}>{"Today's meals, recipe recommendations, incoming invites"}</Fragment>], [<Fragment key={24}><strong key={0}>{"Meal Planning"}</strong></Fragment>, <Fragment key={25}>{"Weekly Plan, Events, Grocery Lists"}</Fragment>], [<Fragment key={26}><strong key={0}>{"Recipes"}</strong></Fragment>, <Fragment key={27}>{"Your recipe collection and (admins) categories + pending reviews"}</Fragment>], [<Fragment key={28}><strong key={0}>{"Inventory"}</strong></Fragment>, <Fragment key={29}>{"The item catalog: items, brands, categories, nutrition, flavor profiles"}</Fragment>], [<Fragment key={30}><strong key={0}>{"Wine"}</strong></Fragment>, <Fragment key={31}>{"Bottles plus the wine reference catalogs"}</Fragment>]]} />
-        <P>{<Fragment key={32}>{"Pinned to the bottom of the sidebar are two captioned groups:"}</Fragment>}</P>
-        <DocTable head={["Section","What you'll find"]} rows={[[<Fragment key={33}><strong key={0}>{"Administration"}</strong>{" "}<em key={1}>{"(admin)"}</em></Fragment>, <Fragment key={34}>{"Users, Pending Items"}</Fragment>], [<Fragment key={35}><strong key={0}>{"Account"}</strong></Fragment>, <Fragment key={36}>{"Household (members, invites, roles), Profile (name, backup email, discoverability)"}</Fragment>]]} />
-        <P>{<Fragment key={37}>{"Items marked "}<em key={0}>{"(admin)"}</em>{" — the whole Administration group plus Recipes' Categories and Pending Reviews children — only appear for household admins."}</Fragment>}</P>
-        <P>{<Fragment key={38}><strong key={0}>{"Ask Dot"}</strong>{", the free-form assistant that can look up your pantry, plans, recipes, and cellar, isn't in the sidebar — it's the ✨ link on the second row of the header (see "}<DocLink key={1} href="/docs/ai-assistant">{"AI Assistant"}</DocLink>{")."}</Fragment>}</P>
+        <P>{<Fragment key={21}>{"The web app's left sidebar is split into two zones. On a phone-sized screen the sidebar collapses into a hamburger menu, tables stack into cards, and dialogs go full-screen — the web app stays usable, though the mobile app remains the better phone experience (a one-time banner suggests it; dismiss it and it never comes back on that device)."}</Fragment>}</P>
+        <P>{<Fragment key={22}>{"The top zone is your day-to-day kitchen work:"}</Fragment>}</P>
+        <DocTable head={["Section","What you'll find"]} rows={[[<Fragment key={23}><strong key={0}>{"Dashboard"}</strong></Fragment>, <Fragment key={24}>{"Today's meals, recipe recommendations, incoming invites"}</Fragment>], [<Fragment key={25}><strong key={0}>{"Meal Planning"}</strong></Fragment>, <Fragment key={26}>{"Weekly Plan, Events, Grocery Lists"}</Fragment>], [<Fragment key={27}><strong key={0}>{"Recipes"}</strong></Fragment>, <Fragment key={28}>{"Your recipe collection and (admins) categories + pending reviews"}</Fragment>], [<Fragment key={29}><strong key={0}>{"Inventory"}</strong></Fragment>, <Fragment key={30}>{"The item catalog: items, brands, categories, nutrition, flavor profiles"}</Fragment>], [<Fragment key={31}><strong key={0}>{"Wine"}</strong></Fragment>, <Fragment key={32}>{"Bottles plus the wine reference catalogs"}</Fragment>]]} />
+        <P>{<Fragment key={33}>{"Pinned to the bottom of the sidebar are two captioned groups:"}</Fragment>}</P>
+        <DocTable head={["Section","What you'll find"]} rows={[[<Fragment key={34}><strong key={0}>{"Administration"}</strong>{" "}<em key={1}>{"(admin)"}</em></Fragment>, <Fragment key={35}>{"Users, Pending Items"}</Fragment>], [<Fragment key={36}><strong key={0}>{"Account"}</strong></Fragment>, <Fragment key={37}>{"Household (members, invites, roles), Profile (name, backup email, discoverability)"}</Fragment>]]} />
+        <P>{<Fragment key={38}>{"Items marked "}<em key={0}>{"(admin)"}</em>{" — the whole Administration group plus Recipes' Categories and Pending Reviews children — only appear for household admins."}</Fragment>}</P>
+        <P>{<Fragment key={39}><strong key={0}>{"Ask Dot"}</strong>{", the free-form assistant that can look up your pantry, plans, recipes, and cellar, isn't in the sidebar — it's the ✨ link on the second row of the header (see "}<DocLink key={1} href="/docs/ai-assistant">{"AI Assistant"}</DocLink>{")."}</Fragment>}</P>
       </Section>
       <Section title={"Notifications"}>
-        <P>{<Fragment key={39}>{"The "}<strong key={0}>{"bell icon"}</strong>{" in the web header shows an unread count. You'll be notified when someone in your household changes shared things — a meal plan update, a new grocery list, an event change, or an invite. Click a notification to jump straight to the thing that changed."}</Fragment>}</P>
-        <P>{<Fragment key={40}>{"On mobile, the unread count rides on the "}<strong key={0}>{"Household"}</strong>{" tab badge."}</Fragment>}</P>
+        <P>{<Fragment key={40}>{"The "}<strong key={0}>{"bell icon"}</strong>{" in the web header shows an unread count. You'll be notified when someone in your household changes shared things — a meal plan update, a new grocery list, an event change, or an invite. Click a notification to jump straight to the thing that changed."}</Fragment>}</P>
+        <P>{<Fragment key={41}>{"On mobile, the unread count rides on the "}<strong key={0}>{"Household"}</strong>{" tab badge."}</Fragment>}</P>
       </Section>
       <Section title={"First five things to do"}>
         <DocList ordered items={[
-          <Fragment key={41}>{"Fill in your profile and turn on discoverability."}</Fragment>,
-          <Fragment key={42}>{"Invite your household (or accept their invite)."}</Fragment>,
-          <Fragment key={43}>{"Add a few recipes — or snap a photo of a recipe card and let the importer do the typing."}</Fragment>,
-          <Fragment key={44}>{"Create this week's meal plan and generate a grocery list."}</Fragment>,
-          <Fragment key={45}>{"Open the mobile app on your phone and try scanning a barcode in your pantry."}</Fragment>,
+          <Fragment key={42}>{"Fill in your profile and turn on discoverability."}</Fragment>,
+          <Fragment key={43}>{"Invite your household (or accept their invite)."}</Fragment>,
+          <Fragment key={44}>{"Add a few recipes — or snap a photo of a recipe card and let the importer do the typing."}</Fragment>,
+          <Fragment key={45}>{"Create this week's meal plan and generate a grocery list."}</Fragment>,
+          <Fragment key={46}>{"Open the mobile app on your phone and try scanning a barcode in your pantry."}</Fragment>,
         ]} />
       </Section>
     </DocPage>

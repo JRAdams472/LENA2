@@ -36,7 +36,18 @@ export default function AppSwitchPrompt() {
     <Snackbar
       open
       anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      sx={{ mb: 1 }}
+      // Auto-dismiss after a few seconds — the banner counts as seen either
+      // way, so it can never sit over dialog/page actions indefinitely.
+      autoHideDuration={8000}
+      onClose={dismiss}
+      // The snackbar box spans the viewport's bottom edge; keep it click-
+      // transparent so it can never cover controls behind it — only the
+      // alert itself takes pointer events.
+      sx={{
+        mb: 1,
+        pointerEvents: "none",
+        "& .MuiAlert-root": { pointerEvents: "auto" },
+      }}
     >
       <Alert
         severity="info"
