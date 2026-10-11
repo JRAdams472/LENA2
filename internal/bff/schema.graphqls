@@ -1627,6 +1627,9 @@ input CreateMealPlanInput {
   name: String!
   weekStartDate: String!
   weekStartDayOfWeek: Int
+  # Optional: defaults to true on create, preserves the current value on
+  # update. Setting true deactivates the household's other plans.
+  isActive: Boolean
 }
 
 input AddMealSlotInput {

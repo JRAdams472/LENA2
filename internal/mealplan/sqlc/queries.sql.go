@@ -156,6 +156,30 @@ func (q *Queries) CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) 
 	return i, err
 }
 
+const deactivateOtherMealPlans = `-- name: DeactivateOtherMealPlans :exec
+UPDATE mealplan.meal_plan
+SET is_active  = false,
+    updated_by = $1::varchar,
+    updated_at = now()
+WHERE household_id = $2
+  AND meal_plan_id <> $3
+  AND is_active
+`
+
+type DeactivateOtherMealPlansParams struct {
+	UpdatedBy   string `json:"updated_by"`
+	HouseholdID int64  `json:"household_id"`
+	MealPlanID  int64  `json:"meal_plan_id"`
+}
+
+// Single-active invariant (LEN-79): activating a plan clears is_active on
+// every sibling in the household. Callers run this inside the same
+// transaction as the activation.
+func (q *Queries) DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOtherMealPlansParams) error {
+	_, err := q.db.Exec(ctx, deactivateOtherMealPlans, arg.UpdatedBy, arg.HouseholdID, arg.MealPlanID)
+	return err
+}
+
 const deleteMealPlan = `-- name: DeleteMealPlan :exec
 DELETE FROM mealplan.meal_plan
 WHERE meal_plan_id = $1 AND household_id = $2

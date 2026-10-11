@@ -305,13 +305,23 @@ func (r *Resolver) CreateMealPlan(ctx context.Context, args struct{ Input create
 	if args.Input.WeekStartDayOfWeek == nil {
 		dayOfWeek = 1
 	}
-	mp, err := r.MealPlanService.CreateMealPlan(ctx, mealplan.MealPlan{
-		HouseholdID:        u.HouseholdID,
-		Name:               args.Input.Name,
-		WeekStartDate:      d,
-		WeekStartDayOfWeek: dayOfWeek,
-		IsActive:           true,
-	}, u.Email)
+	isActive := true
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
+	}
+	// The insert and the deactivate-siblings step must commit together.
+	var mp mealplan.MealPlan
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var cerr error
+		mp, cerr = r.MealPlanService.CreateMealPlan(ctx, mealplan.MealPlan{
+			HouseholdID:        u.HouseholdID,
+			Name:               args.Input.Name,
+			WeekStartDate:      d,
+			WeekStartDayOfWeek: dayOfWeek,
+			IsActive:           isActive,
+		}, u.Email)
+		return cerr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -354,15 +364,25 @@ func (r *Resolver) UpdateMealPlan(ctx context.Context, args struct {
 			return nil, err
 		}
 	}
-	if err := r.MealPlanService.UpdateMealPlan(ctx, id, u.HouseholdID, mealplan.MealPlan{
-		Name:               name,
-		WeekStartDate:      weekStart,
-		WeekStartDayOfWeek: dayOfWeek,
-		IsActive:           existing.IsActive,
-	}, u.Email); err != nil {
-		return nil, err
+	isActive := existing.IsActive
+	if args.Input.IsActive != nil {
+		isActive = *args.Input.IsActive
 	}
-	updated, err := r.MealPlanService.GetMealPlanByID(ctx, id, u.HouseholdID)
+	// The update and the deactivate-siblings step must commit together.
+	var updated mealplan.MealPlan
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if uerr := r.MealPlanService.UpdateMealPlan(ctx, id, u.HouseholdID, mealplan.MealPlan{
+			Name:               name,
+			WeekStartDate:      weekStart,
+			WeekStartDayOfWeek: dayOfWeek,
+			IsActive:           isActive,
+		}, u.Email); uerr != nil {
+			return uerr
+		}
+		var gerr error
+		updated, gerr = r.MealPlanService.GetMealPlanByID(ctx, id, u.HouseholdID)
+		return gerr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -839,6 +859,7 @@ type createMealPlanInput struct {
 	Name               string
 	WeekStartDate      string
 	WeekStartDayOfWeek *int32
+	IsActive           *bool
 }
 
 type addMealSlotInput struct {

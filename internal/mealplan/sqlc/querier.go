@@ -13,6 +13,10 @@ type Querier interface {
 	AddMealSlotItem(ctx context.Context, arg AddMealSlotItemParams) (MealplanMealSlotItem, error)
 	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
 	CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) (MealplanMealPlan, error)
+	// Single-active invariant (LEN-79): activating a plan clears is_active on
+	// every sibling in the household. Callers run this inside the same
+	// transaction as the activation.
+	DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOtherMealPlansParams) error
 	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
 	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error
 	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error

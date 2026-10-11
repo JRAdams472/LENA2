@@ -305,6 +305,39 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	require.NoError(t, err, "wrong-user delete must not remove the slot")
 }
 
+func TestIntegrationSingleActivePlan(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+	user := testutil.MustUser(ctx, t, pool, "meal-single-active@example.com")
+	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+
+	first, err := svc.CreateMealPlan(ctx, MealPlan{HouseholdID: user, Name: "First", WeekStartDate: week, IsActive: true}, itBy)
+	require.NoError(t, err)
+	second, err := svc.CreateMealPlan(ctx, MealPlan{HouseholdID: user, Name: "Second", WeekStartDate: week.AddDate(0, 0, 7), IsActive: true}, itBy)
+	require.NoError(t, err)
+
+	got, err := svc.GetMealPlanByID(ctx, first.MealPlanID, user)
+	require.NoError(t, err)
+	assert.False(t, got.IsActive, "creating an active plan deactivates the previous one")
+	got, err = svc.GetMealPlanByID(ctx, second.MealPlanID, user)
+	require.NoError(t, err)
+	assert.True(t, got.IsActive)
+
+	// Re-activating the first plan clears the second.
+	require.NoError(t, svc.UpdateMealPlan(ctx, first.MealPlanID, user, MealPlan{
+		Name: "First", WeekStartDate: week, IsActive: true,
+	}, itBy))
+	got, err = svc.GetMealPlanByID(ctx, second.MealPlanID, user)
+	require.NoError(t, err)
+	assert.False(t, got.IsActive, "reactivating a plan deactivates the sibling")
+	got, err = svc.GetMealPlanByID(ctx, first.MealPlanID, user)
+	require.NoError(t, err)
+	assert.True(t, got.IsActive)
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(testutil.SharedDBTestMain(m))
 }

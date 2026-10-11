@@ -34,6 +34,18 @@ WHERE meal_plan_id = $1 AND household_id = $2;
 DELETE FROM mealplan.meal_plan
 WHERE meal_plan_id = $1 AND household_id = $2;
 
+-- name: DeactivateOtherMealPlans :exec
+-- Single-active invariant (LEN-79): activating a plan clears is_active on
+-- every sibling in the household. Callers run this inside the same
+-- transaction as the activation.
+UPDATE mealplan.meal_plan
+SET is_active  = false,
+    updated_by = sqlc.arg(updated_by)::varchar,
+    updated_at = now()
+WHERE household_id = sqlc.arg(household_id)
+  AND meal_plan_id <> sqlc.arg(meal_plan_id)
+  AND is_active;
+
 -- name: ReassignMealPlansToHousehold :exec
 -- Invite-accept merge: repoint all of the source household's plans. Zero
 -- rows is not an error (the source may have had none).
