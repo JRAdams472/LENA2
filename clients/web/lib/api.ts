@@ -4100,6 +4100,7 @@ export const api = {
           name: plan.planName,
           weekStartDate: plan.weekStartDate,
           weekStartDayOfWeek: plan.weekStartDayOfWeek,
+          isActive: plan.isActive,
         },
       }
     );
@@ -4117,6 +4118,7 @@ export const api = {
           weekStartDate: plan.weekStartDate ?? existing.weekStartDate,
           weekStartDayOfWeek:
             plan.weekStartDayOfWeek ?? existing.weekStartDayOfWeek,
+          isActive: plan.isActive ?? existing.isActive,
         },
       }
     );

@@ -49,6 +49,11 @@ func TestCreateMealPlan(t *testing.T) {
 			WeekStartDayOfWeek: 1,
 			IsActive:           true,
 		}, nil)
+		mq.EXPECT().DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+			HouseholdID: 42,
+			MealPlanID:  7,
+			UpdatedBy:   "tester",
+		}).Return(nil)
 
 		got, err := s.CreateMealPlan(ctx, in, "tester")
 		require.NoError(t, err)
@@ -58,6 +63,18 @@ func TestCreateMealPlan(t *testing.T) {
 		assert.Equal(t, week, got.WeekStartDate)
 		assert.Equal(t, int16(1), got.WeekStartDayOfWeek)
 		assert.True(t, got.IsActive)
+	})
+
+	t.Run("inactive plan does not deactivate siblings", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().CreateMealPlan(ctx, gomock.Any()).Return(sqlc.MealplanMealPlan{
+			MealPlanID: 8, HouseholdID: 42, IsActive: false,
+		}, nil)
+
+		got, err := s.CreateMealPlan(ctx, MealPlan{HouseholdID: 42, Name: "Draft", WeekStartDate: week, IsActive: false}, "tester")
+		require.NoError(t, err)
+		assert.False(t, got.IsActive)
+		// no DeactivateOtherMealPlans expectation — gomock fails on the call
 	})
 
 	t.Run("error is wrapped", func(t *testing.T) {
@@ -139,6 +156,18 @@ func TestUpdateMealPlan(t *testing.T) {
 		mq.EXPECT().UpdateMealPlan(ctx, want).Return(int64(1), nil)
 
 		require.NoError(t, s.UpdateMealPlan(ctx, 7, 42, in, "tester"))
+	})
+
+	t.Run("activating a plan deactivates siblings", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().UpdateMealPlan(ctx, gomock.Any()).Return(int64(1), nil)
+		mq.EXPECT().DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+			HouseholdID: 42,
+			MealPlanID:  7,
+			UpdatedBy:   "tester",
+		}).Return(nil)
+
+		require.NoError(t, s.UpdateMealPlan(ctx, 7, 42, MealPlan{Name: "Renamed", WeekStartDate: week, WeekStartDayOfWeek: 2, IsActive: true}, "tester"))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {

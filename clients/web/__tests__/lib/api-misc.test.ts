@@ -326,10 +326,26 @@ describe("api client: meal plans and slots", () => {
         name: "Weekly",
         weekStartDate: "2026-09-01",
         weekStartDayOfWeek: 1,
+        isActive: true,
       },
     });
     expect(plan.mealPlanID).toBe(1);
     expect(plan.planName).toBe("Weekly");
+  });
+
+  it("createMealPlan sends isActive false when unchecked", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ createMealPlan: gqlMealPlan() })
+    );
+
+    await api.createMealPlan({
+      planName: "Draft",
+      weekStartDate: "2026-09-01",
+      weekStartDayOfWeek: 1,
+      isActive: false,
+    });
+
+    expect(lastRequestBody().variables.input.isActive).toBe(false);
   });
 
   it("updateMealPlan fetches then posts merged fields", async () => {
@@ -350,9 +366,27 @@ describe("api client: meal plans and slots", () => {
         name: "Renamed",
         weekStartDate: "2026-09-01",
         weekStartDayOfWeek: 0,
+        isActive: true,
       },
     });
     expect(plan.planName).toBe("Renamed");
+  });
+
+  it("updateMealPlan posts an explicit isActive toggle", async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL({ mealPlan: gqlMealPlan() }))
+      .mockResolvedValueOnce(
+        mockGraphQL({ updateMealPlan: gqlMealPlan({ isActive: false }) })
+      );
+
+    await api.updateMealPlan(1, { isActive: false });
+
+    expect(lastRequestBody().variables.input).toEqual({
+      name: "Weekly",
+      weekStartDate: "2026-09-01",
+      weekStartDayOfWeek: 0,
+      isActive: false,
+    });
   });
 
   it("updateMealPlan uses provided week fields", async () => {
@@ -371,6 +405,7 @@ describe("api client: meal plans and slots", () => {
       name: "Weekly",
       weekStartDate: "2026-10-01",
       weekStartDayOfWeek: 2,
+      isActive: true,
     });
   });
 

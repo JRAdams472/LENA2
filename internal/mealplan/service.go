@@ -83,7 +83,9 @@ type MealPlan struct {
 	IsActive           bool
 }
 
-// CreateMealPlan creates a new weekly plan for the household.
+// CreateMealPlan creates a new weekly plan for the household. When the new
+// plan is active, every other plan in the household is deactivated in the
+// same transaction (LEN-79 single-active invariant).
 func (s *Service) CreateMealPlan(ctx context.Context, arg MealPlan, by string) (MealPlan, error) {
 	row, err := s.q.CreateMealPlan(ctx, sqlc.CreateMealPlanParams{
 		HouseholdID:        arg.HouseholdID,
@@ -96,6 +98,9 @@ func (s *Service) CreateMealPlan(ctx context.Context, arg MealPlan, by string) (
 	})
 	if err != nil {
 		return MealPlan{}, fmt.Errorf("create meal plan: %w", err)
+	}
+	if err := s.enforceSingleActive(ctx, row.HouseholdID, row.MealPlanID, row.IsActive, by); err != nil {
+		return MealPlan{}, err
 	}
 	return toMealPlan(row), nil
 }
@@ -148,7 +153,22 @@ func (s *Service) UpdateMealPlan(ctx context.Context, mealPlanID, householdID in
 	if n == 0 {
 		return fmt.Errorf("update meal plan: %w", domainerr.ErrNotFound)
 	}
-	return nil
+	return s.enforceSingleActive(ctx, householdID, mealPlanID, arg.IsActive, by)
+}
+
+// enforceSingleActive clears is_active on every sibling plan when the given
+// plan is active, so a household never shows two "Active" chips. Callers
+// activate inside the same unit of work (the querier joins an ambient
+// ctx-carried transaction automatically).
+func (s *Service) enforceSingleActive(ctx context.Context, householdID, mealPlanID int64, isActive bool, by string) error {
+	if !isActive {
+		return nil
+	}
+	return s.q.DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+		HouseholdID: householdID,
+		MealPlanID:  mealPlanID,
+		UpdatedBy:   by,
+	})
 }
 
 // DeleteMealPlan removes a plan owned by the household.
