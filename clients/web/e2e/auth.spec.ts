@@ -8,10 +8,35 @@ test.describe("auth", () => {
   test("unauthenticated users see the login screen", async ({ page }) => {
     await page.goto("/member");
     await expect(
-      page.getByText(
-        "Sign in to manage inventory, recipes, and meal plans."
-      )
+      page.getByText("Welcome to Lena", { exact: true })
     ).toBeVisible();
+    await expect(
+      page.getByText(/provider associated with your web account/i)
+    ).toBeVisible();
+    // Login-only: the companion-app footer renders as plain text — the
+    // store review rejects a tappable registration link in the app.
+    const footer = page.getByText(/lenaskitchen\.app/);
+    await expect(footer).toBeVisible();
+    await expect(footer.locator("xpath=ancestor::a[1]")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: /sign up|register|create account/i })
+    ).toHaveCount(0);
+  });
+
+  test("the public privacy policy is reachable from marketing chrome", async ({
+    page,
+  }) => {
+    await page.goto("/privacy");
+    await expect(
+      page.getByRole("heading", { name: /privacy policy/i, level: 1 })
+    ).toBeVisible();
+    await expect(
+      page.getByText(/do not sell your data to third parties/i)
+    ).toBeVisible();
+    // Footer/navigation link resolves back to the same public URL.
+    const link = page.getByRole("link", { name: /^privacy$/i }).first();
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "/privacy");
   });
 
   test("invalid tokens are rejected by the API", async ({ request }) => {

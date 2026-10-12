@@ -59,11 +59,12 @@ A Next.js (App Router) TypeScript frontend for LENA.
 
 The app serves two surfaces:
 
-- **Public site** — `/` is the customer-facing landing page and `/docs/*`
-  mirrors the wiki's guides (29 content pages plus an index, generated at
-  author time by `tools/wiki-docs/md2docs.mjs`). The header's **Log in**
-  opens the shared provider buttons in a popover; signing in routes to
-  `/member`. Authenticated visitors to `/` are redirected to `/member`.
+- **Public site** — `/` is the customer-facing landing page, `/privacy`
+  serves the store-required privacy policy, and `/docs/*` mirrors the
+  wiki's guides (29 content pages plus an index, generated at author time
+  by `tools/wiki-docs/md2docs.mjs`). The header's **Log in** opens the
+  shared provider buttons in a popover; signing in routes to `/member`.
+  Authenticated visitors to `/` are redirected to `/member`.
 - **Member app** — everything authenticated lives under `/member/*` behind
   `app/member/layout.tsx` (the former root `AdminLayout` gate). Old
   top-level URLs (`/recipes`, `/meal-plans`, etc.) permanently redirect to
@@ -106,7 +107,10 @@ Google sign-in uses the OIDC ID token as the bearer directly. Discord,
 Microsoft, and Facebook are OAuth2 redirect flows with PKCE (S256): the
 browser collects a `code` at `/auth/{provider}/callback` and the server
 exchanges it (server-side `client_secret` + `code_verifier`) for a LENA
-session. Each button renders only
+session. Apple follows the same code-redirect pattern
+(`appleid.apple.com/auth/authorize`) but its server-side exchange lands
+with LEN-136's OAuth phase — until then the button stays hidden. Each
+button renders only
 when its `NEXT_PUBLIC_*_CLIENT_ID` build-time env is set; see
 `.env.example` and `lib/oauth.ts`. Facebook additionally requires the
 `nonce` round-trip — handled automatically.

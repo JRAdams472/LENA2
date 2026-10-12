@@ -172,6 +172,15 @@ class AuthService extends ChangeNotifier {
     return _idToken;
   }
 
+  /// Entry point for the non-Google provider buttons. Real OAuth flows
+  /// land in the next phase (LEN-136 P2); until then the button surfaces
+  /// a clear message instead of silently doing nothing.
+  Future<void> signInWithProvider(String provider) async {
+    _lastError =
+        'Sign in with $provider isn\'t available yet — use Google for now.';
+    notifyListeners();
+  }
+
   Future<void> signIn() async {
     _isLoading = true;
     _lastError = null;

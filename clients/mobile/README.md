@@ -95,9 +95,14 @@ Google credential at `POST /auth/session` for a LENA session: a ~15-minute
 sending an expired token, and `ErrorLink` retries a request once after a
 401. Without the secret the app falls back to the raw Google ID token.
 
-Discord/Microsoft/Facebook sign-in is web-only for now — mobile OAuth
-needs an HTTPS-callback → `lena://` app-link bounce (deferred). A user
-whose account is linked to Google can still sign in on mobile via Google.
+The login screen is a companion surface only — it presents Apple, Google,
+Discord, and Facebook at equal prominence (store review requires Apple
+whenever other social providers are offered) and its footer explains that
+account registration happens on lenaskitchen.app. Today only Google
+completes sign-in; the other buttons explain rather than dead-end until
+the provider OAuth flow (HTTPS-callback → `lena://` app-link bounce)
+lands with LEN-136's OAuth phase. A user whose account is linked to
+Google can still sign in on mobile via Google.
 
 ### Emulator sign-in for screenshots/e2e
 
@@ -132,8 +137,9 @@ rename is an explicit LEN-17 follow-up). Server side, set
 `LENA_PUSH_PROVIDER=fcm` and `LENA_FCM_CREDENTIALS_FILE`
 (see `../../docs/deployment.md`).
 
-At runtime the app requests `POST_NOTIFICATIONS` after sign-in
-(Android 13+), registers the FCM token via `registerDeviceToken`, dedupes
+At runtime the app shows a one-time explainer sheet (why notifications
+are needed — required by store review before any native prompt) and then
+requests `POST_NOTIFICATIONS` after sign-in (Android 13+), registers the FCM token via `registerDeviceToken`, dedupes
 it in `shared_preferences`, re-registers on `onTokenRefresh`, and
 unregisters best-effort on sign-out through `AuthService.onBeforeSignOut`
 (which runs while the bearer is still valid). Foreground pushes post a

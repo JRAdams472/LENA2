@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App privacy manifest (LEN-136). Required since May 2024 for all apps.
+  LENA does not track users or access required-reason APIs directly at
+  the app layer; each bundled plugin ships its own manifest covering its
+  usage (firebase_*, flutter_secure_storage, shared_preferences, etc.).
+  NSPrivacyCollectedDataTypes intentionally empty — data collection is
+  declared in App Store Connect nutrition labels, not the manifest.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+</dict>
+</plist>

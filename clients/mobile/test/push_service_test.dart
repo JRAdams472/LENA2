@@ -102,6 +102,7 @@ PushService _service(
   SharedPreferences prefs,
   _CaptureLink link, {
   GlobalKey<NavigatorState>? navigatorKey,
+  Future<bool> Function(BuildContext)? showPermissionRationale,
 }) =>
     PushService(
       messaging: messaging,
@@ -109,6 +110,7 @@ PushService _service(
       prefs: prefs,
       navigatorKey: navigatorKey,
       client: _client(link),
+      showPermissionRationale: showPermissionRationale,
     );
 
 void main() {
@@ -428,5 +430,102 @@ void main() {
     expect(e.title, 't');
     expect(e.body, 'b');
     expect(e.data, isEmpty);
+  });
+
+  testWidgets('permission rationale shows before the OS prompt and only once',
+      (tester) async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final navKey = GlobalKey<NavigatorState>();
+    final link = _CaptureLink({
+      'RegisterDeviceToken': {'registerDeviceToken': true},
+    });
+    var rationaleCalls = 0;
+    var sawBeforePermission = false;
+    final svc = _service(
+      messaging,
+      _FakeNotifier(),
+      prefs,
+      link,
+      navigatorKey: navKey,
+      showPermissionRationale: (_) async {
+        rationaleCalls++;
+        // The OS prompt must not fire ahead of the explainer.
+        sawBeforePermission = messaging.permissionRequests == 0;
+        return true;
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navKey,
+        home: const Scaffold(body: Text('home')),
+      ),
+    );
+    await svc.start();
+
+    expect(rationaleCalls, 1);
+    expect(sawBeforePermission, isTrue);
+    expect(messaging.permissionRequests, 1);
+    expect(prefs.getBool('push.rationale_shown'), isTrue);
+    expect(link.byName('RegisterDeviceToken'), hasLength(1));
+    await messaging.close();
+  });
+
+  testWidgets('declining the rationale skips the OS prompt and token',
+      (tester) async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final navKey = GlobalKey<NavigatorState>();
+    final link = _CaptureLink({});
+    final svc = _service(
+      messaging,
+      _FakeNotifier(),
+      prefs,
+      link,
+      navigatorKey: navKey,
+      showPermissionRationale: (_) async => false,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navKey,
+        home: const Scaffold(body: Text('home')),
+      ),
+    );
+    await svc.start();
+
+    expect(messaging.permissionRequests, 0);
+    expect(link.byName('RegisterDeviceToken'), isEmpty);
+    expect(prefs.getString('push.registered_token'), isNull);
+    await messaging.close();
+  });
+
+  test('no rationale callback or context falls back to the OS prompt',
+      () async {
+    final messaging = _FakeMessaging();
+    final prefs = await _prefs();
+    final link = _CaptureLink({
+      'RegisterDeviceToken': {'registerDeviceToken': true},
+    });
+    var rationaleCalls = 0;
+    // navKey with no built context — currentContext stays null.
+    final svc = _service(
+      messaging,
+      _FakeNotifier(),
+      prefs,
+      link,
+      navigatorKey: GlobalKey<NavigatorState>(),
+      showPermissionRationale: (_) async {
+        rationaleCalls++;
+        return true;
+      },
+    );
+
+    await svc.start();
+
+    expect(rationaleCalls, 0);
+    expect(messaging.permissionRequests, 1);
+    await messaging.close();
   });
 }

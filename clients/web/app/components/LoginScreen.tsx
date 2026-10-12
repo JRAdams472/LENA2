@@ -77,11 +77,24 @@ export default function LoginScreen() {
             textAlign: "center",
           }}
         >
-        <Typography variant="h6">Welcome back</Typography>
+        <Typography variant="h6">Welcome to Lena</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: -1 }}>
-          Sign in to manage inventory, recipes, and meal plans.
+          Sign in with the provider associated with your web account to
+          access your dashboard and configure notifications.
         </Typography>
         <ProviderButtons />
+        {/* Login-only by design (LEN-136): account creation happens on
+            the marketing site, never through this flow — and the URL
+            stays plain text, not a link. */}
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ maxWidth: 340 }}
+        >
+          Account registration and plan management are handled on our
+          website. New users must set up their accounts on
+          lenaskitchen.app before logging in to the mobile companion app.
+        </Typography>
         </Box>
       </Paper>
       </Fade>

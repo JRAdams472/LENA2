@@ -578,3 +578,92 @@ describe("recipe categories", () => {
     ).toBe(true);
   });
 });
+
+describe("alcohol age gate", () => {
+  const listMocks = (aiAvailable: boolean) => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("aiAvailable")) {
+        return Promise.resolve(gql({ aiAvailable }));
+      }
+      if (body.query.includes("recipeCategoryGroups")) {
+        return Promise.resolve(gql(categoryGroups));
+      }
+      if (body.query.includes("recipe(")) {
+        return Promise.resolve(gql({ recipe }));
+      }
+      return Promise.resolve(
+        gql({
+          recipes: {
+            items: [recipe],
+            pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+          },
+        })
+      );
+    });
+  };
+
+  it("shows the 21+ hint and hides Cocktail ideas when birthdate is missing", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: null },
+      isAdmin: false,
+      isLoading: false,
+    });
+    listMocks(true);
+    renderPage(<RecipesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("alcohol-gate-hint")).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByRole("button", { name: /cocktail ideas/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the 21+ hint on the recipe detail when birthdate is missing", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: null },
+      isAdmin: false,
+      isLoading: false,
+    });
+    listMocks(true);
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => screen.getByText("Pasta"));
+    await waitFor(() =>
+      expect(screen.getByTestId("alcohol-gate-hint")).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByRole("button", { name: /suggest wine pairing/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Cocktail ideas and no hint for a 21+ user", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: "1990-01-01" },
+      isAdmin: false,
+      isLoading: false,
+    });
+    listMocks(true);
+    renderPage(<RecipesPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /cocktail ideas/i })
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("alcohol-gate-hint")).not.toBeInTheDocument();
+  });
+
+  it("shows neither hint nor button when AI is unavailable", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", birthdate: null },
+      isAdmin: false,
+      isLoading: false,
+    });
+    listMocks(false);
+    renderPage(<RecipesPage />);
+    await waitFor(() => screen.getByText("Pasta"));
+    expect(screen.queryByTestId("alcohol-gate-hint")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /cocktail ideas/i })
+    ).not.toBeInTheDocument();
+  });
+});

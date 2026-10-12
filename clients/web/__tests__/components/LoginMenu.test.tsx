@@ -40,7 +40,7 @@ describe("login menu", () => {
     expect(
       await screen.findByTestId("google-login")
     ).toBeInTheDocument();
-    expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+    expect(screen.getByText(/welcome to lena/i)).toBeInTheDocument();
   });
 
   it("routes to /member when auth flips to signed-in", async () => {

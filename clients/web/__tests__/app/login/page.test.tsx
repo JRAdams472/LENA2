@@ -73,6 +73,24 @@ describe("login page", () => {
     expect(screen.getByText("LENA")).toBeInTheDocument();
     expect(screen.getByTestId("google-login")).toBeInTheDocument();
   });
+
+  it("uses the store-review copy and never offers registration", () => {
+    renderWithAuth(<LoginScreen />);
+    expect(screen.getByText("Welcome to Lena")).toBeInTheDocument();
+    expect(
+      screen.getByText(/provider associated with your web account/i)
+    ).toBeInTheDocument();
+    // The companion-app footer appears verbatim — plain text, no link.
+    const footer = screen.getByText(/lenaskitchen\.app/);
+    expect(footer).toBeInTheDocument();
+    expect(footer.closest("a")).toBeNull();
+    // Login-only: no sign-up affordance anywhere in the flow.
+    expect(screen.queryByRole("link", { name: /sign up|register|create/i }))
+      .toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /sign up|register|create/i })
+    ).toBeNull();
+  });
 });
 
 describe("login screen", () => {

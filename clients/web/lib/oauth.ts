@@ -2,9 +2,10 @@
 // they collect an authorization code (plus a nonce for OIDC providers)
 // and the server exchanges it at /auth/session/{provider}.
 
-export type OAuthProvider = "discord" | "microsoft" | "facebook";
+export type OAuthProvider = "apple" | "discord" | "microsoft" | "facebook";
 
 export const OAUTH_PROVIDERS: OAuthProvider[] = [
+  "apple",
   "discord",
   "microsoft",
   "facebook",
@@ -62,6 +63,10 @@ function redirectUri(envVar: string | undefined, provider: OAuthProvider): strin
 
 export function providerEnabled(provider: OAuthProvider): boolean {
   switch (provider) {
+    case "apple":
+      // Apple's Services ID + secret exchange ships with the backend
+      // verifier — the button stays hidden until both sides are configured.
+      return !!process.env.NEXT_PUBLIC_APPLE_CLIENT_ID;
     case "discord":
       return !!process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
     case "microsoft":
@@ -91,6 +96,24 @@ export function authorizeUrl(
     code_challenge_method: "S256",
   };
   switch (provider) {
+    case "apple":
+      // response_type=code with response_mode=query returns the
+      // authorization code on the callback URL like the other providers;
+      // the Services ID must enable the same return URL in the Apple
+      // developer console.
+      return `https://appleid.apple.com/auth/authorize?${new URLSearchParams({
+        client_id: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID ?? "",
+        response_type: "code",
+        response_mode: "query",
+        redirect_uri: redirectUri(
+          process.env.NEXT_PUBLIC_APPLE_REDIRECT_URI,
+          provider
+        ),
+        scope: "name email",
+        state,
+        nonce,
+        ...pkce,
+      }).toString()}`;
     case "discord":
       return `https://discord.com/oauth2/authorize?${new URLSearchParams({
         client_id: process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID ?? "",
