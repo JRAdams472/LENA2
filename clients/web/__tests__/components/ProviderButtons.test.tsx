@@ -3,8 +3,10 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ProviderButtons from "@/app/components/ProviderButtons";
 
 const mockSignIn = jest.fn();
-const mockEnabledProviders = jest.fn<string[], []>(() => []);
-const mockStartOAuthSignIn = jest.fn(() => Promise.resolve());
+const mockEnabledProviders = jest.fn<() => string[]>(() => []);
+const mockStartOAuthSignIn = jest.fn<(p: string) => Promise<void>>(() =>
+  Promise.resolve()
+);
 
 jest.mock("../../app/auth/AuthProvider", () => ({
   useAuth: () => ({ signIn: mockSignIn }),
