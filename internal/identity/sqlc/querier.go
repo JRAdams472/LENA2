@@ -19,6 +19,14 @@ type Querier interface {
 	// pointer (users.household_id) may sit on a different household.
 	CountUsersByHousehold(ctx context.Context, householdID int64) (int64, error)
 	DeleteLoginsByProvider(ctx context.Context, arg DeleteLoginsByProviderParams) (int64, error)
+	// Account deletion (LEN-146): removes the user row outright. Every
+	// user-scoped row — sessions, linked logins, device tokens, memberships,
+	// invites, notifications, push outbox, ratings, preferences, idempotency
+	// keys, user-scoped analytics — cascades. Catalog attribution columns
+	// (submitted_by, approved_by, actor_user_id) SET NULL so shared content
+	// survives detached. Callers dissolve sole-member households separately:
+	// users.household_id is a RESTRICT-edge while the row exists.
+	DeleteUser(ctx context.Context, userID int64) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	// Resolves a provider identity to its user via the login mapping table —
 	// covers both primary logins and explicitly linked ones.

@@ -2,8 +2,43 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gql/ast.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
+import 'package:lena_mobile/auth/auth_service.dart';
 import 'package:lena_mobile/graphql_config.dart';
 import 'package:lena_mobile/screens/household_screen.dart';
+import 'package:provider/provider.dart';
+
+class _MemStorage implements TokenStorage {
+  final map = <String, String>{'id_token': 'tok', 'refresh_token': 'rt'};
+
+  @override
+  Future<String?> read(String key) async => map[key];
+
+  @override
+  Future<void> write(String key, String? value) async {
+    value == null ? map.remove(key) : map[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async => map.remove(key);
+}
+
+// A test auth that stays signed in: _init rotates the stored refresh
+// token, so the refresh endpoint must answer 200. Revoke is best-effort
+// and may 401.
+AuthService _testAuth() => AuthService.test(
+      storage: _MemStorage(),
+      httpClient: http_testing.MockClient((req) async {
+        if (req.url.path == '/auth/session/refresh') {
+          return http.Response(
+            '{"accessToken":"at","refreshToken":"rt2"}',
+            200,
+          );
+        }
+        return http.Response('{}', 401);
+      }),
+    );
 
 String? _opName(Request request) {
   for (final def in request.operation.document.definitions) {
@@ -117,11 +152,14 @@ _CaptureLink _link({Map<String, Map<String, dynamic>> extra = const {}}) =>
       ...extra,
     });
 
-Widget _app(_CaptureLink link) => GraphQLProvider(
+Widget _app(_CaptureLink link, {AuthService? auth}) => GraphQLProvider(
       client: ValueNotifier(
         GraphQLClient(cache: GraphQLCache(), link: link),
       ),
-      child: const MaterialApp(home: HouseholdScreen()),
+      child: ChangeNotifierProvider<AuthService>.value(
+        value: auth ?? _testAuth(),
+        child: const MaterialApp(home: HouseholdScreen()),
+      ),
     );
 
 Future<void> _settle(WidgetTester tester) async {
@@ -853,6 +891,92 @@ void main() {
     await _settle(tester);
 
     expect(find.textContaining('Error:'), findsOneWidget);
+  });
+
+  testWidgets('danger zone renders the irreversible warning', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    final link = _link();
+    await tester.pumpWidget(_app(link));
+    await _settle(tester);
+
+    expect(find.text('Danger zone'), findsOneWidget);
+    expect(find.text('Delete my account'), findsOneWidget);
+    expect(
+        find.textContaining('permanent and cannot be undone'), findsOneWidget);
+  });
+
+  testWidgets('delete requires typing DELETE and signs out on success', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    final auth = _testAuth();
+    // Response shape mirrors production: no __typename — the success check
+    // must read the payload, not hasException (cache normalization always
+    // tacks on a PartialDataException).
+    final link = _link(extra: {
+      'DeleteMyAccount': const {'deleteMyAccount': true},
+    });
+    await tester.pumpWidget(_app(link, auth: auth));
+    await auth.ready;
+    await _settle(tester);
+
+    await tester.tap(find.text('Delete my account'));
+    await _settle(tester);
+
+    expect(find.text('Delete your account?'), findsOneWidget);
+    expect(find.textContaining('irreversible'), findsOneWidget);
+    final confirmButton =
+        find.widgetWithText(FilledButton, 'Delete permanently');
+    expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).last, 'DELET');
+    await _settle(tester);
+    expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).last, 'DELETE');
+    await _settle(tester);
+    expect(tester.widget<FilledButton>(confirmButton).onPressed, isNotNull);
+    await tester.tap(confirmButton);
+    await _settle(tester);
+    // The mutation → signOut chain needs another event-loop turn past the
+    // recorded request before the credentials clear.
+    await _settle(tester);
+
+    expect(link.byName('DeleteMyAccount'), hasLength(1));
+    expect(auth.isSignedIn, isFalse);
+  });
+
+  testWidgets('delete failure shows the server message and stays signed in', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    final auth = _testAuth();
+    final link = _CaptureLink(
+      {
+        'HouseholdScreen': _householdResponse(),
+        'MyAllergies': const <String, dynamic>{},
+      },
+      errors: {
+        'DeleteMyAccount': [
+          const GraphQLError(message: 'last active admin'),
+        ],
+      },
+    );
+    await tester.pumpWidget(_app(link, auth: auth));
+    await auth.ready;
+    await _settle(tester);
+
+    await tester.tap(find.text('Delete my account'));
+    await _settle(tester);
+    await tester.enterText(find.byType(TextField).last, 'DELETE');
+    await _settle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await _settle(tester);
+
+    expect(find.text('last active admin'), findsOneWidget);
+    expect(auth.isSignedIn, isTrue);
   });
 
   testWidgets('non-owner sees the household name but no inline editor', (

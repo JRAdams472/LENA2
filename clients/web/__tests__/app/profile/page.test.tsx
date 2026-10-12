@@ -6,12 +6,17 @@ import ProfilePage from "@/app/member/profile/page";
 import { api } from "@/lib/api";
 
 jest.mock("../../../app/auth/useMe");
+jest.mock("../../../app/auth/AuthProvider", () => ({
+  useAuth: jest.fn(() => ({ signOut: mockSignOut })),
+}));
+const mockSignOut = jest.fn();
 jest.mock("../../../lib/api", () => ({
   api: {
     updateMyProfile: jest.fn(),
     getAllergens: jest.fn(),
     getMyAllergies: jest.fn(),
     setMyAllergy: jest.fn(),
+    deleteMyAccount: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -199,5 +204,79 @@ describe("profile page", () => {
     await waitFor(() =>
       expect(mockedApi.setMyAllergy).toHaveBeenCalledWith(1, "allergy", false)
     );
+  });
+
+  describe("danger zone", () => {
+    it("shows the irreversible warning", () => {
+      renderPage();
+      expect(screen.getByText("Danger zone")).toBeInTheDocument();
+      expect(
+        screen.getByText(/permanent and cannot be undone/i)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /delete my account/i })
+      ).toBeInTheDocument();
+    });
+
+    it("keeps Delete permanently disabled until DELETE is typed", async () => {
+      renderPage();
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete my account/i })
+      );
+      const dialog = await screen.findByRole("dialog");
+      const submit = within(dialog).getByTestId("delete-account-submit");
+      expect(submit).toBeDisabled();
+
+      await userEvent.type(
+        within(dialog).getByTestId("delete-account-confirm-input"),
+        "DELET"
+      );
+      expect(submit).toBeDisabled();
+
+      await userEvent.type(
+        within(dialog).getByTestId("delete-account-confirm-input"),
+        "E"
+      );
+      expect(submit).toBeEnabled();
+      expect(mockedApi.deleteMyAccount).not.toHaveBeenCalled();
+    });
+
+    it("deletes the account and signs out on success", async () => {
+      mockedApi.deleteMyAccount.mockResolvedValue(true);
+      renderPage();
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete my account/i })
+      );
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.type(
+        within(dialog).getByTestId("delete-account-confirm-input"),
+        "DELETE"
+      );
+      await userEvent.click(within(dialog).getByTestId("delete-account-submit"));
+
+      await waitFor(() =>
+        expect(mockedApi.deleteMyAccount).toHaveBeenCalledTimes(1)
+      );
+      await waitFor(() => expect(mockSignOut).toHaveBeenCalledTimes(1));
+    });
+
+    it("shows the error when deletion fails", async () => {
+      mockedApi.deleteMyAccount.mockRejectedValue(new Error("boom"));
+      renderPage();
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete my account/i })
+      );
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.type(
+        within(dialog).getByTestId("delete-account-confirm-input"),
+        "DELETE"
+      );
+      await userEvent.click(within(dialog).getByTestId("delete-account-submit"));
+
+      expect(
+        await within(dialog).findByText(/deletion failed/i)
+      ).toBeInTheDocument();
+      expect(mockSignOut).not.toHaveBeenCalled();
+    });
   });
 });

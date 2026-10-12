@@ -330,3 +330,10 @@ WHERE s.store_id = sqlc.arg(store_id)
   AND s.household_id = sqlc.arg(household_id)
   AND ir.household_id = s.household_id
   AND (ir.store_id = s.store_id OR ir.store_id = 0);
+
+-- name: DeleteGroceryListsByHousehold :exec
+-- Account deletion (LEN-146): drops a dissolving household's lists.
+-- grocery_list.household_id is NO ACTION; grocery_list_item children
+-- cascade. Stores/routes cascade with the households row itself.
+DELETE FROM grocery.grocery_list
+WHERE household_id = $1;

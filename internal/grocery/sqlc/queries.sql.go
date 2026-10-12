@@ -397,6 +397,19 @@ func (q *Queries) DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryLi
 	return err
 }
 
+const deleteGroceryListsByHousehold = `-- name: DeleteGroceryListsByHousehold :exec
+DELETE FROM grocery.grocery_list
+WHERE household_id = $1
+`
+
+// Account deletion (LEN-146): drops a dissolving household's lists.
+// grocery_list.household_id is NO ACTION; grocery_list_item children
+// cascade. Stores/routes cascade with the households row itself.
+func (q *Queries) DeleteGroceryListsByHousehold(ctx context.Context, householdID int64) error {
+	_, err := q.db.Exec(ctx, deleteGroceryListsByHousehold, householdID)
+	return err
+}
+
 const deleteStore = `-- name: DeleteStore :exec
 DELETE FROM grocery.store
 WHERE store_id = $1 AND household_id = $2

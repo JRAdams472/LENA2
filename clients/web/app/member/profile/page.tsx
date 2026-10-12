@@ -6,6 +6,11 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Paper from "@mui/material/Paper";
 import Switch from "@mui/material/Switch";
@@ -16,6 +21,7 @@ import Typography from "@mui/material/Typography";
 import { useColorScheme } from "@mui/material/styles";
 import { api, ApiError } from "@/lib/api";
 import { MemberAllergyKind, User } from "@/lib/types";
+import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
 
 // Keyed by userID so the form mounts with the loaded profile values and
@@ -219,6 +225,100 @@ function AppearanceCard() {
   );
 }
 
+const DELETE_CONFIRMATION = "DELETE";
+
+// Permanent account deletion. The typed confirmation makes a stray click
+// impossible; on success the backend has already purged the account, so
+// the client just drops local credentials and the member shell falls back
+// to the login screen.
+function DangerZoneCard() {
+  const { signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => api.deleteMyAccount(),
+    onSuccess: () => signOut(),
+    onError: (e) =>
+      setError(e instanceof ApiError ? e.message : "Account deletion failed — please try again."),
+  });
+
+  const close = () => {
+    if (mutation.isPending) return;
+    setOpen(false);
+    setTyped("");
+    setError(null);
+  };
+
+  return (
+    <>
+      <Typography variant="h6" gutterBottom color="error.main">
+        Danger zone
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Deleting your account is permanent and cannot be undone. Your profile, sessions,
+        pantry and cellar items, meal plans, grocery lists, events, and allergy records
+        are removed. Households you share keep their content and members; recipes and
+        items you contributed to the public catalog stay available.
+      </Typography>
+      {error && !open && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      <Button
+        variant="outlined"
+        color="error"
+        onClick={() => setOpen(true)}
+        data-testid="delete-account-open"
+      >
+        Delete my account
+      </Button>
+      <Dialog open={open} onClose={close} maxWidth="sm" fullWidth>
+        <DialogTitle>Delete your account?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            This action is irreversible. Everything tied to your account — sign-ins,
+            notifications, household memberships, and any household only you belong to —
+            will be permanently deleted.
+          </DialogContentText>
+          <DialogContentText sx={{ mb: 2 }}>
+            Type {DELETE_CONFIRMATION} to confirm.
+          </DialogContentText>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          <TextField
+            autoFocus
+            fullWidth
+            label={`Type ${DELETE_CONFIRMATION}`}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            slotProps={{ htmlInput: { "data-testid": "delete-account-confirm-input" } }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={close} disabled={mutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={typed !== DELETE_CONFIRMATION || mutation.isPending}
+            onClick={() => mutation.mutate()}
+            data-testid="delete-account-submit"
+          >
+            {mutation.isPending ? "Deleting…" : "Delete permanently"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
 export default function ProfilePage() {
   const { me, isLoading, refetch } = useMe();
 
@@ -252,6 +352,9 @@ export default function ProfilePage() {
           Allergies &amp; dietary restrictions
         </Typography>
         <AllergyCard />
+      </Paper>
+      <Paper sx={{ p: 3, border: 1, borderColor: "error.main" }}>
+        <DangerZoneCard />
       </Paper>
     </Box>
   );

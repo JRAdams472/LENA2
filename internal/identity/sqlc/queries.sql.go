@@ -152,6 +152,26 @@ func (q *Queries) DeleteLoginsByProvider(ctx context.Context, arg DeleteLoginsBy
 	return result.RowsAffected(), nil
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM identity.users
+WHERE user_id = $1
+`
+
+// Account deletion (LEN-146): removes the user row outright. Every
+// user-scoped row — sessions, linked logins, device tokens, memberships,
+// invites, notifications, push outbox, ratings, preferences, idempotency
+// keys, user-scoped analytics — cascades. Catalog attribution columns
+// (submitted_by, approved_by, actor_user_id) SET NULL so shared content
+// survives detached. Callers dissolve sole-member households separately:
+// users.household_id is a RESTRICT-edge while the row exists.
+func (q *Queries) DeleteUser(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status
 FROM identity.users

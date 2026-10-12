@@ -195,6 +195,20 @@ func (q *Queries) DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) 
 	return err
 }
 
+const deleteMealPlansByHousehold = `-- name: DeleteMealPlansByHousehold :exec
+DELETE FROM mealplan.meal_plan
+WHERE household_id = $1
+`
+
+// Account deletion (LEN-146): drops a dissolving household's meal plans.
+// meal_plan.household_id is NO ACTION; meal_slot children cascade and
+// grocery_list.meal_plan_id SET NULLs (lists are deleted by their own
+// domain in the same unit of work).
+func (q *Queries) DeleteMealPlansByHousehold(ctx context.Context, householdID int64) error {
+	_, err := q.db.Exec(ctx, deleteMealPlansByHousehold, householdID)
+	return err
+}
+
 const deleteMealSlot = `-- name: DeleteMealSlot :exec
 DELETE FROM mealplan.meal_slot ms
 USING mealplan.meal_plan mp

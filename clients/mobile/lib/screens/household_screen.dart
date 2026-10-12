@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:provider/provider.dart';
+import '../auth/auth_service.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/status_chip.dart';
 
@@ -168,6 +170,12 @@ const String markAllReadMutation = r'''
 const String addToGroceryMutation = r'''
   mutation AddToGrocery($itemId: ID!) {
     addItemToCurrentGroceryList(itemId: $itemId) { id }
+  }
+''';
+
+const String deleteAccountMutation = r'''
+  mutation DeleteMyAccount {
+    deleteMyAccount
   }
 ''';
 
@@ -363,6 +371,76 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
       context,
       MaterialPageRoute(builder: (_) => const GroceryListsScreen()),
     );
+  }
+
+  // Permanent account deletion (LEN-146). The typed confirmation makes a
+  // stray tap impossible; on success the backend has already purged the
+  // account, so signOut only clears local credentials — AuthGate then
+  // renders the login screen.
+  Future<void> _deleteAccount() async {
+    final ctrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Delete your account?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This action is irreversible. Your profile, sign-ins, '
+                'memberships, notifications, and any household only you '
+                'belong to are permanently deleted. Shared households keep '
+                'their content and members.',
+              ),
+              const SizedBox(height: 12),
+              const Text('Type DELETE to confirm.'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Type DELETE'),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              onPressed: ctrl.text.trim() == 'DELETE'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: const Text('Delete permanently'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final client = GraphQLProvider.of(context).value;
+    final result = await client.mutate(
+      MutationOptions(document: gql(deleteAccountMutation)),
+    );
+    if (!mounted) return;
+    // Judge by the payload, not hasException: the cache normalizer tacks a
+    // PartialDataException onto results that lack __typename, which would
+    // false-positive a successful deletion.
+    if (result.data?['deleteMyAccount'] != true) {
+      setState(() {
+        _error = result.exception?.graphqlErrors.isNotEmpty == true
+            ? result.exception!.graphqlErrors.first.message
+            : 'Account deletion failed — please try again.';
+      });
+      return;
+    }
+    await context.read<AuthService>().signOut();
   }
 
   // Mirrors the backend matrix: owner acts on admins/members, admin acts
@@ -1044,6 +1122,36 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               padding: EdgeInsets.symmetric(vertical: 8.0),
               child: Text('No users found.'),
             ),
+          const SizedBox(height: 24),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0, bottom: 4.0),
+            child: Text(
+              'Danger zone',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            'Deleting your account is permanent and cannot be undone. '
+            'Your profile, pantry, plans, lists, and household '
+            'memberships are removed. Households you share keep their '
+            'content and members.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          TextButton.icon(
+            icon: Icon(
+              Icons.delete_forever_outlined,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            label: Text(
+              'Delete my account',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            onPressed: _deleteAccount,
+          ),
         ],
       ),
     );

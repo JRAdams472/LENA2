@@ -38,7 +38,10 @@ export default function Page() {
       <Section title={"Your allergy records"}>
         <P>{<Fragment key={7}>{"The "}<strong key={0}>{"Allergies & dietary restrictions"}</strong>{" card on this tab holds your tri-state toggles — None / Dietary / Allergy per allergen. The records are yours, not the household's: they follow you into every household you belong to, and warnings across recipes, meal plans, events, and grocery lists fire for every member's records. See "}<DocLink key={1} href="/docs/allergy-tracking">{"Allergy Tracking"}</DocLink>{"."}</Fragment>}</P>
         <Screenshot src={"/images/mobile-allergies.png"} alt={"The mobile allergy editor"} device="phone" />
-        <P>{<Fragment key={8}>{"← Back to "}<DocLink key={0} href="/docs/mobile-app">{"Using the Mobile App"}</DocLink></Fragment>}</P>
+      </Section>
+      <Section title={"Delete your account"}>
+        <P>{<Fragment key={8}>{"The bottom of this tab holds the same "}<strong key={0}>{"Danger zone"}</strong>{" as the web Profile page — "}<strong key={1}>{"Delete my account"}</strong>{" permanently removes your account and everything personally tied to it, after typing "}<strong key={2}>{"DELETE"}</strong>{" into the confirmation dialog. Shared households keep their content and members; a household only you belong to is dissolved with it. See "}<DocLink key={3} href="/docs/getting-started#delete-your-account">{"Getting Started — Delete your account"}</DocLink>{"."}</Fragment>}</P>
+        <P>{<Fragment key={9}>{"← Back to "}<DocLink key={0} href="/docs/mobile-app">{"Using the Mobile App"}</DocLink></Fragment>}</P>
       </Section>
     </DocPage>
   );

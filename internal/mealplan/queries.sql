@@ -140,3 +140,11 @@ FROM mealplan.meal_slot ms
 JOIN mealplan.meal_plan mp ON mp.meal_plan_id = ms.meal_plan_id
 WHERE mp.household_id = $1 AND ms.recipe_id = ANY(sqlc.arg(recipe_ids)::bigint[])
 GROUP BY ms.recipe_id;
+
+-- name: DeleteMealPlansByHousehold :exec
+-- Account deletion (LEN-146): drops a dissolving household's meal plans.
+-- meal_plan.household_id is NO ACTION; meal_slot children cascade and
+-- grocery_list.meal_plan_id SET NULLs (lists are deleted by their own
+-- domain in the same unit of work).
+DELETE FROM mealplan.meal_plan
+WHERE household_id = $1;

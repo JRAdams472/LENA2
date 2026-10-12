@@ -81,6 +81,9 @@ type GroceryService interface {
 	GroceryWriter
 	GroceryRouter
 	HouseholdMigration
+	// DeleteHouseholdLists drops every grocery list a dissolving household
+	// owns (LEN-146 account deletion).
+	DeleteHouseholdLists(ctx context.Context, householdID int64) error
 }
 
 var _ GroceryService = (*grocery.Service)(nil)
@@ -257,6 +260,9 @@ type MealPlanService interface {
 	MealPlanReader
 	MealPlanWriter
 	HouseholdMigration
+	// DeleteHouseholdPlans drops every meal plan a dissolving household
+	// owns (LEN-146 account deletion).
+	DeleteHouseholdPlans(ctx context.Context, householdID int64) error
 }
 
 var _ MealPlanService = (*mealplan.Service)(nil)
@@ -464,6 +470,9 @@ type UserPrefsService interface {
 	FavoriteStore
 	AllergyStore
 	MergeHouseholdStock(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error
+	// DeleteHouseholdStock drops every pantry/cellar row a dissolving
+	// household owns (LEN-146 account deletion).
+	DeleteHouseholdStock(ctx context.Context, householdID int64) error
 }
 
 var _ UserPrefsService = (*userprefs.Service)(nil)
@@ -506,6 +515,9 @@ type IdentityService interface {
 	UserAdmin
 	HouseholdDirectory
 	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error
+	// DeleteUser permanently removes the identity row (LEN-146). All
+	// user-scoped rows cascade; catalog attribution SET NULLs.
+	DeleteUser(ctx context.Context, userID int64) error
 }
 
 var _ IdentityService = (*identity.Service)(nil)

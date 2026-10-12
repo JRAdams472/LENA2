@@ -676,6 +676,20 @@ func (mr *MockGroceryServiceMockRecorder) DeleteGroceryListItem(ctx, groceryList
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGroceryListItem", reflect.TypeOf((*MockGroceryService)(nil).DeleteGroceryListItem), ctx, groceryListItemID, householdID)
 }
 
+// DeleteHouseholdLists mocks base method.
+func (m *MockGroceryService) DeleteHouseholdLists(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdLists", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHouseholdLists indicates an expected call of DeleteHouseholdLists.
+func (mr *MockGroceryServiceMockRecorder) DeleteHouseholdLists(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdLists", reflect.TypeOf((*MockGroceryService)(nil).DeleteHouseholdLists), ctx, householdID)
+}
+
 // DeleteStore mocks base method.
 func (m *MockGroceryService) DeleteStore(ctx context.Context, storeID, householdID int64) error {
 	m.ctrl.T.Helper()
@@ -4313,6 +4327,20 @@ func (mr *MockMealPlanServiceMockRecorder) CreateMealPlan(ctx, arg, by any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateMealPlan", reflect.TypeOf((*MockMealPlanService)(nil).CreateMealPlan), ctx, arg, by)
 }
 
+// DeleteHouseholdPlans mocks base method.
+func (m *MockMealPlanService) DeleteHouseholdPlans(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdPlans", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHouseholdPlans indicates an expected call of DeleteHouseholdPlans.
+func (mr *MockMealPlanServiceMockRecorder) DeleteHouseholdPlans(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdPlans", reflect.TypeOf((*MockMealPlanService)(nil).DeleteHouseholdPlans), ctx, householdID)
+}
+
 // DeleteMealPlan mocks base method.
 func (m *MockMealPlanService) DeleteMealPlan(ctx context.Context, mealPlanID, householdID int64) error {
 	m.ctrl.T.Helper()
@@ -7821,6 +7849,20 @@ func (mr *MockUserPrefsServiceMockRecorder) DeleteHouseholdItem(ctx, householdIt
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdItem", reflect.TypeOf((*MockUserPrefsService)(nil).DeleteHouseholdItem), ctx, householdItemID, householdID)
 }
 
+// DeleteHouseholdStock mocks base method.
+func (m *MockUserPrefsService) DeleteHouseholdStock(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdStock", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHouseholdStock indicates an expected call of DeleteHouseholdStock.
+func (mr *MockUserPrefsServiceMockRecorder) DeleteHouseholdStock(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdStock", reflect.TypeOf((*MockUserPrefsService)(nil).DeleteHouseholdStock), ctx, householdID)
+}
+
 // GetBottleFavorite mocks base method.
 func (m *MockUserPrefsService) GetBottleFavorite(ctx context.Context, userID, bottleID int64) (bool, error) {
 	m.ctrl.T.Helper()
@@ -8607,6 +8649,20 @@ func (m *MockIdentityService) CountUsersByHousehold(ctx context.Context, househo
 func (mr *MockIdentityServiceMockRecorder) CountUsersByHousehold(ctx, householdID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsersByHousehold", reflect.TypeOf((*MockIdentityService)(nil).CountUsersByHousehold), ctx, householdID)
+}
+
+// DeleteUser mocks base method.
+func (m *MockIdentityService) DeleteUser(ctx context.Context, userID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUser", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteUser indicates an expected call of DeleteUser.
+func (mr *MockIdentityServiceMockRecorder) DeleteUser(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*MockIdentityService)(nil).DeleteUser), ctx, userID)
 }
 
 // GetByID mocks base method.
