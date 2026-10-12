@@ -265,6 +265,91 @@ func profileBirthdate(input *string, current *time.Time) (*time.Time, error) {
 	return &bd, nil
 }
 
+// DeleteMyAccount permanently deletes the caller's account and every
+// row they personally own, in one transaction (LEN-146). The identity row
+// cascades sessions, linked logins, device/push tokens, notifications,
+// ratings, preferences, memberships, and invites; households the caller
+// alone belongs to are dissolved with their pantry, cellar, plans, lists,
+// and events. Shared-household content and catalog content (approved
+// recipes, submitted items/brands) survive — attribution columns SET
+// NULL. Ownership of a shared household passes to the earliest remaining
+// member, matching leaveHousehold. The last-active-admin invariant blocks
+// a sole administrator.
+func (r *Resolver) DeleteMyAccount(ctx context.Context) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	var promoted []int64
+	err = r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		// Classify memberships before the identity row (and its member
+		// rows) disappears: sole-member households are dissolved below.
+		memberships, err := r.HouseholdService.ListMembershipsByUser(ctx, u.UserID)
+		if err != nil {
+			return err
+		}
+		sole := make([]int64, 0, len(memberships))
+		for _, m := range memberships {
+			// Lock first — a concurrent invite-accept must not turn a
+			// household multi-member after we counted it as sole.
+			if _, err := r.HouseholdService.LockHousehold(ctx, m.HouseholdID); err != nil {
+				return err
+			}
+			members, err := r.HouseholdService.ListMembersByHousehold(ctx, m.HouseholdID)
+			if err != nil {
+				return err
+			}
+			if len(members) == 1 {
+				sole = append(sole, m.HouseholdID)
+				continue
+			}
+			// A shared household whose owner deletes their account would
+			// otherwise be left with nobody able to manage members — hand
+			// ownership to the earliest admin/member, like leaveHousehold.
+			id, err := r.promoteSuccessor(ctx, u, m.Role, members, m.HouseholdID)
+			if err != nil {
+				return err
+			}
+			if id != 0 {
+				promoted = append(promoted, id)
+			}
+		}
+		if err := r.IdentityService.DeleteUser(ctx, u.UserID); err != nil {
+			return err
+		}
+		for _, hid := range sole {
+			if err := r.UserPrefsService.DeleteHouseholdStock(ctx, hid); err != nil {
+				return err
+			}
+			if err := r.MealPlanService.DeleteHouseholdPlans(ctx, hid); err != nil {
+				return err
+			}
+			if err := r.GroceryService.DeleteHouseholdLists(ctx, hid); err != nil {
+				return err
+			}
+			if err := r.HouseholdService.DeleteHousehold(ctx, hid); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return false, mapAdminGuardError(err)
+	}
+	// Evict the cached identity so outstanding access tokens stop
+	// resolving immediately instead of living out the cache TTL.
+	r.invalidateUser(ctx, u)
+	for _, id := range promoted {
+		r.invalidateUserID(ctx, id)
+	}
+	slog.Default().Info("audit",
+		"action", "delete_my_account",
+		"actor", u.Email,
+		"user_id", u.UserID,
+	)
+	return true, nil
+}
+
 // userByID reloads a user and wraps it in a resolver, marking protected
 // status from the identity service's configured list.
 func (r *Resolver) userByID(ctx context.Context, userID int64) (*userResolver, error) {

@@ -18,6 +18,11 @@ type Querier interface {
 	// transaction as the activation.
 	DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOtherMealPlansParams) error
 	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
+	// Account deletion (LEN-146): drops a dissolving household's meal plans.
+	// meal_plan.household_id is NO ACTION; meal_slot children cascade and
+	// grocery_list.meal_plan_id SET NULLs (lists are deleted by their own
+	// domain in the same unit of work).
+	DeleteMealPlansByHousehold(ctx context.Context, householdID int64) error
 	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error
 	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error
 	GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams) (MealplanMealPlan, error)

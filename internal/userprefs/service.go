@@ -465,6 +465,21 @@ func (s *Service) MergeHouseholdStock(ctx context.Context, fromHouseholdID, toHo
 	return nil
 }
 
+// DeleteHouseholdStock removes every pantry and cellar row owned by a
+// dissolving household (LEN-146 account deletion). household_item and
+// household_bottle carry NO ACTION edges to households, so they must be
+// emptied before the households row itself can delete inside the same
+// unit of work.
+func (s *Service) DeleteHouseholdStock(ctx context.Context, householdID int64) error {
+	if err := s.q.DeleteHouseholdItemsByHousehold(ctx, householdID); err != nil {
+		return fmt.Errorf("delete household stock: %w", domainerr.FromStorage(err))
+	}
+	if err := s.q.DeleteHouseholdBottlesByHousehold(ctx, householdID); err != nil {
+		return fmt.Errorf("delete household stock: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
 // ItemFavorite is a user's personal favorite flag for a catalog item. It is
 // independent of whether the household stocks the item.
 type ItemFavorite struct {

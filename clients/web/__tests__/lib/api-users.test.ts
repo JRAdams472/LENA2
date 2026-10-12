@@ -84,6 +84,17 @@ describe("api client: user management", () => {
     expect(u.firstName).toBe("Ada");
   });
 
+  it("deleteMyAccount returns the mutation result", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ deleteMyAccount: true })
+    );
+
+    const ok = await api.deleteMyAccount();
+    const body = lastRequestBody();
+    expect(body.query).toContain("deleteMyAccount");
+    expect(ok).toBe(true);
+  });
+
   it("setUserRole sends userId and role", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({ setUserRole: { ...gqlUser, role: "admin" } })

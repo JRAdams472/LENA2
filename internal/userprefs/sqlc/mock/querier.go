@@ -131,6 +131,20 @@ func (mr *MockQuerierMockRecorder) DeleteHouseholdBottle(ctx, arg any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdBottle", reflect.TypeOf((*MockQuerier)(nil).DeleteHouseholdBottle), ctx, arg)
 }
 
+// DeleteHouseholdBottlesByHousehold mocks base method.
+func (m *MockQuerier) DeleteHouseholdBottlesByHousehold(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdBottlesByHousehold", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHouseholdBottlesByHousehold indicates an expected call of DeleteHouseholdBottlesByHousehold.
+func (mr *MockQuerierMockRecorder) DeleteHouseholdBottlesByHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdBottlesByHousehold", reflect.TypeOf((*MockQuerier)(nil).DeleteHouseholdBottlesByHousehold), ctx, householdID)
+}
+
 // DeleteHouseholdItem mocks base method.
 func (m *MockQuerier) DeleteHouseholdItem(ctx context.Context, arg sqlc.DeleteHouseholdItemParams) (int64, error) {
 	m.ctrl.T.Helper()
@@ -144,6 +158,20 @@ func (m *MockQuerier) DeleteHouseholdItem(ctx context.Context, arg sqlc.DeleteHo
 func (mr *MockQuerierMockRecorder) DeleteHouseholdItem(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdItem", reflect.TypeOf((*MockQuerier)(nil).DeleteHouseholdItem), ctx, arg)
+}
+
+// DeleteHouseholdItemsByHousehold mocks base method.
+func (m *MockQuerier) DeleteHouseholdItemsByHousehold(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHouseholdItemsByHousehold", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHouseholdItemsByHousehold indicates an expected call of DeleteHouseholdItemsByHousehold.
+func (mr *MockQuerierMockRecorder) DeleteHouseholdItemsByHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHouseholdItemsByHousehold", reflect.TypeOf((*MockQuerier)(nil).DeleteHouseholdItemsByHousehold), ctx, householdID)
 }
 
 // DeleteMergedHouseholdBottles mocks base method.

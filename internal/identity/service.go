@@ -795,6 +795,39 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, firstName, la
 	return nil
 }
 
+// DeleteUser permanently removes the user's identity row (LEN-146 account
+// deletion). Every user-scoped row — sessions, linked logins, device
+// tokens, memberships, invites, notifications, ratings, preferences,
+// idempotency keys, user-scoped analytics — cascades; catalog attribution
+// columns SET NULL so shared content survives detached. The caller runs
+// this inside the account-deletion unit of work, after collecting
+// memberships and before dissolving sole-member households. The
+// last-active-admin invariant from the admin paths applies here too: a
+// sole remaining administrator may not delete themselves.
+func (s *Service) DeleteUser(ctx context.Context, userID int64) error {
+	target, err := s.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if target.Role == RoleAdmin && target.IsActive {
+		admins, err := s.q.CountActiveAdmins(ctx)
+		if err != nil {
+			return fmt.Errorf("delete user: %w", domainerr.FromStorage(err))
+		}
+		if admins <= 1 {
+			return fmt.Errorf("delete user: %w", domainerr.ErrLastAdmin)
+		}
+	}
+	n, err := s.q.DeleteUser(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("delete user: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
 func toUser(row sqlc.IdentityUser) User {
 	u := User{
 		UserID:          row.UserID,

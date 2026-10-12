@@ -32,6 +32,10 @@ type Querier interface {
 	DeleteGeneratedGroceryListItems(ctx context.Context, groceryListID int64) error
 	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
 	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error
+	// Account deletion (LEN-146): drops a dissolving household's lists.
+	// grocery_list.household_id is NO ACTION; grocery_list_item children
+	// cascade. Stores/routes cascade with the households row itself.
+	DeleteGroceryListsByHousehold(ctx context.Context, householdID int64) error
 	DeleteStore(ctx context.Context, arg DeleteStoreParams) error
 	GetAisleByID(ctx context.Context, arg GetAisleByIDParams) (GroceryStoreAisle, error)
 	GetGroceryListByID(ctx context.Context, arg GetGroceryListByIDParams) (GroceryGroceryList, error)

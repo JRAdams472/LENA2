@@ -2236,6 +2236,16 @@ export const api = {
     return toUser(data.updateMyProfile);
   },
 
+  // Permanently deletes the caller's account and all personal data.
+  // The session dies with the user row — callers must clear local auth
+  // state and leave the member area on success.
+  deleteMyAccount: async (): Promise<boolean> => {
+    const data = await request<{ deleteMyAccount: boolean }>(
+      `mutation { deleteMyAccount }`
+    );
+    return data.deleteMyAccount;
+  },
+
   // Household
   getMyHousehold: async (): Promise<Household | null> => {
     const data = await request<{ myHousehold: GqlHousehold | null }>(

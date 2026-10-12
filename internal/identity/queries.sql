@@ -307,3 +307,14 @@ UPDATE identity.session
 SET revoked_at = now()
 WHERE user_id = $1
   AND revoked_at IS NULL;
+
+-- name: DeleteUser :execrows
+-- Account deletion (LEN-146): removes the user row outright. Every
+-- user-scoped row — sessions, linked logins, device tokens, memberships,
+-- invites, notifications, push outbox, ratings, preferences, idempotency
+-- keys, user-scoped analytics — cascades. Catalog attribution columns
+-- (submitted_by, approved_by, actor_user_id) SET NULL so shared content
+-- survives detached. Callers dissolve sole-member households separately:
+-- users.household_id is a RESTRICT-edge while the row exists.
+DELETE FROM identity.users
+WHERE user_id = $1;

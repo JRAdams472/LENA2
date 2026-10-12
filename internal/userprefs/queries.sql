@@ -363,3 +363,15 @@ ON CONFLICT (user_id, allergen_id)
 -- name: DeleteUserAllergen :execrows
 DELETE FROM userprefs.user_allergen
 WHERE user_id = $1 AND allergen_id = $2;
+
+-- name: DeleteHouseholdItemsByHousehold :exec
+-- Account deletion (LEN-146): drops a dissolving household's pantry rows.
+-- household_item.household_id is a NO ACTION edge, so it must go before
+-- the households row can be deleted.
+DELETE FROM userprefs.household_item
+WHERE household_id = $1;
+
+-- name: DeleteHouseholdBottlesByHousehold :exec
+-- Same story for cellar holdings.
+DELETE FROM userprefs.household_bottle
+WHERE household_id = $1;

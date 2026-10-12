@@ -402,6 +402,15 @@ type Mutation {
 
   # Self-service profile update (first/last name, backup email).
   updateMyProfile(input: UpdateProfileInput!): User!
+  # Permanently deletes the caller's account and all personal data in one
+  # transaction: identity, sessions, linked logins, device/push tokens,
+  # notifications, preferences, memberships, and — for households the
+  # caller alone belongs to — the household with its pantry, cellar,
+  # plans, lists, and events. Shared households keep their content and
+  # members; catalog content (approved recipes, submitted items/brands)
+  # is preserved with attribution cleared. Refuses when the caller is the
+  # last active admin.
+  deleteMyAccount: Boolean!
   # Admin-only user management. Rejects self-modification, protected
   # admins, and removing the last active admin.
   setUserRole(userId: ID!, role: Role!): User! @admin

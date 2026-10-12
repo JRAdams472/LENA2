@@ -92,7 +92,7 @@ Administration is web-only — the mobile app has no admin screens, and admin-on
 - `/users` — user management (admin only): roles, ban/unban, and the **Access requests** queue that approves or denies new sign-ins held at the member-approval barrier.
 - `/items/pending` — approve or reject user-submitted items (admin only).
 - `/household` — household members, roles, and invites; each member manages their own allergy/dietary records here. A **Your households** section lists every membership with the active one marked — switch between them, create a new household, or leave any of them; accepting an invite while you solely own a household offers a merge.
-- `/profile` — current-user profile (name, backup email, discoverability, and your own allergy/dietary records).
+- `/profile` — current-user profile (name, backup email, discoverability, and your own allergy/dietary records), plus the **danger zone**: `deleteMyAccount` permanently removes the account and every personally owned row behind a typed `DELETE` confirmation — sole-member households are dissolved with their content, shared households keep everything, and approved public recipes/items survive with attribution cleared.
 
 The header bell shows unread household notifications — meal-plan, grocery-list, event, and invite changes made by other members — with deep links to the changed item. An hourly sweep also produces reminders: protein defrosting (scaled by weight — 48 hours up to 8 lbs, then 24 hours per additional 4 lbs), multi-day recipe prep (steps of 24h+), and pantry items nearing their expiry date. Expiry reminders include an **Add to list** action that drops a replacement onto the current grocery list.
 

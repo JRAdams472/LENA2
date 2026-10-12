@@ -129,6 +129,20 @@ func (mr *MockQuerierMockRecorder) DeleteMealPlan(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealPlan", reflect.TypeOf((*MockQuerier)(nil).DeleteMealPlan), ctx, arg)
 }
 
+// DeleteMealPlansByHousehold mocks base method.
+func (m *MockQuerier) DeleteMealPlansByHousehold(ctx context.Context, householdID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMealPlansByHousehold", ctx, householdID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMealPlansByHousehold indicates an expected call of DeleteMealPlansByHousehold.
+func (mr *MockQuerierMockRecorder) DeleteMealPlansByHousehold(ctx, householdID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealPlansByHousehold", reflect.TypeOf((*MockQuerier)(nil).DeleteMealPlansByHousehold), ctx, householdID)
+}
+
 // DeleteMealSlot mocks base method.
 func (m *MockQuerier) DeleteMealSlot(ctx context.Context, arg sqlc.DeleteMealSlotParams) error {
 	m.ctrl.T.Helper()

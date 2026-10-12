@@ -69,6 +69,7 @@ export default function Page() {
       </Section>
       <Section title={"Leaving and merging"}>
         <P>{<Fragment key={25}>{"Households are meant to be long-lived, but people move. Use "}<strong key={0}>{"Leave"}</strong>{" on the Your households card (or the mobile switcher sheet) to drop a single membership — the rest of your households are untouched. If your household situation consolidates (two homes become one), the invite + merge flow is the tool: invite everyone to the household you want to keep, and those who solely own their old household can merge its contents in."}</Fragment>}</P>
+        <P>{<Fragment key={26}>{"Deleting your account (Profile → Danger zone, or the Household tab on mobile) applies the same rule at account scale: a household only you belong to is dissolved with all its content, while a shared household keeps everything and simply loses your seat."}</Fragment>}</P>
       </Section>
     </DocPage>
   );

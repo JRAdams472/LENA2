@@ -183,6 +183,17 @@ func (s *Service) ReassignHousehold(ctx context.Context, fromHouseholdID, toHous
 	return nil
 }
 
+// DeleteHouseholdLists removes every grocery list owned by a dissolving
+// household (LEN-146 account deletion). grocery_list.household_id is a
+// NO ACTION edge, so lists must go before the households row can delete;
+// grocery_list_item children cascade.
+func (s *Service) DeleteHouseholdLists(ctx context.Context, householdID int64) error {
+	if err := s.q.DeleteGroceryListsByHousehold(ctx, householdID); err != nil {
+		return fmt.Errorf("delete grocery lists: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
 // GroceryListItem is a single item on a shopping list. ItemID is the
 // branded catalog item; IngredientID optionally points at the
 // brand-agnostic ingredient abstraction. CheckedSeq records the order it

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,6 +154,9 @@ func TestBFF_Integration(t *testing.T) {
 	})
 	t.Run("shopping link", func(t *testing.T) {
 		runShoppingLinkTests(t, srv, issuer, idp)
+	})
+	t.Run("delete account", func(t *testing.T) {
+		runDeleteAccountTests(t, srv, issuer, pool)
 	})
 }
 
@@ -3026,6 +3030,148 @@ func runShoppingLinkTests(t *testing.T, srv *httptest.Server, issuer *testutil.T
 	}`, map[string]any{"id": listID})
 	require.Equal(t, http.StatusOK, status)
 	require.NotEmpty(t, gr.Errors)
+}
+
+// runDeleteAccountTests covers LEN-146: a sole-member account purges its
+// user row, household, and household content in one mutation, while a
+// member leaving a shared household deletes only their own rows.
+func runDeleteAccountTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer, pool *pgxpool.Pool) {
+	ctx := context.Background()
+	count := func(t *testing.T, query string, args ...any) int64 {
+		t.Helper()
+		var n int64
+		require.NoError(t, pool.QueryRow(ctx, query, args...).Scan(&n))
+		return n
+	}
+	idFor := func(token string) string {
+		status, gr := doGraphQL(t, srv, token, `{ me { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var res struct {
+			Me struct {
+				ID string `json:"id"`
+			} `json:"me"`
+		}
+		decodeData(t, gr.Data, &res)
+		return res.Me.ID
+	}
+
+	t.Run("sole household purged", func(t *testing.T) {
+		tok := issuer.Token(t, "del-solo", "del-solo@example.com", "Del Solo")
+		id := idFor(tok)
+		userID, err := strconv.ParseInt(id, 10, 64)
+		require.NoError(t, err)
+
+		// Give the default household content: a meal plan and a list.
+		status, gr := doGraphQL(t, srv, tok, `mutation { createMealPlan(input: {name: "Solo plan", weekStartDate: "2030-01-06"}) { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+		status, gr = doGraphQL(t, srv, tok, `mutation { generateGroceryList { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+
+		var householdID int64
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT household_id FROM identity.users WHERE user_id = $1`, userID).Scan(&householdID))
+		require.Equal(t, int64(1), count(t, `SELECT count(*) FROM mealplan.meal_plan WHERE household_id = $1`, householdID))
+		require.Equal(t, int64(1), count(t, `SELECT count(*) FROM grocery.grocery_list WHERE household_id = $1`, householdID))
+
+		status, gr = doGraphQL(t, srv, tok, `mutation { deleteMyAccount }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+		var del struct {
+			Delete bool `json:"deleteMyAccount"`
+		}
+		decodeData(t, gr.Data, &del)
+		assert.True(t, del.Delete)
+
+		// Everything the user owned is gone — identity, sessions, the
+		// sole-member household, and its content.
+		assert.Zero(t, count(t, `SELECT count(*) FROM identity.users WHERE user_id = $1`, userID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM identity.session WHERE user_id = $1`, userID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM household.household_member WHERE user_id = $1`, userID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM household.households WHERE household_id = $1`, householdID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM mealplan.meal_plan WHERE household_id = $1`, householdID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM grocery.grocery_list WHERE household_id = $1`, householdID))
+
+		// The same provider credential re-provisions a brand-new account —
+		// re-registration works, but nothing of the old account survives.
+		assert.NotEqual(t, id, idFor(tok))
+	})
+
+	t.Run("shared household preserved", func(t *testing.T) {
+		tokA := issuer.Token(t, "del-a", "del-a@example.com", "Del A")
+		tokB := issuer.Token(t, "del-b", "del-b@example.com", "Del B")
+		idA, idB := idFor(tokA), idFor(tokB)
+
+		// B opts into search, A invites, B joins A's household.
+		status, _ := doGraphQL(t, srv, tokB, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		status, gr := doGraphQL(t, srv, tokA, `mutation Invite($userId: ID!) {
+			inviteHouseholdMember(userId: $userId) { id }
+		}`, map[string]any{"userId": idB})
+		require.Equal(t, http.StatusOK, status)
+		var inv struct {
+			Invite struct {
+				ID string `json:"id"`
+			} `json:"inviteHouseholdMember"`
+		}
+		decodeData(t, gr.Data, &inv)
+		status, gr = doGraphQL(t, srv, tokB, `mutation Accept($inviteId: ID!) {
+			acceptHouseholdInvite(inviteId: $inviteId) { id }
+		}`, map[string]any{"inviteId": inv.Invite.ID})
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+
+		// B adds shared content — a meal plan in the joint household.
+		status, gr = doGraphQL(t, srv, tokB, `mutation { createMealPlan(input: {name: "Shared plan", weekStartDate: "2030-02-03"}) { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+
+		userA, err := strconv.ParseInt(idA, 10, 64)
+		require.NoError(t, err)
+		userB, err := strconv.ParseInt(idB, 10, 64)
+		require.NoError(t, err)
+		var sharedHID int64
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT household_id FROM identity.users WHERE user_id = $1`, userA).Scan(&sharedHID))
+
+		status, gr = doGraphQL(t, srv, tokA, `mutation { deleteMyAccount }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+
+		// A's rows are gone; the household, B's membership, and B's plan stay.
+		assert.Zero(t, count(t, `SELECT count(*) FROM identity.users WHERE user_id = $1`, userA))
+		assert.Zero(t, count(t, `SELECT count(*) FROM household.household_member WHERE user_id = $1`, userA))
+		assert.Equal(t, int64(1), count(t, `SELECT count(*) FROM household.households WHERE household_id = $1`, sharedHID))
+		assert.Equal(t, int64(1), count(t, `SELECT count(*) FROM household.household_member WHERE household_id = $1 AND user_id = $2`, sharedHID, userB))
+		assert.Equal(t, int64(1), count(t, `SELECT count(*) FROM mealplan.meal_plan WHERE household_id = $1`, sharedHID))
+
+		// A owned the shared household — ownership must hand off to B
+		// rather than strand it ownerless.
+		var role string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT role FROM household.household_member WHERE household_id = $1 AND user_id = $2`,
+			sharedHID, userB).Scan(&role))
+		assert.Equal(t, "owner", role)
+
+		// B still resolves as the household's sole remaining member.
+		status, gr = doGraphQL(t, srv, tokB, `{ me { id household { members { user { id } } } } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		var meB struct {
+			Me struct {
+				Household struct {
+					Members []struct {
+						User struct {
+							ID string `json:"id"`
+						} `json:"user"`
+					} `json:"members"`
+				} `json:"household"`
+			} `json:"me"`
+		}
+		decodeData(t, gr.Data, &meB)
+		require.Len(t, meB.Me.Household.Members, 1)
+		assert.Equal(t, idB, meB.Me.Household.Members[0].User.ID)
+	})
 }
 
 func TestMain(m *testing.M) {

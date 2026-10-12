@@ -194,6 +194,17 @@ func (s *Service) ReassignHousehold(ctx context.Context, fromHouseholdID, toHous
 	return nil
 }
 
+// DeleteHouseholdPlans removes every meal plan owned by a dissolving
+// household (LEN-146 account deletion). meal_plan.household_id is a
+// NO ACTION edge, so plans must go before the households row can delete;
+// meal_slot children cascade.
+func (s *Service) DeleteHouseholdPlans(ctx context.Context, householdID int64) error {
+	if err := s.q.DeleteMealPlansByHousehold(ctx, householdID); err != nil {
+		return fmt.Errorf("delete household plans: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
 // MealSlot is a single meal within a plan.
 type MealSlot struct {
 	SlotID          int64

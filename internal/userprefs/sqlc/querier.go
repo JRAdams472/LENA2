@@ -20,7 +20,13 @@ type Querier interface {
 	// with the returned rows.
 	CountSearchHouseholdItems(ctx context.Context, arg CountSearchHouseholdItemsParams) (int64, error)
 	DeleteHouseholdBottle(ctx context.Context, arg DeleteHouseholdBottleParams) (int64, error)
+	// Same story for cellar holdings.
+	DeleteHouseholdBottlesByHousehold(ctx context.Context, householdID int64) error
 	DeleteHouseholdItem(ctx context.Context, arg DeleteHouseholdItemParams) (int64, error)
+	// Account deletion (LEN-146): drops a dissolving household's pantry rows.
+	// household_item.household_id is a NO ACTION edge, so it must go before
+	// the households row can be deleted.
+	DeleteHouseholdItemsByHousehold(ctx context.Context, householdID int64) error
 	DeleteMergedHouseholdBottles(ctx context.Context, arg DeleteMergedHouseholdBottlesParams) error
 	// Drop source rows that were folded into a target row.
 	DeleteMergedHouseholdItems(ctx context.Context, arg DeleteMergedHouseholdItemsParams) error

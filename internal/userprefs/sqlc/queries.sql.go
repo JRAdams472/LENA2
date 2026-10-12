@@ -154,6 +154,17 @@ func (q *Queries) DeleteHouseholdBottle(ctx context.Context, arg DeleteHousehold
 	return result.RowsAffected(), nil
 }
 
+const deleteHouseholdBottlesByHousehold = `-- name: DeleteHouseholdBottlesByHousehold :exec
+DELETE FROM userprefs.household_bottle
+WHERE household_id = $1
+`
+
+// Same story for cellar holdings.
+func (q *Queries) DeleteHouseholdBottlesByHousehold(ctx context.Context, householdID int64) error {
+	_, err := q.db.Exec(ctx, deleteHouseholdBottlesByHousehold, householdID)
+	return err
+}
+
 const deleteHouseholdItem = `-- name: DeleteHouseholdItem :execrows
 DELETE FROM userprefs.household_item
 WHERE household_item_id = $1 AND household_id = $2
@@ -170,6 +181,19 @@ func (q *Queries) DeleteHouseholdItem(ctx context.Context, arg DeleteHouseholdIt
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteHouseholdItemsByHousehold = `-- name: DeleteHouseholdItemsByHousehold :exec
+DELETE FROM userprefs.household_item
+WHERE household_id = $1
+`
+
+// Account deletion (LEN-146): drops a dissolving household's pantry rows.
+// household_item.household_id is a NO ACTION edge, so it must go before
+// the households row can be deleted.
+func (q *Queries) DeleteHouseholdItemsByHousehold(ctx context.Context, householdID int64) error {
+	_, err := q.db.Exec(ctx, deleteHouseholdItemsByHousehold, householdID)
+	return err
 }
 
 const deleteMergedHouseholdBottles = `-- name: DeleteMergedHouseholdBottles :exec

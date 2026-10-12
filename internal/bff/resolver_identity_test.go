@@ -28,6 +28,7 @@ type fakeIdentityService struct {
 	activeErr   error
 	profileErr  error
 	approvalErr error
+	deleteErr   error
 	// memberships mirrors household_member for LEN-26: user → household →
 	// role. When nil, a user's household_id counts as their only membership
 	// (the P1 1:1 invariant).
@@ -225,6 +226,17 @@ func (f *fakeIdentityService) ListUsersByIDs(_ context.Context, ids []int64) ([]
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeIdentityService) DeleteUser(_ context.Context, userID int64) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	if _, ok := f.users[userID]; !ok {
+		return domainerr.ErrNotFound
+	}
+	delete(f.users, userID)
+	return nil
 }
 
 func (f *fakeIdentityService) SearchUsers(_ context.Context, term string, excludeUserID, excludeHouseholdID int64, limit int32) ([]identity.User, error) {
@@ -541,4 +553,120 @@ func TestResolver_ApproveDenyUser(t *testing.T) {
 	svc.approvalErr = identity.ErrSelfModification
 	_, err = r.ApproveUser(adminCtx(), args("1"))
 	assert.ErrorContains(t, err, "your own role")
+}
+
+func TestResolver_DeleteMyAccount(t *testing.T) {
+	newMocks := func(t *testing.T) (*mock.MockHouseholdService, *mock.MockUserPrefsService, *mock.MockMealPlanService, *mock.MockGroceryService) {
+		ctrl := gomock.NewController(t)
+		return mock.NewMockHouseholdService(ctrl), mock.NewMockUserPrefsService(ctrl),
+			mock.NewMockMealPlanService(ctrl), mock.NewMockGroceryService(ctrl)
+	}
+	ctx := testutil.WithUser(context.Background(), 7, "me@example.com")
+	membership := household.Membership{HouseholdID: 42, UserID: 7, Role: identity.HouseholdRoleOwner}
+	mate := household.Membership{HouseholdID: 42, UserID: 9, Role: identity.HouseholdRoleMember}
+
+	t.Run("unauthenticated", func(t *testing.T) {
+		r := &Resolver{}
+		ok, err := r.DeleteMyAccount(context.Background())
+		assert.False(t, ok)
+		assert.EqualError(t, err, "unauthorized")
+	})
+
+	t.Run("sole household dissolved", func(t *testing.T) {
+		svc := newFakeIdentityService(identity.User{UserID: 7, Email: "me@example.com", Role: identity.RoleMember, IsActive: true})
+		hh, prefs, plans, grocery := newMocks(t)
+		auth := &fakeAuthInvalidator{}
+		gomock.InOrder(
+			hh.EXPECT().ListMembershipsByUser(gomock.Any(), int64(7)).Return([]household.Membership{membership}, nil),
+			hh.EXPECT().LockHousehold(gomock.Any(), int64(42)).Return(household.Household{HouseholdID: 42}, nil),
+			hh.EXPECT().ListMembersByHousehold(gomock.Any(), int64(42)).Return([]household.Membership{membership}, nil),
+			prefs.EXPECT().DeleteHouseholdStock(gomock.Any(), int64(42)).Return(nil),
+			plans.EXPECT().DeleteHouseholdPlans(gomock.Any(), int64(42)).Return(nil),
+			grocery.EXPECT().DeleteHouseholdLists(gomock.Any(), int64(42)).Return(nil),
+			hh.EXPECT().DeleteHousehold(gomock.Any(), int64(42)).Return(nil),
+		)
+		r := &Resolver{
+			IdentityService: svc, HouseholdService: hh, UserPrefsService: prefs,
+			MealPlanService: plans, GroceryService: grocery, AuthInvalidator: auth,
+		}
+		ok, err := r.DeleteMyAccount(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+		assert.Empty(t, svc.users)
+		assert.Len(t, auth.users, 1)
+	})
+
+	t.Run("shared household kept", func(t *testing.T) {
+		svc := newFakeIdentityService(identity.User{UserID: 7, Email: "me@example.com", Role: identity.RoleMember, IsActive: true})
+		hh, prefs, plans, grocery := newMocks(t)
+		memberSeat := household.Membership{HouseholdID: 42, UserID: 7, Role: identity.HouseholdRoleMember}
+		gomock.InOrder(
+			hh.EXPECT().ListMembershipsByUser(gomock.Any(), int64(7)).Return([]household.Membership{memberSeat}, nil),
+			hh.EXPECT().LockHousehold(gomock.Any(), int64(42)).Return(household.Household{HouseholdID: 42}, nil),
+			hh.EXPECT().ListMembersByHousehold(gomock.Any(), int64(42)).Return([]household.Membership{
+				{HouseholdID: 42, UserID: 8, Role: identity.HouseholdRoleOwner},
+				memberSeat,
+				mate,
+			}, nil),
+		)
+		// No stock/plans/lists/household deletes — the household outlives the member.
+		r := &Resolver{
+			IdentityService: svc, HouseholdService: hh, UserPrefsService: prefs,
+			MealPlanService: plans, GroceryService: grocery,
+		}
+		ok, err := r.DeleteMyAccount(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("shared household owner promotes a successor", func(t *testing.T) {
+		svc := newFakeIdentityService(
+			identity.User{UserID: 7, Email: "me@example.com", Role: identity.RoleMember, IsActive: true},
+			identity.User{UserID: 9, Email: "mate@example.com", Role: identity.RoleMember, IsActive: true},
+		)
+		hh, prefs, plans, grocery := newMocks(t)
+		auth := &fakeAuthInvalidator{}
+		hh.EXPECT().ListMembershipsByUser(gomock.Any(), int64(7)).Return([]household.Membership{membership}, nil)
+		hh.EXPECT().LockHousehold(gomock.Any(), int64(42)).Return(household.Household{HouseholdID: 42}, nil)
+		hh.EXPECT().ListMembersByHousehold(gomock.Any(), int64(42)).Return([]household.Membership{membership, mate}, nil)
+		// Ownership passes to the earliest remaining member before the
+		// caller's row (and owner seat) is deleted.
+		hh.EXPECT().JoinHousehold(gomock.Any(), int64(42), int64(9), identity.HouseholdRoleOwner, "me@example.com").Return(household.Membership{}, nil)
+		hh.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindRoleChanged, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		r := &Resolver{
+			IdentityService: svc, HouseholdService: hh, UserPrefsService: prefs,
+			MealPlanService: plans, GroceryService: grocery, AuthInvalidator: auth,
+		}
+		ok, err := r.DeleteMyAccount(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+		assert.Contains(t, auth.userIDs, int64(9))
+	})
+
+	t.Run("no memberships", func(t *testing.T) {
+		svc := newFakeIdentityService(identity.User{UserID: 7, Email: "me@example.com", Role: identity.RoleMember, IsActive: true})
+		hh, prefs, plans, grocery := newMocks(t)
+		hh.EXPECT().ListMembershipsByUser(gomock.Any(), int64(7)).Return(nil, nil)
+		r := &Resolver{
+			IdentityService: svc, HouseholdService: hh, UserPrefsService: prefs,
+			MealPlanService: plans, GroceryService: grocery,
+		}
+		ok, err := r.DeleteMyAccount(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("last admin refused", func(t *testing.T) {
+		svc := newFakeIdentityService(identity.User{UserID: 7, Email: "me@example.com", Role: identity.RoleAdmin, IsActive: true})
+		svc.deleteErr = domainerr.ErrLastAdmin
+		hh, prefs, plans, grocery := newMocks(t)
+		hh.EXPECT().ListMembershipsByUser(gomock.Any(), int64(7)).Return(nil, nil)
+		r := &Resolver{
+			IdentityService: svc, HouseholdService: hh, UserPrefsService: prefs,
+			MealPlanService: plans, GroceryService: grocery,
+		}
+		ok, err := r.DeleteMyAccount(ctx)
+		assert.False(t, ok)
+		assert.ErrorContains(t, err, "last active admin")
+	})
 }

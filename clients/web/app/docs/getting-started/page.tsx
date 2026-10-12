@@ -70,13 +70,19 @@ export default function Page() {
         <P>{<Fragment key={40}>{"The "}<strong key={0}>{"bell icon"}</strong>{" in the web header shows an unread count. You'll be notified when someone in your household changes shared things — a meal plan update, a new grocery list, an event change, or an invite. Click a notification to jump straight to the thing that changed."}</Fragment>}</P>
         <P>{<Fragment key={41}>{"On mobile, the unread count rides on the "}<strong key={0}>{"Household"}</strong>{" tab badge."}</Fragment>}</P>
       </Section>
+      <Section title={"Delete your account"}>
+        <P>{<Fragment key={42}>{"If you ever want out, "}<strong key={0}>{"Profile → Danger zone"}</strong>{" holds "}<strong key={1}>{"Delete my account"}</strong>{" — and the mobile app carries the same control at the bottom of the "}<strong key={2}>{"Household"}</strong>{" tab. Deletion is permanent: your profile, sign-ins, notifications, memberships, and allergy records go with it, and so does every household only you belong to (with its pantry, cellar, plans, lists, and events). Households you share keep their content and members — your seat just empties. Approved recipes and catalog items you contributed stay public, no longer tied to you."}</Fragment>}</P>
+        <P>{<Fragment key={43}>{"Because there's no undo, the button only works after you type "}<strong key={0}>{"DELETE"}</strong>{" into the confirmation dialog."}</Fragment>}</P>
+        <Screenshot src={"/images/profile-danger-zone.png"} alt={"The danger zone at the bottom of the Profile page"} device="web" />
+        <Screenshot src={"/images/profile-delete-dialog.png"} alt={"The typed confirmation for a permanent delete"} device="web" />
+      </Section>
       <Section title={"First five things to do"}>
         <DocList ordered items={[
-          <Fragment key={42}>{"Fill in your profile and turn on discoverability."}</Fragment>,
-          <Fragment key={43}>{"Invite your household (or accept their invite)."}</Fragment>,
-          <Fragment key={44}>{"Add a few recipes — or snap a photo of a recipe card and let the importer do the typing."}</Fragment>,
-          <Fragment key={45}>{"Create this week's meal plan and generate a grocery list."}</Fragment>,
-          <Fragment key={46}>{"Open the mobile app on your phone and try scanning a barcode in your pantry."}</Fragment>,
+          <Fragment key={44}>{"Fill in your profile and turn on discoverability."}</Fragment>,
+          <Fragment key={45}>{"Invite your household (or accept their invite)."}</Fragment>,
+          <Fragment key={46}>{"Add a few recipes — or snap a photo of a recipe card and let the importer do the typing."}</Fragment>,
+          <Fragment key={47}>{"Create this week's meal plan and generate a grocery list."}</Fragment>,
+          <Fragment key={48}>{"Open the mobile app on your phone and try scanning a barcode in your pantry."}</Fragment>,
         ]} />
       </Section>
     </DocPage>
