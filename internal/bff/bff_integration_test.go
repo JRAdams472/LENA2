@@ -3104,9 +3104,9 @@ func runDeleteAccountTests(t *testing.T, srv *httptest.Server, issuer *testutil.
 		idA, idB := idFor(tokA), idFor(tokB)
 
 		// B opts into search, A invites, B joins A's household.
-		status, gr := doGraphQL(t, srv, tokB, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
+		status, _ := doGraphQL(t, srv, tokB, `mutation { updateMyProfile(input: {isSearchable: true}) { id } }`, nil)
 		require.Equal(t, http.StatusOK, status)
-		status, gr = doGraphQL(t, srv, tokA, `mutation Invite($userId: ID!) {
+		status, gr := doGraphQL(t, srv, tokA, `mutation Invite($userId: ID!) {
 			inviteHouseholdMember(userId: $userId) { id }
 		}`, map[string]any{"userId": idB})
 		require.Equal(t, http.StatusOK, status)
