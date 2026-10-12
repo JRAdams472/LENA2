@@ -47,6 +47,10 @@ test.describe("admin review", () => {
         await expect(row).toBeVisible();
         await row.getByRole("button", { name: action }).click();
         await page.getByRole("dialog").getByRole("button", { name: "Confirm" }).click();
+        // The open dialog aria-hides the table, so the row's absence is
+        // only meaningful once the mutation has finished and the dialog
+        // has closed — otherwise the API assertion races the request.
+        await expect(page.getByRole("dialog")).toHaveCount(0);
         await expect(row).toHaveCount(0);
       }
 
@@ -195,15 +199,56 @@ test.describe("admin review", () => {
     }
   });
 
-  // FINDING: /inventory/allergen-suggestions has no client-side admin
-  // guard (unlike /items/pending), so members get the full review UI
-  // backed by forbidden API calls. Remove test.fail() once it's gated.
-  test("members see the forbidden notice on allergen suggestions", async ({
+  const ADMIN_ROUTES = [
+    "/member/recipes/categories",
+    "/member/recipes/pending",
+    "/member/inventory/ingredients",
+    "/member/inventory/allergens",
+    "/member/inventory/allergen-suggestions",
+    "/member/inventory/brands",
+    "/member/inventory/categories",
+    "/member/inventory/food-flavors",
+    "/member/inventory/food-nutrients",
+    "/member/inventory/nutrient-types",
+    "/member/inventory/flavor-profiles",
+    "/member/wine/countries",
+    "/member/wine/regions",
+    "/member/wine/types",
+    "/member/wine/vintages",
+    "/member/wine/grape-varieties",
+    "/member/wine/wine-flavor-profiles",
+  ];
+
+  test("members see Forbidden on every admin route", async ({
     browser,
     request,
     baseURL,
   }) => {
-    test.fail();
+    const memberToken = await mintToken(request, SECOND_USER);
+    const ctx = await browser.newContext({ baseURL });
+    await ctx.addInitScript(
+      (t) => window.localStorage.setItem("lena_id_token", t),
+      memberToken
+    );
+    const page = await ctx.newPage();
+    const forbidden = page.getByText(
+      "Forbidden: this page requires the admin role."
+    );
+    try {
+      for (const route of ADMIN_ROUTES) {
+        await page.goto(route);
+        await expect(forbidden, route).toBeVisible();
+      }
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test("member navigation hides every admin destination", async ({
+    browser,
+    request,
+    baseURL,
+  }) => {
     const memberToken = await mintToken(request, SECOND_USER);
     const ctx = await browser.newContext({ baseURL });
     await ctx.addInitScript(
@@ -212,11 +257,57 @@ test.describe("admin review", () => {
     );
     const page = await ctx.newPage();
     try {
-      await page.goto("/member/inventory/allergen-suggestions");
-      await expect(page.getByText(SECOND_USER.email).first()).toBeVisible();
-      await expect(page.getByRole("button", { name: "Suggest flags" })).toHaveCount(0, {
-        timeout: 5_000,
-      });
+      await page.goto("/member");
+      // The layout renders both a permanent and a temporary drawer with
+      // identical nav — asserting on the first covers both.
+      const mainNav = page.getByLabel("main navigation").first();
+      const secondaryNav = page.getByLabel("secondary navigation").first();
+
+      for (const group of ["Recipes", "Inventory", "Wine"]) {
+        await expect(
+          mainNav.getByText(group, { exact: true }).first()
+        ).toBeVisible();
+      }
+      await expect(
+        secondaryNav.getByText("Administration", { exact: true })
+      ).toHaveCount(0);
+      await expect(
+        secondaryNav.getByText("Users", { exact: true })
+      ).toHaveCount(0);
+
+      // Expand the three main groups; only member destinations appear.
+      for (const group of ["Recipes", "Inventory", "Wine"]) {
+        await mainNav.getByText(group, { exact: true }).first().click();
+      }
+      for (const label of [
+        "Categories",
+        "Pending Reviews",
+        "Ingredients",
+        "Allergens",
+        "Allergen Suggestions",
+        "Brands",
+        "Food Flavors",
+        "Food Nutrients",
+        "Nutrient Types",
+        "Flavor Profiles",
+        "Countries",
+        "Regions",
+        "Types",
+        "Vintages",
+        "Grape Varieties",
+        "Wine Flavor Profiles",
+      ]) {
+        await expect(mainNav.getByText(label, { exact: true })).toHaveCount(0);
+      }
+      await expect(
+        mainNav.getByText("Items", { exact: true }).first()
+      ).toBeVisible();
+      await expect(
+        mainNav.getByText("Bottles", { exact: true }).first()
+      ).toBeVisible();
+      await expect(
+        mainNav.getByText("Recipes", { exact: true }).nth(1)
+      ).toBeVisible();
     } finally {
       await ctx.close();
     }

@@ -11,12 +11,12 @@ import {
 } from "@/app/components/marketing/DocScaffold";
 
 export const metadata: Metadata = {
-  title: "Households — LENA docs",
+  title: "Households & Members — LENA docs",
 };
 
 export default function Page() {
   return (
-    <DocPage title={"Households"} intro={"A household is the shared space everything in LENA lives in. All recipes, meal plans, grocery lists, pantry stock, events, and wine belong to the household — not to individual people — so everyone sees and works with the same data."}>
+    <DocPage title={"Households & Members"} intro={"A household is the shared space everything in LENA lives in. All recipes, meal plans, grocery lists, pantry stock, events, and wine belong to the household — not to individual people — so everyone sees and works with the same data."}>
       <Section title={"The Household page"}>
         <P>{<Fragment key={0}>{"Open "}<strong key={0}>{"Household"}</strong>{" in the sidebar (web) or tap the "}<strong key={1}>{"People"}</strong>{" tab (mobile) to see:"}</Fragment>}</P>
         <DocList items={[
@@ -56,7 +56,7 @@ export default function Page() {
         <P>{<Fragment key={19}>{"Merge is only offered when they alone own the source household — a shared household can never be dissolved out from under its other members. The other members get a notification that someone joined either way."}</Fragment>}</P>
       </Section>
       <Section title={"Roles"}>
-        <P>{<Fragment key={20}>{"Members carry roles (shown as chips next to their names), and a role is per household — you can be the owner of one household and a regular member of another. Regular members can plan, cook, shop, and edit shared data. Some admin-only surfaces exist — managing users and reviewing pending items/recipe imports — for the accounts designated as admins."}</Fragment>}</P>
+        <P>{<Fragment key={20}>{"Members carry roles (shown as chips next to their names), and a role is per household — you can be the owner of one household and a regular member of another. Regular members can plan, cook, shop, and edit shared data. Admin-only surfaces exist for the accounts designated as admins — managing users, reviewing pending items and recipe imports, and curating every shared reference catalog (brands, categories, ingredients, allergens, nutrition and flavor data, recipe taxonomy, and the wine tables). Those pages are web-only, hidden from members' navigation, and return a Forbidden notice on direct access."}</Fragment>}</P>
         <P>{<Fragment key={21}>{"Admins get a "}<strong key={0}>{"Users"}</strong>{" page under "}<strong key={1}>{"Administration"}</strong>{": per-user role assignment (member ↔ admin), account status, last sign-in, and ban controls — an admin's own row can't be banned."}</Fragment>}</P>
         <P>{<Fragment key={22}>{"When the access-approval barrier is on, the same page opens with an "}<strong key={0}>{"Access requests"}</strong>{" queue: every new sign-in waits there as "}<code key={1}>{"pending"}</code>{" (a matching chip shows in the Status column) until an admin approves or denies it. Denied users can be approved later from the main table — a denial is a hold, not a deletion. Each new request also lands in the notification bell for every admin."}</Fragment>}</P>
         <Screenshot src={"/images/users-access-requests.png"} alt={"The Users admin page — access requests, roles, status, and bans"} device="web" />

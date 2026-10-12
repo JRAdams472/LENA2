@@ -8,7 +8,19 @@ import FoodFlavorsPage from "@/app/member/inventory/food-flavors/page";
 import FoodNutrientsPage from "@/app/member/inventory/food-nutrients/page";
 import NutrientTypesPage from "@/app/member/inventory/nutrient-types/page";
 
+jest.mock("../../../app/auth/useMe");
+import { useMe } from "@/app/auth/useMe";
+
 const mockFetch = global.fetch as jest.Mock;
+const mockedUseMe = useMe as jest.Mock;
+
+beforeEach(() => {
+  mockedUseMe.mockReturnValue({
+    me: { role: "admin" },
+    isAdmin: true,
+    isLoading: false,
+  });
+});
 
 function gql(data: object) {
   return {

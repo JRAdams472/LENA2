@@ -41,11 +41,10 @@ export default function Page() {
       <Section title={"What mobile doesn't do (yet)"}>
         <P>{<Fragment key={22}>{"A few surfaces stay web-first:"}</Fragment>}</P>
         <DocList items={[
-          <Fragment key={23}><strong key={0}>{"Admin reviews"}</strong>{" — pending items and recipe-import reviews are on the web."}</Fragment>,
-          <Fragment key={24}><strong key={0}>{"Reference catalogs"}</strong>{" — brands, categories, nutrient types, and the wine reference tables are web-managed; mobile edits individual items and bottles."}</Fragment>,
-          <Fragment key={25}><strong key={0}>{"Event snapshot editing"}</strong>{" — per-step and per-ingredient edits to event copies are on the web event page."}</Fragment>,
+          <Fragment key={23}><strong key={0}>{"All administration"}</strong>{" — mobile has no admin screens at all. User management, pending-item and recipe-import reviews, and every reference catalog (brands, categories, nutrient types, allergens, the wine tables, and the rest) are admin-only on the web; mobile edits individual items and bottles."}</Fragment>,
+          <Fragment key={24}><strong key={0}>{"Event snapshot editing"}</strong>{" — per-step and per-ingredient edits to event copies are on the web event page."}</Fragment>,
         ]} />
-        <Callout>{<Fragment key={26}>{"The plan is to keep mobile focused on fast, in-the-moment tasks while the web stays the home for planning and organization — with the gaps filled in over time."}</Fragment>}</Callout>
+        <Callout>{<Fragment key={25}>{"The plan is to keep mobile focused on fast, in-the-moment tasks while the web stays the home for planning and organization — with the gaps filled in over time."}</Fragment>}</Callout>
       </Section>
     </DocPage>
   );

@@ -9,7 +9,19 @@ import TypesPage from "@/app/member/wine/types/page";
 import VintagesPage from "@/app/member/wine/vintages/page";
 import WineFlavorProfilesPage from "@/app/member/wine/wine-flavor-profiles/page";
 
+jest.mock("../../../app/auth/useMe");
+import { useMe } from "@/app/auth/useMe";
+
 const mockFetch = global.fetch as jest.Mock;
+const mockedUseMe = useMe as jest.Mock;
+
+beforeEach(() => {
+  mockedUseMe.mockReturnValue({
+    me: { role: "admin" },
+    isAdmin: true,
+    isLoading: false,
+  });
+});
 
 function gql(data: object) {
   return {

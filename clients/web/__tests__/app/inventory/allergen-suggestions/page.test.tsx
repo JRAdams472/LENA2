@@ -4,7 +4,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import AllergenSuggestionsPage from "@/app/member/inventory/allergen-suggestions/page";
 
+jest.mock("../../../../app/auth/useMe");
+import { useMe } from "@/app/auth/useMe";
+
 const mockFetch = global.fetch as jest.Mock;
+const mockedUseMe = useMe as jest.Mock;
+
+beforeEach(() => {
+  mockedUseMe.mockReturnValue({
+    me: { role: "admin" },
+    isAdmin: true,
+    isLoading: false,
+  });
+});
 
 function gql(data: object) {
   return {

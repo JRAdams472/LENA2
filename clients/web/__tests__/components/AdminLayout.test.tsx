@@ -188,6 +188,63 @@ describe("AdminLayout", () => {
     ).toBeTruthy();
   });
 
+  it("hides every admin-only destination from members", async () => {
+    signIn();
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (!body.query) return Promise.resolve({ ok: true, status: 204 });
+      if (body.query.includes("unreadNotificationCount"))
+        return Promise.resolve(gql({ unreadNotificationCount: 0 }));
+      return Promise.resolve(
+        gql({ me: { ...meResponse.me, role: "member" } })
+      );
+    });
+    renderLayout();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("page-content")).toBeInTheDocument()
+    );
+    // Wait for /me to resolve so member filtering has applied.
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Administration")
+      ).not.toBeInTheDocument()
+    );
+
+    const adminLabels = [
+      "Categories",
+      "Pending Reviews",
+      "Ingredients",
+      "Allergens",
+      "Allergen Suggestions",
+      "Brands",
+      "Food Flavors",
+      "Food Nutrients",
+      "Nutrient Types",
+      "Flavor Profiles",
+      "Countries",
+      "Regions",
+      "Types",
+      "Vintages",
+      "Grape Varieties",
+      "Wine Flavor Profiles",
+      "Users",
+      "Pending Items",
+    ];
+    const mainNav = screen.getAllByLabelText("main navigation")[0];
+    const secondaryNav = screen.getAllByLabelText("secondary navigation")[0];
+    for (const label of adminLabels) {
+      expect(within(mainNav).queryByText(label)).not.toBeInTheDocument();
+      expect(within(secondaryNav).queryByText(label)).not.toBeInTheDocument();
+    }
+
+    // Member-visible entries still appear inside the groups.
+    fireEvent.click(screen.getAllByText("Inventory")[0]);
+    expect((await screen.findAllByText("Items")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByText("Wine")[0]);
+    expect((await screen.findAllByText("Bottles")).length).toBeGreaterThan(0);
+  });
+
   it("expands a navigation group to reveal child links", async () => {
     signIn();
     renderLayout();

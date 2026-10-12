@@ -12,6 +12,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "@/lib/api";
+import AdminGate from "@/app/components/AdminGate";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
@@ -27,7 +28,7 @@ const ingredientFields: FieldDef<Ingredient>[] = [
 // Admin catalog for generic ingredients — the identity recipes and
 // grocery needs key on. Merge repoints every reference from the source
 // row onto a survivor, then deletes the source.
-export default function IngredientsPage() {
+function IngredientsContent() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogData, setDialogData] = useState<Record<string, unknown>>({});
@@ -273,5 +274,13 @@ export default function IngredientsPage() {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+}
+
+export default function IngredientsPage() {
+  return (
+    <AdminGate>
+      <IngredientsContent />
+    </AdminGate>
   );
 }

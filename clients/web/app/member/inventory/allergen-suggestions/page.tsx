@@ -21,6 +21,7 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { api } from "@/lib/api";
 import { AllergenSuggestion, Recipe } from "@/lib/types";
+import AdminGate from "@/app/components/AdminGate";
 
 type StatusFilter = "pending" | "accepted" | "dismissed" | "all";
 
@@ -41,7 +42,7 @@ const statusColor = (s: string) => {
 // flag until Accept — which applies it under the reviewer's name — and the
 // empty-flag rule still holds for unreviewed rows: no flag means "no
 // allergen information", not "safe".
-export default function AllergenSuggestionsPage() {
+function AllergenSuggestionsContent() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<StatusFilter>("pending");
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -294,5 +295,13 @@ export default function AllergenSuggestionsPage() {
         </Table>
       </TableContainer>
     </Box>
+  );
+}
+
+export default function AllergenSuggestionsPage() {
+  return (
+    <AdminGate>
+      <AllergenSuggestionsContent />
+    </AdminGate>
   );
 }
