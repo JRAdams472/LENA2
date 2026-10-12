@@ -43,6 +43,9 @@ export interface User {
   externalSubject: string | null;
   provider: string | null;
   isSearchable: boolean;
+  // LEN-31: whether the caller has accepted the medical/allergen
+  // disclaimer. Recording allergies is gated on this server-side.
+  disclaimerAccepted: boolean;
   household: Household | null;
 }
 

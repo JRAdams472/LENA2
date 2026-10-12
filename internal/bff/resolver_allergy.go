@@ -501,6 +501,16 @@ func (r *Resolver) SetMyAllergy(ctx context.Context, args struct {
 	}
 	by := u.Email
 	if args.On {
+		// Recording an allergy means the member relies on the app's
+		// allergen data — require the medical disclaimer first (LEN-31).
+		// Clearing a record stays ungated: removing data needs no consent.
+		me, err := r.IdentityService.GetByID(ctx, u.UserID)
+		if err != nil {
+			return false, err
+		}
+		if me.DisclaimerAcceptedAt == nil {
+			return false, errDisclaimerRequired()
+		}
 		if err := r.UserPrefsService.SetUserAllergen(ctx, u.UserID, allergenID, args.Kind, by); err != nil {
 			return false, err
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
@@ -335,11 +336,17 @@ func TestMyAllergies(t *testing.T) {
 }
 
 // setMyAllergy writes under the caller's identity; the service validates
-// the kind and its error propagates. on=false clears the record.
+// the kind and its error propagates. on=false clears the record. Recording
+// requires prior disclaimer acceptance (LEN-31).
 func TestSetMyAllergy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
-	r := &Resolver{UserPrefsService: up}
+	ids := mock.NewMockIdentityService(ctrl)
+	r := &Resolver{UserPrefsService: up, IdentityService: ids}
+
+	acceptedAt := time.Now()
+	ids.EXPECT().GetByID(gomock.Any(), int64(11)).
+		Return(identity.User{UserID: 11, DisclaimerAcceptedAt: &acceptedAt}, nil).Times(2)
 
 	up.EXPECT().SetUserAllergen(gomock.Any(), int64(11), int64(200), userprefs.MemberAllergyKindAllergy, "member@example.com").Return(nil)
 	ok, err := r.SetMyAllergy(allergyTestCtx(), struct {
@@ -359,9 +366,40 @@ func TestSetMyAllergy(t *testing.T) {
 	}{AllergenID: graphql.ID("200"), Kind: "sometimes", On: true})
 	assert.Error(t, err)
 
-	// on=false clears the record.
+	// on=false clears the record — no consent needed to remove data.
 	up.EXPECT().ClearUserAllergen(gomock.Any(), int64(11), int64(200)).Return(nil)
 	ok, err = r.SetMyAllergy(allergyTestCtx(), struct {
+		AllergenID graphql.ID
+		Kind       string
+		On         bool
+	}{AllergenID: graphql.ID("200"), Kind: "allergy", On: false})
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+// LEN-31: recording an allergy requires disclaimer acceptance first;
+// clearing a record does not.
+func TestSetMyAllergy_DisclaimerGate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	ids := mock.NewMockIdentityService(ctrl)
+	r := &Resolver{UserPrefsService: up, IdentityService: ids}
+
+	// Unaccepted: on=true is refused with DISCLAIMER_REQUIRED, and no
+	// write reaches the prefs service.
+	ids.EXPECT().GetByID(gomock.Any(), int64(11)).
+		Return(identity.User{UserID: 11}, nil)
+	_, err := r.SetMyAllergy(allergyTestCtx(), struct {
+		AllergenID graphql.ID
+		Kind       string
+		On         bool
+	}{AllergenID: graphql.ID("200"), Kind: "allergy", On: true})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "disclaimer")
+
+	// on=false stays ungated even without acceptance.
+	up.EXPECT().ClearUserAllergen(gomock.Any(), int64(11), int64(200)).Return(nil)
+	ok, err := r.SetMyAllergy(allergyTestCtx(), struct {
 		AllergenID graphql.ID
 		Kind       string
 		On         bool

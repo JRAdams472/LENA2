@@ -56,6 +56,7 @@ import {
 } from "@/app/member/recipes/[id]/recipe-delta";
 import { isOfDrinkingAge } from "@/lib/age";
 import AlcoholGateHint from "../AlcoholGateHint";
+import DisclaimerLine from "@/app/components/DisclaimerLine";
 import { useMe } from "@/app/auth/useMe";
 
 function ratingSummary(average: number | null, count: number): string {
@@ -493,6 +494,9 @@ export default function RecipeDetailPage() {
                 Allergens:
               </Typography>
               <AllergenFlagsLine allergens={recipeQuery.data.allergens} />
+            </Box>
+            <Box sx={{ mt: 1 }}>
+              <DisclaimerLine />
             </Box>
             {rateMutation.error && (
               <Alert severity="error" sx={{ mt: 1 }}>

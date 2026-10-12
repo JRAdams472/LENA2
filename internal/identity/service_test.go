@@ -767,3 +767,22 @@ func TestApprovalStatus(t *testing.T) {
 		assert.ErrorContains(t, err, "invalid approval status")
 	})
 }
+
+func TestAcceptDisclaimer(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("stamps acceptance", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetDisclaimerAccepted(ctx, sqlc.SetDisclaimerAcceptedParams{
+			UserID:    9,
+			UpdatedBy: pgtype.Text{String: "me@b.com", Valid: true},
+		}).Return(int64(1), nil)
+		require.NoError(t, svc.AcceptDisclaimer(ctx, 9, "me@b.com"))
+	})
+
+	t.Run("missing user is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().SetDisclaimerAccepted(ctx, gomock.Any()).Return(int64(0), nil)
+		assert.ErrorIs(t, svc.AcceptDisclaimer(ctx, 9, "me@b.com"), domainerr.ErrNotFound)
+	})
+}

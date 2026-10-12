@@ -68,6 +68,7 @@ const meResponse = {
     isProtected: false,
     lastLoginAt: null,
     isSearchable: true,
+    disclaimerAccepted: true,
     household: null,
   },
 };

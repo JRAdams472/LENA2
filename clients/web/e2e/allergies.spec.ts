@@ -54,6 +54,8 @@ test.describe("allergy warnings", () => {
       await expect(page.getByTestId("allergy-warning-alert")).toHaveCount(0);
 
       // The member's allergy record plus a `contains` flag on the line.
+      // LEN-31: recording requires the disclaimer on file (idempotent).
+      await graphql(request, token, `mutation { acceptDisclaimer }`);
       await graphql(
         request,
         token,

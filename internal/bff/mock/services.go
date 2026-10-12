@@ -8564,6 +8564,20 @@ func (m *MockIdentityService) EXPECT() *MockIdentityServiceMockRecorder {
 	return m.recorder
 }
 
+// AcceptDisclaimer mocks base method.
+func (m *MockIdentityService) AcceptDisclaimer(ctx context.Context, userID int64, by string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcceptDisclaimer", ctx, userID, by)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcceptDisclaimer indicates an expected call of AcceptDisclaimer.
+func (mr *MockIdentityServiceMockRecorder) AcceptDisclaimer(ctx, userID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptDisclaimer", reflect.TypeOf((*MockIdentityService)(nil).AcceptDisclaimer), ctx, userID, by)
+}
+
 // AdminSetActive mocks base method.
 func (m *MockIdentityService) AdminSetActive(ctx context.Context, actorID, targetID int64, active bool, by string) error {
 	m.ctrl.T.Helper()

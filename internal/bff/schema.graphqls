@@ -402,6 +402,9 @@ type Mutation {
 
   # Self-service profile update (first/last name, backup email).
   updateMyProfile(input: UpdateProfileInput!): User!
+  # Records acceptance of the medical/allergen disclaimer (LEN-31).
+  # Idempotent; required before setMyAllergy writes will succeed.
+  acceptDisclaimer: Boolean!
   # Permanently deletes the caller's account and all personal data in one
   # transaction: identity, sessions, linked logins, device/push tokens,
   # notifications, preferences, memberships, and — for households the
@@ -545,6 +548,8 @@ type User {
   lastLoginAt: Time
   # Whether the user appears in household-invite search results.
   isSearchable: Boolean!
+  # True once the user has accepted the medical/allergen disclaimer.
+  disclaimerAccepted: Boolean!
   # The user's household. Only resolves non-null when the resolved user
   # is the caller — admin user lists never expose household membership.
   household: Household

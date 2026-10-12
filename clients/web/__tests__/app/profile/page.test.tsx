@@ -16,13 +16,18 @@ jest.mock("../../../lib/api", () => ({
     getAllergens: jest.fn(),
     getMyAllergies: jest.fn(),
     setMyAllergy: jest.fn(),
+    acceptDisclaimer: jest.fn(),
     deleteMyAccount: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
-    constructor(status: number, message: string) {
+    kind: string | null;
+    code: string | null;
+    constructor(status: number, message: string, kind: string | null = null, code: string | null = null) {
       super(message);
       this.status = status;
+      this.kind = kind;
+      this.code = code;
     }
   },
 }));
@@ -46,6 +51,7 @@ const me = {
   externalSubject: null,
   provider: null,
   isSearchable: true,
+  disclaimerAccepted: true,
   household: null,
 };
 
@@ -204,6 +210,99 @@ describe("profile page", () => {
     await waitFor(() =>
       expect(mockedApi.setMyAllergy).toHaveBeenCalledWith(1, "allergy", false)
     );
+  });
+
+  describe("disclaimer consent", () => {
+    const unaccepted = () =>
+      mockedUseMe.mockReturnValue({
+        me: { ...me, disclaimerAccepted: false },
+        isAdmin: false,
+        isLoading: false,
+        error: null,
+        refetch: jest.fn(),
+      });
+
+    it("opens the consent dialog instead of writing when unaccepted", async () => {
+      unaccepted();
+      renderPage();
+      const group = await screen.findByTestId("allergy-kind-2");
+      await userEvent.click(within(group).getByRole("button", { name: "Dietary" }));
+
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText(/not medical, nutritional, or dietary advice/i)).toBeInTheDocument();
+      expect(mockedApi.setMyAllergy).not.toHaveBeenCalled();
+    });
+
+    it("retries the pending change after acceptance", async () => {
+      const refetch = jest.fn();
+      mockedUseMe.mockReturnValue({
+        me: { ...me, disclaimerAccepted: false },
+        isAdmin: false,
+        isLoading: false,
+        error: null,
+        refetch,
+      });
+      mockedApi.acceptDisclaimer.mockResolvedValue(undefined);
+      renderPage();
+      const group = await screen.findByTestId("allergy-kind-2");
+      await userEvent.click(within(group).getByRole("button", { name: "Allergy" }));
+
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByTestId("disclaimer-accept"));
+
+      await waitFor(() => expect(mockedApi.acceptDisclaimer).toHaveBeenCalledTimes(1));
+      expect(refetch).toHaveBeenCalled();
+      await waitFor(() =>
+        expect(mockedApi.setMyAllergy).toHaveBeenCalledWith(2, "allergy", true)
+      );
+    });
+
+    it("dismissal drops the pending change", async () => {
+      unaccepted();
+      renderPage();
+      const group = await screen.findByTestId("allergy-kind-2");
+      await userEvent.click(within(group).getByRole("button", { name: "Dietary" }));
+
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: /not now/i }));
+
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      );
+      expect(mockedApi.acceptDisclaimer).not.toHaveBeenCalled();
+      expect(mockedApi.setMyAllergy).not.toHaveBeenCalled();
+    });
+
+    it("reopens the dialog when the server refuses with DISCLAIMER_REQUIRED", async () => {
+      // me says accepted but the server disagrees (stale flag) — the
+      // DISCLAIMER_REQUIRED path must still surface the dialog.
+      const { ApiError } = jest.requireMock("../../../lib/api") as {
+        ApiError: new (s: number, m: string, k?: string | null, c?: string | null) => Error;
+      };
+      mockedApi.setMyAllergy.mockRejectedValue(
+        new ApiError(200, "the medical disclaimer must be accepted", null, "DISCLAIMER_REQUIRED")
+      );
+      renderPage();
+      const group = await screen.findByTestId("allergy-kind-2");
+      await userEvent.click(within(group).getByRole("button", { name: "Dietary" }));
+
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("leaves clearing ungated even when unaccepted", async () => {
+      unaccepted();
+      mockedApi.getMyAllergies.mockResolvedValue([
+        { allergen: allergen(1, "Peanuts"), kind: "allergy" },
+      ]);
+      renderPage();
+      const group = await screen.findByTestId("allergy-kind-1");
+      await userEvent.click(within(group).getByRole("button", { name: "None" }));
+
+      await waitFor(() =>
+        expect(mockedApi.setMyAllergy).toHaveBeenCalledWith(1, "allergy", false)
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   describe("danger zone", () => {
