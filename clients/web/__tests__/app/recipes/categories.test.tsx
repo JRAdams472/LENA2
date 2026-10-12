@@ -220,12 +220,19 @@ describe("recipe categories admin page", () => {
     });
   });
 
-  it("hides edit controls for non-admins", async () => {
+  it("denies the page entirely for non-admins", async () => {
     mockedUseMe.mockReturnValue({ me: { role: "member" }, isAdmin: false, isLoading: false });
     renderPage();
-    await waitFor(() => screen.getByText("Cuisine"));
-    expect(screen.getByText(/only admins/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText("Forbidden: this page requires the admin role.")
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText("Cuisine")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /new group/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("edit Cuisine")).not.toBeInTheDocument();
+    // The taxonomy query never fires for a member.
+    expect(
+      getBodies().some((b) => b.query.includes("recipeCategoryGroups"))
+    ).toBe(false);
   });
 });

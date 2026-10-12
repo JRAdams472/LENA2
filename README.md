@@ -62,12 +62,12 @@ The web client (`clients/web`) serves two surfaces: a **public site** at `/` —
 ### Food inventory
 
 - `/inventory/items` — catalog of food items with ranked search, favorite, stock tracking, minimum-quantity thresholds, and CRUD.
-- `/inventory/brands` — reference data for product brands.
-- `/inventory/categories` — item categories.
-- `/inventory/flavor-profiles` — flavor tags.
-- `/inventory/food-flavors` — item-to-flavor associations.
-- `/inventory/food-nutrients` — item-to-nutrient associations.
-- `/inventory/nutrient-types` — nutrient reference data.
+- `/inventory/brands` — product brand reference data (admin only).
+- `/inventory/categories` — item categories (admin only).
+- `/inventory/flavor-profiles` — flavor tags (admin only).
+- `/inventory/food-flavors` — item-to-flavor associations (admin only).
+- `/inventory/food-nutrients` — item-to-nutrient associations (admin only).
+- `/inventory/nutrient-types` — nutrient reference data (admin only).
 - `/inventory/ingredients` — generic-ingredient catalog (admin): search, create, edit, deactivate, and merge (the dedupe safety valve). Each ingredient and item carries `contains` / `may_contain` allergen flags, edited in the row dialogs.
 - `/inventory/allergens` — the allergen registry (admin). Member records and entity flags both key on these rows; removal is deactivation so references stay resolvable.
 - `/inventory/allergen-suggestions` — the AI flag review queue (admin): run the assistant over a recipe, then accept or dismiss each proposed flag. Nothing applies without an explicit accept.
@@ -83,9 +83,11 @@ The web client (`clients/web`) serves two surfaces: a **public site** at `/` —
 ### Wine cellar
 
 - `/wine/bottles` — bottles in the cellar.
-- `/wine/countries`, `/wine/regions`, `/wine/types`, `/wine/vintages` — reference data.
+- `/wine/countries`, `/wine/regions`, `/wine/types`, `/wine/vintages`, `/wine/grape-varieties`, `/wine/wine-flavor-profiles` — reference data (admin only).
 
 ### Administration
+
+Administration is web-only — the mobile app has no admin screens, and admin-only pages are hidden from standard members' navigation and return a Forbidden notice on direct access.
 
 - `/users` — user management (admin only): roles, ban/unban, and the **Access requests** queue that approves or denies new sign-ins held at the member-approval barrier.
 - `/items/pending` — approve or reject user-submitted items (admin only).

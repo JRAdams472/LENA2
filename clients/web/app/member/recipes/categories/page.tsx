@@ -29,10 +29,9 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { api, ApiError } from "@/lib/api";
 import { RecipeCategoryGroup } from "@/lib/types";
-import { useMe } from "@/app/auth/useMe";
+import AdminGate from "@/app/components/AdminGate";
 
-export default function RecipeCategoriesPage() {
-  const { isAdmin } = useMe();
+function RecipeCategoriesContent() {
   const queryClient = useQueryClient();
 
   const [selectedGroupId, setSelectedGroupId] = useState<number | "">("");
@@ -147,11 +146,6 @@ export default function RecipeCategoriesPage() {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       <Typography variant="h4">Recipe Categories</Typography>
-      {!isAdmin && (
-        <Alert severity="info">
-          Only admins can edit the recipe taxonomy.
-        </Alert>
-      )}
       {error && (
         <Alert severity="error" onClose={() => setError(null)}>
           {error}
@@ -161,11 +155,9 @@ export default function RecipeCategoriesPage() {
       <Paper sx={{ p: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <Typography variant="h5">Groups</Typography>
-          {isAdmin && (
-            <Button variant="contained" size="small" onClick={openCreateGroup}>
-              New Group
-            </Button>
-          )}
+          <Button variant="contained" size="small" onClick={openCreateGroup}>
+            New Group
+          </Button>
         </Box>
         <TableContainer>
         <Table size="small">
@@ -175,7 +167,7 @@ export default function RecipeCategoriesPage() {
               <TableCell>Exclusive</TableCell>
               <TableCell>Order</TableCell>
               <TableCell>Categories</TableCell>
-              {isAdmin && <TableCell align="right">Actions</TableCell>}
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -185,24 +177,22 @@ export default function RecipeCategoriesPage() {
                 <TableCell>{g.exclusive ? "Yes" : "No"}</TableCell>
                 <TableCell>{g.displayOrder}</TableCell>
                 <TableCell>{g.categories.length}</TableCell>
-                {isAdmin && (
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      aria-label={`edit ${g.groupName}`}
-                      onClick={() => openEditGroup(g)}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      aria-label={`delete ${g.groupName}`}
-                      onClick={() => deleteGroupMutation.mutate(g.categoryGroupID)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                )}
+                <TableCell align="right">
+                  <IconButton
+                    size="small"
+                    aria-label={`edit ${g.groupName}`}
+                    onClick={() => openEditGroup(g)}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    aria-label={`delete ${g.groupName}`}
+                    onClick={() => deleteGroupMutation.mutate(g.categoryGroupID)}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -235,7 +225,7 @@ export default function RecipeCategoriesPage() {
               ))}
             </Select>
           </FormControl>
-          {isAdmin && selectedGroup && (
+          {selectedGroup && (
             <Button variant="contained" size="small" onClick={openCreateCategory}>
               New Category
             </Button>
@@ -247,31 +237,29 @@ export default function RecipeCategoriesPage() {
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
-                {isAdmin && <TableCell align="right">Actions</TableCell>}
+                <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {selectedGroup.categories.map((c) => (
                 <TableRow key={c.categoryID}>
                   <TableCell>{c.categoryName}</TableCell>
-                  {isAdmin && (
-                    <TableCell align="right">
-                      <IconButton
-                        size="small"
-                        aria-label={`edit ${c.categoryName}`}
-                        onClick={() => openEditCategory(c.categoryID, c.categoryName)}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        aria-label={`delete ${c.categoryName}`}
-                        onClick={() => deleteCategoryMutation.mutate(c.categoryID)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  )}
+                  <TableCell align="right">
+                    <IconButton
+                      size="small"
+                      aria-label={`edit ${c.categoryName}`}
+                      onClick={() => openEditCategory(c.categoryID, c.categoryName)}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      aria-label={`delete ${c.categoryName}`}
+                      onClick={() => deleteCategoryMutation.mutate(c.categoryID)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -341,5 +329,13 @@ export default function RecipeCategoriesPage() {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+}
+
+export default function RecipeCategoriesPage() {
+  return (
+    <AdminGate>
+      <RecipeCategoriesContent />
+    </AdminGate>
   );
 }

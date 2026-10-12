@@ -495,7 +495,7 @@ export function StepTweakEditor({
   const [instruction, setInstruction] = useState(
     existing?.instruction ?? step.instruction
   );
-  const [duration, setDuration] = useState(
+  const [duration, setDuration] = useState(() =>
     numOrBlank(existing?.durationMinutes ?? step.durationMinutes)
   );
   const [stepType, setStepType] = useState(existing?.stepType ?? step.stepType ?? "");
