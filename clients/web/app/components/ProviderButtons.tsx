@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { GoogleLogin } from "@react-oauth/google";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Divider from "@mui/material/Divider";
+import Stack from "@mui/material/Stack";
 import SvgIcon from "@mui/material/SvgIcon";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/app/auth/AuthProvider";
@@ -12,6 +13,16 @@ import {
   enabledProviders,
   startOAuthSignIn,
 } from "@/lib/oauth";
+
+// Apple brand mark — required at equal prominence whenever other social
+// providers are offered (App Store review guideline 4.8; LEN-136).
+function AppleIcon() {
+  return (
+    <SvgIcon viewBox="0 0 24 24">
+      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8.98-.2 1.92-.88 3.24-.86 1.29.1 2.27.62 2.91 1.57-2.67 1.6-2.23 5.13.44 6.15-.5 1.32-1.15 2.63-1.67 3.31-.63.82-1.29 1.64-2 2zm-4.34-13.4c.01-2.5 2.05-4.66 4.54-4.8.19 2.62-2.27 4.81-4.54 4.8z" />
+    </SvgIcon>
+  );
+}
 
 // Discord brand mark (blurple #5865F2 is applied via the button).
 function DiscordIcon() {
@@ -48,20 +59,26 @@ const PROVIDER_META: Record<
   OAuthProvider,
   { label: string; icon: React.ReactNode; color: string; hover: string }
 > = {
+  apple: {
+    label: "Continue with Apple",
+    icon: <AppleIcon />,
+    color: "#000000",
+    hover: "#1B1B1B",
+  },
   discord: {
-    label: "Sign in with Discord",
+    label: "Continue with Discord",
     icon: <DiscordIcon />,
     color: "#5865F2",
     hover: "#4752C4",
   },
   microsoft: {
-    label: "Sign in with Microsoft",
+    label: "Continue with Microsoft",
     icon: <MicrosoftIcon />,
     color: "#2F2F2F",
     hover: "#1B1B1B",
   },
   facebook: {
-    label: "Sign in with Facebook",
+    label: "Continue with Facebook",
     icon: <FacebookIcon />,
     color: "#1877F2",
     hover: "#0E5FC7",
@@ -73,57 +90,85 @@ const PROVIDER_META: Record<
 export default function ProviderButtons() {
   const { signIn } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const providers = enabledProviders();
 
   return (
-    <>
-      <GoogleLogin
-        onSuccess={(response) => {
-          setError(null);
-          if (response.credential) {
-            signIn(response.credential);
-          } else {
-            setError(
-              "Google did not return a sign-in credential. Please try again."
-            );
+    // One fixed column width so Google's brand button (which only takes a
+    // pixel width) matches the MUI provider buttons exactly — equal
+    // prominence across providers per store review (LEN-136).
+    <Stack
+      spacing={1.25}
+      sx={{ width: "100%", maxWidth: 300, alignItems: "center" }}
+    >
+      {providers.includes("apple") && (
+        <Button
+          variant="contained"
+          fullWidth
+          startIcon={PROVIDER_META.apple.icon}
+          onClick={() =>
+            void startOAuthSignIn("apple").catch(() =>
+              setError("Could not start sign-in. Please try again.")
+            )
           }
-        }}
-        onError={() => {
-          setError(
-            "Google sign-in failed. Verify NEXT_PUBLIC_GOOGLE_CLIENT_ID and the authorized JavaScript origin in Google Cloud Console."
-          );
-        }}
-      />
-      {enabledProviders().length > 0 && (
-        <Divider sx={{ width: "100%" }}>or continue with</Divider>
+          sx={{
+            bgcolor: PROVIDER_META.apple.color,
+            "&:hover": { bgcolor: PROVIDER_META.apple.hover },
+            textTransform: "none",
+          }}
+        >
+          {PROVIDER_META.apple.label}
+        </Button>
       )}
-      {enabledProviders().map((provider) => {
-        const meta = PROVIDER_META[provider];
-        return (
-          <Button
-            key={provider}
-            variant="contained"
-            fullWidth
-            startIcon={meta.icon}
-            onClick={() =>
-              void startOAuthSignIn(provider).catch(() =>
-                setError("Could not start sign-in. Please try again.")
-              )
+      <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
+        <GoogleLogin
+          width={300}
+          onSuccess={(response) => {
+            setError(null);
+            if (response.credential) {
+              signIn(response.credential);
+            } else {
+              setError(
+                "Google did not return a sign-in credential. Please try again."
+              );
             }
-            sx={{
-              bgcolor: meta.color,
-              "&:hover": { bgcolor: meta.hover },
-              textTransform: "none",
-            }}
-          >
-            {meta.label}
-          </Button>
-        );
-      })}
+          }}
+          onError={() => {
+            setError(
+              "Google sign-in failed. Verify NEXT_PUBLIC_GOOGLE_CLIENT_ID and the authorized JavaScript origin in Google Cloud Console."
+            );
+          }}
+        />
+      </Box>
+      {providers
+        .filter((p) => p !== "apple")
+        .map((provider) => {
+          const meta = PROVIDER_META[provider];
+          return (
+            <Button
+              key={provider}
+              variant="contained"
+              fullWidth
+              startIcon={meta.icon}
+              onClick={() =>
+                void startOAuthSignIn(provider).catch(() =>
+                  setError("Could not start sign-in. Please try again.")
+                )
+              }
+              sx={{
+                bgcolor: meta.color,
+                "&:hover": { bgcolor: meta.hover },
+                textTransform: "none",
+              }}
+            >
+              {meta.label}
+            </Button>
+          );
+        })}
       {error && (
         <Typography color="error" sx={{ mt: 1 }}>
           {error}
         </Typography>
       )}
-    </>
+    </Stack>
   );
 }

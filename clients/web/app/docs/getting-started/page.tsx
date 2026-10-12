@@ -18,12 +18,12 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <DocPage title={"Getting Started"} intro={"LENA offers Sign in with Google plus OAuth sign-in with Discord, Microsoft, or Facebook — there's no separate password to remember."}>
+    <DocPage title={"Getting Started"} intro={"LENA offers Sign in with Google plus OAuth sign-in with Discord, Microsoft, or Facebook — there's no separate password to remember. Apple arrives with the mobile-store release."}>
       <Section title={"Signing in"}>
         <Screenshot src={"/images/login.png"} alt={"Web sign-in"} device="web" />
         <DocList items={[
           <Fragment key={0}><strong key={0}>{"Web:"}</strong>{" open the app URL and click your provider's sign-in button (OAuth buttons appear when the instance admin has configured that provider's app)."}</Fragment>,
-          <Fragment key={1}><strong key={0}>{"Mobile:"}</strong>{" tap "}<strong key={1}>{"Sign in with Google"}</strong>{" on the login screen (Discord sign-in on mobile is planned)."}</Fragment>,
+          <Fragment key={1}><strong key={0}>{"Mobile:"}</strong>{" the companion app's login screen offers the same providers stacked vertically — Google completes sign-in today, and the others light up as their flows land with the store release. The app is login-only: accounts are created on the website, and its footer says exactly that."}</Fragment>,
         ]} />
         <P>{<Fragment key={2}>{"LENA follows your device's light/dark setting by default. On web, flip modes with the sun/moon button in the header or choose "}<strong key={0}>{"Light / System / Dark"}</strong>{" under "}<strong key={1}>{"Profile → Appearance"}</strong>{"; on mobile the same three options live under "}<strong key={2}>{"More → Appearance"}</strong>{"."}</Fragment>}</P>
         <Screenshot src={"/images/login-dark.png"} alt={"The sign-in card in dark mode"} device="web" />

@@ -33,6 +33,7 @@ import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { CocktailSuggestion, Recipe } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 import { isOfDrinkingAge } from "@/lib/age";
+import AlcoholGateHint from "./AlcoholGateHint";
 import Chip from "@mui/material/Chip";
 
 function toRow(recipe: Recipe) {
@@ -142,8 +143,9 @@ export default function RecipesPage() {
   const cocktailMutation = useMutation({
     mutationFn: (stockOnly: boolean) => aiSuggest.suggestCocktails(stockOnly),
   });
+  const aiAvailable = aiQuery.data === true || localAIReady;
   const canSuggestCocktails =
-    (aiQuery.data === true || localAIReady) && isOfDrinkingAge(me?.birthdate);
+    aiAvailable && isOfDrinkingAge(me?.birthdate);
 
   const listQuery = useQuery({
     queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, semantic, categoryIds],
@@ -384,6 +386,9 @@ export default function RecipesPage() {
           >
             Cocktail ideas
           </Button>
+        )}
+        {aiAvailable && !isOfDrinkingAge(me?.birthdate) && (
+          <AlcoholGateHint />
         )}
       </Box>
       {semanticIdle ? (

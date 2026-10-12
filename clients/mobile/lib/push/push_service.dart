@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notification_links.dart';
 import '../screens/household_screen.dart';
+import 'permission_rationale.dart';
 
 /// One push envelope, decoupled from firebase_messaging types so tests and
 /// the heads-up notifier share one shape.
@@ -127,6 +128,7 @@ class LocalHeadsUpNotifier implements HeadsUpNotifier {
 // coverage:ignore-end
 
 const _registeredTokenKey = 'push.registered_token';
+const _rationaleShownKey = 'push.rationale_shown';
 const _platform = 'android';
 
 /// Coordinates the push lifecycle: permission, token registration with the
@@ -139,6 +141,7 @@ class PushService {
     SharedPreferences? prefs,
     GlobalKey<NavigatorState>? navigatorKey,
     GraphQLClient? client,
+    this.showPermissionRationale,
   })  : _messaging = messaging,
         _notifier = notifier,
         _prefs = prefs,
@@ -150,6 +153,11 @@ class PushService {
   final SharedPreferences? _prefs;
   final GlobalKey<NavigatorState>? _navigatorKey;
   final GraphQLClient? _client;
+
+  /// Pre-permission explainer shown once before the OS prompt (store
+  /// review requires the reason to be clear up front). Injectable so
+  /// tests can observe the ordering; null means ask the OS directly.
+  final Future<bool> Function(BuildContext context)? showPermissionRationale;
 
   final List<StreamSubscription<dynamic>> _subs = [];
   bool _started = false;
@@ -184,6 +192,7 @@ class PushService {
       prefs: prefs ?? await SharedPreferences.getInstance(),
       navigatorKey: navigatorKey,
       client: client,
+      showPermissionRationale: showPushPermissionRationale,
     );
   }
 
@@ -195,7 +204,8 @@ class PushService {
         _notifier = null,
         _prefs = prefs,
         _navigatorKey = navigatorKey,
-        _client = client;
+        _client = client,
+        showPermissionRationale = null;
 
   bool get isEnabled => _messaging != null;
 
@@ -206,13 +216,30 @@ class PushService {
     final messaging = _messaging;
     if (messaging == null || _started) return;
     _started = true;
-    await messaging.requestPermission();
+    if (!await _ensurePermission(messaging)) return;
     await _registerCurrentToken();
     _subs.add(messaging.onTokenRefresh.listen((_) => _registerCurrentToken()));
     _subs.add(messaging.onMessage.listen(_onForeground));
     _subs.add(messaging.onMessageOpenedApp.listen(_onTap));
     final initial = await messaging.getInitialMessage();
     if (initial != null) _onTap(initial);
+  }
+
+  /// Shows the pre-permission explainer once, then requests the OS
+  /// permission. Returns false when the user declines at the explainer —
+  /// the token is never registered and push stays off until they opt in
+  /// from the OS settings or a later prompt.
+  Future<bool> _ensurePermission(MessagingClient messaging) async {
+    final rationale = showPermissionRationale;
+    final ctx = _navigatorKey?.currentContext;
+    final alreadyShown = _prefs?.getBool(_rationaleShownKey) ?? false;
+    if (!alreadyShown && rationale != null && ctx != null && ctx.mounted) {
+      final proceed = await rationale(ctx);
+      await _prefs?.setBool(_rationaleShownKey, true);
+      if (!proceed) return false;
+    }
+    await messaging.requestPermission();
+    return true;
   }
 
   /// Unregisters the stored token — called before auth tokens are cleared

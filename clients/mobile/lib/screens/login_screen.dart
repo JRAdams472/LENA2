@@ -4,8 +4,14 @@ import '../auth/auth_service.dart';
 import '../theme.dart';
 
 /// Split brand card, vertical for mobile — the sage panel carries the
-/// wordmark and tagline, the paper panel carries the sign-in action.
+/// wordmark and tagline, the paper panel carries the sign-in actions.
 /// Mirrors the web LoginScreen layout (LEN-76).
+///
+/// Store-compliance copy (LEN-136): the app is login-only — accounts are
+/// created on the website, so the footer is plain non-clickable text (a
+/// hyperlink here breaks store review). Provider buttons are stacked
+/// vertically at equal prominence; Apple is required by App Store review
+/// whenever other social providers are offered.
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
@@ -89,13 +95,14 @@ class LoginScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          'Welcome back',
+                          'Welcome to Lena',
                           style: theme.textTheme.titleLarge,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Sign in to manage inventory, recipes, '
-                          'and meal plans.',
+                          'Sign in with the provider associated with your '
+                          'web account to access your dashboard and '
+                          'configure notifications.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodySmall,
                         ),
@@ -111,17 +118,56 @@ class LoginScreen extends StatelessWidget {
                               textAlign: TextAlign.center,
                             ),
                           ),
-                        SizedBox(
-                          width: double.infinity,
-                          child: auth.isLoading
-                              ? const Center(
-                                  child: CircularProgressIndicator(),
-                                )
-                              : ElevatedButton.icon(
-                                  onPressed: auth.signIn,
-                                  icon: const Icon(Icons.login),
-                                  label: const Text('Sign in with Google'),
-                                ),
+                        if (auth.isLoading)
+                          const Center(child: CircularProgressIndicator())
+                        else ...[
+                          _ProviderButton(
+                            label: 'Continue with Apple',
+                            background: Colors.black,
+                            foreground: Colors.white,
+                            icon: const Icon(Icons.apple, size: 20),
+                            onPressed: () => auth.signInWithProvider('Apple'),
+                          ),
+                          const SizedBox(height: 10),
+                          _ProviderButton(
+                            label: 'Continue with Google',
+                            background: Colors.white,
+                            foreground: Colors.black87,
+                            side: const BorderSide(color: Colors.black26),
+                            icon: const _BrandLetter('G', Color(0xFF4285F4)),
+                            onPressed: auth.signIn,
+                          ),
+                          const SizedBox(height: 10),
+                          _ProviderButton(
+                            label: 'Continue with Discord',
+                            background: const Color(0xFF5865F2),
+                            foreground: Colors.white,
+                            icon: const _BrandLetter('D', Color(0xFF5865F2)),
+                            onPressed: () => auth.signInWithProvider('Discord'),
+                          ),
+                          const SizedBox(height: 10),
+                          _ProviderButton(
+                            label: 'Continue with Facebook',
+                            background: const Color(0xFF1877F2),
+                            foreground: Colors.white,
+                            icon: const Icon(Icons.facebook, size: 20),
+                            onPressed: () =>
+                                auth.signInWithProvider('Facebook'),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        // Registration is web-only — plain text on purpose:
+                        // a tappable link here fails store review (LEN-136).
+                        Text(
+                          'Account registration and plan management are '
+                          'handled on our website. New users must set up '
+                          'their accounts on lenaskitchen.app before '
+                          'logging in to the mobile companion app.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6),
+                          ),
                         ),
                       ],
                     ),
@@ -130,6 +176,78 @@ class LoginScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One provider sign-in button — all share the same size and weight so
+/// Apple sits at equal prominence per App Store review guidelines.
+class _ProviderButton extends StatelessWidget {
+  const _ProviderButton({
+    required this.label,
+    required this.background,
+    required this.foreground,
+    required this.icon,
+    required this.onPressed,
+    this.side = BorderSide.none,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+  final Widget icon;
+  final VoidCallback onPressed;
+  final BorderSide side;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: background,
+          foregroundColor: foreground,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: side,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Simple lettered brand glyph used where Material has no logo icon
+/// (Google's 'G', Discord's mark). White disc so it reads on colored
+/// buttons.
+class _BrandLetter extends StatelessWidget {
+  const _BrandLetter(this.letter, this.color);
+
+  final String letter;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        letter,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: color,
+          height: 1,
         ),
       ),
     );

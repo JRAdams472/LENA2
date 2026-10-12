@@ -55,6 +55,7 @@ import {
   StepTweakEditor,
 } from "@/app/member/recipes/[id]/recipe-delta";
 import { isOfDrinkingAge } from "@/lib/age";
+import AlcoholGateHint from "../AlcoholGateHint";
 import { useMe } from "@/app/auth/useMe";
 
 function ratingSummary(average: number | null, count: number): string {
@@ -115,7 +116,8 @@ export default function RecipeDetailPage() {
     mutationFn: () => aiSuggest.suggestPairings(recipeId),
     onSuccess: (data) => setPairings(data),
   });
-  const canPair = (aiQuery.data === true || localAIReady) && isOfDrinkingAge(me?.birthdate);
+  const aiAvailable = aiQuery.data === true || localAIReady;
+  const canPair = aiAvailable && isOfDrinkingAge(me?.birthdate);
 
   const recipeQuery = useQuery({
     queryKey: ["recipe", recipeId, view],
@@ -496,6 +498,11 @@ export default function RecipeDetailPage() {
               <Alert severity="error" sx={{ mt: 1 }}>
                 {(rateMutation.error as Error).message}
               </Alert>
+            )}
+            {aiAvailable && !isOfDrinkingAge(me?.birthdate) && (
+              <Box sx={{ mt: 2 }}>
+                <AlcoholGateHint />
+              </Box>
             )}
             {canPair && (
               <Box sx={{ mt: 2 }}>

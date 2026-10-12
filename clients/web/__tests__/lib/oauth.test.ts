@@ -11,6 +11,8 @@ import {
 } from "@/lib/oauth";
 
 const ENV_KEYS = [
+  "NEXT_PUBLIC_APPLE_CLIENT_ID",
+  "NEXT_PUBLIC_APPLE_REDIRECT_URI",
   "NEXT_PUBLIC_DISCORD_CLIENT_ID",
   "NEXT_PUBLIC_DISCORD_REDIRECT_URI",
   "NEXT_PUBLIC_MICROSOFT_CLIENT_ID",
@@ -41,14 +43,36 @@ describe("oauth providers", () => {
     process.env.NEXT_PUBLIC_FACEBOOK_CLIENT_ID = "f-id";
     expect(enabledProviders()).toEqual(["discord", "facebook"]);
     expect(providerEnabled("microsoft")).toBe(false);
+    // Apple stays hidden until its Services ID env is configured.
+    expect(providerEnabled("apple")).toBe(false);
+    process.env.NEXT_PUBLIC_APPLE_CLIENT_ID = "a-id";
+    expect(enabledProviders()[0]).toBe("apple");
   });
 
   it("validates provider names for the dynamic callback route", () => {
+    expect(isOAuthProvider("apple")).toBe(true);
     expect(isOAuthProvider("discord")).toBe(true);
     expect(isOAuthProvider("microsoft")).toBe(true);
     expect(isOAuthProvider("facebook")).toBe(true);
     expect(isOAuthProvider("refresh")).toBe(false);
     expect(isOAuthProvider("../evil")).toBe(false);
+  });
+
+  it("builds the apple authorize url with code + query response mode", () => {
+    process.env.NEXT_PUBLIC_APPLE_CLIENT_ID = "a-id";
+    const url = new URL(authorizeUrl("apple", "st", "nn", "ch"));
+    expect(url.origin + url.pathname).toBe(
+      "https://appleid.apple.com/auth/authorize"
+    );
+    expect(url.searchParams.get("client_id")).toBe("a-id");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("response_mode")).toBe("query");
+    expect(url.searchParams.get("scope")).toBe("name email");
+    expect(url.searchParams.get("nonce")).toBe("nn");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "http://localhost/auth/apple/callback"
+    );
+    expect(url.searchParams.get("code_challenge")).toBe("ch");
   });
 
   it("builds the discord authorize url", () => {

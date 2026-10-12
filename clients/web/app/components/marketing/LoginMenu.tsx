@@ -68,7 +68,7 @@ export default function LoginMenu() {
             minWidth: 300,
           }}
         >
-          <Typography variant="h6">Welcome back</Typography>
+          <Typography variant="h6">Welcome to Lena</Typography>
           <ProviderButtons />
         </Paper>
       </Popover>
