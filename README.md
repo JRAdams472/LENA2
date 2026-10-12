@@ -349,5 +349,6 @@ PNGs land in `clients/mobile/mobile-shots/` when the walk completes.
 - `docs/graphql-schema.md` — GraphQL API reference.
 - `docs/postgres-data-model.md` — database schema overview.
 - `docs/design.md` — shared design language: sage/cream palette, light + dark token tables, type ramp, spacing/motion spec.
+- `docs/store-checklist.md` — App Store + Google Play submission checklist: app identity, release signing, permissions, ratings, reviewer notes.
 - `clients/web/README.md` — web client setup.
 - `clients/mobile/README.md` — Flutter client setup.
