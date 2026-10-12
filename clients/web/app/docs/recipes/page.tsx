@@ -25,8 +25,9 @@ export default function Page() {
           <Fragment key={2}><strong key={0}>{"Semantic search"}</strong>{" (✨ "}<strong key={1}>{"Semantic"}</strong>{" switch, shown when the server has embeddings configured) — describe what you're in the mood for instead of matching names: \"cozy comfort dinner\", \"something fresh with citrus\", \"quick weeknight pasta\""}</Fragment>,
           <Fragment key={3}><strong key={0}>{"Filter by category"}</strong>{" — one dropdown per group (Course, Dish Type, Dietary, Difficulty, Main Ingredient, Cuisine). Picks combine across groups, so \"Italian\" + \"Easy\" finds easy Italian recipes; picking two options in one group matches either"}</Fragment>,
           <Fragment key={4}><strong key={0}>{"Filter to favorites"}</strong>{" with the Favorite toggle"}</Fragment>,
-          <Fragment key={5}>{"Open any recipe to see its full ingredients, steps, and ratings"}</Fragment>,
+          <Fragment key={5}><strong key={0}>{"Peek at a recipe"}</strong>{" — click its name or description to open a read-only preview: the ingredient list (grouped by section, optional lines marked) and the numbered steps with their durations, without leaving the table. Use the row's edit pencil or "}<strong key={1}>{"Manage"}</strong>{" link for the full recipe page with ratings, categories, and tweaks"}</Fragment>,
         ]} />
+        <Screenshot src={"/images/recipe-preview.png"} alt={"A recipe preview — ingredients and steps without opening the editor"} device="web" />
         <Screenshot src={"/images/recipes.png"} alt={"The recipe collection — search, filters, and the recipe table"} device="web" />
         <Screenshot src={"/images/recipe-category-filter.png"} alt={"The recipe collection, with category filters"} device="web" />
         <Screenshot src={"/images/recipes-semantic.png"} alt={"Semantic search in action"} device="web" />

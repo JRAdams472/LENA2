@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:lena_mobile/graphql_config.dart';
 import 'package:lena_mobile/screens/dashboard_content.dart';
+import 'package:lena_mobile/screens/recipe_view_screen.dart';
 import 'package:lena_mobile/theme.dart';
 
 Map<String, dynamic> _fixture() => {
@@ -108,5 +111,22 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('Rate a few recipes'), findsOneWidget);
+  });
+
+  testWidgets('tapping a suggestion opens the recipe view', (tester) async {
+    await tester.pumpWidget(
+      GraphQLProvider(
+        client: ValueNotifier(graphQLClient),
+        child: _wrap(DashboardContent(data: _fixture())),
+      ),
+    );
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('Garlic Butter Pasta'));
+    await tester.tap(find.text('Garlic Butter Pasta'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(RecipeViewScreen), findsOneWidget);
   });
 }

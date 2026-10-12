@@ -5,8 +5,8 @@ import '../widgets/empty_state.dart';
 import '../widgets/motion.dart';
 import '../widgets/section_header.dart';
 import '../widgets/status_chip.dart';
-import 'edit_recipe_screen.dart';
 import 'meal_plans_screen.dart';
+import 'recipe_view_screen.dart';
 import 'recipes_screen.dart';
 
 const _weekdays = [
@@ -203,7 +203,7 @@ class DashboardContent extends StatelessWidget {
           : () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => EditRecipeScreen(recipeId: recipeId),
+                  builder: (_) => RecipeViewScreen(recipeId: recipeId),
                 ),
               ),
       child: Padding(
@@ -436,7 +436,7 @@ class DashboardContent extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => EditRecipeScreen(recipeId: recipeId),
+        builder: (_) => RecipeViewScreen(recipeId: recipeId),
       ),
     );
   }
