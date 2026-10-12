@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	firebase.google.com/go/v4 v4.22.0
-	github.com/exaring/otelpgx v0.12.0
+	github.com/exaring/otelpgx v0.13.0
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/graph-gophers/graphql-go v1.10.3
 	github.com/jackc/pgx/v5 v5.11.0
