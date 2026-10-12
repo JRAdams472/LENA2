@@ -123,12 +123,13 @@ void main() {
     await tester.pumpWidget(_app(svc));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Continue with Apple'));
+    // Discord has no client id compiled into the test build.
+    await tester.tap(find.text('Continue with Discord'));
     await tester.pumpAndSettle();
 
     expect(
       svc.lastError,
-      "Sign in with Apple isn't available yet — use Google for now.",
+      "Sign in with Discord isn't configured for this app build.",
     );
   });
 

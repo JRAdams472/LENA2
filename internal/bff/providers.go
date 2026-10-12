@@ -10,6 +10,7 @@ import (
 // the issuer URL as the key instead — the same row a bearer-token
 // sign-in would produce, so a user is one account however they arrive.
 const (
+	AppleProvider     = "apple"
 	DiscordProvider   = "discord"
 	MicrosoftProvider = "microsoft"
 	FacebookProvider  = "facebook"
@@ -40,8 +41,11 @@ type providerIdentity struct {
 // verified, others ignore it. codeVerifier is the PKCE secret matching
 // the code_challenge sent to the provider's authorize endpoint; it is
 // forwarded to the token exchange verbatim (LEN-29 finding 4).
+// redirectURI is the URI the client's authorize request used — empty
+// means the configured web URI; any other value must be registered on
+// the verifier (mobile deep links).
 type CodeVerifier interface {
-	verify(ctx context.Context, code, nonce, codeVerifier string) (providerIdentity, error)
+	verify(ctx context.Context, code, nonce, codeVerifier, redirectURI string) (providerIdentity, error)
 }
 
 // MicrosoftIssuer maps a configured tenant to the issuer claim Entra
@@ -66,15 +70,18 @@ func FacebookIssuer() string {
 }
 
 // TrustIssuer appends an issuer/audience pair to the OIDC allowlist
-// unless the issuer is already present (explicit AUTH_ISSUERS config
-// wins). Provider issuers registered this way need no duplicate env
-// config — setting the provider's client id/secret is sufficient.
+// unless the identical pair is already present (explicit AUTH_ISSUERS
+// config wins). A second audience for an already-trusted issuer still
+// appends — Apple issues tokens under both the Services ID (web) and
+// the bundle ID (iOS). Provider issuers registered this way need no
+// duplicate env config — setting the provider's client id is
+// sufficient.
 func TrustIssuer(issuers, audiences []string, issuer, audience string) ([]string, []string) {
 	if issuer == "" || audience == "" {
 		return issuers, audiences
 	}
-	for _, iss := range issuers {
-		if iss == issuer {
+	for i, iss := range issuers {
+		if iss == issuer && i < len(audiences) && audiences[i] == audience {
 			return issuers, audiences
 		}
 	}

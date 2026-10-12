@@ -1,8 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+
+import 'provider_oauth.dart';
 
 const _tokenKey = 'id_token';
 const _refreshKey = 'refresh_token';
@@ -44,12 +49,31 @@ class _SecureTokenStorage implements TokenStorage {
   Future<void> delete(String key) => _inner.delete(key: key);
 }
 
+/// Opens the provider's authorize page in a system browser sheet and
+/// returns the deep-link callback URL — null when the user cancels.
+/// Injectable so tests can drive the flow without a browser.
+typedef ProviderAuthLauncher = Future<String?> Function(
+  Uri url,
+  String callbackScheme,
+);
+
+/// Fetches a native Sign in with Apple identity token — null on cancel.
+/// Injectable for the same reason.
+typedef AppleCredentialFetcher = Future<String?> Function();
+
 class AuthService extends ChangeNotifier {
   final TokenStorage _storage;
   final http.Client _http;
   // Google is injected as closures — the SDK types resist simple fakes.
   late final Future<String?> Function() _googleSignIn;
   late final Future<void> Function() _googleSignOut;
+  // Same treatment for the provider flows: the browser sheet and the
+  // native Apple dialog are platform channels, so both are seams.
+  final ProviderAuthLauncher _webAuth;
+  final AppleCredentialFetcher _appleSignIn;
+  // Test seam for provider client ids — production reads the
+  // compile-time dart-defines; tests inject a map.
+  final Map<String, String>? _providerClientIds;
 
   String? _idToken; // the active bearer: LENA access token or Google ID token
   String? _refreshToken;
@@ -62,9 +86,16 @@ class AuthService extends ChangeNotifier {
   Future<bool>? _refreshFuture;
   late final Future<void> _initFuture;
 
-  AuthService({TokenStorage? storage, http.Client? httpClient})
-      : _storage = storage ?? _SecureTokenStorage(),
-        _http = httpClient ?? http.Client() {
+  AuthService({
+    TokenStorage? storage,
+    http.Client? httpClient,
+    ProviderAuthLauncher? webAuth,
+    AppleCredentialFetcher? appleSignIn,
+  })  : _storage = storage ?? _SecureTokenStorage(),
+        _http = httpClient ?? http.Client(),
+        _webAuth = webAuth ?? _defaultWebAuth,
+        _appleSignIn = appleSignIn ?? _defaultAppleCredential,
+        _providerClientIds = null {
     final google = GoogleSignIn(
       scopes: ['email', 'profile'],
       serverClientId: _serverClientId.isEmpty ? null : _serverClientId,
@@ -84,11 +115,49 @@ class AuthService extends ChangeNotifier {
     required http.Client httpClient,
     Future<String?> Function()? googleSignIn,
     Future<void> Function()? googleSignOut,
+    ProviderAuthLauncher? webAuth,
+    AppleCredentialFetcher? appleSignIn,
+    Map<String, String>? providerClientIds,
   })  : _storage = storage,
         _http = httpClient,
         _googleSignIn = googleSignIn ?? (() async => null),
-        _googleSignOut = googleSignOut ?? (() async {}) {
+        _googleSignOut = googleSignOut ?? (() async {}),
+        _webAuth = webAuth ?? ((_, __) async => null),
+        _appleSignIn = appleSignIn ?? (() async => null),
+        _providerClientIds = providerClientIds {
     _initFuture = _init();
+  }
+
+  /// flutter_web_auth_2 opens the authorize URL in the platform browser
+  /// sheet and resolves with the lena:// callback URL; a user cancel
+  /// surfaces as a PlatformException we map to null.
+  static Future<String?> _defaultWebAuth(Uri url, String scheme) async {
+    try {
+      return await FlutterWebAuth2.authenticate(
+        url: url.toString(),
+        callbackUrlScheme: scheme,
+      );
+    } on PlatformException catch (e) {
+      if (e.code == 'CANCELED' || e.code == 'CANCELLED') return null;
+      rethrow;
+    }
+  }
+
+  /// The native Sign in with Apple sheet — returns the identityToken
+  /// (an OIDC JWT under issuer appleid.apple.com) or null on cancel.
+  static Future<String?> _defaultAppleCredential() async {
+    try {
+      final cred = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      return cred.identityToken;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) return null;
+      rethrow;
+    }
   }
 
   /// Completes when initial storage restore (and any session refresh) is
@@ -172,13 +241,114 @@ class AuthService extends ChangeNotifier {
     return _idToken;
   }
 
-  /// Entry point for the non-Google provider buttons. Real OAuth flows
-  /// land in the next phase (LEN-136 P2); until then the button surfaces
-  /// a clear message instead of silently doing nothing.
+  /// Entry point for the non-Google provider buttons (LEN-136 P2).
+  /// Apple runs the native iOS sheet — its identityToken joins the same
+  /// OIDC bearer path as Google. Discord, Microsoft, and Facebook open
+  /// the provider's authorize page in a browser sheet and trade the
+  /// authorization code for a LENA session at /auth/session/{provider}.
   Future<void> signInWithProvider(String provider) async {
-    _lastError =
-        'Sign in with $provider isn\'t available yet — use Google for now.';
+    final key = provider.toLowerCase();
+    _isLoading = true;
+    _lastError = null;
+    _accountGate = null;
     notifyListeners();
+    try {
+      if (key == 'apple') {
+        await _appleSignInFlow();
+      } else {
+        await _providerCodeSignIn(key, provider);
+      }
+    } catch (e) {
+      _idToken = null;
+      _lastError = 'Sign in failed: $e';
+      debugPrint(_lastError);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// The native Sign in with Apple sheet (iOS/macOS only — Apple does
+  /// not support custom-scheme return URLs, so Android has no native
+  /// path and gets a clear message instead of a dead button).
+  Future<void> _appleSignInFlow() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS &&
+        defaultTargetPlatform != TargetPlatform.macOS) {
+      _lastError = 'Sign in with Apple is only available on Apple devices.';
+      return;
+    }
+    final token = await _appleSignIn();
+    if (token == null) {
+      _idToken = null;
+      _lastError = 'Sign in cancelled';
+      return;
+    }
+    await _exchangeForSession(token);
+  }
+
+  /// Authorization-code flow for browser-sheet providers: build the
+  /// authorize URL with PKCE, wait for the lena:// callback, exchange
+  /// the code at the BFF. The approval gate answers 403 like the bearer
+  /// exchange, so pending/denied users land on the same screen.
+  Future<void> _providerCodeSignIn(String key, String provider) async {
+    final state = generateOAuthToken();
+    final nonce = generateOAuthToken();
+    final verifier = generatePkceVerifier();
+    final url = providerAuthorizeUrl(
+      key,
+      state,
+      nonce,
+      derivePkceChallenge(verifier),
+      clientIds: _providerClientIds,
+    );
+    if (url == null) {
+      _lastError =
+          'Sign in with $provider isn\'t configured for this app build.';
+      return;
+    }
+    final callback = await _webAuth(url, oauthCallbackScheme);
+    if (callback == null) {
+      _idToken = null;
+      _lastError = 'Sign in cancelled';
+      return;
+    }
+    final params = Uri.parse(callback).queryParameters;
+    final code = params['code'];
+    if (params['error'] != null || params['state'] != state || code == null) {
+      _lastError = 'Sign-in was cancelled or denied.';
+      return;
+    }
+    final res = await _http
+        .post(
+          _sessionUrl('/auth/session/$key'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'code': code,
+            'nonce': nonce,
+            'codeVerifier': verifier,
+            'redirectUri': mobileRedirectUri(key),
+            'device': 'mobile',
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (res.statusCode == 200) {
+      _storeSession(json.decode(res.body) as Map<String, dynamic>);
+      _accountGate = null;
+      return;
+    }
+    _flagGateFromBody(res.statusCode, res.body);
+    if (_accountGate == null) {
+      _lastError = 'Sign in failed (${res.statusCode})';
+    }
+  }
+
+  /// Persists a successful session-exchange response — shared by the
+  /// bearer and code-exchange paths.
+  void _storeSession(Map<String, dynamic> body) {
+    _idToken = body['accessToken'] as String;
+    _refreshToken = body['refreshToken'] as String;
+    _storage.write(_tokenKey, _idToken);
+    _storage.write(_refreshKey, _refreshToken);
   }
 
   Future<void> signIn() async {
@@ -224,12 +394,8 @@ class AuthService extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
-        final body = json.decode(res.body) as Map<String, dynamic>;
-        _idToken = body['accessToken'] as String;
-        _refreshToken = body['refreshToken'] as String;
         _accountGate = null;
-        await _storage.write(_tokenKey, _idToken);
-        await _storage.write(_refreshKey, _refreshToken);
+        _storeSession(json.decode(res.body) as Map<String, dynamic>);
         return;
       }
       // Approval gate: the exchange refuses a session for pending and

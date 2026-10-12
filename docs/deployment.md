@@ -191,7 +191,14 @@ LENA_SESSION_SECRET=<openssl rand -hex 32>
 LENA_DISCORD_CLIENT_ID= / LENA_DISCORD_CLIENT_SECRET=
 LENA_MICROSOFT_CLIENT_ID= / LENA_MICROSOFT_CLIENT_SECRET= (+ LENA_MICROSOFT_TENANT=consumers)
 LENA_FACEBOOK_CLIENT_ID= / LENA_FACEBOOK_CLIENT_SECRET=
-# + matching *_REDIRECT_URI values registered in each provider portal.
+LENA_APPLE_CLIENT_ID=<Services ID> + LENA_APPLE_TEAM_ID= + LENA_APPLE_KEY_ID=
+  + LENA_APPLE_PRIVATE_KEY_FILE=<path to .p8> + LENA_APPLE_REDIRECT_URI=
+  + LENA_APPLE_BUNDLE_ID=<iOS bundle id — trusts native tokens>
+# + matching *_REDIRECT_URI values registered in each provider portal,
+#   and LENA_*_MOBILE_REDIRECT_URI=lena://oauth/<provider> for the app's
+#   deep-link sign-in flows (Apple is native — no mobile URI needed).
+#   Apple has no static client secret — the server mints an ES256 JWT
+#   per exchange from the .p8 key file.
 
 # AI assistant + semantic recipe search — each disabled until set.
 # The `ai` compose profile starts a bundled Ollama and pre-pulls both models.
