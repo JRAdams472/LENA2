@@ -23,7 +23,7 @@ func newTestDiscord(t *testing.T, exchangeStatus int, meStatus int) (*DiscordVer
 			assert.Equal(t, "cid", r.Form.Get("client_id"))
 			assert.Equal(t, "secret", r.Form.Get("client_secret"))
 			assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
-			assert.Equal(t, "http://localhost/cb", r.Form.Get("redirect_uri"))
+			assert.NotEmpty(t, r.Form.Get("redirect_uri"))
 			w.WriteHeader(exchangeStatus)
 			if exchangeStatus == http.StatusOK {
 				_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at-1"})
@@ -53,10 +53,11 @@ func newTestDiscord(t *testing.T, exchangeStatus int, meStatus int) (*DiscordVer
 
 func TestDiscordVerify(t *testing.T) {
 	d, _, gotForm := newTestDiscord(t, http.StatusOK, http.StatusOK)
-	id, err := d.verify(t.Context(), "auth-code", "", "the-verifier")
+	id, err := d.verify(t.Context(), "auth-code", "", "the-verifier", "")
 	require.NoError(t, err)
 	assert.Equal(t, "auth-code", gotForm.Get("code"))
 	assert.Equal(t, "the-verifier", gotForm.Get("code_verifier"))
+	assert.Equal(t, "http://localhost/cb", gotForm.Get("redirect_uri"))
 	assert.Equal(t, "123456789", id.subject)
 	assert.Equal(t, "d@cord.com", id.email)
 	assert.True(t, id.emailVerified)
@@ -65,20 +66,34 @@ func TestDiscordVerify(t *testing.T) {
 
 func TestDiscordVerify_NoVerifierOmitsFormField(t *testing.T) {
 	d, _, gotForm := newTestDiscord(t, http.StatusOK, http.StatusOK)
-	_, err := d.verify(t.Context(), "auth-code", "", "")
+	_, err := d.verify(t.Context(), "auth-code", "", "", "")
 	require.NoError(t, err)
 	assert.False(t, gotForm.Has("code_verifier"))
 }
 
 func TestDiscordVerify_ExchangeRejected(t *testing.T) {
 	d, _, _ := newTestDiscord(t, http.StatusBadRequest, http.StatusOK)
-	_, err := d.verify(t.Context(), "used-code", "", "")
+	_, err := d.verify(t.Context(), "used-code", "", "", "")
 	assert.ErrorIs(t, err, errDiscordCredential)
 }
 
 func TestDiscordVerify_MeRejected(t *testing.T) {
 	d, _, _ := newTestDiscord(t, http.StatusOK, http.StatusUnauthorized)
-	_, err := d.verify(t.Context(), "code", "", "")
+	_, err := d.verify(t.Context(), "code", "", "", "")
+	assert.ErrorIs(t, err, errDiscordCredential)
+}
+
+func TestDiscordVerify_RedirectURI(t *testing.T) {
+	d, _, gotForm := newTestDiscord(t, http.StatusOK, http.StatusOK)
+	d.extraRedirects = map[string]struct{}{"lena://oauth/discord": {}}
+
+	// The registered mobile URI is echoed in the exchange.
+	_, err := d.verify(t.Context(), "auth-code", "", "the-verifier", "lena://oauth/discord")
+	require.NoError(t, err)
+	assert.Equal(t, "lena://oauth/discord", gotForm.Get("redirect_uri"))
+
+	// An unregistered URI is rejected before the exchange.
+	_, err = d.verify(t.Context(), "auth-code", "", "the-verifier", "https://evil.example/cb")
 	assert.ErrorIs(t, err, errDiscordCredential)
 }
 

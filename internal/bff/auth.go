@@ -255,7 +255,10 @@ func zipIssuersAndAudiences(issuers, audiences []string) (map[string][]string, e
 	}
 	m := make(map[string][]string, len(issuers))
 	for i, iss := range issuers {
-		m[iss] = []string{audiences[i]}
+		// Repeated issuers accumulate audiences — Apple signs tokens for
+		// both the web Services ID and the iOS bundle ID under the same
+		// issuer.
+		m[iss] = append(m[iss], audiences[i])
 	}
 	return m, nil
 }

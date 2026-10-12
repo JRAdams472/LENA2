@@ -18,7 +18,7 @@ LENA2 is a personal, privacy-first household management system. It replaces scat
 - **Add items on the go** — use the mobile app to scan a UPC barcode, look up catalog items, and submit missing products for approval.
 - **Share households** — invite family members; recipes, plans, lists, events, pantry, and cellar are household-scoped, and changes notify the other members. One account can belong to several households and switch between them.
 
-Authentication is handled by Google sign-in via OpenID Connect or Discord/Microsoft/Facebook OAuth2 (authorization-code flows use PKCE S256); a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar. A user can hold memberships in multiple households with a server-stored **active household** selecting which one they see; accepting an invite adds a membership and offers a merge that folds a solely owned household's pantry, cellar, plans, lists, and events into the shared one before dissolving it.
+Authentication is handled by Google sign-in via OpenID Connect or Apple/Discord/Microsoft/Facebook OAuth2 (authorization-code flows use PKCE S256); a single account can link multiple provider logins (never auto-merged by email). Data is scoped by **household**: every member sees the same recipes, plans, lists, events, pantry, and wine cellar. A user can hold memberships in multiple households with a server-stored **active household** selecting which one they see; accepting an invite adds a membership and offers a merge that folds a solely owned household's pantry, cellar, plans, lists, and events into the shared one before dissolving it.
 
 ---
 
@@ -45,7 +45,7 @@ It is a single-tenant application: you run your own instance and your data lives
 | **Database** | PostgreSQL 18 with schema-per-domain, pgvector for recipe embeddings |
 | **Reverse proxy** | Caddy 2 |
 | **Dev / deploy** | Docker Compose |
-| **Authentication** | Google OIDC + Discord/Microsoft/Facebook OAuth2 (PKCE), exchanged for LENA session tokens |
+| **Authentication** | Google OIDC + Apple/Discord/Microsoft/Facebook OAuth2 (PKCE), exchanged for LENA session tokens |
 
 The web and mobile clients talk to a single **GraphQL Backend-for-Frontend (BFF)** exposed at `/graphql`. The Go backend uses `sqlc` for type-safe SQL queries and `testcontainers` for integration tests.
 

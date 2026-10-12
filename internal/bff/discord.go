@@ -28,46 +28,69 @@ var errDiscordCredential = errors.New("discord credential rejected")
 // DiscordVerifier exchanges authorization codes and resolves the Discord
 // user. Nil when DiscordClientID/Secret are not configured.
 type DiscordVerifier struct {
-	clientID     string
-	clientSecret string
-	redirectURI  string
-	base         string
-	http         *http.Client
+	clientID       string
+	clientSecret   string
+	redirectURI    string
+	extraRedirects map[string]struct{}
+	base           string
+	http           *http.Client
 }
 
 // NewDiscordVerifier builds the verifier; returns nil when the provider
 // is not configured so handlers can feature-detect it.
-func NewDiscordVerifier(clientID, clientSecret, redirectURI string) *DiscordVerifier {
+// extraRedirectURIs are additional redirect URIs the exchange accepts —
+// the mobile app deep-links back under a custom scheme, so the client
+// reports which registered URI its authorize request used.
+func NewDiscordVerifier(clientID, clientSecret, redirectURI string, extraRedirectURIs ...string) *DiscordVerifier {
 	if clientID == "" || clientSecret == "" {
 		return nil
 	}
 	return &DiscordVerifier{
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		redirectURI:  redirectURI,
-		base:         discordAPIBase,
-		http:         &http.Client{Timeout: 10 * time.Second},
+		clientID:       clientID,
+		clientSecret:   clientSecret,
+		redirectURI:    redirectURI,
+		extraRedirects: extraRedirectSet(extraRedirectURIs),
+		base:           discordAPIBase,
+		http:           &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
 // verify exchanges the authorization code and fetches /users/@me.
 // Discord has no id_token, so the nonce parameter is ignored; the PKCE
 // code_verifier is forwarded to the token exchange when present.
-func (d *DiscordVerifier) verify(ctx context.Context, code, _, codeVerifier string) (providerIdentity, error) {
-	accessToken, err := d.exchange(ctx, code, codeVerifier)
+// redirectURI is the URI the client's authorize request used; it is
+// validated against the registered set before the exchange.
+func (d *DiscordVerifier) verify(ctx context.Context, code, _, codeVerifier, redirectURI string) (providerIdentity, error) {
+	redirect, err := d.resolveRedirectURI(redirectURI)
+	if err != nil {
+		return providerIdentity{}, err
+	}
+	accessToken, err := d.exchange(ctx, code, codeVerifier, redirect)
 	if err != nil {
 		return providerIdentity{}, err
 	}
 	return d.fetchUser(ctx, accessToken)
 }
 
-func (d *DiscordVerifier) exchange(ctx context.Context, code, codeVerifier string) (string, error) {
+// resolveRedirectURI picks the redirect URI to echo in the token
+// exchange — see OAuthOIDCVerifier.resolveRedirectURI.
+func (d *DiscordVerifier) resolveRedirectURI(requested string) (string, error) {
+	if requested == "" || requested == d.redirectURI {
+		return d.redirectURI, nil
+	}
+	if _, ok := d.extraRedirects[requested]; ok {
+		return requested, nil
+	}
+	return "", fmt.Errorf("%w: redirect_uri is not registered", errDiscordCredential)
+}
+
+func (d *DiscordVerifier) exchange(ctx context.Context, code, codeVerifier, redirectURI string) (string, error) {
 	form := url.Values{
 		"client_id":     {d.clientID},
 		"client_secret": {d.clientSecret},
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
-		"redirect_uri":  {d.redirectURI},
+		"redirect_uri":  {redirectURI},
 	}
 	if codeVerifier != "" {
 		form.Set("code_verifier", codeVerifier)

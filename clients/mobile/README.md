@@ -98,11 +98,32 @@ sending an expired token, and `ErrorLink` retries a request once after a
 The login screen is a companion surface only — it presents Apple, Google,
 Discord, and Facebook at equal prominence (store review requires Apple
 whenever other social providers are offered) and its footer explains that
-account registration happens on lenaskitchen.app. Today only Google
-completes sign-in; the other buttons explain rather than dead-end until
-the provider OAuth flow (HTTPS-callback → `lena://` app-link bounce)
-lands with LEN-136's OAuth phase. A user whose account is linked to
-Google can still sign in on mobile via Google.
+account registration happens on lenaskitchen.app. All providers complete
+sign-in when configured: Google uses the platform SDK, Apple uses the
+native iOS sheet (`sign_in_with_apple` + the Sign in with Apple
+entitlement; non-Apple platforms get a clear message since Apple does
+not allow custom-scheme return URLs), and Discord/Microsoft/Facebook open
+the provider's authorize page in a browser sheet (`flutter_web_auth_2`)
+that deep-links back on `lena://oauth/<provider>` — the code trades for a
+LENA session at `POST /auth/session/{provider}` with PKCE.
+
+Provider client ids are compile-time dart-defines (they are not secrets —
+they only enable the button):
+
+```bash
+flutter run \
+  --dart-define=LENA_DISCORD_CLIENT_ID=<discord-client-id> \
+  --dart-define=LENA_MICROSOFT_CLIENT_ID=<entra-client-id> \
+  --dart-define=LENA_MICROSOFT_TENANT=consumers \
+  --dart-define=LENA_FACEBOOK_CLIENT_ID=<facebook-app-id>
+```
+
+For the exchange to succeed the matching `LENA_<PROVIDER>_MOBILE_REDIRECT_URI`
+must be registered in the provider's console and set on the server
+(e.g. `lena://oauth/discord`) — the server echoes only allowlisted
+redirect URIs. Apple needs `LENA_APPLE_BUNDLE_ID` on the server to trust
+the native identityToken; the web code exchange separately needs
+`LENA_APPLE_CLIENT_ID`/`_TEAM_ID`/`_KEY_ID`/`_PRIVATE_KEY_FILE`.
 
 ### Emulator sign-in for screenshots/e2e
 

@@ -50,6 +50,11 @@ type providerSessionRequest struct {
 	// browser sent to the provider's authorize endpoint. Required: an
 	// intercepted code alone must not be exchangeable (LEN-29 finding 4).
 	CodeVerifier string `json:"codeVerifier"`
+	// RedirectURI is the URI the client's authorize request used —
+	// required for mobile deep links, which differ from the configured
+	// web URI. Empty means the configured web URI; anything else must be
+	// registered on the verifier or the exchange is rejected.
+	RedirectURI string `json:"redirectUri"`
 }
 
 // CreateSession exchanges a provider authorization code for a LENA
@@ -72,7 +77,7 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	ident, err := verifier.verify(ctx, req.Code, req.Nonce, req.CodeVerifier)
+	ident, err := verifier.verify(ctx, req.Code, req.Nonce, req.CodeVerifier, req.RedirectURI)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid "+name+" credential")
 	}

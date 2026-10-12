@@ -24,10 +24,11 @@ type fakeCodeVerifier struct {
 	gotCode     string
 	gotNonce    string
 	gotVerifier string
+	gotRedirect string
 }
 
-func (f *fakeCodeVerifier) verify(_ context.Context, code, nonce, codeVerifier string) (providerIdentity, error) {
-	f.gotCode, f.gotNonce, f.gotVerifier = code, nonce, codeVerifier
+func (f *fakeCodeVerifier) verify(_ context.Context, code, nonce, codeVerifier, redirectURI string) (providerIdentity, error) {
+	f.gotCode, f.gotNonce, f.gotVerifier, f.gotRedirect = code, nonce, codeVerifier, redirectURI
 	return f.id, f.err
 }
 
@@ -67,12 +68,13 @@ func TestProviderCreateSession(t *testing.T) {
 	}}
 	h := NewProviderSessionHandler(map[string]CodeVerifier{"discord": dv}, prov, sess)
 
-	c, rec := exchangeCtx(t, "discord", `{"code":"abc","nonce":"n1","device":"web","codeVerifier":"v1"}`)
+	c, rec := exchangeCtx(t, "discord", `{"code":"abc","nonce":"n1","device":"web","codeVerifier":"v1","redirectUri":"lena://oauth/discord"}`)
 	require.NoError(t, h.CreateSession(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "abc", dv.gotCode)
 	assert.Equal(t, "n1", dv.gotNonce)
 	assert.Equal(t, "v1", dv.gotVerifier)
+	assert.Equal(t, "lena://oauth/discord", dv.gotRedirect)
 	assert.Equal(t, "discord", prov.provider)
 	assert.Equal(t, "123456789", prov.subject)
 	assert.Equal(t, "d@cord.com", prov.email)

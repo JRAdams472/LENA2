@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/gommon/log"
 
 	// otelecho is deprecated in favour of github.com/labstack/echo-opentelemetry,
 	// which requires Echo v5; we are on v4, so keep otelecho until that upgrade.
@@ -429,6 +430,11 @@ func (s *serverServices) wireAuth(cfg config.Config, pool *pgxpool.Pool, log *sl
 		}
 	}
 	issuers, audiences = bff.TrustIssuer(issuers, audiences, bff.FacebookIssuer(), cfg.FacebookClientID)
+	// Apple issues under two audiences on the same issuer: the Services
+	// ID for web code-exchange id_tokens and the bundle ID for iOS
+	// native credentials. Each configured one joins the allowlist.
+	issuers, audiences = bff.TrustIssuer(issuers, audiences, bff.AppleIssuer(), cfg.AppleClientID)
+	issuers, audiences = bff.TrustIssuer(issuers, audiences, bff.AppleIssuer(), cfg.AppleBundleID)
 
 	authenticator, err := bff.NewAuthenticator(bff.AuthConfig{
 		Issuers:         issuers,
@@ -607,21 +613,37 @@ func registerAuthRoutes(e *echo.Echo, cfg config.Config, s *serverServices) {
 	// Discord is plain OAuth2; Microsoft and Facebook return an OIDC
 	// id_token verified by the standard issuer/JWKS path.
 	codeVerifiers := map[string]bff.CodeVerifier{}
-	if v := bff.NewDiscordVerifier(cfg.DiscordClientID, cfg.DiscordClientSecret, cfg.DiscordRedirectURI); v != nil {
+	if v := bff.NewDiscordVerifier(cfg.DiscordClientID, cfg.DiscordClientSecret,
+		cfg.DiscordRedirectURI, cfg.DiscordMobileRedirectURI); v != nil {
 		codeVerifiers[bff.DiscordProvider] = v
 	}
 	if iss := bff.MicrosoftIssuer(cfg.MicrosoftTenant); iss != "" {
 		if v := bff.NewOAuthOIDCVerifier(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret,
 			cfg.MicrosoftRedirectURI,
 			"https://login.microsoftonline.com/"+cfg.MicrosoftTenant+"/oauth2/v2.0/token",
-			s.Authenticator, false); v != nil {
+			s.Authenticator, false, cfg.MicrosoftMobileRedirectURI); v != nil {
 			codeVerifiers[bff.MicrosoftProvider] = v
 		}
 	}
 	if v := bff.NewOAuthOIDCVerifier(cfg.FacebookClientID, cfg.FacebookClientSecret,
 		cfg.FacebookRedirectURI, "https://graph.facebook.com/v21.0/oauth/access_token",
-		s.Authenticator, true); v != nil {
+		s.Authenticator, true, cfg.FacebookMobileRedirectURI); v != nil {
 		codeVerifiers[bff.FacebookProvider] = v
+	}
+	// Apple's client_secret is a short-lived ES256 JWT minted from the
+	// .p8 developer key — the key file being unreadable disables the
+	// provider rather than crashing startup, matching the warn-and-
+	// disable convention for bad MICROSOFT_TENANT.
+	if cfg.AppleClientID != "" || cfg.AppleTeamID != "" || cfg.AppleKeyID != "" || cfg.ApplePrivateKeyFile != "" {
+		key, err := bff.LoadApplePrivateKey(cfg.ApplePrivateKeyFile)
+		if err != nil {
+			log.Error("apple sign-in disabled: private key failed to load", "err", err)
+		} else if v := bff.NewAppleVerifier(cfg.AppleClientID, cfg.AppleTeamID,
+			cfg.AppleKeyID, cfg.AppleRedirectURI, key, s.Authenticator); v != nil {
+			codeVerifiers[bff.AppleProvider] = v
+		} else {
+			log.Warn("apple sign-in disabled: incomplete APPLE_* configuration")
+		}
 	}
 
 	// Account linking: list/link/unlink provider identities. Link is a

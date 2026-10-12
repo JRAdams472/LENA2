@@ -36,7 +36,7 @@ func tokenEndpoint(t *testing.T, idToken string, status int) (*httptest.Server, 
 		assert.Equal(t, "secret", r.Form.Get("client_secret"))
 		assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
 		assert.Equal(t, "the-code", r.Form.Get("code"))
-		assert.Equal(t, "http://app/cb", r.Form.Get("redirect_uri"))
+		assert.NotEmpty(t, r.Form.Get("redirect_uri"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		if status == http.StatusOK {
@@ -62,9 +62,10 @@ func TestOAuthOIDCVerifier(t *testing.T) {
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens, false)
 	require.NotNil(t, v)
 
-	id, err := v.verify(t.Context(), "the-code", "n1", "the-verifier")
+	id, err := v.verify(t.Context(), "the-code", "n1", "the-verifier", "")
 	require.NoError(t, err)
 	assert.Equal(t, "the-verifier", gotForm.Get("code_verifier"))
+	assert.Equal(t, "http://app/cb", gotForm.Get("redirect_uri"))
 	assert.Equal(t, "the-id-token", tokens.gotRaw)
 	assert.Equal(t, "https://login.microsoftonline.com/tid/v2.0", id.provider)
 	assert.Equal(t, "ms-sub", id.subject)
@@ -79,24 +80,24 @@ func TestOAuthOIDCVerifier_Nonce(t *testing.T) {
 	// requireNonce=true with an empty nonce fails before the exchange.
 	tokens := &fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s", nonce: "n1"}}
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens, true)
-	_, err := v.verify(t.Context(), "the-code", "", "v1")
+	_, err := v.verify(t.Context(), "the-code", "", "v1", "")
 	assert.ErrorIs(t, err, errOAuthCredential)
 	assert.Empty(t, tokens.gotRaw)
 
 	// A mismatched nonce is rejected.
-	_, err = v.verify(t.Context(), "the-code", "other", "v1")
+	_, err = v.verify(t.Context(), "the-code", "other", "v1", "")
 	assert.ErrorIs(t, err, errOAuthCredential)
 
 	// Matching nonce passes.
-	_, err = v.verify(t.Context(), "the-code", "n1", "v1")
+	_, err = v.verify(t.Context(), "the-code", "n1", "v1", "")
 	assert.NoError(t, err)
 
 	// requireNonce=false still verifies a nonce when one is supplied.
 	tokens2 := &fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s", nonce: "n1"}}
 	v2 := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens2, false)
-	_, err = v2.verify(t.Context(), "the-code", "wrong", "v1")
+	_, err = v2.verify(t.Context(), "the-code", "wrong", "v1", "")
 	assert.ErrorIs(t, err, errOAuthCredential)
-	_, err = v2.verify(t.Context(), "the-code", "", "v1")
+	_, err = v2.verify(t.Context(), "the-code", "", "v1", "")
 	assert.NoError(t, err)
 }
 
@@ -104,15 +105,41 @@ func TestOAuthOIDCVerifier_NoVerifierOmitsFormField(t *testing.T) {
 	srv, gotForm := tokenEndpoint(t, "tok", http.StatusOK)
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL,
 		&fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s"}}, false)
-	_, err := v.verify(t.Context(), "the-code", "", "")
+	_, err := v.verify(t.Context(), "the-code", "", "", "")
 	require.NoError(t, err)
 	assert.False(t, gotForm.Has("code_verifier"))
+}
+
+func TestOAuthOIDCVerifier_RedirectURI(t *testing.T) {
+	srv, gotForm := tokenEndpoint(t, "tok", http.StatusOK)
+	tokens := &fakeOIDCTokenVerifier{claims: oidcClaims{issuer: "iss", subject: "s"}}
+	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens, false,
+		"lena://oauth/microsoft")
+
+	// The registered mobile URI is echoed in the exchange.
+	_, err := v.verify(t.Context(), "the-code", "", "v1", "lena://oauth/microsoft")
+	require.NoError(t, err)
+	assert.Equal(t, "lena://oauth/microsoft", gotForm.Get("redirect_uri"))
+
+	// The configured web URI echoes as-is when requested explicitly.
+	_, err = v.verify(t.Context(), "the-code", "", "v1", "http://app/cb")
+	require.NoError(t, err)
+	assert.Equal(t, "http://app/cb", gotForm.Get("redirect_uri"))
+
+	// An unregistered URI is rejected before the exchange.
+	_, err = v.verify(t.Context(), "the-code", "", "v1", "https://evil.example/cb")
+	assert.ErrorIs(t, err, errOAuthCredential)
+
+	// Without the allowlist entry the mobile URI is rejected too.
+	v2 := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, tokens, false)
+	_, err = v2.verify(t.Context(), "the-code", "", "v1", "lena://oauth/microsoft")
+	assert.ErrorIs(t, err, errOAuthCredential)
 }
 
 func TestOAuthOIDCVerifier_ExchangeFails(t *testing.T) {
 	srv, _ := tokenEndpoint(t, "", http.StatusBadRequest)
 	v := NewOAuthOIDCVerifier("cid", "secret", "http://app/cb", srv.URL, &fakeOIDCTokenVerifier{}, false)
-	_, err := v.verify(t.Context(), "the-code", "", "v1")
+	_, err := v.verify(t.Context(), "the-code", "", "v1", "")
 	assert.ErrorIs(t, err, errOAuthCredential)
 }
 
@@ -144,23 +171,29 @@ func TestTrustIssuer(t *testing.T) {
 	assert.Equal(t, []string{"https://accounts.google.com", "https://www.facebook.com"}, issuers)
 	assert.Equal(t, []string{"gid", "fb-app-id"}, audiences)
 
-	// Already-present issuer is left alone (explicit config wins).
-	issuers, audiences = TrustIssuer(issuers, audiences, "https://www.facebook.com", "other")
+	// The identical pair is left alone (explicit config wins).
+	issuers, audiences = TrustIssuer(issuers, audiences, "https://www.facebook.com", "fb-app-id")
 	assert.Len(t, issuers, 2)
 	assert.Len(t, audiences, 2)
+
+	// A second audience on a trusted issuer appends — Apple issues under
+	// both the Services ID and the bundle ID on the same issuer.
+	issuers, audiences = TrustIssuer(issuers, audiences, "https://www.facebook.com", "com.example.ios")
+	assert.Equal(t, []string{"https://accounts.google.com", "https://www.facebook.com", "https://www.facebook.com"}, issuers)
+	assert.Equal(t, []string{"gid", "fb-app-id", "com.example.ios"}, audiences)
 
 	// Empty inputs are no-ops.
 	before := append([]string{}, issuers...)
 	issuers, audiences = TrustIssuer(issuers, audiences, "", "x")
 	issuers, audiences = TrustIssuer(issuers, audiences, "y", "")
 	assert.Equal(t, before, issuers)
-	assert.Len(t, audiences, 2)
+	assert.Len(t, audiences, 3)
 }
 
 // TestProviderKeysDistinct guards the registry keys from colliding with
 // OIDC issuers or the "oidc"/"" dispatch sentinels.
 func TestProviderKeysDistinct(t *testing.T) {
-	for _, p := range []string{DiscordProvider, MicrosoftProvider, FacebookProvider} {
+	for _, p := range []string{AppleProvider, DiscordProvider, MicrosoftProvider, FacebookProvider} {
 		parsed, err := url.Parse(p)
 		require.NoError(t, err)
 		assert.Empty(t, parsed.Scheme, "provider key %q must not be a URL", p)

@@ -177,6 +177,10 @@ type Config struct {
 	// Discord app (e.g. http://localhost/auth/discord/callback); it is
 	// echoed in the token exchange.
 	DiscordRedirectURI string `envconfig:"DISCORD_REDIRECT_URI" default:""`
+	// DiscordMobileRedirectURI is the deep-link URI the mobile app uses
+	// for its authorize request (e.g. lena://oauth/discord). When set it
+	// joins the allowlist of redirect URIs the code exchange echoes.
+	DiscordMobileRedirectURI string `envconfig:"DISCORD_MOBILE_REDIRECT_URI" default:""`
 	// MicrosoftClientID/Secret configure Microsoft Entra sign-in via the
 	// authorization-code exchange (the token response carries an OIDC
 	// id_token). MicrosoftTenant scopes sign-in: "consumers" (personal
@@ -187,6 +191,9 @@ type Config struct {
 	MicrosoftClientSecret string `envconfig:"MICROSOFT_CLIENT_SECRET" default:""`
 	MicrosoftTenant       string `envconfig:"MICROSOFT_TENANT" default:"consumers"`
 	MicrosoftRedirectURI  string `envconfig:"MICROSOFT_REDIRECT_URI" default:""`
+	// MicrosoftMobileRedirectURI is the app's deep-link redirect — see
+	// DiscordMobileRedirectURI.
+	MicrosoftMobileRedirectURI string `envconfig:"MICROSOFT_MOBILE_REDIRECT_URI" default:""`
 	// FacebookClientID/Secret configure Facebook Login (OIDC id_token via
 	// the authorization-code exchange). The redirect URI must match a
 	// redirect registered in the Facebook app; id_tokens require the
@@ -194,6 +201,28 @@ type Config struct {
 	FacebookClientID     string `envconfig:"FACEBOOK_CLIENT_ID" default:""`
 	FacebookClientSecret string `envconfig:"FACEBOOK_CLIENT_SECRET" default:""`
 	FacebookRedirectURI  string `envconfig:"FACEBOOK_REDIRECT_URI" default:""`
+	// FacebookMobileRedirectURI is the app's deep-link redirect — see
+	// DiscordMobileRedirectURI.
+	FacebookMobileRedirectURI string `envconfig:"FACEBOOK_MOBILE_REDIRECT_URI" default:""`
+	// AppleClientID is the Sign in with Apple Services ID used by the web
+	// authorization-code exchange — also the audience on web id_tokens.
+	// The client_secret Apple requires is not static: the server mints a
+	// short-lived ES256 JWT per exchange, signed with the .p8 key in
+	// ApplePrivateKeyFile, so AppleTeamID/AppleKeyID identify the signing
+	// identity. Empty disables the provider entirely.
+	AppleClientID    string `envconfig:"APPLE_CLIENT_ID" default:""`
+	AppleRedirectURI string `envconfig:"APPLE_REDIRECT_URI" default:""`
+	AppleTeamID      string `envconfig:"APPLE_TEAM_ID" default:""`
+	AppleKeyID       string `envconfig:"APPLE_KEY_ID" default:""`
+	// ApplePrivateKeyFile is the path to the .p8 PEM (ECDSA P-256) key
+	// downloaded from the Apple developer account; mounted as a secret,
+	// never committed — same convention as FCM_CREDENTIALS_FILE.
+	ApplePrivateKeyFile string `envconfig:"APPLE_PRIVATE_KEY_FILE" default:""`
+	// AppleBundleID is the iOS bundle identifier. Set it to trust
+	// appleid.apple.com tokens issued to the native app — the mobile
+	// Sign in with Apple sheet returns an id_token that authenticates
+	// directly as a bearer credential.
+	AppleBundleID string `envconfig:"APPLE_BUNDLE_ID" default:""`
 	// ImportInbox is the directory where source images/PDFs are placed before
 	// the importer processes them. The new submitRecipeScan mutation also
 	// writes uploaded admin scans here.
@@ -280,7 +309,8 @@ func (c *Config) ValidateServer() error {
 	}
 	// A configured code-exchange OIDC provider supplies its own audience
 	// (client id), so AUTH_AUDIENCES can be empty only in that case.
-	if c.AuthAudiences == "" && c.MicrosoftClientID == "" && c.FacebookClientID == "" {
+	if c.AuthAudiences == "" && c.MicrosoftClientID == "" && c.FacebookClientID == "" &&
+		c.AppleClientID == "" && c.AppleBundleID == "" {
 		missing = append(missing, "AUTH_AUDIENCES")
 	}
 	if len(missing) > 0 {
