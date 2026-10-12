@@ -350,6 +350,26 @@ func (r *Resolver) DeleteMyAccount(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// AcceptDisclaimer records the caller's acceptance of the medical/allergen
+// disclaimer (LEN-31). Idempotent; allergy records can't be written until
+// this has run once.
+func (r *Resolver) AcceptDisclaimer(ctx context.Context) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if err := r.IdentityService.AcceptDisclaimer(ctx, u.UserID, u.Email); err != nil {
+		return false, err
+	}
+	r.invalidateUser(ctx, u)
+	slog.Default().Info("audit",
+		"action", "accept_disclaimer",
+		"actor", u.Email,
+		"user_id", u.UserID,
+	)
+	return true, nil
+}
+
 // userByID reloads a user and wraps it in a resolver, marking protected
 // status from the identity service's configured list.
 func (r *Resolver) userByID(ctx context.Context, userID int64) (*userResolver, error) {

@@ -102,7 +102,7 @@ describe("api client: auth and helpers", () => {
   it("getMe maps the user", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({
-        me: { id: "7", email: "a@b.c", displayName: "Ann" },
+        me: { id: "7", email: "a@b.c", displayName: "Ann", disclaimerAccepted: true },
       })
     );
 
@@ -121,6 +121,7 @@ describe("api client: auth and helpers", () => {
       externalSubject: null,
       provider: null,
       isSearchable: true,
+      disclaimerAccepted: true,
       household: null,
       birthdate: null,
       approvalStatus: null,

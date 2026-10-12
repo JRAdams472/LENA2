@@ -23,6 +23,7 @@ import { api, ApiError } from "@/lib/api";
 import { MemberAllergyKind, User } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
 import { useMe } from "@/app/auth/useMe";
+import DisclaimerConsentDialog from "@/app/components/DisclaimerConsentDialog";
 
 // Keyed by userID so the form mounts with the loaded profile values and
 // remounts if the signed-in user changes — avoids syncing props into state.
@@ -109,13 +110,19 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
 
 // The caller's own allergy/dietary records — one per allergen. Each row
 // is tri-state: no record, dietary preference, or allergy. Warnings on
-// recipes/lists fire for any household member's records.
-function AllergyCard() {
+// recipes/lists fire for any household member's records. LEN-31: recording
+// requires accepting the medical/allergen disclaimer once; clearing stays
+// ungated. If a write is still refused (DISCLAIMER_REQUIRED), the consent
+// dialog opens and the pending change retries after acceptance.
+function AllergyCard({ me, onAccepted }: { me: User; onAccepted: () => void }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [pending, setPending] = useState<{ allergenID: number; kind: MemberAllergyKind; on: boolean } | null>(null);
   const allergensQ = useQuery({ queryKey: ["allergens"], queryFn: () => api.getAllergens() });
   const mineQ = useQuery({ queryKey: ["myAllergies"], queryFn: () => api.getMyAllergies() });
 
+  const accepted = me.disclaimerAccepted;
   const mutation = useMutation({
     mutationFn: ({ allergenID, kind, on }: { allergenID: number; kind: MemberAllergyKind; on: boolean }) =>
       api.setMyAllergy(allergenID, kind, on),
@@ -125,8 +132,27 @@ function AllergyCard() {
       // Warnings are computed per-entity; refresh anything that shows them.
       queryClient.invalidateQueries();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to update allergy records"),
+    onError: (e, vars) => {
+      // Consent revoked or the cached flag is stale — reopen the dialog and
+      // keep the attempted change for retry after acceptance.
+      if (e instanceof ApiError && e.code === "DISCLAIMER_REQUIRED") {
+        setPending(vars);
+        setConsentOpen(true);
+        return;
+      }
+      setError(e instanceof ApiError ? e.message : "Failed to update allergy records");
+    },
   });
+
+  const onAcceptedThenRetry = () => {
+    setConsentOpen(false);
+    setError(null);
+    onAccepted();
+    if (pending) {
+      mutation.mutate(pending);
+      setPending(null);
+    }
+  };
 
   if (allergensQ.isLoading || mineQ.isLoading) {
     return (
@@ -146,6 +172,11 @@ function AllergyCard() {
       return;
     }
     if (value === "allergy" || value === "dietary") {
+      if (!accepted) {
+        setPending({ allergenID, kind: value, on: true });
+        setConsentOpen(true);
+        return;
+      }
       mutation.mutate({ allergenID, kind: value, on: true });
     }
   };
@@ -195,6 +226,14 @@ function AllergyCard() {
           );
         })}
       </Box>
+      <DisclaimerConsentDialog
+        open={consentOpen}
+        onClose={() => {
+          setConsentOpen(false);
+          setPending(null);
+        }}
+        onAccepted={onAcceptedThenRetry}
+      />
     </>
   );
 }
@@ -351,7 +390,7 @@ export default function ProfilePage() {
         <Typography variant="h6" gutterBottom>
           Allergies &amp; dietary restrictions
         </Typography>
-        <AllergyCard />
+        <AllergyCard me={me} onAccepted={refetch} />
       </Paper>
       <Paper sx={{ p: 3, border: 1, borderColor: "error.main" }}>
         <DangerZoneCard />

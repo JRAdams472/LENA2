@@ -531,6 +531,9 @@ allergen_by_name = {
     a["name"].lower(): a["id"]
     for a in gql(ADMIN, "{ allergens { id name } }")["allergens"]
 }
+# LEN-31: recording allergies requires the medical disclaimer on file.
+for tok in (ADMIN, MEMBER):
+    gql(tok, "mutation { acceptDisclaimer }")
 gql(
     ADMIN,
     "mutation($a: ID!, $k: MemberAllergyKind!, $on: Boolean!) { setMyAllergy(allergenId: $a, kind: $k, on: $on) }",

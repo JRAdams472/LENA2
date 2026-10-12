@@ -26,6 +26,7 @@ import { DocsNavList } from "@/app/components/marketing/DocsNav";
 const NAV = [
   { label: "Docs", href: "/docs" },
   { label: "Privacy", href: "/privacy" },
+  { label: "Disclaimer", href: "/disclaimer" },
   { label: "GitHub", href: "https://github.com/JRAdams472/LENA2", external: true },
 ];
 

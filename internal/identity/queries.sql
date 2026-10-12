@@ -318,3 +318,11 @@ WHERE user_id = $1
 -- users.household_id is a RESTRICT-edge while the row exists.
 DELETE FROM identity.users
 WHERE user_id = $1;
+-- name: SetDisclaimerAccepted :execrows
+-- Disclaimer acceptance (LEN-31): stamps when the user accepted the
+-- medical/allergen disclaimer. Idempotent — re-acceptance re-stamps.
+UPDATE identity.users
+SET disclaimer_accepted_at = now(),
+    updated_by             = $2,
+    updated_at             = now()
+WHERE user_id = $1;

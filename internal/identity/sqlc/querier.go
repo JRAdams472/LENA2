@@ -62,6 +62,9 @@ type Querier interface {
 	// row in the same statement so the two columns can never diverge.
 	SetActiveHousehold(ctx context.Context, arg SetActiveHouseholdParams) (int64, error)
 	SetApprovalStatus(ctx context.Context, arg SetApprovalStatusParams) (int64, error)
+	// Disclaimer acceptance (LEN-31): stamps when the user accepted the
+	// medical/allergen disclaimer. Idempotent — re-acceptance re-stamps.
+	SetDisclaimerAccepted(ctx context.Context, arg SetDisclaimerAcceptedParams) (int64, error)
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) (int64, error)
 	// Conditional update: the expected-household guard turns a concurrent
 	// accept/leave race into a zero-row conflict instead of a lost update.

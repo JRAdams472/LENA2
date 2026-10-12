@@ -54,6 +54,7 @@ const me = {
   externalSubject: null,
   provider: null,
   isSearchable: true,
+  disclaimerAccepted: true,
   household: null,
 };
 

@@ -606,6 +606,10 @@ func (r *userResolver) LastLoginAt() *graphql.Time {
 
 func (r *userResolver) IsSearchable() bool { return r.u.IsSearchable }
 
+// DisclaimerAccepted is true once the user has accepted the
+// medical/allergen disclaimer (LEN-31).
+func (r *userResolver) DisclaimerAccepted() bool { return r.u.DisclaimerAcceptedAt != nil }
+
 // Household resolves the user's household only when the resolved user is
 // the caller — admin user lists and other-user views never expose
 // household membership.

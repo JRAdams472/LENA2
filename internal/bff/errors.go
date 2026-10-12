@@ -25,6 +25,9 @@ const (
 	codeIdemInFlight    = "IDEMPOTENCY_IN_FLIGHT"
 	codeIdemKeyInvalid  = "IDEMPOTENCY_KEY_INVALID"
 	codeUnavailable     = "UNAVAILABLE"
+	// Recording allergy/dietary records requires prior acceptance of the
+	// medical disclaimer (LEN-31).
+	codeDisclaimerRequired = "DISCLAIMER_REQUIRED"
 )
 
 // Client-facing validation messages repeated across resolvers.
@@ -57,6 +60,13 @@ func badInputf(format string, a ...any) error {
 // (UNAVAILABLE) — e.g. the AI assistant with no provider configured.
 func errUnavailablef(format string, a ...any) error {
 	return &clientError{msg: fmt.Sprintf(format, a...), code: codeUnavailable}
+}
+
+func errDisclaimerRequired() error {
+	return &clientError{
+		msg:  "the medical disclaimer must be accepted before recording allergies",
+		code: codeDisclaimerRequired,
+	}
 }
 
 // sanitizeQueryErrors rewrites resolver errors in a GraphQL response so

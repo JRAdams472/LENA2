@@ -515,6 +515,9 @@ type IdentityService interface {
 	UserAdmin
 	HouseholdDirectory
 	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error
+	// AcceptDisclaimer stamps medical/allergen disclaimer acceptance
+	// (LEN-31); setMyAllergy writes are gated on it.
+	AcceptDisclaimer(ctx context.Context, userID int64, by string) error
 	// DeleteUser permanently removes the identity row (LEN-146). All
 	// user-scoped rows cascade; catalog attribution SET NULLs.
 	DeleteUser(ctx context.Context, userID int64) error

@@ -385,6 +385,21 @@ func (mr *MockQuerierMockRecorder) SetApprovalStatus(ctx, arg any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetApprovalStatus", reflect.TypeOf((*MockQuerier)(nil).SetApprovalStatus), ctx, arg)
 }
 
+// SetDisclaimerAccepted mocks base method.
+func (m *MockQuerier) SetDisclaimerAccepted(ctx context.Context, arg sqlc.SetDisclaimerAcceptedParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetDisclaimerAccepted", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetDisclaimerAccepted indicates an expected call of SetDisclaimerAccepted.
+func (mr *MockQuerierMockRecorder) SetDisclaimerAccepted(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDisclaimerAccepted", reflect.TypeOf((*MockQuerier)(nil).SetDisclaimerAccepted), ctx, arg)
+}
+
 // SetUserActive mocks base method.
 func (m *MockQuerier) SetUserActive(ctx context.Context, arg sqlc.SetUserActiveParams) (int64, error) {
 	m.ctrl.T.Helper()

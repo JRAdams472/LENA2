@@ -84,12 +84,16 @@ export class ApiError extends Error {
   // e.g. "account_pending"/"account_denied" from the LEN-127 approval
   // gate. Clients branch on this instead of string-matching messages.
   kind: string | null;
+  // GraphQL extensions.code when the response carries one — e.g.
+  // "DISCLAIMER_REQUIRED" from the LEN-31 consent gate.
+  code: string | null;
 
-  constructor(status: number, message: string, kind: string | null = null) {
+  constructor(status: number, message: string, kind: string | null = null, code: string | null = null) {
     super(message);
     this.status = status;
     this.name = "ApiError";
     this.kind = kind;
+    this.code = code;
   }
 }
 
@@ -368,7 +372,9 @@ async function request<T>(
     }
     throw new ApiError(
       res.status,
-      payload.errors.map((e) => e.message).join("; ")
+      payload.errors.map((e) => e.message).join("; "),
+      null,
+      code ?? null
     );
   }
 
@@ -1062,6 +1068,7 @@ interface GqlUser {
   isProtected: boolean;
   lastLoginAt: string | null;
   isSearchable?: boolean;
+  disclaimerAccepted?: boolean;
   household?: GqlHousehold | null;
 }
 
@@ -1145,6 +1152,7 @@ const toUser = (u: GqlUser): User => ({
   externalSubject: null,
   provider: null,
   isSearchable: u.isSearchable !== false,
+  disclaimerAccepted: u.disclaimerAccepted === true,
   household: u.household ? toHousehold(u.household) : null,
 });
 
@@ -2216,7 +2224,7 @@ export const api = {
   // Auth
   getMe: async (): Promise<User> => {
     const data = await request<{ me: GqlUser }>(
-      `query { me { id email displayName firstName lastName backupEmail birthdate role isActive isProtected lastLoginAt isSearchable household { ${HOUSEHOLD_FIELDS} } } }`
+      `query { me { id email displayName firstName lastName backupEmail birthdate role isActive isProtected lastLoginAt isSearchable disclaimerAccepted household { ${HOUSEHOLD_FIELDS} } } }`
     );
     return toUser(data.me);
   },
@@ -2920,6 +2928,12 @@ export const api = {
 
   // Set or clear one of the caller's records. kind is "allergy" (avoid
   // always) or "dietary" (preference); on=false removes the record.
+  // LEN-31: records the caller's acceptance of the medical/allergen
+  // disclaimer. Required before setMyAllergy(on: true) will succeed.
+  acceptDisclaimer: async (): Promise<void> => {
+    await request<{ acceptDisclaimer: boolean }>(`mutation { acceptDisclaimer }`);
+  },
+
   setMyAllergy: async (allergenId: number, kind: "allergy" | "dietary", on: boolean): Promise<void> => {
     await request<{ setMyAllergy: boolean }>(
       `mutation ($allergenId: ID!, $kind: MemberAllergyKind!, $on: Boolean!) { setMyAllergy(allergenId: $allergenId, kind: $kind, on: $on) }`,

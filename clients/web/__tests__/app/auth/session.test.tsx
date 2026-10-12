@@ -71,6 +71,7 @@ const meData = {
   isProtected: false,
   lastLoginAt: null,
   isSearchable: false,
+  disclaimerAccepted: true,
   household: null,
 };
 

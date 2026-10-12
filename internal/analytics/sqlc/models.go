@@ -302,26 +302,27 @@ type IdentitySession struct {
 }
 
 type IdentityUser struct {
-	UserID          int64              `json:"user_id"`
-	Provider        string             `json:"provider"`
-	ExternalSubject string             `json:"external_subject"`
-	Email           string             `json:"email"`
-	DisplayName     pgtype.Text        `json:"display_name"`
-	IsActive        bool               `json:"is_active"`
-	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
-	CreatedBy       string             `json:"created_by"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedBy       pgtype.Text        `json:"updated_by"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	Role            string             `json:"role"`
-	FirstName       pgtype.Text        `json:"first_name"`
-	LastName        pgtype.Text        `json:"last_name"`
-	BackupEmail     pgtype.Text        `json:"backup_email"`
-	HouseholdID     pgtype.Int8        `json:"household_id"`
-	IsSearchable    bool               `json:"is_searchable"`
-	HouseholdRole   string             `json:"household_role"`
-	Birthdate       pgtype.Date        `json:"birthdate"`
-	ApprovalStatus  string             `json:"approval_status"`
+	UserID               int64              `json:"user_id"`
+	Provider             string             `json:"provider"`
+	ExternalSubject      string             `json:"external_subject"`
+	Email                string             `json:"email"`
+	DisplayName          pgtype.Text        `json:"display_name"`
+	IsActive             bool               `json:"is_active"`
+	LastLoginAt          pgtype.Timestamptz `json:"last_login_at"`
+	CreatedBy            string             `json:"created_by"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedBy            pgtype.Text        `json:"updated_by"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	Role                 string             `json:"role"`
+	FirstName            pgtype.Text        `json:"first_name"`
+	LastName             pgtype.Text        `json:"last_name"`
+	BackupEmail          pgtype.Text        `json:"backup_email"`
+	HouseholdID          pgtype.Int8        `json:"household_id"`
+	IsSearchable         bool               `json:"is_searchable"`
+	HouseholdRole        string             `json:"household_role"`
+	Birthdate            pgtype.Date        `json:"birthdate"`
+	ApprovalStatus       string             `json:"approval_status"`
+	DisclaimerAcceptedAt pgtype.Timestamptz `json:"disclaimer_accepted_at"`
 }
 
 type IdentityUserLogin struct {

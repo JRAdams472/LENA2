@@ -212,6 +212,26 @@ describe("api client", () => {
     );
   });
 
+  it("carries the GraphQL extensions code on ApiError.code", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQLErrors([
+        { message: "the medical disclaimer must be accepted", code: "DISCLAIMER_REQUIRED" },
+      ])
+    );
+
+    const error = await api.getBrandsPaged(1, 100).catch((e) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe("DISCLAIMER_REQUIRED");
+  });
+
+  it("sends acceptDisclaimer and resolves void", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ acceptDisclaimer: true }));
+
+    await expect(api.acceptDisclaimer()).resolves.toBeUndefined();
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.query).toContain("acceptDisclaimer");
+  });
+
   it("calls onUnauthorized on HTTP 401", async () => {
     const onUnauthorized = jest.fn();
     setOnUnauthorized(onUnauthorized);
@@ -295,6 +315,7 @@ describe("api client", () => {
       isProtected: false,
       lastLoginAt: null,
       isSearchable: false,
+      disclaimerAccepted: true,
       household: null,
     };
     mockFetch

@@ -133,6 +133,17 @@ func (f *fakeIdentityService) AdminSetApproval(_ context.Context, _, targetID in
 	return nil
 }
 
+func (f *fakeIdentityService) AcceptDisclaimer(_ context.Context, userID int64, _ string) error {
+	u, ok := f.users[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	now := time.Now()
+	u.DisclaimerAcceptedAt = &now
+	f.users[userID] = u
+	return nil
+}
+
 func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, first, last, backup string, birthdate *time.Time, _ string) error {
 	if f.profileErr != nil {
 		return f.profileErr
@@ -668,5 +679,34 @@ func TestResolver_DeleteMyAccount(t *testing.T) {
 		ok, err := r.DeleteMyAccount(ctx)
 		assert.False(t, ok)
 		assert.ErrorContains(t, err, "last active admin")
+	})
+}
+
+// acceptDisclaimer stamps acceptance on the caller and reflects on the
+// reloaded user; missing users surface the service error.
+func TestAcceptDisclaimer(t *testing.T) {
+	ctx := testutil.WithUser(context.Background(), 7, "me@example.com")
+
+	t.Run("stamps and reflects", func(t *testing.T) {
+		svc := newFakeIdentityService(identity.User{UserID: 7, Email: "me@example.com", IsActive: true})
+		r := &Resolver{IdentityService: svc}
+		ok, err := r.AcceptDisclaimer(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+
+		u, err := svc.GetByID(ctx, 7)
+		require.NoError(t, err)
+		require.NotNil(t, u.DisclaimerAcceptedAt)
+		assert.True(t, (&userResolver{u: u}).DisclaimerAccepted())
+
+		// Idempotent — a second accept re-stamps without error.
+		ok, err = r.AcceptDisclaimer(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("unaccepted resolves false", func(t *testing.T) {
+		u := identity.User{UserID: 7}
+		assert.False(t, (&userResolver{u: u}).DisclaimerAccepted())
 	})
 }

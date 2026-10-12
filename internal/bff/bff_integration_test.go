@@ -146,6 +146,9 @@ func TestBFF_Integration(t *testing.T) {
 	t.Run("events", func(t *testing.T) {
 		runEventTests(t, srv, issuer)
 	})
+	t.Run("disclaimer gate", func(t *testing.T) {
+		runDisclaimerTests(t, srv, issuer, pool)
+	})
 	t.Run("allergy lazy source", func(t *testing.T) {
 		runAllergyLazySourceTests(t, srv, issuer)
 	})
@@ -1546,6 +1549,9 @@ func runMultiHouseholdTests(t *testing.T, srv *httptest.Server, issuer *testutil
 	}`, map[string]any{"itemId": kItem, "allergenId": milkID})
 	require.Equal(t, http.StatusOK, status)
 	require.Empty(t, gr.Errors)
+	status, gr = doGraphQL(t, srv, tokK, `mutation { acceptDisclaimer }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
 	status, gr = doGraphQL(t, srv, tokK, `mutation Allergy($allergenId: ID!) {
 		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
 	}`, map[string]any{"allergenId": milkID})
@@ -2412,6 +2418,9 @@ func runAllergyLazySourceTests(t *testing.T, srv *httptest.Server, issuer *testu
 	require.Empty(t, gr.Errors)
 
 	// The admin's own record makes their solo household the warning source.
+	status, gr = doGraphQL(t, srv, admin, `mutation { acceptDisclaimer }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
 	status, gr = doGraphQL(t, srv, admin, `mutation Allergy($allergenId: ID!) {
 		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
 	}`, map[string]any{"allergenId": milkID})
@@ -2686,6 +2695,9 @@ func runAllergySweepTests(t *testing.T, srv *httptest.Server, issuer *testutil.T
 	require.Equal(t, http.StatusOK, status)
 	require.Empty(t, gr.Errors)
 
+	status, gr = doGraphQL(t, srv, admin, `mutation { acceptDisclaimer }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
 	status, gr = doGraphQL(t, srv, admin, `mutation Allergy($allergenId: ID!) {
 		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
 	}`, map[string]any{"allergenId": milkID})
@@ -3176,4 +3188,94 @@ func runDeleteAccountTests(t *testing.T, srv *httptest.Server, issuer *testutil.
 
 func TestMain(m *testing.M) {
 	os.Exit(testutil.SharedDBTestMain(m))
+}
+
+// runDisclaimerTests exercises the LEN-31 consent gate end to end: a fresh
+// user is refused DISCLAIMER_REQUIRED on setMyAllergy, acceptDisclaimer
+// flips me.disclaimerAccepted, the retry succeeds, and clearing stays
+// ungated.
+func runDisclaimerTests(t *testing.T, srv *httptest.Server, issuer *testutil.TestIssuer, pool *pgxpool.Pool) {
+	tok := issuer.Token(t, "disc-user", "disc@example.com", "Disc User")
+
+	// Find the milk allergen in the seed catalog.
+	status, gr := doGraphQL(t, srv, tok, `{ allergens { id name } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var allergenRes struct {
+		Allergens []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"allergens"`
+	}
+	decodeData(t, gr.Data, &allergenRes)
+	milkID := ""
+	for _, a := range allergenRes.Allergens {
+		if a.Name == "milk" {
+			milkID = a.ID
+		}
+	}
+	require.NotEmpty(t, milkID, "seed catalog must contain the milk allergen")
+
+	// Fresh user starts unaccepted.
+	status, gr = doGraphQL(t, srv, tok, `{ me { disclaimerAccepted } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var meRes struct {
+		Me struct {
+			DisclaimerAccepted bool `json:"disclaimerAccepted"`
+		} `json:"me"`
+	}
+	decodeData(t, gr.Data, &meRes)
+	assert.False(t, meRes.Me.DisclaimerAccepted)
+
+	// Recording is refused with the DISCLAIMER_REQUIRED extension code.
+	status, gr = doGraphQLExpectErrors(t, srv, tok, `mutation Allergy($allergenId: ID!) {
+		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
+	}`, map[string]any{"allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, gr.Errors)
+	assert.Equal(t, "DISCLAIMER_REQUIRED", gr.Errors[0].Extensions["code"])
+
+	// Clearing is ungated even before acceptance — seed the record
+	// directly since the mutation itself is gated, then remove it.
+	status, gr = doGraphQL(t, srv, tok, `{ me { id } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	var idRes struct {
+		Me struct {
+			ID string `json:"id"`
+		} `json:"me"`
+	}
+	decodeData(t, gr.Data, &idRes)
+	uid, err := strconv.ParseInt(idRes.Me.ID, 10, 64)
+	require.NoError(t, err)
+	allergenID, err := strconv.ParseInt(milkID, 10, 64)
+	require.NoError(t, err)
+	_, err = pool.Exec(context.Background(),
+		`INSERT INTO userprefs.user_allergen (user_id, allergen_id, kind, created_by, updated_by)
+		 VALUES ($1, $2, 'allergy', 'test', 'test')`, uid, allergenID)
+	require.NoError(t, err)
+
+	status, gr = doGraphQL(t, srv, tok, `mutation Allergy($allergenId: ID!) {
+		setMyAllergy(allergenId: $allergenId, kind: allergy, on: false)
+	}`, map[string]any{"allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	// Accepting flips the flag and unblocks recording.
+	status, gr = doGraphQL(t, srv, tok, `mutation { acceptDisclaimer }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+
+	status, gr = doGraphQL(t, srv, tok, `{ me { disclaimerAccepted } }`, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
+	decodeData(t, gr.Data, &meRes)
+	assert.True(t, meRes.Me.DisclaimerAccepted)
+
+	status, gr = doGraphQL(t, srv, tok, `mutation Allergy($allergenId: ID!) {
+		setMyAllergy(allergenId: $allergenId, kind: allergy, on: true)
+	}`, map[string]any{"allergenId": milkID})
+	require.Equal(t, http.StatusOK, status)
+	require.Empty(t, gr.Errors)
 }

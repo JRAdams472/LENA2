@@ -181,7 +181,11 @@ type User struct {
 	// Birthdate gates alcohol-related AI suggestions (sommelier/cocktail);
 	// nil until the user sets it in their profile.
 	Birthdate *time.Time
-	CreatedAt time.Time
+	// DisclaimerAcceptedAt stamps acceptance of the medical/allergen
+	// disclaimer (LEN-31); nil until accepted. Recording allergy/dietary
+	// records requires it.
+	DisclaimerAcceptedAt *time.Time
+	CreatedAt            time.Time
 }
 
 // IsAdmin reports whether the user holds the admin role.
@@ -540,6 +544,23 @@ func (s *Service) AdminSetApproval(ctx context.Context, actorID, targetID int64,
 	})
 }
 
+// AcceptDisclaimer stamps the user's medical/allergen disclaimer
+// acceptance (LEN-31). Recording allergy/dietary records via
+// setMyAllergy requires it. Idempotent — re-acceptance re-stamps.
+func (s *Service) AcceptDisclaimer(ctx context.Context, userID int64, by string) error {
+	n, err := s.q.SetDisclaimerAccepted(ctx, sqlc.SetDisclaimerAcceptedParams{
+		UserID:    userID,
+		UpdatedBy: textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set disclaimer accepted: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set disclaimer accepted: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
 // CountUsers returns the total number of user rows.
 func (s *Service) CountUsers(ctx context.Context) (int64, error) {
 	n, err := s.q.CountUsers(ctx)
@@ -857,6 +878,7 @@ func toUser(row sqlc.IdentityUser) User {
 		t := row.Birthdate.Time
 		u.Birthdate = &t
 	}
+	u.DisclaimerAcceptedAt = timeOrNil(row.DisclaimerAcceptedAt)
 	return u
 }
 
@@ -891,6 +913,7 @@ func toUserFromUpsert(row sqlc.UpsertUserRow) User {
 		t := row.Birthdate.Time
 		u.Birthdate = &t
 	}
+	u.DisclaimerAcceptedAt = timeOrNil(row.DisclaimerAcceptedAt)
 	return u
 }
 
