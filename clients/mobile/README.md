@@ -153,8 +153,8 @@ disabled stub instead of crashing, and notification delivery silently
 skips the push channel.
 
 For a real-device build the Firebase Android app's package name must match
-`applicationId` (still the placeholder `com.example.lena_mobile` — the
-rename is an explicit LEN-17 follow-up). Server side, set
+`applicationId` (`app.lenaskitchen.lena` — see `../../docs/store-checklist.md`
+for the console-side registrations the ID requires). Server side, set
 `LENA_PUSH_PROVIDER=fcm` and `LENA_FCM_CREDENTIALS_FILE`
 (see `../../docs/deployment.md`).
 
@@ -168,6 +168,19 @@ local heads-up on the `lena_default` channel and bump the unread badge;
 taps route through the shared `notification_links.dart` kind→screen map.
 Per-category Push switches live in Notification settings — `_all` is the
 master opt-in and independent of the Feed switches.
+
+## Release builds
+
+The app ID is `app.lenaskitchen.lena` on both platforms and the display
+name is "Lena" — console registrations (Firebase, Google OAuth clients,
+Apple bundle ID) that still carry the old `com.example.*` placeholder
+must be recreated; `../../docs/store-checklist.md` lists every one.
+
+Release APK/AAB builds sign with the upload keystore described by
+`android/key.properties` (gitignored — see the checklist for the keytool
+command and file format). When `key.properties` is absent the release
+type falls back to the debug signature so `flutter run --release` still
+works locally; Play only accepts the upload-key build.
 
 ## On-device AI (Ask Dot)
 

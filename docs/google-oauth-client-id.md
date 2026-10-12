@@ -42,7 +42,7 @@ The API validates the `aud` claim of the Google ID token against this value, so 
 
 For the Flutter `google_sign_in` plugin you also need a Google Services config for the Android package name:
 
-1. In Google Cloud Console, create an **Android** OAuth client ID for your package name (default is `com.example.lena` unless you changed it in `mobile/android/app/build.gradle.kts`).
+1. In Google Cloud Console, create an **Android** OAuth client ID for the app package name `app.lenaskitchen.lena` (set in `clients/mobile/android/app/build.gradle.kts`) plus your signing-key SHA-1.
 2. Download `google-services.json` and place it in `mobile/android/app/`.
 3. The `GOOGLE_SERVER_CLIENT_ID` value remains the **Web** client ID from step 3.
 

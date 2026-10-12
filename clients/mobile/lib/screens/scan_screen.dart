@@ -442,6 +442,7 @@ class _ScanScreenState extends State<ScanScreen> {
         MobileScanner(
           controller: _scanner,
           onDetect: _onDetect,
+          errorBuilder: _scannerError,
         ),
         Align(
           alignment: Alignment.bottomCenter,
@@ -477,6 +478,35 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Camera errors get an in-context explanation instead of the plugin's
+  /// bare error widget — a denied permission reads as a dead screen during
+  /// store review otherwise.
+  Widget _scannerError(BuildContext context, MobileScannerException error) {
+    final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              denied ? Icons.no_photography_outlined : Icons.videocam_off,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              denied
+                  ? 'Camera access is off. Enable it in your device '
+                      'settings to scan barcodes.'
+                  : 'The camera is unavailable on this device.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

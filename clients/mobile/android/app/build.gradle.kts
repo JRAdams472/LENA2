@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Release signing: android/key.properties (gitignored) carries the upload-key
+// credentials. When absent — dev machines, CI — the release type falls back to
+// the debug signing config so `flutter run --release` still works. Generate the
+// keystore + file per docs/store-checklist.md before Play submission.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
 // google-services.json is the Firebase project's client config — it is
@@ -14,7 +26,7 @@ if (file("google-services.json").exists()) {
 }
 
 android {
-    namespace = "com.example.lena_mobile"
+    namespace = "app.lenaskitchen.lena"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -26,8 +38,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.lena_mobile"
+        applicationId = "app.lenaskitchen.lena"
         // Desugaring + the plugin set pushes past the 64k method limit.
         multiDexEnabled = true
         // mobile_scanner requires minSdk 23.
@@ -41,11 +52,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+            storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+            storePassword = keystoreProperties.getProperty("storePassword")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Debug signing fallback keeps `flutter run --release` working on
+            // machines without the upload keystore; Play builds require
+            // android/key.properties.
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
