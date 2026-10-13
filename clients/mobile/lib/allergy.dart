@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
+import 'screens/disclaimer_screen.dart';
 
 // The GraphQL field block for entity allergen flags + household-member
 // conflicts. Paste inside an entity's selection set — screens use raw
@@ -42,6 +44,167 @@ const String setMyAllergyMutation = r'''
     setMyAllergy(allergenId: $allergenId, kind: $kind, on: $on)
   }
 ''';
+
+const String acceptDisclaimerMutation = r'''
+  mutation AcceptDisclaimer {
+    acceptDisclaimer
+  }
+''';
+
+// LEN-31: the server refuses setMyAllergy(on: true) until the medical &
+// allergen disclaimer is on file. Match the extension code, not the
+// human-readable message.
+bool hasDisclaimerRequired(OperationException? e) =>
+    (e?.graphqlErrors ?? const <GraphQLError>[]).any(
+      (g) => g.extensions?['code'] == 'DISCLAIMER_REQUIRED',
+    );
+
+// The one-time consent gate for recording allergies/dietary records.
+// Self-contained — runs acceptDisclaimer itself. Resolves true when the
+// disclaimer is on file, false when the user dismisses or acceptance fails.
+Future<bool> showDisclaimerConsent(BuildContext context) async =>
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => const _DisclaimerConsentSheet(),
+    ) ==
+    true;
+
+class _DisclaimerConsentSheet extends StatefulWidget {
+  const _DisclaimerConsentSheet();
+
+  @override
+  State<_DisclaimerConsentSheet> createState() =>
+      _DisclaimerConsentSheetState();
+}
+
+class _DisclaimerConsentSheetState extends State<_DisclaimerConsentSheet> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _accept() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final result = await GraphQLProvider.of(context).value.mutate(
+          MutationOptions(document: gql(acceptDisclaimerMutation)),
+        );
+    if (!mounted) return;
+    if (result.hasException && result.data?['acceptDisclaimer'] != true) {
+      setState(() {
+        _busy = false;
+        _error = result.exception?.graphqlErrors.isNotEmpty == true
+            ? result.exception!.graphqlErrors.first.message
+            : 'Could not record acceptance';
+      });
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Medical & allergen disclaimer',
+                style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Text(
+              "Allergen and dietary information in Lena's Kitchen is a "
+              'convenience, not medical, nutritional, or dietary advice. '
+              'Records may be incomplete, inaccurate, or out of date — '
+              "always check the product's actual label, and consult a "
+              'qualified healthcare professional about allergies or '
+              'medical conditions.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'By accepting you acknowledge this and use these features at '
+              'your own risk.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DisclaimerScreen(),
+                ),
+              ),
+              child: const Text('Read the full disclaimer'),
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _error!,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.error),
+                ),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _busy ? null : _accept,
+                child: Text(_busy ? 'Accepting…' : 'I understand and accept'),
+              ),
+            ),
+            Center(
+              child: TextButton(
+                onPressed: _busy ? null : () => Navigator.pop(context),
+                child: const Text('Not now'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Compact "check the label" line for recipe and cook surfaces. Tapping it
+// opens the full disclaimer.
+class DisclaimerCaption extends StatelessWidget {
+  const DisclaimerCaption({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const DisclaimerScreen()),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text.rich(
+          TextSpan(
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            children: [
+              const TextSpan(
+                text: 'Allergy and dietary info is a convenience, not '
+                    "medical advice — always check the product's label. ",
+              ),
+              TextSpan(
+                text: 'Disclaimer',
+                style: TextStyle(color: theme.colorScheme.primary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 List<Map<String, dynamic>> allergyWarningsOf(Map<String, dynamic>? entity) =>
     (entity?['allergyWarnings'] as List? ?? []).cast<Map<String, dynamic>>();

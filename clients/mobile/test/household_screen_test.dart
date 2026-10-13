@@ -51,15 +51,26 @@ class _CaptureLink extends Link {
   final List<Request> requests = [];
   final Map<String, Map<String, dynamic>> responses;
   final Map<String, List<GraphQLError>> errors;
+  final Map<String, List<GraphQLError>> errorsOnce;
+  final _onceSeen = <String>{};
 
-  _CaptureLink(this.responses, {this.errors = const {}});
+  _CaptureLink(
+    this.responses, {
+    this.errors = const {},
+    this.errorsOnce = const {},
+  });
 
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
     requests.add(request);
+    final name = _opName(request);
+    var errs = errors[name];
+    if (name != null && errorsOnce.containsKey(name) && _onceSeen.add(name)) {
+      errs = errorsOnce[name];
+    }
     yield Response(
-      data: responses[_opName(request)] ?? <String, dynamic>{},
-      errors: errors[_opName(request)],
+      data: responses[name] ?? <String, dynamic>{},
+      errors: errs,
       response: const <String, dynamic>{},
     );
   }
@@ -124,9 +135,14 @@ Map<String, dynamic> _householdResponse({
   List? searchResults,
   Map<String, dynamic>? household,
   bool? isSearchable,
+  bool? disclaimerAccepted,
 }) =>
     {
-      'me': {'id': '2', 'isSearchable': isSearchable ?? true},
+      'me': {
+        'id': '2',
+        'isSearchable': isSearchable ?? true,
+        'disclaimerAccepted': disclaimerAccepted ?? true,
+      },
       'myHousehold': household ?? _household,
       'myHouseholds': _householdList,
       'householdInvites': invites,
@@ -135,22 +151,33 @@ Map<String, dynamic> _householdResponse({
       if (searchResults != null) 'searchHouseholdUsers': searchResults,
     };
 
-_CaptureLink _link({Map<String, Map<String, dynamic>> extra = const {}}) =>
-    _CaptureLink({
-      'HouseholdScreen': _householdResponse(),
-      'MyAllergies': const <String, dynamic>{},
-      'SetActiveHousehold': const {
-        'setActiveHousehold': {'id': '8'}
+_CaptureLink _link({
+  Map<String, Map<String, dynamic>> extra = const {},
+  Map<String, List<GraphQLError>> errors = const {},
+  Map<String, List<GraphQLError>> errorsOnce = const {},
+  bool? disclaimerAccepted,
+}) =>
+    _CaptureLink(
+      {
+        'HouseholdScreen': _householdResponse(
+          disclaimerAccepted: disclaimerAccepted,
+        ),
+        'MyAllergies': const <String, dynamic>{},
+        'SetActiveHousehold': const {
+          'setActiveHousehold': {'id': '8'}
+        },
+        'CreateHousehold': const {
+          'createHousehold': {'id': '9', 'name': 'Cabin'}
+        },
+        'AcceptInvite': const {
+          'acceptHouseholdInvite': {'id': '3'}
+        },
+        'LeaveHousehold': const {'leaveHousehold': true},
+        ...extra,
       },
-      'CreateHousehold': const {
-        'createHousehold': {'id': '9', 'name': 'Cabin'}
-      },
-      'AcceptInvite': const {
-        'acceptHouseholdInvite': {'id': '3'}
-      },
-      'LeaveHousehold': const {'leaveHousehold': true},
-      ...extra,
-    });
+      errors: errors,
+      errorsOnce: errorsOnce,
+    );
 
 Widget _app(_CaptureLink link, {AuthService? auth}) => GraphQLProvider(
       client: ValueNotifier(
@@ -723,6 +750,149 @@ void main() {
     calls = link.byName('SetMyAllergy');
     expect(calls, hasLength(2));
     expect(calls[1].variables['on'], isFalse);
+  });
+
+  const peanutsFixture = {
+    'allergens': [
+      {
+        'id': 'a1',
+        'name': 'Peanuts',
+        'description': null,
+        'isActive': true,
+      },
+    ],
+    'myAllergies': <Map<String, dynamic>>[],
+  };
+
+  testWidgets('recording an allergy asks for the disclaimer first', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    final link = _link(
+      disclaimerAccepted: false,
+      extra: {
+        'MyAllergies': peanutsFixture,
+        'SetMyAllergy': const {'setMyAllergy': true},
+        'AcceptDisclaimer': const {'acceptDisclaimer': true},
+      },
+    );
+    await tester.pumpWidget(_app(link));
+    await _settle(tester);
+
+    await tester.tap(find.text('Allergy'));
+    await _settle(tester);
+
+    // The consent sheet opens before anything is written.
+    expect(find.text('Medical & allergen disclaimer'), findsOneWidget);
+    expect(link.byName('SetMyAllergy'), isEmpty);
+
+    await tester.tap(find.text('I understand and accept'));
+    await _settle(tester);
+
+    expect(link.byName('AcceptDisclaimer'), hasLength(1));
+    final calls = link.byName('SetMyAllergy');
+    expect(calls, hasLength(1));
+    expect(calls.single.variables['allergenId'], 'a1');
+    expect(calls.single.variables['kind'], 'allergy');
+    expect(calls.single.variables['on'], isTrue);
+  });
+
+  testWidgets('dismissing the disclaimer sheet writes nothing', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    final link = _link(
+      disclaimerAccepted: false,
+      extra: {
+        'MyAllergies': peanutsFixture,
+        'SetMyAllergy': const {'setMyAllergy': true},
+        'AcceptDisclaimer': const {'acceptDisclaimer': true},
+      },
+    );
+    await tester.pumpWidget(_app(link));
+    await _settle(tester);
+
+    await tester.tap(find.text('Allergy'));
+    await _settle(tester);
+    await tester.tap(find.text('Not now'));
+    await _settle(tester);
+
+    expect(link.byName('AcceptDisclaimer'), isEmpty);
+    expect(link.byName('SetMyAllergy'), isEmpty);
+  });
+
+  testWidgets('clearing a record never asks for the disclaimer', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    final link = _link(
+      disclaimerAccepted: false,
+      extra: {
+        'MyAllergies': const {
+          'allergens': [
+            {
+              'id': 'a1',
+              'name': 'Peanuts',
+              'description': null,
+              'isActive': true,
+            },
+          ],
+          'myAllergies': [
+            {
+              'kind': 'allergy',
+              'allergen': {'id': 'a1', 'name': 'Peanuts'},
+            },
+          ],
+        },
+        'SetMyAllergy': const {'setMyAllergy': true},
+      },
+    );
+    await tester.pumpWidget(_app(link));
+    await _settle(tester);
+
+    await tester.tap(find.text('None'));
+    await _settle(tester);
+
+    expect(find.text('Medical & allergen disclaimer'), findsNothing);
+    expect(link.byName('AcceptDisclaimer'), isEmpty);
+    final calls = link.byName('SetMyAllergy');
+    expect(calls, hasLength(1));
+    expect(calls.single.variables['on'], isFalse);
+  });
+
+  testWidgets('a server refusal re-asks once and retries the write', (
+    tester,
+  ) async {
+    _bigSurface(tester);
+    // The cached disclaimerAccepted flag says accepted, but the server
+    // still refuses — a stale flag re-opens the sheet and retries once.
+    final link = _link(
+      extra: {
+        'MyAllergies': peanutsFixture,
+        'SetMyAllergy': const {'setMyAllergy': true},
+        'AcceptDisclaimer': const {'acceptDisclaimer': true},
+      },
+      errorsOnce: {
+        'SetMyAllergy': [
+          const GraphQLError(
+            message: 'the medical disclaimer must be accepted',
+            extensions: {'code': 'DISCLAIMER_REQUIRED'},
+          ),
+        ],
+      },
+    );
+    await tester.pumpWidget(_app(link));
+    await _settle(tester);
+
+    await tester.tap(find.text('Allergy'));
+    await _settle(tester);
+
+    expect(find.text('Medical & allergen disclaimer'), findsOneWidget);
+    await tester.tap(find.text('I understand and accept'));
+    await _settle(tester);
+
+    expect(link.byName('AcceptDisclaimer'), hasLength(1));
+    expect(link.byName('SetMyAllergy'), hasLength(2));
   });
 
   testWidgets('no registered allergens shows the empty note', (tester) async {

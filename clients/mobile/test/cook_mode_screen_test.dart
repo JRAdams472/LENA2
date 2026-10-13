@@ -124,6 +124,19 @@ void main() {
       expect(find.textContaining('Whole chicken'), findsOneWidget);
     });
 
+    testWidgets('the label-check disclaimer caption stays on screen',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_harness());
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining("check the product's label"),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('wide pane shows the ingredients rail', (tester) async {
       tester.view.physicalSize = const Size(1100, 800);
       tester.view.devicePixelRatio = 1.0;

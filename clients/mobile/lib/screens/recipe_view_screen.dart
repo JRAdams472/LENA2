@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../allergy.dart';
 import 'edit_recipe_screen.dart';
 
 /// Read-only recipe peek — name, ingredients, steps. Opened from the
@@ -74,7 +75,8 @@ class RecipeViewScreen extends StatelessWidget {
         document: gql(recipeViewQuery),
         variables: {'id': recipeId},
       ),
-      builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
+      builder: (QueryResult result,
+          {VoidCallback? refetch, FetchMore? fetchMore}) {
         final recipe = result.data?['recipe'] as Map<String, dynamic>?;
         return Scaffold(
           appBar: AppBar(
@@ -109,9 +111,8 @@ class RecipeViewScreen extends StatelessWidget {
     final steps = List<Map<String, dynamic>>.from(
         (recipe['steps'] as List? ?? [])
             .map((s) => Map<String, dynamic>.from(s as Map)))
-      ..sort((a, b) =>
-          ((a['stepNumber'] as num?) ?? 0)
-              .compareTo((b['stepNumber'] as num?) ?? 0));
+      ..sort((a, b) => ((a['stepNumber'] as num?) ?? 0)
+          .compareTo((b['stepNumber'] as num?) ?? 0));
 
     // Group consecutive items sharing a section, preserving display
     // order — most recipes are one flat group.
@@ -132,20 +133,15 @@ class RecipeViewScreen extends StatelessWidget {
         Text('Ingredients', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         if (items.isEmpty)
-          Text('No ingredients',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text('No ingredients', style: Theme.of(context).textTheme.bodySmall),
         for (final group in groups) ...[
           if (group.name != null)
             Padding(
               padding: const EdgeInsets.only(top: 8, bottom: 2),
               child: Text(
                 group.name!,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelLarge
-                    ?.copyWith(
-                        color:
-                            Theme.of(context).colorScheme.onSurfaceVariant),
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           for (final line in group.lines)
@@ -182,6 +178,9 @@ class RecipeViewScreen extends StatelessWidget {
               ],
             ),
           ),
+        const SizedBox(height: 16),
+        const Divider(),
+        const DisclaimerCaption(),
       ],
     );
   }
