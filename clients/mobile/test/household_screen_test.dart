@@ -65,9 +65,7 @@ class _CaptureLink extends Link {
     requests.add(request);
     final name = _opName(request);
     var errs = errors[name];
-    if (name != null &&
-        errorsOnce.containsKey(name) &&
-        _onceSeen.add(name)) {
+    if (name != null && errorsOnce.containsKey(name) && _onceSeen.add(name)) {
       errs = errorsOnce[name];
     }
     yield Response(
@@ -754,7 +752,7 @@ void main() {
     expect(calls[1].variables['on'], isFalse);
   });
 
-  const _peanuts = {
+  const peanutsFixture = {
     'allergens': [
       {
         'id': 'a1',
@@ -773,7 +771,7 @@ void main() {
     final link = _link(
       disclaimerAccepted: false,
       extra: {
-        'MyAllergies': _peanuts,
+        'MyAllergies': peanutsFixture,
         'SetMyAllergy': const {'setMyAllergy': true},
         'AcceptDisclaimer': const {'acceptDisclaimer': true},
       },
@@ -806,7 +804,7 @@ void main() {
     final link = _link(
       disclaimerAccepted: false,
       extra: {
-        'MyAllergies': _peanuts,
+        'MyAllergies': peanutsFixture,
         'SetMyAllergy': const {'setMyAllergy': true},
         'AcceptDisclaimer': const {'acceptDisclaimer': true},
       },
@@ -870,7 +868,7 @@ void main() {
     // still refuses — a stale flag re-opens the sheet and retries once.
     final link = _link(
       extra: {
-        'MyAllergies': _peanuts,
+        'MyAllergies': peanutsFixture,
         'SetMyAllergy': const {'setMyAllergy': true},
         'AcceptDisclaimer': const {'acceptDisclaimer': true},
       },
