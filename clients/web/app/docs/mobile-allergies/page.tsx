@@ -18,15 +18,22 @@ export default function Page() {
       <Section title={"Editing your records"}>
         <P>{<Fragment key={0}>{"Open the "}<strong key={0}>{"People"}</strong>{" tab — the same tri-state toggles the web Profile page shows ("}<strong key={1}>{"None / Dietary / Allergy"}</strong>{") per allergen. Records are per-member; whoever's cooking can fix their own right from the kitchen."}</Fragment>}</P>
         <Screenshot src={"/images/mobile-allergies.png"} alt={"Mobile — the allergy editor on the People tab, milk set to Allergy"} device="phone" />
+        <P>{<Fragment key={1}>{"The first time you record an allergy or dietary restriction, a "}<strong key={0}>{"consent sheet"}</strong>{" slides up with the "}<DocLink key={1} href="https://lenaskitchen.app/disclaimer" external>{"medical & allergen disclaimer"}</DocLink>{" summary — tap "}<strong key={2}>{"I understand and accept"}</strong>{" and your record writes immediately. "}<strong key={3}>{"Not now"}</strong>{" leaves the toggle untouched. Acceptance is once per user across devices; switching back to "}<em key={4}>{"None"}</em>{" never asks. If the server thinks your acceptance is stale, the sheet re-opens once and retries the write automatically."}</Fragment>}</P>
+        <Screenshot src={"/images/mobile-disclaimer-consent.png"} alt={"Mobile — the disclaimer consent sheet over the People-tab allergy editor"} device="phone" />
+        <P>{<Fragment key={2}>{"The consent sheet links out to the full disclaimer — the same text as the public web page:"}</Fragment>}</P>
+        <Screenshot src={"/images/mobile-disclaimer-screen.png"} alt={"Mobile — the full medical & allergen disclaimer screen"} device="phone" />
+        <P>{<Fragment key={3}>{"Recipe detail and "}<strong key={0}>{"cook mode"}</strong>{" also carry a tappable "}<em key={1}>{"\"always check the product's label\""}</em>{" caption that opens the full disclaimer — warnings stay advisory and nothing is blocked."}</Fragment>}</P>
+        <Screenshot src={"/images/mobile-recipe-disclaimer.png"} alt={"Mobile — the disclaimer caption at the foot of a recipe page"} device="phone" />
+        <Screenshot src={"/images/mobile-cook-disclaimer.png"} alt={"Mobile — the disclaimer caption pinned under a cook-mode step"} device="phone" />
       </Section>
       <Section title={"Where warnings show up"}>
-        <P>{<Fragment key={1}>{"Warning icons ride along on the surfaces you touch while cooking and shopping — grocery lines, meal-plan slots, recipe pages, and event dishes. Tap a warning chip for the member-by-member breakdown (who's affected, which allergen, contains vs. may-contain)."}</Fragment>}</P>
+        <P>{<Fragment key={4}>{"Warning icons ride along on the surfaces you touch while cooking and shopping — grocery lines, meal-plan slots, recipe pages, and event dishes. Tap a warning chip for the member-by-member breakdown (who's affected, which allergen, contains vs. may-contain)."}</Fragment>}</P>
         <Screenshot src={"/images/mobile-allergy-warning.png"} alt={"Mobile — a grocery line flagged for a member's milk allergy"} device="phone" />
-        <P>{<Fragment key={2}>{"Confirmed-allergen "}<code key={0}>{"contains"}</code>{" conflicts show red; dietary restrictions and "}<code key={1}>{"may_contain"}</code>{" flags stay amber — same severity rules as the web."}</Fragment>}</P>
+        <P>{<Fragment key={5}>{"Confirmed-allergen "}<code key={0}>{"contains"}</code>{" conflicts show red; dietary restrictions and "}<code key={1}>{"may_contain"}</code>{" flags stay amber — same severity rules as the web."}</Fragment>}</P>
       </Section>
       <Section title={"Web-only"}>
-        <P>{<Fragment key={3}>{"The "}<strong key={0}>{"allergen registry"}</strong>{" (Inventory → Allergens) and the "}<strong key={1}>{"AI flag review queue"}</strong>{" (Inventory → Allergen Suggestions) are admin surfaces on the web — see "}<DocLink key={2} href="/docs/allergy-tracking#curating-allergen-data-web-admins">{"Allergy Tracking"}</DocLink>{"."}</Fragment>}</P>
-        <P>{<Fragment key={4}>{"← Back to "}<DocLink key={0} href="/docs/mobile-app">{"Using the Mobile App"}</DocLink></Fragment>}</P>
+        <P>{<Fragment key={6}>{"The "}<strong key={0}>{"allergen registry"}</strong>{" (Inventory → Allergens) and the "}<strong key={1}>{"AI flag review queue"}</strong>{" (Inventory → Allergen Suggestions) are admin surfaces on the web — see "}<DocLink key={2} href="/docs/allergy-tracking#curating-allergen-data-web-admins">{"Allergy Tracking"}</DocLink>{"."}</Fragment>}</P>
+        <P>{<Fragment key={7}>{"← Back to "}<DocLink key={0} href="/docs/mobile-app">{"Using the Mobile App"}</DocLink></Fragment>}</P>
       </Section>
     </DocPage>
   );

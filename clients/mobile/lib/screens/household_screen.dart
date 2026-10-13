@@ -20,6 +20,7 @@ const String householdQuery = r'''
     me {
       id
       isSearchable
+      disclaimerAccepted
     }
     myHousehold {
       id
@@ -324,17 +325,54 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
 
   // Set or clear one of the caller's allergy/dietary records, then
   // refresh the allergy query (kind is required even when clearing).
+  // LEN-31: recording requires the disclaimer on file — the server
+  // enforces it too, so a stale disclaimerAccepted flag re-asks once
+  // via DISCLAIMER_REQUIRED before the write is retried.
   Future<void> _setAllergy(
     String allergenId,
     String value,
     String? current,
     VoidCallback? refetch,
+    bool disclaimerAccepted,
   ) async {
-    final vars = value == 'none'
-        ? {'allergenId': allergenId, 'kind': current ?? 'allergy', 'on': false}
-        : {'allergenId': allergenId, 'kind': value, 'on': true};
-    await _mutate(setMyAllergyMutation, vars);
-    refetch?.call();
+    final on = value != 'none';
+    final vars = on
+        ? {'allergenId': allergenId, 'kind': value, 'on': true}
+        : {'allergenId': allergenId, 'kind': current ?? 'allergy', 'on': false};
+
+    var needsConsent = on && !disclaimerAccepted;
+    var retried = false;
+    while (true) {
+      if (needsConsent) {
+        final accepted = await showDisclaimerConsent(context);
+        if (!accepted || !mounted) return;
+        needsConsent = false;
+      }
+      final result = await GraphQLProvider.of(context).value.mutate(
+            MutationOptions(
+              document: gql(setMyAllergyMutation),
+              variables: vars,
+            ),
+          );
+      if (!mounted) return;
+      if (!retried && hasDisclaimerRequired(result.exception)) {
+        retried = true;
+        needsConsent = true;
+        continue;
+      }
+      if (result.hasException) {
+        setState(() {
+          _error = result.exception?.graphqlErrors.isNotEmpty == true
+              ? result.exception!.graphqlErrors.first.message
+              : 'Request failed';
+        });
+        return;
+      }
+      setState(() => _error = null);
+      refetch?.call();
+      _refetch?.call();
+      return;
+    }
   }
 
   // Deep link for a notification row: recipe reminders open the recipe,
@@ -742,6 +780,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
     final me = result.data?['me'] as Map<String, dynamic>? ?? {};
     final myId = me['id'] as String?;
     final isSearchable = me['isSearchable'] as bool? ?? true;
+    final disclaimerAccepted = me['disclaimerAccepted'] as bool? ?? false;
     final household = result.data?['myHousehold'] as Map<String, dynamic>?;
     final households = (result.data?['myHouseholds'] as List? ?? [])
         .cast<Map<String, dynamic>>();
@@ -981,6 +1020,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                               sel.first,
                               mine[a['id']],
                               refetch,
+                              disclaimerAccepted,
                             ),
                           ),
                         ],

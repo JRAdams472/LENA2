@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../allergy.dart';
 import '../widgets/skeleton.dart';
 
 const String cookRecipeQuery = r'''
@@ -293,6 +294,16 @@ class _CookModeScreenState extends State<CookModeScreen> {
     final name = _recipe?['name'] as String? ?? 'Cook mode';
     return Scaffold(
       appBar: AppBar(title: Text(name)),
+      // LEN-31: the label-check caption stays on screen for the whole
+      // cook — it sits under the step pager / ingredients rail.
+      bottomNavigationBar: _recipe == null
+          ? null
+          : const SafeArea(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: DisclaimerCaption(),
+              ),
+            ),
       body: _loading
           ? const SkeletonList()
           : _error != null || _recipe == null
