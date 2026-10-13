@@ -85,7 +85,6 @@ export default function Page() {
         <P>{<Fragment key={50}>{"Every tweak action is recorded in "}<strong key={0}>{"Tweak history"}</strong>{" at the bottom of the panel — who saved the tweak set (and how many lines and steps it contained), who cleared the tweaks, and who marked them reviewed, newest first:"}</Fragment>}</P>
         <Screenshot src={"/images/recipe-tweak-history.png"} alt={"The Tweak history section — actor, action, and timestamp for every tweak change"} device="web" />
         <Screenshot src={"/images/recipe-detail-dark.png"} alt={"The recipe detail page in dark mode"} device="web" />
-        <Screenshot src={"/images/recipe-delta-mobile.png"} alt={"The tweaked view on mobile"} device="phone" />
         <Callout>{<Fragment key={51}>{"Canonical recipe editing (the underlying ingredients and steps everyone shares) stays admin-only — tweaks are the member-level editing path."}</Fragment>}</Callout>
       </Section>
       <Section title={"Importing a recipe from a photo (OCR)"}>
