@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -527,5 +528,51 @@ void main() {
     expect(rationaleCalls, 0);
     expect(messaging.permissionRequests, 1);
     await messaging.close();
+  });
+
+  // LEN-154 P1: iOS ships without push — start() must never touch the
+  // permission flow, the token registration, or the messaging streams.
+  test('on iOS, start is a full no-op — no permission, no token, no streams',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final messaging = _FakeMessaging();
+      final prefs = await _prefs();
+      var rationaleCalls = 0;
+      final link = _CaptureLink({
+        'RegisterDeviceToken': {'registerDeviceToken': true},
+      });
+      final svc = _service(
+        messaging,
+        _FakeNotifier(),
+        prefs,
+        link,
+        showPermissionRationale: (ctx) async {
+          rationaleCalls++;
+          return true;
+        },
+      );
+
+      expect(PushService.isSupported, isFalse);
+      await svc.start();
+
+      expect(rationaleCalls, 0);
+      expect(messaging.permissionRequests, 0);
+      expect(link.byName('RegisterDeviceToken'), isEmpty);
+      expect(prefs.getString('push.registered_token'), isNull);
+      await messaging.close();
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  test('isSupported is true on Android and false elsewhere', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    expect(PushService.isSupported, isFalse);
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    expect(PushService.isSupported, isFalse);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(PushService.isSupported, isTrue);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../push/push_service.dart';
 import '../responsive.dart';
 import '../widgets/skeleton.dart';
 
@@ -192,14 +193,17 @@ class _NotificationSettingsScreenState
             ),
             // Push is a second channel — _all is its master switch, so the
             // push toggle shows even where the feed toggle is hidden.
-            _labeledSwitch(
-              label: 'Push',
-              value: pushEnabled,
-              onChanged: (v) => _mutate(setCategoryPushEnabledMutation, {
-                'category': pref['category'],
-                'enabled': v,
-              }),
-            ),
+            // Hidden entirely on platforms without push (iOS for v1,
+            // LEN-154) — a switch that delivers nothing is dead UI.
+            if (PushService.isSupported)
+              _labeledSwitch(
+                label: 'Push',
+                value: pushEnabled,
+                onChanged: (v) => _mutate(setCategoryPushEnabledMutation, {
+                  'category': pref['category'],
+                  'enabled': v,
+                }),
+              ),
             if (!isAll)
               _labeledSwitch(
                 label: 'Feed',
@@ -269,12 +273,17 @@ class _NotificationSettingsScreenState
                 child: Text(_error!),
               ),
             ),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8.0),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
             child: Text(
-              'Choose which notifications reach your feed and which arrive '
-              'as pushes. Muting pauses a category for a while without '
-              'turning it off; the global mute pauses everything.',
+              PushService.isSupported
+                  ? 'Choose which notifications reach your feed and which '
+                      'arrive as pushes. Muting pauses a category for a '
+                      'while without turning it off; the global mute '
+                      'pauses everything.'
+                  : 'Choose which notifications reach your feed. Muting '
+                      'pauses a category for a while without turning it '
+                      'off; the global mute pauses everything.',
             ),
           ),
           ...prefs.map(_prefTile),

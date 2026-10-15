@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gql/ast.dart';
@@ -338,5 +339,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(link.byName('NotificationPrefs').length, greaterThan(before));
+  });
+
+  // LEN-154 P1: iOS ships without push — the Push switches and the push
+  // copy must not render (dead UI fails store review).
+  testWidgets('on iOS there are no Push switches and no push copy',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final link = _CaptureLink({
+        'NotificationPrefs': {'myNotificationPreferences': _prefs},
+      });
+      await tester.pumpWidget(_app(link));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Push'), findsNothing);
+      expect(find.textContaining('arrive as pushes'), findsNothing);
+      // Feed switches still render for non-_all rows.
+      expect(find.text('Feed'), findsNWidgets(2));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }
