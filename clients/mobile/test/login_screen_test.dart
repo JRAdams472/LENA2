@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -25,11 +26,15 @@ class MemStorage implements TokenStorage {
   }
 }
 
-AuthService _svc({Future<String?> Function()? googleSignIn}) {
+AuthService _svc({
+  Future<String?> Function()? googleSignIn,
+  Map<String, String>? providerClientIds,
+}) {
   return AuthService.test(
     storage: MemStorage(),
     httpClient: http_testing.MockClient((req) async => http.Response('', 404)),
     googleSignIn: googleSignIn,
+    providerClientIds: providerClientIds,
   );
 }
 
@@ -40,14 +45,29 @@ Widget _app(AuthService svc) {
   );
 }
 
+/// Runs [body] with the target platform faked to iOS. The override must
+/// reset inside the test body — invariant checks run before tearDowns.
+Future<void> _asIos(Future<void> Function() body) async {
+  debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  try {
+    await body();
+  } finally {
+    debugDefaultTargetPlatformOverride = null;
+  }
+}
+
 void main() {
-  testWidgets('login shows the compliance copy and provider stack', (
+  testWidgets('iOS + configured providers shows the full button stack', (
     tester,
   ) async {
-    final svc = _svc();
+    final svc = _svc(
+      providerClientIds: {'discord': 'd-id', 'facebook': 'f-id'},
+    );
     await svc.ready;
-    await tester.pumpWidget(_app(svc));
-    await tester.pumpAndSettle();
+    await _asIos(() async {
+      await tester.pumpWidget(_app(svc));
+      await tester.pumpAndSettle();
+    });
 
     // Exact copy from the store-compliance spec (LEN-136).
     expect(find.text('Welcome to Lena'), findsOneWidget);
@@ -83,13 +103,42 @@ void main() {
     }
   });
 
-  testWidgets('the four buttons stack vertically at equal prominence', (
-    tester,
-  ) async {
-    final svc = _svc();
+  testWidgets('Android shows Google only — Apple hides, unconfigured '
+      'providers hide', (tester) async {
+    final svc = _svc(); // no provider client ids
     await svc.ready;
     await tester.pumpWidget(_app(svc));
     await tester.pumpAndSettle();
+
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Continue with Apple'), findsNothing);
+    expect(find.text('Continue with Discord'), findsNothing);
+    expect(find.text('Continue with Facebook'), findsNothing);
+  });
+
+  testWidgets('Android shows Discord only when configured', (tester) async {
+    final svc = _svc(providerClientIds: {'discord': 'd-id'});
+    await svc.ready;
+    await tester.pumpWidget(_app(svc));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Continue with Discord'), findsOneWidget);
+    expect(find.text('Continue with Apple'), findsNothing);
+    expect(find.text('Continue with Facebook'), findsNothing);
+  });
+
+  testWidgets('visible buttons stack vertically at equal prominence', (
+    tester,
+  ) async {
+    final svc = _svc(
+      providerClientIds: {'discord': 'd-id', 'facebook': 'f-id'},
+    );
+    await svc.ready;
+    await _asIos(() async {
+      await tester.pumpWidget(_app(svc));
+      await tester.pumpAndSettle();
+    });
 
     final xs = <double>[];
     for (final label in [
@@ -113,24 +162,6 @@ void main() {
     for (var i = 1; i < xs.length; i++) {
       expect(xs[i], greaterThan(xs[i - 1]));
     }
-  });
-
-  testWidgets('unconfigured providers explain instead of dead-ending', (
-    tester,
-  ) async {
-    final svc = _svc();
-    await svc.ready;
-    await tester.pumpWidget(_app(svc));
-    await tester.pumpAndSettle();
-
-    // Discord has no client id compiled into the test build.
-    await tester.tap(find.text('Continue with Discord'));
-    await tester.pumpAndSettle();
-
-    expect(
-      svc.lastError,
-      "Sign in with Discord isn't configured for this app build.",
-    );
   });
 
   testWidgets('Google remains the working sign-in path', (tester) async {

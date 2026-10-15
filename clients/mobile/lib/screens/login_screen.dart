@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_service.dart';
@@ -12,13 +13,56 @@ import '../theme.dart';
 /// hyperlink here breaks store review). Provider buttons are stacked
 /// vertically at equal prominence; Apple is required by App Store review
 /// whenever other social providers are offered.
+///
+/// Dead-UI guard (LEN-154): only configured providers render. Apple shows
+/// on iOS/macOS only (no native Android path); Discord/Facebook show only
+/// when their client ids are compiled in — a button that errors on tap
+/// fails store review for non-functionality.
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
+
+  bool get _showApple =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
     final theme = Theme.of(context);
+    final providers = <Widget>[
+      if (_showApple)
+        _ProviderButton(
+          label: 'Continue with Apple',
+          background: Colors.black,
+          foreground: Colors.white,
+          icon: const Icon(Icons.apple, size: 20),
+          onPressed: () => auth.signInWithProvider('Apple'),
+        ),
+      _ProviderButton(
+        label: 'Continue with Google',
+        background: Colors.white,
+        foreground: Colors.black87,
+        side: const BorderSide(color: Colors.black26),
+        icon: const _BrandLetter('G', Color(0xFF4285F4)),
+        onPressed: auth.signIn,
+      ),
+      if (auth.isProviderConfigured('discord'))
+        _ProviderButton(
+          label: 'Continue with Discord',
+          background: const Color(0xFF5865F2),
+          foreground: Colors.white,
+          icon: const _BrandLetter('D', Color(0xFF5865F2)),
+          onPressed: () => auth.signInWithProvider('Discord'),
+        ),
+      if (auth.isProviderConfigured('facebook'))
+        _ProviderButton(
+          label: 'Continue with Facebook',
+          background: const Color(0xFF1877F2),
+          foreground: Colors.white,
+          icon: const Icon(Icons.facebook, size: 20),
+          onPressed: () => auth.signInWithProvider('Facebook'),
+        ),
+    ];
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
@@ -120,41 +164,11 @@ class LoginScreen extends StatelessWidget {
                           ),
                         if (auth.isLoading)
                           const Center(child: CircularProgressIndicator())
-                        else ...[
-                          _ProviderButton(
-                            label: 'Continue with Apple',
-                            background: Colors.black,
-                            foreground: Colors.white,
-                            icon: const Icon(Icons.apple, size: 20),
-                            onPressed: () => auth.signInWithProvider('Apple'),
-                          ),
-                          const SizedBox(height: 10),
-                          _ProviderButton(
-                            label: 'Continue with Google',
-                            background: Colors.white,
-                            foreground: Colors.black87,
-                            side: const BorderSide(color: Colors.black26),
-                            icon: const _BrandLetter('G', Color(0xFF4285F4)),
-                            onPressed: auth.signIn,
-                          ),
-                          const SizedBox(height: 10),
-                          _ProviderButton(
-                            label: 'Continue with Discord',
-                            background: const Color(0xFF5865F2),
-                            foreground: Colors.white,
-                            icon: const _BrandLetter('D', Color(0xFF5865F2)),
-                            onPressed: () => auth.signInWithProvider('Discord'),
-                          ),
-                          const SizedBox(height: 10),
-                          _ProviderButton(
-                            label: 'Continue with Facebook',
-                            background: const Color(0xFF1877F2),
-                            foreground: Colors.white,
-                            icon: const Icon(Icons.facebook, size: 20),
-                            onPressed: () =>
-                                auth.signInWithProvider('Facebook'),
-                          ),
-                        ],
+                        else
+                          for (final b in providers) ...[
+                            b,
+                            const SizedBox(height: 10),
+                          ],
                         const SizedBox(height: 16),
                         // Registration is web-only — plain text on purpose:
                         // a tappable link here fails store review (LEN-136).

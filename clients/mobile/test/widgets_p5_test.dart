@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -25,11 +26,13 @@ class _MemStorage implements TokenStorage {
   Future<void> delete(String key) async => map.remove(key);
 }
 
-AuthService _auth() => AuthService.test(
+AuthService _auth({Map<String, String>? providerClientIds}) =>
+    AuthService.test(
       storage: _MemStorage(),
       httpClient: http_testing.MockClient(
         (req) async => http.Response('{}', 401),
       ),
+      providerClientIds: providerClientIds,
     );
 
 Widget _wrap(Widget child, {bool dark = false, AuthService? auth}) =>
@@ -50,14 +53,24 @@ void main() {
     for (final dark in [false, true]) {
       final tag = dark ? 'dark' : 'light';
       testWidgets('login card — $tag', (tester) async {
-        final auth = _auth();
-        await auth.ready;
-        await tester.pumpWidget(_wrap(const LoginScreen(), dark: dark, auth: auth));
-        await tester.pumpAndSettle();
-        await expectLater(
-          find.byType(LoginScreen),
-          matchesGoldenFile('goldens/login_$tag.png'),
+        // Full provider stack: iOS + every client id configured (LEN-154
+        // hides unconfigured providers and Apple on Android).
+        final auth = _auth(
+          providerClientIds: {'discord': 'd-id', 'facebook': 'f-id'},
         );
+        await auth.ready;
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        try {
+          await tester.pumpWidget(
+              _wrap(const LoginScreen(), dark: dark, auth: auth));
+          await tester.pumpAndSettle();
+          await expectLater(
+            find.byType(LoginScreen),
+            matchesGoldenFile('goldens/login_$tag.png'),
+          );
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
       });
     }
 

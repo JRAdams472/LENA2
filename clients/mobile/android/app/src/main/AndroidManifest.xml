@@ -4,7 +4,7 @@
     <!-- Android 13+ runtime permission for push/local notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="Lena"
+        android:label="LENA"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

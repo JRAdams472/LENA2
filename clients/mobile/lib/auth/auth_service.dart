@@ -241,6 +241,12 @@ class AuthService extends ChangeNotifier {
     return _idToken;
   }
 
+  /// Whether a browser-sheet provider has a client id compiled in —
+  /// the login screen uses this to hide buttons that would dead-end
+  /// (LEN-154 P0). 'apple' is handled separately (native sheet).
+  bool isProviderConfigured(String provider) =>
+      providerConfigured(provider.toLowerCase(), _providerClientIds);
+
   /// Entry point for the non-Google provider buttons (LEN-136 P2).
   /// Apple runs the native iOS sheet — its identityToken joins the same
   /// OIDC bearer path as Google. Discord, Microsoft, and Facebook open

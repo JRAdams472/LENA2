@@ -26,3 +26,7 @@ android/app/google-services.json
 
 # Coverage
 coverage/
+
+# Release build defines — copy config/release.json.example, fill in real
+# values, and pass --dart-define-from-file=config/release.json.
+config/release.json
