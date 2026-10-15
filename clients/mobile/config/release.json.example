@@ -1,0 +1,12 @@
+{
+  "LENA_API_URL": "https://api.lenaskitchen.app/graphql",
+  "LENA_GOOGLE_SERVER_CLIENT_ID": "",
+  "LENA_GOOGLE_IOS_CLIENT_ID": "",
+  "LENA_DISCORD_CLIENT_ID": "",
+  "LENA_FACEBOOK_CLIENT_ID": "",
+  "LENA_MICROSOFT_CLIENT_ID": "",
+  "LENA_MICROSOFT_TENANT": "consumers",
+  "LENA_LOCAL_MODEL_URL": "",
+  "LENA_LOCAL_MODEL_TOKEN": "",
+  "LENA_LOCAL_MODEL_ID": ""
+}

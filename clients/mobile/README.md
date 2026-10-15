@@ -172,9 +172,24 @@ master opt-in and independent of the Feed switches.
 ## Release builds
 
 The app ID is `app.lenaskitchen.lena` on both platforms and the display
-name is "Lena" — console registrations (Firebase, Google OAuth clients,
+name is "LENA" — console registrations (Firebase, Google OAuth clients,
 Apple bundle ID) that still carry the old `com.example.*` placeholder
 must be recreated; `../../docs/store-checklist.md` lists every one.
+
+Release builds take their dart-defines from a file instead of a dozen
+`--dart-define` flags — copy `config/release.json.example` to
+`config/release.json` (gitignored), fill in the real values, then:
+
+```bash
+flutter build appbundle --release --dart-define-from-file=config/release.json
+# or
+flutter build ipa --release --dart-define-from-file=config/release.json
+```
+
+Provider buttons only render when their client id is compiled in, so a
+blank `LENA_DISCORD_CLIENT_ID`/`LENA_FACEBOOK_CLIENT_ID` means that
+button simply isn't in the build — there is no dead UI to flag in
+review (LEN-154).
 
 Release APK/AAB builds sign with the upload keystore described by
 `android/key.properties` (gitignored — see the checklist for the keytool
