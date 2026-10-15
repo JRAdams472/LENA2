@@ -63,6 +63,12 @@ android {
 
     buildTypes {
         release {
+            // R8 runs on release AABs; the rules file keeps flutter_gemma's
+            // MediaPipe transitive protos from failing the build.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // Debug signing fallback keeps `flutter run --release` working on
             // machines without the upload keystore; Play builds require
             // android/key.properties.
