@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
@@ -129,12 +130,24 @@ class LocalHeadsUpNotifier implements HeadsUpNotifier {
 
 const _registeredTokenKey = 'push.registered_token';
 const _rationaleShownKey = 'push.rationale_shown';
-const _platform = 'android';
+
+/// Server-side platform tag for registerDeviceToken. iOS is unreachable
+/// today (PushService.isSupported gates registration) but stays correct
+/// for when APNs lands.
+String get _platform =>
+    defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
 
 /// Coordinates the push lifecycle: permission, token registration with the
 /// BFF, token refresh, foreground heads-up display, tap routing, and
 /// unregistration on sign-out.
 class PushService {
+  /// Push is Android-only for v1 (LEN-154): iOS ships without APNs —
+  /// Firebase is never initialized there, no device token is registered,
+  /// and no push UI or permission prompt may appear (dead UI fails store
+  /// review).
+  static bool get isSupported =>
+      defaultTargetPlatform == TargetPlatform.android;
+
   PushService({
     MessagingClient? messaging,
     HeadsUpNotifier? notifier,
@@ -174,6 +187,13 @@ class PushService {
     GraphQLClient? client,
     SharedPreferences? prefs,
   }) async {
+    if (!isSupported) {
+      return PushService._disabled(
+        navigatorKey: navigatorKey,
+        client: client,
+        prefs: prefs,
+      );
+    }
     try {
       await Firebase.initializeApp();
     } catch (e) {
@@ -214,7 +234,7 @@ class PushService {
   /// and taps.
   Future<void> start() async {
     final messaging = _messaging;
-    if (messaging == null || _started) return;
+    if (!isSupported || messaging == null || _started) return;
     _started = true;
     if (!await _ensurePermission(messaging)) return;
     await _registerCurrentToken();
