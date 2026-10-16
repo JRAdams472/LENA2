@@ -11,7 +11,8 @@ in the repo and what remains a console-side step.
   `namespace`, `MainActivity` under `kotlin/app/lenaskitchen/lena/`) and in
   `ios/Runner.xcodeproj` (`PRODUCT_BUNDLE_IDENTIFIER`; tests use
   `app.lenaskitchen.lena.RunnerTests`).
-- **Display name:** "Lena" (`android:label`, `CFBundleDisplayName`/`CFBundleName`).
+- **Display name:** "LENA" (`android:label`, `CFBundleDisplayName`/
+  `CFBundleName`) — all-caps to match the in-app wordmark (LEN-154).
 
 **Console-side follow-ups after the rename:**
 
@@ -51,11 +52,23 @@ in the repo and what remains a console-side step.
   builds fall back to the debug signature (fine for `flutter run
   --release`, rejected by Play). Enroll the app in **Play App Signing** on
   first upload so Google holds the app-signing key.
-- **Build artifact:** submit an AAB — `flutter build appbundle`, never the
-  APK.
-- **Minification:** not enabled; if you turn on R8 later, re-test the
-  scan screen and sign-in on a real device first (no ProGuard rules are
-  shipped).
+- **Build artifact:** submit an AAB, never the APK. Release dart-defines
+  live in `config/release.json` (gitignored; copy
+  `config/release.json.example`):
+  ```bash
+  flutter build appbundle --release \
+    --dart-define-from-file=config/release.json
+  ```
+- **Minification:** R8 runs on release AABs; `app/proguard-rules.pro`
+  carries the MediaPipe `-dontwarn` rules flutter_gemma needs (LEN-154
+  P2 — without them `minifyReleaseWithR8` fails on missing proto
+  classes). Re-test the scan screen and sign-in on a real device on the
+  first minified build.
+- **Provider buttons render only when configured** (LEN-154 P0): the
+  login screen shows Discord/Facebook only when their `LENA_*_CLIENT_ID`
+  dart-define is compiled in, and Apple only on iOS. A button that
+  errors on tap fails review — so blank client ids are safe to ship,
+  they simply hide the button.
 - **Permissions:** `INTERNET`, `CAMERA` (barcode scan), and
   `POST_NOTIFICATIONS` (Android 13+, requested after a rationale sheet —
   see `lib/push/permission_rationale.dart`). No SMS/contacts/location.
@@ -76,8 +89,13 @@ in the repo and what remains a console-side step.
   Connect carry the declarations (email, name, device token, user
   content).
 - **Purpose strings:** `NSCameraUsageDescription` is set ("scan
-  barcodes"). Notification permission prompts after the in-app rationale
-  sheet; no plist key needed.
+  barcodes").
+- **Push: not shipping on iOS for v1** (LEN-154 P1). No `aps-environment`
+  entitlement, no `UIBackgroundModes`, no `GoogleService-Info.plist` —
+  `PushService.isSupported` is false on iOS so the app never initializes
+  Firebase, prompts, or shows push toggles there. If APNs ships later:
+  APNs auth key in Firebase + the plist + the entitlement, then flip the
+  gate.
 - **Encryption:** `ITSAppUsesNonExemptEncryption=false` is set in
   `Info.plist` (TLS only) — the export-compliance question is answered in
   the binary and won't block TestFlight processing.

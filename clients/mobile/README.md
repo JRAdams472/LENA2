@@ -7,7 +7,7 @@ A Flutter client for the LENA GraphQL BFF.
 - Flutter SDK >= 3.0.0
 - Dart >= 3.0.0
 - Android SDK — `minSdk` comes from `flutter.minSdkVersion` (24 on recent Flutter), which covers `mobile_scanner`'s floor of 23
-- iOS 13.0+
+- iOS 15.0+ (`IPHONEOS_DEPLOYMENT_TARGET` in `ios/Runner.xcodeproj`)
 
 ## Getting started
 
@@ -143,7 +143,14 @@ builds compile the read out entirely. Mint a token from the e2e stack's
 test issuer (`http://localhost:8085/token?sub=...&email=...`) — tokens
 are valid for one hour.
 
-### Push notifications (Android)
+### Push notifications (Android only for v1)
+
+Push is **Android-only** for v1 (LEN-154): `PushService.isSupported` is
+false on iOS, so `create()` returns the disabled stub *before*
+`Firebase.initializeApp()` — no Firebase init, no permission prompt, and
+no Push toggles in Notification settings there. APNs support (auth key,
+`GoogleService-Info.plist`, `aps-environment`, `UIBackgroundModes`) is a
+future feature ticket, not a v1 requirement.
 
 Push runs through Firebase Cloud Messaging and shares the
 `google-services.json` used by Google sign-in — the file is gitignored and
