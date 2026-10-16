@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1788,4 +1789,152 @@ func TestDismissAllergenSuggestion(t *testing.T) {
 			Return(sqlc.InventoryAllergenSuggestion{}, pgx.ErrNoRows)
 		assert.Error(t, s.DismissAllergenSuggestion(ctx, 5, 9, "admin@example.com"))
 	})
+}
+
+// The catalog-change hook invalidates the recipeimport mapping snapshot; it
+// must fire on every write that changes the name-indexed catalog (items,
+// ingredients, units) and stay silent on link-only writes.
+func TestCatalogChangeHook(t *testing.T) {
+	ctx := context.Background()
+
+	fires := []struct {
+		name   string
+		expect func(q *mock.MockQuerier)
+		call   func(s *Service) error
+	}{
+		{"CreateItem", func(q *mock.MockQuerier) {
+			q.EXPECT().CreateItem(ctx, gomock.Any()).Return(sqlc.InventoryItem{}, nil)
+		}, func(s *Service) error {
+			_, err := s.CreateItem(ctx, Item{Name: "Flour"}, "admin@example.com")
+			return err
+		}},
+		{"SubmitItem", func(q *mock.MockQuerier) {
+			q.EXPECT().CreateItem(ctx, gomock.Any()).Return(sqlc.InventoryItem{}, nil)
+		}, func(s *Service) error {
+			_, err := s.SubmitItem(ctx, Item{Name: "Flour"}, 5, "user@example.com")
+			return err
+		}},
+		{"SetItemStatus", func(q *mock.MockQuerier) {
+			q.EXPECT().SetItemStatus(ctx, gomock.Any()).Return(int64(1), nil)
+		}, func(s *Service) error {
+			return s.SetItemStatus(ctx, 7, ItemStatusApproved, 9, "admin@example.com")
+		}},
+		{"UpdateItem", func(q *mock.MockQuerier) {
+			q.EXPECT().UpdateItem(ctx, gomock.Any()).Return(int64(1), nil)
+		}, func(s *Service) error {
+			return s.UpdateItem(ctx, 7, Item{Name: "Bread Flour"}, "admin@example.com")
+		}},
+		{"DeleteItem", func(q *mock.MockQuerier) {
+			q.EXPECT().DeleteItem(ctx, int64(7)).Return(nil)
+		}, func(s *Service) error {
+			return s.DeleteItem(ctx, 7)
+		}},
+		{"CreateIngredient", func(q *mock.MockQuerier) {
+			q.EXPECT().CreateIngredient(ctx, gomock.Any()).Return(sqlc.InventoryIngredient{}, nil)
+		}, func(s *Service) error {
+			_, err := s.CreateIngredient(ctx, Ingredient{Name: "flour"}, "admin@example.com")
+			return err
+		}},
+		{"UpdateIngredient", func(q *mock.MockQuerier) {
+			q.EXPECT().UpdateIngredient(ctx, gomock.Any()).Return(sqlc.InventoryIngredient{}, nil)
+		}, func(s *Service) error {
+			_, err := s.UpdateIngredient(ctx, 7, Ingredient{Name: "bread flour"}, "admin@example.com")
+			return err
+		}},
+		{"DeleteIngredient", func(q *mock.MockQuerier) {
+			q.EXPECT().DeleteIngredient(ctx, int64(7)).Return(nil)
+		}, func(s *Service) error {
+			return s.DeleteIngredient(ctx, 7)
+		}},
+		{"GetOrCreateIngredient creates", func(q *mock.MockQuerier) {
+			q.EXPECT().FindIngredientByNormalizedName(ctx, "flour").Return(sqlc.InventoryIngredient{}, pgx.ErrNoRows)
+			q.EXPECT().CreateIngredient(ctx, gomock.Any()).Return(sqlc.InventoryIngredient{}, nil)
+		}, func(s *Service) error {
+			_, err := s.GetOrCreateIngredient(ctx, "Flour", nil, nil, "admin@example.com")
+			return err
+		}},
+		{"CreateUnit", func(q *mock.MockQuerier) {
+			q.EXPECT().CreateUnit(ctx, gomock.Any()).Return(sqlc.InventoryUnit{}, nil)
+		}, func(s *Service) error {
+			_, err := s.CreateUnit(ctx, Unit{Name: "pinch", Kind: "count"}, "admin@example.com")
+			return err
+		}},
+	}
+	for _, tc := range fires {
+		t.Run("fires on "+tc.name, func(t *testing.T) {
+			s, q := newTestService(t)
+			var calls atomic.Int64
+			s.SetCatalogChangeHook(func() { calls.Add(1) })
+			tc.expect(q)
+			require.NoError(t, tc.call(s))
+			assert.Equal(t, int64(1), calls.Load())
+		})
+	}
+
+	t.Run("fires on MergeIngredients", func(t *testing.T) {
+		s, q := newTestService(t)
+		var calls atomic.Int64
+		s.SetCatalogChangeHook(func() { calls.Add(1) })
+		// Merge runs inside InTx — the pool stub replays every statement
+		// on the shared mock.
+		q.EXPECT().GetIngredientByID(ctx, gomock.Any()).Return(sqlc.InventoryIngredient{}, nil).Times(2)
+		q.EXPECT().MergeIngredientRefsItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsOverride(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsUsual(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsUsual(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsRecipeItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DemoteIngredientRefsRecipeItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsRecipeItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsMealSlot(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DemoteIngredientRefsMealSlot(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsMealSlot(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsEventRecipeItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DemoteIngredientRefsEventRecipeItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsEventRecipeItem(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsGroceryLine(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DemoteIngredientRefsGroceryLine(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsGroceryLine(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsAisle(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsAisle(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().MergeIngredientRefsRoute(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredientRefsRoute(ctx, gomock.Any()).Return(nil)
+		q.EXPECT().DeleteIngredient(ctx, int64(1)).Return(nil)
+		require.NoError(t, s.MergeIngredients(ctx, 1, 2))
+		assert.Equal(t, int64(1), calls.Load())
+	})
+
+	silent := []struct {
+		name   string
+		expect func(q *mock.MockQuerier)
+		call   func(s *Service) error
+	}{
+		{"CreateBrand", func(q *mock.MockQuerier) {
+			q.EXPECT().CreateBrand(ctx, gomock.Any()).Return(sqlc.InventoryBrand{}, nil)
+		}, func(s *Service) error {
+			_, err := s.CreateBrand(ctx, "Acme", "admin@example.com")
+			return err
+		}},
+		{"SetItemIngredient", func(q *mock.MockQuerier) {
+			q.EXPECT().SetItemIngredient(ctx, gomock.Any()).Return(int64(1), nil)
+		}, func(s *Service) error {
+			id := int64(3)
+			return s.SetItemIngredient(ctx, 7, &id, "admin@example.com")
+		}},
+		{"GetOrCreateIngredient hit", func(q *mock.MockQuerier) {
+			q.EXPECT().FindIngredientByNormalizedName(ctx, "flour").Return(sqlc.InventoryIngredient{IngredientID: 4, Name: "flour"}, nil)
+		}, func(s *Service) error {
+			_, err := s.GetOrCreateIngredient(ctx, "Flour", nil, nil, "admin@example.com")
+			return err
+		}},
+	}
+	for _, tc := range silent {
+		t.Run("silent on "+tc.name, func(t *testing.T) {
+			s, q := newTestService(t)
+			var calls atomic.Int64
+			s.SetCatalogChangeHook(func() { calls.Add(1) })
+			tc.expect(q)
+			require.NoError(t, tc.call(s))
+			assert.Equal(t, int64(0), calls.Load())
+		})
+	}
 }

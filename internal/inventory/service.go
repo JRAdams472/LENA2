@@ -30,6 +30,24 @@ type Service struct {
 	// factory returning their mock so InTx still exercises the real
 	// Begin/Commit flow while statements land on the mock.
 	newQ func(pgx.Tx) sqlc.Querier
+	// onCatalogChange fires after successful writes to the name-indexed
+	// catalog (items, ingredients, units) so downstream caches — the
+	// recipeimport mapping snapshot — can invalidate. Wired in
+	// cmd/lena/main.go; nil is a no-op.
+	onCatalogChange func()
+}
+
+// SetCatalogChangeHook registers fn to run after any write that can change
+// the item/ingredient/unit catalog. Fires post-write but possibly
+// pre-commit when the write ran inside InTx — a rolled-back write causes
+// one spurious invalidation, never stale data.
+func (s *Service) SetCatalogChangeHook(fn func()) { s.onCatalogChange = fn }
+
+// noteCatalogChange invokes the registered hook, if any.
+func (s *Service) noteCatalogChange() {
+	if s.onCatalogChange != nil {
+		s.onCatalogChange()
+	}
 }
 
 // NewService creates an inventory Service using the given connection pool.
@@ -423,6 +441,7 @@ func (s *Service) CreateItem(ctx context.Context, arg Item, by string) (Item, er
 	if err != nil {
 		return Item{}, fmt.Errorf("create item: %w", err)
 	}
+	s.noteCatalogChange()
 	return toItem(row), nil
 }
 
@@ -450,6 +469,7 @@ func (s *Service) SubmitItem(ctx context.Context, arg Item, userID int64, by str
 	if err != nil {
 		return Item{}, fmt.Errorf("submit item: %w", err)
 	}
+	s.noteCatalogChange()
 	return toItem(row), nil
 }
 
@@ -511,6 +531,7 @@ func (s *Service) SetItemStatus(ctx context.Context, itemID int64, status string
 	if n == 0 {
 		return fmt.Errorf("set item status: %w", domainerr.ErrNotFound)
 	}
+	s.noteCatalogChange()
 	return nil
 }
 
@@ -812,13 +833,18 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 	if n == 0 {
 		return fmt.Errorf("update item: %w", domainerr.ErrNotFound)
 	}
+	s.noteCatalogChange()
 	return nil
 }
 
 // DeleteItem removes an item from the catalog. Dependent rows — pantry
 // entries, nutrients, flavors — are removed by ON DELETE CASCADE.
 func (s *Service) DeleteItem(ctx context.Context, itemID int64) error {
-	return s.q.DeleteItem(ctx, itemID)
+	if err := s.q.DeleteItem(ctx, itemID); err != nil {
+		return err
+	}
+	s.noteCatalogChange()
+	return nil
 }
 
 // FlavorProfile is a catalog food flavor profile.
@@ -1200,6 +1226,7 @@ func (s *Service) CreateIngredient(ctx context.Context, arg Ingredient, by strin
 	if err != nil {
 		return Ingredient{}, fmt.Errorf("create ingredient: %w", err)
 	}
+	s.noteCatalogChange()
 	return toIngredient(row), nil
 }
 
@@ -1292,12 +1319,17 @@ func (s *Service) UpdateIngredient(ctx context.Context, ingredientID int64, arg 
 	if err != nil {
 		return Ingredient{}, fmt.Errorf("update ingredient: %w", domainerr.FromStorage(err))
 	}
+	s.noteCatalogChange()
 	return toIngredient(row), nil
 }
 
 // DeleteIngredient removes an ingredient from the catalog.
 func (s *Service) DeleteIngredient(ctx context.Context, ingredientID int64) error {
-	return s.q.DeleteIngredient(ctx, ingredientID)
+	if err := s.q.DeleteIngredient(ctx, ingredientID); err != nil {
+		return err
+	}
+	s.noteCatalogChange()
+	return nil
 }
 
 // normalizeIngredientName produces the canonical spelling stored for an
@@ -1331,6 +1363,7 @@ func (s *Service) GetOrCreateIngredient(ctx context.Context, name string, catego
 		UpdatedBy:     textOrNull(by),
 	})
 	if err == nil {
+		s.noteCatalogChange()
 		return toIngredient(row), nil
 	}
 	var pgErr *pgconn.PgError
@@ -1549,7 +1582,7 @@ func (s *Service) MergeIngredients(ctx context.Context, sourceID, targetID int64
 	if sourceID == targetID {
 		return fmt.Errorf("merge ingredients: %w", domainerr.ErrValidation)
 	}
-	return s.InTx(ctx, func(tx *Service) error {
+	err := s.InTx(ctx, func(tx *Service) error {
 		// Both rows must exist before any repointing happens.
 		if _, err := tx.q.GetIngredientByID(ctx, sourceID); err != nil {
 			return fmt.Errorf("merge ingredients source: %w", domainerr.FromStorage(err))
@@ -1619,6 +1652,10 @@ func (s *Service) MergeIngredients(ctx context.Context, sourceID, targetID int64
 		}
 		return tx.q.DeleteIngredient(ctx, sourceID)
 	})
+	if err == nil {
+		s.noteCatalogChange()
+	}
+	return err
 }
 
 func toIngredient(row sqlc.InventoryIngredient) Ingredient {
@@ -1666,6 +1703,7 @@ func (s *Service) CreateUnit(ctx context.Context, arg Unit, by string) (Unit, er
 	if err != nil {
 		return Unit{}, fmt.Errorf("create unit: %w", err)
 	}
+	s.noteCatalogChange()
 	return toUnit(row), nil
 }
 

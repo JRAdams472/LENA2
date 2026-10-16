@@ -338,6 +338,9 @@ func (s *serverServices) wireAI(cfg config.Config, pool *pgxpool.Pool, log *slog
 		profanityDetector,
 		recipeimport.ConfigFromPlatform(&cfg),
 	)
+	// Catalog writes invalidate the import pipeline's cached snapshot so a
+	// retried import re-matches against fresh items/ingredients/units.
+	s.InventorySvc.SetCatalogChangeHook(s.RecipeImportSvc.InvalidateCatalog)
 	// Re-enqueue jobs orphaned by a previous shutdown before serving traffic.
 	if err := s.RecipeImportSvc.Start(context.Background()); err != nil {
 		log.Warn("recipe import recovery failed", "error", err)
