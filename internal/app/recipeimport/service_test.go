@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -237,9 +240,30 @@ type fakeInventory struct {
 	units       []inventory.Unit
 	items       []inventory.Item
 	ingredients []inventory.Ingredient
+
+	// scans counts snapshot builds so cache tests can assert one scan per
+	// burst; ListUnits runs first and unconditionally in
+	// newCatalogSnapshot, so it is the reliable probe. gate optionally
+	// blocks it to force concurrency; err fails it.
+	scans atomic.Int64
+	gate  chan struct{}
+	err   error
 }
 
-func (f *fakeInventory) ListUnits(context.Context) ([]inventory.Unit, error) { return f.units, nil }
+func (f *fakeInventory) ListUnits(ctx context.Context) ([]inventory.Unit, error) {
+	f.scans.Add(1)
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.gate != nil {
+		select {
+		case <-f.gate:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return f.units, nil
+}
 func (f *fakeInventory) ListItems(context.Context, int64, int32, int32) ([]inventory.Item, error) {
 	return f.items, nil
 }
@@ -437,4 +461,90 @@ func TestService_UpdateReview_NegativeQuantityRejected(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
 	assert.Contains(t, err.Error(), "greater than zero")
+}
+
+func TestService_catalogSnapshot_cachesAcrossCalls(t *testing.T) {
+	inv := &fakeInventory{units: []inventory.Unit{{UnitID: 1, Name: "cup"}}}
+	svc := &Service{inv: inv}
+
+	first, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+	second, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+
+	assert.Same(t, first, second)
+	assert.Equal(t, int64(1), inv.scans.Load(), "two calls should scan the catalog once")
+}
+
+func TestService_catalogSnapshot_expiresAfterTTL(t *testing.T) {
+	inv := &fakeInventory{units: []inventory.Unit{{UnitID: 1, Name: "cup"}}}
+	now := time.Now()
+	svc := &Service{inv: inv, now: func() time.Time { return now }}
+
+	_, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+
+	now = now.Add(catalogSnapshotTTL + time.Second)
+	stale, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), inv.scans.Load(), "expired snapshot should rebuild")
+	assert.NotNil(t, stale)
+}
+
+func TestService_InvalidateCatalog_forcesRebuild(t *testing.T) {
+	inv := &fakeInventory{units: []inventory.Unit{{UnitID: 1, Name: "cup"}}}
+	svc := &Service{inv: inv}
+
+	_, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+	svc.InvalidateCatalog()
+	_, err = svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), inv.scans.Load())
+}
+
+func TestService_catalogSnapshot_singleflight(t *testing.T) {
+	gate := make(chan struct{})
+	inv := &fakeInventory{
+		units: []inventory.Unit{{UnitID: 1, Name: "cup"}},
+		gate:  gate,
+	}
+	svc := &Service{inv: inv}
+
+	const callers = 8
+	var wg sync.WaitGroup
+	snaps := make([]*ocrimport.CatalogSnapshot, callers)
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			snaps[i], errs[i] = svc.catalogSnapshot(context.Background())
+		}(i)
+	}
+	// Let all callers reach the gate, then release the build.
+	time.Sleep(50 * time.Millisecond)
+	close(gate)
+	wg.Wait()
+
+	for i := range callers {
+		require.NoError(t, errs[i])
+		assert.Same(t, snaps[0], snaps[i])
+	}
+	assert.Equal(t, int64(1), inv.scans.Load(), "concurrent callers share one build")
+}
+
+func TestService_catalogSnapshot_errorsNotCached(t *testing.T) {
+	boom := errors.New("db down")
+	inv := &fakeInventory{units: []inventory.Unit{{UnitID: 1, Name: "cup"}}, err: boom}
+	svc := &Service{inv: inv}
+
+	_, err := svc.catalogSnapshot(context.Background())
+	require.ErrorIs(t, err, boom)
+
+	inv.err = nil
+	snap, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+	assert.NotNil(t, snap)
+	assert.Equal(t, int64(2), inv.scans.Load(), "failed builds must not be cached")
 }

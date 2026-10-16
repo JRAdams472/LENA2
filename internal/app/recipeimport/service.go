@@ -22,6 +22,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/profanity"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/jackc/pgx/v5/pgconn"
+	"golang.org/x/sync/singleflight"
 )
 
 // Config holds the recipe import service thresholds and the inbox
@@ -82,6 +83,12 @@ type Embedder interface {
 // is re-enqueued on the next service start.
 const jobQueueDepth = 256
 
+// catalogSnapshotTTL bounds how long a built catalog snapshot is reused
+// before the next import rebuilds it. Explicit invalidation via
+// InvalidateCatalog covers catalog writes; the TTL is the backstop for
+// writes that bypass the hook.
+const catalogSnapshotTTL = 15 * time.Minute
+
 // Service orchestrates the server-side recipe OCR pipeline.
 type Service struct {
 	pool      dbtx.Pool
@@ -101,6 +108,19 @@ type Service struct {
 	shutdownOnce   sync.Once
 	lifetimeCtx    context.Context
 	lifetimeCancel context.CancelFunc
+
+	// snap caches the built catalog snapshot: newCatalogSnapshot pages the
+	// entire items+ingredients catalog and re-indexes it, which dominates
+	// import latency. singleflight shares one build across concurrent
+	// imports; errors are never cached. Invalidated by the inventory
+	// catalog-change hook and by TTL.
+	snapMu      sync.RWMutex
+	snap        *ocrimport.CatalogSnapshot
+	snapBuiltAt time.Time
+	snapFlight  singleflight.Group
+
+	// now is injectable for cache-expiry tests; nil means time.Now.
+	now func() time.Time
 }
 
 // NewService builds a recipe import service and starts its worker pool. The
@@ -136,6 +156,7 @@ func NewService(
 		shutdown:       make(chan struct{}),
 		lifetimeCtx:    lifetime,
 		lifetimeCancel: cancel,
+		now:            time.Now,
 	}
 	for i := 0; i < cfg.ImportWorkerConcurrency; i++ {
 		s.workerWG.Add(1)
@@ -607,13 +628,74 @@ func (s *Service) runDraft(ctx context.Context, id int64, ocrText string) (*ocri
 	return draft, false, nil
 }
 
+func (s *Service) nowFn() func() time.Time {
+	if s.now != nil {
+		return s.now
+	}
+	return time.Now
+}
+
+// catalogSnapshot returns the cached catalog snapshot, rebuilding it when
+// absent or expired. Concurrent callers share one build via singleflight —
+// the snapshot scan reads the entire items+ingredients catalog, so even a
+// burst of imports must not fan out into N identical catalog reads.
+func (s *Service) catalogSnapshot(ctx context.Context) (*ocrimport.CatalogSnapshot, error) {
+	s.snapMu.RLock()
+	fresh := s.snap != nil && s.nowFn()().Sub(s.snapBuiltAt) < catalogSnapshotTTL
+	cached := s.snap
+	s.snapMu.RUnlock()
+	if fresh {
+		return cached, nil
+	}
+
+	built, err, _ := s.snapFlight.Do("catalog", func() (any, error) {
+		// Re-check under the flight: a caller whose snapshot expired while
+		// it waited on an in-flight build reuses that fresh result.
+		s.snapMu.RLock()
+		fresh := s.snap != nil && s.nowFn()().Sub(s.snapBuiltAt) < catalogSnapshotTTL
+		cached := s.snap
+		s.snapMu.RUnlock()
+		if fresh {
+			return cached, nil
+		}
+
+		start := s.nowFn()()
+		snap, err := newCatalogSnapshot(ctx, s.inv)
+		if err != nil {
+			return nil, err
+		}
+		s.snapMu.Lock()
+		s.snap = snap
+		s.snapBuiltAt = s.nowFn()()
+		s.snapMu.Unlock()
+		slog.Default().Info("catalog snapshot built",
+			"items", snap.ItemCount(),
+			"units", snap.UnitCount(),
+			"duration_ms", s.nowFn()().Sub(start).Milliseconds())
+		return snap, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return built.(*ocrimport.CatalogSnapshot), nil
+}
+
+// InvalidateCatalog drops the cached snapshot so the next import maps
+// against fresh catalog data. Wired to inventory.Service's catalog-change
+// hook (item/ingredient/unit mutations) in cmd/lena/main.go.
+func (s *Service) InvalidateCatalog() {
+	s.snapMu.Lock()
+	s.snap = nil
+	s.snapMu.Unlock()
+}
+
 // runMapping maps the draft against the catalog snapshot and stores the
 // review (drafted -> reviewing|ready).
 func (s *Service) runMapping(ctx context.Context, id int64, updatedBy string, draft *ocrimport.RecipeDraft) error {
 	ctx, cancel := s.stageCtx(ctx)
 	defer cancel()
 
-	cat, err := newCatalogSnapshot(ctx, s.inv)
+	cat, err := s.catalogSnapshot(ctx)
 	if err != nil {
 		return err
 	}
