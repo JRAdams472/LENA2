@@ -6,7 +6,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.import.yml --profile ai up -d
 services:
   ollama:
-    image: ollama/ollama:0.40.2@sha256:b86366bb528bbf7f1424435d165028497a5b69bf6ddb4fa5a87102e2b79f44fb
+    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
     profiles: ["import", "ai"]
     volumes:
       - ollama_data:/root/.ollama
@@ -31,7 +31,7 @@ services:
               capabilities: [gpu]
 
   ollama-pull:
-    image: ollama/ollama:0.40.2@sha256:b86366bb528bbf7f1424435d165028497a5b69bf6ddb4fa5a87102e2b79f44fb
+    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
     profiles: ["import", "ai"]
     entrypoint: ["/bin/sh", "-c"]
     command: ollama pull ${LENA_OLLAMA_MODEL:-qwen2.5:7b-instruct} && ollama pull ${LENA_AI_EMBED_MODEL:-nomic-embed-text}
