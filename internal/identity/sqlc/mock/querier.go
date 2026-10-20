@@ -176,6 +176,21 @@ func (mr *MockQuerierMockRecorder) DeleteUser(ctx, userID any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*MockQuerier)(nil).DeleteUser), ctx, userID)
 }
 
+// DeleteUserGuarded mocks base method.
+func (m *MockQuerier) DeleteUserGuarded(ctx context.Context, userID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUserGuarded", ctx, userID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteUserGuarded indicates an expected call of DeleteUserGuarded.
+func (mr *MockQuerierMockRecorder) DeleteUserGuarded(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserGuarded", reflect.TypeOf((*MockQuerier)(nil).DeleteUserGuarded), ctx, userID)
+}
+
 // GetUserByID mocks base method.
 func (m *MockQuerier) GetUserByID(ctx context.Context, userID int64) (sqlc.IdentityUser, error) {
 	m.ctrl.T.Helper()
@@ -324,6 +339,20 @@ func (m *MockQuerier) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]s
 func (mr *MockQuerierMockRecorder) ListUsersByIDs(ctx, dollar_1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUsersByIDs", reflect.TypeOf((*MockQuerier)(nil).ListUsersByIDs), ctx, dollar_1)
+}
+
+// LockAdminSet mocks base method.
+func (m *MockQuerier) LockAdminSet(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockAdminSet", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockAdminSet indicates an expected call of LockAdminSet.
+func (mr *MockQuerierMockRecorder) LockAdminSet(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockAdminSet", reflect.TypeOf((*MockQuerier)(nil).LockAdminSet), ctx)
 }
 
 // RevokeUserSessions mocks base method.

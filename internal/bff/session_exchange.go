@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -79,6 +80,11 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 	ctx := c.Request().Context()
 	ident, err := verifier.verify(ctx, req.Code, req.Nonce, req.CodeVerifier, req.RedirectURI)
 	if err != nil {
+		logExchangeError(c, name, "verify", err)
+		if errors.Is(err, errProviderUnavailable) || errors.Is(err, errKeyDiscovery) {
+			c.Response().Header().Set("Retry-After", "5")
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "sign-in with "+name+" is temporarily unavailable")
+		}
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid "+name+" credential")
 	}
 	u, err := h.provision.ProvisionUser(ctx, ident.provider, ident.subject, ident.email, ident.name, ident.emailVerified)
@@ -91,10 +97,16 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 		case errors.Is(err, errAccountDenied):
 			return echo.NewHTTPError(http.StatusForbidden, "account_denied")
 		}
+		logExchangeError(c, name, "provision", err)
+		if errors.Is(err, errIdentityStore) {
+			c.Response().Header().Set("Retry-After", "5")
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "sign-in is temporarily unavailable")
+		}
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid "+name+" credential")
 	}
 	iss, err := h.sessions.Issue(ctx, u.UserID, req.Device)
 	if err != nil {
+		logExchangeError(c, name, "issue", err)
 		if errors.Is(err, session.ErrUnavailable) {
 			return echo.NewHTTPError(http.StatusServiceUnavailable, "sessions are not configured")
 		}
@@ -102,6 +114,30 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 	}
 	setRefreshCookie(c, iss)
 	return c.JSON(http.StatusOK, toSessionResponse(iss))
+}
+
+// logExchangeError records a code-exchange failure for ops review —
+// otherwise provider outages and store failures are invisible behind the
+// generic 401 body. Backend failures log at error, rejected credentials
+// at warn, matching the auth middleware's severity split.
+func logExchangeError(c echo.Context, provider, stage string, err error) {
+	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
+	if errors.Is(err, errProviderUnavailable) || errors.Is(err, errKeyDiscovery) ||
+		errors.Is(err, errIdentityStore) {
+		slog.Default().Error("session exchange backend failure",
+			"request_id", requestID,
+			"provider", provider,
+			"stage", stage,
+			"error", err,
+		)
+		return
+	}
+	slog.Default().Warn("session exchange failure",
+		"request_id", requestID,
+		"provider", provider,
+		"stage", stage,
+		"error", err,
+	)
 }
 
 func utf8Len(s string) int {

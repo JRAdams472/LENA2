@@ -136,6 +136,62 @@ func TestRefresh_ReplacedBetweenLookupAndLock(t *testing.T) {
 	assert.ErrorIs(t, err, ErrSessionReuse)
 }
 
+// newSplitService binds the pool and tx queriers to separate mocks so tests
+// can prove a query ran outside the transaction that detected the reuse —
+// in production the tx rolls back on ErrSessionReuse and any write issued
+// through the tx-bound querier would be lost with it.
+func newSplitService(t *testing.T) (*Service, *mock.MockQuerier, *mock.MockQuerier) {
+	t.Helper()
+	poolQ := mock.NewMockQuerier(gomock.NewController(t))
+	txQ := mock.NewMockQuerier(gomock.NewController(t))
+	s := &Service{
+		q:          poolQ,
+		poolQ:      poolQ,
+		pool:       &stubPool{tx: &stubTx{}},
+		secret:     []byte("test-secret"),
+		accessTTL:  15 * time.Minute,
+		refreshTTL: 30 * 24 * time.Hour,
+		now:        time.Now,
+	}
+	s.newQ = func(pgx.Tx) sqlc.Querier { return txQ }
+	return s, poolQ, txQ
+}
+
+// Reuse detected under the row lock must revoke the family through the
+// pool-bound querier after the doomed transaction rolls back — not inside
+// the tx, where the revocation would be discarded. Any RevokeSessionFamily
+// call on txQ fails the test (gomock reports unexpected calls).
+func TestRefresh_RevocationSurvivesRollback(t *testing.T) {
+	s, poolQ, txQ := newSplitService(t)
+	old := liveRow(1, 5, 7, time.Hour)
+	locked := liveRow(1, 5, 7, time.Hour)
+	locked.ReplacedBy = pgtype.Int8{Int64: 2, Valid: true}
+
+	poolQ.EXPECT().GetSessionByRefreshHash(gomock.Any(), gomock.Any()).Return(old, nil)
+	txQ.EXPECT().GetSessionByIDForUpdate(gomock.Any(), int64(1)).Return(locked, nil)
+	poolQ.EXPECT().RevokeSessionFamily(gomock.Any(), int64(5)).Return(nil)
+
+	_, err := s.Refresh(context.Background(), "raced", "web")
+	assert.ErrorIs(t, err, ErrSessionReuse)
+}
+
+// A zero-row MarkSessionReplaced means a concurrent rotation won the lock
+// race — same reuse path, same durable-revocation requirement.
+func TestRefresh_RevocationOnConcurrentRotation(t *testing.T) {
+	s, poolQ, txQ := newSplitService(t)
+	old := liveRow(1, 5, 7, time.Hour)
+	next := liveRow(2, 5, 7, time.Hour)
+
+	poolQ.EXPECT().GetSessionByRefreshHash(gomock.Any(), gomock.Any()).Return(old, nil)
+	txQ.EXPECT().GetSessionByIDForUpdate(gomock.Any(), int64(1)).Return(old, nil)
+	txQ.EXPECT().InsertRotatedSession(gomock.Any(), gomock.Any()).Return(next, nil)
+	txQ.EXPECT().MarkSessionReplaced(gomock.Any(), gomock.Any()).Return(int64(0), nil)
+	poolQ.EXPECT().RevokeSessionFamily(gomock.Any(), int64(5)).Return(nil)
+
+	_, err := s.Refresh(context.Background(), "raced", "web")
+	assert.ErrorIs(t, err, ErrSessionReuse)
+}
+
 func TestRevoke(t *testing.T) {
 	s, mq := newService(t)
 	mq.EXPECT().GetSessionByRefreshHash(gomock.Any(), gomock.Any()).Return(liveRow(1, 1, 7, time.Hour), nil)

@@ -57,7 +57,9 @@ func (c Config) WithDefaults() Config {
 		c.AutoTTL = 30 * time.Second
 	}
 	if c.InFlightTTL <= 0 {
-		c.InFlightTTL = 60 * time.Second
+		// Must exceed the longest mutation execution (GraphQLAITimeout,
+		// 120s by default) or a retried request can reclaim a live claim.
+		c.InFlightTTL = 150 * time.Second
 	}
 	if c.WaitTimeout <= 0 {
 		c.WaitTimeout = 30 * time.Second
@@ -131,7 +133,12 @@ func (s *Store) ttlFor(key string) time.Duration {
 //   - (nil, ErrInFlight)  → a twin request is still running.
 func (s *Store) Begin(ctx context.Context, userID int64, key string, hash []byte) (*Stored, error) {
 	s.maybeSweep()
-	expires := time.Now().Add(s.ttlFor(key))
+	// On an in-progress row expires_at is the in-flight deadline — the
+	// moment a duplicate may reclaim the claim — not the completed-row
+	// retention TTL. Complete overwrites it with ttlFor(key). Setting it
+	// to InFlightTTL keeps the claim upsert's `expires_at < now()` check
+	// and the stale-reclaim path on one boundary for every key class.
+	expires := time.Now().Add(s.cfg.InFlightTTL)
 	waitUntil := time.Now().Add(s.cfg.WaitTimeout)
 
 	for claims := 0; claims < 3; claims++ {
@@ -189,9 +196,12 @@ func (s *Store) checkConflictRow(ctx context.Context, row sqlc.PlatformIdempoten
 		}
 		return &Stored{Status: status, Body: row.Response}, false, nil
 	}
-	// in_progress: reclaim if stale, otherwise wait for the twin.
-	if time.Since(row.CreatedAt) > s.cfg.InFlightTTL {
-		if err := s.q.ReclaimStale(ctx, time.Now().Add(-s.cfg.InFlightTTL)); err != nil {
+	// in_progress: reclaim if the in-flight deadline passed, otherwise
+	// wait for the twin. expires_at was written by this service at claim
+	// time, so comparing against the local clock is consistent — no
+	// DB/app clock skew.
+	if time.Now().After(row.ExpiresAt) {
+		if err := s.q.ReclaimStale(ctx); err != nil {
 			return nil, false, err
 		}
 		return nil, true, nil
@@ -233,7 +243,7 @@ func (s *Store) Sweep(ctx context.Context) error {
 	if err := s.q.DeleteExpired(ctx); err != nil {
 		return err
 	}
-	return s.q.ReclaimStale(ctx, time.Now().Add(-s.cfg.InFlightTTL))
+	return s.q.ReclaimStale(ctx)
 }
 
 // maybeSweep runs Sweep detached at most once a minute. Expiry is also

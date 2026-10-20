@@ -731,6 +731,29 @@ func (s *Service) checkAdminMutation(actorID int64, target User) error {
 	return nil
 }
 
+// lockAdminSet serializes mutations that can shrink the active-admin set.
+// fn runs inside a transaction holding the advisory lock, so its
+// conditional "other admins exist" check cannot race a concurrent
+// demotion/deactivation/deletion under READ COMMITTED.
+func (s *Service) lockAdminSet(ctx context.Context, fn func(tx *Service) error) error {
+	return s.InTx(ctx, func(tx *Service) error {
+		if err := tx.q.LockAdminSet(ctx); err != nil {
+			return fmt.Errorf("lock admin set: %w", domainerr.FromStorage(err))
+		}
+		return fn(tx)
+	})
+}
+
+// adminGuardResult disambiguates a zero-row conditional update: either the
+// last-admin guard refused, or the target vanished between the prefetch
+// and the write — which must report ErrNotFound, not ErrLastAdmin.
+func (s *Service) adminGuardResult(ctx context.Context, targetID int64, op string) error {
+	if _, err := s.q.GetUserByID(ctx, targetID); err != nil {
+		return fmt.Errorf("%s: %w", op, domainerr.FromStorage(err))
+	}
+	return fmt.Errorf("%s: %w", op, domainerr.ErrLastAdmin)
+}
+
 // AdminSetRole changes target's role on behalf of actorID, enforcing the
 // self/protected/last-admin guards. Callers must already be admins.
 func (s *Service) AdminSetRole(ctx context.Context, actorID, targetID int64, role string) error {
@@ -744,12 +767,25 @@ func (s *Service) AdminSetRole(ctx context.Context, actorID, targetID int64, rol
 	if err := s.checkAdminMutation(actorID, target); err != nil {
 		return err
 	}
-	n, err := s.q.ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: targetID, Role: role})
+	run := func(tx *Service) (int64, error) {
+		return tx.q.ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: targetID, Role: role})
+	}
+	var n int64
+	if role == RoleAdmin {
+		// Promotion can never shrink the admin set — no lock needed.
+		n, err = run(s)
+	} else {
+		err = s.lockAdminSet(ctx, func(tx *Service) error {
+			var rerr error
+			n, rerr = run(tx)
+			return rerr
+		})
+	}
 	if err != nil {
 		return fmt.Errorf("set user role: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("set user role: %w", domainerr.ErrLastAdmin)
+		return s.adminGuardResult(ctx, targetID, "set user role")
 	}
 	return nil
 }
@@ -768,6 +804,13 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 		return err
 	}
 	return s.InTx(ctx, func(tx *Service) error {
+		if !active {
+			// Deactivation can shrink the active-admin set — serialize it
+			// against every other admin-reducing mutation.
+			if err := tx.q.LockAdminSet(ctx); err != nil {
+				return fmt.Errorf("set user active: %w", domainerr.FromStorage(err))
+			}
+		}
 		n, err := tx.q.ConditionalSetUserActive(ctx, sqlc.ConditionalSetUserActiveParams{
 			UserID:    targetID,
 			IsActive:  active,
@@ -777,7 +820,7 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 			return fmt.Errorf("set user active: %w", err)
 		}
 		if n == 0 {
-			return fmt.Errorf("set user active: %w", domainerr.ErrLastAdmin)
+			return tx.adminGuardResult(ctx, targetID, "set user active")
 		}
 		// Deactivation kills every live refresh-token family so the session
 		// cookie path dies immediately; outstanding access tokens still
@@ -831,13 +874,19 @@ func (s *Service) DeleteUser(ctx context.Context, userID int64) error {
 		return err
 	}
 	if target.Role == RoleAdmin && target.IsActive {
-		admins, err := s.q.CountActiveAdmins(ctx)
-		if err != nil {
-			return fmt.Errorf("delete user: %w", domainerr.FromStorage(err))
-		}
-		if admins <= 1 {
-			return fmt.Errorf("delete user: %w", domainerr.ErrLastAdmin)
-		}
+		// Deleting an active admin can shrink the admin set — serialize
+		// under the advisory lock so two concurrent last-admin deletes
+		// cannot both pass the count check.
+		return s.lockAdminSet(ctx, func(tx *Service) error {
+			n, err := tx.q.DeleteUserGuarded(ctx, userID)
+			if err != nil {
+				return fmt.Errorf("delete user: %w", domainerr.FromStorage(err))
+			}
+			if n == 0 {
+				return tx.adminGuardResult(ctx, userID, "delete user")
+			}
+			return nil
+		})
 	}
 	n, err := s.q.DeleteUser(ctx, userID)
 	if err != nil {

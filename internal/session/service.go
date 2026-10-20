@@ -38,6 +38,9 @@ var (
 const (
 	issuer     = "lena"
 	refreshLen = 32
+	// accessSkew tolerates small clock drift between the issuer and a
+	// verifier host so tokens are not rejected at the nbf/exp boundary.
+	accessSkew = 30 * time.Second
 )
 
 // Config holds the session service knobs.
@@ -66,6 +69,10 @@ type Service struct {
 	secret     []byte
 	accessTTL  time.Duration
 	refreshTTL time.Duration
+	// poolQ bypasses dbtx.ContextExecer so family revocation issued on
+	// reuse detection can never join — and roll back with — the
+	// transaction that detected it.
+	poolQ sqlc.Querier
 	// now is injectable for expiry-edge tests.
 	now func() time.Time
 }
@@ -73,6 +80,10 @@ type Service struct {
 // NewService builds the session service on the given pool. A nil pool is
 // legal for tests that stub the querier only via withQuerier.
 func NewService(pool dbtx.Pool, cfg Config) *Service {
+	var poolQ sqlc.Querier
+	if pool != nil {
+		poolQ = sqlc.New(dbtx.NewTimedExecer(pool, "session"))
+	}
 	return &Service{
 		q:    sqlc.New(dbtx.NewTimedExecer(dbtx.ContextExecer(pool), "session")),
 		pool: pool,
@@ -82,6 +93,7 @@ func NewService(pool dbtx.Pool, cfg Config) *Service {
 		secret:     []byte(cfg.Secret),
 		accessTTL:  cfg.AccessTTL,
 		refreshTTL: cfg.RefreshTTL,
+		poolQ:      poolQ,
 		now:        time.Now,
 	}
 }
@@ -169,8 +181,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, device string) (Iss
 		if err != nil {
 			return fmt.Errorf("lock session: %w", err)
 		}
-		if err := tx.rejectReused(ctx, cur); err != nil {
-			return err
+		// Detection only here: the revocation must not run inside this
+		// transaction — ErrSessionReuse rolls it back and the revocation
+		// would die with it. Refresh revokes after InTx returns.
+		if isReused(cur) {
+			return ErrSessionReuse
 		}
 		iss, err := tx.rotateSessionTx(ctx, cur, device, s.now().Add(s.refreshTTL))
 		if err != nil {
@@ -180,18 +195,46 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, device string) (Iss
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, ErrSessionReuse) {
+			if revErr := s.revokeFamily(ctx, row.FamilyID); revErr != nil {
+				return Issued{}, fmt.Errorf("revoke session family: %w", revErr)
+			}
+		}
 		return Issued{}, err
 	}
 	return out, nil
 }
 
+// isReused reports whether the session row was already rotated or revoked —
+// replaying it is a theft signal.
+func isReused(row sqlc.IdentitySession) bool {
+	return row.RevokedAt.Valid || row.ReplacedBy.Valid
+}
+
+// revokeQ returns a querier that always runs outside any ambient
+// transaction: family revocation issued on reuse detection must survive
+// the rollback of the transaction that detected it.
+func (s *Service) revokeQ() sqlc.Querier {
+	if s.poolQ != nil {
+		return s.poolQ
+	}
+	return s.q
+}
+
+// revokeFamily revokes the session family on the pool-bound querier.
+func (s *Service) revokeFamily(ctx context.Context, familyID int64) error {
+	return s.revokeQ().RevokeSessionFamily(ctx, familyID)
+}
+
 // rejectReused revokes the session family and reports ErrSessionReuse when
-// the presented token was already rotated or revoked.
+// the presented token was already rotated or revoked. It must only be
+// called outside the rotation transaction — inside it, callers check
+// isReused and let the post-rollback path revoke.
 func (s *Service) rejectReused(ctx context.Context, row sqlc.IdentitySession) error {
-	if !row.RevokedAt.Valid && !row.ReplacedBy.Valid {
+	if !isReused(row) {
 		return nil
 	}
-	if err := s.q.RevokeSessionFamily(ctx, row.FamilyID); err != nil {
+	if err := s.revokeFamily(ctx, row.FamilyID); err != nil {
 		return fmt.Errorf("revoke session family: %w", err)
 	}
 	return ErrSessionReuse
@@ -251,7 +294,7 @@ func (s *Service) ValidateAccess(token string) (int64, error) {
 	if !s.Enabled() {
 		return 0, ErrUnavailable
 	}
-	t, err := jwt.Parse([]byte(token), jwt.WithKey(jwa.HS256(), s.secret), jwt.WithValidate(true))
+	t, err := jwt.Parse([]byte(token), jwt.WithKey(jwa.HS256(), s.secret), jwt.WithValidate(true), jwt.WithAcceptableSkew(accessSkew))
 	if err != nil {
 		return 0, ErrInvalidSession
 	}

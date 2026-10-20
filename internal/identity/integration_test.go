@@ -148,6 +148,62 @@ func TestIntegrationHouseholdFields(t *testing.T) {
 	require.NotNil(t, got.HouseholdID)
 }
 
+// TestIntegrationAdminGuardSerialization proves the last-active-admin
+// invariant under concurrency. Two admins demoting each other at once must
+// not both succeed — without the advisory lock, each conditional update
+// sees the other's snapshot under READ COMMITTED and both pass the
+// "other admins exist" check, leaving zero admins.
+func TestIntegrationAdminGuardSerialization(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, err := testutil.SharedTestDB(t, ctx)
+	require.NoError(t, err)
+
+	svc := identity.NewService(pool)
+	a := testutil.MustUser(ctx, t, pool, "guard-a@example.com")
+	b := testutil.MustUser(ctx, t, pool, "guard-b@example.com")
+	require.NoError(t, svc.SetUserRole(ctx, a, identity.RoleAdmin))
+	require.NoError(t, svc.SetUserRole(ctx, b, identity.RoleAdmin))
+
+	// Concurrent cross-demotion: exactly one may succeed.
+	type outcome struct {
+		target int64
+		err    error
+	}
+	res := make(chan outcome, 2)
+	go func() { res <- outcome{b, svc.AdminSetRole(ctx, a, b, identity.RoleMember)} }()
+	go func() { res <- outcome{a, svc.AdminSetRole(ctx, b, a, identity.RoleMember)} }()
+	outcomes := []outcome{<-res, <-res}
+
+	var survivor, other int64
+	succeeded := 0
+	for _, o := range outcomes {
+		if o.err == nil {
+			succeeded++
+			other = o.target
+			continue
+		}
+		assert.ErrorIs(t, o.err, domainerr.ErrLastAdmin)
+		survivor = o.target
+	}
+	require.Equal(t, 1, succeeded, "exactly one concurrent last-admin demotion may succeed")
+
+	// The survivor is the last active admin — both delete and deactivate
+	// must be refused.
+	err = svc.DeleteUser(ctx, survivor)
+	assert.ErrorIs(t, err, domainerr.ErrLastAdmin)
+
+	err = svc.AdminSetActive(ctx, other, survivor, false, "guard@example.com")
+	assert.ErrorIs(t, err, domainerr.ErrLastAdmin)
+
+	got, err := svc.GetByID(ctx, survivor)
+	require.NoError(t, err)
+	assert.Equal(t, identity.RoleAdmin, got.Role)
+	assert.True(t, got.IsActive)
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(testutil.SharedDBTestMain(m))
 }

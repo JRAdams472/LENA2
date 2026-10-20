@@ -101,6 +101,14 @@ ON CONFLICT (provider, external_subject)
         updated_at = now()
 RETURNING *, (xmax = 0) AS inserted;
 
+-- name: LockAdminSet :exec
+-- Serializes every mutation that can shrink the active-admin set
+-- (demotion, deactivation, deletion). Two concurrent statements otherwise
+-- see each other's snapshot under READ COMMITTED and both pass the
+-- "other admins exist" check — the advisory lock makes the check + write
+-- atomic across transactions.
+SELECT pg_advisory_xact_lock(7272001);
+
 -- name: ConditionalSetUserRole :execrows
 UPDATE identity.users AS u
 SET role       = $2,
@@ -318,6 +326,19 @@ WHERE user_id = $1
 -- users.household_id is a RESTRICT-edge while the row exists.
 DELETE FROM identity.users
 WHERE user_id = $1;
+
+-- name: DeleteUserGuarded :execrows
+-- Like DeleteUser but refuses to remove the last active admin. The caller
+-- must hold LockAdminSet so the count check and the delete are serialized
+-- against every other admin-reducing mutation.
+DELETE FROM identity.users AS u
+WHERE u.user_id = $1
+  AND (u.role <> 'admin' OR NOT u.is_active OR (
+    SELECT count(*) FROM identity.users AS other
+    WHERE other.role = 'admin'
+      AND other.is_active
+      AND other.user_id <> u.user_id
+  ) >= 1);
 -- name: SetDisclaimerAccepted :execrows
 -- Disclaimer acceptance (LEN-31): stamps when the user accepted the
 -- medical/allergen disclaimer. Idempotent — re-acceptance re-stamps.

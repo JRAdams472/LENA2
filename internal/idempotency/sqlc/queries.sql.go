@@ -133,10 +133,12 @@ func (q *Queries) Get(ctx context.Context, arg GetParams) (PlatformIdempotencyKe
 
 const reclaimStale = `-- name: ReclaimStale :exec
 DELETE FROM platform.idempotency_key
-WHERE status = 'in_progress' AND created_at < $1
+WHERE status = 'in_progress' AND expires_at < now()
 `
 
-func (q *Queries) ReclaimStale(ctx context.Context, createdAt time.Time) error {
-	_, err := q.db.Exec(ctx, reclaimStale, createdAt)
+// expires_at on an in_progress row is the in-flight deadline set at claim
+// time (now + InFlightTTL), so this is the single reclaim boundary.
+func (q *Queries) ReclaimStale(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, reclaimStale)
 	return err
 }

@@ -6,7 +6,6 @@ package sqlc
 
 import (
 	"context"
-	"time"
 )
 
 type Querier interface {
@@ -15,7 +14,9 @@ type Querier interface {
 	Complete(ctx context.Context, arg CompleteParams) (int64, error)
 	DeleteExpired(ctx context.Context) error
 	Get(ctx context.Context, arg GetParams) (PlatformIdempotencyKey, error)
-	ReclaimStale(ctx context.Context, createdAt time.Time) error
+	// expires_at on an in_progress row is the in-flight deadline set at claim
+	// time (now + InFlightTTL), so this is the single reclaim boundary.
+	ReclaimStale(ctx context.Context) error
 }
 
 var _ Querier = (*Queries)(nil)
