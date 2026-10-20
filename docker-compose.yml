@@ -178,7 +178,7 @@ services:
       # HTTP write timeout must exceed it for replies to reach the client.
       LENA_GRAPHQL_TIMEOUT: ${LENA_GRAPHQL_TIMEOUT:-10s}
       LENA_GRAPHQL_AI_TIMEOUT: ${LENA_GRAPHQL_AI_TIMEOUT:-120s}
-      LENA_HTTP_WRITE_TIMEOUT: ${LENA_HTTP_WRITE_TIMEOUT:-30s}
+      LENA_HTTP_WRITE_TIMEOUT: ${LENA_HTTP_WRITE_TIMEOUT:-130s}
       # Instacart "shop this list" integration (optional; empty key
       # disables it — the API key never leaves the server).
       LENA_INSTACART_API_KEY: ${LENA_INSTACART_API_KEY:-}

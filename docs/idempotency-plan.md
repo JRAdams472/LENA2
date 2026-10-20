@@ -82,7 +82,8 @@ keyword (queries bypass dedup — caching real-time reads would be wrong), and:
 
 **Config:** `LENA_IDEMPOTENCY_ENABLED` (default true),
 `LENA_IDEMPOTENCY_KEY_TTL` (24h), `LENA_IDEMPOTENCY_AUTO_TTL` (30s),
-`LENA_IDEMPOTENCY_IN_FLIGHT_TTL` (60s), `LENA_IDEMPOTENCY_WAIT_TIMEOUT` (30s).
+`LENA_IDEMPOTENCY_IN_FLIGHT_TTL` (150s — must exceed `LENA_GRAPHQL_AI_TIMEOUT`),
+`LENA_IDEMPOTENCY_WAIT_TIMEOUT` (30s).
 
 ### Web client (phase 2)
 
