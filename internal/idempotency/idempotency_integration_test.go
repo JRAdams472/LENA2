@@ -145,9 +145,10 @@ func TestIntegrationStaleInFlightReclaimed(t *testing.T) {
 	_, err := store.Begin(ctx, uid, "k1", hash)
 	require.NoError(t, err)
 
-	// Backdate the claim past the in-flight TTL to simulate a crashed twin.
+	// Backdate the claim's in-flight deadline to simulate a crashed twin —
+	// expires_at on an in_progress row is the reclaim boundary.
 	_, err = pool.Exec(ctx,
-		`UPDATE platform.idempotency_key SET created_at = now() - interval '1 hour' WHERE user_id = $1 AND key = 'k1'`, uid)
+		`UPDATE platform.idempotency_key SET expires_at = now() - interval '1 second' WHERE user_id = $1 AND key = 'k1'`, uid)
 	require.NoError(t, err)
 
 	stored, err := store.Begin(ctx, uid, "k1", hash)

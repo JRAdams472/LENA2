@@ -28,6 +28,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/platform/async"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/platform/dbtx"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/wine"
 )
@@ -711,10 +712,15 @@ func loadUnits(ctx context.Context, inv ItemReader, unitIDs []int64) (map[int64]
 
 // resolveUnitID maps a unit name or abbreviation (e.g. "cup", "c") to its
 // canonical unit_id. Unknown units are rejected rather than stored.
+// Storage failures propagate as INTERNAL — a DB outage is not a
+// BAD_USER_INPUT and must reach the error log via sanitizeQueryErrors.
 func resolveUnitID(ctx context.Context, inv ItemReader, name string) (int64, error) {
 	u, err := inv.GetUnitByName(ctx, strings.TrimSpace(name))
 	if err != nil {
-		return 0, badInputf("unknown unit %q", name)
+		if errors.Is(err, domainerr.ErrNotFound) {
+			return 0, badInputf("unknown unit %q", name)
+		}
+		return 0, fmt.Errorf("resolve unit %q: %w", name, err)
 	}
 	return u.UnitID, nil
 }
@@ -1482,7 +1488,14 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, aiTimeout time.Durati
 			return err
 		}
 		if claim != nil {
-			claim.complete(out)
+			if cacheableResponse(resp) {
+				claim.complete(out)
+			} else {
+				// Server-class failures must not be replayed — a transient
+				// error cached under the key would block the retry the
+				// idempotency claim exists to protect.
+				claim.abandon()
+			}
 		}
 		return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, out)
 	}, nil
@@ -1526,7 +1539,13 @@ func (r *Resolver) dedupMutation(c echo.Context, req graphQLRequest, body []byte
 	if uerr != nil {
 		return nil, false, nil
 	}
-	claim, stored, rej := r.beginDedup(c, u.UserID, body)
+	key := c.Request().Header.Get(headerIdempotencyKey)
+	if key == "" && autoDedupUnsafePattern.MatchString(req.Query) {
+		// State-dependent mutations must execute on every request —
+		// auto-key replay would silently drop a second intended action.
+		return nil, false, nil
+	}
+	claim, stored, rej := r.beginDedup(c, u.UserID, key, body)
 	if rej != nil {
 		return nil, true, c.JSON(http.StatusOK, idemErrorBody(rej.msg, rej.code))
 	}

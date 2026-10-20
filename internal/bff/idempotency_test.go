@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/graph-gophers/graphql-go"
+	gqlerrors "github.com/graph-gophers/graphql-go/errors"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,11 +45,12 @@ func TestIsMutationOperation(t *testing.T) {
 
 // fakeIdemStore records calls and scripts Begin responses.
 type fakeIdemStore struct {
-	beginFn   func(key string, hash []byte) (*idempotency.Stored, error)
-	begins    []string
-	completed [][]byte
-	abandoned []string
-	cfg       idempotency.Config
+	beginFn     func(key string, hash []byte) (*idempotency.Stored, error)
+	completeErr error
+	begins      []string
+	completed   [][]byte
+	abandoned   []string
+	cfg         idempotency.Config
 }
 
 func (f *fakeIdemStore) Begin(_ context.Context, _ int64, key string, hash []byte) (*idempotency.Stored, error) {
@@ -60,7 +63,7 @@ func (f *fakeIdemStore) Begin(_ context.Context, _ int64, key string, hash []byt
 
 func (f *fakeIdemStore) Complete(_ context.Context, _ int64, _ string, _ int32, body []byte) error {
 	f.completed = append(f.completed, body)
-	return nil
+	return f.completeErr
 }
 
 func (f *fakeIdemStore) Abandon(_ context.Context, _ int64, key string) error {
@@ -119,6 +122,37 @@ func TestIdemHandler_AutoKeyFallback(t *testing.T) {
 	postDedup(t, h, []byte(`{"query":"mutation { noSuchMutation }"}`), nil)
 	require.Len(t, store.begins, 1)
 	assert.Contains(t, store.begins[0], idempotency.AutoKeyPrefix)
+}
+
+// A state-dependent mutation (toggle/delta/record) must execute on every
+// request — an auto-key replay would silently swallow the second action.
+func TestIdemHandler_UnsafeMutationSkipsAutoDedup(t *testing.T) {
+	store := &fakeIdemStore{}
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
+	require.NoError(t, err)
+
+	for _, q := range []string{
+		`mutation { toggleGroceryItemChecked(id: "1") { id } }`,
+		`mutation { incrementUserItem(itemId: "1") }`,
+		`mutation { recordView(itemId: "1") }`,
+	} {
+		body, _ := json.Marshal(map[string]string{"query": q})
+		postDedup(t, h, body, nil)
+	}
+	assert.Empty(t, store.begins, "state-dependent mutations must not claim auto keys")
+}
+
+// An explicit Idempotency-Key still dedups unsafe mutations — the client
+// is asserting the call is a retry.
+func TestIdemHandler_UnsafeMutationHonorsExplicitKey(t *testing.T) {
+	store := &fakeIdemStore{}
+	h, err := NewGraphQLHandler(&Resolver{IdemStore: store}, 5*time.Second, 0, 0)
+	require.NoError(t, err)
+	body, _ := json.Marshal(map[string]string{
+		"query": `mutation { toggleGroceryItemChecked(id: "1") { id } }`,
+	})
+	postDedup(t, h, body, map[string]string{"Idempotency-Key": "explicit-1"})
+	assert.Equal(t, []string{"explicit-1"}, store.begins)
 }
 
 func TestIdemHandler_ReplaysStoredResponse(t *testing.T) {
@@ -202,6 +236,48 @@ func TestIdemClaim_OversizedResponseAbandons(t *testing.T) {
 	assert.Empty(t, store.completed)
 	assert.Equal(t, []string{"k"}, store.abandoned)
 	assert.True(t, cl.done)
+}
+
+// A failed Complete leaves an in-progress row that would hold the key
+// until the in-flight TTL — abandon it so the retry path stays clean.
+func TestIdemClaim_CompleteFailureAbandons(t *testing.T) {
+	store := &fakeIdemStore{completeErr: errors.New("store down")}
+	cl := &idemClaim{store: store, userID: 7, key: "k"}
+	cl.complete([]byte(`{"data":{"ok":true}}`))
+	assert.Equal(t, []string{"k"}, store.abandoned)
+	assert.True(t, cl.done)
+}
+
+// Server-class error responses must not be cached: a transient failure
+// replayed under an idempotency key would block the legitimate retry.
+func TestCacheableResponse(t *testing.T) {
+	qe := func(code string) *gqlerrors.QueryError {
+		q := &gqlerrors.QueryError{Message: "err"}
+		if code != "" {
+			q.Extensions = map[string]any{"code": code}
+		}
+		return q
+	}
+	cases := []struct {
+		name string
+		errs []*gqlerrors.QueryError
+		want bool
+	}{
+		{"no errors", nil, true},
+		{"client error replays", []*gqlerrors.QueryError{qe(codeBadUserInput)}, true},
+		{"conflict replays", []*gqlerrors.QueryError{qe(codeConflict)}, true},
+		{"unauthenticated replays", []*gqlerrors.QueryError{qe(codeUnauthenticated)}, true},
+		{"validation error without code replays", []*gqlerrors.QueryError{qe("")}, true},
+		{"internal abandons", []*gqlerrors.QueryError{qe(codeInternal)}, false},
+		{"timeout abandons", []*gqlerrors.QueryError{qe(codeTimeout)}, false},
+		{"busy abandons", []*gqlerrors.QueryError{qe(codeBusy)}, false},
+		{"cost exceeded abandons", []*gqlerrors.QueryError{qe(codeCostExceeded)}, false},
+		{"unavailable abandons", []*gqlerrors.QueryError{qe(codeUnavailable)}, false},
+		{"one server error among client errors abandons", []*gqlerrors.QueryError{qe(codeBadUserInput), qe(codeInternal)}, false},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, cacheableResponse(&graphql.Response{Errors: tc.errs}), tc.name)
+	}
 }
 
 func TestIdemClaim_AbandonIfPending(t *testing.T) {

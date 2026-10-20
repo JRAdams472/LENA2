@@ -95,10 +95,12 @@ type Config struct {
 	// the deadline hits the resolver context first.
 	DatabaseStatementTimeout time.Duration `envconfig:"DATABASE_STATEMENT_TIMEOUT" default:"15s"`
 	// HTTP server timeouts. Without them the server is exposed to
-	// slowloris-style connection exhaustion.
+	// slowloris-style connection exhaustion. HTTPWriteTimeout must exceed
+	// GraphQLAITimeout or AI requests are killed mid-response before the
+	// 120s budget is reached; ValidateServer enforces that invariant.
 	HTTPReadHeaderTimeout time.Duration `envconfig:"HTTP_READ_HEADER_TIMEOUT" default:"5s"`
 	HTTPReadTimeout       time.Duration `envconfig:"HTTP_READ_TIMEOUT" default:"15s"`
-	HTTPWriteTimeout      time.Duration `envconfig:"HTTP_WRITE_TIMEOUT" default:"30s"`
+	HTTPWriteTimeout      time.Duration `envconfig:"HTTP_WRITE_TIMEOUT" default:"130s"`
 	HTTPIdleTimeout       time.Duration `envconfig:"HTTP_IDLE_TIMEOUT" default:"60s"`
 	// OCRServiceURL is the base URL of the OCR microservice.
 	OCRServiceURL string `envconfig:"OCR_SERVICE_URL" default:"http://ocr:8000"`
@@ -256,8 +258,10 @@ type Config struct {
 	// mutation payloads that arrive without a key.
 	IdempotencyAutoTTL time.Duration `envconfig:"IDEMPOTENCY_AUTO_TTL" default:"30s"`
 	// IdempotencyInFlightTTL bounds how long a claimed-but-unfinished
-	// request may hold its key before a duplicate reclaims it.
-	IdempotencyInFlightTTL time.Duration `envconfig:"IDEMPOTENCY_IN_FLIGHT_TTL" default:"60s"`
+	// request may hold its key before a duplicate reclaims it. It must
+	// exceed GraphQLAITimeout or a retried mutation can reclaim a live
+	// claim and execute twice; ValidateServer enforces that invariant.
+	IdempotencyInFlightTTL time.Duration `envconfig:"IDEMPOTENCY_IN_FLIGHT_TTL" default:"150s"`
 	// IdempotencyWaitTimeout bounds how long a duplicate waits on an
 	// in-flight twin before returning IDEMPOTENCY_IN_FLIGHT.
 	IdempotencyWaitTimeout time.Duration `envconfig:"IDEMPOTENCY_WAIT_TIMEOUT" default:"30s"`
@@ -325,6 +329,16 @@ func (c *Config) ValidateServer() error {
 	// access token, so anything under 32 bytes refuses to boot.
 	if c.SessionSecret != "" && len(c.SessionSecret) < 32 {
 		return fmt.Errorf("SESSION_SECRET must be at least 32 bytes when set; generate one with 'openssl rand -base64 48'")
+	}
+
+	// Timeout invariants: a response must be able to outlive the longest
+	// GraphQL execution, and an idempotency claim must not be reclaimable
+	// while the mutation holding it could still be running.
+	if c.HTTPWriteTimeout <= c.GraphQLAITimeout {
+		return fmt.Errorf("HTTP_WRITE_TIMEOUT (%s) must exceed GRAPHQL_AI_TIMEOUT (%s) or AI requests are killed mid-response", c.HTTPWriteTimeout, c.GraphQLAITimeout)
+	}
+	if c.IdempotencyEnabled && c.IdempotencyInFlightTTL <= c.GraphQLAITimeout {
+		return fmt.Errorf("IDEMPOTENCY_IN_FLIGHT_TTL (%s) must exceed GRAPHQL_AI_TIMEOUT (%s) or a retried mutation can reclaim a live claim", c.IdempotencyInFlightTTL, c.GraphQLAITimeout)
 	}
 
 	return nil

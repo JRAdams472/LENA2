@@ -5,9 +5,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/graph-gophers/graphql-go"
 	"github.com/labstack/echo/v4"
 
 	"github.com/JRAdams472/LENA2/internal/idempotency"
@@ -58,9 +60,20 @@ type idemClaim struct {
 	done   bool
 }
 
+// autoDedupUnsafePattern matches root mutation fields whose effect is
+// state-dependent — toggles, deltas, and event recordings where a
+// byte-identical retry is a *second intended action*, not a transport
+// retry. Replaying a cached response for these silently suppresses real
+// work (re-checking a grocery item appears to no-op). The auto-key
+// fallback skips matching mutations; an explicit Idempotency-Key still
+// dedups because the client is asserting intent. Every new
+// state-dependent mutation field must be added here.
+var autoDedupUnsafePattern = regexp.MustCompile(`\b(toggleGroceryItemChecked|checkGroceryItemWithBrand|incrementUserItem|recordView|recordSearch|recordSelection|triggerNotificationSweep|generateGroceryList|retryRecipeImport|syncEventRecipe)\b`)
+
 // complete stores the serialized response against the claim. Oversized
 // responses abandon the claim instead — a reclaimed row degrades to a fresh
-// execution on retry, which is always correct.
+// execution on retry, which is always correct. A failed store write also
+// abandons so the row does not sit in_progress until the in-flight TTL.
 func (cl *idemClaim) complete(body []byte) {
 	if cl == nil {
 		return
@@ -74,6 +87,8 @@ func (cl *idemClaim) complete(body []byte) {
 	defer cancel()
 	if err := cl.store.Complete(ctx, cl.userID, cl.key, http.StatusOK, body); err != nil {
 		slog.Default().Warn("idempotency complete failed", "key", cl.key, "error", err)
+		cl.done = false
+		cl.abandon()
 	}
 }
 
@@ -105,15 +120,16 @@ type idemRejection struct {
 	code string
 }
 
-// beginDedup attempts the dedup claim for a mutation request. It returns a
-// held claim (caller executes, then calls complete/abandon), a stored
-// response to replay, or a rejection describing why the request must not
-// run. A nil store or unauthenticated request skips dedup entirely; store
-// failures fail open — dedup must never break the API.
-func (r *Resolver) beginDedup(c echo.Context, userID int64, body []byte) (*idemClaim, *idempotency.Stored, *idemRejection) {
+// beginDedup attempts the dedup claim for a mutation request. key is the
+// client-supplied Idempotency-Key (empty → the auto-key fallback is
+// synthesized from the payload hash). It returns a held claim (caller
+// executes, then calls complete/abandon), a stored response to replay, or
+// a rejection describing why the request must not run. A nil store or
+// unauthenticated request skips dedup entirely; store failures fail open —
+// dedup must never break the API.
+func (r *Resolver) beginDedup(c echo.Context, userID int64, key string, body []byte) (*idemClaim, *idempotency.Stored, *idemRejection) {
 	store := r.IdemStore
 	hash := idempotency.Hash(body)
-	key := c.Request().Header.Get(headerIdempotencyKey)
 	if key == "" {
 		key = idempotency.AutoKey(hash)
 	} else if len(key) > store.Config().WithDefaults().MaxKeyLen {
@@ -143,6 +159,34 @@ func (r *Resolver) beginDedup(c echo.Context, userID int64, body []byte) (*idemC
 		return nil, nil, nil
 	}
 	return &idemClaim{store: store, userID: userID, key: key}, nil, nil
+}
+
+// uncacheableErrorCodes are server-class failure codes: the response was
+// produced by a transient or resource failure, not by deterministic
+// request semantics. Caching one under an idempotency key would replay the
+// failure and block the legitimate retry.
+var uncacheableErrorCodes = map[string]bool{
+	codeInternal:     true,
+	codeTimeout:      true,
+	codeBusy:         true,
+	codeCostExceeded: true,
+	codeUnavailable:  true,
+}
+
+// cacheableResponse reports whether a GraphQL response may be stored
+// against an idempotency claim. Deterministic client errors
+// (BAD_USER_INPUT, NOT_FOUND, CONFLICT, UNAUTHENTICATED, …) replay fine;
+// server-class failures abandon the claim so a transient error can be
+// retried. Errors without extensions.code are syntax/validation-level —
+// deterministic and cheap to re-run — so they stay cacheable.
+func cacheableResponse(resp *graphql.Response) bool {
+	for _, qe := range resp.Errors {
+		code, _ := qe.Extensions["code"].(string)
+		if uncacheableErrorCodes[code] {
+			return false
+		}
+	}
+	return true
 }
 
 func idemErrorBody(msg, code string) map[string]any {

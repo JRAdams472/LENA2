@@ -321,7 +321,7 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 				switch {
 				case errors.Is(err, errKeyDiscovery), errors.Is(err, errIdentityStore):
 					c.Response().Header().Set("Retry-After", "5")
-					return echo.NewHTTPError(http.StatusServiceUnavailable, err.Error())
+					return echo.NewHTTPError(http.StatusServiceUnavailable, "authentication service unavailable")
 				// Pending and denied are 403s with machine-readable bodies so
 				// clients render the approval gate instead of logging out.
 				case errors.Is(err, errAccountPending):
@@ -329,7 +329,9 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 				case errors.Is(err, errAccountDenied):
 					return echo.NewHTTPError(http.StatusForbidden, "account_denied")
 				default:
-					return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+					// Generic body — the reason is logged above; echoing it
+					// leaks verifier internals (issuer lists, claim names).
+					return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 				}
 			}
 

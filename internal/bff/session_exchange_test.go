@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,6 +125,9 @@ func TestProviderCreateSession_Errors(t *testing.T) {
 		{"missing verifier", `{"code":"x"}`, nil, nil, nil, http.StatusBadRequest},
 		{"bad code", `{"code":"x","codeVerifier":"v1"}`, errDiscordCredential, nil, nil, http.StatusUnauthorized},
 		{"provision failure", `{"code":"x","codeVerifier":"v1"}`, nil, errors.New("banned"), nil, http.StatusUnauthorized},
+		{"provider outage", `{"code":"x","codeVerifier":"v1"}`, fmt.Errorf("%w: dial tcp: timeout", errProviderUnavailable), nil, nil, http.StatusServiceUnavailable},
+		{"jwks outage", `{"code":"x","codeVerifier":"v1"}`, fmt.Errorf("%w: load jwks: conn refused", errKeyDiscovery), nil, nil, http.StatusServiceUnavailable},
+		{"store outage", `{"code":"x","codeVerifier":"v1"}`, nil, fmt.Errorf("%w: upsert user: conn refused", errIdentityStore), nil, http.StatusServiceUnavailable},
 		{"issue failure", `{"code":"x","codeVerifier":"v1"}`, nil, nil, errors.New("db"), http.StatusInternalServerError},
 		{"sessions unavailable", `{"code":"x","codeVerifier":"v1"}`, nil, nil, session.ErrUnavailable, http.StatusServiceUnavailable},
 	}

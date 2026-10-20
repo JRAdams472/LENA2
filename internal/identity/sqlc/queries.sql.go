@@ -172,6 +172,28 @@ func (q *Queries) DeleteUser(ctx context.Context, userID int64) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const deleteUserGuarded = `-- name: DeleteUserGuarded :execrows
+DELETE FROM identity.users AS u
+WHERE u.user_id = $1
+  AND (u.role <> 'admin' OR NOT u.is_active OR (
+    SELECT count(*) FROM identity.users AS other
+    WHERE other.role = 'admin'
+      AND other.is_active
+      AND other.user_id <> u.user_id
+  ) >= 1)
+`
+
+// Like DeleteUser but refuses to remove the last active admin. The caller
+// must hold LockAdminSet so the count check and the delete are serialized
+// against every other admin-reducing mutation.
+func (q *Queries) DeleteUserGuarded(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserGuarded, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT user_id, provider, external_subject, email, display_name, is_active, last_login_at, created_by, created_at, updated_by, updated_at, role, first_name, last_name, backup_email, household_id, is_searchable, household_role, birthdate, approval_status, disclaimer_accepted_at
 FROM identity.users
@@ -611,6 +633,20 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]Ident
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAdminSet = `-- name: LockAdminSet :exec
+SELECT pg_advisory_xact_lock(7272001)
+`
+
+// Serializes every mutation that can shrink the active-admin set
+// (demotion, deactivation, deletion). Two concurrent statements otherwise
+// see each other's snapshot under READ COMMITTED and both pass the
+// "other admins exist" check — the advisory lock makes the check + write
+// atomic across transactions.
+func (q *Queries) LockAdminSet(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockAdminSet)
+	return err
 }
 
 const revokeUserSessions = `-- name: RevokeUserSessions :exec

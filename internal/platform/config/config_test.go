@@ -32,7 +32,7 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, "4M", cfg.GraphQLBodyLimit)
 	assert.Equal(t, 5*time.Second, cfg.HTTPReadHeaderTimeout)
 	assert.Equal(t, 15*time.Second, cfg.HTTPReadTimeout)
-	assert.Equal(t, 30*time.Second, cfg.HTTPWriteTimeout)
+	assert.Equal(t, 130*time.Second, cfg.HTTPWriteTimeout)
 	assert.Equal(t, 60*time.Second, cfg.HTTPIdleTimeout)
 }
 
@@ -130,4 +130,68 @@ func TestValidateServer_SessionSecret(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidateServer_TimeoutInvariants covers the two cross-field timeout
+// rules: HTTP_WRITE_TIMEOUT must outlive GRAPHQL_AI_TIMEOUT or AI
+// responses are killed mid-write, and IDEMPOTENCY_IN_FLIGHT_TTL must
+// outlive it too or a retried mutation reclaims a live claim.
+func TestValidateServer_TimeoutInvariants(t *testing.T) {
+	base := map[string]string{
+		"LENA_DATABASE_URL":   "postgres://x",
+		"LENA_AUTH_AUDIENCES": "aud",
+	}
+	load := func(t *testing.T, env map[string]string) *Config {
+		for k, v := range base {
+			t.Setenv(k, v)
+		}
+		for k, v := range env {
+			t.Setenv(k, v)
+		}
+		cfg, err := Load()
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("defaults satisfy both invariants", func(t *testing.T) {
+		require.NoError(t, load(t, nil).ValidateServer())
+	})
+
+	t.Run("write timeout must exceed AI timeout", func(t *testing.T) {
+		cfg := load(t, map[string]string{"LENA_HTTP_WRITE_TIMEOUT": "30s"})
+		err := cfg.ValidateServer()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "HTTP_WRITE_TIMEOUT")
+	})
+
+	t.Run("equal write and AI timeouts still fail", func(t *testing.T) {
+		cfg := load(t, map[string]string{
+			"LENA_HTTP_WRITE_TIMEOUT": "120s",
+			"LENA_GRAPHQL_AI_TIMEOUT": "120s",
+		})
+		require.Error(t, cfg.ValidateServer())
+	})
+
+	t.Run("smaller AI timeout relaxes the bound", func(t *testing.T) {
+		cfg := load(t, map[string]string{
+			"LENA_HTTP_WRITE_TIMEOUT": "30s",
+			"LENA_GRAPHQL_AI_TIMEOUT": "20s",
+		})
+		require.NoError(t, cfg.ValidateServer())
+	})
+
+	t.Run("in-flight TTL must exceed AI timeout", func(t *testing.T) {
+		cfg := load(t, map[string]string{"LENA_IDEMPOTENCY_IN_FLIGHT_TTL": "60s"})
+		err := cfg.ValidateServer()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "IDEMPOTENCY_IN_FLIGHT_TTL")
+	})
+
+	t.Run("in-flight invariant skipped when dedup disabled", func(t *testing.T) {
+		cfg := load(t, map[string]string{
+			"LENA_IDEMPOTENCY_IN_FLIGHT_TTL": "10s",
+			"LENA_IDEMPOTENCY_ENABLED":       "false",
+		})
+		require.NoError(t, cfg.ValidateServer())
+	})
 }

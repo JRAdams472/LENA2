@@ -122,6 +122,9 @@ func (r *Resolver) SetUserRole(ctx context.Context, args struct {
 	if err := r.IdentityService.AdminSetRole(ctx, actor.UserID, targetID, args.Role); err != nil {
 		return nil, mapAdminGuardError(err)
 	}
+	// Evict the cached identity so a demotion applies on the target's next
+	// request instead of up to userCacheTTL later.
+	r.invalidateUserID(ctx, targetID)
 	slog.Default().Info("audit",
 		"action", "set_user_role",
 		"actor", actor.Email,

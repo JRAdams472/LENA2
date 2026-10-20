@@ -397,6 +397,8 @@ func TestAdminSetRole(t *testing.T) {
 	t.Run("demoting an admin requires another active admin", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		// Demotion serializes under the admin-set lock before the guard.
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
 		mq.EXPECT().ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: 2, Role: RoleMember}).Return(int64(1), nil)
 
 		require.NoError(t, svc.AdminSetRole(ctx, 1, 2, RoleMember))
@@ -410,11 +412,26 @@ func TestAdminSetRole(t *testing.T) {
 
 	t.Run("cannot demote the last active admin", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil).Times(2)
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
 		mq.EXPECT().ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: 2, Role: RoleMember}).Return(int64(0), nil)
 
 		err := svc.AdminSetRole(ctx, 1, 2, RoleMember)
 		assert.ErrorIs(t, err, ErrLastAdmin)
+	})
+
+	t.Run("zero-row guard on a vanished target reports not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
+		mq.EXPECT().ConditionalSetUserRole(ctx, sqlc.ConditionalSetUserRoleParams{UserID: 2, Role: RoleMember}).Return(int64(0), nil)
+		// The existence re-check distinguishes guard refusal from a
+		// concurrent delete — the second lookup misses.
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+
+		err := svc.AdminSetRole(ctx, 1, 2, RoleMember)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
+		assert.NotErrorIs(t, err, ErrLastAdmin)
 	})
 
 	t.Run("cannot demote a protected admin", func(t *testing.T) {
@@ -433,6 +450,8 @@ func TestAdminSetActive(t *testing.T) {
 	t.Run("bans a member", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		// Every deactivation serializes under the admin-set lock.
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
 		mq.EXPECT().ConditionalSetUserActive(ctx, gomock.Any()).DoAndReturn(
 			func(_ context.Context, arg sqlc.ConditionalSetUserActiveParams) (int64, error) {
 				assert.Equal(t, int64(2), arg.UserID)
@@ -463,7 +482,8 @@ func TestAdminSetActive(t *testing.T) {
 
 	t.Run("cannot ban the last active admin", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil).Times(2)
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
 		mq.EXPECT().ConditionalSetUserActive(ctx, gomock.Any()).Return(int64(0), nil)
 
 		err := svc.AdminSetActive(ctx, 1, 2, false, "a@b.com")
@@ -476,6 +496,67 @@ func TestAdminSetActive(t *testing.T) {
 		mq.EXPECT().ConditionalSetUserActive(ctx, gomock.Any()).Return(int64(1), nil)
 
 		require.NoError(t, svc.AdminSetActive(ctx, 1, 2, true, "admin@b.com"))
+	})
+}
+
+func TestDeleteUser(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("deletes a member unconditionally", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(memberRow(2, "m@b.com"), nil)
+		mq.EXPECT().DeleteUser(ctx, int64(2)).Return(int64(1), nil)
+
+		require.NoError(t, svc.DeleteUser(ctx, 2))
+	})
+
+	t.Run("deletes an inactive admin without the guard", func(t *testing.T) {
+		svc, mq := newService(t)
+		inactive := adminRow(2, "a2@b.com")
+		inactive.IsActive = false
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(inactive, nil)
+		mq.EXPECT().DeleteUser(ctx, int64(2)).Return(int64(1), nil)
+
+		require.NoError(t, svc.DeleteUser(ctx, 2))
+	})
+
+	t.Run("deletes an active admin under the admin lock", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
+		mq.EXPECT().DeleteUserGuarded(ctx, int64(2)).Return(int64(1), nil)
+
+		require.NoError(t, svc.DeleteUser(ctx, 2))
+	})
+
+	t.Run("cannot delete the last active admin", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil).Times(2)
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
+		mq.EXPECT().DeleteUserGuarded(ctx, int64(2)).Return(int64(0), nil)
+
+		err := svc.DeleteUser(ctx, 2)
+		assert.ErrorIs(t, err, ErrLastAdmin)
+	})
+
+	t.Run("guard refusal on a vanished admin reports not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(adminRow(2, "a2@b.com"), nil)
+		mq.EXPECT().LockAdminSet(ctx).Return(nil)
+		mq.EXPECT().DeleteUserGuarded(ctx, int64(2)).Return(int64(0), nil)
+		mq.EXPECT().GetUserByID(ctx, int64(2)).Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+
+		err := svc.DeleteUser(ctx, 2)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
+		assert.NotErrorIs(t, err, ErrLastAdmin)
+	})
+
+	t.Run("missing user reports not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUserByID(ctx, int64(9)).Return(sqlc.IdentityUser{}, pgx.ErrNoRows)
+
+		err := svc.DeleteUser(ctx, 9)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
 	})
 }
 

@@ -43,6 +43,12 @@ type oidcTokenVerifier interface {
 // verification — a bad code, a rejected exchange, a nonce mismatch.
 var errOAuthCredential = errors.New("oauth credential rejected")
 
+// errProviderUnavailable marks failures where the provider could not be
+// reached at all (transport error, unreadable response, client-secret
+// minting). Unlike errOAuthCredential these are retryable server-side
+// outages and map to 503, not 401.
+var errProviderUnavailable = errors.New("provider unavailable")
+
 // NewOAuthOIDCVerifier builds a verifier for a code-exchange OIDC
 // provider. It returns nil when the provider is unconfigured so the
 // registry simply lacks the key. tokenEndpoint is the provider's
@@ -140,7 +146,7 @@ func (v *OAuthOIDCVerifier) exchange(ctx context.Context, code, codeVerifier, re
 		var err error
 		secret, err = v.clientSecretFn(ctx)
 		if err != nil {
-			return "", fmt.Errorf("%w: mint client secret: %w", errOAuthCredential, err)
+			return "", fmt.Errorf("%w: mint client secret: %w", errProviderUnavailable, err)
 		}
 	}
 	form := url.Values{
@@ -163,12 +169,12 @@ func (v *OAuthOIDCVerifier) exchange(ctx context.Context, code, codeVerifier, re
 
 	res, err := v.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errOAuthCredential, err)
+		return "", fmt.Errorf("%w: %w", errProviderUnavailable, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errOAuthCredential, err)
+		return "", fmt.Errorf("%w: %w", errProviderUnavailable, err)
 	}
 
 	var tok struct {

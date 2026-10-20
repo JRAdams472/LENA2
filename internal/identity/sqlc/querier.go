@@ -27,6 +27,10 @@ type Querier interface {
 	// survives detached. Callers dissolve sole-member households separately:
 	// users.household_id is a RESTRICT-edge while the row exists.
 	DeleteUser(ctx context.Context, userID int64) (int64, error)
+	// Like DeleteUser but refuses to remove the last active admin. The caller
+	// must hold LockAdminSet so the count check and the delete are serialized
+	// against every other admin-reducing mutation.
+	DeleteUserGuarded(ctx context.Context, userID int64) (int64, error)
 	GetUserByID(ctx context.Context, userID int64) (IdentityUser, error)
 	// Resolves a provider identity to its user via the login mapping table —
 	// covers both primary logins and explicitly linked ones.
@@ -46,6 +50,12 @@ type Querier interface {
 	// THIS household read it from household.household_member instead.
 	ListUsersByHousehold(ctx context.Context, householdID int64) ([]IdentityUser, error)
 	ListUsersByIDs(ctx context.Context, dollar_1 []int64) ([]IdentityUser, error)
+	// Serializes every mutation that can shrink the active-admin set
+	// (demotion, deactivation, deletion). Two concurrent statements otherwise
+	// see each other's snapshot under READ COMMITTED and both pass the
+	// "other admins exist" check — the advisory lock makes the check + write
+	// atomic across transactions.
+	LockAdminSet(ctx context.Context) error
 	// Deactivation kills every live refresh-token family for the user so the
 	// session cookie path dies immediately (access tokens still expire on
 	// their own TTL).

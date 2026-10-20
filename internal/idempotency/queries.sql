@@ -30,8 +30,10 @@ DELETE FROM platform.idempotency_key
 WHERE status = 'completed' AND expires_at < now();
 
 -- name: ReclaimStale :exec
+-- expires_at on an in_progress row is the in-flight deadline set at claim
+-- time (now + InFlightTTL), so this is the single reclaim boundary.
 DELETE FROM platform.idempotency_key
-WHERE status = 'in_progress' AND created_at < $1;
+WHERE status = 'in_progress' AND expires_at < now();
 
 -- name: Abandon :exec
 DELETE FROM platform.idempotency_key

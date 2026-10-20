@@ -105,12 +105,12 @@ func (d *DiscordVerifier) exchange(ctx context.Context, code, codeVerifier, redi
 
 	res, err := d.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errDiscordCredential, err)
+		return "", fmt.Errorf("%w: %w", errProviderUnavailable, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errDiscordCredential, err)
+		return "", fmt.Errorf("%w: %w", errProviderUnavailable, err)
 	}
 
 	var tok struct {
@@ -136,7 +136,7 @@ func (d *DiscordVerifier) fetchUser(ctx context.Context, accessToken string) (pr
 
 	res, err := d.http.Do(req)
 	if err != nil {
-		return providerIdentity{}, fmt.Errorf("%w: %w", errDiscordCredential, err)
+		return providerIdentity{}, fmt.Errorf("%w: %w", errProviderUnavailable, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
