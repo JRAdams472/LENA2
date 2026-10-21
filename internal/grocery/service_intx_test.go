@@ -44,7 +44,7 @@ func (f *stubTx) Prepare(context.Context, string, string) (*pgconn.StatementDesc
 }
 func (f *stubTx) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
 	f.execCalls++
-	return pgconn.CommandTag{}, nil
+	return pgconn.NewCommandTag("DELETE 1"), nil
 }
 func (f *stubTx) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return nil, errors.New("not implemented")

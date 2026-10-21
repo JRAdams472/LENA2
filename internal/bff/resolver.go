@@ -294,7 +294,7 @@ func requireAdmin(ctx context.Context) (currentuser.User, error) {
 		return currentuser.User{}, err
 	}
 	if !u.IsAdmin {
-		return currentuser.User{}, errForbidden()
+		return currentuser.User{}, forbiddenf("admin role required")
 	}
 	return u, nil
 }

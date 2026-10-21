@@ -183,7 +183,7 @@ func (q *Queries) DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOt
 	return err
 }
 
-const deleteMealPlan = `-- name: DeleteMealPlan :exec
+const deleteMealPlan = `-- name: DeleteMealPlan :execrows
 DELETE FROM mealplan.meal_plan
 WHERE meal_plan_id = $1 AND household_id = $2
 `
@@ -193,9 +193,12 @@ type DeleteMealPlanParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error {
-	_, err := q.db.Exec(ctx, deleteMealPlan, arg.MealPlanID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMealPlan, arg.MealPlanID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteMealPlansByHousehold = `-- name: DeleteMealPlansByHousehold :exec
@@ -212,7 +215,7 @@ func (q *Queries) DeleteMealPlansByHousehold(ctx context.Context, householdID in
 	return err
 }
 
-const deleteMealSlot = `-- name: DeleteMealSlot :exec
+const deleteMealSlot = `-- name: DeleteMealSlot :execrows
 DELETE FROM mealplan.meal_slot ms
 USING mealplan.meal_plan mp
 WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.household_id = $2
@@ -223,12 +226,15 @@ type DeleteMealSlotParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error {
-	_, err := q.db.Exec(ctx, deleteMealSlot, arg.SlotID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMealSlot, arg.SlotID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteMealSlotItem = `-- name: DeleteMealSlotItem :exec
+const deleteMealSlotItem = `-- name: DeleteMealSlotItem :execrows
 DELETE FROM mealplan.meal_slot_item msi
 USING mealplan.meal_slot ms, mealplan.meal_plan mp
 WHERE msi.slot_id = ms.slot_id AND ms.meal_plan_id = mp.meal_plan_id
@@ -240,9 +246,12 @@ type DeleteMealSlotItemParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error {
-	_, err := q.db.Exec(ctx, deleteMealSlotItem, arg.SlotItemID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMealSlotItem, arg.SlotItemID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getMealPlanByID = `-- name: GetMealPlanByID :one
@@ -272,6 +281,48 @@ func (q *Queries) GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams
 		&i.HouseholdID,
 	)
 	return i, err
+}
+
+const getMealPlansByIDs = `-- name: GetMealPlansByIDs :many
+SELECT meal_plan_id, name, week_start_date, week_start_day_of_week, is_active, created_by, created_at, updated_by, updated_at, household_id
+FROM mealplan.meal_plan
+WHERE household_id = $1 AND meal_plan_id = ANY($2::bigint[])
+`
+
+type GetMealPlansByIDsParams struct {
+	HouseholdID int64   `json:"household_id"`
+	Ids         []int64 `json:"ids"`
+}
+
+func (q *Queries) GetMealPlansByIDs(ctx context.Context, arg GetMealPlansByIDsParams) ([]MealplanMealPlan, error) {
+	rows, err := q.db.Query(ctx, getMealPlansByIDs, arg.HouseholdID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MealplanMealPlan{}
+	for rows.Next() {
+		var i MealplanMealPlan
+		if err := rows.Scan(
+			&i.MealPlanID,
+			&i.Name,
+			&i.WeekStartDate,
+			&i.WeekStartDayOfWeek,
+			&i.IsActive,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.HouseholdID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getMealSlotByID = `-- name: GetMealSlotByID :one

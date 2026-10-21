@@ -50,7 +50,7 @@ func (r *Resolver) GroceryRouteGroups(ctx context.Context, args struct{ GroceryL
 	}
 	out := make([]*routeGroupResolver, len(groups))
 	for i := range groups {
-		out[i] = &routeGroupResolver{inv: r.InventoryService, group: groups[i], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}
+		out[i] = &routeGroupResolver{inv: r.InventoryService, up: r.UserPrefsService, group: groups[i], catItems: gc.items, units: gc.units, ingredients: gc.ingredients, ch: gc.ch}
 	}
 	return out, nil
 }
@@ -353,6 +353,7 @@ func (r *storeAisleResolver) Position() int32 { return r.aisle.Position }
 // routeGroupResolver resolves GroceryRouteGroup fields.
 type routeGroupResolver struct {
 	inv         ItemReader
+	up          UserPrefsService
 	group       grocery.RouteGroup
 	catItems    map[int64]inventory.Item
 	units       map[int64]inventory.Unit
@@ -371,7 +372,7 @@ func (r *routeGroupResolver) Items() []*routeItemResolver {
 	out := make([]*routeItemResolver, len(r.group.Items))
 	for i := range r.group.Items {
 		out[i] = &routeItemResolver{
-			inv: r.inv, suggested: r.group.Items[i].Suggested, item: r.group.Items[i].Item,
+			inv: r.inv, up: r.up, suggested: r.group.Items[i].Suggested, item: r.group.Items[i].Item,
 			items: r.catItems, units: r.units, ingredients: r.ingredients, ch: r.ch,
 		}
 	}
@@ -381,6 +382,7 @@ func (r *routeGroupResolver) Items() []*routeItemResolver {
 // routeItemResolver resolves GroceryRouteItem fields.
 type routeItemResolver struct {
 	inv         ItemReader
+	up          UserPrefsService
 	item        grocery.GroceryListItem
 	suggested   bool
 	items       map[int64]inventory.Item
@@ -390,7 +392,7 @@ type routeItemResolver struct {
 }
 
 func (r *routeItemResolver) Item() *groceryListItemResolver {
-	return &groceryListItemResolver{inv: r.inv, item: r.item, items: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch, as: asOfItemChildren(r.ch)}
+	return &groceryListItemResolver{inv: r.inv, up: r.up, item: r.item, items: r.items, units: r.units, ingredients: r.ingredients, ch: r.ch, as: asOfItemChildren(r.ch)}
 }
 
 func (r *routeItemResolver) Suggested() bool { return r.suggested }

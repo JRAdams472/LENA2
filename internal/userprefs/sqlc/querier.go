@@ -27,6 +27,7 @@ type Querier interface {
 	// household_item.household_id is a NO ACTION edge, so it must go before
 	// the households row can be deleted.
 	DeleteHouseholdItemsByHousehold(ctx context.Context, householdID int64) error
+	DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error)
 	DeleteMergedHouseholdBottles(ctx context.Context, arg DeleteMergedHouseholdBottlesParams) error
 	// Drop source rows that were folded into a target row.
 	DeleteMergedHouseholdItems(ctx context.Context, arg DeleteMergedHouseholdItemsParams) error
@@ -39,6 +40,7 @@ type Querier interface {
 	GetHouseholdItemByID(ctx context.Context, arg GetHouseholdItemByIDParams) (UserprefsHouseholdItem, error)
 	GetHouseholdItemByItem(ctx context.Context, arg GetHouseholdItemByItemParams) (UserprefsHouseholdItem, error)
 	GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
+	GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
 	// Every bottle the user has favorited — feeds the ranking tier on catalog
 	// and cellar listings.
 	ListFavoriteBottleIDs(ctx context.Context, userID int64) ([]int64, error)
@@ -61,6 +63,9 @@ type Querier interface {
 	ListUserAllergensByUsers(ctx context.Context, userIds []int64) ([]UserprefsUserAllergen, error)
 	ListUserBottleFavorites(ctx context.Context, arg ListUserBottleFavoritesParams) ([]UserprefsUserBottleFavorite, error)
 	ListUserItemFavorites(ctx context.Context, arg ListUserItemFavoritesParams) ([]UserprefsUserItemFavorite, error)
+	// Batch "usual brand" lookup for grocery-line preloads — one row per
+	// (ingredient, household) pair recorded by brand-picked check-offs.
+	ListUsualItemsForIngredients(ctx context.Context, arg ListUsualItemsForIngredientsParams) ([]UserprefsHouseholdIngredientItem, error)
 	MergeHouseholdBottleConflicts(ctx context.Context, arg MergeHouseholdBottleConflictsParams) error
 	// ---------- household merge (invite accept) ----------
 	// For items present in both households, fold the source row into the
@@ -88,9 +93,18 @@ type Querier interface {
 	SetUserItemFavorite(ctx context.Context, arg SetUserItemFavoriteParams) (UserprefsUserItemFavorite, error)
 	UpsertHouseholdBottle(ctx context.Context, arg UpsertHouseholdBottleParams) (UserprefsHouseholdBottle, error)
 	UpsertHouseholdItem(ctx context.Context, arg UpsertHouseholdItemParams) (UserprefsHouseholdItem, error)
+	// ---------- ingredient usual-brand + item override ----------
+	// Pure userprefs.* surface moved out of inventory (LEN-171/M17): the
+	// inventory service keeps only the catalog-over-override JOIN reads and
+	// the atomic cross-domain ingredient-merge series.
+	// Household-level remap: "this product is a different ingredient for us."
+	UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error
 	// ---------- recipe favorites (unchanged, per-user) ----------
 	UpsertRecipeFavorite(ctx context.Context, arg UpsertRecipeFavoriteParams) (UserprefsUserRecipePreference, error)
 	UpsertUserAllergen(ctx context.Context, arg UpsertUserAllergenParams) (int64, error)
+	// "Usual brand" record — updated each time a check-off credits stock so
+	// repeat purchases stop prompting.
+	UpsertUsualItemForIngredient(ctx context.Context, arg UpsertUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
 }
 
 var _ Querier = (*Queries)(nil)

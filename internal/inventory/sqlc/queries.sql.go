@@ -606,37 +606,46 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Invento
 	return i, err
 }
 
-const deleteBrand = `-- name: DeleteBrand :exec
+const deleteBrand = `-- name: DeleteBrand :execrows
 DELETE FROM inventory.brand
 WHERE brand_id = $1
 `
 
-func (q *Queries) DeleteBrand(ctx context.Context, brandID int64) error {
-	_, err := q.db.Exec(ctx, deleteBrand, brandID)
-	return err
+func (q *Queries) DeleteBrand(ctx context.Context, brandID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBrand, brandID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteCategory = `-- name: DeleteCategory :exec
+const deleteCategory = `-- name: DeleteCategory :execrows
 DELETE FROM inventory.category
 WHERE category_id = $1
 `
 
-func (q *Queries) DeleteCategory(ctx context.Context, categoryID int64) error {
-	_, err := q.db.Exec(ctx, deleteCategory, categoryID)
-	return err
+func (q *Queries) DeleteCategory(ctx context.Context, categoryID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCategory, categoryID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteFlavorProfile = `-- name: DeleteFlavorProfile :exec
+const deleteFlavorProfile = `-- name: DeleteFlavorProfile :execrows
 DELETE FROM inventory.flavor_profile
 WHERE flavor_id = $1
 `
 
-func (q *Queries) DeleteFlavorProfile(ctx context.Context, flavorID int64) error {
-	_, err := q.db.Exec(ctx, deleteFlavorProfile, flavorID)
-	return err
+func (q *Queries) DeleteFlavorProfile(ctx context.Context, flavorID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFlavorProfile, flavorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteFoodFlavor = `-- name: DeleteFoodFlavor :exec
+const deleteFoodFlavor = `-- name: DeleteFoodFlavor :execrows
 DELETE FROM inventory.food_flavor
 WHERE food_id = $1 AND flavor_id = $2
 `
@@ -646,12 +655,15 @@ type DeleteFoodFlavorParams struct {
 	FlavorID int64 `json:"flavor_id"`
 }
 
-func (q *Queries) DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) error {
-	_, err := q.db.Exec(ctx, deleteFoodFlavor, arg.FoodID, arg.FlavorID)
-	return err
+func (q *Queries) DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFoodFlavor, arg.FoodID, arg.FlavorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteFoodNutrient = `-- name: DeleteFoodNutrient :exec
+const deleteFoodNutrient = `-- name: DeleteFoodNutrient :execrows
 DELETE FROM inventory.food_nutrient
 WHERE food_id = $1 AND nutrient_id = $2
 `
@@ -661,9 +673,12 @@ type DeleteFoodNutrientParams struct {
 	NutrientID int64 `json:"nutrient_id"`
 }
 
-func (q *Queries) DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error {
-	_, err := q.db.Exec(ctx, deleteFoodNutrient, arg.FoodID, arg.NutrientID)
-	return err
+func (q *Queries) DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFoodNutrient, arg.FoodID, arg.NutrientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteFoodNutrientsByItem = `-- name: DeleteFoodNutrientsByItem :exec
@@ -676,14 +691,17 @@ func (q *Queries) DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) e
 	return err
 }
 
-const deleteIngredient = `-- name: DeleteIngredient :exec
+const deleteIngredient = `-- name: DeleteIngredient :execrows
 DELETE FROM inventory.ingredient
 WHERE ingredient_id = $1
 `
 
-func (q *Queries) DeleteIngredient(ctx context.Context, ingredientID int64) error {
-	_, err := q.db.Exec(ctx, deleteIngredient, ingredientID)
-	return err
+func (q *Queries) DeleteIngredient(ctx context.Context, ingredientID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteIngredient, ingredientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteIngredientAllergen = `-- name: DeleteIngredientAllergen :execrows
@@ -776,14 +794,17 @@ func (q *Queries) DeleteIngredientRefsUsual(ctx context.Context, ingredientID in
 	return err
 }
 
-const deleteItem = `-- name: DeleteItem :exec
+const deleteItem = `-- name: DeleteItem :execrows
 DELETE FROM inventory.item
 WHERE item_id = $1
 `
 
-func (q *Queries) DeleteItem(ctx context.Context, itemID int64) error {
-	_, err := q.db.Exec(ctx, deleteItem, itemID)
-	return err
+func (q *Queries) DeleteItem(ctx context.Context, itemID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteItem, itemID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteItemAllergen = `-- name: DeleteItemAllergen :execrows
@@ -804,32 +825,17 @@ func (q *Queries) DeleteItemAllergen(ctx context.Context, arg DeleteItemAllergen
 	return result.RowsAffected(), nil
 }
 
-const deleteItemIngredientOverride = `-- name: DeleteItemIngredientOverride :execrows
-DELETE FROM userprefs.household_item_ingredient
-WHERE household_id = $1 AND item_id = $2
-`
-
-type DeleteItemIngredientOverrideParams struct {
-	HouseholdID int64 `json:"household_id"`
-	ItemID      int64 `json:"item_id"`
-}
-
-func (q *Queries) DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteItemIngredientOverride, arg.HouseholdID, arg.ItemID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const deleteNutrientType = `-- name: DeleteNutrientType :exec
+const deleteNutrientType = `-- name: DeleteNutrientType :execrows
 DELETE FROM inventory.nutrient_type
 WHERE nutrient_id = $1
 `
 
-func (q *Queries) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
-	_, err := q.db.Exec(ctx, deleteNutrientType, nutrientID)
-	return err
+func (q *Queries) DeleteNutrientType(ctx context.Context, nutrientID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteNutrientType, nutrientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const demoteIngredientRefsEventRecipeItem = `-- name: DemoteIngredientRefsEventRecipeItem :exec
@@ -1568,33 +1574,6 @@ func (q *Queries) GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]Invento
 		return nil, err
 	}
 	return items, nil
-}
-
-const getUsualItemForIngredient = `-- name: GetUsualItemForIngredient :one
-SELECT household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
-FROM userprefs.household_ingredient_item
-WHERE household_id = $1 AND ingredient_id = $2
-`
-
-type GetUsualItemForIngredientParams struct {
-	HouseholdID  int64 `json:"household_id"`
-	IngredientID int64 `json:"ingredient_id"`
-}
-
-func (q *Queries) GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error) {
-	row := q.db.QueryRow(ctx, getUsualItemForIngredient, arg.HouseholdID, arg.IngredientID)
-	var i UserprefsHouseholdIngredientItem
-	err := row.Scan(
-		&i.HouseholdID,
-		&i.IngredientID,
-		&i.ItemID,
-		&i.LastUsedAt,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
 
 const listAllergenSuggestions = `-- name: ListAllergenSuggestions :many
@@ -2494,49 +2473,6 @@ func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {
 	return items, nil
 }
 
-const listUsualItemsForIngredients = `-- name: ListUsualItemsForIngredients :many
-SELECT household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
-FROM userprefs.household_ingredient_item
-WHERE household_id = $1
-  AND ingredient_id = ANY($2::bigint[])
-`
-
-type ListUsualItemsForIngredientsParams struct {
-	HouseholdID   int64   `json:"household_id"`
-	IngredientIds []int64 `json:"ingredient_ids"`
-}
-
-// Batch "usual brand" lookup for grocery-line preloads — one row per
-// (ingredient, household) pair recorded by brand-picked check-offs.
-func (q *Queries) ListUsualItemsForIngredients(ctx context.Context, arg ListUsualItemsForIngredientsParams) ([]UserprefsHouseholdIngredientItem, error) {
-	rows, err := q.db.Query(ctx, listUsualItemsForIngredients, arg.HouseholdID, arg.IngredientIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UserprefsHouseholdIngredientItem{}
-	for rows.Next() {
-		var i UserprefsHouseholdIngredientItem
-		if err := rows.Scan(
-			&i.HouseholdID,
-			&i.IngredientID,
-			&i.ItemID,
-			&i.LastUsedAt,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedBy,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const matchItemIDs = `-- name: MatchItemIDs :many
 SELECT item_id
 FROM inventory.item
@@ -3295,18 +3231,21 @@ func (q *Queries) UpdateAllergen(ctx context.Context, arg UpdateAllergenParams) 
 
 const updateBrand = `-- name: UpdateBrand :one
 UPDATE inventory.brand
-SET name = $2
+SET name       = $2,
+    updated_by = $3,
+    updated_at = now()
 WHERE brand_id = $1
 RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 `
 
 type UpdateBrandParams struct {
-	BrandID int64  `json:"brand_id"`
-	Name    string `json:"name"`
+	BrandID   int64       `json:"brand_id"`
+	Name      string      `json:"name"`
+	UpdatedBy pgtype.Text `json:"updated_by"`
 }
 
 func (q *Queries) UpdateBrand(ctx context.Context, arg UpdateBrandParams) (InventoryBrand, error) {
-	row := q.db.QueryRow(ctx, updateBrand, arg.BrandID, arg.Name)
+	row := q.db.QueryRow(ctx, updateBrand, arg.BrandID, arg.Name, arg.UpdatedBy)
 	var i InventoryBrand
 	err := row.Scan(
 		&i.BrandID,
@@ -3626,72 +3565,4 @@ func (q *Queries) UpsertItemAllergen(ctx context.Context, arg UpsertItemAllergen
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const upsertItemIngredientOverride = `-- name: UpsertItemIngredientOverride :exec
-INSERT INTO userprefs.household_item_ingredient (household_id, item_id, ingredient_id, created_by, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $4, now())
-ON CONFLICT (household_id, item_id)
-DO UPDATE SET ingredient_id = EXCLUDED.ingredient_id,
-              updated_by    = EXCLUDED.updated_by,
-              updated_at    = now()
-`
-
-type UpsertItemIngredientOverrideParams struct {
-	HouseholdID  int64  `json:"household_id"`
-	ItemID       int64  `json:"item_id"`
-	IngredientID int64  `json:"ingredient_id"`
-	CreatedBy    string `json:"created_by"`
-}
-
-// Household-level remap: "this product is a different ingredient for us."
-func (q *Queries) UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error {
-	_, err := q.db.Exec(ctx, upsertItemIngredientOverride,
-		arg.HouseholdID,
-		arg.ItemID,
-		arg.IngredientID,
-		arg.CreatedBy,
-	)
-	return err
-}
-
-const upsertUsualItemForIngredient = `-- name: UpsertUsualItemForIngredient :one
-INSERT INTO userprefs.household_ingredient_item (household_id, ingredient_id, item_id, last_used_at, created_by, updated_by, updated_at)
-VALUES ($1, $2, $3, now(), $4, $4, now())
-ON CONFLICT (household_id, ingredient_id)
-DO UPDATE SET item_id      = EXCLUDED.item_id,
-              last_used_at = now(),
-              updated_by   = EXCLUDED.updated_by,
-              updated_at   = now()
-RETURNING household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
-`
-
-type UpsertUsualItemForIngredientParams struct {
-	HouseholdID  int64  `json:"household_id"`
-	IngredientID int64  `json:"ingredient_id"`
-	ItemID       int64  `json:"item_id"`
-	CreatedBy    string `json:"created_by"`
-}
-
-// "Usual brand" record — updated each time a check-off credits stock so
-// repeat purchases stop prompting.
-func (q *Queries) UpsertUsualItemForIngredient(ctx context.Context, arg UpsertUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error) {
-	row := q.db.QueryRow(ctx, upsertUsualItemForIngredient,
-		arg.HouseholdID,
-		arg.IngredientID,
-		arg.ItemID,
-		arg.CreatedBy,
-	)
-	var i UserprefsHouseholdIngredientItem
-	err := row.Scan(
-		&i.HouseholdID,
-		&i.IngredientID,
-		&i.ItemID,
-		&i.LastUsedAt,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-	)
-	return i, err
 }

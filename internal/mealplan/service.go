@@ -125,6 +125,20 @@ func (s *Service) GetMealPlanByID(ctx context.Context, mealPlanID, householdID i
 	return toMealPlan(row), nil
 }
 
+// GetMealPlansByIDs returns the household's plans for the given IDs in
+// one query — batch paths (grocery list pages) must not fetch per row.
+func (s *Service) GetMealPlansByIDs(ctx context.Context, householdID int64, mealPlanIDs []int64) ([]MealPlan, error) {
+	rows, err := s.q.GetMealPlansByIDs(ctx, sqlc.GetMealPlansByIDsParams{HouseholdID: householdID, Ids: mealPlanIDs})
+	if err != nil {
+		return nil, fmt.Errorf("get meal plans by ids: %w", domainerr.FromStorage(err))
+	}
+	out := make([]MealPlan, len(rows))
+	for i := range rows {
+		out[i] = toMealPlan(rows[i])
+	}
+	return out, nil
+}
+
 // ListMealPlans returns a household's plans ordered by week.
 func (s *Service) ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]MealPlan, error) {
 	rows, err := s.q.ListMealPlans(ctx, sqlc.ListMealPlansParams{HouseholdID: householdID, Limit: limit, Offset: offset})
@@ -180,7 +194,7 @@ func (s *Service) UpdateMealPlan(ctx context.Context, mealPlanID, householdID in
 
 // DeleteMealPlan removes a plan owned by the household.
 func (s *Service) DeleteMealPlan(ctx context.Context, mealPlanID, householdID int64) error {
-	return s.q.DeleteMealPlan(ctx, sqlc.DeleteMealPlanParams{MealPlanID: mealPlanID, HouseholdID: householdID})
+	return domainerr.RequireRows(s.q.DeleteMealPlan(ctx, sqlc.DeleteMealPlanParams{MealPlanID: mealPlanID, HouseholdID: householdID}))
 }
 
 // ReassignHousehold repoints every meal plan owned by the source household
@@ -306,7 +320,7 @@ func (s *Service) UpdateMealSlot(ctx context.Context, slotID, householdID int64,
 
 // DeleteMealSlot removes a slot from a plan owned by the household.
 func (s *Service) DeleteMealSlot(ctx context.Context, slotID, householdID int64) error {
-	return s.q.DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: slotID, HouseholdID: householdID})
+	return domainerr.RequireRows(s.q.DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: slotID, HouseholdID: householdID}))
 }
 
 // MealSlotItem is an item override attached to a slot.
@@ -396,7 +410,7 @@ func toMealSlotItems(rows []sqlc.MealplanMealSlotItem) ([]MealSlotItem, error) {
 // DeleteMealSlotItem removes an item override from a plan owned by the
 // household.
 func (s *Service) DeleteMealSlotItem(ctx context.Context, slotItemID, householdID int64) error {
-	return s.q.DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: slotItemID, HouseholdID: householdID})
+	return domainerr.RequireRows(s.q.DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: slotItemID, HouseholdID: householdID}))
 }
 
 // LastPlannedDates returns, for one household, the most recent plan week in

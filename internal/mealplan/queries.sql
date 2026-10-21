@@ -8,6 +8,11 @@ SELECT *
 FROM mealplan.meal_plan
 WHERE meal_plan_id = $1 AND household_id = $2;
 
+-- name: GetMealPlansByIDs :many
+SELECT *
+FROM mealplan.meal_plan
+WHERE household_id = $1 AND meal_plan_id = ANY(sqlc.arg('ids')::bigint[]);
+
 -- name: ListMealPlans :many
 SELECT *
 FROM mealplan.meal_plan
@@ -30,7 +35,7 @@ SET name                = $3,
     updated_at          = now()
 WHERE meal_plan_id = $1 AND household_id = $2;
 
--- name: DeleteMealPlan :exec
+-- name: DeleteMealPlan :execrows
 DELETE FROM mealplan.meal_plan
 WHERE meal_plan_id = $1 AND household_id = $2;
 
@@ -98,7 +103,7 @@ SET day_of_week      = $3,
 FROM mealplan.meal_plan mp
 WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.household_id = $2;
 
--- name: DeleteMealSlot :exec
+-- name: DeleteMealSlot :execrows
 DELETE FROM mealplan.meal_slot ms
 USING mealplan.meal_plan mp
 WHERE ms.meal_plan_id = mp.meal_plan_id AND ms.slot_id = $1 AND mp.household_id = $2;
@@ -132,7 +137,7 @@ JOIN mealplan.meal_plan mp ON ms.meal_plan_id = mp.meal_plan_id
 WHERE ms.meal_plan_id = ANY(sqlc.arg(meal_plan_ids)::bigint[]) AND mp.household_id = sqlc.arg(household_id)
 ORDER BY msi.slot_item_id;
 
--- name: DeleteMealSlotItem :exec
+-- name: DeleteMealSlotItem :execrows
 DELETE FROM mealplan.meal_slot_item msi
 USING mealplan.meal_slot ms, mealplan.meal_plan mp
 WHERE msi.slot_id = ms.slot_id AND ms.meal_plan_id = mp.meal_plan_id

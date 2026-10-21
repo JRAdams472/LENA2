@@ -56,7 +56,7 @@ func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, 
 	// Usual brands for ingredient lines join the catalog load so the
 	// usualBrand resolver never queries per line.
 	if len(ingredientIDs) > 0 {
-		usuals, err := inv.GetUsualItemsForIngredients(ctx, householdID, ingredientIDs)
+		usuals, err := up.GetUsualItemsForIngredients(ctx, householdID, ingredientIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -99,16 +99,25 @@ func loadGroceryChildren(ctx context.Context, g GroceryService, inv ItemReader, 
 }
 
 // loadGroceryPlans batch-loads the source meal plan for every list that
-// has one — once per distinct plan, so the mealPlan field resolver never
-// queries per list row. Manual lists contribute nothing to the map.
+// has one — one query for the whole page, so the mealPlan field resolver
+// never queries per list row. Manual lists contribute nothing to the map.
 func loadGroceryPlans(ctx context.Context, mp MealPlanService, householdID int64, lists []grocery.GroceryList) (map[int64]mealplan.MealPlan, error) {
-	plans := make(map[int64]mealplan.MealPlan)
-	for _, planID := range distinctIDs(lists, func(l grocery.GroceryList) *int64 { return l.MealPlanID }) {
-		plan, err := mp.GetMealPlanByID(ctx, planID, householdID)
-		if err != nil {
-			return nil, err
-		}
-		plans[planID] = plan
+	ids := distinctIDs(lists, func(l grocery.GroceryList) *int64 { return l.MealPlanID })
+	if len(ids) == 0 {
+		return map[int64]mealplan.MealPlan{}, nil
+	}
+	rows, err := mp.GetMealPlansByIDs(ctx, householdID, ids)
+	if err != nil {
+		return nil, err
+	}
+	// A list's plan reference that resolves to nothing means the row is
+	// missing or foreign — same not-found the per-ID fetch used to give.
+	if len(rows) != len(ids) {
+		return nil, domainerr.ErrNotFound
+	}
+	plans := make(map[int64]mealplan.MealPlan, len(rows))
+	for _, p := range rows {
+		plans[p.MealPlanID] = p
 	}
 	return plans, nil
 }
@@ -695,7 +704,7 @@ func (r *Resolver) checkCreditItem(ctx context.Context, householdID int64, it gr
 	if it.IngredientID == nil {
 		return nil, nil
 	}
-	usual, err := r.InventoryService.GetUsualItemForIngredient(ctx, householdID, *it.IngredientID)
+	usual, err := r.UserPrefsService.GetUsualItemForIngredient(ctx, householdID, *it.IngredientID)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +748,7 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 			}
 			// A successful usual-brand check-off refreshes the record.
 			if toggled.IsChecked && toggled.IngredientID != nil && toggled.ItemID == nil {
-				if err := r.InventoryService.SetUsualItemForIngredient(ctx, u.HouseholdID, *toggled.IngredientID, *creditID, u.Email); err != nil {
+				if err := r.UserPrefsService.SetUsualItemForIngredient(ctx, u.HouseholdID, *toggled.IngredientID, *creditID, u.Email); err != nil {
 					return err
 				}
 			}
@@ -753,7 +762,7 @@ func (r *Resolver) ToggleGroceryItemChecked(ctx context.Context, args struct{ Gr
 	if updated.IsChecked {
 		r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemChecked, updated))
 	}
-	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: updated, as: r.allergySrc(u)}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, up: r.UserPrefsService, householdID: u.HouseholdID, item: updated, as: r.allergySrc(u)}, nil
 }
 
 // CheckGroceryItemWithBrand is the first-time brand pick for an ingredient
@@ -783,26 +792,25 @@ func (r *Resolver) CheckGroceryItemWithBrand(ctx context.Context, args struct {
 
 	var updated grocery.GroceryListItem
 	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
-		line, err := r.GroceryService.GetGroceryListItemByID(ctx, listItemID, u.HouseholdID)
+		// Bind writes only the item link — a full-row writeback here would
+		// clobber concurrent edits on a stale read.
+		if err := r.GroceryService.BindItemToGroceryListItem(ctx, listItemID, u.HouseholdID, itemID, u.Email); err != nil {
+			return err
+		}
+		// The check is transition-guarded: only the caller that actually
+		// flips the row unchecked→checked credits pantry stock, so a
+		// concurrent brand pick can't double-count.
+		line, transitioned, err := r.GroceryService.CheckGroceryListItemOn(ctx, listItemID, u.HouseholdID, u.Email)
 		if err != nil {
 			return err
 		}
-		line.ItemID = &itemID
-		if err := r.GroceryService.UpdateGroceryListItem(ctx, listItemID, u.HouseholdID, line, u.Email); err != nil {
-			return err
-		}
-		if !line.IsChecked {
-			toggled, err := r.GroceryService.ToggleGroceryListItemChecked(ctx, listItemID, u.HouseholdID, u.Email)
-			if err != nil {
-				return err
-			}
-			line = toggled
+		if transitioned {
 			if _, err := r.UserPrefsService.AdjustHouseholdItemQuantity(ctx, u.HouseholdID, itemID, line.QuantityNeeded, u.Email); err != nil {
 				return err
 			}
 		}
 		if line.IngredientID != nil {
-			if err := r.InventoryService.SetUsualItemForIngredient(ctx, u.HouseholdID, *line.IngredientID, itemID, u.Email); err != nil {
+			if err := r.UserPrefsService.SetUsualItemForIngredient(ctx, u.HouseholdID, *line.IngredientID, itemID, u.Email); err != nil {
 				return err
 			}
 		}
@@ -814,7 +822,7 @@ func (r *Resolver) CheckGroceryItemWithBrand(ctx context.Context, args struct {
 	if updated.IsChecked {
 		r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemChecked, updated))
 	}
-	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: updated, as: r.allergySrc(u)}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, up: r.UserPrefsService, householdID: u.HouseholdID, item: updated, as: r.allergySrc(u)}, nil
 }
 
 // groceryEntityEvent maps a grocery line to an analytics event: catalog
@@ -866,7 +874,7 @@ func (r *Resolver) AddGroceryItem(ctx context.Context, args struct{ Input addGro
 		return nil, err
 	}
 	r.recordEventAsync(u.UserID, u.Email, groceryEntityEvent(analytics.EventGroceryItemAdded, it))
-	return &groceryListItemResolver{inv: r.InventoryService, householdID: u.HouseholdID, item: it, as: r.allergySrc(u)}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, up: r.UserPrefsService, householdID: u.HouseholdID, item: it, as: r.allergySrc(u)}, nil
 }
 
 // parseGroceryItemInput validates a grocery-item input and converts it to
@@ -991,7 +999,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 	}
 	out := make([]*groceryListItemResolver, len(items))
 	for i := range items {
-		out[i] = &groceryListItemResolver{inv: r.inv, householdID: r.householdID, item: items[i], items: r.catItems, units: r.units, ingredients: r.ingredients, usualItems: r.usualItems, ch: r.ch, as: asOfItemChildren(r.ch)}
+		out[i] = &groceryListItemResolver{inv: r.inv, up: r.up, householdID: r.householdID, item: items[i], items: r.catItems, units: r.units, ingredients: r.ingredients, usualItems: r.usualItems, ch: r.ch, as: asOfItemChildren(r.ch)}
 	}
 	return out, nil
 }
@@ -999,6 +1007,7 @@ func (r *groceryListResolver) Items(ctx context.Context) ([]*groceryListItemReso
 // groceryListItemResolver resolves GroceryListItem fields.
 type groceryListItemResolver struct {
 	inv         ItemReader
+	up          UserPrefsService
 	householdID int64
 	item        grocery.GroceryListItem
 	items       map[int64]inventory.Item
@@ -1068,11 +1077,11 @@ func (r *groceryListItemResolver) UsualBrand(ctx context.Context) (*itemResolver
 		if householdID == 0 {
 			u, ok := currentuser.FromContext(ctx)
 			if !ok {
-				return nil, errForbidden()
+				return nil, errUnauthenticated()
 			}
 			householdID = u.HouseholdID
 		}
-		usual, err := r.inv.GetUsualItemForIngredient(ctx, householdID, *r.item.IngredientID)
+		usual, err := r.up.GetUsualItemForIngredient(ctx, householdID, *r.item.IngredientID)
 		if err != nil {
 			return nil, err
 		}

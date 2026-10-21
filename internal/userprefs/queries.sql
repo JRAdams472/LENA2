@@ -41,11 +41,12 @@ WHERE household_id = $1 AND item_id = $2;
 
 -- name: ListHouseholdItems :many
 -- Plain recency paging for internal consumers (pantry stock scans); ranked
--- listing goes through SearchHouseholdItems.
+-- listing goes through SearchHouseholdItems. household_item_id breaks
+-- updated_at ties so paginated scans are stable.
 SELECT *
 FROM userprefs.household_item
 WHERE household_id = $1
-ORDER BY updated_at DESC NULLS LAST
+ORDER BY updated_at DESC NULLS LAST, household_item_id
 LIMIT $2 OFFSET $3;
 
 -- name: CountHouseholdItems :one
@@ -127,11 +128,12 @@ WHERE household_id = $1 AND bottle_id = $2;
 
 -- name: ListHouseholdBottles :many
 -- Plain recency paging for internal consumers; ranked listing goes through
--- SearchHouseholdBottles.
+-- SearchHouseholdBottles. household_bottle_id breaks updated_at ties so
+-- paginated scans are stable.
 SELECT *
 FROM userprefs.household_bottle
 WHERE household_id = $1
-ORDER BY updated_at DESC NULLS LAST
+ORDER BY updated_at DESC NULLS LAST, household_bottle_id
 LIMIT $2 OFFSET $3;
 
 -- name: CountHouseholdBottles :one
@@ -375,3 +377,46 @@ WHERE household_id = $1;
 -- Same story for cellar holdings.
 DELETE FROM userprefs.household_bottle
 WHERE household_id = $1;
+
+-- ---------- ingredient usual-brand + item override ----------
+-- Pure userprefs.* surface moved out of inventory (LEN-171/M17): the
+-- inventory service keeps only the catalog-over-override JOIN reads and
+-- the atomic cross-domain ingredient-merge series.
+
+-- name: UpsertItemIngredientOverride :exec
+-- Household-level remap: "this product is a different ingredient for us."
+INSERT INTO userprefs.household_item_ingredient (household_id, item_id, ingredient_id, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $4, now())
+ON CONFLICT (household_id, item_id)
+DO UPDATE SET ingredient_id = EXCLUDED.ingredient_id,
+              updated_by    = EXCLUDED.updated_by,
+              updated_at    = now();
+
+-- name: DeleteItemIngredientOverride :execrows
+DELETE FROM userprefs.household_item_ingredient
+WHERE household_id = $1 AND item_id = $2;
+
+-- name: GetUsualItemForIngredient :one
+SELECT *
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1 AND ingredient_id = $2;
+
+-- name: UpsertUsualItemForIngredient :one
+-- "Usual brand" record — updated each time a check-off credits stock so
+-- repeat purchases stop prompting.
+INSERT INTO userprefs.household_ingredient_item (household_id, ingredient_id, item_id, last_used_at, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, now(), $4, $4, now())
+ON CONFLICT (household_id, ingredient_id)
+DO UPDATE SET item_id      = EXCLUDED.item_id,
+              last_used_at = now(),
+              updated_by   = EXCLUDED.updated_by,
+              updated_at   = now()
+RETURNING *;
+
+-- name: ListUsualItemsForIngredients :many
+-- Batch "usual brand" lookup for grocery-line preloads — one row per
+-- (ingredient, household) pair recorded by brand-picked check-offs.
+SELECT *
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1
+  AND ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);

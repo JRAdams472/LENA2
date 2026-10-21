@@ -168,7 +168,7 @@ func (r *Resolver) Nutrition(ctx context.Context, args struct{ MealPlanID graphq
 		if l.ingredientID == nil {
 			continue
 		}
-		rep, err := r.InventoryService.RepresentativeItemForIngredient(ctx, u.HouseholdID, *l.ingredientID, u.UserID)
+		rep, err := r.representativeItemForIngredient(ctx, u.HouseholdID, *l.ingredientID, u.UserID)
 		if err != nil {
 			return nil, err
 		}
@@ -235,6 +235,33 @@ func (r *Resolver) planRecipes(ctx context.Context, householdID int64, slots []m
 		effective = append(effective, recipe.ApplyDelta(items, nil, deltas[rid]).Items...)
 	}
 	return recipes, effective, nil
+}
+
+// representativeItemForIngredient picks a branded item to stand in for an
+// ingredient where nutrition needs one. Order: household usual brand →
+// first linked item for the household → nil. The usual-brand lookup is a
+// userprefs read; the catalog fallbacks are inventory — this composition
+// is cross-domain, so it lives on the resolver, not a domain service.
+func (r *Resolver) representativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*inventory.Item, error) {
+	if usual, err := r.UserPrefsService.GetUsualItemForIngredient(ctx, householdID, ingredientID); err != nil {
+		return nil, err
+	} else if usual != nil {
+		it, err := r.InventoryService.GetItemByID(ctx, usual.ItemID)
+		if err == nil {
+			return &it, nil
+		}
+		if !errors.Is(err, domainerr.ErrNotFound) {
+			return nil, err
+		}
+	}
+	items, err := r.InventoryService.ResolveIngredientItems(ctx, householdID, ingredientID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	return &items[0], nil
 }
 
 // nutritionInputs batch-loads the nutrient rows, item metadata, and unit

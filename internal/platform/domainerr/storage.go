@@ -26,3 +26,16 @@ func FromStorage(err error) error {
 	}
 	return err
 }
+
+// RequireRows adapts an :execrows result to the row-targeted write
+// contract: a storage error maps through FromStorage, zero affected rows
+// become ErrNotFound, and anything else is nil.
+func RequireRows(n int64, err error) error {
+	if err != nil {
+		return FromStorage(err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

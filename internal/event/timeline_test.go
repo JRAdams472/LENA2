@@ -1,6 +1,8 @@
 package event
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -118,6 +120,43 @@ func TestBuildTimelineCycleUnschedulable(t *testing.T) {
 	}})
 	if !tl.Recipes[0].Unschedulable {
 		t.Fatal("cycle should be unschedulable")
+	}
+}
+
+func TestBuildTimelineDuplicateStepNumber(t *testing.T) {
+	tl := BuildTimeline(tlEvent(15), []TimelineRecipeInput{{
+		EventRecipeID: 10, Name: "R", TargetTime: tlTarget,
+		Steps: []TimelineStepInput{
+			{StepNumber: 1, Instruction: "a"},
+			{StepNumber: 1, Instruction: "b"},
+		},
+	}})
+	rt := tl.Recipes[0]
+	if !rt.Unschedulable {
+		t.Fatal("duplicate step numbers should be unschedulable")
+	}
+	found := false
+	for _, w := range rt.Warnings {
+		if strings.Contains(w, "duplicate step number 1") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want a duplicate step number warning, got %v", rt.Warnings)
+	}
+}
+
+func TestEffectiveMinutesClampsToInt32(t *testing.T) {
+	big := int32(math.MaxInt32)
+	m, est := effectiveMinutes(&big, 15)
+	if est {
+		t.Fatal("a set duration should not be estimated")
+	}
+	if m != math.MaxInt32 {
+		t.Fatalf("clamped minutes = %d, want %d", m, int64(math.MaxInt32))
+	}
+	if int32(m) < 0 {
+		t.Fatal("int32 cast must not wrap negative")
 	}
 }
 

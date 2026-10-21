@@ -98,6 +98,18 @@ func TestIntegrationRecipeDeltaLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, delta.Stale(updated.UpdatedAt), "canonical edit should mark the delta stale")
 
+	// Re-writing the delta binds it to the new base marker — a conflict
+	// update that left base_updated_at stale would keep reporting the
+	// delta stale even though it now applies to the edited recipe.
+	_, err = svc.SetRecipeDelta(ctx, rec.RecipeID, householdID, []DeltaItem{
+		{Kind: DeltaItemSubstitute, RecipeItemID: i64(items[0].RecipeItemID), ItemID: i64(sugar.ItemID)},
+		{Kind: DeltaItemAdjust, RecipeItemID: i64(items[1].RecipeItemID), Quantity: f2p(0.75)},
+	}, nil, itBy)
+	require.NoError(t, err)
+	delta, err = svc.GetRecipeDelta(ctx, rec.RecipeID, householdID)
+	require.NoError(t, err)
+	assert.False(t, delta.Stale(updated.UpdatedAt), "delta rewritten after a canonical edit must snapshot the new base")
+
 	// Acknowledge clears it.
 	require.NoError(t, svc.AcknowledgeRecipeDelta(ctx, rec.RecipeID, householdID, itBy))
 	delta, err = svc.GetRecipeDelta(ctx, rec.RecipeID, householdID)
@@ -134,9 +146,9 @@ func TestIntegrationRecipeDeltaLifecycle(t *testing.T) {
 	// attributed to the actor.
 	events, err := svc.ListRecipeDeltaEvents(ctx, rec.RecipeID, householdID, 10)
 	require.NoError(t, err)
-	require.Len(t, events, 3)
-	assert.Equal(t, []string{DeltaEventClear, DeltaEventAcknowledge, DeltaEventSet},
-		[]string{events[0].Event, events[1].Event, events[2].Event})
+	require.Len(t, events, 4)
+	assert.Equal(t, []string{DeltaEventClear, DeltaEventAcknowledge, DeltaEventSet, DeltaEventSet},
+		[]string{events[0].Event, events[1].Event, events[2].Event, events[3].Event})
 	for _, e := range events {
 		assert.Equal(t, itBy, e.Actor)
 	}

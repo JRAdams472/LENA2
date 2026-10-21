@@ -15,6 +15,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/testutil"
+	"github.com/JRAdams472/LENA2/internal/userprefs"
 )
 
 const itBy = "integration-test"
@@ -68,7 +69,7 @@ func TestIntegrationBrandCRUD(t *testing.T) {
 	}
 	assert.True(t, found, "created brand should appear in ListBrands")
 
-	updated, err := svc.UpdateBrand(ctx, brand.BrandID, "IT Brand Beta")
+	updated, err := svc.UpdateBrand(ctx, brand.BrandID, "IT Brand Beta", "it-user")
 	require.NoError(t, err)
 	assert.Equal(t, "IT Brand Beta", updated.Name)
 
@@ -688,6 +689,7 @@ func TestIntegrationItemIngredientResolution(t *testing.T) {
 	}
 	ctx := context.Background()
 	svc, pool := newIntegrationServiceWithPool(t, ctx)
+	upSvc := userprefs.NewService(pool)
 
 	hh := testutil.MustHousehold(ctx, t, pool)
 	hhOther := testutil.MustHousehold(ctx, t, pool)
@@ -724,7 +726,7 @@ func TestIntegrationItemIngredientResolution(t *testing.T) {
 	assert.Equal(t, corn.IngredientID, *got)
 
 	// Household override remaps the item — only for that household.
-	require.NoError(t, svc.SetItemIngredientOverride(ctx, hh, item.ItemID, alt.IngredientID, itBy))
+	require.NoError(t, upSvc.SetItemIngredientOverride(ctx, hh, item.ItemID, alt.IngredientID, itBy))
 	got, err = svc.ResolveItemIngredient(ctx, hh, item.ItemID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -744,19 +746,19 @@ func TestIntegrationItemIngredientResolution(t *testing.T) {
 	require.Len(t, items, 1)
 
 	// Clearing the override restores catalog resolution.
-	require.NoError(t, svc.ClearItemIngredientOverride(ctx, hh, item.ItemID))
+	require.NoError(t, upSvc.ClearItemIngredientOverride(ctx, hh, item.ItemID))
 	got, err = svc.ResolveItemIngredient(ctx, hh, item.ItemID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, corn.IngredientID, *got)
 
 	// Usual brand round-trips per household.
-	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, corn.IngredientID, item.ItemID, itBy))
-	u, err := svc.GetUsualItemForIngredient(ctx, hh, corn.IngredientID)
+	require.NoError(t, upSvc.SetUsualItemForIngredient(ctx, hh, corn.IngredientID, item.ItemID, itBy))
+	u, err := upSvc.GetUsualItemForIngredient(ctx, hh, corn.IngredientID)
 	require.NoError(t, err)
 	require.NotNil(t, u)
 	assert.Equal(t, item.ItemID, u.ItemID)
-	u, err = svc.GetUsualItemForIngredient(ctx, hhOther, corn.IngredientID)
+	u, err = upSvc.GetUsualItemForIngredient(ctx, hhOther, corn.IngredientID)
 	require.NoError(t, err)
 	assert.Nil(t, u, "usual brand is household-scoped")
 }
@@ -767,6 +769,7 @@ func TestIntegrationMergeIngredients(t *testing.T) {
 	}
 	ctx := context.Background()
 	svc, pool := newIntegrationServiceWithPool(t, ctx)
+	upSvc := userprefs.NewService(pool)
 
 	hh := testutil.MustHousehold(ctx, t, pool)
 	cat, err := svc.CreateCategory(ctx, "IT Merge Category", "", false, itBy)
@@ -782,7 +785,7 @@ func TestIntegrationMergeIngredients(t *testing.T) {
 	}, itBy)
 	require.NoError(t, err)
 	require.NoError(t, svc.SetItemIngredient(ctx, item.ItemID, &src.IngredientID, itBy))
-	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, src.IngredientID, item.ItemID, itBy))
+	require.NoError(t, upSvc.SetUsualItemForIngredient(ctx, hh, src.IngredientID, item.ItemID, itBy))
 
 	// A recipe with two lines: one ingredient-only (src), one that already
 	// references the target. After merge the first repoints; a second
@@ -810,7 +813,7 @@ func TestIntegrationMergeIngredients(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, tgt.IngredientID, *got)
-	u, err := svc.GetUsualItemForIngredient(ctx, hh, tgt.IngredientID)
+	u, err := upSvc.GetUsualItemForIngredient(ctx, hh, tgt.IngredientID)
 	require.NoError(t, err)
 	require.NotNil(t, u)
 	assert.Equal(t, item.ItemID, u.ItemID)
@@ -846,6 +849,7 @@ func TestIntegrationItemIngredientBatchResolution(t *testing.T) {
 	}
 	ctx := context.Background()
 	svc, pool := newIntegrationServiceWithPool(t, ctx)
+	upSvc := userprefs.NewService(pool)
 
 	hh := testutil.MustHousehold(ctx, t, pool)
 	hhOther := testutil.MustHousehold(ctx, t, pool)
@@ -875,7 +879,7 @@ func TestIntegrationItemIngredientBatchResolution(t *testing.T) {
 
 	require.NoError(t, svc.SetItemIngredient(ctx, linked.ItemID, &corn.IngredientID, itBy))
 	require.NoError(t, svc.SetItemIngredient(ctx, overridden.ItemID, &corn.IngredientID, itBy))
-	require.NoError(t, svc.SetItemIngredientOverride(ctx, hh, overridden.ItemID, alt.IngredientID, itBy))
+	require.NoError(t, upSvc.SetItemIngredientOverride(ctx, hh, overridden.ItemID, alt.IngredientID, itBy))
 
 	ids := []int64{linked.ItemID, overridden.ItemID, loose.ItemID}
 	got, err := svc.ResolveItemIngredients(ctx, hh, ids)
@@ -898,14 +902,14 @@ func TestIntegrationItemIngredientBatchResolution(t *testing.T) {
 	assert.Empty(t, got)
 
 	// Batch usual-brand lookup mirrors GetUsualItemForIngredient.
-	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, corn.IngredientID, linked.ItemID, itBy))
-	require.NoError(t, svc.SetUsualItemForIngredient(ctx, hh, alt.IngredientID, overridden.ItemID, itBy))
-	usuals, err := svc.GetUsualItemsForIngredients(ctx, hh, []int64{corn.IngredientID, alt.IngredientID})
+	require.NoError(t, upSvc.SetUsualItemForIngredient(ctx, hh, corn.IngredientID, linked.ItemID, itBy))
+	require.NoError(t, upSvc.SetUsualItemForIngredient(ctx, hh, alt.IngredientID, overridden.ItemID, itBy))
+	usuals, err := upSvc.GetUsualItemsForIngredients(ctx, hh, []int64{corn.IngredientID, alt.IngredientID})
 	require.NoError(t, err)
 	require.Len(t, usuals, 2)
 	assert.Equal(t, linked.ItemID, usuals[corn.IngredientID].ItemID)
 	assert.Equal(t, overridden.ItemID, usuals[alt.IngredientID].ItemID)
-	usuals, err = svc.GetUsualItemsForIngredients(ctx, hhOther, []int64{corn.IngredientID})
+	usuals, err = upSvc.GetUsualItemsForIngredients(ctx, hhOther, []int64{corn.IngredientID})
 	require.NoError(t, err)
 	assert.Empty(t, usuals, "usuals are household-scoped")
 }

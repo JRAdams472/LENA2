@@ -291,8 +291,8 @@ func (s *Service) GetBrandsByIDs(ctx context.Context, brandIDs []int64) ([]Brand
 }
 
 // UpdateBrand renames an existing brand.
-func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name string) (Brand, error) {
-	row, err := s.q.UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: brandID, Name: name})
+func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name, by string) (Brand, error) {
+	row, err := s.q.UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: brandID, Name: name, UpdatedBy: textOrNull(by)})
 	if err != nil {
 		return Brand{}, fmt.Errorf("update brand: %w", domainerr.FromStorage(err))
 	}
@@ -301,7 +301,7 @@ func (s *Service) UpdateBrand(ctx context.Context, brandID int64, name string) (
 
 // DeleteBrand removes a brand from the catalog.
 func (s *Service) DeleteBrand(ctx context.Context, brandID int64) error {
-	return s.q.DeleteBrand(ctx, brandID)
+	return domainerr.RequireRows(s.q.DeleteBrand(ctx, brandID))
 }
 
 // Category is a catalog category with optional description.
@@ -384,7 +384,7 @@ func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, name, de
 
 // DeleteCategory removes a category from the catalog.
 func (s *Service) DeleteCategory(ctx context.Context, categoryID int64) error {
-	return s.q.DeleteCategory(ctx, categoryID)
+	return domainerr.RequireRows(s.q.DeleteCategory(ctx, categoryID))
 }
 
 // Item approval statuses. User-submitted items start pending and stay
@@ -840,7 +840,7 @@ func (s *Service) UpdateItem(ctx context.Context, itemID int64, arg Item, by str
 // DeleteItem removes an item from the catalog. Dependent rows — pantry
 // entries, nutrients, flavors — are removed by ON DELETE CASCADE.
 func (s *Service) DeleteItem(ctx context.Context, itemID int64) error {
-	if err := s.q.DeleteItem(ctx, itemID); err != nil {
+	if err := domainerr.RequireRows(s.q.DeleteItem(ctx, itemID)); err != nil {
 		return err
 	}
 	s.noteCatalogChange()
@@ -907,7 +907,7 @@ func (s *Service) UpdateFlavorProfile(ctx context.Context, flavorID int64, name 
 
 // DeleteFlavorProfile removes a flavor profile from the catalog.
 func (s *Service) DeleteFlavorProfile(ctx context.Context, flavorID int64) error {
-	return s.q.DeleteFlavorProfile(ctx, flavorID)
+	return domainerr.RequireRows(s.q.DeleteFlavorProfile(ctx, flavorID))
 }
 
 // NutrientType is a catalog nutrient type.
@@ -977,7 +977,7 @@ func (s *Service) UpdateNutrientType(ctx context.Context, nutrientID int64, name
 
 // DeleteNutrientType removes a nutrient type from the catalog.
 func (s *Service) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
-	return s.q.DeleteNutrientType(ctx, nutrientID)
+	return domainerr.RequireRows(s.q.DeleteNutrientType(ctx, nutrientID))
 }
 
 // FoodNutrient is a nutrient value for a catalog item. The amount is
@@ -1075,10 +1075,10 @@ func (s *Service) CreateFoodNutrient(ctx context.Context, itemID, nutrientID int
 
 // DeleteFoodNutrient removes a nutrient value from an item.
 func (s *Service) DeleteFoodNutrient(ctx context.Context, itemID, nutrientID int64) error {
-	return s.q.DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{
+	return domainerr.RequireRows(s.q.DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{
 		FoodID:     itemID,
 		NutrientID: nutrientID,
-	})
+	}))
 }
 
 // NutrientEntry is a single nutrient value in a SetItemNutrients call.
@@ -1195,10 +1195,10 @@ func (s *Service) ListFoodFlavorsByItems(ctx context.Context, itemIDs []int64) (
 
 // DeleteFoodFlavor removes a flavor from an item.
 func (s *Service) DeleteFoodFlavor(ctx context.Context, itemID, flavorID int64) error {
-	return s.q.DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{
+	return domainerr.RequireRows(s.q.DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{
 		FoodID:   itemID,
 		FlavorID: flavorID,
-	})
+	}))
 }
 
 // Ingredient is a brand-agnostic generic ingredient (e.g. "all-purpose
@@ -1325,7 +1325,7 @@ func (s *Service) UpdateIngredient(ctx context.Context, ingredientID int64, arg 
 
 // DeleteIngredient removes an ingredient from the catalog.
 func (s *Service) DeleteIngredient(ctx context.Context, ingredientID int64) error {
-	if err := s.q.DeleteIngredient(ctx, ingredientID); err != nil {
+	if err := domainerr.RequireRows(s.q.DeleteIngredient(ctx, ingredientID)); err != nil {
 		return err
 	}
 	s.noteCatalogChange()
@@ -1433,92 +1433,6 @@ func (s *Service) SetItemIngredient(ctx context.Context, itemID int64, ingredien
 	return nil
 }
 
-// SetItemIngredientOverride records that a household treats this item as a
-// different ingredient than the catalog link says.
-func (s *Service) SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error {
-	if err := s.q.UpsertItemIngredientOverride(ctx, sqlc.UpsertItemIngredientOverrideParams{
-		HouseholdID:  householdID,
-		ItemID:       itemID,
-		IngredientID: ingredientID,
-		CreatedBy:    by,
-	}); err != nil {
-		return fmt.Errorf("set item ingredient override: %w", domainerr.FromStorage(err))
-	}
-	return nil
-}
-
-// ClearItemIngredientOverride removes the household remap, restoring the
-// catalog-level resolution.
-func (s *Service) ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error {
-	n, err := s.q.DeleteItemIngredientOverride(ctx, sqlc.DeleteItemIngredientOverrideParams{
-		HouseholdID: householdID,
-		ItemID:      itemID,
-	})
-	if err != nil {
-		return fmt.Errorf("clear item ingredient override: %w", domainerr.FromStorage(err))
-	}
-	if n == 0 {
-		return fmt.Errorf("clear item ingredient override: %w", domainerr.ErrNotFound)
-	}
-	return nil
-}
-
-// UsualItem is the brand a household habitually buys for an ingredient.
-type UsualItem struct {
-	ItemID     int64
-	LastUsedAt time.Time
-}
-
-// GetUsualItemForIngredient returns the household's usual brand for an
-// ingredient, or nil when none has been recorded.
-func (s *Service) GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*UsualItem, error) {
-	row, err := s.q.GetUsualItemForIngredient(ctx, sqlc.GetUsualItemForIngredientParams{
-		HouseholdID:  householdID,
-		IngredientID: ingredientID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get usual item: %w", domainerr.FromStorage(err))
-	}
-	return &UsualItem{ItemID: row.ItemID, LastUsedAt: row.LastUsedAt}, nil
-}
-
-// SetUsualItemForIngredient records the item a household just bought for
-// the ingredient, refreshing the usual-brand record.
-func (s *Service) SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error {
-	if _, err := s.q.UpsertUsualItemForIngredient(ctx, sqlc.UpsertUsualItemForIngredientParams{
-		HouseholdID:  householdID,
-		IngredientID: ingredientID,
-		ItemID:       itemID,
-		CreatedBy:    by,
-	}); err != nil {
-		return fmt.Errorf("set usual item: %w", domainerr.FromStorage(err))
-	}
-	return nil
-}
-
-// GetUsualItemsForIngredients is the batch form of
-// GetUsualItemForIngredient, used by grocery-line preloads.
-func (s *Service) GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]UsualItem, error) {
-	out := make(map[int64]UsualItem, len(ingredientIDs))
-	if len(ingredientIDs) == 0 {
-		return out, nil
-	}
-	rows, err := s.q.ListUsualItemsForIngredients(ctx, sqlc.ListUsualItemsForIngredientsParams{
-		HouseholdID:   householdID,
-		IngredientIds: ingredientIDs,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list usual items: %w", domainerr.FromStorage(err))
-	}
-	for _, r := range rows {
-		out[r.IngredientID] = UsualItem{ItemID: r.ItemID, LastUsedAt: r.LastUsedAt}
-	}
-	return out, nil
-}
-
 // ResolveItemIngredients is the batch form of ResolveItemIngredient: every
 // requested item maps to its resolved ingredient ID or nil when unlinked.
 func (s *Service) ResolveItemIngredients(ctx context.Context, householdID int64, itemIDs []int64) (map[int64]*int64, error) {
@@ -1546,31 +1460,6 @@ func (s *Service) ResolveItemIngredients(ctx context.Context, householdID int64,
 		}
 	}
 	return out, nil
-}
-
-// RepresentativeItemForIngredient picks a branded item to stand in for the
-// ingredient where an item is required (e.g. nutrition rollups). Order:
-// household usual brand → first linked item for the household → nil.
-func (s *Service) RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*Item, error) {
-	if usual, err := s.GetUsualItemForIngredient(ctx, householdID, ingredientID); err != nil {
-		return nil, err
-	} else if usual != nil {
-		it, err := s.GetItemByID(ctx, usual.ItemID)
-		if err == nil {
-			return &it, nil
-		}
-		if !errors.Is(err, domainerr.ErrNotFound) {
-			return nil, err
-		}
-	}
-	items, err := s.ResolveIngredientItems(ctx, householdID, ingredientID, userID)
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 {
-		return nil, nil
-	}
-	return &items[0], nil
 }
 
 // MergeIngredients folds source into target: every reference across
@@ -1650,7 +1539,7 @@ func (s *Service) MergeIngredients(ctx context.Context, sourceID, targetID int64
 				return fmt.Errorf("merge ingredients: %w", domainerr.FromStorage(err))
 			}
 		}
-		return tx.q.DeleteIngredient(ctx, sourceID)
+		return domainerr.RequireRows(tx.q.DeleteIngredient(ctx, sourceID))
 	})
 	if err == nil {
 		s.noteCatalogChange()

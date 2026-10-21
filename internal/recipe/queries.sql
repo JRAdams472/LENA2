@@ -37,7 +37,7 @@ SET name              = $2,
     updated_at        = now()
 WHERE recipe_id = $1;
 
--- name: DeleteRecipe :exec
+-- name: DeleteRecipe :execrows
 DELETE FROM recipe.recipe
 WHERE recipe_id = $1;
 
@@ -96,7 +96,7 @@ WHERE step_id = $1;
 DELETE FROM recipe.recipe_step
 WHERE recipe_id = $1;
 
--- name: DeleteRecipeStep :exec
+-- name: DeleteRecipeStep :execrows
 DELETE FROM recipe.recipe_step
 WHERE step_id = $1;
 
@@ -152,7 +152,7 @@ SET name          = $2,
 WHERE category_group_id = $1
 RETURNING *;
 
--- name: DeleteCategoryGroup :exec
+-- name: DeleteCategoryGroup :execrows
 DELETE FROM recipe.category_group
 WHERE category_group_id = $1;
 
@@ -184,7 +184,7 @@ SET name       = $2,
 WHERE category_id = $1
 RETURNING *;
 
--- name: DeleteCategory :exec
+-- name: DeleteCategory :execrows
 DELETE FROM recipe.category
 WHERE category_id = $1;
 
@@ -410,7 +410,8 @@ SELECT $1, $2,
 FROM recipe.recipe r
 WHERE r.recipe_id = $1
 ON CONFLICT (recipe_id, household_id)
-DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = now()
+DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = now(),
+       base_updated_at = EXCLUDED.base_updated_at
 RETURNING *;
 
 -- name: AcknowledgeRecipeDelta :execrows

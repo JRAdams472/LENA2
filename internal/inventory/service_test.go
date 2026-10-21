@@ -115,10 +115,10 @@ func TestUpdateBrand(t *testing.T) {
 	now := time.Now()
 
 	s, q := newTestService(t)
-	q.EXPECT().UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: 7, Name: "New"}).
+	q.EXPECT().UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: 7, Name: "New", UpdatedBy: pgtype.Text{String: "it-user", Valid: true}}).
 		Return(sqlc.InventoryBrand{BrandID: 7, Name: "New", CreatedAt: now}, nil)
 
-	b, err := s.UpdateBrand(ctx, 7, "New")
+	b, err := s.UpdateBrand(ctx, 7, "New", "it-user")
 	require.NoError(t, err)
 	assert.Equal(t, "New", b.Name)
 }
@@ -126,10 +126,10 @@ func TestUpdateBrand(t *testing.T) {
 func TestUpdateBrand_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: 7, Name: "New"}).
+	q.EXPECT().UpdateBrand(ctx, sqlc.UpdateBrandParams{BrandID: 7, Name: "New", UpdatedBy: pgtype.Text{String: "it-user", Valid: true}}).
 		Return(sqlc.InventoryBrand{}, errBoom)
 
-	_, err := s.UpdateBrand(ctx, 7, "New")
+	_, err := s.UpdateBrand(ctx, 7, "New", "it-user")
 	assert.ErrorIs(t, err, errBoom)
 	assert.ErrorContains(t, err, "update brand:")
 }
@@ -137,7 +137,7 @@ func TestUpdateBrand_Error(t *testing.T) {
 func TestDeleteBrand(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteBrand(ctx, int64(7)).Return(nil)
+	q.EXPECT().DeleteBrand(ctx, int64(7)).Return(int64(1), nil)
 
 	assert.NoError(t, s.DeleteBrand(ctx, 7))
 }
@@ -145,7 +145,7 @@ func TestDeleteBrand(t *testing.T) {
 func TestDeleteBrand_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteBrand(ctx, int64(7)).Return(errBoom)
+	q.EXPECT().DeleteBrand(ctx, int64(7)).Return(int64(0), errBoom)
 
 	assert.ErrorIs(t, s.DeleteBrand(ctx, 7), errBoom)
 }
@@ -281,10 +281,10 @@ func TestUpdateCategory_Error(t *testing.T) {
 func TestDeleteCategory(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteCategory(ctx, int64(3)).Return(nil)
+	q.EXPECT().DeleteCategory(ctx, int64(3)).Return(int64(1), nil)
 	assert.NoError(t, s.DeleteCategory(ctx, 3))
 
-	q.EXPECT().DeleteCategory(ctx, int64(9)).Return(errBoom)
+	q.EXPECT().DeleteCategory(ctx, int64(9)).Return(int64(0), errBoom)
 	assert.ErrorIs(t, s.DeleteCategory(ctx, 9), errBoom)
 }
 
@@ -685,10 +685,10 @@ func TestUpdateItem_NotFound(t *testing.T) {
 func TestDeleteItem(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteItem(ctx, int64(11)).Return(nil)
+	q.EXPECT().DeleteItem(ctx, int64(11)).Return(int64(1), nil)
 	assert.NoError(t, s.DeleteItem(ctx, 11))
 
-	q.EXPECT().DeleteItem(ctx, int64(9)).Return(errBoom)
+	q.EXPECT().DeleteItem(ctx, int64(9)).Return(int64(0), errBoom)
 	assert.ErrorIs(t, s.DeleteItem(ctx, 9), errBoom)
 }
 
@@ -798,10 +798,10 @@ func TestUpdateFlavorProfile_Error(t *testing.T) {
 func TestDeleteFlavorProfile(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteFlavorProfile(ctx, int64(2)).Return(nil)
+	q.EXPECT().DeleteFlavorProfile(ctx, int64(2)).Return(int64(1), nil)
 	assert.NoError(t, s.DeleteFlavorProfile(ctx, 2))
 
-	q.EXPECT().DeleteFlavorProfile(ctx, int64(9)).Return(errBoom)
+	q.EXPECT().DeleteFlavorProfile(ctx, int64(9)).Return(int64(0), errBoom)
 	assert.ErrorIs(t, s.DeleteFlavorProfile(ctx, 9), errBoom)
 }
 
@@ -925,10 +925,10 @@ func TestUpdateNutrientType_Error(t *testing.T) {
 func TestDeleteNutrientType(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteNutrientType(ctx, int64(4)).Return(nil)
+	q.EXPECT().DeleteNutrientType(ctx, int64(4)).Return(int64(1), nil)
 	assert.NoError(t, s.DeleteNutrientType(ctx, 4))
 
-	q.EXPECT().DeleteNutrientType(ctx, int64(9)).Return(errBoom)
+	q.EXPECT().DeleteNutrientType(ctx, int64(9)).Return(int64(0), errBoom)
 	assert.ErrorIs(t, s.DeleteNutrientType(ctx, 9), errBoom)
 }
 
@@ -1005,10 +1005,10 @@ func TestCreateFoodNutrient_Error(t *testing.T) {
 func TestDeleteFoodNutrient(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{FoodID: 11, NutrientID: 4}).Return(nil)
+	q.EXPECT().DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{FoodID: 11, NutrientID: 4}).Return(int64(1), nil)
 	assert.NoError(t, s.DeleteFoodNutrient(ctx, 11, 4))
 
-	q.EXPECT().DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{FoodID: 11, NutrientID: 9}).Return(errBoom)
+	q.EXPECT().DeleteFoodNutrient(ctx, sqlc.DeleteFoodNutrientParams{FoodID: 11, NutrientID: 9}).Return(int64(0), errBoom)
 	assert.ErrorIs(t, s.DeleteFoodNutrient(ctx, 11, 9), errBoom)
 }
 
@@ -1065,10 +1065,10 @@ func TestListFoodFlavorsByItem_Error(t *testing.T) {
 func TestDeleteFoodFlavor(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{FoodID: 11, FlavorID: 2}).Return(nil)
+	q.EXPECT().DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{FoodID: 11, FlavorID: 2}).Return(int64(1), nil)
 	assert.NoError(t, s.DeleteFoodFlavor(ctx, 11, 2))
 
-	q.EXPECT().DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{FoodID: 11, FlavorID: 9}).Return(errBoom)
+	q.EXPECT().DeleteFoodFlavor(ctx, sqlc.DeleteFoodFlavorParams{FoodID: 11, FlavorID: 9}).Return(int64(0), errBoom)
 	assert.ErrorIs(t, s.DeleteFoodFlavor(ctx, 11, 9), errBoom)
 }
 
@@ -1304,7 +1304,7 @@ func TestUpdateIngredient_Error(t *testing.T) {
 func TestDeleteIngredient(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteIngredient(ctx, int64(9)).Return(nil)
+	q.EXPECT().DeleteIngredient(ctx, int64(9)).Return(int64(1), nil)
 
 	require.NoError(t, s.DeleteIngredient(ctx, 9))
 }
@@ -1312,7 +1312,7 @@ func TestDeleteIngredient(t *testing.T) {
 func TestDeleteIngredient_Error(t *testing.T) {
 	ctx := context.Background()
 	s, q := newTestService(t)
-	q.EXPECT().DeleteIngredient(ctx, int64(9)).Return(errBoom)
+	q.EXPECT().DeleteIngredient(ctx, int64(9)).Return(int64(0), errBoom)
 
 	assert.ErrorIs(t, s.DeleteIngredient(ctx, 9), errBoom)
 }
@@ -1565,36 +1565,6 @@ func TestResolveIngredientItems(t *testing.T) {
 	assert.Equal(t, "Green Giant Corn", items[0].Name)
 }
 
-func TestUsualItemForIngredient(t *testing.T) {
-	ctx := context.Background()
-	now := time.Now()
-
-	t.Run("set and get", func(t *testing.T) {
-		s, q := newTestService(t)
-		q.EXPECT().UpsertUsualItemForIngredient(ctx, sqlc.UpsertUsualItemForIngredientParams{
-			HouseholdID: 2, IngredientID: 7, ItemID: 11, CreatedBy: "alice",
-		}).Return(sqlc.UserprefsHouseholdIngredientItem{ItemID: 11, LastUsedAt: now}, nil)
-		require.NoError(t, s.SetUsualItemForIngredient(ctx, 2, 7, 11, "alice"))
-
-		q.EXPECT().GetUsualItemForIngredient(ctx, sqlc.GetUsualItemForIngredientParams{
-			HouseholdID: 2, IngredientID: 7,
-		}).Return(sqlc.UserprefsHouseholdIngredientItem{ItemID: 11, LastUsedAt: now}, nil)
-		u, err := s.GetUsualItemForIngredient(ctx, 2, 7)
-		require.NoError(t, err)
-		require.NotNil(t, u)
-		assert.Equal(t, int64(11), u.ItemID)
-	})
-
-	t.Run("none recorded", func(t *testing.T) {
-		s, q := newTestService(t)
-		q.EXPECT().GetUsualItemForIngredient(ctx, gomock.Any()).
-			Return(sqlc.UserprefsHouseholdIngredientItem{}, pgx.ErrNoRows)
-		u, err := s.GetUsualItemForIngredient(ctx, 2, 99)
-		require.NoError(t, err)
-		assert.Nil(t, u)
-	})
-}
-
 func TestMergeIngredients(t *testing.T) {
 	ctx := context.Background()
 	nn := func(v int64) pgtype.Int8 { return pgtype.Int8{Int64: v, Valid: true} }
@@ -1623,7 +1593,7 @@ func TestMergeIngredients(t *testing.T) {
 		q.EXPECT().DeleteIngredientRefsAisle(ctx, nn(1)).Return(nil)
 		q.EXPECT().MergeIngredientRefsRoute(ctx, sqlc.MergeIngredientRefsRouteParams{IngredientID: nn(1), IngredientID_2: nn(2)}).Return(nil)
 		q.EXPECT().DeleteIngredientRefsRoute(ctx, nn(1)).Return(nil)
-		q.EXPECT().DeleteIngredient(ctx, int64(1)).Return(nil)
+		q.EXPECT().DeleteIngredient(ctx, int64(1)).Return(int64(1), nil)
 
 		require.NoError(t, s.MergeIngredients(ctx, 1, 2))
 	})
@@ -1825,7 +1795,7 @@ func TestCatalogChangeHook(t *testing.T) {
 			return s.UpdateItem(ctx, 7, Item{Name: "Bread Flour"}, "admin@example.com")
 		}},
 		{"DeleteItem", func(q *mock.MockQuerier) {
-			q.EXPECT().DeleteItem(ctx, int64(7)).Return(nil)
+			q.EXPECT().DeleteItem(ctx, int64(7)).Return(int64(1), nil)
 		}, func(s *Service) error {
 			return s.DeleteItem(ctx, 7)
 		}},
@@ -1842,7 +1812,7 @@ func TestCatalogChangeHook(t *testing.T) {
 			return err
 		}},
 		{"DeleteIngredient", func(q *mock.MockQuerier) {
-			q.EXPECT().DeleteIngredient(ctx, int64(7)).Return(nil)
+			q.EXPECT().DeleteIngredient(ctx, int64(7)).Return(int64(1), nil)
 		}, func(s *Service) error {
 			return s.DeleteIngredient(ctx, 7)
 		}},
@@ -1898,7 +1868,7 @@ func TestCatalogChangeHook(t *testing.T) {
 		q.EXPECT().DeleteIngredientRefsAisle(ctx, gomock.Any()).Return(nil)
 		q.EXPECT().MergeIngredientRefsRoute(ctx, gomock.Any()).Return(nil)
 		q.EXPECT().DeleteIngredientRefsRoute(ctx, gomock.Any()).Return(nil)
-		q.EXPECT().DeleteIngredient(ctx, int64(1)).Return(nil)
+		q.EXPECT().DeleteIngredient(ctx, int64(1)).Return(int64(1), nil)
 		require.NoError(t, s.MergeIngredients(ctx, 1, 2))
 		assert.Equal(t, int64(1), calls.Load())
 	})

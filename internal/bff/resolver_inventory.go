@@ -797,7 +797,7 @@ func (r *Resolver) SetHouseholdItemIngredient(ctx context.Context, args struct {
 		return false, err
 	}
 	if ingredientID == nil {
-		if err := r.InventoryService.ClearItemIngredientOverride(ctx, u.HouseholdID, itemID); err != nil {
+		if err := r.UserPrefsService.ClearItemIngredientOverride(ctx, u.HouseholdID, itemID); err != nil {
 			if errors.Is(err, domainerr.ErrNotFound) {
 				return true, nil
 			}
@@ -805,7 +805,7 @@ func (r *Resolver) SetHouseholdItemIngredient(ctx context.Context, args struct {
 		}
 		return true, nil
 	}
-	if err := r.InventoryService.SetItemIngredientOverride(ctx, u.HouseholdID, itemID, *ingredientID, u.Email); err != nil {
+	if err := r.UserPrefsService.SetItemIngredientOverride(ctx, u.HouseholdID, itemID, *ingredientID, u.Email); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -1128,7 +1128,7 @@ func (r *Resolver) SetItemNutrients(ctx context.Context, args struct {
 		return nil, err
 	}
 	if !canModifyItem(it, u) {
-		return nil, errForbidden()
+		return nil, forbiddenf("you can only modify items you submitted while they are pending")
 	}
 	entries, err := parseNutrientEntries(args.Entries)
 	if err != nil {
@@ -1348,7 +1348,7 @@ func (r *Resolver) UpdateItem(ctx context.Context, args struct {
 		return nil, err
 	}
 	if !canModifyItem(existing, u) {
-		return nil, errForbidden()
+		return nil, forbiddenf("you can only modify items you submitted while they are pending")
 	}
 	patch, err := r.mergeItemPatch(ctx, existing, args.Input)
 	if err != nil {
@@ -1574,7 +1574,7 @@ func (r *itemResolver) HouseholdIngredient(ctx context.Context) (*ingredientReso
 		slog.Default().Warn("item.householdIngredient missed preload; lazy-loading", "item_id", r.it.ItemID)
 		u, ok := currentuser.FromContext(ctx)
 		if !ok {
-			return nil, errForbidden()
+			return nil, errUnauthenticated()
 		}
 		resolved, err := r.inv.ResolveItemIngredient(ctx, u.HouseholdID, r.it.ItemID)
 		if err != nil {
@@ -1635,7 +1635,7 @@ func (r *itemResolver) ingredientByID(ctx context.Context, ingredientID int64) (
 	return &ingredientResolver{inv: r.inv, in: in, as: firstSource(asOfItemChildren(r.ch), r.as)}, nil
 }
 
-// requireItemModifiable loads the item and returns errForbidden unless the
+// requireItemModifiable loads the item and returns FORBIDDEN unless the
 // user may edit it (admin, or submitter of a still-pending item).
 func (r *Resolver) requireItemModifiable(ctx context.Context, itemID int64, u currentuser.User) error {
 	it, err := r.InventoryService.GetItemByID(ctx, itemID)
@@ -1643,7 +1643,7 @@ func (r *Resolver) requireItemModifiable(ctx context.Context, itemID int64, u cu
 		return err
 	}
 	if !canModifyItem(it, u) {
-		return errForbidden()
+		return forbiddenf("you can only modify items you submitted while they are pending")
 	}
 	return nil
 }
@@ -1841,14 +1841,15 @@ func (r *Resolver) UpdateBrand(ctx context.Context, args struct {
 	ID    graphql.ID
 	Input updateBrandInput
 }) (*brandResolver, error) {
-	if _, err := requireAdmin(ctx); err != nil {
+	u, err := requireAdmin(ctx)
+	if err != nil {
 		return nil, err
 	}
 	id, err := parseID(string(args.ID))
 	if err != nil {
 		return nil, err
 	}
-	b, err := r.InventoryService.UpdateBrand(ctx, id, args.Input.Name)
+	b, err := r.InventoryService.UpdateBrand(ctx, id, args.Input.Name, u.Email)
 	if err != nil {
 		return nil, err
 	}

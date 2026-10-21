@@ -208,7 +208,7 @@ SET type_id         = $2,
     updated_at      = now()
 WHERE bottle_id = $1;
 
--- name: DeleteBottle :exec
+-- name: DeleteBottle :execrows
 DELETE FROM wine.bottle
 WHERE bottle_id = $1;
 
@@ -256,7 +256,7 @@ SELECT *
 FROM wine.bottle
 WHERE bottle_id = ANY(sqlc.arg(bottle_ids)::bigint[]);
 
--- name: DeleteBottleGrapeVariety :exec
+-- name: DeleteBottleGrapeVariety :execrows
 DELETE FROM wine.bottle_grape_variety
 WHERE bottle_id = $1 AND grape_variety_id = $2;
 
@@ -285,7 +285,7 @@ SET name        = $2,
 WHERE flavor_profile_id = $1
 RETURNING *;
 
--- name: DeleteWineFlavorProfile :exec
+-- name: DeleteWineFlavorProfile :execrows
 DELETE FROM wine.flavor_profile
 WHERE flavor_profile_id = $1;
 
@@ -308,7 +308,7 @@ JOIN wine.flavor_profile fp ON bfp.flavor_profile_id = fp.flavor_profile_id
 WHERE bfp.bottle_id = ANY(sqlc.arg(bottle_ids)::bigint[])
 ORDER BY fp.name;
 
--- name: DeleteBottleFlavorProfile :exec
+-- name: DeleteBottleFlavorProfile :execrows
 DELETE FROM wine.bottle_flavor_profile
 WHERE bottle_id = $1 AND flavor_profile_id = $2;
 

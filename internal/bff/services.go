@@ -48,7 +48,8 @@ type GroceryReader interface {
 type GroceryWriter interface {
 	CreateGroceryList(ctx context.Context, householdID int64, mealPlanID *int64, by string) (grocery.GroceryList, error)
 	AddGroceryListItems(ctx context.Context, items []grocery.GroceryListItem, householdID int64, by string) ([]grocery.GroceryListItem, error)
-	UpdateGroceryListItem(ctx context.Context, groceryListItemID, householdID int64, arg grocery.GroceryListItem, by string) error
+	BindItemToGroceryListItem(ctx context.Context, groceryListItemID, householdID, itemID int64, by string) error
+	CheckGroceryListItemOn(ctx context.Context, groceryListItemID, householdID int64, by string) (grocery.GroceryListItem, bool, error)
 	ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (grocery.GroceryListItem, error)
 	DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error
 	AddGroceryListItem(ctx context.Context, arg grocery.GroceryListItem, householdID int64, by string) (grocery.GroceryListItem, error)
@@ -139,9 +140,6 @@ type ItemReader interface {
 	ResolveItemIngredient(ctx context.Context, householdID, itemID int64) (*int64, error)
 	ResolveItemIngredients(ctx context.Context, householdID int64, itemIDs []int64) (map[int64]*int64, error)
 	ResolveIngredientItems(ctx context.Context, householdID, ingredientID, userID int64) ([]inventory.Item, error)
-	GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*inventory.UsualItem, error)
-	GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]inventory.UsualItem, error)
-	RepresentativeItemForIngredient(ctx context.Context, householdID, ingredientID, userID int64) (*inventory.Item, error)
 	// Allergen registry + entity flags — batch variants feed the preload
 	// helpers; singles serve lazy fallbacks.
 	ListAllergens(ctx context.Context) ([]inventory.Allergen, error)
@@ -154,15 +152,13 @@ type ItemReader interface {
 }
 
 // IngredientLinker is the write side of the item↔ingredient link: the
-// dedupe-safe free-create, the admin merge/link tools, the household
-// override, and the usual-brand record written by brand-picked check-offs.
+// dedupe-safe free-create, the admin merge/link tools. Household-level
+// overrides and usual-brand records live on UserPrefsService (they are
+// pure userprefs.* tables).
 type IngredientLinker interface {
 	GetOrCreateIngredient(ctx context.Context, name string, categoryID, defaultUnitID *int64, by string) (inventory.Ingredient, error)
 	MergeIngredients(ctx context.Context, sourceID, targetID int64) error
 	SetItemIngredient(ctx context.Context, itemID int64, ingredientID *int64, by string) error
-	SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error
-	ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error
-	SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error
 }
 
 // ItemWriter is the member-facing catalog write surface (submissions and
@@ -185,7 +181,7 @@ type CatalogAdmin interface {
 	CreateItem(ctx context.Context, arg inventory.Item, by string) (inventory.Item, error)
 	DeleteItem(ctx context.Context, itemID int64) error
 	CreateBrand(ctx context.Context, name, by string) (inventory.Brand, error)
-	UpdateBrand(ctx context.Context, brandID int64, name string) (inventory.Brand, error)
+	UpdateBrand(ctx context.Context, brandID int64, name, by string) (inventory.Brand, error)
 	DeleteBrand(ctx context.Context, brandID int64) error
 	CreateCategory(ctx context.Context, name, description string, isProtein bool, by string) (inventory.Category, error)
 	UpdateCategory(ctx context.Context, categoryID int64, name, description string, isActive, isProtein bool, by string) (inventory.Category, error)
@@ -234,6 +230,7 @@ var _ InventoryService = (*inventory.Service)(nil)
 // currentuser, never from client input.
 type MealPlanReader interface {
 	GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error)
+	GetMealPlansByIDs(ctx context.Context, householdID int64, mealPlanIDs []int64) ([]mealplan.MealPlan, error)
 	ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error)
 	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error)
@@ -333,16 +330,13 @@ type RecipeReader interface {
 	ListCategoriesForRecipes(ctx context.Context, recipeIDs []int64) (map[int64][]recipe.Category, error)
 }
 
-// RecipeWriter is the write side of the recipe domain.
+// RecipeWriter is the write side of the recipe domain. The BFF composes
+// whole-recipe writes only — the service's per-row item/step mutations
+// (used by tests and snapshot materialization) are intentionally not
+// part of this surface.
 type RecipeWriter interface {
-	CreateRecipe(ctx context.Context, arg recipe.Recipe, by string) (recipe.Recipe, error)
 	CreateRecipeWithChildren(ctx context.Context, arg recipe.Recipe, items []recipe.RecipeItem, steps []recipe.RecipeStep, by string) (recipe.Recipe, error)
 	UpdateRecipeWithChildren(ctx context.Context, recipeID int64, arg recipe.Recipe, items []recipe.RecipeItem, steps []recipe.RecipeStep, by string) error
-	AddRecipeItem(ctx context.Context, arg recipe.RecipeItem) error
-	AddRecipeStep(ctx context.Context, recipeID int64, stepNumber int32, instruction, by string) (recipe.RecipeStep, error)
-	UpdateRecipe(ctx context.Context, recipeID int64, arg recipe.Recipe, by string) error
-	RemoveRecipeItem(ctx context.Context, recipeItemID int64) error
-	DeleteRecipeStep(ctx context.Context, stepID int64) error
 	DeleteRecipe(ctx context.Context, recipeID int64) error
 	SetRecipeCategories(ctx context.Context, recipeID int64, categoryIDs []int64, by string) error
 	CreateCategoryGroup(ctx context.Context, arg recipe.CategoryGroup, by string) (recipe.CategoryGroup, error)
@@ -464,11 +458,18 @@ type AllergyStore interface {
 }
 
 // UserPrefsService is the subset of *userprefs.Service used by the resolver.
+// The override/usual-brand methods are pure userprefs.* reads and writes —
+// the catalog-over-override JOINs stay on the inventory service.
 type UserPrefsService interface {
 	PantryStore
 	CellarStore
 	FavoriteStore
 	AllergyStore
+	SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error
+	ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error
+	GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*userprefs.UsualItem, error)
+	GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]userprefs.UsualItem, error)
+	SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error
 	MergeHouseholdStock(ctx context.Context, fromHouseholdID, toHouseholdID int64, by string) error
 	// DeleteHouseholdStock drops every pantry/cellar row a dissolving
 	// household owns (LEN-146 account deletion).

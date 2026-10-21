@@ -35,13 +35,13 @@ type Querier interface {
 	CreateItem(ctx context.Context, arg CreateItemParams) (InventoryItem, error)
 	CreateNutrientType(ctx context.Context, arg CreateNutrientTypeParams) (InventoryNutrientType, error)
 	CreateUnit(ctx context.Context, arg CreateUnitParams) (InventoryUnit, error)
-	DeleteBrand(ctx context.Context, brandID int64) error
-	DeleteCategory(ctx context.Context, categoryID int64) error
-	DeleteFlavorProfile(ctx context.Context, flavorID int64) error
-	DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) error
-	DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) error
+	DeleteBrand(ctx context.Context, brandID int64) (int64, error)
+	DeleteCategory(ctx context.Context, categoryID int64) (int64, error)
+	DeleteFlavorProfile(ctx context.Context, flavorID int64) (int64, error)
+	DeleteFoodFlavor(ctx context.Context, arg DeleteFoodFlavorParams) (int64, error)
+	DeleteFoodNutrient(ctx context.Context, arg DeleteFoodNutrientParams) (int64, error)
 	DeleteFoodNutrientsByItem(ctx context.Context, foodID int64) error
-	DeleteIngredient(ctx context.Context, ingredientID int64) error
+	DeleteIngredient(ctx context.Context, ingredientID int64) (int64, error)
 	DeleteIngredientAllergen(ctx context.Context, arg DeleteIngredientAllergenParams) (int64, error)
 	DeleteIngredientRefsAisle(ctx context.Context, ingredientID pgtype.Int8) error
 	DeleteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
@@ -52,10 +52,9 @@ type Querier interface {
 	DeleteIngredientRefsRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
 	DeleteIngredientRefsRoute(ctx context.Context, ingredientID pgtype.Int8) error
 	DeleteIngredientRefsUsual(ctx context.Context, ingredientID int64) error
-	DeleteItem(ctx context.Context, itemID int64) error
+	DeleteItem(ctx context.Context, itemID int64) (int64, error)
 	DeleteItemAllergen(ctx context.Context, arg DeleteItemAllergenParams) (int64, error)
-	DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error)
-	DeleteNutrientType(ctx context.Context, nutrientID int64) error
+	DeleteNutrientType(ctx context.Context, nutrientID int64) (int64, error)
 	DemoteIngredientRefsEventRecipeItem(ctx context.Context, ingredientID pgtype.Int8) error
 	DemoteIngredientRefsGroceryLine(ctx context.Context, ingredientID pgtype.Int8) error
 	DemoteIngredientRefsMealSlot(ctx context.Context, ingredientID pgtype.Int8) error
@@ -96,7 +95,6 @@ type Querier interface {
 	GetUnitByID(ctx context.Context, unitID int64) (InventoryUnit, error)
 	GetUnitByName(ctx context.Context, lower string) (InventoryUnit, error)
 	GetUnitsByIDs(ctx context.Context, unitIds []int64) ([]InventoryUnit, error)
-	GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
 	ListAllergenSuggestions(ctx context.Context, status pgtype.Text) ([]ListAllergenSuggestionsRow, error)
 	// ---------- allergen registry + entity flags ----------
 	ListAllergens(ctx context.Context) ([]InventoryAllergen, error)
@@ -128,9 +126,6 @@ type Querier interface {
 	ListPendingBrands(ctx context.Context, arg ListPendingBrandsParams) ([]InventoryBrand, error)
 	ListPendingItems(ctx context.Context, arg ListPendingItemsParams) ([]InventoryItem, error)
 	ListUnits(ctx context.Context) ([]InventoryUnit, error)
-	// Batch "usual brand" lookup for grocery-line preloads — one row per
-	// (ingredient, household) pair recorded by brand-picked check-offs.
-	ListUsualItemsForIngredients(ctx context.Context, arg ListUsualItemsForIngredientsParams) ([]UserprefsHouseholdIngredientItem, error)
 	// IDs of visible items whose name matches the term — feeds include_ids on
 	// household-scoped queries that cannot join this schema (pantry search).
 	MatchItemIDs(ctx context.Context, arg MatchItemIDsParams) ([]int64, error)
@@ -189,11 +184,6 @@ type Querier interface {
 	UpsertBrand(ctx context.Context, arg UpsertBrandParams) (InventoryBrand, error)
 	UpsertIngredientAllergen(ctx context.Context, arg UpsertIngredientAllergenParams) (int64, error)
 	UpsertItemAllergen(ctx context.Context, arg UpsertItemAllergenParams) (int64, error)
-	// Household-level remap: "this product is a different ingredient for us."
-	UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error
-	// "Usual brand" record — updated each time a check-off credits stock so
-	// repeat purchases stop prompting.
-	UpsertUsualItemForIngredient(ctx context.Context, arg UpsertUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error)
 }
 
 var _ Querier = (*Queries)(nil)

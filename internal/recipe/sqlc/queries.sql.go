@@ -512,34 +512,43 @@ func (q *Queries) CreateRecipe(ctx context.Context, arg CreateRecipeParams) (Rec
 	return i, err
 }
 
-const deleteCategory = `-- name: DeleteCategory :exec
+const deleteCategory = `-- name: DeleteCategory :execrows
 DELETE FROM recipe.category
 WHERE category_id = $1
 `
 
-func (q *Queries) DeleteCategory(ctx context.Context, categoryID int64) error {
-	_, err := q.db.Exec(ctx, deleteCategory, categoryID)
-	return err
+func (q *Queries) DeleteCategory(ctx context.Context, categoryID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCategory, categoryID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteCategoryGroup = `-- name: DeleteCategoryGroup :exec
+const deleteCategoryGroup = `-- name: DeleteCategoryGroup :execrows
 DELETE FROM recipe.category_group
 WHERE category_group_id = $1
 `
 
-func (q *Queries) DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) error {
-	_, err := q.db.Exec(ctx, deleteCategoryGroup, categoryGroupID)
-	return err
+func (q *Queries) DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCategoryGroup, categoryGroupID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteRecipe = `-- name: DeleteRecipe :exec
+const deleteRecipe = `-- name: DeleteRecipe :execrows
 DELETE FROM recipe.recipe
 WHERE recipe_id = $1
 `
 
-func (q *Queries) DeleteRecipe(ctx context.Context, recipeID int64) error {
-	_, err := q.db.Exec(ctx, deleteRecipe, recipeID)
-	return err
+func (q *Queries) DeleteRecipe(ctx context.Context, recipeID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRecipe, recipeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteRecipeDelta = `-- name: DeleteRecipeDelta :execrows
@@ -570,14 +579,17 @@ func (q *Queries) DeleteRecipeItems(ctx context.Context, recipeID int64) error {
 	return err
 }
 
-const deleteRecipeStep = `-- name: DeleteRecipeStep :exec
+const deleteRecipeStep = `-- name: DeleteRecipeStep :execrows
 DELETE FROM recipe.recipe_step
 WHERE step_id = $1
 `
 
-func (q *Queries) DeleteRecipeStep(ctx context.Context, stepID int64) error {
-	_, err := q.db.Exec(ctx, deleteRecipeStep, stepID)
-	return err
+func (q *Queries) DeleteRecipeStep(ctx context.Context, stepID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRecipeStep, stepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteRecipeSteps = `-- name: DeleteRecipeSteps :exec
@@ -1921,7 +1933,8 @@ SELECT $1, $2,
 FROM recipe.recipe r
 WHERE r.recipe_id = $1
 ON CONFLICT (recipe_id, household_id)
-DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = now()
+DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = now(),
+       base_updated_at = EXCLUDED.base_updated_at
 RETURNING recipe_delta_id, recipe_id, household_id, base_updated_at, created_by, created_at, updated_by, updated_at
 `
 

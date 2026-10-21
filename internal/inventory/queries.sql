@@ -244,7 +244,7 @@ SET name        = $2,
     is_metric   = $10
 WHERE item_id = $1;
 
--- name: DeleteItem :exec
+-- name: DeleteItem :execrows
 DELETE FROM inventory.item
 WHERE item_id = $1;
 
@@ -298,7 +298,7 @@ SELECT ins.food_id, nt.nutrient_id, nt.name, nt.unit, ins.amount, ins.basis_quan
 FROM ins
 JOIN inventory.nutrient_type nt ON ins.nutrient_id = nt.nutrient_id;
 
--- name: DeleteFoodNutrient :exec
+-- name: DeleteFoodNutrient :execrows
 DELETE FROM inventory.food_nutrient
 WHERE food_id = $1 AND nutrient_id = $2;
 
@@ -345,17 +345,19 @@ SELECT *
 FROM inventory.category
 WHERE category_id = ANY(sqlc.arg(category_ids)::bigint[]);
 
--- name: DeleteFoodFlavor :exec
+-- name: DeleteFoodFlavor :execrows
 DELETE FROM inventory.food_flavor
 WHERE food_id = $1 AND flavor_id = $2;
 
 -- name: UpdateBrand :one
 UPDATE inventory.brand
-SET name = $2
+SET name       = $2,
+    updated_by = $3,
+    updated_at = now()
 WHERE brand_id = $1
 RETURNING *;
 
--- name: DeleteBrand :exec
+-- name: DeleteBrand :execrows
 DELETE FROM inventory.brand
 WHERE brand_id = $1;
 
@@ -370,7 +372,7 @@ SET name        = $2,
 WHERE category_id = $1
 RETURNING *;
 
--- name: DeleteCategory :exec
+-- name: DeleteCategory :execrows
 DELETE FROM inventory.category
 WHERE category_id = $1;
 
@@ -383,7 +385,7 @@ SET name       = $2,
 WHERE flavor_id = $1
 RETURNING *;
 
--- name: DeleteFlavorProfile :exec
+-- name: DeleteFlavorProfile :execrows
 DELETE FROM inventory.flavor_profile
 WHERE flavor_id = $1;
 
@@ -394,7 +396,7 @@ SET name = $2,
 WHERE nutrient_id = $1
 RETURNING *;
 
--- name: DeleteNutrientType :exec
+-- name: DeleteNutrientType :execrows
 DELETE FROM inventory.nutrient_type
 WHERE nutrient_id = $1;
 
@@ -483,7 +485,7 @@ SET name            = $2,
 WHERE ingredient_id = $1
 RETURNING *;
 
--- name: DeleteIngredient :exec
+-- name: DeleteIngredient :execrows
 DELETE FROM inventory.ingredient
 WHERE ingredient_id = $1;
 
@@ -517,14 +519,6 @@ LEFT JOIN userprefs.household_item_ingredient o
       AND o.household_id = sqlc.arg(household_id)
 WHERE i.item_id = ANY(sqlc.arg(item_ids)::bigint[]);
 
--- name: ListUsualItemsForIngredients :many
--- Batch "usual brand" lookup for grocery-line preloads — one row per
--- (ingredient, household) pair recorded by brand-picked check-offs.
-SELECT *
-FROM userprefs.household_ingredient_item
-WHERE household_id = $1
-  AND ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);
-
 -- name: ListItemsForIngredient :many
 -- Every item resolving to the ingredient under the same resolution order:
 -- catalog link plus overrides (an override can point an otherwise-linked
@@ -545,36 +539,6 @@ SET ingredient_id = $2,
     updated_by    = $3,
     updated_at    = now()
 WHERE item_id = $1;
-
--- name: UpsertItemIngredientOverride :exec
--- Household-level remap: "this product is a different ingredient for us."
-INSERT INTO userprefs.household_item_ingredient (household_id, item_id, ingredient_id, created_by, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $4, now())
-ON CONFLICT (household_id, item_id)
-DO UPDATE SET ingredient_id = EXCLUDED.ingredient_id,
-              updated_by    = EXCLUDED.updated_by,
-              updated_at    = now();
-
--- name: DeleteItemIngredientOverride :execrows
-DELETE FROM userprefs.household_item_ingredient
-WHERE household_id = $1 AND item_id = $2;
-
--- name: GetUsualItemForIngredient :one
-SELECT *
-FROM userprefs.household_ingredient_item
-WHERE household_id = $1 AND ingredient_id = $2;
-
--- name: UpsertUsualItemForIngredient :one
--- "Usual brand" record — updated each time a check-off credits stock so
--- repeat purchases stop prompting.
-INSERT INTO userprefs.household_ingredient_item (household_id, ingredient_id, item_id, last_used_at, created_by, updated_by, updated_at)
-VALUES ($1, $2, $3, now(), $4, $4, now())
-ON CONFLICT (household_id, ingredient_id)
-DO UPDATE SET item_id      = EXCLUDED.item_id,
-              last_used_at = now(),
-              updated_by   = EXCLUDED.updated_by,
-              updated_at   = now()
-RETURNING *;
 
 -- name: MergeIngredientRefsItem :exec
 -- Repoint every ingredient reference onto the merge target. For tables

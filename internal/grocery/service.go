@@ -5,6 +5,7 @@ package grocery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -161,7 +162,14 @@ func (s *Service) CountGroceryLists(ctx context.Context, householdID int64) (int
 
 // DeleteGroceryList removes a grocery list owned by the household.
 func (s *Service) DeleteGroceryList(ctx context.Context, groceryListID, householdID int64) error {
-	return s.q.DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: groceryListID, HouseholdID: householdID})
+	n, err := s.q.DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: groceryListID, HouseholdID: householdID})
+	if err != nil {
+		return fmt.Errorf("delete grocery list: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("delete grocery list: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // ReassignHousehold repoints every grocery list owned by the source
@@ -322,16 +330,112 @@ func (s *Service) UpdateGroceryListItem(ctx context.Context, groceryListItemID, 
 
 // DeleteGroceryListItem removes an item from a list owned by the household.
 func (s *Service) DeleteGroceryListItem(ctx context.Context, groceryListItemID, householdID int64) error {
-	return s.q.DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
+	n, err := s.q.DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
+	if err != nil {
+		return fmt.Errorf("delete grocery list item: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("delete grocery list item: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// lockGroceryList takes the list-row lock that serializes check-off
+// sequencing — checked_seq is max+1 under READ COMMITTED, so concurrent
+// toggles would otherwise publish duplicate seqs. Effective only inside
+// the ambient unit of work callers wrap around the check/uncheck write.
+func (s *Service) lockGroceryList(ctx context.Context, groceryListID, householdID int64) error {
+	if _, err := s.q.LockGroceryList(ctx, sqlc.LockGroceryListParams{GroceryListID: groceryListID, HouseholdID: householdID}); err != nil {
+		return fmt.Errorf("lock grocery list: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// BindItemToGroceryListItem sets only the catalog-item link on a list
+// line — the previous whole-row writeback could clobber concurrent edits
+// (and resurrect a stale unchecked state) on the brand-pick path.
+func (s *Service) BindItemToGroceryListItem(ctx context.Context, groceryListItemID, householdID, itemID int64, by string) error {
+	n, err := s.q.BindItemToGroceryListItem(ctx, sqlc.BindItemToGroceryListItemParams{
+		GroceryListItemID: groceryListItemID,
+		HouseholdID:       householdID,
+		ItemID:            optInt8(&itemID),
+		UpdatedBy:         textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("bind item to grocery list item: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("bind item to grocery list item: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
+// CheckGroceryListItemOn marks the line checked unless it already is.
+// transitioned reports whether THIS call performed the flip — pantry
+// credit must follow only on transition so concurrent check-offs credit
+// exactly once. The list row lock serializes checked_seq, and the
+// transition feeds the store router like a plain toggle does.
+func (s *Service) CheckGroceryListItemOn(ctx context.Context, groceryListItemID, householdID int64, by string) (GroceryListItem, bool, error) {
+	cur, err := s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
+	if err != nil {
+		return GroceryListItem{}, false, fmt.Errorf("check grocery list item: %w", domainerr.FromStorage(err))
+	}
+	if err := s.lockGroceryList(ctx, cur.GroceryListID, householdID); err != nil {
+		return GroceryListItem{}, false, err
+	}
+	row, err := s.q.CheckGroceryListItemOn(ctx, sqlc.CheckGroceryListItemOnParams{
+		GroceryListItemID: groceryListItemID,
+		HouseholdID:       householdID,
+		UpdatedBy:         textOrNull(by),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A concurrent check-off won the transition — return the current
+		// row with transitioned=false so callers skip the pantry credit.
+		cur, err = s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
+		if err != nil {
+			return GroceryListItem{}, false, fmt.Errorf("check grocery list item: %w", domainerr.FromStorage(err))
+		}
+		gli, err := toGroceryListItem(cur)
+		if err != nil {
+			return GroceryListItem{}, false, fmt.Errorf("check grocery list item: %w", err)
+		}
+		return gli, false, nil
+	}
+	if err != nil {
+		return GroceryListItem{}, false, fmt.Errorf("check grocery list item: %w", domainerr.FromStorage(err))
+	}
+	before, err := toGroceryListItem(cur)
+	if err != nil {
+		return GroceryListItem{}, false, fmt.Errorf("check grocery list item: %w", err)
+	}
+	gli, err := toGroceryListItem(row)
+	if err != nil {
+		return GroceryListItem{}, false, fmt.Errorf("check grocery list item: %w", err)
+	}
+	out, err := s.observeCheckChange(ctx, householdID, before, gli, by)
+	if err != nil {
+		return GroceryListItem{}, false, err
+	}
+	return out, true, nil
 }
 
 // ToggleGroceryListItemChecked flips the checked state of an item and
 // returns the post-toggle row in one atomic statement. A check-off also
 // feeds the store router: the item's normalized check position is folded
 // into its learned-order record for the list's store (the generic route
-// when the list has none). Callers wrap the toggle in a unit of work, so
-// the observation commits with the flip.
+// when the list has none); unchecking retracts that observation again.
+// Callers wrap the toggle in a unit of work, so the observation commits
+// with the flip.
 func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListItemID, householdID int64, by string) (GroceryListItem, error) {
+	// Pre-read for the list lock and the pre-flip checked_seq (needed to
+	// retract the right observation when the toggle goes off).
+	cur, err := s.q.GetGroceryListItemByID(ctx, sqlc.GetGroceryListItemByIDParams{GroceryListItemID: groceryListItemID, HouseholdID: householdID})
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", domainerr.FromStorage(err))
+	}
+	if err := s.lockGroceryList(ctx, cur.GroceryListID, householdID); err != nil {
+		return GroceryListItem{}, err
+	}
 	row, err := s.q.ToggleGroceryListItemChecked(ctx, sqlc.ToggleGroceryListItemCheckedParams{
 		GroceryListItemID: groceryListItemID,
 		HouseholdID:       householdID,
@@ -340,31 +444,59 @@ func (s *Service) ToggleGroceryListItemChecked(ctx context.Context, groceryListI
 	if err != nil {
 		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", domainerr.FromStorage(err))
 	}
+	before, err := toGroceryListItem(cur)
+	if err != nil {
+		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+	}
 	gli, err := toGroceryListItem(row)
 	if err != nil {
 		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
 	}
-	if !gli.IsChecked || gli.CheckedSeq == nil {
-		return gli, nil
+	return s.observeCheckChange(ctx, householdID, before, gli, by)
+}
+
+// observeCheckChange folds a check transition into the item's learned
+// route position — or pulls it back out when the check is retracted.
+// The position is checked_seq normalized to 0..1 by the list's item
+// count; retraction uses the pre-flip seq, the best available mirror of
+// what the check originally contributed.
+func (s *Service) observeCheckChange(ctx context.Context, householdID int64, before, after GroceryListItem, by string) (GroceryListItem, error) {
+	var position float64
+	var observing bool
+	switch {
+	case after.IsChecked && after.CheckedSeq != nil:
+		position = float64(*after.CheckedSeq)
+		observing = true
+	case !after.IsChecked && before.IsChecked && before.CheckedSeq != nil:
+		position = float64(*before.CheckedSeq)
+	default:
+		return after, nil
 	}
-	list, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: gli.GroceryListID, HouseholdID: householdID})
+	list, err := s.q.GetGroceryListByID(ctx, sqlc.GetGroceryListByIDParams{GroceryListID: after.GroceryListID, HouseholdID: householdID})
 	if err != nil {
-		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", domainerr.FromStorage(err))
+		return GroceryListItem{}, fmt.Errorf("route observation: %w", domainerr.FromStorage(err))
 	}
-	total, err := s.q.CountGroceryListItems(ctx, sqlc.CountGroceryListItemsParams{GroceryListID: gli.GroceryListID, HouseholdID: householdID})
+	total, err := s.q.CountGroceryListItems(ctx, sqlc.CountGroceryListItemsParams{GroceryListID: after.GroceryListID, HouseholdID: householdID})
 	if err != nil {
-		return GroceryListItem{}, fmt.Errorf("toggle grocery list item: %w", err)
+		return GroceryListItem{}, fmt.Errorf("route observation: %w", err)
 	}
-	if total > 0 {
-		storeID := GenericStoreID
-		if list.StoreID.Valid {
-			storeID = list.StoreID.Int64
-		}
-		if err := s.RecordRouteObservation(ctx, householdID, storeID, gli, float64(*gli.CheckedSeq)/float64(total), by); err != nil {
-			return GroceryListItem{}, err
-		}
+	if total <= 0 {
+		return after, nil
 	}
-	return gli, nil
+	storeID := GenericStoreID
+	if list.StoreID.Valid {
+		storeID = list.StoreID.Int64
+	}
+	position = position / float64(total)
+	if observing {
+		err = s.RecordRouteObservation(ctx, householdID, storeID, after, position, by)
+	} else {
+		err = s.RetractRouteObservation(ctx, householdID, storeID, before, position, by)
+	}
+	if err != nil {
+		return GroceryListItem{}, err
+	}
+	return after, nil
 }
 
 // AddGroceryListItems inserts a batch of items onto a single list owned

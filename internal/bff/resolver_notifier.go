@@ -164,7 +164,7 @@ func (r *Resolver) AddItemToCurrentGroceryList(ctx context.Context, args struct 
 	if err != nil {
 		return nil, err
 	}
-	return &groceryListItemResolver{inv: r.InventoryService, item: it, as: r.allergySrc(u)}, nil
+	return &groceryListItemResolver{inv: r.InventoryService, up: r.UserPrefsService, item: it, as: r.allergySrc(u)}, nil
 }
 
 // TriggerNotificationSweep runs the reminder sweep immediately so admins

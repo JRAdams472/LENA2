@@ -94,6 +94,75 @@ func TestResolver_FoodEvent(t *testing.T) {
 	assert.Equal(t, float64(2), items[0].Quantity())
 }
 
+// M27: with rc preloaded, the snapshot line resolvers resolve
+// Item/Ingredient/Unit from the batch maps — the inventory mock has zero
+// expected calls, so any per-row query fails the test.
+func TestResolver_EventRecipeItems_NoNPlus1(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ev := mock.NewMockEventService(ctrl)
+	rec := mock.NewMockRecipeService(ctrl)
+	inv := mock.NewMockInventoryService(ctrl)
+	rec.EXPECT().ListRecipeDeltas(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	r := &Resolver{EventService: ev, RecipeService: rec, InventoryService: inv}
+
+	recipeID := int64(11)
+	ev.EXPECT().GetFoodEventByID(gomock.Any(), int64(3), int64(7)).Return(evRow(3), nil)
+	ev.EXPECT().ListEventRecipesForEvent(gomock.Any(), int64(3), int64(7)).Return([]event.EventRecipe{
+		{EventRecipeID: 9, FoodEventID: 3, RecipeID: &recipeID, MealType: "dinner", TargetTime: evTarget},
+	}, nil)
+	rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{11}).Return([]recipe.Recipe{{RecipeID: 11, Name: "Casserole"}}, nil)
+	rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeItem{}, nil)
+	rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{11}).Return([]recipe.RecipeStep{}, nil)
+	rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{11}).Return(nil, nil)
+	rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(7), []int64{11}).Return([]recipe.RecipeRating{}, nil)
+	rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{11}).Return([]recipe.RatingSummary{}, nil)
+	ev.EXPECT().ListEventRecipeStepsForEvents(gomock.Any(), []int64{3}, int64(7)).Return([]event.EventRecipeStep{}, nil)
+	// Two snapshot lines sharing a unit; the second mirrors a brand-agnostic
+	// ingredient line. Item 50's own unit (3) differs from the snapshot
+	// line's unit (4) so mergeSnapshotUnits coverage is exercised.
+	ev.EXPECT().ListEventRecipeItemsForEvents(gomock.Any(), []int64{3}, int64(7)).Return([]event.EventRecipeItem{
+		{EventRecipeItemID: 60, EventRecipeID: 9, ItemID: int64Ptr(50), Quantity: 2, UnitID: 4},
+		{EventRecipeItemID: 61, EventRecipeID: 9, IngredientID: int64Ptr(70), Quantity: 1, UnitID: 4},
+	}, nil)
+
+	// Batch loads — every one keyed by ID set, never per row.
+	inv.EXPECT().GetItemsByIDs(gomock.Any(), []int64{50}).Return([]inventory.Item{{ItemID: 50, UnitID: 3, CategoryID: 1}}, nil)
+	inv.EXPECT().GetCategoriesByIDs(gomock.Any(), []int64{1}).Return([]inventory.Category{{CategoryID: 1, Name: "Pantry"}}, nil)
+	inv.EXPECT().ListFoodNutrientsByItems(gomock.Any(), []int64{50}).Return(nil, nil)
+	inv.EXPECT().ListFoodFlavorsByItems(gomock.Any(), []int64{50}).Return(nil, nil)
+	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{3}).Return([]inventory.Unit{{UnitID: 3, Name: "cup"}}, nil)
+	inv.EXPECT().GetUnitsByIDs(gomock.Any(), []int64{4}).Return([]inventory.Unit{{UnitID: 4, Name: "tbsp"}}, nil)
+	inv.EXPECT().ResolveItemIngredients(gomock.Any(), int64(7), []int64{50}).Return(map[int64]*int64{}, nil)
+	inv.EXPECT().GetIngredientsByIDs(gomock.Any(), []int64{70}).Return([]inventory.Ingredient{{IngredientID: 70, Name: "salt"}}, nil).Times(2)
+	inv.EXPECT().ListIngredientAllergensByIngredients(gomock.Any(), []int64{70}).Return(nil, nil)
+	inv.EXPECT().ListItemAllergensByItems(gomock.Any(), []int64{50}).Return(nil, nil)
+
+	res, err := r.FoodEvent(evCtx(), struct{ ID graphql.ID }{ID: "3"})
+	require.NoError(t, err)
+	recipes, err := res.Recipes(evCtx())
+	require.NoError(t, err)
+	require.Len(t, recipes, 1)
+	items, err := recipes[0].Items(evCtx())
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+
+	// Item, ingredient and unit fields resolve off the preload — the mock
+	// would fail on any GetItemByID/GetIngredientByID/GetUnitByID call.
+	gotItem, err := items[0].Item(evCtx())
+	require.NoError(t, err)
+	require.NotNil(t, gotItem)
+	assert.Equal(t, graphql.ID("50"), gotItem.ID())
+	gotIng, err := items[1].Ingredient(evCtx())
+	require.NoError(t, err)
+	require.NotNil(t, gotIng)
+	assert.Equal(t, "salt", gotIng.Name())
+	for _, it := range items {
+		unit, err := it.Unit(evCtx())
+		require.NoError(t, err)
+		assert.Equal(t, "tbsp", unit)
+	}
+}
+
 func TestResolver_FoodEvent_WrongHousehold(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ev := mock.NewMockEventService(ctrl)
@@ -226,6 +295,7 @@ func TestResolver_DeleteFoodEvent(t *testing.T) {
 	idSvc := mock.NewMockIdentityService(ctrl)
 	r := &Resolver{EventService: ev, HouseholdService: h, IdentityService: idSvc}
 
+	ev.EXPECT().GetFoodEventByID(gomock.Any(), int64(3), int64(7)).Return(event.FoodEvent{FoodEventID: 3}, nil)
 	ev.EXPECT().DeleteFoodEvent(gomock.Any(), int64(3), int64(7)).Return(nil)
 	idSvc.EXPECT().ListUsersByHousehold(gomock.Any(), int64(7)).Return([]identity.User{{UserID: 7}, {UserID: 9}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindEventDeleted,

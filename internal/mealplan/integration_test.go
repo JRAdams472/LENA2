@@ -180,7 +180,7 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	require.NotNil(t, gotSlot.Servings)
 	assert.Equal(t, int32(2), *gotSlot.Servings)
 
-	require.NoError(t, svc.DeleteMealPlan(ctx, plan.MealPlanID, userB))
+	require.ErrorIs(t, svc.DeleteMealPlan(ctx, plan.MealPlanID, userB), domainerr.ErrNotFound)
 	_, err = svc.GetMealPlanByID(ctx, plan.MealPlanID, userA)
 	require.NoError(t, err, "plan should still exist after wrong-user delete")
 
@@ -296,12 +296,12 @@ func TestIntegrationMealPlanCrossUserDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "dinner", got.MealType, "wrong-user update must not mutate the slot")
 
-	require.NoError(t, svc.DeleteMealSlotItem(ctx, slotItem.SlotItemID, userB))
+	require.ErrorIs(t, svc.DeleteMealSlotItem(ctx, slotItem.SlotItemID, userB), domainerr.ErrNotFound)
 	items, err = svc.ListMealSlotItems(ctx, slot.SlotID, userA)
 	require.NoError(t, err)
 	assert.Len(t, items, 1, "wrong-user delete must not remove the slot item")
 
-	require.NoError(t, svc.DeleteMealSlot(ctx, slot.SlotID, userB))
+	require.ErrorIs(t, svc.DeleteMealSlot(ctx, slot.SlotID, userB), domainerr.ErrNotFound)
 	_, err = svc.GetMealSlotByID(ctx, slot.SlotID, userA)
 	require.NoError(t, err, "wrong-user delete must not remove the slot")
 }

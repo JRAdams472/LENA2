@@ -207,13 +207,13 @@ func TestDeleteMealPlan(t *testing.T) {
 
 	t.Run("success threads userID", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealPlan(ctx, sqlc.DeleteMealPlanParams{MealPlanID: 7, HouseholdID: 42}).Return(nil)
+		mq.EXPECT().DeleteMealPlan(ctx, sqlc.DeleteMealPlanParams{MealPlanID: 7, HouseholdID: 42}).Return(int64(1), nil)
 		require.NoError(t, s.DeleteMealPlan(ctx, 7, 42))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealPlan(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteMealPlan(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.DeleteMealPlan(ctx, 7, 42), errDB)
 	})
 }
@@ -381,13 +381,13 @@ func TestDeleteMealSlot(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: 55, HouseholdID: 42}).Return(nil)
+		mq.EXPECT().DeleteMealSlot(ctx, sqlc.DeleteMealSlotParams{SlotID: 55, HouseholdID: 42}).Return(int64(1), nil)
 		require.NoError(t, s.DeleteMealSlot(ctx, 55, 42))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealSlot(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteMealSlot(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.DeleteMealSlot(ctx, 55, 42), errDB)
 	})
 }
@@ -484,13 +484,13 @@ func TestDeleteMealSlotItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: 900, HouseholdID: 42}).Return(nil)
+		mq.EXPECT().DeleteMealSlotItem(ctx, sqlc.DeleteMealSlotItemParams{SlotItemID: 900, HouseholdID: 42}).Return(int64(1), nil)
 		require.NoError(t, s.DeleteMealSlotItem(ctx, 900, 42))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteMealSlotItem(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteMealSlotItem(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.DeleteMealSlotItem(ctx, 900, 42), errDB)
 	})
 }

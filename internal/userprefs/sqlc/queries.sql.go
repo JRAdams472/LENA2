@@ -196,6 +196,24 @@ func (q *Queries) DeleteHouseholdItemsByHousehold(ctx context.Context, household
 	return err
 }
 
+const deleteItemIngredientOverride = `-- name: DeleteItemIngredientOverride :execrows
+DELETE FROM userprefs.household_item_ingredient
+WHERE household_id = $1 AND item_id = $2
+`
+
+type DeleteItemIngredientOverrideParams struct {
+	HouseholdID int64 `json:"household_id"`
+	ItemID      int64 `json:"item_id"`
+}
+
+func (q *Queries) DeleteItemIngredientOverride(ctx context.Context, arg DeleteItemIngredientOverrideParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteItemIngredientOverride, arg.HouseholdID, arg.ItemID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteMergedHouseholdBottles = `-- name: DeleteMergedHouseholdBottles :exec
 DELETE FROM userprefs.household_bottle src
 WHERE src.household_id = $1
@@ -446,6 +464,33 @@ func (q *Queries) GetRecipeFavorite(ctx context.Context, arg GetRecipeFavoritePa
 		&i.UserID,
 		&i.RecipeID,
 		&i.IsFavorite,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUsualItemForIngredient = `-- name: GetUsualItemForIngredient :one
+SELECT household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1 AND ingredient_id = $2
+`
+
+type GetUsualItemForIngredientParams struct {
+	HouseholdID  int64 `json:"household_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+func (q *Queries) GetUsualItemForIngredient(ctx context.Context, arg GetUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error) {
+	row := q.db.QueryRow(ctx, getUsualItemForIngredient, arg.HouseholdID, arg.IngredientID)
+	var i UserprefsHouseholdIngredientItem
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.LastUsedAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedBy,
@@ -811,6 +856,49 @@ func (q *Queries) ListUserItemFavorites(ctx context.Context, arg ListUserItemFav
 			&i.UserID,
 			&i.ItemID,
 			&i.IsFavorite,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsualItemsForIngredients = `-- name: ListUsualItemsForIngredients :many
+SELECT household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
+FROM userprefs.household_ingredient_item
+WHERE household_id = $1
+  AND ingredient_id = ANY($2::bigint[])
+`
+
+type ListUsualItemsForIngredientsParams struct {
+	HouseholdID   int64   `json:"household_id"`
+	IngredientIds []int64 `json:"ingredient_ids"`
+}
+
+// Batch "usual brand" lookup for grocery-line preloads — one row per
+// (ingredient, household) pair recorded by brand-picked check-offs.
+func (q *Queries) ListUsualItemsForIngredients(ctx context.Context, arg ListUsualItemsForIngredientsParams) ([]UserprefsHouseholdIngredientItem, error) {
+	rows, err := q.db.Query(ctx, listUsualItemsForIngredients, arg.HouseholdID, arg.IngredientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserprefsHouseholdIngredientItem{}
+	for rows.Next() {
+		var i UserprefsHouseholdIngredientItem
+		if err := rows.Scan(
+			&i.HouseholdID,
+			&i.IngredientID,
+			&i.ItemID,
+			&i.LastUsedAt,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedBy,
@@ -1301,6 +1389,38 @@ func (q *Queries) UpsertHouseholdItem(ctx context.Context, arg UpsertHouseholdIt
 	return i, err
 }
 
+const upsertItemIngredientOverride = `-- name: UpsertItemIngredientOverride :exec
+
+INSERT INTO userprefs.household_item_ingredient (household_id, item_id, ingredient_id, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $4, now())
+ON CONFLICT (household_id, item_id)
+DO UPDATE SET ingredient_id = EXCLUDED.ingredient_id,
+              updated_by    = EXCLUDED.updated_by,
+              updated_at    = now()
+`
+
+type UpsertItemIngredientOverrideParams struct {
+	HouseholdID  int64  `json:"household_id"`
+	ItemID       int64  `json:"item_id"`
+	IngredientID int64  `json:"ingredient_id"`
+	CreatedBy    string `json:"created_by"`
+}
+
+// ---------- ingredient usual-brand + item override ----------
+// Pure userprefs.* surface moved out of inventory (LEN-171/M17): the
+// inventory service keeps only the catalog-over-override JOIN reads and
+// the atomic cross-domain ingredient-merge series.
+// Household-level remap: "this product is a different ingredient for us."
+func (q *Queries) UpsertItemIngredientOverride(ctx context.Context, arg UpsertItemIngredientOverrideParams) error {
+	_, err := q.db.Exec(ctx, upsertItemIngredientOverride,
+		arg.HouseholdID,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.CreatedBy,
+	)
+	return err
+}
+
 const upsertRecipeFavorite = `-- name: UpsertRecipeFavorite :one
 
 INSERT INTO userprefs.user_recipe_preference (user_id, recipe_id, is_favorite, created_by, updated_by)
@@ -1373,4 +1493,45 @@ func (q *Queries) UpsertUserAllergen(ctx context.Context, arg UpsertUserAllergen
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertUsualItemForIngredient = `-- name: UpsertUsualItemForIngredient :one
+INSERT INTO userprefs.household_ingredient_item (household_id, ingredient_id, item_id, last_used_at, created_by, updated_by, updated_at)
+VALUES ($1, $2, $3, now(), $4, $4, now())
+ON CONFLICT (household_id, ingredient_id)
+DO UPDATE SET item_id      = EXCLUDED.item_id,
+              last_used_at = now(),
+              updated_by   = EXCLUDED.updated_by,
+              updated_at   = now()
+RETURNING household_id, ingredient_id, item_id, last_used_at, created_by, created_at, updated_by, updated_at
+`
+
+type UpsertUsualItemForIngredientParams struct {
+	HouseholdID  int64  `json:"household_id"`
+	IngredientID int64  `json:"ingredient_id"`
+	ItemID       int64  `json:"item_id"`
+	CreatedBy    string `json:"created_by"`
+}
+
+// "Usual brand" record — updated each time a check-off credits stock so
+// repeat purchases stop prompting.
+func (q *Queries) UpsertUsualItemForIngredient(ctx context.Context, arg UpsertUsualItemForIngredientParams) (UserprefsHouseholdIngredientItem, error) {
+	row := q.db.QueryRow(ctx, upsertUsualItemForIngredient,
+		arg.HouseholdID,
+		arg.IngredientID,
+		arg.ItemID,
+		arg.CreatedBy,
+	)
+	var i UserprefsHouseholdIngredientItem
+	err := row.Scan(
+		&i.HouseholdID,
+		&i.IngredientID,
+		&i.ItemID,
+		&i.LastUsedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

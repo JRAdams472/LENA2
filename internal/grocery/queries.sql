@@ -27,7 +27,7 @@ SELECT COUNT(*)
 FROM grocery.grocery_list
 WHERE household_id = $1;
 
--- name: DeleteGroceryList :exec
+-- name: DeleteGroceryList :execrows
 DELETE FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND household_id = $2;
 
@@ -109,11 +109,51 @@ FROM grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
   AND gli.grocery_list_item_id = $1 AND gl.household_id = $2;
 
--- name: DeleteGroceryListItem :exec
+-- name: DeleteGroceryListItem :execrows
 DELETE FROM grocery.grocery_list_item gli
 USING grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
   AND gli.grocery_list_item_id = $1 AND gl.household_id = $2;
+
+-- name: LockGroceryList :one
+-- Serializes check-off sequencing per list: checked_seq is max+1 under
+-- READ COMMITTED, so two concurrent check-offs would otherwise publish
+-- the same seq. Callers hold this inside the unit of work wrapping the
+-- check/uncheck write.
+SELECT grocery_list_id FROM grocery.grocery_list
+WHERE grocery_list_id = $1 AND household_id = $2
+FOR UPDATE;
+
+-- name: BindItemToGroceryListItem :execrows
+-- Brand pick: binds only the catalog item — never writes a stale
+-- full-row snapshot back over concurrent edits.
+UPDATE grocery.grocery_list_item gli
+SET item_id = $3, updated_by = $4, updated_at = now()
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1 AND gl.household_id = $2;
+
+-- name: CheckGroceryListItemOn :one
+-- Atomic unchecked→checked transition: RETURNING yields the row only
+-- when THIS statement flipped it, so pantry credit is exactly-once —
+-- a concurrent check-off that commits first leaves this at 0 rows.
+-- Callers hold LockGroceryList so checked_seq never duplicates.
+UPDATE grocery.grocery_list_item gli
+SET is_checked = true,
+    checked_at = now(),
+    checked_seq = COALESCE((
+        SELECT MAX(i2.checked_seq)
+        FROM grocery.grocery_list_item i2
+        WHERE i2.grocery_list_id = gli.grocery_list_id
+    ), 0) + 1,
+    updated_by = $3,
+    updated_at = now()
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1
+  AND gl.household_id = $2
+  AND NOT gli.is_checked
+RETURNING gli.*;
 
 -- name: ToggleGroceryListItemChecked :one
 -- Checking stamps checked_at and assigns the next per-list checked_seq so
@@ -157,7 +197,7 @@ SET name = $3, updated_by = $4, updated_at = now()
 WHERE store_id = $1 AND household_id = $2
 RETURNING *;
 
--- name: DeleteStore :exec
+-- name: DeleteStore :execrows
 DELETE FROM grocery.store
 WHERE store_id = $1 AND household_id = $2;
 
@@ -198,7 +238,7 @@ WHERE sa.store_id = s.store_id
   AND sa.aisle_id = $1 AND s.household_id = $2
 RETURNING sa.*;
 
--- name: DeleteAisle :exec
+-- name: DeleteAisle :execrows
 DELETE FROM grocery.store_aisle sa
 USING grocery.store s
 WHERE sa.store_id = s.store_id
@@ -292,6 +332,50 @@ ON CONFLICT (household_id, store_id, manual_name) WHERE manual_name IS NOT NULL
                   updated_by = EXCLUDED.updated_by, updated_at = now()
 RETURNING *;
 
+-- name: RetractRouteObservationItem :exec
+-- Unchecking pulls the observation the check contributed back out of the
+-- running mean. learned_count > 0 guards double-retraction; the paired
+-- DeleteEmptyRouteObservations drops rows that reach zero.
+UPDATE grocery.item_route
+SET learned_sum   = learned_sum - sqlc.arg(position)::float8,
+    learned_count = learned_count - 1,
+    updated_by    = sqlc.arg(updated_by)::varchar,
+    updated_at    = now()
+WHERE household_id = sqlc.arg(household_id)
+  AND store_id     = sqlc.arg(store_id)
+  AND item_id      = sqlc.arg(item_id)::bigint
+  AND learned_count > 0;
+
+-- name: RetractRouteObservationIngredient :exec
+UPDATE grocery.item_route
+SET learned_sum   = learned_sum - sqlc.arg(position)::float8,
+    learned_count = learned_count - 1,
+    updated_by    = sqlc.arg(updated_by)::varchar,
+    updated_at    = now()
+WHERE household_id = sqlc.arg(household_id)
+  AND store_id     = sqlc.arg(store_id)
+  AND ingredient_id = sqlc.arg(ingredient_id)::bigint
+  AND learned_count > 0;
+
+-- name: RetractRouteObservationManual :exec
+UPDATE grocery.item_route
+SET learned_sum   = learned_sum - sqlc.arg(position)::float8,
+    learned_count = learned_count - 1,
+    updated_by    = sqlc.arg(updated_by)::varchar,
+    updated_at    = now()
+WHERE household_id = sqlc.arg(household_id)
+  AND store_id     = sqlc.arg(store_id)
+  AND manual_name  = sqlc.arg(manual_name)::varchar
+  AND learned_count > 0;
+
+-- name: DeleteEmptyRouteObservations :exec
+-- Retraction cleanup: a route row with no observations left and no
+-- manual rank carries no ordering signal — drop it.
+DELETE FROM grocery.item_route
+WHERE household_id = $1 AND store_id = $2
+  AND learned_count <= 0 AND manual_rank IS NULL
+  AND (item_id = $3 OR ingredient_id = $4 OR manual_name = $5);
+
 -- name: ListItemRoutes :many
 -- Store-specific rows plus the generic (store_id = 0) fallback.
 SELECT ir.* FROM grocery.item_route ir
@@ -324,12 +408,14 @@ ON CONFLICT (household_id, store_id, manual_name) WHERE manual_name IS NOT NULL
                   updated_by = EXCLUDED.updated_by, updated_at = now();
 
 -- name: ResetStoreRoute :exec
+-- Scoped to the store's own rows: the store_id=0 generic fallbacks are
+-- shared across every store, so resetting one store must not wipe them.
 DELETE FROM grocery.item_route ir
 USING grocery.store s
 WHERE s.store_id = sqlc.arg(store_id)
   AND s.household_id = sqlc.arg(household_id)
   AND ir.household_id = s.household_id
-  AND (ir.store_id = s.store_id OR ir.store_id = 0);
+  AND ir.store_id = s.store_id;
 
 -- name: DeleteGroceryListsByHousehold :exec
 -- Account deletion (LEN-146): drops a dissolving household's lists.
