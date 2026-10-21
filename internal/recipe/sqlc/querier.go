@@ -31,12 +31,12 @@ type Querier interface {
 	// ---------- recipe categories (0035) ----------
 	CreateCategoryGroup(ctx context.Context, arg CreateCategoryGroupParams) (RecipeCategoryGroup, error)
 	CreateRecipe(ctx context.Context, arg CreateRecipeParams) (RecipeRecipe, error)
-	DeleteCategory(ctx context.Context, categoryID int64) error
-	DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) error
-	DeleteRecipe(ctx context.Context, recipeID int64) error
+	DeleteCategory(ctx context.Context, categoryID int64) (int64, error)
+	DeleteCategoryGroup(ctx context.Context, categoryGroupID int64) (int64, error)
+	DeleteRecipe(ctx context.Context, recipeID int64) (int64, error)
 	DeleteRecipeDelta(ctx context.Context, arg DeleteRecipeDeltaParams) (int64, error)
 	DeleteRecipeItems(ctx context.Context, recipeID int64) error
-	DeleteRecipeStep(ctx context.Context, stepID int64) error
+	DeleteRecipeStep(ctx context.Context, stepID int64) (int64, error)
 	DeleteRecipeSteps(ctx context.Context, recipeID int64) error
 	GetCategoryByID(ctx context.Context, categoryID int64) (RecipeCategory, error)
 	GetCategoryGroupByID(ctx context.Context, categoryGroupID int64) (RecipeCategoryGroup, error)

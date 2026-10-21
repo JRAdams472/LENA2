@@ -328,11 +328,12 @@ func (mr *MockQuerierMockRecorder) CreateUnit(ctx, arg any) *gomock.Call {
 }
 
 // DeleteBrand mocks base method.
-func (m *MockQuerier) DeleteBrand(ctx context.Context, brandID int64) error {
+func (m *MockQuerier) DeleteBrand(ctx context.Context, brandID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteBrand", ctx, brandID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteBrand indicates an expected call of DeleteBrand.
@@ -342,11 +343,12 @@ func (mr *MockQuerierMockRecorder) DeleteBrand(ctx, brandID any) *gomock.Call {
 }
 
 // DeleteCategory mocks base method.
-func (m *MockQuerier) DeleteCategory(ctx context.Context, categoryID int64) error {
+func (m *MockQuerier) DeleteCategory(ctx context.Context, categoryID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteCategory", ctx, categoryID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteCategory indicates an expected call of DeleteCategory.
@@ -356,11 +358,12 @@ func (mr *MockQuerierMockRecorder) DeleteCategory(ctx, categoryID any) *gomock.C
 }
 
 // DeleteFlavorProfile mocks base method.
-func (m *MockQuerier) DeleteFlavorProfile(ctx context.Context, flavorID int64) error {
+func (m *MockQuerier) DeleteFlavorProfile(ctx context.Context, flavorID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteFlavorProfile", ctx, flavorID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteFlavorProfile indicates an expected call of DeleteFlavorProfile.
@@ -370,11 +373,12 @@ func (mr *MockQuerierMockRecorder) DeleteFlavorProfile(ctx, flavorID any) *gomoc
 }
 
 // DeleteFoodFlavor mocks base method.
-func (m *MockQuerier) DeleteFoodFlavor(ctx context.Context, arg sqlc.DeleteFoodFlavorParams) error {
+func (m *MockQuerier) DeleteFoodFlavor(ctx context.Context, arg sqlc.DeleteFoodFlavorParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteFoodFlavor", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteFoodFlavor indicates an expected call of DeleteFoodFlavor.
@@ -384,11 +388,12 @@ func (mr *MockQuerierMockRecorder) DeleteFoodFlavor(ctx, arg any) *gomock.Call {
 }
 
 // DeleteFoodNutrient mocks base method.
-func (m *MockQuerier) DeleteFoodNutrient(ctx context.Context, arg sqlc.DeleteFoodNutrientParams) error {
+func (m *MockQuerier) DeleteFoodNutrient(ctx context.Context, arg sqlc.DeleteFoodNutrientParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteFoodNutrient", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteFoodNutrient indicates an expected call of DeleteFoodNutrient.
@@ -412,11 +417,12 @@ func (mr *MockQuerierMockRecorder) DeleteFoodNutrientsByItem(ctx, foodID any) *g
 }
 
 // DeleteIngredient mocks base method.
-func (m *MockQuerier) DeleteIngredient(ctx context.Context, ingredientID int64) error {
+func (m *MockQuerier) DeleteIngredient(ctx context.Context, ingredientID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteIngredient", ctx, ingredientID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteIngredient indicates an expected call of DeleteIngredient.
@@ -539,11 +545,12 @@ func (mr *MockQuerierMockRecorder) DeleteIngredientRefsUsual(ctx, ingredientID a
 }
 
 // DeleteItem mocks base method.
-func (m *MockQuerier) DeleteItem(ctx context.Context, itemID int64) error {
+func (m *MockQuerier) DeleteItem(ctx context.Context, itemID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteItem", ctx, itemID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteItem indicates an expected call of DeleteItem.
@@ -567,27 +574,13 @@ func (mr *MockQuerierMockRecorder) DeleteItemAllergen(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItemAllergen", reflect.TypeOf((*MockQuerier)(nil).DeleteItemAllergen), ctx, arg)
 }
 
-// DeleteItemIngredientOverride mocks base method.
-func (m *MockQuerier) DeleteItemIngredientOverride(ctx context.Context, arg sqlc.DeleteItemIngredientOverrideParams) (int64, error) {
+// DeleteNutrientType mocks base method.
+func (m *MockQuerier) DeleteNutrientType(ctx context.Context, nutrientID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteItemIngredientOverride", ctx, arg)
+	ret := m.ctrl.Call(m, "DeleteNutrientType", ctx, nutrientID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
-}
-
-// DeleteItemIngredientOverride indicates an expected call of DeleteItemIngredientOverride.
-func (mr *MockQuerierMockRecorder) DeleteItemIngredientOverride(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItemIngredientOverride", reflect.TypeOf((*MockQuerier)(nil).DeleteItemIngredientOverride), ctx, arg)
-}
-
-// DeleteNutrientType mocks base method.
-func (m *MockQuerier) DeleteNutrientType(ctx context.Context, nutrientID int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteNutrientType", ctx, nutrientID)
-	ret0, _ := ret[0].(error)
-	return ret0
 }
 
 // DeleteNutrientType indicates an expected call of DeleteNutrientType.
@@ -982,21 +975,6 @@ func (mr *MockQuerierMockRecorder) GetUnitsByIDs(ctx, unitIds any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnitsByIDs", reflect.TypeOf((*MockQuerier)(nil).GetUnitsByIDs), ctx, unitIds)
 }
 
-// GetUsualItemForIngredient mocks base method.
-func (m *MockQuerier) GetUsualItemForIngredient(ctx context.Context, arg sqlc.GetUsualItemForIngredientParams) (sqlc.UserprefsHouseholdIngredientItem, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUsualItemForIngredient", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsHouseholdIngredientItem)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetUsualItemForIngredient indicates an expected call of GetUsualItemForIngredient.
-func (mr *MockQuerierMockRecorder) GetUsualItemForIngredient(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsualItemForIngredient", reflect.TypeOf((*MockQuerier)(nil).GetUsualItemForIngredient), ctx, arg)
-}
-
 // ListAllergenSuggestions mocks base method.
 func (m *MockQuerier) ListAllergenSuggestions(ctx context.Context, status pgtype.Text) ([]sqlc.ListAllergenSuggestionsRow, error) {
 	m.ctrl.T.Helper()
@@ -1310,21 +1288,6 @@ func (m *MockQuerier) ListUnits(ctx context.Context) ([]sqlc.InventoryUnit, erro
 func (mr *MockQuerierMockRecorder) ListUnits(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnits", reflect.TypeOf((*MockQuerier)(nil).ListUnits), ctx)
-}
-
-// ListUsualItemsForIngredients mocks base method.
-func (m *MockQuerier) ListUsualItemsForIngredients(ctx context.Context, arg sqlc.ListUsualItemsForIngredientsParams) ([]sqlc.UserprefsHouseholdIngredientItem, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUsualItemsForIngredients", ctx, arg)
-	ret0, _ := ret[0].([]sqlc.UserprefsHouseholdIngredientItem)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListUsualItemsForIngredients indicates an expected call of ListUsualItemsForIngredients.
-func (mr *MockQuerierMockRecorder) ListUsualItemsForIngredients(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUsualItemsForIngredients", reflect.TypeOf((*MockQuerier)(nil).ListUsualItemsForIngredients), ctx, arg)
 }
 
 // MatchItemIDs mocks base method.
@@ -1766,33 +1729,4 @@ func (m *MockQuerier) UpsertItemAllergen(ctx context.Context, arg sqlc.UpsertIte
 func (mr *MockQuerierMockRecorder) UpsertItemAllergen(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertItemAllergen", reflect.TypeOf((*MockQuerier)(nil).UpsertItemAllergen), ctx, arg)
-}
-
-// UpsertItemIngredientOverride mocks base method.
-func (m *MockQuerier) UpsertItemIngredientOverride(ctx context.Context, arg sqlc.UpsertItemIngredientOverrideParams) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertItemIngredientOverride", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpsertItemIngredientOverride indicates an expected call of UpsertItemIngredientOverride.
-func (mr *MockQuerierMockRecorder) UpsertItemIngredientOverride(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertItemIngredientOverride", reflect.TypeOf((*MockQuerier)(nil).UpsertItemIngredientOverride), ctx, arg)
-}
-
-// UpsertUsualItemForIngredient mocks base method.
-func (m *MockQuerier) UpsertUsualItemForIngredient(ctx context.Context, arg sqlc.UpsertUsualItemForIngredientParams) (sqlc.UserprefsHouseholdIngredientItem, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertUsualItemForIngredient", ctx, arg)
-	ret0, _ := ret[0].(sqlc.UserprefsHouseholdIngredientItem)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpsertUsualItemForIngredient indicates an expected call of UpsertUsualItemForIngredient.
-func (mr *MockQuerierMockRecorder) UpsertUsualItemForIngredient(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertUsualItemForIngredient", reflect.TypeOf((*MockQuerier)(nil).UpsertUsualItemForIngredient), ctx, arg)
 }

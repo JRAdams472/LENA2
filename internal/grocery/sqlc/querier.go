@@ -17,6 +17,14 @@ type Querier interface {
 	// three partial unique indexes make each variant an upsert.
 	AssignItemToAisle(ctx context.Context, arg AssignItemToAisleParams) (GroceryAisleAssignment, error)
 	AssignManualToAisle(ctx context.Context, arg AssignManualToAisleParams) (GroceryAisleAssignment, error)
+	// Brand pick: binds only the catalog item — never writes a stale
+	// full-row snapshot back over concurrent edits.
+	BindItemToGroceryListItem(ctx context.Context, arg BindItemToGroceryListItemParams) (int64, error)
+	// Atomic unchecked→checked transition: RETURNING yields the row only
+	// when THIS statement flipped it, so pantry credit is exactly-once —
+	// a concurrent check-off that commits first leaves this at 0 rows.
+	// Callers hold LockGroceryList so checked_seq never duplicates.
+	CheckGroceryListItemOn(ctx context.Context, arg CheckGroceryListItemOnParams) (GroceryGroceryListItem, error)
 	// List size normalizes a check-off's checked_seq into a 0..1 route
 	// position for the learned-ordering mean.
 	CountGroceryListItems(ctx context.Context, arg CountGroceryListItemsParams) (int64, error)
@@ -26,17 +34,20 @@ type Querier interface {
 	// mobile default to the same routing context.
 	CreateGroceryList(ctx context.Context, arg CreateGroceryListParams) (GroceryGroceryList, error)
 	CreateStore(ctx context.Context, arg CreateStoreParams) (GroceryStore, error)
-	DeleteAisle(ctx context.Context, arg DeleteAisleParams) error
+	DeleteAisle(ctx context.Context, arg DeleteAisleParams) (int64, error)
+	// Retraction cleanup: a route row with no observations left and no
+	// manual rank carries no ordering signal — drop it.
+	DeleteEmptyRouteObservations(ctx context.Context, arg DeleteEmptyRouteObservationsParams) error
 	// Regenerate-in-place: generated lines (source <> 'manual') are replaced
 	// wholesale; manual lines are preserved.
 	DeleteGeneratedGroceryListItems(ctx context.Context, groceryListID int64) error
-	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error
-	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error
+	DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) (int64, error)
+	DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) (int64, error)
 	// Account deletion (LEN-146): drops a dissolving household's lists.
 	// grocery_list.household_id is NO ACTION; grocery_list_item children
 	// cascade. Stores/routes cascade with the households row itself.
 	DeleteGroceryListsByHousehold(ctx context.Context, householdID int64) error
-	DeleteStore(ctx context.Context, arg DeleteStoreParams) error
+	DeleteStore(ctx context.Context, arg DeleteStoreParams) (int64, error)
 	GetAisleByID(ctx context.Context, arg GetAisleByIDParams) (GroceryStoreAisle, error)
 	GetGroceryListByID(ctx context.Context, arg GetGroceryListByIDParams) (GroceryGroceryList, error)
 	GetGroceryListItemByID(ctx context.Context, arg GetGroceryListItemByIDParams) (GroceryGroceryListItem, error)
@@ -53,6 +64,11 @@ type Querier interface {
 	// Store-specific rows plus the generic (store_id = 0) fallback.
 	ListItemRoutes(ctx context.Context, arg ListItemRoutesParams) ([]GroceryItemRoute, error)
 	ListStores(ctx context.Context, householdID int64) ([]GroceryStore, error)
+	// Serializes check-off sequencing per list: checked_seq is max+1 under
+	// READ COMMITTED, so two concurrent check-offs would otherwise publish
+	// the same seq. Callers hold this inside the unit of work wrapping the
+	// check/uncheck write.
+	LockGroceryList(ctx context.Context, arg LockGroceryListParams) (int64, error)
 	// Invite-accept merge: repoint all of the source household's lists. Zero
 	// rows is not an error.
 	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
@@ -61,7 +77,15 @@ type Querier interface {
 	// Rewrite every aisle's position from the submitted order in one
 	// statement: position is the row's index in the id array.
 	ReorderAisles(ctx context.Context, arg ReorderAislesParams) error
+	// Scoped to the store's own rows: the store_id=0 generic fallbacks are
+	// shared across every store, so resetting one store must not wipe them.
 	ResetStoreRoute(ctx context.Context, arg ResetStoreRouteParams) error
+	RetractRouteObservationIngredient(ctx context.Context, arg RetractRouteObservationIngredientParams) error
+	// Unchecking pulls the observation the check contributed back out of the
+	// running mean. learned_count > 0 guards double-retraction; the paired
+	// DeleteEmptyRouteObservations drops rows that reach zero.
+	RetractRouteObservationItem(ctx context.Context, arg RetractRouteObservationItemParams) error
+	RetractRouteObservationManual(ctx context.Context, arg RetractRouteObservationManualParams) error
 	SetGroceryListStore(ctx context.Context, arg SetGroceryListStoreParams) (int64, error)
 	// Checking stamps checked_at and assigns the next per-list checked_seq so
 	// the order items were checked off survives for store-routing analytics;

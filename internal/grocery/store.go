@@ -172,7 +172,14 @@ func (s *Service) RenameStore(ctx context.Context, storeID, householdID int64, n
 
 // DeleteStore removes a store; its aisles, assignments and route rows cascade and lists keep their rows via SET NULL.
 func (s *Service) DeleteStore(ctx context.Context, storeID, householdID int64) error {
-	return s.q.DeleteStore(ctx, sqlc.DeleteStoreParams{StoreID: storeID, HouseholdID: householdID})
+	n, err := s.q.DeleteStore(ctx, sqlc.DeleteStoreParams{StoreID: storeID, HouseholdID: householdID})
+	if err != nil {
+		return fmt.Errorf("delete store: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("delete store: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // LatestListStore returns the store on the household's most recent list —
@@ -259,14 +266,42 @@ func (s *Service) RenameAisle(ctx context.Context, aisleID, householdID int64, n
 
 // DeleteAisle removes an aisle; its assignments cascade.
 func (s *Service) DeleteAisle(ctx context.Context, aisleID, householdID int64) error {
-	return s.q.DeleteAisle(ctx, sqlc.DeleteAisleParams{AisleID: aisleID, HouseholdID: householdID})
+	n, err := s.q.DeleteAisle(ctx, sqlc.DeleteAisleParams{AisleID: aisleID, HouseholdID: householdID})
+	if err != nil {
+		return fmt.Errorf("delete aisle: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("delete aisle: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // ReorderAisles rewrites positions so aisles sort in the submitted order.
-// The caller-supplied list must cover every aisle on the store.
+// The caller-supplied list must cover every aisle on the store exactly
+// once — a partial or duplicate-bearing list would silently scramble the
+// walk order, so it is rejected outright.
 func (s *Service) ReorderAisles(ctx context.Context, storeID, householdID int64, aisleIDs []int64, by string) error {
 	if _, err := s.GetStoreByID(ctx, storeID, householdID); err != nil {
 		return fmt.Errorf("reorder aisles: %w", err)
+	}
+	aisles, err := s.ListAisles(ctx, storeID, householdID)
+	if err != nil {
+		return fmt.Errorf("reorder aisles: %w", err)
+	}
+	reorderErr := &domainerr.ValidationError{Field: "aisleIds", Msg: "must list every aisle on the store exactly once"}
+	if len(aisleIDs) != len(aisles) {
+		return fmt.Errorf("reorder aisles: %w", reorderErr)
+	}
+	want := make(map[int64]bool, len(aisles))
+	for _, a := range aisles {
+		want[a.AisleID] = false
+	}
+	for _, id := range aisleIDs {
+		seen, ok := want[id]
+		if !ok || seen {
+			return fmt.Errorf("reorder aisles: %w", reorderErr)
+		}
+		want[id] = true
 	}
 	return s.q.ReorderAisles(ctx, sqlc.ReorderAislesParams{
 		StoreID: storeID, HouseholdID: householdID, AisleIds: aisleIDs, UpdatedBy: by,
@@ -360,6 +395,44 @@ func (s *Service) RecordRouteObservation(ctx context.Context, householdID, store
 	return nil
 }
 
+// RetractRouteObservation pulls one check-off's contribution back out of
+// the learned mean — the mirror of RecordRouteObservation for the uncheck
+// path. Rows whose count drains to zero and carry no manual rank are
+// deleted since they no longer signal anything.
+func (s *Service) RetractRouteObservation(ctx context.Context, householdID, storeID int64, it GroceryListItem, position float64, by string) error {
+	id := routeKey(it)
+	var err error
+	switch {
+	case id.ItemID != nil:
+		err = s.q.RetractRouteObservationItem(ctx, sqlc.RetractRouteObservationItemParams{
+			HouseholdID: householdID, StoreID: storeID, ItemID: *id.ItemID,
+			Position: position, UpdatedBy: by,
+		})
+	case id.IngredientID != nil:
+		err = s.q.RetractRouteObservationIngredient(ctx, sqlc.RetractRouteObservationIngredientParams{
+			HouseholdID: householdID, StoreID: storeID, IngredientID: *id.IngredientID,
+			Position: position, UpdatedBy: by,
+		})
+	case id.ManualName != "":
+		err = s.q.RetractRouteObservationManual(ctx, sqlc.RetractRouteObservationManualParams{
+			HouseholdID: householdID, StoreID: storeID, ManualName: normalizeManual(id.ManualName),
+			Position: position, UpdatedBy: by,
+		})
+	default:
+		return fmt.Errorf("retract route observation: item identity required")
+	}
+	if err != nil {
+		return fmt.Errorf("retract route observation: %w", domainerr.FromStorage(err))
+	}
+	if err := s.q.DeleteEmptyRouteObservations(ctx, sqlc.DeleteEmptyRouteObservationsParams{
+		HouseholdID: householdID, StoreID: storeID,
+		ItemID: optInt8(id.ItemID), IngredientID: optInt8(id.IngredientID), ManualName: id.manual(),
+	}); err != nil {
+		return fmt.Errorf("retract route observation: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
 // ListItemRoutes returns route records for the store plus the generic
 // household rows. Callers prefer a store-specific record when both exist.
 func (s *Service) ListItemRoutes(ctx context.Context, storeID, householdID int64) ([]ItemRoute, error) {
@@ -404,8 +477,10 @@ func (s *Service) WriteManualRank(ctx context.Context, householdID, storeID int6
 	return nil
 }
 
-// ResetStoreRoute clears learned stats, manual ranks and aisle
-// assignments for a store — the remedy when a store remodels its layout.
+// ResetStoreRoute clears the store's learned stats and manual ranks —
+// the remedy when a store remodels its layout. Aisle assignments are
+// explicit user knowledge, not learned signal, so they stay; the shared
+// store_id=0 fallback rows are other stores' data and stay too.
 func (s *Service) ResetStoreRoute(ctx context.Context, storeID, householdID int64) error {
 	if _, err := s.GetStoreByID(ctx, storeID, householdID); err != nil {
 		return fmt.Errorf("reset store route: %w", err)

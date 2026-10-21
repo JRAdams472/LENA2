@@ -153,7 +153,7 @@ func (s *Service) UpdateFoodEvent(ctx context.Context, foodEventID, householdID 
 
 // DeleteFoodEvent removes an event owned by the household.
 func (s *Service) DeleteFoodEvent(ctx context.Context, foodEventID, householdID int64) error {
-	return s.q.DeleteFoodEvent(ctx, sqlc.DeleteFoodEventParams{FoodEventID: foodEventID, HouseholdID: householdID})
+	return domainerr.RequireRows(s.q.DeleteFoodEvent(ctx, sqlc.DeleteFoodEventParams{FoodEventID: foodEventID, HouseholdID: householdID}))
 }
 
 // ReassignHousehold repoints every food event owned by the source household
@@ -283,7 +283,7 @@ func (s *Service) UpdateEventRecipe(ctx context.Context, eventRecipeID, househol
 // DeleteEventRecipe removes a recipe slot from an event owned by the
 // household.
 func (s *Service) DeleteEventRecipe(ctx context.Context, eventRecipeID, householdID int64) error {
-	return s.q.DeleteEventRecipe(ctx, sqlc.DeleteEventRecipeParams{EventRecipeID: eventRecipeID, HouseholdID: householdID})
+	return domainerr.RequireRows(s.q.DeleteEventRecipe(ctx, sqlc.DeleteEventRecipeParams{EventRecipeID: eventRecipeID, HouseholdID: householdID}))
 }
 
 // EventRecipeStep is one step in an event slot's recipe snapshot. The
@@ -376,24 +376,18 @@ func (s *Service) ReplaceEventRecipeSteps(ctx context.Context, eventRecipeID, ho
 }
 
 // AddEventRecipeStep appends a step to a slot's snapshot with the next
-// step number.
+// step number; the number is assigned by the INSERT's own MAX()
+// computation so concurrent adds conflict cleanly instead of
+// read-modify-writing the same step_number.
 func (s *Service) AddEventRecipeStep(ctx context.Context, arg EventRecipeStep, householdID int64, by string) (EventRecipeStep, error) {
 	if _, err := s.q.GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: arg.EventRecipeID, HouseholdID: householdID}); err != nil {
 		return EventRecipeStep{}, fmt.Errorf("add event recipe step: %w", domainerr.FromStorage(err))
 	}
-	existing, err := s.ListEventRecipeSteps(ctx, arg.EventRecipeID, householdID)
-	if err != nil {
-		return EventRecipeStep{}, err
+	if _, err := s.q.LockEventRecipe(ctx, arg.EventRecipeID); err != nil {
+		return EventRecipeStep{}, fmt.Errorf("add event recipe step: %w", domainerr.FromStorage(err))
 	}
-	next := int32(1)
-	for _, st := range existing {
-		if st.StepNumber >= next {
-			next = st.StepNumber + 1
-		}
-	}
-	row, err := s.q.AddEventRecipeStep(ctx, sqlc.AddEventRecipeStepParams{
+	row, err := s.q.AppendEventRecipeStep(ctx, sqlc.AppendEventRecipeStepParams{
 		EventRecipeID:       arg.EventRecipeID,
-		StepNumber:          next,
 		Instruction:         arg.Instruction,
 		DurationMinutes:     optInt4(arg.DurationMinutes),
 		StepType:            textOrNull(arg.StepType),
@@ -404,7 +398,7 @@ func (s *Service) AddEventRecipeStep(ctx context.Context, arg EventRecipeStep, h
 		UpdatedBy:           textOrNull(by),
 	})
 	if err != nil {
-		return EventRecipeStep{}, fmt.Errorf("add event recipe step: %w", err)
+		return EventRecipeStep{}, fmt.Errorf("add event recipe step: %w", domainerr.FromStorage(err))
 	}
 	return toEventRecipeStep(row), nil
 }
@@ -434,10 +428,10 @@ func (s *Service) UpdateEventRecipeStep(ctx context.Context, eventRecipeStepID, 
 
 // DeleteEventRecipeStep removes a snapshot step owned by the household.
 func (s *Service) DeleteEventRecipeStep(ctx context.Context, eventRecipeStepID, householdID int64) error {
-	return s.q.DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{
+	return domainerr.RequireRows(s.q.DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{
 		EventRecipeStepID: eventRecipeStepID,
 		HouseholdID:       householdID,
-	})
+	}))
 }
 
 // EventRecipeItem is one ingredient in a slot's snapshot. Quantity is the
@@ -605,10 +599,10 @@ func (s *Service) UpdateEventRecipeItem(ctx context.Context, eventRecipeItemID, 
 
 // DeleteEventRecipeItem removes a snapshot item owned by the household.
 func (s *Service) DeleteEventRecipeItem(ctx context.Context, eventRecipeItemID, householdID int64) error {
-	return s.q.DeleteEventRecipeItem(ctx, sqlc.DeleteEventRecipeItemParams{
+	return domainerr.RequireRows(s.q.DeleteEventRecipeItem(ctx, sqlc.DeleteEventRecipeItemParams{
 		EventRecipeItemID: eventRecipeItemID,
 		HouseholdID:       householdID,
-	})
+	}))
 }
 
 func toEventRecipeItem(row sqlc.EventEventRecipeItem) EventRecipeItem {

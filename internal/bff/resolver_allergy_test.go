@@ -2,7 +2,6 @@ package bff
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -357,14 +357,15 @@ func TestSetMyAllergy(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 
-	// Invalid kind: the service rejects and the error surfaces.
-	up.EXPECT().SetUserAllergen(gomock.Any(), int64(11), int64(200), "sometimes", "member@example.com").Return(errors.New("invalid kind"))
+	// Invalid kind: the service rejects with a typed validation error.
+	up.EXPECT().SetUserAllergen(gomock.Any(), int64(11), int64(200), "sometimes", "member@example.com").
+		Return(&domainerr.ValidationError{Field: "kind", Msg: "must be allergy or dietary"})
 	_, err = r.SetMyAllergy(allergyTestCtx(), struct {
 		AllergenID graphql.ID
 		Kind       string
 		On         bool
 	}{AllergenID: graphql.ID("200"), Kind: "sometimes", On: true})
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, domainerr.ErrValidation)
 
 	// on=false clears the record — no consent needed to remove data.
 	up.EXPECT().ClearUserAllergen(gomock.Any(), int64(11), int64(200)).Return(nil)

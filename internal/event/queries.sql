@@ -30,7 +30,7 @@ SET name                     = $3,
     updated_at               = now()
 WHERE food_event_id = $1 AND household_id = $2;
 
--- name: DeleteFoodEvent :exec
+-- name: DeleteFoodEvent :execrows
 DELETE FROM event.food_event
 WHERE food_event_id = $1 AND household_id = $2;
 
@@ -80,7 +80,7 @@ SET recipe_id   = $3,
 FROM event.food_event fe
 WHERE er.food_event_id = fe.food_event_id AND er.event_recipe_id = $1 AND fe.household_id = $2;
 
--- name: DeleteEventRecipe :exec
+-- name: DeleteEventRecipe :execrows
 DELETE FROM event.event_recipe er
 USING event.food_event fe
 WHERE er.food_event_id = fe.food_event_id AND er.event_recipe_id = $1 AND fe.household_id = $2;
@@ -118,10 +118,34 @@ WHERE ers.event_recipe_id = er.event_recipe_id
   AND ers.event_recipe_id = $1 AND fe.household_id = $2;
 
 -- name: AddEventRecipeStep :one
+-- Explicit step_number: snapshot materialization/re-sync only.
 INSERT INTO event.event_recipe_step
     (event_recipe_id, step_number, instruction, duration_minutes, step_type,
      is_passive, depends_on_step_number, appliance, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING *;
+
+-- name: LockEventRecipe :one
+-- Serializes concurrent step-appends on the slot row (FOR UPDATE) so each
+-- statement-level MAX()+1 sees the previous tx's committed row.
+SELECT event_recipe_id
+FROM event.event_recipe
+WHERE event_recipe_id = $1
+FOR UPDATE;
+
+-- name: AppendEventRecipeStep :one
+-- step_number is computed in-statement (max+1) so concurrent appends
+-- cannot read the same max and silently collide ahead of the unique
+-- check — the loser gets 23505 and surfaces as a conflict, not a
+-- duplicate row.
+INSERT INTO event.event_recipe_step
+    (event_recipe_id, step_number, instruction, duration_minutes, step_type,
+     is_passive, depends_on_step_number, appliance, created_by, updated_by)
+SELECT $1,
+       COALESCE(MAX(step_number), 0) + 1,
+       $2, $3, $4, $5, $6, $7, $8, $9
+FROM event.event_recipe_step
+WHERE event_recipe_id = $1
 RETURNING *;
 
 -- name: UpdateEventRecipeStep :execrows
@@ -139,7 +163,7 @@ WHERE ers.event_recipe_id = er.event_recipe_id
   AND er.food_event_id = fe.food_event_id
   AND ers.event_recipe_step_id = $1 AND fe.household_id = $2;
 
--- name: DeleteEventRecipeStep :exec
+-- name: DeleteEventRecipeStep :execrows
 DELETE FROM event.event_recipe_step ers
 USING event.event_recipe er, event.food_event fe
 WHERE ers.event_recipe_id = er.event_recipe_id
@@ -209,7 +233,7 @@ WHERE eri.event_recipe_id = er.event_recipe_id
   AND er.food_event_id = fe.food_event_id
   AND eri.event_recipe_item_id = $1 AND fe.household_id = $2;
 
--- name: DeleteEventRecipeItem :exec
+-- name: DeleteEventRecipeItem :execrows
 DELETE FROM event.event_recipe_item eri
 USING event.event_recipe er, event.food_event fe
 WHERE eri.event_recipe_id = er.event_recipe_id

@@ -843,7 +843,7 @@ func (s *Service) ListUserAllergensByUsers(ctx context.Context, userIDs []int64)
 // "dietary".
 func (s *Service) SetUserAllergen(ctx context.Context, userID, allergenID int64, kind, by string) error {
 	if !validMemberAllergyKind(kind) {
-		return fmt.Errorf("set user allergen: invalid kind %q", kind)
+		return &domainerr.ValidationError{Field: "kind", Msg: "must be allergy or dietary"}
 	}
 	_, err := s.q.UpsertUserAllergen(ctx, sqlc.UpsertUserAllergenParams{
 		UserID:     userID,
@@ -870,4 +870,86 @@ func (s *Service) ClearUserAllergen(ctx context.Context, userID, allergenID int6
 		return fmt.Errorf("clear user allergen: %w", domainerr.ErrNotFound)
 	}
 	return nil
+}
+
+// SetItemIngredientOverride records that a household treats this item as a
+// different ingredient than the catalog link says.
+func (s *Service) SetItemIngredientOverride(ctx context.Context, householdID, itemID, ingredientID int64, by string) error {
+	if err := s.q.UpsertItemIngredientOverride(ctx, sqlc.UpsertItemIngredientOverrideParams{
+		HouseholdID:  householdID,
+		ItemID:       itemID,
+		IngredientID: ingredientID,
+		CreatedBy:    by,
+	}); err != nil {
+		return fmt.Errorf("set item ingredient override: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// ClearItemIngredientOverride removes the household remap, restoring the
+// catalog-level resolution.
+func (s *Service) ClearItemIngredientOverride(ctx context.Context, householdID, itemID int64) error {
+	if err := domainerr.RequireRows(s.q.DeleteItemIngredientOverride(ctx, sqlc.DeleteItemIngredientOverrideParams{
+		HouseholdID: householdID,
+		ItemID:      itemID,
+	})); err != nil {
+		return fmt.Errorf("clear item ingredient override: %w", err)
+	}
+	return nil
+}
+
+// UsualItem is the brand a household habitually buys for an ingredient.
+type UsualItem struct {
+	ItemID     int64
+	LastUsedAt time.Time
+}
+
+// GetUsualItemForIngredient returns the household's usual brand for an
+// ingredient, or nil when none has been recorded.
+func (s *Service) GetUsualItemForIngredient(ctx context.Context, householdID, ingredientID int64) (*UsualItem, error) {
+	row, err := s.q.GetUsualItemForIngredient(ctx, sqlc.GetUsualItemForIngredientParams{
+		HouseholdID:  householdID,
+		IngredientID: ingredientID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get usual item: %w", domainerr.FromStorage(err))
+	}
+	return &UsualItem{ItemID: row.ItemID, LastUsedAt: row.LastUsedAt}, nil
+}
+
+// SetUsualItemForIngredient records the item a household just bought for
+// the ingredient, refreshing the usual-brand record.
+func (s *Service) SetUsualItemForIngredient(ctx context.Context, householdID, ingredientID, itemID int64, by string) error {
+	if _, err := s.q.UpsertUsualItemForIngredient(ctx, sqlc.UpsertUsualItemForIngredientParams{
+		HouseholdID:  householdID,
+		IngredientID: ingredientID,
+		ItemID:       itemID,
+		CreatedBy:    by,
+	}); err != nil {
+		return fmt.Errorf("set usual item: %w", domainerr.FromStorage(err))
+	}
+	return nil
+}
+
+// GetUsualItemsForIngredients is the batch form of
+// GetUsualItemForIngredient, used by grocery-line preloads.
+func (s *Service) GetUsualItemsForIngredients(ctx context.Context, householdID int64, ingredientIDs []int64) (map[int64]UsualItem, error) {
+	out := make(map[int64]UsualItem, len(ingredientIDs))
+	if len(ingredientIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.ListUsualItemsForIngredients(ctx, sqlc.ListUsualItemsForIngredientsParams{
+		HouseholdID:   householdID,
+		IngredientIds: ingredientIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list usual items: %w", domainerr.FromStorage(err))
+	}
+	for _, r := range rows {
+		out[r.IngredientID] = UsualItem{ItemID: r.ItemID, LastUsedAt: r.LastUsedAt}
+	}
+	return out, nil
 }

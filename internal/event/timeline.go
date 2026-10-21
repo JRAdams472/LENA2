@@ -2,6 +2,7 @@ package event
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -170,7 +171,7 @@ func placeSteps(slot TimelineRecipeInput, order []int32, dependents map[int32][]
 			IsPassive:      s.IsPassive,
 			Appliance:      strings.TrimSpace(s.Appliance),
 			DurationMinute: s.DurationMinutes,
-			//nolint:gosec // bounded by an int32 input plus one slot.
+			//nolint:gosec // effectiveMinutes clamps to int32 range.
 			ScheduledMinutes: int32(mins),
 			Estimated:        est,
 			Start:            starts[num],
@@ -185,6 +186,16 @@ func placeSteps(slot TimelineRecipeInput, order []int32, dependents map[int32][]
 // depends_on_step_number overrides it. A missing dependency is ignored
 // with a warning; a cycle marks the recipe unschedulable.
 func topoOrder(steps []TimelineStepInput, rt *RecipeTimeline) ([]int32, bool) {
+	// Duplicate step numbers collapse the topo maps and would otherwise
+	// report as a dependency cycle — call out the real cause.
+	seen := make(map[int32]bool, len(steps))
+	for _, s := range steps {
+		if seen[s.StepNumber] {
+			rt.Warnings = append(rt.Warnings, fmt.Sprintf("duplicate step number %d — recipe cannot be scheduled", s.StepNumber))
+			return nil, false
+		}
+		seen[s.StepNumber] = true
+	}
 	indeg, next := depEdges(steps, rt)
 	order := drainTopoQueue(indeg, next)
 	if len(order) != len(steps) {
@@ -268,7 +279,8 @@ func depOf(s TimelineStepInput) int32 {
 
 // effectiveMinutes rounds a duration up to a whole number of slots so
 // every scheduled boundary lands on the event's granularity. A missing
-// duration is estimated as one slot.
+// duration is estimated as one slot. The result is clamped to int32 so
+// absurd durations cannot wrap ScheduledMinutes negative.
 func effectiveMinutes(d *int32, granularity int64) (int64, bool) {
 	if d == nil || *d <= 0 {
 		return granularity, true
@@ -276,6 +288,9 @@ func effectiveMinutes(d *int32, granularity int64) (int64, bool) {
 	m := int64(*d)
 	if r := m % granularity; r != 0 {
 		m += granularity - r
+	}
+	if m > math.MaxInt32 {
+		m = math.MaxInt32
 	}
 	return m, false
 }

@@ -90,7 +90,7 @@ func (s *Service) CreateCountry(ctx context.Context, name, isoCode, description,
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Country{}, fmt.Errorf("create country: %w", err)
+		return Country{}, fmt.Errorf("create country: %w", domainerr.FromStorage(err))
 	}
 	return toCountry(row), nil
 }
@@ -108,7 +108,7 @@ func (s *Service) GetCountryByID(ctx context.Context, countryID int64) (Country,
 func (s *Service) ListCountries(ctx context.Context) ([]Country, error) {
 	rows, err := s.q.ListCountries(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list countries: %w", err)
+		return nil, fmt.Errorf("list countries: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Country, len(rows))
 	for i := range rows {
@@ -158,7 +158,7 @@ func (s *Service) CreateRegion(ctx context.Context, arg Region, by string) (Regi
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Region{}, fmt.Errorf("create region: %w", err)
+		return Region{}, fmt.Errorf("create region: %w", domainerr.FromStorage(err))
 	}
 	return toRegion(row), nil
 }
@@ -176,7 +176,7 @@ func (s *Service) GetRegionByID(ctx context.Context, regionID int64) (Region, er
 func (s *Service) ListRegions(ctx context.Context, countryID int64) ([]Region, error) {
 	rows, err := s.q.ListRegions(ctx, countryID)
 	if err != nil {
-		return nil, fmt.Errorf("list regions: %w", err)
+		return nil, fmt.Errorf("list regions: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Region, len(rows))
 	for i := range rows {
@@ -224,7 +224,7 @@ func (s *Service) CreateType(ctx context.Context, name, description, by string) 
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Type{}, fmt.Errorf("create type: %w", err)
+		return Type{}, fmt.Errorf("create type: %w", domainerr.FromStorage(err))
 	}
 	return toType(row), nil
 }
@@ -242,7 +242,7 @@ func (s *Service) GetTypeByID(ctx context.Context, typeID int64) (Type, error) {
 func (s *Service) ListTypes(ctx context.Context) ([]Type, error) {
 	rows, err := s.q.ListTypes(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list types: %w", err)
+		return nil, fmt.Errorf("list types: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Type, len(rows))
 	for i := range rows {
@@ -289,7 +289,7 @@ func (s *Service) CreateVintage(ctx context.Context, year int32, description, by
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return Vintage{}, fmt.Errorf("create vintage: %w", err)
+		return Vintage{}, fmt.Errorf("create vintage: %w", domainerr.FromStorage(err))
 	}
 	return toVintage(row), nil
 }
@@ -307,7 +307,7 @@ func (s *Service) GetVintageByID(ctx context.Context, vintageID int64) (Vintage,
 func (s *Service) ListVintages(ctx context.Context) ([]Vintage, error) {
 	rows, err := s.q.ListVintages(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list vintages: %w", err)
+		return nil, fmt.Errorf("list vintages: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Vintage, len(rows))
 	for i := range rows {
@@ -354,7 +354,7 @@ func (s *Service) CreateGrapeVariety(ctx context.Context, name, description, by 
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {
-		return GrapeVariety{}, fmt.Errorf("create grape variety: %w", err)
+		return GrapeVariety{}, fmt.Errorf("create grape variety: %w", domainerr.FromStorage(err))
 	}
 	return toGrapeVariety(row), nil
 }
@@ -372,7 +372,7 @@ func (s *Service) GetGrapeVarietyByID(ctx context.Context, grapeVarietyID int64)
 func (s *Service) ListGrapeVarieties(ctx context.Context) ([]GrapeVariety, error) {
 	rows, err := s.q.ListGrapeVarieties(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list grape varieties: %w", err)
+		return nil, fmt.Errorf("list grape varieties: %w", domainerr.FromStorage(err))
 	}
 	out := make([]GrapeVariety, len(rows))
 	for i := range rows {
@@ -414,7 +414,7 @@ type BottleGrapeVariety struct {
 // constraint, so the service is the only enforcement point.
 func checkScore(v *int16, field string) error {
 	if v != nil && (*v < 1 || *v > 5) {
-		return fmt.Errorf("%s must be between 1 and 5", field)
+		return &domainerr.ValidationError{Field: field, Msg: "must be between 1 and 5"}
 	}
 	return nil
 }
@@ -422,7 +422,7 @@ func checkScore(v *int16, field string) error {
 // AddBottleGrapeVariety links a grape variety to a bottle.
 func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage *int16, by string) (BottleGrapeVariety, error) {
 	if percentage != nil && (*percentage < 0 || *percentage > 100) {
-		return BottleGrapeVariety{}, fmt.Errorf("percentage must be between 0 and 100")
+		return BottleGrapeVariety{}, &domainerr.ValidationError{Field: "percentage", Msg: "must be between 0 and 100"}
 	}
 	row, err := s.q.CreateBottleGrapeVariety(ctx, sqlc.CreateBottleGrapeVarietyParams{
 		BottleID:       bottleID,
@@ -431,7 +431,7 @@ func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVari
 		CreatedBy:      by,
 	})
 	if err != nil {
-		return BottleGrapeVariety{}, fmt.Errorf("add bottle grape variety: %w", err)
+		return BottleGrapeVariety{}, fmt.Errorf("add bottle grape variety: %w", domainerr.FromStorage(err))
 	}
 	return BottleGrapeVariety{
 		GrapeVarietyID: row.GrapeVarietyID,
@@ -443,7 +443,7 @@ func (s *Service) AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVari
 func (s *Service) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]BottleGrapeVariety, error) {
 	rows, err := s.q.ListBottleGrapeVarieties(ctx, bottleID)
 	if err != nil {
-		return nil, fmt.Errorf("list bottle grape varieties: %w", err)
+		return nil, fmt.Errorf("list bottle grape varieties: %w", domainerr.FromStorage(err))
 	}
 	out := make([]BottleGrapeVariety, len(rows))
 	for i := range rows {
@@ -458,7 +458,7 @@ func (s *Service) ListBottleGrapeVarieties(ctx context.Context, bottleID int64) 
 func (s *Service) ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIDs []int64) ([]BottleGrapeVariety, error) {
 	rows, err := s.q.ListBottleGrapeVarietiesByBottles(ctx, bottleIDs)
 	if err != nil {
-		return nil, fmt.Errorf("list bottle grape varieties by bottles: %w", err)
+		return nil, fmt.Errorf("list bottle grape varieties by bottles: %w", domainerr.FromStorage(err))
 	}
 	out := make([]BottleGrapeVariety, len(rows))
 	for i := range rows {
@@ -474,10 +474,10 @@ func (s *Service) ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleI
 
 // RemoveBottleGrapeVariety removes a grape variety from a bottle.
 func (s *Service) RemoveBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64) error {
-	return s.q.DeleteBottleGrapeVariety(ctx, sqlc.DeleteBottleGrapeVarietyParams{
+	return domainerr.RequireRows(s.q.DeleteBottleGrapeVariety(ctx, sqlc.DeleteBottleGrapeVarietyParams{
 		BottleID:       bottleID,
 		GrapeVarietyID: grapeVarietyID,
-	})
+	}))
 }
 
 // WineFlavorProfile is a catalog of wine flavor profiles.
@@ -492,7 +492,7 @@ type WineFlavorProfile struct {
 func (s *Service) ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error) {
 	rows, err := s.q.ListWineFlavorProfiles(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list wine flavor profiles: %w", err)
+		return nil, fmt.Errorf("list wine flavor profiles: %w", domainerr.FromStorage(err))
 	}
 	out := make([]WineFlavorProfile, len(rows))
 	for i := range rows {
@@ -518,7 +518,7 @@ func (s *Service) CreateWineFlavorProfile(ctx context.Context, name, description
 		CreatedBy:   by,
 	})
 	if err != nil {
-		return WineFlavorProfile{}, fmt.Errorf("create wine flavor profile: %w", err)
+		return WineFlavorProfile{}, fmt.Errorf("create wine flavor profile: %w", domainerr.FromStorage(err))
 	}
 	return toWineFlavorProfile(row), nil
 }
@@ -540,7 +540,7 @@ func (s *Service) UpdateWineFlavorProfile(ctx context.Context, flavorProfileID i
 
 // DeleteWineFlavorProfile removes a wine flavor profile from the catalog.
 func (s *Service) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) error {
-	return s.q.DeleteWineFlavorProfile(ctx, flavorProfileID)
+	return domainerr.RequireRows(s.q.DeleteWineFlavorProfile(ctx, flavorProfileID))
 }
 
 // BottleFlavorProfile is a flavor profile attached to a bottle.
@@ -563,7 +563,7 @@ func (s *Service) AddBottleFlavorProfile(ctx context.Context, bottleID, flavorPr
 		CreatedBy:       by,
 	})
 	if err != nil {
-		return BottleFlavorProfile{}, fmt.Errorf("add bottle flavor profile: %w", err)
+		return BottleFlavorProfile{}, fmt.Errorf("add bottle flavor profile: %w", domainerr.FromStorage(err))
 	}
 	return toBottleFlavorProfileFromRow(row), nil
 }
@@ -572,7 +572,7 @@ func (s *Service) AddBottleFlavorProfile(ctx context.Context, bottleID, flavorPr
 func (s *Service) ListBottleFlavorProfiles(ctx context.Context, bottleID int64) ([]BottleFlavorProfile, error) {
 	rows, err := s.q.ListBottleFlavorProfiles(ctx, bottleID)
 	if err != nil {
-		return nil, fmt.Errorf("list bottle flavor profiles: %w", err)
+		return nil, fmt.Errorf("list bottle flavor profiles: %w", domainerr.FromStorage(err))
 	}
 	out := make([]BottleFlavorProfile, len(rows))
 	for i := range rows {
@@ -587,7 +587,7 @@ func (s *Service) ListBottleFlavorProfiles(ctx context.Context, bottleID int64) 
 func (s *Service) ListBottleFlavorProfilesByBottles(ctx context.Context, bottleIDs []int64) ([]BottleFlavorProfile, error) {
 	rows, err := s.q.ListBottleFlavorProfilesByBottles(ctx, bottleIDs)
 	if err != nil {
-		return nil, fmt.Errorf("list bottle flavor profiles by bottles: %w", err)
+		return nil, fmt.Errorf("list bottle flavor profiles by bottles: %w", domainerr.FromStorage(err))
 	}
 	out := make([]BottleFlavorProfile, len(rows))
 	for i := range rows {
@@ -603,10 +603,10 @@ func (s *Service) ListBottleFlavorProfilesByBottles(ctx context.Context, bottleI
 
 // RemoveBottleFlavorProfile removes a flavor profile from a bottle.
 func (s *Service) RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavorProfileID int64) error {
-	return s.q.DeleteBottleFlavorProfile(ctx, sqlc.DeleteBottleFlavorProfileParams{
+	return domainerr.RequireRows(s.q.DeleteBottleFlavorProfile(ctx, sqlc.DeleteBottleFlavorProfileParams{
 		BottleID:        bottleID,
 		FlavorProfileID: flavorProfileID,
-	})
+	}))
 }
 
 // Bottle is a catalog wine bottle definition. Nullable tasting-note fields
@@ -658,7 +658,7 @@ func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bott
 		UpdatedBy:      textOrNull(by),
 	})
 	if err != nil {
-		return Bottle{}, fmt.Errorf("create bottle: %w", err)
+		return Bottle{}, fmt.Errorf("create bottle: %w", domainerr.FromStorage(err))
 	}
 	b, err := toBottle(row)
 	if err != nil {
@@ -684,7 +684,7 @@ func (s *Service) GetBottleByID(ctx context.Context, bottleID int64) (Bottle, er
 func (s *Service) GetBottlesByIDs(ctx context.Context, bottleIDs []int64) ([]Bottle, error) {
 	rows, err := s.q.GetBottlesByIDs(ctx, bottleIDs)
 	if err != nil {
-		return nil, fmt.Errorf("get bottles by ids: %w", err)
+		return nil, fmt.Errorf("get bottles by ids: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Bottle, len(rows))
 	for i := range rows {
@@ -701,7 +701,7 @@ func (s *Service) GetBottlesByIDs(ctx context.Context, bottleIDs []int64) ([]Bot
 func (s *Service) ListBottles(ctx context.Context, limit, offset int32) ([]Bottle, error) {
 	rows, err := s.q.ListBottles(ctx, sqlc.ListBottlesParams{Limit: limit, Offset: offset})
 	if err != nil {
-		return nil, fmt.Errorf("list bottles: %w", err)
+		return nil, fmt.Errorf("list bottles: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Bottle, len(rows))
 	for i := range rows {
@@ -718,7 +718,7 @@ func (s *Service) ListBottles(ctx context.Context, limit, offset int32) ([]Bottl
 func (s *Service) CountBottles(ctx context.Context) (int64, error) {
 	n, err := s.q.CountBottles(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("count bottles: %w", err)
+		return 0, fmt.Errorf("count bottles: %w", domainerr.FromStorage(err))
 	}
 	return n, nil
 }
@@ -766,7 +766,7 @@ func (s *Service) SearchBottles(ctx context.Context, term string, filters Bottle
 		Offset:        offset,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("search bottles: %w", err)
+		return nil, fmt.Errorf("search bottles: %w", domainerr.FromStorage(err))
 	}
 	out := make([]Bottle, len(rows))
 	for i := range rows {
@@ -792,7 +792,7 @@ func (s *Service) CountSearchBottles(ctx context.Context, term string, filters B
 		FavoriteIds:   favoriteIDs,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("count search bottles: %w", err)
+		return 0, fmt.Errorf("count search bottles: %w", domainerr.FromStorage(err))
 	}
 	return n, nil
 }
@@ -802,7 +802,7 @@ func (s *Service) CountSearchBottles(ctx context.Context, term string, filters B
 func (s *Service) MatchBottleIDs(ctx context.Context, term string) ([]int64, error) {
 	ids, err := s.q.MatchBottleIDs(ctx, term)
 	if err != nil {
-		return nil, fmt.Errorf("match bottle ids: %w", err)
+		return nil, fmt.Errorf("match bottle ids: %w", domainerr.FromStorage(err))
 	}
 	return ids, nil
 }
@@ -848,7 +848,7 @@ func (s *Service) UpdateBottle(ctx context.Context, bottleID int64, arg Bottle, 
 
 // DeleteBottle removes a bottle from the catalog.
 func (s *Service) DeleteBottle(ctx context.Context, bottleID int64) error {
-	return s.q.DeleteBottle(ctx, bottleID)
+	return domainerr.RequireRows(s.q.DeleteBottle(ctx, bottleID))
 }
 
 func toCountry(row sqlc.WineCountry) Country {
@@ -974,7 +974,7 @@ func textOrNull(s string) pgtype.Text {
 
 func numericFromFloat64(f float64) (pgtype.Numeric, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return pgtype.Numeric{}, fmt.Errorf("convert %v to numeric: value is not finite", f)
+		return pgtype.Numeric{}, &domainerr.ValidationError{Msg: fmt.Sprintf("value %v is not finite", f)}
 	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(f, 'f', -1, 64)); err != nil {

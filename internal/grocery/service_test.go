@@ -129,13 +129,13 @@ func TestDeleteGroceryList(t *testing.T) {
 
 	t.Run("success threads userID", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: 3, HouseholdID: 42}).Return(nil)
+		mq.EXPECT().DeleteGroceryList(ctx, sqlc.DeleteGroceryListParams{GroceryListID: 3, HouseholdID: 42}).Return(int64(1), nil)
 		require.NoError(t, s.DeleteGroceryList(ctx, 3, 42))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryList(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteGroceryList(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.DeleteGroceryList(ctx, 3, 42), errDB)
 	})
 }
@@ -302,13 +302,13 @@ func TestDeleteGroceryListItem(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: 900, HouseholdID: 42}).Return(nil)
+		mq.EXPECT().DeleteGroceryListItem(ctx, sqlc.DeleteGroceryListItemParams{GroceryListItemID: 900, HouseholdID: 42}).Return(int64(1), nil)
 		require.NoError(t, s.DeleteGroceryListItem(ctx, 900, 42))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().DeleteGroceryListItem(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteGroceryListItem(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.DeleteGroceryListItem(ctx, 900, 42), errDB)
 	})
 }

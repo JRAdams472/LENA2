@@ -47,8 +47,12 @@ type clientError struct {
 func (e *clientError) Error() string { return e.msg }
 
 func errUnauthenticated() error { return &clientError{msg: "unauthorized", code: codeUnauthenticated} }
-func errForbidden() error {
-	return &clientError{msg: "forbidden: admin role required", code: codeForbidden}
+
+// forbiddenf returns a client-safe FORBIDDEN error naming the actual
+// guard that failed — a generic "admin role required" is wrong for
+// ownership/membership checks.
+func forbiddenf(format string, a ...any) error {
+	return &clientError{msg: "forbidden: " + fmt.Sprintf(format, a...), code: codeForbidden}
 }
 
 // badInputf returns a client-safe validation error (BAD_USER_INPUT).

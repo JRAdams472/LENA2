@@ -54,7 +54,7 @@ func (r *Resolver) SubmitItemNutritionPhoto(ctx context.Context, args struct {
 		return false, err
 	}
 	if !canModifyItem(it, u) {
-		return false, errForbidden()
+		return false, forbiddenf("you can only modify items you submitted while they are pending")
 	}
 
 	photo := strings.TrimSpace(args.PhotoBase64)

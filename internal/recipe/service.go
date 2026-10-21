@@ -265,7 +265,10 @@ func updateRecipeRow(ctx context.Context, q sqlc.Querier, recipeID int64, arg Re
 
 // DeleteRecipe removes a recipe and its related items/steps.
 func (s *Service) DeleteRecipe(ctx context.Context, recipeID int64) error {
-	return s.q.DeleteRecipe(ctx, recipeID)
+	if err := domainerr.RequireRows(s.q.DeleteRecipe(ctx, recipeID)); err != nil {
+		return fmt.Errorf("delete recipe: %w", err)
+	}
+	return nil
 }
 
 // CreateRecipeWithChildren creates a recipe plus its items and steps in a
@@ -500,7 +503,10 @@ func (s *Service) UpdateRecipeStep(ctx context.Context, stepID int64, stepNumber
 
 // DeleteRecipeStep removes a step.
 func (s *Service) DeleteRecipeStep(ctx context.Context, stepID int64) error {
-	return s.q.DeleteRecipeStep(ctx, stepID)
+	if err := domainerr.RequireRows(s.q.DeleteRecipeStep(ctx, stepID)); err != nil {
+		return fmt.Errorf("delete recipe step: %w", err)
+	}
+	return nil
 }
 
 // RecipeRating is one user's 1-5 star rating of a recipe.
@@ -770,8 +776,8 @@ func (s *Service) DeleteCategoryGroup(ctx context.Context, groupID int64) error 
 	if n > 0 {
 		return &domainerr.ValidationError{Field: "id", Msg: "group still has categories — delete or reassign them first"}
 	}
-	if err := s.q.DeleteCategoryGroup(ctx, groupID); err != nil {
-		return fmt.Errorf("delete category group: %w", domainerr.FromStorage(err))
+	if err := domainerr.RequireRows(s.q.DeleteCategoryGroup(ctx, groupID)); err != nil {
+		return fmt.Errorf("delete category group: %w", err)
 	}
 	return nil
 }
@@ -814,8 +820,8 @@ func (s *Service) UpdateCategory(ctx context.Context, categoryID int64, arg Cate
 
 // DeleteCategory removes a category; recipe assignments cascade away.
 func (s *Service) DeleteCategory(ctx context.Context, categoryID int64) error {
-	if err := s.q.DeleteCategory(ctx, categoryID); err != nil {
-		return fmt.Errorf("delete category: %w", domainerr.FromStorage(err))
+	if err := domainerr.RequireRows(s.q.DeleteCategory(ctx, categoryID)); err != nil {
+		return fmt.Errorf("delete category: %w", err)
 	}
 	return nil
 }

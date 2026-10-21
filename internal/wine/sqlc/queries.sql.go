@@ -427,17 +427,20 @@ func (q *Queries) CreateWineFlavorProfile(ctx context.Context, arg CreateWineFla
 	return i, err
 }
 
-const deleteBottle = `-- name: DeleteBottle :exec
+const deleteBottle = `-- name: DeleteBottle :execrows
 DELETE FROM wine.bottle
 WHERE bottle_id = $1
 `
 
-func (q *Queries) DeleteBottle(ctx context.Context, bottleID int64) error {
-	_, err := q.db.Exec(ctx, deleteBottle, bottleID)
-	return err
+func (q *Queries) DeleteBottle(ctx context.Context, bottleID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBottle, bottleID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteBottleFlavorProfile = `-- name: DeleteBottleFlavorProfile :exec
+const deleteBottleFlavorProfile = `-- name: DeleteBottleFlavorProfile :execrows
 DELETE FROM wine.bottle_flavor_profile
 WHERE bottle_id = $1 AND flavor_profile_id = $2
 `
@@ -447,12 +450,15 @@ type DeleteBottleFlavorProfileParams struct {
 	FlavorProfileID int64 `json:"flavor_profile_id"`
 }
 
-func (q *Queries) DeleteBottleFlavorProfile(ctx context.Context, arg DeleteBottleFlavorProfileParams) error {
-	_, err := q.db.Exec(ctx, deleteBottleFlavorProfile, arg.BottleID, arg.FlavorProfileID)
-	return err
+func (q *Queries) DeleteBottleFlavorProfile(ctx context.Context, arg DeleteBottleFlavorProfileParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBottleFlavorProfile, arg.BottleID, arg.FlavorProfileID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteBottleGrapeVariety = `-- name: DeleteBottleGrapeVariety :exec
+const deleteBottleGrapeVariety = `-- name: DeleteBottleGrapeVariety :execrows
 DELETE FROM wine.bottle_grape_variety
 WHERE bottle_id = $1 AND grape_variety_id = $2
 `
@@ -462,9 +468,12 @@ type DeleteBottleGrapeVarietyParams struct {
 	GrapeVarietyID int64 `json:"grape_variety_id"`
 }
 
-func (q *Queries) DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) error {
-	_, err := q.db.Exec(ctx, deleteBottleGrapeVariety, arg.BottleID, arg.GrapeVarietyID)
-	return err
+func (q *Queries) DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBottleGrapeVariety, arg.BottleID, arg.GrapeVarietyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteCountry = `-- name: DeleteCountry :exec
@@ -517,14 +526,17 @@ func (q *Queries) DeleteVintage(ctx context.Context, vintageID int64) error {
 	return err
 }
 
-const deleteWineFlavorProfile = `-- name: DeleteWineFlavorProfile :exec
+const deleteWineFlavorProfile = `-- name: DeleteWineFlavorProfile :execrows
 DELETE FROM wine.flavor_profile
 WHERE flavor_profile_id = $1
 `
 
-func (q *Queries) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) error {
-	_, err := q.db.Exec(ctx, deleteWineFlavorProfile, flavorProfileID)
-	return err
+func (q *Queries) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteWineFlavorProfile, flavorProfileID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getBottleByID = `-- name: GetBottleByID :one

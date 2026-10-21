@@ -86,6 +86,21 @@ func (mr *MockQuerierMockRecorder) AddEventRecipeStep(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddEventRecipeStep", reflect.TypeOf((*MockQuerier)(nil).AddEventRecipeStep), ctx, arg)
 }
 
+// AppendEventRecipeStep mocks base method.
+func (m *MockQuerier) AppendEventRecipeStep(ctx context.Context, arg sqlc.AppendEventRecipeStepParams) (sqlc.EventEventRecipeStep, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AppendEventRecipeStep", ctx, arg)
+	ret0, _ := ret[0].(sqlc.EventEventRecipeStep)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AppendEventRecipeStep indicates an expected call of AppendEventRecipeStep.
+func (mr *MockQuerierMockRecorder) AppendEventRecipeStep(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEventRecipeStep", reflect.TypeOf((*MockQuerier)(nil).AppendEventRecipeStep), ctx, arg)
+}
+
 // CountFoodEvents mocks base method.
 func (m *MockQuerier) CountFoodEvents(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -117,11 +132,12 @@ func (mr *MockQuerierMockRecorder) CreateFoodEvent(ctx, arg any) *gomock.Call {
 }
 
 // DeleteEventRecipe mocks base method.
-func (m *MockQuerier) DeleteEventRecipe(ctx context.Context, arg sqlc.DeleteEventRecipeParams) error {
+func (m *MockQuerier) DeleteEventRecipe(ctx context.Context, arg sqlc.DeleteEventRecipeParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteEventRecipe", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteEventRecipe indicates an expected call of DeleteEventRecipe.
@@ -131,11 +147,12 @@ func (mr *MockQuerierMockRecorder) DeleteEventRecipe(ctx, arg any) *gomock.Call 
 }
 
 // DeleteEventRecipeItem mocks base method.
-func (m *MockQuerier) DeleteEventRecipeItem(ctx context.Context, arg sqlc.DeleteEventRecipeItemParams) error {
+func (m *MockQuerier) DeleteEventRecipeItem(ctx context.Context, arg sqlc.DeleteEventRecipeItemParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteEventRecipeItem", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteEventRecipeItem indicates an expected call of DeleteEventRecipeItem.
@@ -159,11 +176,12 @@ func (mr *MockQuerierMockRecorder) DeleteEventRecipeItems(ctx, arg any) *gomock.
 }
 
 // DeleteEventRecipeStep mocks base method.
-func (m *MockQuerier) DeleteEventRecipeStep(ctx context.Context, arg sqlc.DeleteEventRecipeStepParams) error {
+func (m *MockQuerier) DeleteEventRecipeStep(ctx context.Context, arg sqlc.DeleteEventRecipeStepParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteEventRecipeStep", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteEventRecipeStep indicates an expected call of DeleteEventRecipeStep.
@@ -187,11 +205,12 @@ func (mr *MockQuerierMockRecorder) DeleteEventRecipeSteps(ctx, arg any) *gomock.
 }
 
 // DeleteFoodEvent mocks base method.
-func (m *MockQuerier) DeleteFoodEvent(ctx context.Context, arg sqlc.DeleteFoodEventParams) error {
+func (m *MockQuerier) DeleteFoodEvent(ctx context.Context, arg sqlc.DeleteFoodEventParams) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteFoodEvent", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteFoodEvent indicates an expected call of DeleteFoodEvent.
@@ -363,6 +382,21 @@ func (m *MockQuerier) ListFoodEvents(ctx context.Context, arg sqlc.ListFoodEvent
 func (mr *MockQuerierMockRecorder) ListFoodEvents(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFoodEvents", reflect.TypeOf((*MockQuerier)(nil).ListFoodEvents), ctx, arg)
+}
+
+// LockEventRecipe mocks base method.
+func (m *MockQuerier) LockEventRecipe(ctx context.Context, eventRecipeID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockEventRecipe", ctx, eventRecipeID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LockEventRecipe indicates an expected call of LockEventRecipe.
+func (mr *MockQuerierMockRecorder) LockEventRecipe(ctx, eventRecipeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockEventRecipe", reflect.TypeOf((*MockQuerier)(nil).LockEventRecipe), ctx, eventRecipeID)
 }
 
 // ReassignFoodEventsToHousehold mocks base method.

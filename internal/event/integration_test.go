@@ -183,12 +183,12 @@ func TestIntegrationFoodEventCrossHouseholdDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "dinner", got.MealType, "wrong-household update must not mutate the row")
 
-	require.NoError(t, svc.DeleteEventRecipe(ctx, er.EventRecipeID, hhB))
+	require.ErrorIs(t, svc.DeleteEventRecipe(ctx, er.EventRecipeID, hhB), domainerr.ErrNotFound)
 	recipes, err = svc.ListEventRecipesForEvent(ctx, ev.FoodEventID, hhA)
 	require.NoError(t, err)
 	assert.Len(t, recipes, 1, "wrong-household delete must not remove the row")
 
-	require.NoError(t, svc.DeleteFoodEvent(ctx, ev.FoodEventID, hhB))
+	require.ErrorIs(t, svc.DeleteFoodEvent(ctx, ev.FoodEventID, hhB), domainerr.ErrNotFound)
 	_, err = svc.GetFoodEventByID(ctx, ev.FoodEventID, hhA)
 	require.NoError(t, err, "wrong-household delete must not remove the event")
 }

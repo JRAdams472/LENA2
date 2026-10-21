@@ -123,10 +123,34 @@ func TestAisleOps(t *testing.T) {
 	t.Run("reorder sends ordered ids", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().GetStoreByID(ctx, gomock.Any()).Return(sqlc.GroceryStore{StoreID: 7}, nil)
+		mq.EXPECT().ListAisles(ctx, gomock.Any()).Return([]sqlc.GroceryStoreAisle{
+			{AisleID: 1}, {AisleID: 2}, {AisleID: 3},
+		}, nil)
 		mq.EXPECT().ReorderAisles(ctx, sqlc.ReorderAislesParams{
 			StoreID: 7, HouseholdID: 42, AisleIds: []int64{3, 1, 2}, UpdatedBy: "tester",
 		}).Return(nil)
 		require.NoError(t, s.ReorderAisles(ctx, 7, 42, []int64{3, 1, 2}, "tester"))
+	})
+
+	t.Run("reorder rejects incomplete or foreign aisle sets", func(t *testing.T) {
+		aisles := []sqlc.GroceryStoreAisle{{AisleID: 1}, {AisleID: 2}, {AisleID: 3}}
+		cases := []struct {
+			name string
+			ids  []int64
+		}{
+			{"empty list", nil},
+			{"partial set", []int64{1, 2}},
+			{"duplicate ids", []int64{1, 1, 3}},
+			{"foreign aisle id", []int64{1, 2, 99}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				s, mq := newService(t)
+				mq.EXPECT().GetStoreByID(ctx, gomock.Any()).Return(sqlc.GroceryStore{StoreID: 7}, nil)
+				mq.EXPECT().ListAisles(ctx, gomock.Any()).Return(aisles, nil)
+				require.ErrorIs(t, s.ReorderAisles(ctx, 7, 42, tc.ids, "tester"), domainerr.ErrValidation)
+			})
+		}
 	})
 }
 
@@ -299,6 +323,8 @@ func TestToggleLearnsRoute(t *testing.T) {
 		row := gliRow(100, 5, ptrInt64(11))
 		row.IsChecked = true
 		row.CheckedSeq = pgtype.Int4{Int32: 2, Valid: true}
+		mq.EXPECT().GetGroceryListItemByID(ctx, gomock.Any()).Return(gliRow(100, 5, ptrInt64(11)), nil)
+		mq.EXPECT().LockGroceryList(ctx, gomock.Any()).Return(int64(5), nil)
 		mq.EXPECT().ToggleGroceryListItemChecked(ctx, gomock.Any()).Return(row, nil)
 		mq.EXPECT().GetGroceryListByID(ctx, gomock.Any()).Return(sqlc.GroceryGroceryList{
 			GroceryListID: 5, HouseholdID: 42, StoreID: pgtype.Int8{Int64: 7, Valid: true},
@@ -315,10 +341,24 @@ func TestToggleLearnsRoute(t *testing.T) {
 		assert.True(t, got.IsChecked)
 	})
 
-	t.Run("un-check records nothing", func(t *testing.T) {
+	t.Run("un-check retracts the recorded observation", func(t *testing.T) {
 		s, mq := newService(t)
-		row := gliRow(100, 5, ptrInt64(11))
-		mq.EXPECT().ToggleGroceryListItemChecked(ctx, gomock.Any()).Return(row, nil)
+		before := gliRow(100, 5, ptrInt64(11))
+		before.IsChecked = true
+		before.CheckedSeq = pgtype.Int4{Int32: 2, Valid: true}
+		mq.EXPECT().GetGroceryListItemByID(ctx, gomock.Any()).Return(before, nil)
+		mq.EXPECT().LockGroceryList(ctx, gomock.Any()).Return(int64(5), nil)
+		mq.EXPECT().ToggleGroceryListItemChecked(ctx, gomock.Any()).Return(gliRow(100, 5, ptrInt64(11)), nil)
+		mq.EXPECT().GetGroceryListByID(ctx, gomock.Any()).Return(sqlc.GroceryGroceryList{
+			GroceryListID: 5, HouseholdID: 42, StoreID: pgtype.Int8{Int64: 7, Valid: true},
+		}, nil)
+		mq.EXPECT().CountGroceryListItems(ctx, gomock.Any()).Return(int64(4), nil)
+		mq.EXPECT().RetractRouteObservationItem(ctx, sqlc.RetractRouteObservationItemParams{
+			HouseholdID: 42, StoreID: 7, ItemID: 11,
+			Position: 0.5, UpdatedBy: "tester",
+		}).Return(nil)
+		mq.EXPECT().DeleteEmptyRouteObservations(ctx, gomock.Any()).Return(nil)
+
 		got, err := s.ToggleGroceryListItemChecked(ctx, 100, 42, "tester")
 		require.NoError(t, err)
 		assert.False(t, got.IsChecked)

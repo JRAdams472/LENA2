@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/userprefs/sqlc"
 	"github.com/JRAdams472/LENA2/internal/userprefs/sqlc/mock"
 )
@@ -495,5 +497,61 @@ func TestCountHouseholdBottles(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "count household bottles")
 		assert.ErrorIs(t, err, errDB)
+	})
+}
+
+func TestUsualItemForIngredient(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	t.Run("set and get", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpsertUsualItemForIngredient(ctx, sqlc.UpsertUsualItemForIngredientParams{
+			HouseholdID: 2, IngredientID: 7, ItemID: 11, CreatedBy: "alice",
+		}).Return(sqlc.UserprefsHouseholdIngredientItem{ItemID: 11, LastUsedAt: now}, nil)
+		require.NoError(t, svc.SetUsualItemForIngredient(ctx, 2, 7, 11, "alice"))
+
+		mq.EXPECT().GetUsualItemForIngredient(ctx, sqlc.GetUsualItemForIngredientParams{
+			HouseholdID: 2, IngredientID: 7,
+		}).Return(sqlc.UserprefsHouseholdIngredientItem{ItemID: 11, LastUsedAt: now}, nil)
+		u, err := svc.GetUsualItemForIngredient(ctx, 2, 7)
+		require.NoError(t, err)
+		require.NotNil(t, u)
+		assert.Equal(t, int64(11), u.ItemID)
+	})
+
+	t.Run("none recorded", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().GetUsualItemForIngredient(ctx, gomock.Any()).
+			Return(sqlc.UserprefsHouseholdIngredientItem{}, pgx.ErrNoRows)
+		u, err := svc.GetUsualItemForIngredient(ctx, 2, 99)
+		require.NoError(t, err)
+		assert.Nil(t, u)
+	})
+}
+
+func TestItemIngredientOverride(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("set writes override", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().UpsertItemIngredientOverride(ctx, sqlc.UpsertItemIngredientOverrideParams{
+			HouseholdID: 2, ItemID: 11, IngredientID: 7, CreatedBy: "alice",
+		}).Return(nil)
+		require.NoError(t, svc.SetItemIngredientOverride(ctx, 2, 11, 7, "alice"))
+	})
+
+	t.Run("clear removes override", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteItemIngredientOverride(ctx, sqlc.DeleteItemIngredientOverrideParams{
+			HouseholdID: 2, ItemID: 11,
+		}).Return(int64(1), nil)
+		require.NoError(t, svc.ClearItemIngredientOverride(ctx, 2, 11))
+	})
+
+	t.Run("clear missing override is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteItemIngredientOverride(ctx, gomock.Any()).Return(int64(0), nil)
+		require.ErrorIs(t, svc.ClearItemIngredientOverride(ctx, 2, 11), domainerr.ErrNotFound)
 	})
 }

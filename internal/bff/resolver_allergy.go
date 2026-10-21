@@ -77,6 +77,13 @@ func asOfRecipeChildren(rc *recipeChildren) *allergySource {
 	return asOfItemChildren(rc.itemChildren)
 }
 
+func acOfRecipeChildren(rc *recipeChildren) *allergyContext {
+	if rc == nil || rc.itemChildren == nil {
+		return nil
+	}
+	return rc.itemChildren.ac
+}
+
 func firstSource(sources ...*allergySource) *allergySource {
 	for _, s := range sources {
 		if s != nil {

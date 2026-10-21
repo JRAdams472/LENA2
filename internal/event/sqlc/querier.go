@@ -11,17 +11,23 @@ import (
 type Querier interface {
 	AddEventRecipe(ctx context.Context, arg AddEventRecipeParams) (EventEventRecipe, error)
 	AddEventRecipeItem(ctx context.Context, arg AddEventRecipeItemParams) (EventEventRecipeItem, error)
+	// Explicit step_number: snapshot materialization/re-sync only.
 	AddEventRecipeStep(ctx context.Context, arg AddEventRecipeStepParams) (EventEventRecipeStep, error)
+	// step_number is computed in-statement (max+1) so concurrent appends
+	// cannot read the same max and silently collide ahead of the unique
+	// check — the loser gets 23505 and surfaces as a conflict, not a
+	// duplicate row.
+	AppendEventRecipeStep(ctx context.Context, arg AppendEventRecipeStepParams) (EventEventRecipeStep, error)
 	CountFoodEvents(ctx context.Context, householdID int64) (int64, error)
 	CreateFoodEvent(ctx context.Context, arg CreateFoodEventParams) (EventFoodEvent, error)
-	DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipeParams) error
-	DeleteEventRecipeItem(ctx context.Context, arg DeleteEventRecipeItemParams) error
+	DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipeParams) (int64, error)
+	DeleteEventRecipeItem(ctx context.Context, arg DeleteEventRecipeItemParams) (int64, error)
 	// Clears a slot's item snapshot before a re-materialization replace.
 	DeleteEventRecipeItems(ctx context.Context, arg DeleteEventRecipeItemsParams) error
-	DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) error
+	DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) (int64, error)
 	// Clears a slot's snapshot before a re-materialization replace.
 	DeleteEventRecipeSteps(ctx context.Context, arg DeleteEventRecipeStepsParams) error
-	DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams) error
+	DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams) (int64, error)
 	GetEventRecipeByID(ctx context.Context, arg GetEventRecipeByIDParams) (EventEventRecipe, error)
 	GetEventRecipeItemByID(ctx context.Context, arg GetEventRecipeItemByIDParams) (EventEventRecipeItem, error)
 	GetEventRecipeStepByID(ctx context.Context, arg GetEventRecipeStepByIDParams) (EventEventRecipeStep, error)
@@ -35,6 +41,9 @@ type Querier interface {
 	ListEventRecipesByEvents(ctx context.Context, arg ListEventRecipesByEventsParams) ([]EventEventRecipe, error)
 	ListEventRecipesForEvent(ctx context.Context, arg ListEventRecipesForEventParams) ([]EventEventRecipe, error)
 	ListFoodEvents(ctx context.Context, arg ListFoodEventsParams) ([]EventFoodEvent, error)
+	// Serializes concurrent step-appends on the slot row (FOR UPDATE) so each
+	// statement-level MAX()+1 sees the previous tx's committed row.
+	LockEventRecipe(ctx context.Context, eventRecipeID int64) (int64, error)
 	// Invite-accept merge: repoint all of the source household's events. Zero
 	// rows is not an error (the source may have had none).
 	ReassignFoodEventsToHousehold(ctx context.Context, arg ReassignFoodEventsToHouseholdParams) error

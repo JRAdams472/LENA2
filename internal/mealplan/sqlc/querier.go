@@ -20,15 +20,16 @@ type Querier interface {
 	// that can't self-collide. meal_plan_id=0 clears every active sibling
 	// (used by create, where the new row doesn't exist yet).
 	DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOtherMealPlansParams) error
-	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
+	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) (int64, error)
 	// Account deletion (LEN-146): drops a dissolving household's meal plans.
 	// meal_plan.household_id is NO ACTION; meal_slot children cascade and
 	// grocery_list.meal_plan_id SET NULLs (lists are deleted by their own
 	// domain in the same unit of work).
 	DeleteMealPlansByHousehold(ctx context.Context, householdID int64) error
-	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error
-	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) error
+	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) (int64, error)
+	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) (int64, error)
 	GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams) (MealplanMealPlan, error)
+	GetMealPlansByIDs(ctx context.Context, arg GetMealPlansByIDsParams) ([]MealplanMealPlan, error)
 	GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams) (MealplanMealSlot, error)
 	// For one household: the most recent plan week in which each recipe
 	// appeared. The BFF combines this with recipe ratings for recency scoring.

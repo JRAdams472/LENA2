@@ -918,10 +918,10 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 			return err
 		}
 		if mem.Role == identity.HouseholdRoleOwner {
-			return errForbidden()
+			return forbiddenf("the household owner cannot be removed")
 		}
 		if u.HouseholdRole == identity.HouseholdRoleAdmin && mem.Role != identity.HouseholdRoleMember {
-			return errForbidden()
+			return forbiddenf("admins can only remove members")
 		}
 		if err := r.HouseholdService.RemoveMembership(ctx, u.HouseholdID, targetID); err != nil {
 			return err
@@ -1097,7 +1097,7 @@ func requireHouseholdRole(u currentuser.User, roles ...string) error {
 			return nil
 		}
 	}
-	return errForbidden()
+	return forbiddenf("requires household role %s", strings.Join(roles, " or "))
 }
 
 // householdMember fetches a user that must belong to householdID —

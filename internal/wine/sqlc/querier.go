@@ -22,15 +22,15 @@ type Querier interface {
 	CreateType(ctx context.Context, arg CreateTypeParams) (WineType, error)
 	CreateVintage(ctx context.Context, arg CreateVintageParams) (WineVintage, error)
 	CreateWineFlavorProfile(ctx context.Context, arg CreateWineFlavorProfileParams) (WineFlavorProfile, error)
-	DeleteBottle(ctx context.Context, bottleID int64) error
-	DeleteBottleFlavorProfile(ctx context.Context, arg DeleteBottleFlavorProfileParams) error
-	DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) error
+	DeleteBottle(ctx context.Context, bottleID int64) (int64, error)
+	DeleteBottleFlavorProfile(ctx context.Context, arg DeleteBottleFlavorProfileParams) (int64, error)
+	DeleteBottleGrapeVariety(ctx context.Context, arg DeleteBottleGrapeVarietyParams) (int64, error)
 	DeleteCountry(ctx context.Context, countryID int64) error
 	DeleteGrapeVariety(ctx context.Context, grapeVarietyID int64) error
 	DeleteRegion(ctx context.Context, regionID int64) error
 	DeleteType(ctx context.Context, typeID int64) error
 	DeleteVintage(ctx context.Context, vintageID int64) error
-	DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) error
+	DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) (int64, error)
 	GetBottleByID(ctx context.Context, bottleID int64) (WineBottle, error)
 	GetBottlesByIDs(ctx context.Context, bottleIds []int64) ([]WineBottle, error)
 	GetCountryByID(ctx context.Context, countryID int64) (WineCountry, error)

@@ -324,14 +324,14 @@ func TestUpdateRecipe(t *testing.T) {
 func TestDeleteRecipe(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteRecipe(gomock.Any(), int64(7)).Return(nil)
+		mq.EXPECT().DeleteRecipe(gomock.Any(), int64(7)).Return(int64(1), nil)
 
 		require.NoError(t, svc.DeleteRecipe(context.Background(), 7))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteRecipe(gomock.Any(), int64(7)).Return(errDB)
+		mq.EXPECT().DeleteRecipe(gomock.Any(), int64(7)).Return(int64(0), errDB)
 
 		assert.ErrorIs(t, svc.DeleteRecipe(context.Background(), 7), errDB)
 	})
@@ -580,14 +580,14 @@ func TestUpdateRecipeStep(t *testing.T) {
 func TestDeleteRecipeStep(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteRecipeStep(gomock.Any(), int64(11)).Return(nil)
+		mq.EXPECT().DeleteRecipeStep(gomock.Any(), int64(11)).Return(int64(1), nil)
 
 		require.NoError(t, svc.DeleteRecipeStep(context.Background(), 11))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteRecipeStep(gomock.Any(), int64(11)).Return(errDB)
+		mq.EXPECT().DeleteRecipeStep(gomock.Any(), int64(11)).Return(int64(0), errDB)
 
 		assert.ErrorIs(t, svc.DeleteRecipeStep(context.Background(), 11), errDB)
 	})
@@ -914,7 +914,7 @@ func TestCategoryGroupCRUD(t *testing.T) {
 	t.Run("delete empty group", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().CountCategoriesInGroup(gomock.Any(), int64(3)).Return(int64(0), nil)
-		mq.EXPECT().DeleteCategoryGroup(gomock.Any(), int64(3)).Return(nil)
+		mq.EXPECT().DeleteCategoryGroup(gomock.Any(), int64(3)).Return(int64(1), nil)
 
 		require.NoError(t, svc.DeleteCategoryGroup(context.Background(), 3))
 	})
@@ -951,7 +951,7 @@ func TestCategoryCRUD(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteCategory(gomock.Any(), int64(21)).Return(nil)
+		mq.EXPECT().DeleteCategory(gomock.Any(), int64(21)).Return(int64(1), nil)
 		require.NoError(t, svc.DeleteCategory(context.Background(), 21))
 	})
 

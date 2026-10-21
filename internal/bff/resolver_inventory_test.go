@@ -380,7 +380,7 @@ func TestResolver_Inventory_UpdateBrand(t *testing.T) {
 	}
 
 	inv := newInvMock(t)
-	inv.EXPECT().UpdateBrand(gomock.Any(), int64(1), "NewName").Return(inventory.Brand{BrandID: 1, Name: "NewName"}, nil)
+	inv.EXPECT().UpdateBrand(gomock.Any(), int64(1), "NewName", gomock.Any()).Return(inventory.Brand{BrandID: 1, Name: "NewName"}, nil)
 	r := &Resolver{InventoryService: inv}
 	res, err := r.UpdateBrand(invCtx(), args{ID: "1", Input: updateBrandInput{Name: "NewName"}})
 	require.NoError(t, err)
@@ -977,10 +977,10 @@ func TestResolver_Inventory_IngredientLinking(t *testing.T) {
 	})
 
 	t.Run("setHouseholdItemIngredient sets then clears the override", func(t *testing.T) {
-		inv := newInvMock(t)
-		inv.EXPECT().SetItemIngredientOverride(gomock.Any(), int64(7), int64(42), int64(7), invTestEmail).Return(nil)
-		inv.EXPECT().ClearItemIngredientOverride(gomock.Any(), int64(7), int64(42)).Return(nil)
-		r := &Resolver{InventoryService: inv}
+		up := mock.NewMockUserPrefsService(gomock.NewController(t))
+		up.EXPECT().SetItemIngredientOverride(gomock.Any(), int64(7), int64(42), int64(7), invTestEmail).Return(nil)
+		up.EXPECT().ClearItemIngredientOverride(gomock.Any(), int64(7), int64(42)).Return(nil)
+		r := &Resolver{UserPrefsService: up}
 		ok, err := r.SetHouseholdItemIngredient(invUserCtx(), struct {
 			ItemID       graphql.ID
 			IngredientID *graphql.ID

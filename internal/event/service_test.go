@@ -142,7 +142,7 @@ func TestUpdateFoodEvent(t *testing.T) {
 func TestDeleteFoodEvent(t *testing.T) {
 	ctx := context.Background()
 	s, mq := newService(t)
-	mq.EXPECT().DeleteFoodEvent(ctx, sqlc.DeleteFoodEventParams{FoodEventID: 7, HouseholdID: 42}).Return(nil)
+	mq.EXPECT().DeleteFoodEvent(ctx, sqlc.DeleteFoodEventParams{FoodEventID: 7, HouseholdID: 42}).Return(int64(1), nil)
 	require.NoError(t, s.DeleteFoodEvent(ctx, 7, 42))
 }
 
@@ -250,7 +250,7 @@ func TestUpdateEventRecipe(t *testing.T) {
 func TestDeleteEventRecipe(t *testing.T) {
 	ctx := context.Background()
 	s, mq := newService(t)
-	mq.EXPECT().DeleteEventRecipe(ctx, sqlc.DeleteEventRecipeParams{EventRecipeID: 3, HouseholdID: 42}).Return(nil)
+	mq.EXPECT().DeleteEventRecipe(ctx, sqlc.DeleteEventRecipeParams{EventRecipeID: 3, HouseholdID: 42}).Return(int64(1), nil)
 	require.NoError(t, s.DeleteEventRecipe(ctx, 3, 42))
 }
 
@@ -290,15 +290,13 @@ func TestAddEventRecipeStep_NextNumber(t *testing.T) {
 	s, mq := newService(t)
 	mq.EXPECT().GetEventRecipeByID(ctx, sqlc.GetEventRecipeByIDParams{EventRecipeID: 9, HouseholdID: 42}).
 		Return(sqlc.EventEventRecipe{EventRecipeID: 9, FoodEventID: 3}, nil)
-	mq.EXPECT().ListEventRecipeSteps(ctx, sqlc.ListEventRecipeStepsParams{EventRecipeID: 9, HouseholdID: 42}).
-		Return([]sqlc.EventEventRecipeStep{
-			{EventRecipeStepID: 50, EventRecipeID: 9, StepNumber: 1},
-			{EventRecipeStepID: 51, EventRecipeID: 9, StepNumber: 2},
-		}, nil)
-	mq.EXPECT().AddEventRecipeStep(ctx, gomock.Any()).DoAndReturn(
-		func(_ context.Context, p sqlc.AddEventRecipeStepParams) (sqlc.EventEventRecipeStep, error) {
-			assert.Equal(t, int32(3), p.StepNumber)
-			return sqlc.EventEventRecipeStep{EventRecipeStepID: 52, EventRecipeID: 9, StepNumber: p.StepNumber, Instruction: p.Instruction}, nil
+	// The slot row locks before the append so concurrent txs serialize on
+	// the statement-level MAX()+1 — the DB assigns the number, not Go.
+	mq.EXPECT().LockEventRecipe(ctx, int64(9)).Return(int64(9), nil)
+	mq.EXPECT().AppendEventRecipeStep(ctx, gomock.Any()).DoAndReturn(
+		func(_ context.Context, p sqlc.AppendEventRecipeStepParams) (sqlc.EventEventRecipeStep, error) {
+			assert.Equal(t, int64(9), p.EventRecipeID)
+			return sqlc.EventEventRecipeStep{EventRecipeStepID: 52, EventRecipeID: 9, StepNumber: 3, Instruction: p.Instruction}, nil
 		})
 
 	got, err := s.AddEventRecipeStep(ctx, EventRecipeStep{EventRecipeID: 9, Instruction: "rest"}, 42, "tester")
@@ -327,7 +325,7 @@ func TestUpdateEventRecipeStep(t *testing.T) {
 func TestDeleteEventRecipeStep(t *testing.T) {
 	ctx := context.Background()
 	s, mq := newService(t)
-	mq.EXPECT().DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{EventRecipeStepID: 60, HouseholdID: 42}).Return(nil)
+	mq.EXPECT().DeleteEventRecipeStep(ctx, sqlc.DeleteEventRecipeStepParams{EventRecipeStepID: 60, HouseholdID: 42}).Return(int64(1), nil)
 	require.NoError(t, s.DeleteEventRecipeStep(ctx, 60, 42))
 }
 
@@ -418,6 +416,6 @@ func TestUpdateEventRecipeItem(t *testing.T) {
 func TestDeleteEventRecipeItem(t *testing.T) {
 	ctx := context.Background()
 	s, mq := newService(t)
-	mq.EXPECT().DeleteEventRecipeItem(ctx, sqlc.DeleteEventRecipeItemParams{EventRecipeItemID: 60, HouseholdID: 42}).Return(nil)
+	mq.EXPECT().DeleteEventRecipeItem(ctx, sqlc.DeleteEventRecipeItemParams{EventRecipeItemID: 60, HouseholdID: 42}).Return(int64(1), nil)
 	require.NoError(t, s.DeleteEventRecipeItem(ctx, 60, 42))
 }

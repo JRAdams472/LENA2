@@ -135,10 +135,70 @@ type AddEventRecipeStepParams struct {
 	UpdatedBy           pgtype.Text `json:"updated_by"`
 }
 
+// Explicit step_number: snapshot materialization/re-sync only.
 func (q *Queries) AddEventRecipeStep(ctx context.Context, arg AddEventRecipeStepParams) (EventEventRecipeStep, error) {
 	row := q.db.QueryRow(ctx, addEventRecipeStep,
 		arg.EventRecipeID,
 		arg.StepNumber,
+		arg.Instruction,
+		arg.DurationMinutes,
+		arg.StepType,
+		arg.IsPassive,
+		arg.DependsOnStepNumber,
+		arg.Appliance,
+		arg.CreatedBy,
+		arg.UpdatedBy,
+	)
+	var i EventEventRecipeStep
+	err := row.Scan(
+		&i.EventRecipeStepID,
+		&i.EventRecipeID,
+		&i.StepNumber,
+		&i.Instruction,
+		&i.DurationMinutes,
+		&i.StepType,
+		&i.IsPassive,
+		&i.DependsOnStepNumber,
+		&i.Appliance,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const appendEventRecipeStep = `-- name: AppendEventRecipeStep :one
+INSERT INTO event.event_recipe_step
+    (event_recipe_id, step_number, instruction, duration_minutes, step_type,
+     is_passive, depends_on_step_number, appliance, created_by, updated_by)
+SELECT $1,
+       COALESCE(MAX(step_number), 0) + 1,
+       $2, $3, $4, $5, $6, $7, $8, $9
+FROM event.event_recipe_step
+WHERE event_recipe_id = $1
+RETURNING event_recipe_step_id, event_recipe_id, step_number, instruction, duration_minutes, step_type, is_passive, depends_on_step_number, appliance, created_by, created_at, updated_by, updated_at
+`
+
+type AppendEventRecipeStepParams struct {
+	EventRecipeID       int64       `json:"event_recipe_id"`
+	Instruction         string      `json:"instruction"`
+	DurationMinutes     pgtype.Int4 `json:"duration_minutes"`
+	StepType            pgtype.Text `json:"step_type"`
+	IsPassive           bool        `json:"is_passive"`
+	DependsOnStepNumber pgtype.Int4 `json:"depends_on_step_number"`
+	Appliance           pgtype.Text `json:"appliance"`
+	CreatedBy           string      `json:"created_by"`
+	UpdatedBy           pgtype.Text `json:"updated_by"`
+}
+
+// step_number is computed in-statement (max+1) so concurrent appends
+// cannot read the same max and silently collide ahead of the unique
+// check — the loser gets 23505 and surfaces as a conflict, not a
+// duplicate row.
+func (q *Queries) AppendEventRecipeStep(ctx context.Context, arg AppendEventRecipeStepParams) (EventEventRecipeStep, error) {
+	row := q.db.QueryRow(ctx, appendEventRecipeStep,
+		arg.EventRecipeID,
 		arg.Instruction,
 		arg.DurationMinutes,
 		arg.StepType,
@@ -222,7 +282,7 @@ func (q *Queries) CreateFoodEvent(ctx context.Context, arg CreateFoodEventParams
 	return i, err
 }
 
-const deleteEventRecipe = `-- name: DeleteEventRecipe :exec
+const deleteEventRecipe = `-- name: DeleteEventRecipe :execrows
 DELETE FROM event.event_recipe er
 USING event.food_event fe
 WHERE er.food_event_id = fe.food_event_id AND er.event_recipe_id = $1 AND fe.household_id = $2
@@ -233,12 +293,15 @@ type DeleteEventRecipeParams struct {
 	HouseholdID   int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipeParams) error {
-	_, err := q.db.Exec(ctx, deleteEventRecipe, arg.EventRecipeID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteEventRecipe(ctx context.Context, arg DeleteEventRecipeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEventRecipe, arg.EventRecipeID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteEventRecipeItem = `-- name: DeleteEventRecipeItem :exec
+const deleteEventRecipeItem = `-- name: DeleteEventRecipeItem :execrows
 DELETE FROM event.event_recipe_item eri
 USING event.event_recipe er, event.food_event fe
 WHERE eri.event_recipe_id = er.event_recipe_id
@@ -251,9 +314,12 @@ type DeleteEventRecipeItemParams struct {
 	HouseholdID       int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteEventRecipeItem(ctx context.Context, arg DeleteEventRecipeItemParams) error {
-	_, err := q.db.Exec(ctx, deleteEventRecipeItem, arg.EventRecipeItemID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteEventRecipeItem(ctx context.Context, arg DeleteEventRecipeItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEventRecipeItem, arg.EventRecipeItemID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteEventRecipeItems = `-- name: DeleteEventRecipeItems :exec
@@ -275,7 +341,7 @@ func (q *Queries) DeleteEventRecipeItems(ctx context.Context, arg DeleteEventRec
 	return err
 }
 
-const deleteEventRecipeStep = `-- name: DeleteEventRecipeStep :exec
+const deleteEventRecipeStep = `-- name: DeleteEventRecipeStep :execrows
 DELETE FROM event.event_recipe_step ers
 USING event.event_recipe er, event.food_event fe
 WHERE ers.event_recipe_id = er.event_recipe_id
@@ -288,9 +354,12 @@ type DeleteEventRecipeStepParams struct {
 	HouseholdID       int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) error {
-	_, err := q.db.Exec(ctx, deleteEventRecipeStep, arg.EventRecipeStepID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteEventRecipeStep(ctx context.Context, arg DeleteEventRecipeStepParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEventRecipeStep, arg.EventRecipeStepID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteEventRecipeSteps = `-- name: DeleteEventRecipeSteps :exec
@@ -312,7 +381,7 @@ func (q *Queries) DeleteEventRecipeSteps(ctx context.Context, arg DeleteEventRec
 	return err
 }
 
-const deleteFoodEvent = `-- name: DeleteFoodEvent :exec
+const deleteFoodEvent = `-- name: DeleteFoodEvent :execrows
 DELETE FROM event.food_event
 WHERE food_event_id = $1 AND household_id = $2
 `
@@ -322,9 +391,12 @@ type DeleteFoodEventParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams) error {
-	_, err := q.db.Exec(ctx, deleteFoodEvent, arg.FoodEventID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteFoodEvent(ctx context.Context, arg DeleteFoodEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFoodEvent, arg.FoodEventID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getEventRecipeByID = `-- name: GetEventRecipeByID :one
@@ -788,6 +860,22 @@ func (q *Queries) ListFoodEvents(ctx context.Context, arg ListFoodEventsParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockEventRecipe = `-- name: LockEventRecipe :one
+SELECT event_recipe_id
+FROM event.event_recipe
+WHERE event_recipe_id = $1
+FOR UPDATE
+`
+
+// Serializes concurrent step-appends on the slot row (FOR UPDATE) so each
+// statement-level MAX()+1 sees the previous tx's committed row.
+func (q *Queries) LockEventRecipe(ctx context.Context, eventRecipeID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockEventRecipe, eventRecipeID)
+	var event_recipe_id int64
+	err := row.Scan(&event_recipe_id)
+	return event_recipe_id, err
 }
 
 const reassignFoodEventsToHousehold = `-- name: ReassignFoodEventsToHousehold :exec

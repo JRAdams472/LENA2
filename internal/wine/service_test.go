@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/wine/sqlc"
 	"github.com/JRAdams472/LENA2/internal/wine/sqlc/mock"
 )
@@ -786,7 +787,7 @@ func TestWineFlavorProfile(t *testing.T) {
 
 	t.Run(`DeleteWineFlavorProfile success`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteWineFlavorProfile(ctx, int64(1)).Return(nil)
+		mq.EXPECT().DeleteWineFlavorProfile(ctx, int64(1)).Return(int64(1), nil)
 
 		err := svc.DeleteWineFlavorProfile(ctx, 1)
 		require.NoError(t, err)
@@ -794,7 +795,7 @@ func TestWineFlavorProfile(t *testing.T) {
 
 	t.Run(`DeleteWineFlavorProfile error`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteWineFlavorProfile(ctx, int64(1)).Return(errDB)
+		mq.EXPECT().DeleteWineFlavorProfile(ctx, int64(1)).Return(int64(0), errDB)
 
 		err := svc.DeleteWineFlavorProfile(ctx, 1)
 		assert.ErrorIs(t, err, errDB)
@@ -960,7 +961,7 @@ func TestBottle(t *testing.T) {
 
 	t.Run(`DeleteBottle success`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteBottle(ctx, int64(1)).Return(nil)
+		mq.EXPECT().DeleteBottle(ctx, int64(1)).Return(int64(1), nil)
 
 		err := svc.DeleteBottle(ctx, 1)
 		require.NoError(t, err)
@@ -968,7 +969,7 @@ func TestBottle(t *testing.T) {
 
 	t.Run(`DeleteBottle error`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteBottle(ctx, int64(1)).Return(errDB)
+		mq.EXPECT().DeleteBottle(ctx, int64(1)).Return(int64(0), errDB)
 
 		err := svc.DeleteBottle(ctx, 1)
 		assert.ErrorIs(t, err, errDB)
@@ -1034,7 +1035,7 @@ func TestJunction(t *testing.T) {
 		mq.EXPECT().DeleteBottleGrapeVariety(ctx, gomock.Eq(sqlc.DeleteBottleGrapeVarietyParams{
 			BottleID:       1,
 			GrapeVarietyID: 2,
-		})).Return(nil)
+		})).Return(int64(1), nil)
 
 		err := svc.RemoveBottleGrapeVariety(ctx, 1, 2)
 		require.NoError(t, err)
@@ -1042,7 +1043,7 @@ func TestJunction(t *testing.T) {
 
 	t.Run(`RemoveBottleGrapeVariety error`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteBottleGrapeVariety(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteBottleGrapeVariety(ctx, gomock.Any()).Return(int64(0), errDB)
 
 		err := svc.RemoveBottleGrapeVariety(ctx, 1, 2)
 		assert.ErrorIs(t, err, errDB)
@@ -1071,7 +1072,8 @@ func TestJunction(t *testing.T) {
 		svc, _ := newService(t)
 		for _, v := range []int16{0, 6, -1, 300} {
 			_, err := svc.AddBottleFlavorProfile(ctx, 1, 2, v, `user`)
-			assert.ErrorContains(t, err, "intensity must be between 1 and 5")
+			assert.ErrorIs(t, err, domainerr.ErrValidation)
+			assert.ErrorContains(t, err, "intensity: must be between 1 and 5")
 		}
 	})
 
@@ -1079,7 +1081,8 @@ func TestJunction(t *testing.T) {
 		svc, _ := newService(t)
 		for _, v := range []int16{-1, 101} {
 			_, err := svc.AddBottleGrapeVariety(ctx, 1, 2, &v, `user`)
-			assert.ErrorContains(t, err, "percentage must be between 0 and 100")
+			assert.ErrorIs(t, err, domainerr.ErrValidation)
+			assert.ErrorContains(t, err, "percentage: must be between 0 and 100")
 		}
 	})
 
@@ -1120,7 +1123,7 @@ func TestJunction(t *testing.T) {
 		mq.EXPECT().DeleteBottleFlavorProfile(ctx, gomock.Eq(sqlc.DeleteBottleFlavorProfileParams{
 			BottleID:        1,
 			FlavorProfileID: 2,
-		})).Return(nil)
+		})).Return(int64(1), nil)
 
 		err := svc.RemoveBottleFlavorProfile(ctx, 1, 2)
 		require.NoError(t, err)
@@ -1128,7 +1131,7 @@ func TestJunction(t *testing.T) {
 
 	t.Run(`RemoveBottleFlavorProfile error`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().DeleteBottleFlavorProfile(ctx, gomock.Any()).Return(errDB)
+		mq.EXPECT().DeleteBottleFlavorProfile(ctx, gomock.Any()).Return(int64(0), errDB)
 
 		err := svc.RemoveBottleFlavorProfile(ctx, 1, 2)
 		assert.ErrorIs(t, err, errDB)

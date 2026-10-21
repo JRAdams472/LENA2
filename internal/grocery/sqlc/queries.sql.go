@@ -190,6 +190,88 @@ func (q *Queries) AssignManualToAisle(ctx context.Context, arg AssignManualToAis
 	return i, err
 }
 
+const bindItemToGroceryListItem = `-- name: BindItemToGroceryListItem :execrows
+UPDATE grocery.grocery_list_item gli
+SET item_id = $3, updated_by = $4, updated_at = now()
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1 AND gl.household_id = $2
+`
+
+type BindItemToGroceryListItemParams struct {
+	GroceryListItemID int64       `json:"grocery_list_item_id"`
+	HouseholdID       int64       `json:"household_id"`
+	ItemID            pgtype.Int8 `json:"item_id"`
+	UpdatedBy         pgtype.Text `json:"updated_by"`
+}
+
+// Brand pick: binds only the catalog item — never writes a stale
+// full-row snapshot back over concurrent edits.
+func (q *Queries) BindItemToGroceryListItem(ctx context.Context, arg BindItemToGroceryListItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bindItemToGroceryListItem,
+		arg.GroceryListItemID,
+		arg.HouseholdID,
+		arg.ItemID,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const checkGroceryListItemOn = `-- name: CheckGroceryListItemOn :one
+UPDATE grocery.grocery_list_item gli
+SET is_checked = true,
+    checked_at = now(),
+    checked_seq = COALESCE((
+        SELECT MAX(i2.checked_seq)
+        FROM grocery.grocery_list_item i2
+        WHERE i2.grocery_list_id = gli.grocery_list_id
+    ), 0) + 1,
+    updated_by = $3,
+    updated_at = now()
+FROM grocery.grocery_list gl
+WHERE gli.grocery_list_id = gl.grocery_list_id
+  AND gli.grocery_list_item_id = $1
+  AND gl.household_id = $2
+  AND NOT gli.is_checked
+RETURNING gli.grocery_list_item_id, gli.grocery_list_id, gli.item_id, gli.manual_item_name, gli.quantity_needed, gli.source, gli.is_checked, gli.created_by, gli.created_at, gli.updated_by, gli.updated_at, gli.ingredient_id, gli.unit_id, gli.checked_at, gli.checked_seq
+`
+
+type CheckGroceryListItemOnParams struct {
+	GroceryListItemID int64       `json:"grocery_list_item_id"`
+	HouseholdID       int64       `json:"household_id"`
+	UpdatedBy         pgtype.Text `json:"updated_by"`
+}
+
+// Atomic unchecked→checked transition: RETURNING yields the row only
+// when THIS statement flipped it, so pantry credit is exactly-once —
+// a concurrent check-off that commits first leaves this at 0 rows.
+// Callers hold LockGroceryList so checked_seq never duplicates.
+func (q *Queries) CheckGroceryListItemOn(ctx context.Context, arg CheckGroceryListItemOnParams) (GroceryGroceryListItem, error) {
+	row := q.db.QueryRow(ctx, checkGroceryListItemOn, arg.GroceryListItemID, arg.HouseholdID, arg.UpdatedBy)
+	var i GroceryGroceryListItem
+	err := row.Scan(
+		&i.GroceryListItemID,
+		&i.GroceryListID,
+		&i.ItemID,
+		&i.ManualItemName,
+		&i.QuantityNeeded,
+		&i.Source,
+		&i.IsChecked,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.IngredientID,
+		&i.UnitID,
+		&i.CheckedAt,
+		&i.CheckedSeq,
+	)
+	return i, err
+}
+
 const countGroceryListItems = `-- name: CountGroceryListItems :one
 SELECT COUNT(*)
 FROM grocery.grocery_list_item gli
@@ -336,7 +418,7 @@ func (q *Queries) CreateStore(ctx context.Context, arg CreateStoreParams) (Groce
 	return i, err
 }
 
-const deleteAisle = `-- name: DeleteAisle :exec
+const deleteAisle = `-- name: DeleteAisle :execrows
 DELETE FROM grocery.store_aisle sa
 USING grocery.store s
 WHERE sa.store_id = s.store_id
@@ -348,8 +430,39 @@ type DeleteAisleParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteAisle(ctx context.Context, arg DeleteAisleParams) error {
-	_, err := q.db.Exec(ctx, deleteAisle, arg.AisleID, arg.HouseholdID)
+func (q *Queries) DeleteAisle(ctx context.Context, arg DeleteAisleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAisle, arg.AisleID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteEmptyRouteObservations = `-- name: DeleteEmptyRouteObservations :exec
+DELETE FROM grocery.item_route
+WHERE household_id = $1 AND store_id = $2
+  AND learned_count <= 0 AND manual_rank IS NULL
+  AND (item_id = $3 OR ingredient_id = $4 OR manual_name = $5)
+`
+
+type DeleteEmptyRouteObservationsParams struct {
+	HouseholdID  int64       `json:"household_id"`
+	StoreID      int64       `json:"store_id"`
+	ItemID       pgtype.Int8 `json:"item_id"`
+	IngredientID pgtype.Int8 `json:"ingredient_id"`
+	ManualName   pgtype.Text `json:"manual_name"`
+}
+
+// Retraction cleanup: a route row with no observations left and no
+// manual rank carries no ordering signal — drop it.
+func (q *Queries) DeleteEmptyRouteObservations(ctx context.Context, arg DeleteEmptyRouteObservationsParams) error {
+	_, err := q.db.Exec(ctx, deleteEmptyRouteObservations,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ItemID,
+		arg.IngredientID,
+		arg.ManualName,
+	)
 	return err
 }
 
@@ -365,7 +478,7 @@ func (q *Queries) DeleteGeneratedGroceryListItems(ctx context.Context, groceryLi
 	return err
 }
 
-const deleteGroceryList = `-- name: DeleteGroceryList :exec
+const deleteGroceryList = `-- name: DeleteGroceryList :execrows
 DELETE FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND household_id = $2
 `
@@ -375,12 +488,15 @@ type DeleteGroceryListParams struct {
 	HouseholdID   int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) error {
-	_, err := q.db.Exec(ctx, deleteGroceryList, arg.GroceryListID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteGroceryList(ctx context.Context, arg DeleteGroceryListParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGroceryList, arg.GroceryListID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteGroceryListItem = `-- name: DeleteGroceryListItem :exec
+const deleteGroceryListItem = `-- name: DeleteGroceryListItem :execrows
 DELETE FROM grocery.grocery_list_item gli
 USING grocery.grocery_list gl
 WHERE gli.grocery_list_id = gl.grocery_list_id
@@ -392,9 +508,12 @@ type DeleteGroceryListItemParams struct {
 	HouseholdID       int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) error {
-	_, err := q.db.Exec(ctx, deleteGroceryListItem, arg.GroceryListItemID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteGroceryListItem(ctx context.Context, arg DeleteGroceryListItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGroceryListItem, arg.GroceryListItemID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteGroceryListsByHousehold = `-- name: DeleteGroceryListsByHousehold :exec
@@ -410,7 +529,7 @@ func (q *Queries) DeleteGroceryListsByHousehold(ctx context.Context, householdID
 	return err
 }
 
-const deleteStore = `-- name: DeleteStore :exec
+const deleteStore = `-- name: DeleteStore :execrows
 DELETE FROM grocery.store
 WHERE store_id = $1 AND household_id = $2
 `
@@ -420,9 +539,12 @@ type DeleteStoreParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
-func (q *Queries) DeleteStore(ctx context.Context, arg DeleteStoreParams) error {
-	_, err := q.db.Exec(ctx, deleteStore, arg.StoreID, arg.HouseholdID)
-	return err
+func (q *Queries) DeleteStore(ctx context.Context, arg DeleteStoreParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteStore, arg.StoreID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getAisleByID = `-- name: GetAisleByID :one
@@ -893,6 +1015,28 @@ func (q *Queries) ListStores(ctx context.Context, householdID int64) ([]GroceryS
 	return items, nil
 }
 
+const lockGroceryList = `-- name: LockGroceryList :one
+SELECT grocery_list_id FROM grocery.grocery_list
+WHERE grocery_list_id = $1 AND household_id = $2
+FOR UPDATE
+`
+
+type LockGroceryListParams struct {
+	GroceryListID int64 `json:"grocery_list_id"`
+	HouseholdID   int64 `json:"household_id"`
+}
+
+// Serializes check-off sequencing per list: checked_seq is max+1 under
+// READ COMMITTED, so two concurrent check-offs would otherwise publish
+// the same seq. Callers hold this inside the unit of work wrapping the
+// check/uncheck write.
+func (q *Queries) LockGroceryList(ctx context.Context, arg LockGroceryListParams) (int64, error) {
+	row := q.db.QueryRow(ctx, lockGroceryList, arg.GroceryListID, arg.HouseholdID)
+	var grocery_list_id int64
+	err := row.Scan(&grocery_list_id)
+	return grocery_list_id, err
+}
+
 const reassignGroceryListsToHousehold = `-- name: ReassignGroceryListsToHousehold :exec
 UPDATE grocery.grocery_list
 SET household_id = $1,
@@ -1026,7 +1170,7 @@ USING grocery.store s
 WHERE s.store_id = $1
   AND s.household_id = $2
   AND ir.household_id = s.household_id
-  AND (ir.store_id = s.store_id OR ir.store_id = 0)
+  AND ir.store_id = s.store_id
 `
 
 type ResetStoreRouteParams struct {
@@ -1034,8 +1178,106 @@ type ResetStoreRouteParams struct {
 	HouseholdID int64 `json:"household_id"`
 }
 
+// Scoped to the store's own rows: the store_id=0 generic fallbacks are
+// shared across every store, so resetting one store must not wipe them.
 func (q *Queries) ResetStoreRoute(ctx context.Context, arg ResetStoreRouteParams) error {
 	_, err := q.db.Exec(ctx, resetStoreRoute, arg.StoreID, arg.HouseholdID)
+	return err
+}
+
+const retractRouteObservationIngredient = `-- name: RetractRouteObservationIngredient :exec
+UPDATE grocery.item_route
+SET learned_sum   = learned_sum - $1::float8,
+    learned_count = learned_count - 1,
+    updated_by    = $2::varchar,
+    updated_at    = now()
+WHERE household_id = $3
+  AND store_id     = $4
+  AND ingredient_id = $5::bigint
+  AND learned_count > 0
+`
+
+type RetractRouteObservationIngredientParams struct {
+	Position     float64 `json:"position"`
+	UpdatedBy    string  `json:"updated_by"`
+	HouseholdID  int64   `json:"household_id"`
+	StoreID      int64   `json:"store_id"`
+	IngredientID int64   `json:"ingredient_id"`
+}
+
+func (q *Queries) RetractRouteObservationIngredient(ctx context.Context, arg RetractRouteObservationIngredientParams) error {
+	_, err := q.db.Exec(ctx, retractRouteObservationIngredient,
+		arg.Position,
+		arg.UpdatedBy,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.IngredientID,
+	)
+	return err
+}
+
+const retractRouteObservationItem = `-- name: RetractRouteObservationItem :exec
+UPDATE grocery.item_route
+SET learned_sum   = learned_sum - $1::float8,
+    learned_count = learned_count - 1,
+    updated_by    = $2::varchar,
+    updated_at    = now()
+WHERE household_id = $3
+  AND store_id     = $4
+  AND item_id      = $5::bigint
+  AND learned_count > 0
+`
+
+type RetractRouteObservationItemParams struct {
+	Position    float64 `json:"position"`
+	UpdatedBy   string  `json:"updated_by"`
+	HouseholdID int64   `json:"household_id"`
+	StoreID     int64   `json:"store_id"`
+	ItemID      int64   `json:"item_id"`
+}
+
+// Unchecking pulls the observation the check contributed back out of the
+// running mean. learned_count > 0 guards double-retraction; the paired
+// DeleteEmptyRouteObservations drops rows that reach zero.
+func (q *Queries) RetractRouteObservationItem(ctx context.Context, arg RetractRouteObservationItemParams) error {
+	_, err := q.db.Exec(ctx, retractRouteObservationItem,
+		arg.Position,
+		arg.UpdatedBy,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ItemID,
+	)
+	return err
+}
+
+const retractRouteObservationManual = `-- name: RetractRouteObservationManual :exec
+UPDATE grocery.item_route
+SET learned_sum   = learned_sum - $1::float8,
+    learned_count = learned_count - 1,
+    updated_by    = $2::varchar,
+    updated_at    = now()
+WHERE household_id = $3
+  AND store_id     = $4
+  AND manual_name  = $5::varchar
+  AND learned_count > 0
+`
+
+type RetractRouteObservationManualParams struct {
+	Position    float64 `json:"position"`
+	UpdatedBy   string  `json:"updated_by"`
+	HouseholdID int64   `json:"household_id"`
+	StoreID     int64   `json:"store_id"`
+	ManualName  string  `json:"manual_name"`
+}
+
+func (q *Queries) RetractRouteObservationManual(ctx context.Context, arg RetractRouteObservationManualParams) error {
+	_, err := q.db.Exec(ctx, retractRouteObservationManual,
+		arg.Position,
+		arg.UpdatedBy,
+		arg.HouseholdID,
+		arg.StoreID,
+		arg.ManualName,
+	)
 	return err
 }
 

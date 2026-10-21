@@ -3,6 +3,8 @@ package grocery
 import (
 	"context"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -171,7 +173,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
-	require.NoError(t, svc.DeleteGroceryList(ctx, gen.GroceryListID, userB))
+	require.ErrorIs(t, svc.DeleteGroceryList(ctx, gen.GroceryListID, userB), domainerr.ErrNotFound)
 	_, err = svc.GetGroceryListByID(ctx, gen.GroceryListID, userA)
 	require.NoError(t, err, "generated list should still exist after wrong-user delete")
 
@@ -235,7 +237,7 @@ func TestIntegrationGroceryCrossUserDenied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "milk", got.ManualItemName, "wrong-user update must not mutate the item")
 
-	require.NoError(t, svc.DeleteGroceryListItem(ctx, gli.GroceryListItemID, userB))
+	require.ErrorIs(t, svc.DeleteGroceryListItem(ctx, gli.GroceryListItemID, userB), domainerr.ErrNotFound)
 	items, err = svc.ListGroceryListItems(ctx, list.GroceryListID, userA)
 	require.NoError(t, err)
 	assert.Len(t, items, 1, "wrong-user delete must not remove the item")
@@ -326,4 +328,106 @@ func TestIntegrationGroceryToggle(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	os.Exit(testutil.SharedDBTestMain(m))
+}
+
+// TestIntegrationConcurrentCheckOn proves the check-off transition is
+// claimed exactly once under concurrency: the BFF gates pantry credit on
+// the transitioned flag, so exactly-once here means exactly-once stock.
+func TestIntegrationConcurrentCheckOn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testutil.MustUser(ctx, t, pool, "checkon-a@example.com")
+	list, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
+	require.NoError(t, err)
+	gli, err := svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID:  list.GroceryListID,
+		ManualItemName: "IT Concurrent Item",
+		QuantityNeeded: 1.0,
+	}, userA, itBy)
+	require.NoError(t, err)
+
+	const racers = 8
+	var transitioned atomic.Int64
+	var wg sync.WaitGroup
+	errCh := make(chan error, racers)
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, ok, err := svc.CheckGroceryListItemOn(ctx, gli.GroceryListItemID, userA, itBy)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if ok {
+				transitioned.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int64(1), transitioned.Load(), "exactly one racer may transition the line")
+
+	got, err := svc.GetGroceryListItemByID(ctx, gli.GroceryListItemID, userA)
+	require.NoError(t, err)
+	assert.True(t, got.IsChecked)
+	assert.NotNil(t, got.CheckedSeq)
+}
+
+// TestIntegrationResetStoreRouteKeepsGeneric proves a store route reset
+// clears only that store's learned rows — the shared store_id=0 fallback
+// belongs to no single store and must survive.
+func TestIntegrationResetStoreRouteKeepsGeneric(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+
+	userA := testutil.MustUser(ctx, t, pool, "reset-route-a@example.com")
+	store, err := svc.CreateStore(ctx, userA, "IT Reset Store", itBy)
+	require.NoError(t, err)
+
+	// Store-bound list: check-offs learn routes for the store.
+	storeList, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
+	require.NoError(t, err)
+	require.NoError(t, svc.SetGroceryListStore(ctx, storeList.GroceryListID, userA, &store.StoreID, itBy))
+	inStore, err := svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID: storeList.GroceryListID, ManualItemName: "store item", QuantityNeeded: 1,
+	}, userA, itBy)
+	require.NoError(t, err)
+	_, err = svc.ToggleGroceryListItemChecked(ctx, inStore.GroceryListItemID, userA, itBy)
+	require.NoError(t, err)
+
+	// Storeless list: check-offs land on the generic store_id=0 route.
+	plainList, err := svc.CreateGroceryList(ctx, userA, nil, itBy)
+	require.NoError(t, err)
+	require.NoError(t, svc.SetGroceryListStore(ctx, plainList.GroceryListID, userA, nil, itBy))
+	generic, err := svc.AddGroceryListItem(ctx, GroceryListItem{
+		GroceryListID: plainList.GroceryListID, ManualItemName: "generic item", QuantityNeeded: 1,
+	}, userA, itBy)
+	require.NoError(t, err)
+	_, err = svc.ToggleGroceryListItemChecked(ctx, generic.GroceryListItemID, userA, itBy)
+	require.NoError(t, err)
+
+	countRoutes := func(storeID int64) int {
+		var n int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT count(*) FROM grocery.item_route WHERE household_id = $1 AND store_id = $2`,
+			userA, storeID).Scan(&n))
+		return n
+	}
+	require.Equal(t, 1, countRoutes(store.StoreID))
+	require.Equal(t, 1, countRoutes(GenericStoreID))
+
+	require.NoError(t, svc.ResetStoreRoute(ctx, store.StoreID, userA))
+	assert.Equal(t, 0, countRoutes(store.StoreID), "store rows cleared")
+	assert.Equal(t, 1, countRoutes(GenericStoreID), "generic fallback rows survive")
 }
