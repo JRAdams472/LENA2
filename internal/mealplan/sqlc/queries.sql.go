@@ -173,8 +173,11 @@ type DeactivateOtherMealPlansParams struct {
 }
 
 // Single-active invariant (LEN-79): activating a plan clears is_active on
-// every sibling in the household. Callers run this inside the same
-// transaction as the activation.
+// every sibling in the household. Must run BEFORE the activating write —
+// the partial unique index meal_plan_one_active_per_household rejects a
+// second live active row, so deactivate-then-activate is the only order
+// that can't self-collide. meal_plan_id=0 clears every active sibling
+// (used by create, where the new row doesn't exist yet).
 func (q *Queries) DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOtherMealPlansParams) error {
 	_, err := q.db.Exec(ctx, deactivateOtherMealPlans, arg.UpdatedBy, arg.HouseholdID, arg.MealPlanID)
 	return err
@@ -618,6 +621,7 @@ func (q *Queries) ListMealSlotsForPlan(ctx context.Context, arg ListMealSlotsFor
 const reassignMealPlansToHousehold = `-- name: ReassignMealPlansToHousehold :exec
 UPDATE mealplan.meal_plan
 SET household_id = $1,
+    is_active    = false,
     updated_by   = $2::varchar,
     updated_at   = now()
 WHERE household_id = $3
@@ -630,7 +634,9 @@ type ReassignMealPlansToHouseholdParams struct {
 }
 
 // Invite-accept merge: repoint all of the source household's plans. Zero
-// rows is not an error (the source may have had none).
+// rows is not an error (the source may have had none). Moved plans lose
+// is_active — the target household keeps its own active plan, and an
+// incoming active would violate the one-active-per-household index.
 func (q *Queries) ReassignMealPlansToHousehold(ctx context.Context, arg ReassignMealPlansToHouseholdParams) error {
 	_, err := q.db.Exec(ctx, reassignMealPlansToHousehold, arg.ToHouseholdID, arg.UpdatedBy, arg.FromHouseholdID)
 	return err

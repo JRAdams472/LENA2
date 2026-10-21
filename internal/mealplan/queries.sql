@@ -36,8 +36,11 @@ WHERE meal_plan_id = $1 AND household_id = $2;
 
 -- name: DeactivateOtherMealPlans :exec
 -- Single-active invariant (LEN-79): activating a plan clears is_active on
--- every sibling in the household. Callers run this inside the same
--- transaction as the activation.
+-- every sibling in the household. Must run BEFORE the activating write —
+-- the partial unique index meal_plan_one_active_per_household rejects a
+-- second live active row, so deactivate-then-activate is the only order
+-- that can't self-collide. meal_plan_id=0 clears every active sibling
+-- (used by create, where the new row doesn't exist yet).
 UPDATE mealplan.meal_plan
 SET is_active  = false,
     updated_by = sqlc.arg(updated_by)::varchar,
@@ -48,9 +51,12 @@ WHERE household_id = sqlc.arg(household_id)
 
 -- name: ReassignMealPlansToHousehold :exec
 -- Invite-accept merge: repoint all of the source household's plans. Zero
--- rows is not an error (the source may have had none).
+-- rows is not an error (the source may have had none). Moved plans lose
+-- is_active — the target household keeps its own active plan, and an
+-- incoming active would violate the one-active-per-household index.
 UPDATE mealplan.meal_plan
 SET household_id = sqlc.arg(to_household_id),
+    is_active    = false,
     updated_by   = sqlc.arg(updated_by)::varchar,
     updated_at   = now()
 WHERE household_id = sqlc.arg(from_household_id);

@@ -314,12 +314,21 @@ func TestResolver_DeclineAndCancelHouseholdInvite(t *testing.T) {
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
+// Sole member leaving dissolves the household: membership goes, the
+// user is repointed to a fallback, then the household and its data are
+// deleted in the same transaction — no orphaned pantry/plans remain.
 func TestResolver_LeaveHousehold(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mock.NewMockHouseholdService(ctrl)
 	idSvc := mock.NewMockIdentityService(ctrl)
+	prefs := mock.NewMockUserPrefsService(ctrl)
+	mp := mock.NewMockMealPlanService(ctrl)
+	groc := mock.NewMockGroceryService(ctrl)
 	auth := mock.NewMockAuthInvalidator(ctrl)
-	r := &Resolver{HouseholdService: h, IdentityService: idSvc, AuthInvalidator: auth}
+	r := &Resolver{
+		HouseholdService: h, IdentityService: idSvc, UserPrefsService: prefs,
+		MealPlanService: mp, GroceryService: groc, AuthInvalidator: auth,
+	}
 
 	currentHH := int64(42)
 	ctx := testutil.WithHousehold(context.Background(), hhUserID, currentHH, hhEmail)
@@ -329,20 +338,25 @@ func TestResolver_LeaveHousehold(t *testing.T) {
 		Return(household.Household{HouseholdID: currentHH}, nil)
 	h.EXPECT().GetMembership(gomock.Any(), currentHH, hhUserID).
 		Return(household.Membership{HouseholdID: currentHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
-	// Sole member leaving: no ownership transfer.
+	// Sole member leaving: dissolve, no ownership transfer, no invite
+	// cleanup (cascaded with the household), no member-left notify.
 	h.EXPECT().ListMembersByHousehold(gomock.Any(), currentHH).
 		Return([]household.Membership{{HouseholdID: currentHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
-	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), hhUserID, currentHH, hhEmail).
-		Return(nil, nil)
 	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
 	// The active household was left and no memberships remain → fresh
-	// solo household, activated.
+	// solo household, activated — BEFORE the old household row deletes
+	// (users.household_id is a RESTRICT edge).
 	h.EXPECT().ListMembershipsByUser(gomock.Any(), hhUserID).Return(nil, nil)
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
 		Return(household.Household{HouseholdID: 90}, nil)
 	h.EXPECT().JoinHousehold(gomock.Any(), int64(90), hhUserID, identity.HouseholdRoleOwner, hhEmail).
 		Return(household.Membership{HouseholdID: 90, UserID: hhUserID, Role: "owner"}, nil)
 	idSvc.EXPECT().SetActiveHousehold(gomock.Any(), hhUserID, int64(90), hhEmail).Return(nil)
+	// Dissolve order: stock → plans → lists → household row.
+	prefs.EXPECT().DeleteHouseholdStock(gomock.Any(), currentHH).Return(nil)
+	mp.EXPECT().DeleteHouseholdPlans(gomock.Any(), currentHH).Return(nil)
+	groc.EXPECT().DeleteHouseholdLists(gomock.Any(), currentHH).Return(nil)
+	h.EXPECT().DeleteHousehold(gomock.Any(), currentHH).Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
 
 	ok, err := r.LeaveHousehold(ctx, struct{ HouseholdID *graphql.ID }{})
@@ -373,6 +387,7 @@ func TestResolver_LeaveHousehold_Inactive(t *testing.T) {
 			{HouseholdID: otherHH, UserID: hhUserID, Role: identity.HouseholdRoleMember},
 		}, nil)
 	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), hhUserID, otherHH, hhEmail).Return(nil, nil)
+	h.EXPECT().CancelPendingInvitesTo(gomock.Any(), hhUserID, otherHH, hhEmail).Return(nil, nil)
 	h.EXPECT().RemoveMembership(gomock.Any(), otherHH, hhUserID).Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberLeft, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	auth.EXPECT().InvalidateUser("test-provider", "")
@@ -406,6 +421,7 @@ func TestResolver_LeaveHousehold_ActivatesEarliestRemaining(t *testing.T) {
 			{HouseholdID: activeHH, UserID: hhUserID, Role: identity.HouseholdRoleMember},
 		}, nil)
 	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), hhUserID, activeHH, hhEmail).Return(nil, nil)
+	h.EXPECT().CancelPendingInvitesTo(gomock.Any(), hhUserID, activeHH, hhEmail).Return(nil, nil)
 	h.EXPECT().RemoveMembership(gomock.Any(), activeHH, hhUserID).Return(nil)
 	h.EXPECT().ListMembershipsByUser(gomock.Any(), hhUserID).
 		Return([]household.Membership{{HouseholdID: 60, UserID: hhUserID, Role: identity.HouseholdRoleOwner}}, nil)
@@ -696,6 +712,7 @@ func TestResolver_RemoveHouseholdMember(t *testing.T) {
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 		Return(identity.User{UserID: 9, HouseholdID: &[]int64{hhUserID}[0]}, nil)
 	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), int64(9), hhUserID, hhEmail).Return(nil, nil)
+	h.EXPECT().CancelPendingInvitesTo(gomock.Any(), int64(9), hhUserID, hhEmail).Return(nil, nil)
 	h.EXPECT().RemoveMembership(gomock.Any(), hhUserID, int64(9)).Return(nil)
 	// The removed member's active pointer was on this household and no
 	// memberships remain → fresh solo household, activated.
@@ -789,6 +806,9 @@ func TestResolver_LeaveHousehold_OwnerTransfer(t *testing.T) {
 		Return([]household.Invite{{InviteID: 77, FromUserID: hhUserID, ToUserID: 11, HouseholdID: currentHH}}, nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(11), household.KindInviteCancelled, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
+	// Invites another member sent TO the leaver are cancelled too —
+	// otherwise a removed/departed member could rejoin on a stale invite.
+	h.EXPECT().CancelPendingInvitesTo(gomock.Any(), hhUserID, currentHH, hhEmail).Return(nil, nil)
 	h.EXPECT().RemoveMembership(gomock.Any(), currentHH, hhUserID).Return(nil)
 	h.EXPECT().ListMembershipsByUser(gomock.Any(), hhUserID).Return(nil, nil)
 	h.EXPECT().CreateHousehold(gomock.Any(), hhEmail).
@@ -995,6 +1015,8 @@ func TestResolver_AcceptHouseholdInvite_WithMerge(t *testing.T) {
 	// Merge guard: caller is the source's sole member AND owner.
 	h.EXPECT().GetMembership(gomock.Any(), sourceHH, hhUserID).
 		Return(household.Membership{HouseholdID: sourceHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), sourceHH).
+		Return(household.Household{HouseholdID: sourceHH}, nil)
 	h.EXPECT().CountMembers(gomock.Any(), sourceHH).Return(int64(1), nil)
 	prefs.EXPECT().MergeHouseholdStock(gomock.Any(), sourceHH, inviterHH, hhEmail).Return(nil)
 	mp.EXPECT().ReassignHousehold(gomock.Any(), sourceHH, inviterHH, hhEmail).Return(nil)
@@ -1049,6 +1071,8 @@ func TestResolver_AcceptHouseholdInvite_MergeSharedSourceRejected(t *testing.T) 
 		Return(household.Membership{HouseholdID: inviterHH, UserID: hhUserID, Role: "member"}, nil)
 	h.EXPECT().GetMembership(gomock.Any(), sourceHH, hhUserID).
 		Return(household.Membership{HouseholdID: sourceHH, UserID: hhUserID, Role: identity.HouseholdRoleOwner}, nil)
+	h.EXPECT().LockHousehold(gomock.Any(), sourceHH).
+		Return(household.Household{HouseholdID: sourceHH}, nil)
 	// Shared household — the merge must be rejected and the tx rolled
 	// back (invite transition included).
 	h.EXPECT().CountMembers(gomock.Any(), sourceHH).Return(int64(3), nil)
@@ -1112,6 +1136,7 @@ func TestResolver_RemoveHouseholdMember_PointerElsewhere(t *testing.T) {
 	idSvc.EXPECT().GetByID(gomock.Any(), int64(9)).
 		Return(identity.User{UserID: 9, HouseholdID: &otherHH}, nil)
 	h.EXPECT().CancelPendingInvitesFrom(gomock.Any(), int64(9), hhUserID, hhEmail).Return(nil, nil)
+	h.EXPECT().CancelPendingInvitesTo(gomock.Any(), int64(9), hhUserID, hhEmail).Return(nil, nil)
 	h.EXPECT().RemoveMembership(gomock.Any(), hhUserID, int64(9)).Return(nil)
 	h.EXPECT().CreateNotification(gomock.Any(), int64(9), household.KindMemberRemoved, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)

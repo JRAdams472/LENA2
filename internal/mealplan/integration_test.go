@@ -3,6 +3,7 @@ package mealplan
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -336,6 +337,58 @@ func TestIntegrationSingleActivePlan(t *testing.T) {
 	got, err = svc.GetMealPlanByID(ctx, first.MealPlanID, user)
 	require.NoError(t, err)
 	assert.True(t, got.IsActive)
+}
+
+// Concurrent activations can interleave deactivate-then-activate under
+// READ COMMITTED — the partial unique index rejects the second commit,
+// so the household can never end with two active plans.
+func TestIntegrationConcurrentActivation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newIntegrationService(t, ctx)
+	user := testutil.MustUser(ctx, t, pool, "meal-conc-active@example.com")
+	week := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+
+	first, err := svc.CreateMealPlan(ctx, MealPlan{HouseholdID: user, Name: "A", WeekStartDate: week}, itBy)
+	require.NoError(t, err)
+	second, err := svc.CreateMealPlan(ctx, MealPlan{HouseholdID: user, Name: "B", WeekStartDate: week.AddDate(0, 0, 7)}, itBy)
+	require.NoError(t, err)
+
+	const trials = 20
+	for i := 0; i < trials; i++ {
+		errs := make(chan error, 2)
+		var wg sync.WaitGroup
+		for _, id := range []int64{first.MealPlanID, second.MealPlanID} {
+			wg.Add(1)
+			go func(planID int64) {
+				defer wg.Done()
+				errs <- svc.UpdateMealPlan(ctx, planID, user, MealPlan{
+					Name: "x", WeekStartDate: week, IsActive: true,
+				}, itBy)
+			}(id)
+		}
+		wg.Wait()
+		close(errs)
+
+		active := 0
+		for _, id := range []int64{first.MealPlanID, second.MealPlanID} {
+			got, err := svc.GetMealPlanByID(ctx, id, user)
+			require.NoError(t, err)
+			if got.IsActive {
+				active++
+			}
+		}
+		assert.Equal(t, 1, active, "trial %d left the household without exactly one active plan", i)
+		for err := range errs {
+			if err != nil {
+				// A loser is fine — but it must surface as a conflict,
+				// not a raw 23505 leaking internals.
+				assert.ErrorIs(t, err, domainerr.ErrConflict)
+			}
+		}
+	}
 }
 
 func TestMain(m *testing.M) {

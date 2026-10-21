@@ -8892,6 +8892,21 @@ func (mr *MockHouseholdServiceMockRecorder) CancelPendingInvitesFrom(ctx, fromUs
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelPendingInvitesFrom", reflect.TypeOf((*MockHouseholdService)(nil).CancelPendingInvitesFrom), ctx, fromUserID, householdID, by)
 }
 
+// CancelPendingInvitesTo mocks base method.
+func (m *MockHouseholdService) CancelPendingInvitesTo(ctx context.Context, toUserID, householdID int64, by string) ([]household.Invite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelPendingInvitesTo", ctx, toUserID, householdID, by)
+	ret0, _ := ret[0].([]household.Invite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CancelPendingInvitesTo indicates an expected call of CancelPendingInvitesTo.
+func (mr *MockHouseholdServiceMockRecorder) CancelPendingInvitesTo(ctx, toUserID, householdID, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelPendingInvitesTo", reflect.TypeOf((*MockHouseholdService)(nil).CancelPendingInvitesTo), ctx, toUserID, householdID, by)
+}
+
 // CountMembers mocks base method.
 func (m *MockHouseholdService) CountMembers(ctx context.Context, householdID int64) (int64, error) {
 	m.ctrl.T.Helper()

@@ -3110,6 +3110,63 @@ func runDeleteAccountTests(t *testing.T, srv *httptest.Server, issuer *testutil.
 		assert.NotEqual(t, id, idFor(tok))
 	})
 
+	// LEN-170 H15: a sole member leaving dissolves the household in the
+	// same transaction — the row and all household-owned content are gone,
+	// and the leaver lands in a fresh household.
+	t.Run("sole-member leave dissolves household", func(t *testing.T) {
+		tok := issuer.Token(t, "leave-solo", "leave-solo@example.com", "Leave Solo")
+		idFor(tok) // provision the user + default household
+
+		var householdID int64
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT household_id FROM identity.users WHERE email = 'leave-solo@example.com'`).Scan(&householdID))
+
+		// Give the household content on each NO ACTION edge: pantry stock,
+		// a meal plan, and a grocery list.
+		var categoryID, itemID int64
+		require.NoError(t, pool.QueryRow(ctx,
+			`INSERT INTO inventory.category (name, created_by) VALUES ('Leave Dissolve Cat', 'test')
+			 ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING category_id`).Scan(&categoryID))
+		require.NoError(t, pool.QueryRow(ctx,
+			`INSERT INTO inventory.item (name, category_id, unit_id, created_by)
+			 VALUES ('Leave Dissolve Item', $1, (SELECT unit_id FROM inventory.unit WHERE name = 'each'), 'test')
+			 RETURNING item_id`, categoryID).Scan(&itemID))
+		status, gr := doGraphQL(t, srv, tok, `mutation Stock($itemId: ID!) {
+			adjustUserItem(itemId: $itemId, quantity: 2) { id }
+		}`, map[string]any{"itemId": strconv.FormatInt(itemID, 10)})
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+		status, gr = doGraphQL(t, srv, tok, `mutation { createMealPlan(input: {name: "Leave plan", weekStartDate: "2030-03-02"}) { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+		status, gr = doGraphQL(t, srv, tok, `mutation { generateGroceryList { id } }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+		require.Equal(t, int64(1), count(t, `SELECT count(*) FROM userprefs.household_item WHERE household_id = $1`, householdID))
+		require.Equal(t, int64(1), count(t, `SELECT count(*) FROM mealplan.meal_plan WHERE household_id = $1`, householdID))
+		require.Equal(t, int64(1), count(t, `SELECT count(*) FROM grocery.grocery_list WHERE household_id = $1`, householdID))
+
+		status, gr = doGraphQL(t, srv, tok, `mutation { leaveHousehold }`, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.Empty(t, gr.Errors)
+
+		// The dissolved household left nothing behind — if any household-owned
+		// row had survived, the households delete would have hit its NO ACTION
+		// FK edge and the mutation would have failed instead.
+		assert.Zero(t, count(t, `SELECT count(*) FROM household.households WHERE household_id = $1`, householdID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM household.household_member WHERE household_id = $1`, householdID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM userprefs.household_item WHERE household_id = $1`, householdID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM mealplan.meal_plan WHERE household_id = $1`, householdID))
+		assert.Zero(t, count(t, `SELECT count(*) FROM grocery.grocery_list WHERE household_id = $1`, householdID))
+
+		// The leaver was repointed to a brand-new household — not the
+		// dissolved one.
+		var newHID int64
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT household_id FROM identity.users WHERE email = 'leave-solo@example.com'`).Scan(&newHID))
+		assert.NotEqual(t, householdID, newHID)
+	})
+
 	t.Run("shared household preserved", func(t *testing.T) {
 		tokA := issuer.Token(t, "del-a", "del-a@example.com", "Del A")
 		tokB := issuer.Token(t, "del-b", "del-b@example.com", "Del B")

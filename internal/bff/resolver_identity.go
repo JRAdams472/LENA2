@@ -321,16 +321,7 @@ func (r *Resolver) DeleteMyAccount(ctx context.Context) (bool, error) {
 			return err
 		}
 		for _, hid := range sole {
-			if err := r.UserPrefsService.DeleteHouseholdStock(ctx, hid); err != nil {
-				return err
-			}
-			if err := r.MealPlanService.DeleteHouseholdPlans(ctx, hid); err != nil {
-				return err
-			}
-			if err := r.GroceryService.DeleteHouseholdLists(ctx, hid); err != nil {
-				return err
-			}
-			if err := r.HouseholdService.DeleteHousehold(ctx, hid); err != nil {
+			if err := r.dissolveHousehold(ctx, hid); err != nil {
 				return err
 			}
 		}

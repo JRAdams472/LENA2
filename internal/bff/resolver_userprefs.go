@@ -195,6 +195,12 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	if args.Quantity < 0 {
+		return nil, badInputf("quantity cannot be negative")
+	}
+	if args.MinQty != nil && *args.MinQty < 0 {
+		return nil, badInputf("minQuantity cannot be negative")
+	}
 	itemID, err := parseID(string(args.ItemID))
 	if err != nil {
 		return nil, err
@@ -376,6 +382,9 @@ func (r *Resolver) AdjustUserBottle(ctx context.Context, args struct {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if args.Quantity < 0 {
+		return nil, badInputf("quantity cannot be negative")
 	}
 	bottleID, err := parseID(string(args.BottleID))
 	if err != nil {
