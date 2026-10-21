@@ -358,6 +358,39 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 	assert.ErrorIs(t, err, errUpBoom)
 }
 
+// H13: negative quantities are rejected as BAD_USER_INPUT before the
+// service layer — a negative current_qty inflated generated grocery
+// lines and tripped low-stock permanently.
+func TestResolver_AdjustUserItem_NegativeQuantity(t *testing.T) {
+	r := &Resolver{}
+	minQty := -1.0
+
+	res, err := r.AdjustUserItem(upCtx(), struct {
+		ItemID     graphql.ID
+		Quantity   float64
+		PurchaseAt *graphql.Time
+		ExpiresAt  *graphql.Time
+		MinQty     *float64
+	}{ItemID: "42", Quantity: -0.5})
+	assert.Nil(t, res)
+	assert.EqualError(t, err, "quantity cannot be negative")
+	var ce *clientError
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, codeBadUserInput, ce.code)
+
+	res, err = r.AdjustUserItem(upCtx(), struct {
+		ItemID     graphql.ID
+		Quantity   float64
+		PurchaseAt *graphql.Time
+		ExpiresAt  *graphql.Time
+		MinQty     *float64
+	}{ItemID: "42", Quantity: 1, MinQty: &minQty})
+	assert.Nil(t, res)
+	assert.EqualError(t, err, "minQuantity cannot be negative")
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, codeBadUserInput, ce.code)
+}
+
 func TestResolver_SetItemFavorite_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	up := mock.NewMockUserPrefsService(ctrl)
@@ -609,6 +642,19 @@ func TestResolver_AdjustUserBottle_ServiceError(t *testing.T) {
 	}{BottleID: "88", Quantity: 1})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)
+}
+
+func TestResolver_AdjustUserBottle_NegativeQuantity(t *testing.T) {
+	r := &Resolver{}
+	res, err := r.AdjustUserBottle(upCtx(), struct {
+		BottleID graphql.ID
+		Quantity int32
+	}{BottleID: "88", Quantity: -1})
+	assert.Nil(t, res)
+	assert.EqualError(t, err, "quantity cannot be negative")
+	var ce *clientError
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, codeBadUserInput, ce.code)
 }
 
 func TestResolver_SetBottleFavorite_Happy(t *testing.T) {

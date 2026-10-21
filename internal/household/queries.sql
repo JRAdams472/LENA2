@@ -120,6 +120,20 @@ WHERE from_user_id = $1
   AND status = 'pending'
 RETURNING *;
 
+-- name: CancelPendingInvitesTo :many
+-- Leave/remove cleanup: pending invites addressed to the departing member
+-- are cancelled so a second admin's stale invite can't let a removed
+-- member rejoin (the pending-unique index keys (from,to), so invites from
+-- other members survive a from-only cancellation).
+UPDATE household.invites
+SET status     = 'cancelled',
+    updated_by = $3,
+    updated_at = now()
+WHERE to_user_id = $1
+  AND household_id = $2
+  AND status = 'pending'
+RETURNING *;
+
 -- name: InsertPushDelivery :execresult
 -- Outbox row for the push channel — written in the same transaction as
 -- the feed notification (or instead of it when push-only is enabled).

@@ -14,8 +14,11 @@ type Querier interface {
 	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
 	CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) (MealplanMealPlan, error)
 	// Single-active invariant (LEN-79): activating a plan clears is_active on
-	// every sibling in the household. Callers run this inside the same
-	// transaction as the activation.
+	// every sibling in the household. Must run BEFORE the activating write —
+	// the partial unique index meal_plan_one_active_per_household rejects a
+	// second live active row, so deactivate-then-activate is the only order
+	// that can't self-collide. meal_plan_id=0 clears every active sibling
+	// (used by create, where the new row doesn't exist yet).
 	DeactivateOtherMealPlans(ctx context.Context, arg DeactivateOtherMealPlansParams) error
 	DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) error
 	// Account deletion (LEN-146): drops a dissolving household's meal plans.
@@ -37,7 +40,9 @@ type Querier interface {
 	ListMealSlotsByPlans(ctx context.Context, arg ListMealSlotsByPlansParams) ([]MealplanMealSlot, error)
 	ListMealSlotsForPlan(ctx context.Context, arg ListMealSlotsForPlanParams) ([]MealplanMealSlot, error)
 	// Invite-accept merge: repoint all of the source household's plans. Zero
-	// rows is not an error (the source may have had none).
+	// rows is not an error (the source may have had none). Moved plans lose
+	// is_active — the target household keeps its own active plan, and an
+	// incoming active would violate the one-active-per-household index.
 	ReassignMealPlansToHousehold(ctx context.Context, arg ReassignMealPlansToHouseholdParams) error
 	UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) (int64, error)
 	UpdateMealSlot(ctx context.Context, arg UpdateMealSlotParams) (int64, error)

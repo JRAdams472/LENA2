@@ -41,19 +41,25 @@ func TestCreateMealPlan(t *testing.T) {
 			CreatedBy:          "tester",
 			UpdatedBy:          pgtype.Text{String: "tester", Valid: true},
 		}
-		mq.EXPECT().CreateMealPlan(ctx, want).Return(sqlc.MealplanMealPlan{
-			MealPlanID:         7,
-			HouseholdID:        42,
-			Name:               "Week 37",
-			WeekStartDate:      pgtype.Date{Time: week, Valid: true},
-			WeekStartDayOfWeek: 1,
-			IsActive:           true,
-		}, nil)
-		mq.EXPECT().DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
-			HouseholdID: 42,
-			MealPlanID:  7,
-			UpdatedBy:   "tester",
-		}).Return(nil)
+		// Siblings deactivate BEFORE the constrained insert — meal_plan_id=0
+		// because the new row doesn't exist yet. The partial unique index
+		// meal_plan_one_active_per_household makes activate-then-deactivate
+		// self-collide.
+		gomock.InOrder(
+			mq.EXPECT().DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+				HouseholdID: 42,
+				MealPlanID:  0,
+				UpdatedBy:   "tester",
+			}).Return(nil),
+			mq.EXPECT().CreateMealPlan(ctx, want).Return(sqlc.MealplanMealPlan{
+				MealPlanID:         7,
+				HouseholdID:        42,
+				Name:               "Week 37",
+				WeekStartDate:      pgtype.Date{Time: week, Valid: true},
+				WeekStartDayOfWeek: 1,
+				IsActive:           true,
+			}, nil),
+		)
 
 		got, err := s.CreateMealPlan(ctx, in, "tester")
 		require.NoError(t, err)
@@ -79,7 +85,16 @@ func TestCreateMealPlan(t *testing.T) {
 
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
+		mq.EXPECT().DeactivateOtherMealPlans(ctx, gomock.Any()).Return(nil)
 		mq.EXPECT().CreateMealPlan(ctx, gomock.Any()).Return(sqlc.MealplanMealPlan{}, errDB)
+		_, err := s.CreateMealPlan(ctx, in, "tester")
+		assert.ErrorContains(t, err, "create meal plan")
+		assert.ErrorIs(t, err, errDB)
+	})
+
+	t.Run("deactivate failure aborts before insert", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().DeactivateOtherMealPlans(ctx, gomock.Any()).Return(errDB)
 		_, err := s.CreateMealPlan(ctx, in, "tester")
 		assert.ErrorContains(t, err, "create meal plan")
 		assert.ErrorIs(t, err, errDB)
@@ -158,14 +173,18 @@ func TestUpdateMealPlan(t *testing.T) {
 		require.NoError(t, s.UpdateMealPlan(ctx, 7, 42, in, "tester"))
 	})
 
-	t.Run("activating a plan deactivates siblings", func(t *testing.T) {
+	t.Run("activating a plan deactivates siblings first", func(t *testing.T) {
 		s, mq := newService(t)
-		mq.EXPECT().UpdateMealPlan(ctx, gomock.Any()).Return(int64(1), nil)
-		mq.EXPECT().DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
-			HouseholdID: 42,
-			MealPlanID:  7,
-			UpdatedBy:   "tester",
-		}).Return(nil)
+		// Deactivate precedes the activating UPDATE — the partial unique
+		// index rejects a second active row mid-flight.
+		gomock.InOrder(
+			mq.EXPECT().DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+				HouseholdID: 42,
+				MealPlanID:  7,
+				UpdatedBy:   "tester",
+			}).Return(nil),
+			mq.EXPECT().UpdateMealPlan(ctx, gomock.Any()).Return(int64(1), nil),
+		)
 
 		require.NoError(t, s.UpdateMealPlan(ctx, 7, 42, MealPlan{Name: "Renamed", WeekStartDate: week, WeekStartDayOfWeek: 2, IsActive: true}, "tester"))
 	})

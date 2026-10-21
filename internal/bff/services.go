@@ -538,6 +538,10 @@ type HouseholdService interface {
 	RenameHousehold(ctx context.Context, householdID int64, name, by string) (household.Household, error)
 	LockHousehold(ctx context.Context, householdID int64) (household.Household, error)
 	CancelPendingInvitesFrom(ctx context.Context, fromUserID, householdID int64, by string) ([]household.Invite, error)
+	// CancelPendingInvitesTo cancels pending invites addressed to a
+	// departing member so a second admin's stale invite can't let them
+	// rejoin.
+	CancelPendingInvitesTo(ctx context.Context, toUserID, householdID int64, by string) ([]household.Invite, error)
 	CreateNotification(ctx context.Context, userID int64, kind household.NotificationKind, householdID, actorUserID, inviteID, foodEventID *int64) error
 	ListNotificationsForUser(ctx context.Context, userID, householdID int64, limit int32) ([]household.Notification, error)
 	CountUnreadNotifications(ctx context.Context, userID, householdID int64) (int64, error)

@@ -85,8 +85,20 @@ type MealPlan struct {
 
 // CreateMealPlan creates a new weekly plan for the household. When the new
 // plan is active, every other plan in the household is deactivated in the
-// same transaction (LEN-79 single-active invariant).
+// same transaction (LEN-79 single-active invariant). Siblings must go
+// inactive BEFORE the insert — the meal_plan_one_active_per_household
+// partial unique index rejects a second live active row, and a concurrent
+// activation then fails with ErrConflict instead of silently doubling up.
 func (s *Service) CreateMealPlan(ctx context.Context, arg MealPlan, by string) (MealPlan, error) {
+	if arg.IsActive {
+		if err := s.q.DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+			HouseholdID: arg.HouseholdID,
+			MealPlanID:  0, // no row yet — clear every active sibling
+			UpdatedBy:   by,
+		}); err != nil {
+			return MealPlan{}, fmt.Errorf("create meal plan: %w", err)
+		}
+	}
 	row, err := s.q.CreateMealPlan(ctx, sqlc.CreateMealPlanParams{
 		HouseholdID:        arg.HouseholdID,
 		Name:               arg.Name,
@@ -97,10 +109,9 @@ func (s *Service) CreateMealPlan(ctx context.Context, arg MealPlan, by string) (
 		UpdatedBy:          textOrNull(by),
 	})
 	if err != nil {
-		return MealPlan{}, fmt.Errorf("create meal plan: %w", err)
-	}
-	if err := s.enforceSingleActive(ctx, row.HouseholdID, row.MealPlanID, row.IsActive, by); err != nil {
-		return MealPlan{}, err
+		// A concurrent activation loses to the partial unique index —
+		// surface it as a conflict, not an internal error.
+		return MealPlan{}, fmt.Errorf("create meal plan: %w", domainerr.FromStorage(err))
 	}
 	return toMealPlan(row), nil
 }
@@ -136,8 +147,19 @@ func (s *Service) CountMealPlans(ctx context.Context, householdID int64) (int64,
 	return n, nil
 }
 
-// UpdateMealPlan modifies a household's plan.
+// UpdateMealPlan modifies a household's plan. When the update activates
+// the plan, siblings are deactivated BEFORE the activating write — the
+// partial unique index would reject the second active otherwise.
 func (s *Service) UpdateMealPlan(ctx context.Context, mealPlanID, householdID int64, arg MealPlan, by string) error {
+	if arg.IsActive {
+		if err := s.q.DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
+			HouseholdID: householdID,
+			MealPlanID:  mealPlanID,
+			UpdatedBy:   by,
+		}); err != nil {
+			return fmt.Errorf("update meal plan: %w", err)
+		}
+	}
 	n, err := s.q.UpdateMealPlan(ctx, sqlc.UpdateMealPlanParams{
 		MealPlanID:         mealPlanID,
 		HouseholdID:        householdID,
@@ -153,22 +175,7 @@ func (s *Service) UpdateMealPlan(ctx context.Context, mealPlanID, householdID in
 	if n == 0 {
 		return fmt.Errorf("update meal plan: %w", domainerr.ErrNotFound)
 	}
-	return s.enforceSingleActive(ctx, householdID, mealPlanID, arg.IsActive, by)
-}
-
-// enforceSingleActive clears is_active on every sibling plan when the given
-// plan is active, so a household never shows two "Active" chips. Callers
-// activate inside the same unit of work (the querier joins an ambient
-// ctx-carried transaction automatically).
-func (s *Service) enforceSingleActive(ctx context.Context, householdID, mealPlanID int64, isActive bool, by string) error {
-	if !isActive {
-		return nil
-	}
-	return s.q.DeactivateOtherMealPlans(ctx, sqlc.DeactivateOtherMealPlansParams{
-		HouseholdID: householdID,
-		MealPlanID:  mealPlanID,
-		UpdatedBy:   by,
-	})
+	return nil
 }
 
 // DeleteMealPlan removes a plan owned by the household.

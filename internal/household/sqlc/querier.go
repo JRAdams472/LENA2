@@ -15,6 +15,11 @@ type Querier interface {
 	// household are cancelled so they can no longer be accepted against a
 	// household the sender no longer belongs to.
 	CancelPendingInvitesFrom(ctx context.Context, arg CancelPendingInvitesFromParams) ([]HouseholdInvite, error)
+	// Leave/remove cleanup: pending invites addressed to the departing member
+	// are cancelled so a second admin's stale invite can't let a removed
+	// member rejoin (the pending-unique index keys (from,to), so invites from
+	// other members survive a from-only cancellation).
+	CancelPendingInvitesTo(ctx context.Context, arg CancelPendingInvitesToParams) ([]HouseholdInvite, error)
 	CountMembers(ctx context.Context, householdID int64) (int64, error)
 	CountUnreadNotifications(ctx context.Context, arg CountUnreadNotificationsParams) (int64, error)
 	CreateHousehold(ctx context.Context, createdBy string) (HouseholdHousehold, error)

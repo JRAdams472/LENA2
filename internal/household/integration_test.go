@@ -106,6 +106,62 @@ func TestIntegrationInviteGuards(t *testing.T) {
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
+// TestIntegrationCancelPendingInvitesTo is the H14 stale-rejoin scenario:
+// two members of the same household each hold a pending invite to the
+// same target (the pending-unique index keys (from,to), so both can
+// coexist). Cancelling by (to, household) clears BOTH — from-scoped
+// cancellation would leave the second invite live, and a removed member
+// could rejoin by accepting it.
+func TestIntegrationCancelPendingInvitesTo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	svc, pool := newService(t, ctx)
+
+	inviterA := testutil.MustUser(ctx, t, pool, "hh-stale-a@example.com")
+	inviterB := testutil.MustUser(ctx, t, pool, "hh-stale-b@example.com")
+	target := testutil.MustUser(ctx, t, pool, "hh-stale-target@example.com")
+
+	h, err := svc.CreateHousehold(ctx, "hh-stale-a@example.com")
+	require.NoError(t, err)
+	_, err = svc.JoinHousehold(ctx, h.HouseholdID, inviterB, identity.HouseholdRoleMember, "hh-stale-a@example.com")
+	require.NoError(t, err)
+
+	invA, err := svc.CreateInvite(ctx, inviterA, target, h.HouseholdID, "hh-stale-a@example.com")
+	require.NoError(t, err)
+	invB, err := svc.CreateInvite(ctx, inviterB, target, h.HouseholdID, "hh-stale-b@example.com")
+	require.NoError(t, err)
+
+	cancelled, err := svc.CancelPendingInvitesTo(ctx, target, h.HouseholdID, "hh-stale-a@example.com")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []int64{invA.InviteID, invB.InviteID},
+		[]int64{cancelled[0].InviteID, cancelled[1].InviteID})
+	for _, c := range cancelled {
+		assert.Equal(t, household.StatusCancelled, c.Status)
+	}
+
+	pending, err := svc.ListPendingInvitesForUser(ctx, target)
+	require.NoError(t, err)
+	assert.Empty(t, pending)
+
+	// The stale invite can no longer transition to accepted.
+	_, err = svc.TransitionInvite(ctx, invB.InviteID, household.StatusAccepted, "hh-stale-target@example.com")
+	assert.ErrorIs(t, err, domainerr.ErrConflict)
+
+	// Invites to the same user in a DIFFERENT household are untouched.
+	h2, err := svc.CreateHousehold(ctx, "hh-stale-a@example.com")
+	require.NoError(t, err)
+	other, err := svc.CreateInvite(ctx, inviterA, target, h2.HouseholdID, "hh-stale-a@example.com")
+	require.NoError(t, err)
+	_, err = svc.CancelPendingInvitesTo(ctx, target, h.HouseholdID, "hh-stale-a@example.com")
+	require.NoError(t, err)
+	pending, err = svc.ListPendingInvitesForUser(ctx, target)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, other.InviteID, pending[0].InviteID)
+}
+
 // TestIntegrationMembership covers the LEN-26 membership layer: the
 // MustUser bootstrap mirrors a membership row, a user can hold a second
 // membership, member reads scope per household, and SetActiveHousehold

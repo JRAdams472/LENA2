@@ -88,8 +88,17 @@ type HouseholdItem struct {
 }
 
 // UpsertHouseholdItem creates or updates the household's pantry row for a
-// catalog item.
+// catalog item. Quantities clamp at 0 — a negative current_qty would
+// inflate generated grocery lists; resolvers already reject them, this is
+// the belt for callers that bypass the BFF.
 func (s *Service) UpsertHouseholdItem(ctx context.Context, arg HouseholdItem, by string) (HouseholdItem, error) {
+	if arg.CurrentQty < 0 {
+		arg.CurrentQty = 0
+	}
+	if arg.MinQty != nil && *arg.MinQty < 0 {
+		zero := 0.0
+		arg.MinQty = &zero
+	}
 	currentQty, err := numericFromFloat64(arg.CurrentQty)
 	if err != nil {
 		return HouseholdItem{}, fmt.Errorf("upsert household item: %w", err)
@@ -281,7 +290,11 @@ type HouseholdBottle struct {
 }
 
 // UpsertHouseholdBottle creates or updates the household's cellar holding.
+// Quantity clamps at 0 like pantry stock — see UpsertHouseholdItem.
 func (s *Service) UpsertHouseholdBottle(ctx context.Context, arg HouseholdBottle, by string) (HouseholdBottle, error) {
+	if arg.Quantity < 0 {
+		arg.Quantity = 0
+	}
 	price, err := optNumeric(arg.PurchasePrice)
 	if err != nil {
 		return HouseholdBottle{}, fmt.Errorf("upsert household bottle: %w", err)
@@ -832,7 +845,7 @@ func (s *Service) SetUserAllergen(ctx context.Context, userID, allergenID int64,
 	if !validMemberAllergyKind(kind) {
 		return fmt.Errorf("set user allergen: invalid kind %q", kind)
 	}
-	n, err := s.q.UpsertUserAllergen(ctx, sqlc.UpsertUserAllergenParams{
+	_, err := s.q.UpsertUserAllergen(ctx, sqlc.UpsertUserAllergenParams{
 		UserID:     userID,
 		AllergenID: allergenID,
 		Kind:       kind,
@@ -842,9 +855,8 @@ func (s *Service) SetUserAllergen(ctx context.Context, userID, allergenID int64,
 	if err != nil {
 		return fmt.Errorf("set user allergen: %w", domainerr.FromStorage(err))
 	}
-	if n == 0 {
-		return fmt.Errorf("set user allergen: %w", domainerr.ErrNotFound)
-	}
+	// An upsert always affects a row — n==0 is unreachable; no NotFound
+	// branch like the delete path has.
 	return nil
 }
 

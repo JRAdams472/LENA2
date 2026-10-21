@@ -462,6 +462,22 @@ func (s *Service) CancelPendingInvitesFrom(ctx context.Context, fromUserID, hous
 	return toInvites(rows), nil
 }
 
+// CancelPendingInvitesTo cancels pending invites addressed to a departing
+// member and returns them — a second admin's stale invite could otherwise
+// let a removed member rejoin. Callers run it inside the same locked tx
+// as the membership removal.
+func (s *Service) CancelPendingInvitesTo(ctx context.Context, toUserID, householdID int64, by string) ([]Invite, error) {
+	rows, err := s.q.CancelPendingInvitesTo(ctx, sqlc.CancelPendingInvitesToParams{
+		ToUserID:    toUserID,
+		HouseholdID: householdID,
+		UpdatedBy:   pgtype.Text{String: by, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cancel pending invites to: %w", domainerr.FromStorage(err))
+	}
+	return toInvites(rows), nil
+}
+
 // ---------- membership (LEN-26) ----------
 
 // GetMembership returns the user's membership row for a household, or

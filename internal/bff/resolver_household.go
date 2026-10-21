@@ -367,6 +367,11 @@ func (r *Resolver) validateMergeSource(ctx context.Context, sourceID, targetID, 
 	if mem.Role != identity.HouseholdRoleOwner {
 		return badInputf("only a household you own can be merged")
 	}
+	// Serialize against a concurrent join/accept on the source — the
+	// sole-member check below must not observe a pre-join snapshot.
+	if _, err := r.HouseholdService.LockHousehold(ctx, sourceID); err != nil {
+		return err
+	}
 	if n, err := r.HouseholdService.CountMembers(ctx, sourceID); err != nil {
 		return err
 	} else if n != 1 {
@@ -527,11 +532,31 @@ func (r *Resolver) LeaveHousehold(ctx context.Context, args struct {
 		if err != nil {
 			return err
 		}
+		if len(members) == 1 && members[0].UserID == u.UserID {
+			// Sole member leaving dissolves the household: repoint the
+			// user's active pointer first (users.household_id is a
+			// RESTRICT edge), then delete the household so its pantry,
+			// plans, lists and events don't linger as unreachable rows.
+			// Invites/notifications cascade or SET NULL with the row, so
+			// no invite-cancel or member-left notify is needed.
+			if err := r.HouseholdService.RemoveMembership(ctx, leaveID, u.UserID); err != nil {
+				return err
+			}
+			if fresh.HouseholdID != nil && *fresh.HouseholdID == leaveID {
+				if err := r.activateFallbackHousehold(ctx, u.UserID, u.Email); err != nil {
+					return err
+				}
+			}
+			return r.dissolveHousehold(ctx, leaveID)
+		}
 		promoted, err = r.promoteSuccessor(ctx, u, caller.Role, members, leaveID)
 		if err != nil {
 			return err
 		}
 		if err := r.cancelPendingInvitesFromUser(ctx, u, leaveID); err != nil {
+			return err
+		}
+		if err := r.cancelPendingInvitesToUser(ctx, u, leaveID); err != nil {
 			return err
 		}
 		if err := r.HouseholdService.RemoveMembership(ctx, leaveID, u.UserID); err != nil {
@@ -630,6 +655,34 @@ func (r *Resolver) cancelPendingInvitesFromUser(ctx context.Context, u currentus
 		}
 	}
 	return nil
+}
+
+// cancelPendingInvitesToUser cancels pending invites other members sent
+// to a departing user — the pending-unique index keys (from,to), so
+// from-only cancellation would leave a second admin's invite live and a
+// removed member could rejoin by accepting it. No per-invite notify: the
+// senders already get the member-left/member-removed notification.
+func (r *Resolver) cancelPendingInvitesToUser(ctx context.Context, u currentuser.User, householdID int64) error {
+	_, err := r.HouseholdService.CancelPendingInvitesTo(ctx, u.UserID, householdID, u.Email)
+	return err
+}
+
+// dissolveHousehold deletes every row a defunct household still owns, in
+// FK order — stock, plans and lists are NO ACTION edges so they must go
+// first; the households-row delete then cascades invites, memberships,
+// events, routing and recipe deltas, while notifications and push rows
+// SET NULL.
+func (r *Resolver) dissolveHousehold(ctx context.Context, householdID int64) error {
+	if err := r.UserPrefsService.DeleteHouseholdStock(ctx, householdID); err != nil {
+		return err
+	}
+	if err := r.MealPlanService.DeleteHouseholdPlans(ctx, householdID); err != nil {
+		return err
+	}
+	if err := r.GroceryService.DeleteHouseholdLists(ctx, householdID); err != nil {
+		return err
+	}
+	return r.HouseholdService.DeleteHousehold(ctx, householdID)
 }
 
 // CreateHousehold makes a new household, joins the caller as owner, and
@@ -897,6 +950,11 @@ func (r *Resolver) RemoveHouseholdMember(ctx context.Context, args struct {
 func (r *Resolver) notifyHouseholdMemberRemoval(ctx context.Context, u currentuser.User, targetID int64) error {
 	cancelled, err := r.HouseholdService.CancelPendingInvitesFrom(ctx, targetID, u.HouseholdID, u.Email)
 	if err != nil {
+		return err
+	}
+	// Also retire invites *to* the removed member — a second admin's
+	// pending invite would otherwise let them rejoin right after removal.
+	if _, err := r.HouseholdService.CancelPendingInvitesTo(ctx, targetID, u.HouseholdID, u.Email); err != nil {
 		return err
 	}
 	for _, c := range cancelled {

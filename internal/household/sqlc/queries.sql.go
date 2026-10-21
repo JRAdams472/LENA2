@@ -63,6 +63,57 @@ func (q *Queries) CancelPendingInvitesFrom(ctx context.Context, arg CancelPendin
 	return items, nil
 }
 
+const cancelPendingInvitesTo = `-- name: CancelPendingInvitesTo :many
+UPDATE household.invites
+SET status     = 'cancelled',
+    updated_by = $3,
+    updated_at = now()
+WHERE to_user_id = $1
+  AND household_id = $2
+  AND status = 'pending'
+RETURNING invite_id, from_user_id, to_user_id, household_id, status, created_by, created_at, updated_by, updated_at
+`
+
+type CancelPendingInvitesToParams struct {
+	ToUserID    int64       `json:"to_user_id"`
+	HouseholdID int64       `json:"household_id"`
+	UpdatedBy   pgtype.Text `json:"updated_by"`
+}
+
+// Leave/remove cleanup: pending invites addressed to the departing member
+// are cancelled so a second admin's stale invite can't let a removed
+// member rejoin (the pending-unique index keys (from,to), so invites from
+// other members survive a from-only cancellation).
+func (q *Queries) CancelPendingInvitesTo(ctx context.Context, arg CancelPendingInvitesToParams) ([]HouseholdInvite, error) {
+	rows, err := q.db.Query(ctx, cancelPendingInvitesTo, arg.ToUserID, arg.HouseholdID, arg.UpdatedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HouseholdInvite{}
+	for rows.Next() {
+		var i HouseholdInvite
+		if err := rows.Scan(
+			&i.InviteID,
+			&i.FromUserID,
+			&i.ToUserID,
+			&i.HouseholdID,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countMembers = `-- name: CountMembers :one
 SELECT count(*)
 FROM household.household_member
