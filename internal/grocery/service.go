@@ -487,7 +487,7 @@ func (s *Service) observeCheckChange(ctx context.Context, householdID int64, bef
 	if list.StoreID.Valid {
 		storeID = list.StoreID.Int64
 	}
-	position = position / float64(total)
+	position /= float64(total)
 	if observing {
 		err = s.RecordRouteObservation(ctx, householdID, storeID, after, position, by)
 	} else {

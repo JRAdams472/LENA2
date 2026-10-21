@@ -155,9 +155,6 @@ func TestEffectiveMinutesClampsToInt32(t *testing.T) {
 	if m != math.MaxInt32 {
 		t.Fatalf("clamped minutes = %d, want %d", m, int64(math.MaxInt32))
 	}
-	if int32(m) < 0 {
-		t.Fatal("int32 cast must not wrap negative")
-	}
 }
 
 func TestBuildTimelineNoSteps(t *testing.T) {
