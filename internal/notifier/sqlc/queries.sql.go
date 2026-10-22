@@ -597,11 +597,16 @@ func (q *Queries) MarkPushDeliveryRetry(ctx context.Context, arg MarkPushDeliver
 const markPushDeliverySending = `-- name: MarkPushDeliverySending :execrows
 UPDATE household.push_delivery
 SET status = 'sending', updated_at = now()
-WHERE push_delivery_id = $1 AND status = 'pending'
+WHERE push_delivery_id = $1
+  AND (status = 'pending'
+       OR (status = 'sending' AND updated_at < now() - interval '5 minutes'))
 `
 
-// Cheap two-phase claim: flip to 'sending' only while still pending, so a
-// second dispatcher can never double-send the same row.
+// Cheap two-phase claim: flip to 'sending' while pending, or reclaim a
+// 'sending' row whose claim went stale — the same predicate the poll uses,
+// so a crashed dispatcher's row is rescued instead of lost. A fresh
+// 'sending' row fails the WHERE under the row lock, so a second
+// dispatcher can never double-send it.
 func (q *Queries) MarkPushDeliverySending(ctx context.Context, pushDeliveryID int64) (int64, error) {
 	result, err := q.db.Exec(ctx, markPushDeliverySending, pushDeliveryID)
 	if err != nil {

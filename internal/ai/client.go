@@ -44,7 +44,7 @@ func (s *Service) CallTool(ctx context.Context, userID, householdID int64, name 
 	scope := tools.Scope{UserID: userID, HouseholdID: householdID}
 	result, err := s.reg.Call(ctx, scope, name, args)
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil
+		return toolErrorJSON(err), nil
 	}
 	data, err := json.Marshal(result)
 	if err != nil {

@@ -88,6 +88,29 @@ func TestAsk_ToolErrorReportedToModel(t *testing.T) {
 	assert.Equal(t, "Something went wrong reading data.", ans.Text)
 }
 
+// The server-loop error payload must round-trip as JSON too — a Go-quoted
+// string with \a/\xNN escapes would corrupt the tool message.
+func TestAsk_ToolErrorPayloadValidJSON(t *testing.T) {
+	msg := "bell\a \"quoted\"\nnew line \x01ctrl"
+	reg := tools.New()
+	reg.Register(llm.ToolSpec{Name: "noisy", Parameters: map[string]any{}},
+		func(context.Context, tools.Scope, json.RawMessage) (any, error) {
+			return nil, errors.New(msg)
+		})
+	p := llm.NewMockProvider()
+	p.EnqueueToolCalls(llm.ToolCall{ID: "call-0", Name: "noisy", Arguments: json.RawMessage(`{}`)})
+	p.EnqueueText("handled")
+
+	svc := NewService(p, reg, Config{})
+	_, err := svc.Ask(context.Background(), 1, 1, "q")
+	require.NoError(t, err)
+
+	toolMsg := p.Requests[1].Messages[len(p.Requests[1].Messages)-1]
+	var payload map[string]string
+	require.NoError(t, json.Unmarshal([]byte(toolMsg.Content), &payload))
+	assert.Equal(t, msg, payload["error"])
+}
+
 func TestAsk_RoundLimit(t *testing.T) {
 	p := llm.NewMockProvider()
 	// Every round requests another tool call forever.

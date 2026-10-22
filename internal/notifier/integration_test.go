@@ -3,6 +3,7 @@ package notifier_test
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
 	"github.com/JRAdams472/LENA2/internal/notifier"
+	notifiersqlc "github.com/JRAdams472/LENA2/internal/notifier/sqlc"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 	"github.com/JRAdams472/LENA2/internal/userprefs"
@@ -170,6 +172,81 @@ func TestIntegrationSweep(t *testing.T) {
 		`SELECT COUNT(*) FROM household.notifications
 		 WHERE kind = 'item_expiring' AND user_id = $1`, member).Scan(&memberExpiry))
 	assert.Equal(t, 1, memberExpiry) // only the first sweep's row — mute held
+}
+
+// captureSender records the token batches the delivery worker sends.
+type captureSender struct {
+	mu      sync.Mutex
+	batches [][]string
+}
+
+func (c *captureSender) SendEach(_ context.Context, tokens []string, _ notifier.PushMessage) []notifier.SendResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.batches = append(c.batches, tokens)
+	out := make([]notifier.SendResult, len(tokens))
+	for i, t := range tokens {
+		out[i] = notifier.SendResult{Token: t}
+	}
+	return out
+}
+
+func (c *captureSender) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.batches)
+}
+
+// TestIntegrationStaleSendingDeliveryRescued covers the H3 claim fix: a
+// push_delivery row stranded in 'sending' by a crashed dispatcher must be
+// reclaimed and sent, while a fresh 'sending' row owned by a live
+// dispatcher is never stolen.
+func TestIntegrationStaleSendingDeliveryRescued(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, err := testutil.SharedTestDB(t, ctx)
+	require.NoError(t, err)
+
+	owner := testutil.MustUser(ctx, t, pool, "notify-push@example.com")
+	svc := notifier.NewService(pool, notifier.Config{})
+	require.NoError(t, svc.RegisterDeviceToken(ctx, owner, "android", "it-token-stale-claim"))
+
+	insertRow := func(status string, updatedExpr string) int64 {
+		var id int64
+		require.NoError(t, pool.QueryRow(ctx,
+			`INSERT INTO household.push_delivery
+				(user_id, kind, status, title, body, updated_at)
+			 VALUES ($1, 'item_expiring', $2, 'reminder', 'use it soon', `+updatedExpr+`)
+			 RETURNING push_delivery_id`,
+			owner, status).Scan(&id))
+		return id
+	}
+	staleID := insertRow("sending", "now() - interval '10 minutes'")
+	freshID := insertRow("sending", "now()")
+	pendingID := insertRow("pending", "NULL")
+
+	sender := &captureSender{}
+	w := notifier.NewDeliveryWorker(notifiersqlc.New(pool), sender,
+		notifier.DeliveryConfig{PollInterval: 25 * time.Millisecond})
+	w.Start(ctx)
+
+	statusOf := func(id int64) string {
+		var s string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT status FROM household.push_delivery WHERE push_delivery_id = $1`, id).Scan(&s))
+		return s
+	}
+	require.Eventually(t, func() bool { return statusOf(staleID) == "sent" },
+		5*time.Second, 25*time.Millisecond, "stale 'sending' row was not rescued")
+	require.Eventually(t, func() bool { return statusOf(pendingID) == "sent" },
+		5*time.Second, 25*time.Millisecond, "pending row was not delivered")
+
+	w.Stop()
+	assert.Equal(t, "sending", statusOf(freshID),
+		"fresh 'sending' row must never be stolen")
+	assert.Equal(t, 2, sender.count(), "one send per claimed row")
 }
 
 func intPtr4(v int32) *int32 { return &v }

@@ -73,6 +73,25 @@ func TestCallTool_Truncates(t *testing.T) {
 	assert.Contains(t, out, "truncated")
 }
 
+// The {"error":...} payload must be valid JSON even when the error text
+// carries characters Go's %q would escape with non-JSON sequences
+// (\a, \v, \xNN).
+func TestCallTool_ErrorPayloadValidJSON(t *testing.T) {
+	msg := "bell\a \"quoted\"\nnew line \x01ctrl"
+	reg := tools.New()
+	reg.Register(llm.ToolSpec{Name: "noisy", Parameters: map[string]any{}},
+		func(context.Context, tools.Scope, json.RawMessage) (any, error) {
+			return nil, errors.New(msg)
+		})
+	svc := NewService(nil, reg, Config{})
+	out, err := svc.CallTool(context.Background(), 1, 1, "noisy", nil)
+	require.NoError(t, err)
+
+	var payload map[string]string
+	require.NoError(t, json.Unmarshal([]byte(out), &payload), "error payload must be valid JSON")
+	assert.Equal(t, msg, payload["error"])
+}
+
 func TestCallTool_NilService(t *testing.T) {
 	var svc *Service
 	_, err := svc.CallTool(context.Background(), 1, 1, "x", nil)

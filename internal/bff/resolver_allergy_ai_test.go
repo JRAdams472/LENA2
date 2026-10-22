@@ -65,6 +65,7 @@ func TestResolver_SuggestRecipeAllergens(t *testing.T) {
 	aiSvc := mock.NewMockAIService(ctrl)
 	inv := mock.NewMockInventoryService(ctrl)
 
+	aiSvc.EXPECT().Available().Return(true)
 	aiSvc.EXPECT().SuggestAllergens(gomock.Any(), int64(1), int64(9), int64(10), 8).
 		Return([]ai.AllergenFlagProposal{
 			{TargetKind: "ingredient", TargetID: 51, AllergenID: 2, Kind: "contains", Reason: "flour"},
@@ -99,6 +100,29 @@ func TestResolver_SuggestRecipeAllergens_NonAdmin(t *testing.T) {
 		MaxSuggestions *int32
 	}{RecipeID: "10"})
 	require.Error(t, err)
+}
+
+// The AI suggester must not be reached when no provider is configured —
+// the resolver reports feature-unavailable like every other AI path.
+func TestResolver_SuggestRecipeAllergens_AIAvailability(t *testing.T) {
+	t.Run("nil service", func(t *testing.T) {
+		r := &Resolver{}
+		_, err := r.SuggestRecipeAllergens(allergenAdminCtx(), struct {
+			RecipeID       graphql.ID
+			MaxSuggestions *int32
+		}{RecipeID: "10"})
+		require.ErrorContains(t, err, "not configured")
+	})
+	t.Run("provider unavailable", func(t *testing.T) {
+		aiSvc := mock.NewMockAIService(gomock.NewController(t))
+		aiSvc.EXPECT().Available().Return(false)
+		r := &Resolver{AIService: aiSvc}
+		_, err := r.SuggestRecipeAllergens(allergenAdminCtx(), struct {
+			RecipeID       graphql.ID
+			MaxSuggestions *int32
+		}{RecipeID: "10"})
+		require.ErrorContains(t, err, "not configured")
+	})
 }
 
 func TestResolver_AcceptAllergenSuggestion(t *testing.T) {

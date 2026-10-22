@@ -293,6 +293,25 @@ func TestResolver_RecipeDeltaEvents(t *testing.T) {
 		assert.Equal(t, graphqlTime(now), ev.CreatedAt())
 	})
 
+	t.Run("limit is clamped to 1..50", func(t *testing.T) {
+		for _, tc := range []struct {
+			in   int32
+			want int32
+		}{
+			{0, 1}, {-5, 1}, {5, 5}, {50, 50}, {5000, 50},
+		} {
+			rec, _, _ := newRecMocks(t)
+			rec.EXPECT().ListRecipeDeltaEvents(gomock.Any(), int64(9), int64(11), tc.want).
+				Return(nil, nil)
+			r := &Resolver{RecipeService: rec}
+			_, err := r.RecipeDeltaEvents(recCtx(), struct {
+				RecipeID graphql.ID
+				Limit    int32
+			}{RecipeID: "9", Limit: tc.in})
+			require.NoError(t, err, "limit %d", tc.in)
+		}
+	})
+
 	t.Run("household-less user is rejected", func(t *testing.T) {
 		r := &Resolver{}
 		_, err := r.RecipeDeltaEvents(noHouseCtx(), struct {

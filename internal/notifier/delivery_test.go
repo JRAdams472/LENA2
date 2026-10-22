@@ -3,6 +3,7 @@ package notifier
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,6 +176,64 @@ func TestDrain_DispatchesDueRows(t *testing.T) {
 	mq.EXPECT().MarkPushDeliverySent(gomock.Any(), int64(42)).Return(nil)
 
 	w.drain(context.Background())
+}
+
+// hungSender blocks inside SendEach until the call context dies — the
+// stand-in for an FCM connection that accepts the request and never
+// replies.
+type hungSender struct{}
+
+func (hungSender) SendEach(ctx context.Context, tokens []string, _ PushMessage) []SendResult {
+	<-ctx.Done()
+	out := make([]SendResult, len(tokens))
+	for i, t := range tokens {
+		out[i] = SendResult{Token: t, Err: ctx.Err()}
+	}
+	return out
+}
+
+// A provider that never answers must not stall the drain loop: the
+// per-send timeout cancels it and the row goes to normal retry.
+func TestDeliver_HungSenderBoundedByTimeout(t *testing.T) {
+	mq := mock.NewMockQuerier(gomock.NewController(t))
+	w := NewDeliveryWorker(mq, hungSender{}, DeliveryConfig{
+		MaxAttempts: 3, BaseBackoff: time.Second, SendTimeout: 25 * time.Millisecond,
+	})
+	mq.EXPECT().MarkPushDeliverySending(gomock.Any(), int64(42)).Return(int64(1), nil)
+	mq.EXPECT().ListDeviceTokensForUsers(gomock.Any(), []int64{7}).Return(tokens("tok"), nil)
+	mq.EXPECT().ListDisplayNamesForUsers(gomock.Any(), []int64{9}).Return(nil, nil)
+	mq.EXPECT().MarkPushDeliveryRetry(gomock.Any(), gomock.Cond(func(a sqlc.MarkPushDeliveryRetryParams) bool {
+		return a.PushDeliveryID == 42 && strings.Contains(a.LastError.String, "deadline")
+	})).Return(nil)
+
+	done := make(chan struct{})
+	go func() {
+		w.deliver(context.Background(), deliveryRow())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("deliver stalled — the per-send timeout did not fire")
+	}
+}
+
+// A second Start must not spawn a second drain loop, and Stop is safe to
+// call repeatedly — before, during, or after a run.
+func TestWorker_StartIdempotentAndStopSafe(t *testing.T) {
+	w, mq, _ := newWorker(t)
+	w.cfg.PollInterval = time.Hour // only the immediate drain can fire
+	mq.EXPECT().ListDuePushDeliveries(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+
+	ctx := context.Background()
+	w.Start(ctx)
+	w.Start(ctx)
+	// A leaked second loop would have re-polled by now.
+	time.Sleep(50 * time.Millisecond)
+	w.Stop()
+	w.Stop()
+	w.Start(ctx) // stopped stays stopped — no resurrection
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestPushData_LinkFields(t *testing.T) {

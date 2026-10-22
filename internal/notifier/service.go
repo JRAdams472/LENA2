@@ -73,6 +73,8 @@ type CategoryPreference struct {
 type Service struct {
 	q        sqlc.Querier
 	cfg      Config
+	mu       sync.Mutex
+	running  bool
 	stop     context.CancelFunc
 	wg       sync.WaitGroup
 	delivery *DeliveryWorker

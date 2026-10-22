@@ -67,12 +67,13 @@ func (s *FCMSender) SendEach(ctx context.Context, tokens []string, msg PushMessa
 	return out
 }
 
-// classifyFCMError maps provider errors onto delivery semantics: a dead or
-// malformed token is ErrTokenGone (prune, don't retry); everything else is
-// a transient send error eligible for backoff retry.
+// classifyFCMError maps provider errors onto delivery semantics: only a
+// token the provider says is dead is ErrTokenGone (prune, don't retry).
+// INVALID_ARGUMENT also covers malformed payload/request errors — a bad
+// message must not prune the recipient's registrations — so it and
+// everything else stay transient and eligible for backoff retry.
 func classifyFCMError(err error) error {
 	if messaging.IsUnregistered(err) ||
-		messaging.IsInvalidArgument(err) ||
 		messaging.IsSenderIDMismatch(err) {
 		return ErrTokenGone
 	}

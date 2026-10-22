@@ -133,13 +133,24 @@ func (s *Service) Ask(ctx context.Context, userID, householdID int64, question s
 func (s *Service) execToolCall(ctx context.Context, scope tools.Scope, call llm.ToolCall) (string, error) {
 	result, err := s.reg.Call(ctx, scope, call.Name, call.Arguments)
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil
+		return toolErrorJSON(err), nil
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		return "", fmt.Errorf("marshal tool result: %w", err)
 	}
 	return truncate(string(data), s.cfg.ToolResultMaxBytes), nil
+}
+
+// toolErrorJSON builds the {"error":...} payload fed back to the model.
+// json.Marshal, not %q — Go quoting emits escapes like \a and \xNN that
+// aren't legal JSON and would corrupt the message the model sees.
+func toolErrorJSON(err error) string {
+	data, mErr := json.Marshal(map[string]string{"error": err.Error()})
+	if mErr != nil {
+		return `{"error":"tool call failed"}`
+	}
+	return string(data)
 }
 
 func truncate(s string, maxLen int) string {
