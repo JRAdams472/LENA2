@@ -7,7 +7,7 @@ import Typography from "@mui/material/Typography";
 
 // Root error boundary — without this file a render error falls through
 // to Next's unstyled default. `reset` re-renders the segment.
-export default function Error({
+export default function ErrorPage({
   error,
   reset,
 }: {
