@@ -27,6 +27,17 @@ const (
 // orphaned processing rows are reset to pending at startup instead.
 var claimableStatuses = []Status{StatusPending, StatusOCRED, StatusDrafted}
 
+// workerReviewFrom is the only status a worker may write review JSON from.
+// Admin edits pass adminReviewFrom instead, so a worker finishing its
+// mapping can never overwrite an admin's in-flight edit — it sees a
+// conflict and drops its own write.
+var workerReviewFrom = []Status{StatusDrafted}
+
+// adminReviewFrom is the set an admin may edit a review from. A drafted
+// job has no review JSON yet, so admin edits there are rejected rather
+// than racing the worker's first write.
+var adminReviewFrom = []Status{StatusReviewing, StatusReady}
+
 // pendingStatuses is the set shown in the admin review queue.
 var pendingStatuses = []Status{
 	StatusPending,

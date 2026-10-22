@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,23 +31,55 @@ type Service struct {
 	// factory returning their mock so InTx still exercises the real
 	// Begin/Commit flow while statements land on the mock.
 	newQ func(pgx.Tx) sqlc.Querier
-	// onCatalogChange fires after successful writes to the name-indexed
-	// catalog (items, ingredients, units) so downstream caches — the
-	// recipeimport mapping snapshot — can invalidate. Wired in
-	// cmd/lena/main.go; nil is a no-op.
-	onCatalogChange func()
+	// hook guards registration of onCatalogChange. It is a pointer so the
+	// WithTx copy shares the wired hook instead of copying a mutex or
+	// silently losing the registration. NewService allocates it; services
+	// built as literals in tests lazily allocate on first use — those are
+	// never shared across goroutines before wiring.
+	hook *catalogHookState
+}
+
+// catalogHookState holds the catalog-change hook behind a lock. fn is
+// set-once: a second SetCatalogChangeHook is ignored so a later caller
+// cannot silently replace the wired hook.
+type catalogHookState struct {
+	mu  sync.RWMutex
+	set bool
+	fn  func()
+}
+
+func (s *Service) hookState() *catalogHookState {
+	if s.hook == nil {
+		s.hook = &catalogHookState{}
+	}
+	return s.hook
 }
 
 // SetCatalogChangeHook registers fn to run after any write that can change
 // the item/ingredient/unit catalog. Fires post-write but possibly
 // pre-commit when the write ran inside InTx — a rolled-back write causes
 // one spurious invalidation, never stale data.
-func (s *Service) SetCatalogChangeHook(fn func()) { s.onCatalogChange = fn }
+func (s *Service) SetCatalogChangeHook(fn func()) {
+	h := s.hookState()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.set {
+		return
+	}
+	h.set = true
+	h.fn = fn
+}
 
 // noteCatalogChange invokes the registered hook, if any.
 func (s *Service) noteCatalogChange() {
-	if s.onCatalogChange != nil {
-		s.onCatalogChange()
+	if s.hook == nil {
+		return
+	}
+	s.hook.mu.RLock()
+	fn := s.hook.fn
+	s.hook.mu.RUnlock()
+	if fn != nil {
+		fn()
 	}
 }
 
@@ -58,6 +91,7 @@ func NewService(pool dbtx.Pool) *Service {
 	return &Service{
 		q:    sqlc.New(dbtx.NewTimedExecer(dbtx.ContextExecer(pool), "inventory")),
 		pool: pool,
+		hook: &catalogHookState{},
 		newQ: func(tx pgx.Tx) sqlc.Querier {
 			return sqlc.New(dbtx.NewTimedExecer(tx, "inventory"))
 		},

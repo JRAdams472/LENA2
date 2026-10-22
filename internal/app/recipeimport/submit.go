@@ -81,7 +81,10 @@ func hashBytes(b []byte) string {
 // randomHex returns a cryptographically random hex suffix for uploaded
 // filenames to avoid name collisions.
 func randomHex(n int) (string, error) {
-	b := make([]byte, n/2)
+	if n <= 0 {
+		return "", nil
+	}
+	b := make([]byte, (n+1)/2)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

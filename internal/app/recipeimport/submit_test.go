@@ -68,6 +68,14 @@ func TestSubmit_RequiresInbox(t *testing.T) {
 	assert.ErrorContains(t, err, "inbox")
 }
 
+func TestRandomHex(t *testing.T) {
+	for _, n := range []int{0, 1, 7, 8, 16} {
+		got, err := randomHex(n)
+		require.NoError(t, err)
+		assert.Len(t, got, n, "randomHex(%d)", n)
+	}
+}
+
 // failCreateStore fails only Create, to prove the orphan file is removed.
 type failCreateStore struct {
 	Store

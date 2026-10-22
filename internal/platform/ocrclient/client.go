@@ -42,6 +42,10 @@ type Result struct {
 	Pages []PageResult `json:"pages"`
 }
 
+// maxErrorBodyBytes bounds how much of an upstream error body is read into
+// an error message — enough to capture the detail, never unbounded.
+const maxErrorBodyBytes = 2048
+
 // Client calls the OCR service.
 type Client struct {
 	baseURL string
@@ -108,7 +112,7 @@ func (c *Client) ExtractTextResult(ctx context.Context, image []byte, filename s
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return nil, fmt.Errorf("ocr returned status %d: %s", resp.StatusCode, string(body))
 	}
 

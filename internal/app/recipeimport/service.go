@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,8 +81,13 @@ type Embedder interface {
 
 // jobQueueDepth bounds the buffered job channel. Jobs also persist in the
 // database, so a full channel never loses work — the row stays claimable and
-// is re-enqueued on the next service start.
+// is re-offered by the claim sweeper.
 const jobQueueDepth = 256
+
+// jobSweepInterval is how often the claim sweeper re-lists claimable rows
+// so a job dropped when the bounded channel was full is re-offered without
+// waiting for a restart.
+const jobSweepInterval = time.Minute
 
 // catalogSnapshotTTL bounds how long a built catalog snapshot is reused
 // before the next import rebuilds it. Explicit invalidation via
@@ -113,11 +119,25 @@ type Service struct {
 	// entire items+ingredients catalog and re-indexes it, which dominates
 	// import latency. singleflight shares one build across concurrent
 	// imports; errors are never cached. Invalidated by the inventory
-	// catalog-change hook and by TTL.
+	// catalog-change hook and by TTL. snapGen is bumped on every
+	// invalidation so a build that raced a catalog write is discarded
+	// instead of installed.
 	snapMu      sync.RWMutex
 	snap        *ocrimport.CatalogSnapshot
 	snapBuiltAt time.Time
+	snapGen     uint64
 	snapFlight  singleflight.Group
+
+	// sweepInterval is how often the claim sweeper re-lists claimable
+	// rows. Set by NewService; zero in literal-built test services, which
+	// never start the sweeper.
+	sweepInterval time.Duration
+
+	// submitMu serializes refreshEmbedding's WaitGroup.Add against
+	// Shutdown's Wait; closed flips under the same lock so a late Add can
+	// never race an in-progress Wait.
+	submitMu sync.Mutex
+	closed   bool
 
 	// now is injectable for cache-expiry tests; nil means time.Now.
 	now func() time.Time
@@ -156,12 +176,15 @@ func NewService(
 		shutdown:       make(chan struct{}),
 		lifetimeCtx:    lifetime,
 		lifetimeCancel: cancel,
+		sweepInterval:  jobSweepInterval,
 		now:            time.Now,
 	}
 	for i := 0; i < cfg.ImportWorkerConcurrency; i++ {
 		s.workerWG.Add(1)
 		go s.worker()
 	}
+	s.workerWG.Add(1)
+	go s.sweeper()
 	return s
 }
 
@@ -170,10 +193,11 @@ func NewService(
 func (s *Service) SetEmbedder(e Embedder) { s.embed = e }
 
 // Start recovers jobs orphaned by a previous shutdown and re-enqueues them.
-// Rows left in processing mean the claiming worker died before reaching a
-// staged status, so they are reset to pending and claimed normally.
+// A row left in processing longer than the stage timeout means the claiming
+// worker died before reaching a staged status, so only stale rows are reset
+// to pending — a still-running instance keeps its live claim.
 func (s *Service) Start(ctx context.Context) error {
-	if err := s.store.ResetProcessing(ctx); err != nil {
+	if err := s.store.ResetProcessing(ctx, s.cfg.ImportStageTimeout); err != nil {
 		return err
 	}
 	ids, err := s.store.ListClaimableIDs(ctx)
@@ -266,11 +290,17 @@ func (s *Service) UpdateReview(ctx context.Context, id int64, review *ocrimport.
 			return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: quantity must be greater than zero", i)}
 		}
 		if it.ItemID != "" {
-			itemID, err := strconv.ParseInt(it.ItemID, 10, 64)
+			refID, err := strconv.ParseInt(it.ItemID, 10, 64)
 			if err != nil {
 				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d has an invalid item id %q", i, it.ItemID)}
 			}
-			if _, err := s.inv.GetItemByID(ctx, itemID); err != nil {
+			// itemKind picks the catalog the id belongs to; a boosted
+			// ingredient match must resolve against ingredients, not items.
+			if it.ItemKind == "ingredient" {
+				if _, err := s.inv.GetIngredientByID(ctx, refID); err != nil {
+					return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: no catalog ingredient with id %q", i, it.ItemID)}
+				}
+			} else if _, err := s.inv.GetItemByID(ctx, refID); err != nil {
 				return nil, &domainerr.ValidationError{Msg: fmt.Sprintf("item %d: no catalog item with id %q", i, it.ItemID)}
 			}
 		}
@@ -311,7 +341,7 @@ func (s *Service) UpdateReview(ctx context.Context, id int64, review *ocrimport.
 	if review.AllResolved() {
 		status = StatusReady
 	}
-	if err := s.store.UpdateReview(ctx, id, reviewJSON, status, updatedBy); err != nil {
+	if err := s.store.UpdateReview(ctx, id, reviewJSON, status, updatedBy, adminReviewFrom); err != nil {
 		return nil, err
 	}
 	return s.store.Get(ctx, id)
@@ -380,7 +410,13 @@ func (s *Service) refreshEmbedding(recipeID int64) {
 	if s.embed == nil {
 		return
 	}
+	s.submitMu.Lock()
+	if s.closed {
+		s.submitMu.Unlock()
+		return
+	}
 	s.workerWG.Add(1)
+	s.submitMu.Unlock()
 	go func() {
 		defer s.workerWG.Done()
 		ctx, cancel := context.WithTimeout(s.lifetimeCtx, 45*time.Second)
@@ -506,14 +542,62 @@ func (s *Service) worker() {
 		case <-s.shutdown:
 			return
 		case id := <-s.jobs:
-			if err := s.Process(s.lifetimeCtx, id); err != nil {
-				slog.Default().Error("recipe import job failed",
+			s.runJob(id)
+		}
+	}
+}
+
+// sweeper re-offers claimable rows on a fixed cadence so a job dropped when
+// the bounded channel was full — or enqueued before a worker was ready — is
+// retried without waiting for a restart.
+func (s *Service) sweeper() {
+	defer s.workerWG.Done()
+	t := time.NewTicker(s.sweepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.shutdown:
+			return
+		case <-t.C:
+			s.sweepClaimable(s.lifetimeCtx)
+		}
+	}
+}
+
+// sweepClaimable lists every claimable row and re-offers it to the pool.
+// Claim is a conditional update, so a duplicate offer is harmless — the
+// in-flight worker keeps the row.
+func (s *Service) sweepClaimable(ctx context.Context) {
+	ids, err := s.store.ListClaimableIDs(ctx)
+	if err != nil {
+		slog.Default().Error("recipe import claim sweep failed", "error", err)
+		return
+	}
+	for _, id := range ids {
+		s.EnqueueProcess(id)
+	}
+}
+
+// runJob executes one queued job. A panic in the pipeline is recovered, the
+// job marked failed, and the worker stays alive — one bad job can never
+// kill the process.
+func (s *Service) runJob(id int64) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Default().Error("recipe import job panic recovered",
+				"recipe_import_id", id, "recover", rec)
+			if err := s.store.MarkFailed(s.lifetimeCtx, id, fmt.Sprintf("panic: %v", rec)); err != nil {
+				slog.Default().Error("mark recipe import failed after panic",
 					"recipe_import_id", id, "error", err)
-				if err := s.store.MarkFailed(s.lifetimeCtx, id, err.Error()); err != nil {
-					slog.Default().Error("mark recipe import failed",
-						"recipe_import_id", id, "error", err)
-				}
 			}
+		}
+	}()
+	if err := s.Process(s.lifetimeCtx, id); err != nil {
+		slog.Default().Error("recipe import job failed",
+			"recipe_import_id", id, "error", err)
+		if err := s.store.MarkFailed(s.lifetimeCtx, id, err.Error()); err != nil {
+			slog.Default().Error("mark recipe import failed",
+				"recipe_import_id", id, "error", err)
 		}
 	}
 }
@@ -574,7 +658,7 @@ func (s *Service) runOCR(ctx context.Context, ri *RecipeImport) (string, bool, e
 		minConf = 0
 	}
 	if minConf < float64(s.cfg.OCRConfidenceThreshold) {
-		return "", false, fmt.Errorf("mean confidence %.2f below threshold %d", minConf, s.cfg.OCRConfidenceThreshold)
+		return "", false, fmt.Errorf("lowest page mean confidence %.2f below threshold %d", minConf, s.cfg.OCRConfidenceThreshold)
 	}
 
 	ocrText := res.Text
@@ -654,6 +738,7 @@ func (s *Service) catalogSnapshot(ctx context.Context) (*ocrimport.CatalogSnapsh
 		s.snapMu.RLock()
 		fresh := s.snap != nil && s.nowFn()().Sub(s.snapBuiltAt) < catalogSnapshotTTL
 		cached := s.snap
+		gen := s.snapGen
 		s.snapMu.RUnlock()
 		if fresh {
 			return cached, nil
@@ -665,9 +750,14 @@ func (s *Service) catalogSnapshot(ctx context.Context) (*ocrimport.CatalogSnapsh
 			return nil, err
 		}
 		s.snapMu.Lock()
-		s.snap = snap
-		s.snapBuiltAt = s.nowFn()()
+		if s.snapGen == gen {
+			s.snap = snap
+			s.snapBuiltAt = s.nowFn()()
+		}
 		s.snapMu.Unlock()
+		// A catalog write landing mid-build bumped the generation, so this
+		// snapshot is not installed — the next call rebuilds against fresh
+		// data. The racing caller still uses the snapshot it just built.
 		slog.Default().Info("catalog snapshot built",
 			"items", snap.ItemCount(),
 			"units", snap.UnitCount(),
@@ -681,11 +771,14 @@ func (s *Service) catalogSnapshot(ctx context.Context) (*ocrimport.CatalogSnapsh
 }
 
 // InvalidateCatalog drops the cached snapshot so the next import maps
-// against fresh catalog data. Wired to inventory.Service's catalog-change
+// against fresh catalog data. The generation bump also discards a snapshot
+// whose build raced this invalidation — it must not be installed when its
+// in-flight build completes. Wired to inventory.Service's catalog-change
 // hook (item/ingredient/unit mutations) in cmd/lena/main.go.
 func (s *Service) InvalidateCatalog() {
 	s.snapMu.Lock()
 	s.snap = nil
+	s.snapGen++
 	s.snapMu.Unlock()
 }
 
@@ -724,7 +817,13 @@ func (s *Service) runMapping(ctx context.Context, id int64, updatedBy string, dr
 	if review.AllResolved() {
 		status = StatusReady
 	}
-	return s.store.UpdateReview(ctx, id, reviewJSON, status, updatedBy)
+	err = s.store.UpdateReview(ctx, id, reviewJSON, status, updatedBy, workerReviewFrom)
+	if errors.Is(err, domainerr.ErrConflict) {
+		// An admin claimed the review before the worker finished mapping —
+		// their edit wins; the worker's write is dropped, not failed.
+		return nil
+	}
+	return err
 }
 
 // Sentinels wrapping the OCR text so the model treats it strictly as data.
@@ -732,6 +831,14 @@ const (
 	ocrTextBegin = "<<<OCR_TEXT_BEGIN>>>"
 	ocrTextEnd   = "<<<OCR_TEXT_END>>>"
 )
+
+// ocrSentinelStripper removes the fence markers from untrusted OCR text so
+// a scan containing them cannot break out of the delimited prompt block.
+var ocrSentinelStripper = strings.NewReplacer(ocrTextBegin, "", ocrTextEnd, "")
+
+func stripOcrSentinels(s string) string {
+	return ocrSentinelStripper.Replace(s)
+}
 
 func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimport.RecipeDraft, error) {
 	if s.ollama == nil {
@@ -753,7 +860,7 @@ func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimpo
 		"If the source text contains profanity or hateful language, set profanityDetected to true and explain in profanityReason.\n\n" +
 		"JSON Schema:\n" + string(schemaJSON)
 
-	userPrompt := "OCR text:\n" + ocrTextBegin + "\n" + ocrText + "\n" + ocrTextEnd
+	userPrompt := "OCR text:\n" + ocrTextBegin + "\n" + stripOcrSentinels(ocrText) + "\n" + ocrTextEnd
 
 	resp, err := s.ollama.Chat(ctx, llm.Request{
 		Messages: []llm.Message{
@@ -780,6 +887,11 @@ func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimpo
 	// leading quantity inside the ingredient text — split it deterministically.
 	for i := range draft.Items {
 		ocrimport.FillMissingQuantity(&draft.Items[i])
+	}
+	// The fill can introduce a quantity the first validation pass never saw
+	// — re-check so a pathological extracted value still trips the bounds.
+	if vErr := ocrimport.ValidateDraft(&draft); vErr != nil {
+		return nil, fmt.Errorf("validate draft: %w", vErr)
 	}
 
 	// Second opinion: if the OCR text itself was clean but the LLM produced
@@ -814,6 +926,9 @@ func (s *Service) structuredDraft(ctx context.Context, ocrText string) (*ocrimpo
 // exit or ctx to expire.
 func (s *Service) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() {
+		s.submitMu.Lock()
+		s.closed = true
+		s.submitMu.Unlock()
 		close(s.shutdown)
 		s.lifetimeCancel()
 	})

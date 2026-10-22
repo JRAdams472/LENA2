@@ -52,10 +52,12 @@ type Querier interface {
 	// the BFF passes these IDs into the recipe query).
 	ListFavoriteRecipeIDs(ctx context.Context, userID int64) ([]int64, error)
 	// Plain recency paging for internal consumers; ranked listing goes through
-	// SearchHouseholdBottles.
+	// SearchHouseholdBottles. household_bottle_id breaks updated_at ties so
+	// paginated scans are stable.
 	ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error)
 	// Plain recency paging for internal consumers (pantry stock scans); ranked
-	// listing goes through SearchHouseholdItems.
+	// listing goes through SearchHouseholdItems. household_item_id breaks
+	// updated_at ties so paginated scans are stable.
 	ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error)
 	ListRecipeFavorites(ctx context.Context, arg ListRecipeFavoritesParams) ([]UserprefsUserRecipePreference, error)
 	// ---------- member allergy / dietary records ----------

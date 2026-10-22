@@ -588,7 +588,7 @@ const listHouseholdBottles = `-- name: ListHouseholdBottles :many
 SELECT household_bottle_id, bottle_id, bottle_number, quantity, purchase_at, purchase_price, storage_temp, location, notes, created_by, created_at, updated_by, updated_at, household_id
 FROM userprefs.household_bottle
 WHERE household_id = $1
-ORDER BY updated_at DESC NULLS LAST
+ORDER BY updated_at DESC NULLS LAST, household_bottle_id
 LIMIT $2 OFFSET $3
 `
 
@@ -599,7 +599,8 @@ type ListHouseholdBottlesParams struct {
 }
 
 // Plain recency paging for internal consumers; ranked listing goes through
-// SearchHouseholdBottles.
+// SearchHouseholdBottles. household_bottle_id breaks updated_at ties so
+// paginated scans are stable.
 func (q *Queries) ListHouseholdBottles(ctx context.Context, arg ListHouseholdBottlesParams) ([]UserprefsHouseholdBottle, error) {
 	rows, err := q.db.Query(ctx, listHouseholdBottles, arg.HouseholdID, arg.Limit, arg.Offset)
 	if err != nil {
@@ -639,7 +640,7 @@ const listHouseholdItems = `-- name: ListHouseholdItems :many
 SELECT household_item_id, item_id, current_qty, min_qty, purchase_at, expires_at, notes, created_by, created_at, updated_by, updated_at, household_id
 FROM userprefs.household_item
 WHERE household_id = $1
-ORDER BY updated_at DESC NULLS LAST
+ORDER BY updated_at DESC NULLS LAST, household_item_id
 LIMIT $2 OFFSET $3
 `
 
@@ -650,7 +651,8 @@ type ListHouseholdItemsParams struct {
 }
 
 // Plain recency paging for internal consumers (pantry stock scans); ranked
-// listing goes through SearchHouseholdItems.
+// listing goes through SearchHouseholdItems. household_item_id breaks
+// updated_at ties so paginated scans are stable.
 func (q *Queries) ListHouseholdItems(ctx context.Context, arg ListHouseholdItemsParams) ([]UserprefsHouseholdItem, error) {
 	rows, err := q.db.Query(ctx, listHouseholdItems, arg.HouseholdID, arg.Limit, arg.Offset)
 	if err != nil {

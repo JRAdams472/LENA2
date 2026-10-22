@@ -19,7 +19,7 @@ type Querier interface {
 	ListRecipeImportsByStatuses(ctx context.Context, arg ListRecipeImportsByStatusesParams) ([]RecipeRecipeImport, error)
 	MarkRecipeImportFailed(ctx context.Context, arg MarkRecipeImportFailedParams) (int64, error)
 	MarkRecipeImportProfanity(ctx context.Context, arg MarkRecipeImportProfanityParams) (int64, error)
-	ResetProcessingRecipeImports(ctx context.Context) error
+	ResetProcessingRecipeImports(ctx context.Context, secs float64) error
 	SetRecipeImportPending(ctx context.Context, arg SetRecipeImportPendingParams) (int64, error)
 	SetRecipeImportPersisted(ctx context.Context, arg SetRecipeImportPersistedParams) (int64, error)
 	SetRecipeImportRejected(ctx context.Context, arg SetRecipeImportRejectedParams) (int64, error)

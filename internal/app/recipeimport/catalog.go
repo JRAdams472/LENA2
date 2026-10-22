@@ -16,6 +16,7 @@ type InventoryReader interface {
 	ListIngredients(ctx context.Context, limit, offset int32) ([]inventory.Ingredient, error)
 	CountIngredients(ctx context.Context) (int64, error)
 	GetItemByID(ctx context.Context, itemID int64) (inventory.Item, error)
+	GetIngredientByID(ctx context.Context, ingredientID int64) (inventory.Ingredient, error)
 	GetUnitByID(ctx context.Context, unitID int64) (inventory.Unit, error)
 	GetUnitByName(ctx context.Context, name string) (inventory.Unit, error)
 }
