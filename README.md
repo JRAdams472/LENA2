@@ -82,7 +82,7 @@ The web client (`clients/web`) serves two surfaces: a **public site** at `/` —
 
 ### Wine cellar
 
-- `/wine/bottles` — bottles in the cellar.
+- `/wine/bottles` — bottles in the cellar: members see household quantity and storage location per bottle and can add bottles to the cellar; admins manage the catalog (vintage, country, region, type pickers).
 - `/wine/countries`, `/wine/regions`, `/wine/types`, `/wine/vintages`, `/wine/grape-varieties`, `/wine/wine-flavor-profiles` — reference data (admin only).
 
 ### Administration
@@ -334,7 +334,7 @@ PNGs land in `clients/mobile/mobile-shots/` when the walk completes.
 - **Event snapshots** — linking a recipe to an event copies its steps and ingredients into the slot; edits inside the event never modify the shared recipe, and `syncEventRecipe` re-copies on demand.
 - **UPC lookup** — mobile and web can query `itemByUpc` to find an item by UPC before adding it to pantry.
 - **Item submission** — non-admin users can `submitItem` for items not yet in the catalog. Submitted items are visible only to their creator until an admin approves them.
-- **Grocery sync** — checking a grocery item off can increase `inventory.user_item` stock by the quantity needed; unchecking decreases it.
+- **Grocery sync** — checking a grocery item off can increase `userprefs.household_item` stock by the quantity needed; unchecking decreases it.
 - **Ingredients vs items** — recipes, meal slots, grocery lines, and import reviews reference generic `inventory.ingredient` rows ("corn"); `item_id` is an optional preferred brand. Stock rollups and check-offs resolve ingredient→brand via the catalog link (`item.ingredient_id`), a per-household override, and a remembered "usual brand" (`household_ingredient_item`) — the first check-off of an ingredient line asks which brand you bought and remembers it. Unlinked items still work as pantry inventory, they just don't satisfy ingredient-level rollups. See `docs/ingredient-layer-plan.md`.
 - **Rotating sessions** — provider credentials exchange for a LENA session (short-lived `iss=lena` access token + ~30-day rotating refresh token); replaying a rotated token revokes the whole family.
 - **Nonce CSP** — the web tier issues a per-request Content-Security-Policy nonce (`clients/web/proxy.ts`): `script-src 'self' 'nonce-…' 'strict-dynamic'` with no `unsafe-inline`; `style-src` keeps `unsafe-inline` for Emotion/MUI. Caddy carries every other security header (XFO, XCTO, Referrer-Policy, Permissions-Policy, HSTS).

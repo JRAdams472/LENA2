@@ -16,6 +16,7 @@ The feature is off by default. Set the environment variables in your `.env` file
 # OCR
 LENA_OCR_SERVICE_URL=http://ocr:8000   # empty = feature disabled
 LENA_OCR_CONFIDENCE_THRESHOLD=50
+LENA_OCR_TIMEOUT=20s                   # cap on each api→ocr call
 
 # Ollama
 LENA_OLLAMA_URL=http://ollama:11434    # empty = feature disabled
@@ -42,6 +43,17 @@ docker compose -f docker-compose.yml -f docker-compose.import.yml --profile impo
 This starts `ollama`, `ollama-pull` (one-shot model download), and the `ocr` service. The core LENA2 stack runs without these services; the `api` starts and remains healthy when OCR or Ollama are not configured.
 
 `docker-compose.import.yml` exposes `ocr` on `127.0.0.1:${LENA_OCR_HOST_PORT:-8000}` and `ollama` on `127.0.0.1:${LENA_OLLAMA_HOST_PORT:-11434}`. If you already have Ollama running locally on port `11434`, set `LENA_OLLAMA_HOST_PORT` to another port (e.g. `11435`) in `.env` and point `LENA_OLLAMA_URL` at `http://localhost:11435`.
+
+The OCR sidecar bounds untrusted uploads; these are set on the `ocr` container (defaults in `tools/ocr/app.py`):
+
+```env
+OCR_MAX_UPLOAD_BYTES=26214400   # reject bodies over 25 MiB (streamed, early 413)
+OCR_MAX_PDF_PAGES=20            # reject PDFs over 20 pages
+OCR_MAX_IMAGE_PIXELS=40000000   # Pillow decompression-bomb ceiling
+OCR_MAX_RASTER_DIM=6324         # pdf2image scales each page inside this square (dpi=300)
+```
+
+`psm` is validated to 0–13 per request; oversized pages are scaled down rather than rejected.
 
 ---
 

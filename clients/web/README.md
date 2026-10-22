@@ -34,8 +34,9 @@ A Next.js (App Router) TypeScript frontend for LENA.
    routes `/graphql` and `/auth/*` to the API). Point it at the API host
    only when running the dev server without the compose stack.
 
-   `NEXT_PUBLIC_GOOGLE_CLIENT_ID` must be the same client ID the API trusts
-   in `LENA_AUTH_AUDIENCES`. See
+   `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is optional — when unset the app still
+   builds and runs, the Google button just doesn't render. When set, it
+   must be the same client ID the API trusts in `LENA_AUTH_AUDIENCES`. See
    [docs/google-oauth-client-id.md](../../docs/google-oauth-client-id.md) for
    creating the client ID and adding authorized JavaScript origins.
 
