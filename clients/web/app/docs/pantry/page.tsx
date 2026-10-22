@@ -40,33 +40,35 @@ export default function Page() {
         <Screenshot src={"/images/inventory-food-flavors.png"} alt={"Web — Food Flavors on an item or ingredient"} device="web" />
         <P>{<Fragment key={25}>{"Recipes reference catalog items as ingredients, which is why the catalog matters — the richer it is, the better your grocery lists and recommendations get."}</Fragment>}</P>
         <P>{<Fragment key={26}>{"The "}<strong key={0}>{"Items"}</strong>{" grid shows each product's linked ingredient, and the item edit dialog carries two ingredient fields — "}<strong key={1}>{"Catalog ingredient"}</strong>{" (admin, shared) and "}<strong key={2}>{"Household ingredient"}</strong>{" (your household's private override). See "}<DocLink key={3} href="/docs/ingredients">{"Ingredients"}</DocLink>{" for how generic ingredients, usual brands, and overrides fit together."}</Fragment>}</P>
+        <P>{<Fragment key={27}>{"The dialog picks "}<strong key={0}>{"Brand"}</strong>{" and "}<strong key={1}>{"Category"}</strong>{" from the catalogs rather than raw IDs, and pantry fields use preserve-or-clear semantics: fields you don't touch keep their values, so a quantity-only edit never wipes a purchase date, expiry, minimum, or notes:"}</Fragment>}</P>
+        <Screenshot src={"/images/inventory-item-edit.png"} alt={"Web — the item edit dialog with brand and category pickers"} device="web" />
       </Section>
       <Section title={"Your pantry stock"}>
-        <P>{<Fragment key={27}>{"The pantry ("}<code key={0}>{"userItems"}</code>{" in the data model) tracks what you actually have — browsable on mobile under the "}<DocLink key={1} href="/docs/mobile-pantry">{"Pantry tab"}</DocLink>{":"}</Fragment>}</P>
+        <P>{<Fragment key={28}>{"The pantry ("}<code key={0}>{"userItems"}</code>{" in the data model) tracks what you actually have — browsable on mobile under the "}<DocLink key={1} href="/docs/mobile-pantry">{"Pantry tab"}</DocLink>{":"}</Fragment>}</P>
         <DocList items={[
-          <Fragment key={28}><strong key={0}>{"Current quantity"}</strong>{" — the number your grocery lists subtract from recipe needs"}</Fragment>,
-          <Fragment key={29}><strong key={0}>{"Minimum quantity"}</strong>{" — your \"don't run out\" threshold on staples (flour, oil, coffee). Set it on the web Items page; when stock falls to or below it, the item surfaces under "}<strong key={1}>{"Time to restock"}</strong>{" on the Dashboard and on your grocery list (see "}<DocLink key={2} href="/docs/analytics">{"Analytics & Recommendations"}</DocLink>{")"}</Fragment>,
-          <Fragment key={30}><strong key={0}>{"Expiry date"}</strong>{" — set it on the web Items page and LENA sends an "}<em key={1}>{"expiring soon"}</em>{" reminder a few days ahead, with an "}<strong key={2}>{"Add to list"}</strong>{" action to restock (see "}<DocLink key={3} href="/docs/dashboard">{"Notifications"}</DocLink>{")"}</Fragment>,
-          <Fragment key={31}><strong key={0}>{"Notes"}</strong></Fragment>,
+          <Fragment key={29}><strong key={0}>{"Current quantity"}</strong>{" — the number your grocery lists subtract from recipe needs"}</Fragment>,
+          <Fragment key={30}><strong key={0}>{"Minimum quantity"}</strong>{" — your \"don't run out\" threshold on staples (flour, oil, coffee). Set it on the web Items page; when stock falls to or below it, the item surfaces under "}<strong key={1}>{"Time to restock"}</strong>{" on the Dashboard and on your grocery list (see "}<DocLink key={2} href="/docs/analytics">{"Analytics & Recommendations"}</DocLink>{")"}</Fragment>,
+          <Fragment key={31}><strong key={0}>{"Expiry date"}</strong>{" — set it on the web Items page and LENA sends an "}<em key={1}>{"expiring soon"}</em>{" reminder a few days ahead, with an "}<strong key={2}>{"Add to list"}</strong>{" action to restock (see "}<DocLink key={3} href="/docs/dashboard">{"Notifications"}</DocLink>{")"}</Fragment>,
+          <Fragment key={32}><strong key={0}>{"Notes"}</strong></Fragment>,
         ]} />
-        <P>{<Fragment key={32}>{"Keeping counts honest matters more than the exact numbers: a grocery list generated tomorrow subtracts whatever the pantry says you have, so stale counts mean buying duplicates — or missing something entirely."}</Fragment>}</P>
+        <P>{<Fragment key={33}>{"Keeping counts honest matters more than the exact numbers: a grocery list generated tomorrow subtracts whatever the pantry says you have, so stale counts mean buying duplicates — or missing something entirely."}</Fragment>}</P>
       </Section>
       <Section title={"Scanning: the fast way to keep counts honest"}>
-        <P>{<Fragment key={33}>{"The mobile app's "}<strong key={0}>{"Scan"}</strong>{" tab is built for this — see "}<DocLink key={1} href="/docs/mobile-scanning">{"Barcode Scanning"}</DocLink>{" for the full flow, and "}<DocLink key={2} href="/docs/mobile-pantry">{"Pantry on Mobile"}</DocLink>{" for the stock list:"}</Fragment>}</P>
+        <P>{<Fragment key={34}>{"The mobile app's "}<strong key={0}>{"Scan"}</strong>{" tab is built for this — see "}<DocLink key={1} href="/docs/mobile-scanning">{"Barcode Scanning"}</DocLink>{" for the full flow, and "}<DocLink key={2} href="/docs/mobile-pantry">{"Pantry on Mobile"}</DocLink>{" for the stock list:"}</Fragment>}</P>
         <DocList items={[
-          <Fragment key={34}><strong key={0}>{"Scan a barcode of something you bought"}</strong>{" → LENA finds the catalog item by UPC → add quantity to pantry."}</Fragment>,
-          <Fragment key={35}><strong key={0}>{"Scan it again when you use it up"}</strong>{" → subtract from pantry."}</Fragment>,
+          <Fragment key={35}><strong key={0}>{"Scan a barcode of something you bought"}</strong>{" → LENA finds the catalog item by UPC → add quantity to pantry."}</Fragment>,
+          <Fragment key={36}><strong key={0}>{"Scan it again when you use it up"}</strong>{" → subtract from pantry."}</Fragment>,
         ]} />
-        <P>{<Fragment key={36}>{"If the barcode is unknown, LENA offers to "}<strong key={0}>{"submit the item"}</strong>{" — fill in its name and details, and it enters a review queue ("}<strong key={1}>{"Pending Items"}</strong>{", admin-only on the web) before joining the catalog."}</Fragment>}</P>
+        <P>{<Fragment key={37}>{"If the barcode is unknown, LENA offers to "}<strong key={0}>{"submit the item"}</strong>{" — fill in its name and details, and it enters a review queue ("}<strong key={1}>{"Pending Items"}</strong>{", admin-only on the web) before joining the catalog."}</Fragment>}</P>
       </Section>
       <Section title={"Approving new items (web, admins)"}>
-        <P>{<Fragment key={37}>{"Submitted items land on "}<strong key={0}>{"Pending Items"}</strong>{" (admin-only, under "}<strong key={1}>{"Administration"}</strong>{" in the sidebar) where an admin approves or rejects them — this keeps the shared catalog clean while letting anyone contribute via the scanner."}</Fragment>}</P>
+        <P>{<Fragment key={38}>{"Submitted items land on "}<strong key={0}>{"Pending Items"}</strong>{" (admin-only, under "}<strong key={1}>{"Administration"}</strong>{" in the sidebar) where an admin approves or rejects them — this keeps the shared catalog clean while letting anyone contribute via the scanner."}</Fragment>}</P>
         <Screenshot src={"/images/items-pending.png"} alt={"Web — the Pending Items review queue"} device="web" />
       </Section>
       <Section title={"Why it matters"}>
         <DocList items={[
-          <Fragment key={38}>{"Grocery lists subtract what you already have — accurate counts mean fewer duplicate purchases"}</Fragment>,
-          <Fragment key={39}>{"Item records power recipe ingredients, barcode lookups, and nutrition tracking"}</Fragment>,
+          <Fragment key={39}>{"Grocery lists subtract what you already have — accurate counts mean fewer duplicate purchases"}</Fragment>,
+          <Fragment key={40}>{"Item records power recipe ingredients, barcode lookups, and nutrition tracking"}</Fragment>,
         ]} />
       </Section>
     </DocPage>
