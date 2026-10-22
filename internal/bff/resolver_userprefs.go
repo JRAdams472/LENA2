@@ -16,9 +16,10 @@ import (
 // isFavorite flag stays per-user: favorites were split out of the shared
 // holding table so household members keep personal favorites.
 func (r *Resolver) UserBottles(ctx context.Context, args struct {
-	Page     int32
-	PageSize int32
-	Search   *string
+	Page      int32
+	PageSize  int32
+	Search    *string
+	BottleIDs *[]graphql.ID
 }) (*userBottlePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -26,6 +27,15 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
 	var includeIDs []int64
+	scoped := false
+	scopeBy := func(ids []int64) {
+		if !scoped {
+			includeIDs = ids
+			scoped = true
+			return
+		}
+		includeIDs = intersectIDs(includeIDs, ids)
+	}
 	if term := strings.TrimSpace(derefString(args.Search)); term != "" {
 		// The cellar schema cannot join wine — resolve the term to catalog
 		// bottle IDs here and scope the holding query by them.
@@ -33,6 +43,14 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 		if err != nil {
 			return nil, err
 		}
+		scoped = true
+	}
+	if args.BottleIDs != nil {
+		ids, err := parseIDs(*args.BottleIDs)
+		if err != nil {
+			return nil, err
+		}
+		scopeBy(ids)
 	}
 	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityBottle)
 	if err != nil {
@@ -177,19 +195,18 @@ func (r *Resolver) UserItems(ctx context.Context, args struct {
 	return &userItemPageResolver{inv: r.InventoryService, items: items, favorites: favorites, itemsByID: itemsByID, ch: ch, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
 }
 
-// AdjustUserItem updates the quantity and purchase date of the household's
-// pantry item.
+// AdjustUserItem updates the quantity and detail fields of the household's
+// pantry item. The nullable args decode three states through graphql-go's
+// Null types: omitted preserves the stored value, explicit null clears it,
+// a value sets it — a plain quantity adjustment never wipes the other
+// fields, and an edit can clear them on purpose.
 func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	ItemID     graphql.ID
 	Quantity   float64
-	PurchaseAt *graphql.Time
-	// ExpiresAt is set-only: omitted preserves the current expiry, so a
-	// plain quantity adjustment never wipes it.
-	ExpiresAt *graphql.Time
-	// MinQty is set-only like ExpiresAt: omitted preserves the stored
-	// minimum. A null in the schema isn't distinguishable from "not
-	// provided" here, so clearing a minimum isn't supported.
-	MinQty *float64
+	PurchaseAt graphql.NullTime
+	ExpiresAt  graphql.NullTime
+	MinQty     graphql.NullFloat
+	Notes      graphql.NullString
 }) (*userItemResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -198,7 +215,7 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 	if args.Quantity < 0 {
 		return nil, badInputf("quantity cannot be negative")
 	}
-	if args.MinQty != nil && *args.MinQty < 0 {
+	if args.MinQty.Set && args.MinQty.Value != nil && *args.MinQty.Value < 0 {
 		return nil, badInputf("minQuantity cannot be negative")
 	}
 	itemID, err := parseID(string(args.ItemID))
@@ -210,22 +227,31 @@ func (r *Resolver) AdjustUserItem(ctx context.Context, args struct {
 		return nil, err
 	}
 	var minQty *float64
-	var expiresAt *time.Time
+	var expiresAt, purchaseAt *time.Time
 	notes := ""
 	if existing != nil {
 		minQty = existing.MinQty
 		expiresAt = existing.ExpiresAt
+		purchaseAt = existing.PurchaseAt
 		notes = existing.Notes
 	}
-	if args.ExpiresAt != nil {
-		expiresAt = &args.ExpiresAt.Time
+	if args.ExpiresAt.Set {
+		expiresAt = nil
+		if args.ExpiresAt.Value != nil {
+			expiresAt = &args.ExpiresAt.Value.Time
+		}
 	}
-	if args.MinQty != nil {
-		minQty = args.MinQty
+	if args.PurchaseAt.Set {
+		purchaseAt = nil
+		if args.PurchaseAt.Value != nil {
+			purchaseAt = &args.PurchaseAt.Value.Time
+		}
 	}
-	var purchaseAt *time.Time
-	if args.PurchaseAt != nil {
-		purchaseAt = &args.PurchaseAt.Time
+	if args.MinQty.Set {
+		minQty = args.MinQty.Value
+	}
+	if args.Notes.Set {
+		notes = derefString(args.Notes.Value)
 	}
 	updated, err := r.UserPrefsService.UpsertHouseholdItem(ctx, userprefs.HouseholdItem{
 		HouseholdID: u.HouseholdID,
@@ -475,6 +501,104 @@ func (r *Resolver) SetBottleFavorite(ctx context.Context, args struct {
 		return nil, err
 	}
 	return &userBottleResolver{wine: r.WineService, bottle: *bottle, isFavorite: args.IsFavorite}, nil
+}
+
+// updateUserBottleInput carries the cellar fields for UpdateUserBottle.
+// Nullable fields decode three states via the Null wrappers: omitted
+// preserves the stored value, explicit null clears it, a value sets it.
+type updateUserBottleInput struct {
+	Quantity      graphql.NullInt
+	BottleNumber  graphql.NullInt
+	PurchaseAt    graphql.NullTime
+	PurchasePrice graphql.NullFloat
+	StorageTemp   graphql.NullFloat
+	Location      graphql.NullString
+	Notes         graphql.NullString
+}
+
+// UpdateUserBottle writes the household's cellar fields for a bottle —
+// quantity, bottle number, purchase data, storage, location, notes — in
+// one upsert. A bottle with no holding gets one (that's the cellar's
+// "add bottle" path).
+func (r *Resolver) UpdateUserBottle(ctx context.Context, args struct {
+	BottleID graphql.ID
+	Input    updateUserBottleInput
+}) (*userBottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(args.BottleID))
+	if err != nil {
+		return nil, err
+	}
+	if args.Input.Quantity.Set && args.Input.Quantity.Value == nil {
+		return nil, badInputf("quantity cannot be null")
+	}
+	if args.Input.Quantity.Set && *args.Input.Quantity.Value < 0 {
+		return nil, badInputf("quantity cannot be negative")
+	}
+	existing, err := findHouseholdBottle(ctx, r.UserPrefsService, u.HouseholdID, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	var bottleNum *int32
+	var purchaseAt *time.Time
+	var purchasePrice, storageTemp *float64
+	quantity := int32(0)
+	location, notes := "", ""
+	if existing != nil {
+		bottleNum = existing.BottleNumber
+		quantity = existing.Quantity
+		purchaseAt = existing.PurchaseAt
+		purchasePrice = existing.PurchasePrice
+		storageTemp = existing.StorageTemp
+		location = existing.Location
+		notes = existing.Notes
+	}
+	if args.Input.Quantity.Set {
+		quantity = *args.Input.Quantity.Value
+	}
+	if args.Input.BottleNumber.Set {
+		bottleNum = args.Input.BottleNumber.Value
+	}
+	if args.Input.PurchaseAt.Set {
+		purchaseAt = nil
+		if args.Input.PurchaseAt.Value != nil {
+			purchaseAt = &args.Input.PurchaseAt.Value.Time
+		}
+	}
+	if args.Input.PurchasePrice.Set {
+		purchasePrice = args.Input.PurchasePrice.Value
+	}
+	if args.Input.StorageTemp.Set {
+		storageTemp = args.Input.StorageTemp.Value
+	}
+	if args.Input.Location.Set {
+		location = derefString(args.Input.Location.Value)
+	}
+	if args.Input.Notes.Set {
+		notes = derefString(args.Input.Notes.Value)
+	}
+	updated, err := r.UserPrefsService.UpsertHouseholdBottle(ctx, userprefs.HouseholdBottle{
+		HouseholdID:   u.HouseholdID,
+		BottleID:      bottleID,
+		BottleNumber:  bottleNum,
+		Quantity:      quantity,
+		PurchaseAt:    purchaseAt,
+		PurchasePrice: purchasePrice,
+		StorageTemp:   storageTemp,
+		Location:      location,
+		Notes:         notes,
+	}, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	isFav, err := r.UserPrefsService.GetBottleFavorite(ctx, u.UserID, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	return &userBottleResolver{wine: r.WineService, bottle: updated, isFavorite: isFav}, nil
 }
 
 func findHouseholdItem(ctx context.Context, svc UserPrefsService, householdID, itemID int64) (*userprefs.HouseholdItem, error) {

@@ -172,6 +172,9 @@ export interface Item extends AuditableEntity {
   itemID: number;
   name: string;
   brand: string | null;
+  // The brand's catalog ID — needed to round-trip the picker on edits
+  // (brand alone is name-only).
+  brandID: number | null;
   upc12: string | null;
   upc14: string | null;
   categoryID: number;

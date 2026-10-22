@@ -295,9 +295,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
-    // isRestoring initialized true only when this condition is false, so
-    // the early return never needs to clear it.
-    if (tokenStore.getSnapshot() || !hasSessionHint()) return;
+    // Hydration ran the isRestoring initializer off the null server
+    // snapshot, so it can still be true here even when a real token is
+    // already in storage — clear it rather than restoring forever.
+    if (tokenStore.getSnapshot() || !hasSessionHint()) {
+      setIsRestoring(false);
+      return;
+    }
     void refreshSessionNow().then((ok) => {
       if (!ok) setSessionHint(false);
       setIsRestoring(false);

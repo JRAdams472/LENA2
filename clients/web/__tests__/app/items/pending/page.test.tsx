@@ -42,6 +42,7 @@ const baseItem: Item = {
   itemID: 1,
   name: "Pending Milk",
   brand: brand.brandName,
+  brandID: brand.brandID,
   upc12: "123456789012",
   upc14: null,
   categoryID: category.categoryID,

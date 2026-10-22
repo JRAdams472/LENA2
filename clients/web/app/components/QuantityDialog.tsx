@@ -42,13 +42,15 @@ export default function QuantityDialog({
     source.min !== min
   ) {
     setSource({ open, initialValue, min });
-    if (open) setQty(String(Math.max(min, Math.floor(initialValue))));
+    if (open) setQty(String(Math.max(min, initialValue)));
   }
 
-  const value = Number.parseInt(qty, 10);
+  const value = Number.parseFloat(qty);
   const valid = !Number.isNaN(value) && value >= min;
   const bump = (delta: number) =>
-    setQty(String(Math.max(min, (Number.isNaN(value) ? 0 : value) + delta)));
+    setQty(
+      String(Math.max(min, Number.isNaN(value) ? 0 : Math.round((value + delta) * 100) / 100))
+    );
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -60,12 +62,14 @@ export default function QuantityDialog({
             fullWidth
             autoFocus
             value={qty}
-            onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) =>
+              setQty(e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1"))
+            }
             onKeyDown={(e) => {
               if (e.key === "ArrowUp") bump(1);
               if (e.key === "ArrowDown") bump(-1);
             }}
-            slotProps={{ htmlInput: { inputMode: "numeric" } }}
+            slotProps={{ htmlInput: { inputMode: "decimal" } }}
           />
           <Box sx={{ display: "flex", flexDirection: "column" }}>
             <IconButton

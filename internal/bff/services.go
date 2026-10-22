@@ -234,6 +234,7 @@ type MealPlanReader interface {
 	ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error)
 	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error)
+	GetMealSlotByID(ctx context.Context, slotID, householdID int64) (mealplan.MealSlot, error)
 	ListMealSlotsByPlans(ctx context.Context, mealPlanIDs []int64, householdID int64) ([]mealplan.MealSlot, error)
 	ListMealSlotItems(ctx context.Context, slotID, householdID int64) ([]mealplan.MealSlotItem, error)
 	ListMealSlotItemsByPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlotItem, error)
@@ -247,6 +248,7 @@ type MealPlanWriter interface {
 	UpdateMealPlan(ctx context.Context, mealPlanID, householdID int64, arg mealplan.MealPlan, by string) error
 	DeleteMealPlan(ctx context.Context, mealPlanID, householdID int64) error
 	AddMealSlot(ctx context.Context, arg mealplan.MealSlot, householdID int64, by string) (mealplan.MealSlot, error)
+	UpdateMealSlot(ctx context.Context, slotID, householdID int64, arg mealplan.MealSlot, by string) error
 	DeleteMealSlot(ctx context.Context, slotID, householdID int64) error
 	AddMealSlotItem(ctx context.Context, arg mealplan.MealSlotItem, householdID int64, by string) (mealplan.MealSlotItem, error)
 	DeleteMealSlotItem(ctx context.Context, slotItemID, householdID int64) error

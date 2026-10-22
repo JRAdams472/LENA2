@@ -115,6 +115,21 @@ describe("items page", () => {
           })
         );
       }
+      if (body.query.includes("categories")) {
+        return Promise.resolve(
+          gql({
+            categories: [
+              {
+                id: "3",
+                name: "Dairy",
+                description: null,
+                isActive: true,
+                isProtein: false,
+              },
+            ],
+          })
+        );
+      }
       return Promise.resolve(
         gql({
           searchBrands: [{ id: "2", name: "DairyCo" }],
@@ -146,11 +161,16 @@ describe("items page", () => {
     await waitFor(() => screen.getByText("Milk"));
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Butter" } });
-    fireEvent.change(screen.getByLabelText("Category ID"), { target: { value: "3" } });
+    fireEvent.mouseDown(
+      await screen.findByRole("combobox", { name: "Category" })
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Dairy" }));
     fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "lb" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(getBodies().some((b) => b.query.includes("createItem"))).toBe(true);
+      const call = getBodies().find((b) => b.query.includes("createItem"));
+      expect(call?.variables.input.categoryId).toBe("3");
+      expect(call?.variables.input.name).toBe("Butter");
     });
   });
 

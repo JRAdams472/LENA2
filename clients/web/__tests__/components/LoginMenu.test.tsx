@@ -18,6 +18,7 @@ jest.mock("../../app/auth/AuthProvider", () => ({
 const mockEnabledProviders = jest.fn(() => [] as string[]);
 jest.mock("../../lib/oauth", () => ({
   enabledProviders: () => mockEnabledProviders(),
+  googleOAuthConfigured: () => true,
   startOAuthSignIn: jest.fn(() => Promise.resolve()),
 }));
 
@@ -53,6 +54,14 @@ describe("login menu", () => {
   it("does not redirect a member who was already signed in on mount", () => {
     mockUseAuth.mockReturnValue({ isAuthenticated: true, isRestoring: false });
     render(<LoginMenu />);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect when a restoring session resolves", () => {
+    mockUseAuth.mockReturnValue({ isAuthenticated: false, isRestoring: true });
+    const { rerender } = render(<LoginMenu />);
+    mockUseAuth.mockReturnValue({ isAuthenticated: true, isRestoring: false });
+    rerender(<LoginMenu />);
     expect(mockReplace).not.toHaveBeenCalled();
   });
 });

@@ -359,6 +359,140 @@ func TestResolver_MealPlan_RemoveMealSlotItem_Happy(t *testing.T) {
 	assert.True(t, ok)
 }
 
+// H5: UpdateMealSlot edits the slot row in place and diffs the item set
+// inside the transaction — an unchanged is_from_recipe row keeps its
+// slot_item_id, a removed row is deleted, a new row is inserted. The old
+// client-side delete-then-recreate lost the slot identity and every item
+// row on every edit.
+func TestResolver_MealPlan_UpdateMealSlot_ItemsDiff(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mp := mock.NewMockMealPlanService(ctrl)
+	inv := mock.NewMockInventoryService(ctrl)
+	r := &Resolver{MealPlanService: mp, InventoryService: inv}
+
+	existingSlot := mealplan.MealSlot{
+		SlotID: 100, MealPlanID: 10, DayOfWeek: 1, MealType: "dinner",
+		RecipeID: mealPlanPtrInt64(20), Servings: mealPlanPtrInt32(2), ReplacementNote: "note",
+	}
+	updatedSlot := existingSlot
+	updatedSlot.MealType = "lunch"
+
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(existingSlot, nil)
+	// Omitted fields preserve: only mealType changes.
+	mp.EXPECT().UpdateMealSlot(gomock.Any(), int64(100), mealPlanUserID, mealplan.MealSlot{
+		DayOfWeek: 1, MealType: "lunch",
+		RecipeID: mealPlanPtrInt64(20), Servings: mealPlanPtrInt32(2), ReplacementNote: "note",
+	}, mealPlanEmail).Return(nil)
+
+	inv.EXPECT().ResolveItemIngredient(gomock.Any(), mealPlanUserID, int64(50)).Return(nil, nil)
+	inv.EXPECT().ResolveItemIngredient(gomock.Any(), mealPlanUserID, int64(60)).Return(nil, nil)
+	inv.EXPECT().GetUnitByName(gomock.Any(), "cup").Return(inventory.Unit{UnitID: 3, Name: "cup"}, nil).Times(2)
+
+	// Row 1000 matches a desired item exactly — survives untouched.
+	// Row 1001 is absent from the input — deleted.
+	mp.EXPECT().ListMealSlotItems(gomock.Any(), int64(100), mealPlanUserID).Return([]mealplan.MealSlotItem{
+		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1.5, UnitID: 3, IsFromRecipe: true},
+		{SlotItemID: 1001, SlotID: 100, ItemID: mealPlanPtrInt64(51), Quantity: 2, UnitID: 3},
+	}, nil)
+	mp.EXPECT().DeleteMealSlotItem(gomock.Any(), int64(1001), mealPlanUserID).Return(nil)
+	mp.EXPECT().AddMealSlotItem(gomock.Any(), gomock.Eq(mealplan.MealSlotItem{
+		SlotID: 100, ItemID: mealPlanPtrInt64(60), Quantity: 4, UnitID: 3,
+	}), mealPlanUserID, mealPlanEmail).Return(mealplan.MealSlotItem{SlotItemID: 1002, SlotID: 100}, nil)
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(updatedSlot, nil)
+
+	items := []updateMealSlotItemInput{
+		{ItemID: mealPlanPtrGID("50"), Quantity: 1.5, Unit: "cup", IsFromRecipe: mealPlanPtrBool(true)},
+		{ItemID: mealPlanPtrGID("60"), Quantity: 4, Unit: "cup"},
+	}
+	mealType := "lunch"
+	res, err := r.UpdateMealSlot(mealPlanCtx(), struct {
+		SlotID graphql.ID
+		Input  updateMealSlotInput
+	}{
+		SlotID: "100",
+		Input:  updateMealSlotInput{MealType: &mealType, Items: &items},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("100"), res.ID())
+	assert.Equal(t, "lunch", res.MealType())
+}
+
+// Omitted items leave the set alone; a present-but-empty list clears it.
+func TestResolver_MealPlan_UpdateMealSlot_ItemsOmittedVsEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{MealPlanService: mp}
+
+	slot := mealplan.MealSlot{SlotID: 100, MealPlanID: 10, DayOfWeek: 1, MealType: "dinner"}
+
+	// Omitted: ListMealSlotItems is never called.
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(slot, nil)
+	mp.EXPECT().UpdateMealSlot(gomock.Any(), int64(100), mealPlanUserID, gomock.Any(), mealPlanEmail).Return(nil)
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(slot, nil)
+
+	res, err := r.UpdateMealSlot(mealPlanCtx(), struct {
+		SlotID graphql.ID
+		Input  updateMealSlotInput
+	}{SlotID: "100", Input: updateMealSlotInput{}})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("100"), res.ID())
+
+	// Empty list: existing rows are deleted, none added.
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(slot, nil)
+	mp.EXPECT().UpdateMealSlot(gomock.Any(), int64(100), mealPlanUserID, gomock.Any(), mealPlanEmail).Return(nil)
+	mp.EXPECT().ListMealSlotItems(gomock.Any(), int64(100), mealPlanUserID).Return([]mealplan.MealSlotItem{
+		{SlotItemID: 1000, SlotID: 100, ItemID: mealPlanPtrInt64(50), Quantity: 1, UnitID: 3},
+	}, nil)
+	mp.EXPECT().DeleteMealSlotItem(gomock.Any(), int64(1000), mealPlanUserID).Return(nil)
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(slot, nil)
+
+	empty := []updateMealSlotItemInput{}
+	res, err = r.UpdateMealSlot(mealPlanCtx(), struct {
+		SlotID graphql.ID
+		Input  updateMealSlotInput
+	}{SlotID: "100", Input: updateMealSlotInput{Items: &empty}})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("100"), res.ID())
+}
+
+// Explicit null clears recipe/servings/replacementNote — the "unassign
+// recipe" path a delete-then-recreate used to smuggle in.
+func TestResolver_MealPlan_UpdateMealSlot_NullClears(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{MealPlanService: mp}
+
+	existing := mealplan.MealSlot{
+		SlotID: 100, MealPlanID: 10, DayOfWeek: 1, MealType: "dinner",
+		RecipeID: mealPlanPtrInt64(20), Servings: mealPlanPtrInt32(2), ReplacementNote: "note",
+	}
+	cleared := existing
+	cleared.RecipeID = nil
+	cleared.Servings = nil
+	cleared.ReplacementNote = ""
+
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(existing, nil)
+	mp.EXPECT().UpdateMealSlot(gomock.Any(), int64(100), mealPlanUserID, mealplan.MealSlot{
+		DayOfWeek: 1, MealType: "dinner",
+	}, mealPlanEmail).Return(nil)
+	mp.EXPECT().GetMealSlotByID(gomock.Any(), int64(100), mealPlanUserID).Return(cleared, nil)
+
+	res, err := r.UpdateMealSlot(mealPlanCtx(), struct {
+		SlotID graphql.ID
+		Input  updateMealSlotInput
+	}{
+		SlotID: "100",
+		Input: updateMealSlotInput{
+			RecipeID:        graphql.NullID{Set: true},
+			Servings:        graphql.NullInt{Set: true},
+			ReplacementNote: graphql.NullString{Set: true},
+		},
+	})
+	require.NoError(t, err)
+	assert.Nil(t, res.slot.RecipeID)
+	assert.Nil(t, res.Servings())
+}
+
 func TestResolver_MealPlan_Unauthorized(t *testing.T) {
 	tests := []struct {
 		name string
@@ -391,6 +525,12 @@ func TestResolver_MealPlan_Unauthorized(t *testing.T) {
 		}},
 		{"RemoveMealSlot", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).RemoveMealSlot(ctx, struct{ SlotID graphql.ID }{SlotID: "100"})
+		}},
+		{"UpdateMealSlot", func(ctx context.Context) (any, error) {
+			return (&Resolver{}).UpdateMealSlot(ctx, struct {
+				SlotID graphql.ID
+				Input  updateMealSlotInput
+			}{SlotID: "100"})
 		}},
 		{"AddMealSlotItem", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).AddMealSlotItem(ctx, struct{ Input addMealSlotItemInput }{

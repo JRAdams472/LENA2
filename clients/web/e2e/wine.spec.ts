@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { randomInt } from "node:crypto";
 import { graphql, mintToken, unique, uniqueCode } from "./helpers";
 
 test.describe("wine", () => {
@@ -9,6 +10,9 @@ test.describe("wine", () => {
     const token = await mintToken(request);
 
     // Bottles require existing type, country, and region ids.
+    const typeName = unique("E2E Type");
+    const countryName = unique("E2E Country");
+    const regionName = unique("E2E Region");
     const [type, country] = await Promise.all([
       graphql<{ createType: { id: string } }>(
         request,
@@ -16,7 +20,7 @@ test.describe("wine", () => {
         `mutation ($input: CreateTypeInput!) {
           createType(input: $input) { id }
         }`,
-        { input: { name: unique("E2E Type"), description: null } }
+        { input: { name: typeName, description: null } }
       ),
       graphql<{ createCountry: { id: string } }>(
         request,
@@ -24,7 +28,7 @@ test.describe("wine", () => {
         `mutation ($input: CreateCountryInput!) {
           createCountry(input: $input) { id }
         }`,
-        { input: { name: unique("E2E Country"), isoCode: uniqueCode() } }
+        { input: { name: countryName, isoCode: uniqueCode() } }
       ),
     ]);
     const region = await graphql<{ createRegion: { id: string } }>(
@@ -36,10 +40,20 @@ test.describe("wine", () => {
       {
         input: {
           countryId: country.createCountry.id,
-          name: unique("E2E Region"),
+          name: regionName,
           description: null,
         },
       }
+    );
+    // A far-future year avoids colliding with seeded vintages.
+    const vintageYear = 2050 + randomInt(50);
+    const vintage = await graphql<{ createVintage: { id: string } }>(
+      request,
+      token,
+      `mutation ($input: CreateVintageInput!) {
+        createVintage(input: $input) { id }
+      }`,
+      { input: { year: vintageYear, description: null } }
     );
 
     const vineyard = unique("E2E Vineyard");
@@ -51,10 +65,19 @@ test.describe("wine", () => {
         .getByRole("button", { name: "Create", exact: true })
         .click();
       const dialog = page.getByRole("dialog");
-      await dialog.getByLabel("Type ID").fill(type.createType.id);
-      await dialog.getByLabel("Country ID").fill(country.createCountry.id);
-      await dialog.getByLabel("Region ID").fill(region.createRegion.id);
-      await dialog.getByLabel("Vintage Year").fill("2020");
+      // Type/country/region are lookup pickers — open each combobox and
+      // choose the option by its display name (options render in a
+      // portal, so they resolve against page, not dialog).
+      await dialog.getByRole("combobox", { name: "Type" }).click();
+      await page.getByRole("option", { name: typeName }).click();
+      await dialog.getByRole("combobox", { name: "Country" }).click();
+      await page.getByRole("option", { name: countryName }).click();
+      await dialog.getByRole("combobox", { name: "Region" }).click();
+      await page.getByRole("option", { name: regionName }).click();
+      await dialog.getByRole("combobox", { name: "Vintage" }).click();
+      await page
+        .getByRole("option", { name: String(vintageYear), exact: true })
+        .click();
       await dialog.getByLabel("Vineyard").fill(vineyard);
       await dialog.getByLabel("Bottle Size").fill("750ml");
       await dialog.getByRole("button", { name: "Save" }).click();
@@ -96,6 +119,12 @@ test.describe("wine", () => {
         token,
         `mutation ($id: ID!) { deleteRegion(id: $id) }`,
         { id: region.createRegion.id }
+      ).catch(() => undefined);
+      await graphql(
+        request,
+        token,
+        `mutation ($id: ID!) { deleteVintage(id: $id) }`,
+        { id: vintage.createVintage.id }
       ).catch(() => undefined);
       await graphql(
         request,

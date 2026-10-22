@@ -80,6 +80,17 @@ export function enabledProviders(): OAuthProvider[] {
   return OAUTH_PROVIDERS.filter(providerEnabled);
 }
 
+export const GOOGLE_CLIENT_ID_PLACEHOLDER = "__YOUR_GOOGLE_CLIENT_ID__";
+
+// Google uses its own GIS SDK (GoogleOAuthProvider/GoogleLogin) rather
+// than the redirect flow above, so it isn't in OAUTH_PROVIDERS. When the
+// env var is unset or still the placeholder, nothing about Google renders
+// — routes must work without it.
+export function googleOAuthConfigured(): boolean {
+  const id = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+  return Boolean(id) && id !== GOOGLE_CLIENT_ID_PLACEHOLDER;
+}
+
 // authorizeUrl builds the provider's authorization redirect. `state`
 // and (for OIDC providers) `nonce` are caller-generated values stored
 // in sessionStorage; state is the CSRF guard, nonce binds the returned

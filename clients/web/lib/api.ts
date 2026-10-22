@@ -178,11 +178,17 @@ function sessionUrl(path: string): string {
 // createSession exchanges a provider credential for a LENA session.
 // Returns null on any failure so the caller can fall back to OIDC-only
 // mode (token still works as the bearer for its remaining lifetime).
+// The refresh token rides an HttpOnly cookie — credentials:"include" so
+// it still travels when API_BASE_URL is a different origin than the page
+// (fetch's default is same-origin).
+const SESSION_INIT: RequestInit = { credentials: "include" };
+
 export async function createSession(
   idToken: string,
   device?: string
 ): Promise<SessionBundle | null> {
   const res = await fetch(sessionUrl("/auth/session"), {
+    ...SESSION_INIT,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -202,6 +208,7 @@ export async function refreshSessionRequest(
   device?: string
 ): Promise<SessionBundle | null> {
   const res = await fetch(sessionUrl("/auth/session/refresh"), {
+    ...SESSION_INIT,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -229,6 +236,7 @@ export async function createProviderSession(
   codeVerifier?: string
 ): Promise<SessionBundle> {
   const res = await fetch(sessionUrl(`/auth/session/${provider}`), {
+    ...SESSION_INIT,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, nonce, device: device ?? "web", codeVerifier }),
@@ -254,6 +262,7 @@ export async function createProviderSession(
 // always clears the cookie.
 export async function revokeSession(refreshToken?: string): Promise<void> {
   await fetch(sessionUrl("/auth/session/revoke"), {
+    ...SESSION_INIT,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken: refreshToken ?? "" }),
@@ -845,6 +854,14 @@ interface GqlMealSlotItem {
   isFromRecipe: boolean;
 }
 
+// Writable shape for addMealSlotItem / updateMealSlot items — callers
+// supply references + quantity/unit/flag only; IDs and audit columns are
+// server-owned.
+export type MealSlotItemInput = Pick<
+  MealSlotItem,
+  "itemID" | "ingredientID" | "quantity" | "unitOfMeasure" | "isFromRecipe"
+>;
+
 interface GqlMealSlot {
   id: string;
   dayOfWeek: number;
@@ -1340,6 +1357,7 @@ function toItem(i: GqlItem, ui?: GqlUserItem): Item {
     itemID,
     name: i.name,
     brand: i.brand?.name ?? null,
+    brandID: i.brand ? num(i.brand.id) : null,
     upc12: i.upc12,
     upc14: i.upc14,
     categoryID: num(i.category?.id),
@@ -2150,6 +2168,29 @@ const BOTTLE_FIELDS = `
   flavorProfiles { intensity flavorProfile { id name description isActive } }
 `;
 
+const USER_BOTTLE_FIELDS = `
+  id bottleNumber quantity purchaseAt purchasePrice storageTemp location
+  notes isFavorite
+  bottle { ${BOTTLE_FIELDS} }
+`;
+
+// fetchCellarHoldings pulls the household's cellar rows for the given
+// catalog bottle IDs so catalog pages can overlay quantity/location/etc.
+async function fetchCellarHoldings(bottleIds: string[]): Promise<Map<string, GqlUserBottle>> {
+  const holdings = new Map<string, GqlUserBottle>();
+  if (bottleIds.length === 0) return holdings;
+  const data = await request<{ userBottles: { items: GqlUserBottle[] } }>(
+    `query ($bottleIds: [ID!]) {
+      userBottles(page: 1, pageSize: 200, bottleIds: $bottleIds) {
+        items { ${USER_BOTTLE_FIELDS} }
+      }
+    }`,
+    { bottleIds }
+  );
+  for (const ub of data.userBottles.items) holdings.set(ub.bottle.id, ub);
+  return holdings;
+}
+
 const MEAL_PLAN_FIELDS = `
   id name weekStartDate isActive
   slots {
@@ -2775,7 +2816,7 @@ export const api = {
       {
         input: {
           name: item.name,
-          brandId: null,
+          brandId: item.brandID != null ? String(item.brandID) : null,
           upc12: item.upc12,
           upc14: item.upc14,
           categoryId: String(item.categoryID),
@@ -2789,6 +2830,7 @@ export const api = {
   updateItem: async (id: number, item: Partial<Item>): Promise<Item> => {
     const input: Record<string, unknown> = {};
     if (item.name !== undefined) input.name = item.name;
+    if (item.brandID !== undefined) input.brandId = item.brandID != null ? String(item.brandID) : null;
     if (item.upc12 !== undefined) input.upc12 = item.upc12;
     if (item.upc14 !== undefined) input.upc14 = item.upc14;
     if (item.categoryID !== undefined) input.categoryId = String(item.categoryID);
@@ -3016,23 +3058,28 @@ export const api = {
     return toAllergenSuggestion(data.dismissAllergenSuggestion);
   },
 
+  // `undefined` leaves a field untouched on the server (the key is
+  // dropped by JSON.stringify and the resolver preserves the stored
+  // value); `null` explicitly clears it; a value sets it.
   adjustItemQuantity: async (
     id: number,
     quantity: number,
-    purchaseDate?: string,
-    expiryDate?: string,
-    minQuantity?: number
+    purchaseDate?: string | null,
+    expiryDate?: string | null,
+    minQuantity?: number | null,
+    notes?: string | null
   ): Promise<void> => {
     await request<{ adjustUserItem: unknown }>(
-      `mutation ($itemId: ID!, $quantity: Float!, $purchaseAt: Time, $expiresAt: Time, $minQty: Float) {
-        adjustUserItem(itemId: $itemId, quantity: $quantity, purchaseAt: $purchaseAt, expiresAt: $expiresAt, minQty: $minQty) { id }
+      `mutation ($itemId: ID!, $quantity: Float!, $purchaseAt: Time, $expiresAt: Time, $minQty: Float, $notes: String) {
+        adjustUserItem(itemId: $itemId, quantity: $quantity, purchaseAt: $purchaseAt, expiresAt: $expiresAt, minQty: $minQty, notes: $notes) { id }
       }`,
       {
         itemId: String(id),
         quantity,
-        purchaseAt: purchaseDate ?? null,
-        expiresAt: expiryDate ?? null,
-        minQty: minQuantity ?? null,
+        purchaseAt: purchaseDate,
+        expiresAt: expiryDate,
+        minQty: minQuantity,
+        notes,
       }
     );
   },
@@ -3342,7 +3389,11 @@ export const api = {
         favoritesOnly: filters.favoritesOnly ?? null,
       }
     );
-    return toPaged(data.bottles.items.map((b) => toBottle(b)), data.bottles.pageInfo);
+    const holdings = await fetchCellarHoldings(data.bottles.items.map((b) => b.id));
+    return toPaged(
+      data.bottles.items.map((b) => toBottle(b, holdings.get(b.id))),
+      data.bottles.pageInfo
+    );
   },
 
   getBottle: async (id: number): Promise<Bottle> => {
@@ -3351,7 +3402,73 @@ export const api = {
       { id: String(id) }
     );
     if (!data.bottle) throw new ApiError(404, `Bottle ${id} not found`);
-    return toBottle(data.bottle);
+    const holdings = await fetchCellarHoldings([String(id)]);
+    return toBottle(data.bottle, holdings.get(String(id)));
+  },
+
+  // The household's cellar holdings (quantity/location/favorite) — the
+  // catalog `bottles` query has no cellar data of its own.
+  getUserBottlesPaged: async (
+    pageNumber: number,
+    pageSize: number,
+    search?: string
+  ): Promise<PagedResult<Bottle>> => {
+    const data = await request<{ userBottles: { items: GqlUserBottle[]; pageInfo: GqlPageInfo } }>(
+      `query ($page: Int, $pageSize: Int, $search: String) {
+        userBottles(page: $page, pageSize: $pageSize, search: $search) {
+          items { ${USER_BOTTLE_FIELDS} }
+          pageInfo { pageNumber pageSize totalCount }
+        }
+      }`,
+      { page: pageNumber, pageSize, search: search?.trim() || null }
+    );
+    return toPaged(data.userBottles.items.map((ub) => toBottle(ub.bottle, ub)), data.userBottles.pageInfo);
+  },
+
+  // Cellar quantity +/-: `quantity` is the new total, matching the
+  // pantry's adjustUserItem.
+  adjustBottleQuantity: async (bottleId: number, quantity: number): Promise<Bottle> => {
+    const data = await request<{ adjustUserBottle: GqlUserBottle }>(
+      `mutation ($bottleId: ID!, $quantity: Int!) {
+        adjustUserBottle(bottleId: $bottleId, quantity: $quantity) { ${USER_BOTTLE_FIELDS} }
+      }`,
+      { bottleId: String(bottleId), quantity }
+    );
+    const ub = data.adjustUserBottle;
+    return toBottle(ub.bottle, ub);
+  },
+
+  // Cellar-field write: creates the holding when absent ("add to
+  // cellar"), and each input field is three-state — undefined preserves,
+  // null clears, a value sets.
+  updateUserBottle: async (
+    bottleId: number,
+    fields: {
+      quantity?: number | null;
+      bottleNumber?: number | null;
+      purchaseDate?: string | null;
+      purchasePrice?: number | null;
+      storageTemp?: number | null;
+      location?: string | null;
+      notes?: string | null;
+    }
+  ): Promise<Bottle> => {
+    const input: Record<string, unknown> = {};
+    if (fields.quantity !== undefined) input.quantity = fields.quantity;
+    if (fields.bottleNumber !== undefined) input.bottleNumber = fields.bottleNumber;
+    if (fields.purchaseDate !== undefined) input.purchaseAt = fields.purchaseDate;
+    if (fields.purchasePrice !== undefined) input.purchasePrice = fields.purchasePrice;
+    if (fields.storageTemp !== undefined) input.storageTemp = fields.storageTemp;
+    if (fields.location !== undefined) input.location = fields.location;
+    if (fields.notes !== undefined) input.notes = fields.notes;
+    const data = await request<{ updateUserBottle: GqlUserBottle }>(
+      `mutation ($bottleId: ID!, $input: UpdateUserBottleInput!) {
+        updateUserBottle(bottleId: $bottleId, input: $input) { ${USER_BOTTLE_FIELDS} }
+      }`,
+      { bottleId: String(bottleId), input }
+    );
+    const ub = data.updateUserBottle;
+    return toBottle(ub.bottle, ub);
   },
 
   createBottle: async (bottle: Omit<Bottle, keyof AuditableEntity>): Promise<Bottle> => {
@@ -3494,11 +3611,12 @@ export const api = {
     const countries = await request<{ countries: GqlCountry[] }>(
       `query { countries { id name isoCode description } }`
     );
-    const regions: Region[] = [];
-    for (const c of countries.countries) {
-      regions.push(...(await api.getRegionsByCountryId(num(c.id))));
-    }
-    return regions;
+    // One round-trip per country, in parallel — the serial loop was an
+    // N+1 on every page that loads the region picker.
+    const pages = await Promise.all(
+      countries.countries.map((c) => api.getRegionsByCountryId(num(c.id)))
+    );
+    return pages.flat();
   },
 
   getRegionsPaged: async (pageNumber: number, pageSize: number): Promise<PagedResult<Region>> =>
@@ -4211,23 +4329,43 @@ export const api = {
     return toMealSlot(planId, data.addMealSlot);
   },
 
-  updateMealSlot: async (planId: number, slotId: number, slot: Partial<MealSlot>): Promise<MealSlot> => {
-    const slots = await api.getMealSlots(planId);
-    const existing = slots.find((s) => s.mealSlotID === slotId);
-    if (!existing) throw new ApiError(404, `MealSlot ${slotId} not found`);
-    await api.deleteMealSlot(planId, slotId);
-    const merged = {
-      ...audit(),
-      dayOfWeek: slot.dayOfWeek ?? existing.dayOfWeek,
-      mealType: slot.mealType ?? existing.mealType,
-      recipeID: existing.recipeID,
-      servings: slot.servings ?? existing.servings,
-      replacementNote: existing.replacementNote,
-    };
-    // `null` is meaningful here (clears the field), so `??` would be wrong.
-    if (slot.recipeID !== undefined) merged.recipeID = slot.recipeID;
-    if (slot.replacementNote !== undefined) merged.replacementNote = slot.replacementNote;
-    return api.addMealSlot(planId, merged);
+  // In-place slot update: the server keeps the slot row and diffs the
+  // item set atomically. Fields left undefined are preserved server-side;
+  // recipeID/replacementNote accept null to clear. `items` present
+  // (including an empty array) replaces the slot's whole item set; omit it
+  // to leave items alone.
+  updateMealSlot: async (
+    planId: number,
+    slotId: number,
+    slot: Partial<MealSlot>,
+    items?: MealSlotItemInput[]
+  ): Promise<MealSlot> => {
+    const input: Record<string, unknown> = {};
+    if (slot.dayOfWeek !== undefined) input.dayOfWeek = slot.dayOfWeek;
+    if (slot.mealType !== undefined) input.mealType = mealTypeToString(slot.mealType);
+    if (slot.recipeID !== undefined) input.recipeId = slot.recipeID != null ? String(slot.recipeID) : null;
+    if (slot.servings !== undefined) input.servings = slot.servings;
+    if (slot.replacementNote !== undefined) input.replacementNote = slot.replacementNote;
+    if (items !== undefined) {
+      input.items = items.map((i) => ({
+        itemId: i.itemID != null ? String(i.itemID) : null,
+        ingredientId: i.ingredientID != null ? String(i.ingredientID) : null,
+        quantity: i.quantity,
+        unit: i.unitOfMeasure ?? "",
+        isFromRecipe: i.isFromRecipe,
+      }));
+    }
+    const data = await request<{ updateMealSlot: GqlMealSlot }>(
+      `mutation ($slotId: ID!, $input: UpdateMealSlotInput!) {
+        updateMealSlot(slotId: $slotId, input: $input) {
+          id dayOfWeek mealType servings replacementNote
+          recipe { ${RECIPE_FIELDS} }
+          items { id quantity unit isFromRecipe ingredient { id name } item { ${ITEM_FIELDS} } }
+        }
+      }`,
+      { slotId: String(slotId), input }
+    );
+    return toMealSlot(planId, data.updateMealSlot);
   },
 
   deleteMealSlot: async (_planId: number, slotId: number): Promise<void> => {
@@ -4237,7 +4375,7 @@ export const api = {
     );
   },
 
-  addMealSlotItem: async (slotId: number, item: Omit<MealSlotItem, "mealSlotItemID" | "mealSlotID" | "mealSlot" | "item">): Promise<MealSlotItem> => {
+  addMealSlotItem: async (slotId: number, item: MealSlotItemInput): Promise<MealSlotItem> => {
     const data = await request<{ addMealSlotItem: GqlMealSlotItem }>(
       `mutation ($input: AddMealSlotItemInput!) {
         addMealSlotItem(input: $input) { id quantity unit isFromRecipe ingredient { id name } item { ${ITEM_FIELDS} } }

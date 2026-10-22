@@ -194,9 +194,10 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 	w.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
 
 	res, err := r.UserBottles(upCtx(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
+		Page      int32
+		PageSize  int32
+		Search    *string
+		BottleIDs *[]graphql.ID
 	}{Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -222,9 +223,10 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 func TestResolver_UserBottles_Unauthorized(t *testing.T) {
 	r := &Resolver{}
 	res, err := r.UserBottles(context.Background(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
+		Page      int32
+		PageSize  int32
+		Search    *string
+		BottleIDs *[]graphql.ID
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -239,9 +241,10 @@ func TestResolver_UserBottles_ServiceError(t *testing.T) {
 	up.EXPECT().SearchHouseholdBottles(gomock.Any(), gomock.Any()).Return(nil, errUpBoom)
 
 	res, err := r.UserBottles(upCtx(), struct {
-		Page     int32
-		PageSize int32
-		Search   *string
+		Page      int32
+		PageSize  int32
+		Search    *string
+		BottleIDs *[]graphql.ID
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)
@@ -281,10 +284,11 @@ func TestResolver_AdjustUserItem_Happy(t *testing.T) {
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
 		Quantity   float64
-		PurchaseAt *graphql.Time
-		ExpiresAt  *graphql.Time
-		MinQty     *float64
-	}{ItemID: "42", Quantity: 4.5, PurchaseAt: &graphql.Time{Time: purchaseAt}})
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
+	}{ItemID: "42", Quantity: 4.5, PurchaseAt: graphql.NullTime{Value: &graphql.Time{Time: purchaseAt}, Set: true}})
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Equal(t, graphql.ID("5"), res.ID())
@@ -316,9 +320,10 @@ func TestResolver_AdjustUserItem_NoExisting(t *testing.T) {
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
 		Quantity   float64
-		PurchaseAt *graphql.Time
-		ExpiresAt  *graphql.Time
-		MinQty     *float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
 	}{ItemID: "42", Quantity: 2})
 	require.NoError(t, err)
 	assert.Equal(t, graphql.ID("7"), res.ID())
@@ -331,9 +336,10 @@ func TestResolver_AdjustUserItem_Unauthorized(t *testing.T) {
 	res, err := r.AdjustUserItem(context.Background(), struct {
 		ItemID     graphql.ID
 		Quantity   float64
-		PurchaseAt *graphql.Time
-		ExpiresAt  *graphql.Time
-		MinQty     *float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
 	}{ItemID: "42", Quantity: 1})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -350,9 +356,10 @@ func TestResolver_AdjustUserItem_ServiceError(t *testing.T) {
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
 		Quantity   float64
-		PurchaseAt *graphql.Time
-		ExpiresAt  *graphql.Time
-		MinQty     *float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
 	}{ItemID: "42", Quantity: 1})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)
@@ -368,9 +375,10 @@ func TestResolver_AdjustUserItem_NegativeQuantity(t *testing.T) {
 	res, err := r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
 		Quantity   float64
-		PurchaseAt *graphql.Time
-		ExpiresAt  *graphql.Time
-		MinQty     *float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
 	}{ItemID: "42", Quantity: -0.5})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "quantity cannot be negative")
@@ -381,14 +389,244 @@ func TestResolver_AdjustUserItem_NegativeQuantity(t *testing.T) {
 	res, err = r.AdjustUserItem(upCtx(), struct {
 		ItemID     graphql.ID
 		Quantity   float64
-		PurchaseAt *graphql.Time
-		ExpiresAt  *graphql.Time
-		MinQty     *float64
-	}{ItemID: "42", Quantity: 1, MinQty: &minQty})
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
+	}{ItemID: "42", Quantity: 1, MinQty: graphql.NullFloat{Value: &minQty, Set: true}})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "minQuantity cannot be negative")
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, codeBadUserInput, ce.code)
+}
+
+// H4: omitted nullable args preserve every stored field. The web client
+// used to emit purchaseAt: null on a plain quantity edit, which the
+// resolver stored as NULL — silently wiping the purchase date. With the
+// Null decoders an absent arg is three-state: omitted means preserve.
+func TestResolver_AdjustUserItem_OmittedPreservesFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	an := newAnalyticsMock(t)
+	r := &Resolver{UserPrefsService: up, AnalyticsService: an}
+	an.EXPECT().RecordEvent(gomock.Any(), gomock.Any(), upEmail).Return(nil)
+
+	minQty := 1.0
+	purchaseAt := time.Date(2025, 2, 20, 0, 0, 0, 0, time.UTC)
+	expiresAt := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+	existing := userprefs.HouseholdItem{
+		HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 1,
+		MinQty: &minQty, PurchaseAt: &purchaseAt, ExpiresAt: &expiresAt, Notes: "keep",
+	}
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(userprefs.HouseholdItem{
+		HouseholdID: upUserID, ItemID: 42, CurrentQty: 9,
+		MinQty: &minQty, PurchaseAt: &purchaseAt, ExpiresAt: &expiresAt, Notes: "keep",
+	}), upEmail).Return(userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 9}, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(false, nil)
+
+	res, err := r.AdjustUserItem(upCtx(), struct {
+		ItemID     graphql.ID
+		Quantity   float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
+	}{ItemID: "42", Quantity: 9})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("5"), res.ID())
+	require.NoError(t, r.Shutdown(context.Background()))
+}
+
+// Explicit null is the third state — it clears the field on purpose, the
+// opposite of preserve. This is the item-edit dialog's "clear expiry"
+// path.
+func TestResolver_AdjustUserItem_ExplicitNullClears(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	an := newAnalyticsMock(t)
+	r := &Resolver{UserPrefsService: up, AnalyticsService: an}
+	an.EXPECT().RecordEvent(gomock.Any(), gomock.Any(), upEmail).Return(nil)
+
+	minQty := 1.0
+	expiresAt := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+	purchaseAt := time.Date(2025, 2, 20, 0, 0, 0, 0, time.UTC)
+	existing := userprefs.HouseholdItem{
+		HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 1,
+		MinQty: &minQty, PurchaseAt: &purchaseAt, ExpiresAt: &expiresAt, Notes: "keep",
+	}
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(&existing, nil)
+	// expiresAt/minQty/notes cleared; purchaseAt untouched (not Set).
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(userprefs.HouseholdItem{
+		HouseholdID: upUserID, ItemID: 42, CurrentQty: 2,
+		PurchaseAt: &purchaseAt,
+	}), upEmail).Return(userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 2}, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(false, nil)
+
+	res, err := r.AdjustUserItem(upCtx(), struct {
+		ItemID     graphql.ID
+		Quantity   float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
+	}{
+		ItemID:    "42",
+		Quantity:  2,
+		ExpiresAt: graphql.NullTime{Set: true},
+		MinQty:    graphql.NullFloat{Set: true},
+		Notes:     graphql.NullString{Set: true},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("5"), res.ID())
+	require.NoError(t, r.Shutdown(context.Background()))
+}
+
+// The notes arg gives pantry notes a write path — previously the field
+// was read-only over GraphQL.
+func TestResolver_AdjustUserItem_NotesWrite(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	an := newAnalyticsMock(t)
+	r := &Resolver{UserPrefsService: up, AnalyticsService: an}
+	an.EXPECT().RecordEvent(gomock.Any(), gomock.Any(), upEmail).Return(nil)
+
+	up.EXPECT().GetHouseholdItemByItem(gomock.Any(), upUserID, int64(42)).Return(nil, nil)
+	note := "buy the good olive oil"
+	up.EXPECT().UpsertHouseholdItem(gomock.Any(), gomock.Eq(userprefs.HouseholdItem{
+		HouseholdID: upUserID, ItemID: 42, CurrentQty: 1, Notes: note,
+	}), upEmail).Return(userprefs.HouseholdItem{HouseholdItemID: 5, HouseholdID: upUserID, ItemID: 42, CurrentQty: 1, Notes: note}, nil)
+	up.EXPECT().GetItemFavorite(gomock.Any(), upUserID, int64(42)).Return(false, nil)
+
+	res, err := r.AdjustUserItem(upCtx(), struct {
+		ItemID     graphql.ID
+		Quantity   float64
+		PurchaseAt graphql.NullTime
+		ExpiresAt  graphql.NullTime
+		MinQty     graphql.NullFloat
+		Notes      graphql.NullString
+	}{ItemID: "42", Quantity: 1, Notes: graphql.NullString{Value: &note, Set: true}})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("5"), res.ID())
+	require.NoError(t, r.Shutdown(context.Background()))
+}
+
+// bottleIds scopes the cellar search the way itemIds scopes the pantry —
+// the web bottle list merges catalog rows with holdings by passing the
+// page's bottle IDs here.
+func TestResolver_UserBottles_BottleIDs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	w := mock.NewMockWineService(ctrl)
+	r := &Resolver{UserPrefsService: up, WineService: w}
+
+	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), upUserID).Return(nil, nil)
+	up.EXPECT().SearchHouseholdBottles(gomock.Any(), userprefs.CellarSearch{
+		HouseholdID: upUserID, IncludeIDs: []int64{88, 89}, Limit: 10, Offset: 0,
+	}).Return([]userprefs.HouseholdBottle{
+		{HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88, Quantity: 2},
+	}, nil)
+	up.EXPECT().CountSearchHouseholdBottles(gomock.Any(), upUserID, []int64{88, 89}).Return(int64(1), nil)
+	up.EXPECT().ListBottleFavorites(gomock.Any(), upUserID, []int64{88}).Return(nil, nil)
+	w.EXPECT().GetBottlesByIDs(gomock.Any(), []int64{88}).Return([]wine.Bottle{{BottleID: 88}}, nil)
+	w.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
+	w.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{88}).Return(nil, nil)
+
+	ids := []graphql.ID{"88", "89"}
+	res, err := r.UserBottles(upCtx(), struct {
+		Page      int32
+		PageSize  int32
+		Search    *string
+		BottleIDs *[]graphql.ID
+	}{Page: 1, PageSize: 10, BottleIDs: &ids})
+	require.NoError(t, err)
+	items := res.Items()
+	require.Len(t, items, 1)
+	assert.Equal(t, graphql.ID("30"), items[0].ID())
+}
+
+// UpdateUserBottle on a bottle with no holding creates the cellar row —
+// the "add to cellar" path.
+func TestResolver_UpdateUserBottle_CreatesHolding(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	up.EXPECT().GetHouseholdBottleByBottle(gomock.Any(), upUserID, int64(88)).Return(nil, nil)
+	loc := "rack A"
+	note := "gift"
+	qty := int32(3)
+	up.EXPECT().UpsertHouseholdBottle(gomock.Any(), gomock.Eq(userprefs.HouseholdBottle{
+		HouseholdID: upUserID, BottleID: 88, Quantity: 3, Location: "rack A", Notes: "gift",
+	}), upEmail).Return(userprefs.HouseholdBottle{
+		HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88, Quantity: 3, Location: "rack A", Notes: "gift",
+	}, nil)
+	up.EXPECT().GetBottleFavorite(gomock.Any(), upUserID, int64(88)).Return(false, nil)
+
+	res, err := r.UpdateUserBottle(upCtx(), struct {
+		BottleID graphql.ID
+		Input    updateUserBottleInput
+	}{
+		BottleID: "88",
+		Input: updateUserBottleInput{
+			Quantity: graphql.NullInt{Value: &qty, Set: true},
+			Location: graphql.NullString{Value: &loc, Set: true},
+			Notes:    graphql.NullString{Value: &note, Set: true},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("30"), res.ID())
+}
+
+// Omitted fields preserve the holding's stored values; explicit null
+// clears. Mirrors the adjustUserItem semantics so the cellar edit form
+// can distinguish "leave alone" from "clear".
+func TestResolver_UpdateUserBottle_OmittedPreservesNullClears(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	up := mock.NewMockUserPrefsService(ctrl)
+	r := &Resolver{UserPrefsService: up}
+
+	bottleNum := int32(2)
+	price := 24.99
+	temp := 55.0
+	purchaseAt := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	existing := userprefs.HouseholdBottle{
+		HouseholdBottleID: 30, HouseholdID: upUserID, BottleID: 88,
+		BottleNumber: &bottleNum, Quantity: 6, PurchaseAt: &purchaseAt,
+		PurchasePrice: &price, StorageTemp: &temp, Location: "cellar", Notes: "keep",
+	}
+	up.EXPECT().GetHouseholdBottleByBottle(gomock.Any(), upUserID, int64(88)).Return(&existing, nil)
+	// location/notes cleared; everything else preserved.
+	up.EXPECT().UpsertHouseholdBottle(gomock.Any(), gomock.Eq(userprefs.HouseholdBottle{
+		HouseholdID: upUserID, BottleID: 88,
+		BottleNumber: &bottleNum, Quantity: 6, PurchaseAt: &purchaseAt,
+		PurchasePrice: &price, StorageTemp: &temp,
+	}), upEmail).Return(existing, nil)
+	up.EXPECT().GetBottleFavorite(gomock.Any(), upUserID, int64(88)).Return(true, nil)
+
+	res, err := r.UpdateUserBottle(upCtx(), struct {
+		BottleID graphql.ID
+		Input    updateUserBottleInput
+	}{
+		BottleID: "88",
+		Input: updateUserBottleInput{
+			Location: graphql.NullString{Set: true},
+			Notes:    graphql.NullString{Set: true},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, graphql.ID("30"), res.ID())
+	assert.True(t, res.IsFavorite())
+}
+
+func TestResolver_UpdateUserBottle_NullQuantityRejected(t *testing.T) {
+	r := &Resolver{}
+	res, err := r.UpdateUserBottle(upCtx(), struct {
+		BottleID graphql.ID
+		Input    updateUserBottleInput
+	}{BottleID: "88", Input: updateUserBottleInput{Quantity: graphql.NullInt{Set: true}}})
+	assert.Nil(t, res)
+	assert.EqualError(t, err, "quantity cannot be null")
 }
 
 func TestResolver_SetItemFavorite_Happy(t *testing.T) {

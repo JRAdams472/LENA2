@@ -130,7 +130,7 @@ type Query {
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
   userItems(page: Int = 1, pageSize: Int = 25, search: String, itemIds: [ID!], inStock: Boolean, isFavorite: Boolean, brandId: ID): UserItemPage!
-  userBottles(page: Int = 1, pageSize: Int = 25, search: String): UserBottlePage!
+  userBottles(page: Int = 1, pageSize: Int = 25, search: String, bottleIds: [ID!]): UserBottlePage!
   bottle(id: ID!): Bottle
   bottles(page: Int = 1, pageSize: Int = 25, search: String, countryId: ID, regionId: ID, typeId: ID, vintageYear: Int, favoritesOnly: Boolean): BottlePage!
   types: [WineType!]!
@@ -325,7 +325,9 @@ type Mutation {
   # checks it off, credits pantry stock, and records it as the usual brand.
   checkGroceryItemWithBrand(groceryListItemId: ID!, itemId: ID!): GroceryListItem!
 
-  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time, minQty: Float): UserItem!
+  # Nullable args are three-state: omitted preserves the stored value,
+  # explicit null clears it, a value sets it.
+  adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time, minQty: Float, notes: String): UserItem!
   setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!
   deleteUserItem(itemId: ID!): Boolean!
   incrementUserItem(itemId: ID!, delta: Float!): UserItem
@@ -356,6 +358,11 @@ type Mutation {
   updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!
   deleteMealPlan(id: ID!): Boolean!
   addMealSlot(input: AddMealSlotInput!): MealSlot!
+  # In-place update: the slot row and its audit fields survive, and an
+  # items list replaces the slot's item set atomically (absent = leave
+  # items alone). recipeId/servings/replacementNote are three-state —
+  # omitted preserves, explicit null clears.
+  updateMealSlot(slotId: ID!, input: UpdateMealSlotInput!): MealSlot!
   removeMealSlot(slotId: ID!): Boolean!
   addMealSlotItem(input: AddMealSlotItemInput!): MealSlotItem!
   removeMealSlotItem(slotItemId: ID!): Boolean!
@@ -398,6 +405,9 @@ type Mutation {
   addBottleFlavorProfile(input: AddBottleFlavorProfileInput!): BottleFlavorProfile! @admin
   removeBottleFlavorProfile(bottleId: ID!, flavorProfileId: ID!): Boolean! @admin
   adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!
+  # Cellar-field write: upserts the household's holding row for the bottle.
+  # Nullable input fields are three-state — omitted preserves, null clears.
+  updateUserBottle(bottleId: ID!, input: UpdateUserBottleInput!): UserBottle!
   setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!
 
   # Self-service profile update (first/last name, backup email).
@@ -1667,6 +1677,35 @@ input AddMealSlotItemInput {
   quantity: Float!
   unit: String!
   isFromRecipe: Boolean
+}
+
+input UpdateMealSlotInput {
+  dayOfWeek: Int
+  mealType: String
+  recipeId: ID
+  servings: Int
+  replacementNote: String
+  # Absent or null leaves the slot's items untouched; a provided list
+  # replaces the item set atomically ([] clears it).
+  items: [UpdateMealSlotItemInput!]
+}
+
+input UpdateMealSlotItemInput {
+  itemId: ID
+  ingredientId: ID
+  quantity: Float!
+  unit: String!
+  isFromRecipe: Boolean
+}
+
+input UpdateUserBottleInput {
+  quantity: Int
+  bottleNumber: Int
+  purchaseAt: Time
+  purchasePrice: Float
+  storageTemp: Float
+  location: String
+  notes: String
 }
 
 type WineType {

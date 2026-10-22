@@ -337,6 +337,26 @@ describe("meal plan detail page", () => {
         if (body.query.includes("removeMealSlot")) {
           return Promise.resolve(gql({ removeMealSlot: true }));
         }
+        if (body.query.includes("updateMealSlot")) {
+          const input = body.variables.input;
+          return Promise.resolve(
+            gql({
+              updateMealSlot: {
+                ...slot,
+                dayOfWeek: input.dayOfWeek ?? slot.dayOfWeek,
+                servings: input.servings ?? slot.servings,
+                replacementNote:
+                  "replacementNote" in input
+                    ? input.replacementNote
+                    : slot.replacementNote,
+                recipe:
+                  "recipeId" in input && input.recipeId === null
+                    ? null
+                    : slot.recipe,
+              },
+            })
+          );
+        }
         if (body.query.includes("suggestMeals")) {
           return Promise.resolve(gql({ suggestMeals: opts.suggestions ?? [] }));
         }
@@ -420,7 +440,7 @@ describe("meal plan detail page", () => {
       expect(screen.getByText(/Calories: 600\.00 kcal/)).toBeInTheDocument();
     });
 
-    it("opens a filled slot and saves it via remove+add", async () => {
+    it("opens a filled slot and saves it via one updateMealSlot mutation", async () => {
       mockDetail({ thePlan: plannedPlan });
       await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
       await waitFor(() => screen.getByText("Chili"));
@@ -435,8 +455,18 @@ describe("meal plan detail page", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => {
         const bodies = getBodies();
-        expect(bodies.some((b) => b.query.includes("removeMealSlot"))).toBe(true);
-        expect(bodies.some((b) => b.query.includes("addMealSlot"))).toBe(true);
+        const updates = bodies.filter((b) => b.query.includes("updateMealSlot"));
+        expect(updates).toHaveLength(1);
+        expect(updates[0].variables.slotId).toBe("20");
+        expect(updates[0].variables.input.servings).toBe(6);
+        // The desired item rows travel inside the same mutation — the
+        // server diffs them, so the existing row keeps its id.
+        expect(updates[0].variables.input.items).toEqual([
+          expect.objectContaining({ itemId: "1", quantity: 1 }),
+        ]);
+        // No delete-and-recreate under any name.
+        expect(bodies.some((b) => b.query.includes("removeMealSlot"))).toBe(false);
+        expect(bodies.some((b) => b.query.includes("addMealSlot"))).toBe(false);
       });
     });
 

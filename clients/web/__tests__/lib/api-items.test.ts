@@ -296,6 +296,7 @@ describe("api client: items", () => {
       itemID: 0,
       name: "Milk",
       brand: null,
+      brandID: null,
       upc12: "012345678901",
       upc14: null,
       categoryID: 1,

@@ -30,7 +30,9 @@ export async function runAgent(opts: AgentRunOptions): Promise<{ answer: string;
   ];
   const usedTools: string[] = [];
 
-  for (let round = 0; round <= maxRounds; round++) {
+  // `round < maxRounds`, not `<=`: the server loop allows MaxToolRounds
+  // tool round-trips, and `<=` silently granted one extra.
+  for (let round = 0; round < maxRounds; round++) {
     const raw = await engine.chat(messages);
     messages.push({ role: "assistant", content: raw });
     const parsed = parseModelReply(raw, tools);
