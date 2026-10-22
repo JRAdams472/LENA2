@@ -56,4 +56,12 @@ describe("login menu", () => {
     render(<LoginMenu />);
     expect(mockReplace).not.toHaveBeenCalled();
   });
+
+  it("does not redirect when a restoring session resolves", () => {
+    mockUseAuth.mockReturnValue({ isAuthenticated: false, isRestoring: true });
+    const { rerender } = render(<LoginMenu />);
+    mockUseAuth.mockReturnValue({ isAuthenticated: true, isRestoring: false });
+    rerender(<LoginMenu />);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
 });
