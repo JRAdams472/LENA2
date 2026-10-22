@@ -507,33 +507,49 @@ describe("api client: meal plans and slots", () => {
     expect(lastRequestBody().variables.input.mealType).toBe("9");
   });
 
-  it("updateMealSlot deletes then re-adds the slot", async () => {
-    mockFetch
-      .mockResolvedValueOnce(
-        mockGraphQL({ mealPlan: gqlMealPlan({ slots: [gqlSlot()] }) })
-      )
-      .mockResolvedValueOnce(mockGraphQL({ removeMealSlot: true }))
-      .mockResolvedValueOnce(
-        mockGraphQL({ addMealSlot: gqlSlot({ dayOfWeek: 2 }) })
-      );
+  it("updateMealSlot issues one in-place mutation and keeps the slot id", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ updateMealSlot: gqlSlot({ dayOfWeek: 2 }) })
+    );
 
     const slot = await api.updateMealSlot(1, 10, { dayOfWeek: 2 });
 
-    expect(mockFetch).toHaveBeenCalledTimes(3);
-    expect(lastRequestBody(-2).variables).toEqual({ slotId: "10" });
-    expect(lastRequestBody().variables.input.dayOfWeek).toBe(2);
-    expect(lastRequestBody().variables.input.servings).toBe(2);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(lastRequestBody().variables).toEqual({
+      slotId: "10",
+      input: { dayOfWeek: 2 },
+    });
+    expect(slot.mealSlotID).toBe(10);
     expect(slot.dayOfWeek).toBe(2);
   });
 
-  it("updateMealSlot throws ApiError 404 when the slot is missing", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL({ mealPlan: gqlMealPlan() })
-    );
+  it("updateMealSlot omits untouched fields and can clear the recipe", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ updateMealSlot: gqlSlot() }));
 
-    const error = await api.updateMealSlot(1, 999, {}).catch((e) => e);
-    expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).status).toBe(404);
+    await api.updateMealSlot(1, 10, { recipeID: null });
+
+    const input = lastRequestBody().variables.input;
+    expect(input).toEqual({ recipeId: null });
+    expect(input).not.toHaveProperty("dayOfWeek");
+    expect(input).not.toHaveProperty("mealType");
+    expect(input).not.toHaveProperty("items");
+  });
+
+  it("updateMealSlot serializes replacement items without audit fields", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ updateMealSlot: gqlSlot() }));
+
+    await api.updateMealSlot(1, 10, { servings: 3 }, [
+      { itemID: 5, ingredientID: null, quantity: 1.5, unitOfMeasure: "ea", isFromRecipe: true },
+      { itemID: null, ingredientID: 9, quantity: 1, unitOfMeasure: null, isFromRecipe: false },
+    ]);
+
+    expect(lastRequestBody().variables.input).toEqual({
+      servings: 3,
+      items: [
+        { itemId: "5", ingredientId: null, quantity: 1.5, unit: "ea", isFromRecipe: true },
+        { itemId: null, ingredientId: "9", quantity: 1, unit: "", isFromRecipe: false },
+      ],
+    });
   });
 
   it("deleteMealSlot posts the slot id", async () => {
@@ -561,10 +577,6 @@ describe("api client: meal plans and slots", () => {
       quantity: 2,
       unitOfMeasure: "ea",
       isFromRecipe: false,
-      createdBy: "",
-      createDate: "",
-      lastUpdatedBy: null,
-      lastUpdatedDate: null,
     });
 
     expect(lastRequestBody().variables).toEqual({
@@ -600,10 +612,6 @@ describe("api client: meal plans and slots", () => {
       quantity: 2,
       unitOfMeasure: null,
       isFromRecipe: false,
-      createdBy: "",
-      createDate: "",
-      lastUpdatedBy: null,
-      lastUpdatedDate: null,
     });
 
     expect(lastRequestBody().variables.input.unit).toBe("");

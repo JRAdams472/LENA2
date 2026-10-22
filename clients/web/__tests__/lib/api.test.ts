@@ -124,6 +124,9 @@ describe("api client", () => {
         },
       })
     );
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ userBottles: { items: [] } })
+    );
 
     const result = await api.getBottlesPaged(2, 50);
 
@@ -883,19 +886,43 @@ describe("api client: favorites and inventory adjustments", () => {
     });
   });
 
-  it("adjustItemQuantity sends null purchaseAt when omitted", async () => {
+  // H4: an omitted purchase date must NOT serialize — the server treats
+  // the absent key as "preserve", while explicit null would wipe the
+  // stored purchase date. JSON.stringify drops undefined keys.
+  it("adjustItemQuantity omits purchaseAt when not supplied", async () => {
     mockFetch.mockResolvedValueOnce(
       mockGraphQL({ adjustUserItem: { id: "9" } })
     );
 
     await api.adjustItemQuantity(4, 1);
-    expect(lastRequestBody().variables).toEqual({
-      itemId: "4",
-      quantity: 1,
-      purchaseAt: null,
-      expiresAt: null,
-      minQty: null,
-    });
+    const vars = lastRequestBody().variables;
+    expect(vars).toEqual({ itemId: "4", quantity: 1 });
+    expect(vars).not.toHaveProperty("purchaseAt");
+    expect(vars).not.toHaveProperty("expiresAt");
+    expect(vars).not.toHaveProperty("minQty");
+    expect(vars).not.toHaveProperty("notes");
+  });
+
+  it("adjustItemQuantity sends explicit null to clear a field", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ adjustUserItem: { id: "9" } })
+    );
+
+    await api.adjustItemQuantity(4, 1, null, null, null, null);
+    const vars = lastRequestBody().variables;
+    expect(vars.purchaseAt).toBeNull();
+    expect(vars.expiresAt).toBeNull();
+    expect(vars.minQty).toBeNull();
+    expect(vars.notes).toBeNull();
+  });
+
+  it("adjustItemQuantity serializes notes", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ adjustUserItem: { id: "9" } })
+    );
+
+    await api.adjustItemQuantity(4, 1, undefined, undefined, undefined, "restock soon");
+    expect(lastRequestBody().variables.notes).toBe("restock soon");
   });
 });
 

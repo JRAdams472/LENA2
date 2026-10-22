@@ -92,8 +92,8 @@ export default function LoginScreen() {
           sx={{ maxWidth: 340 }}
         >
           Account registration and plan management are handled on our
-          website. New users must set up their accounts on
-          lenaskitchen.app before logging in to the mobile companion app.
+          website. New users must set up their account at
+          lenaskitchen.app before signing in here or in the mobile app.
         </Typography>
         </Box>
       </Paper>

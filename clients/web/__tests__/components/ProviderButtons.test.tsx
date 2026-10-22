@@ -4,6 +4,7 @@ import ProviderButtons from "@/app/components/ProviderButtons";
 
 const mockSignIn = jest.fn();
 const mockEnabledProviders = jest.fn<string[], []>(() => []);
+const mockGoogleConfigured = jest.fn<boolean, []>(() => true);
 const mockStartOAuthSignIn = jest.fn<Promise<void>, [string]>(() =>
   Promise.resolve()
 );
@@ -14,6 +15,7 @@ jest.mock("../../app/auth/AuthProvider", () => ({
 
 jest.mock("../../lib/oauth", () => ({
   enabledProviders: () => mockEnabledProviders(),
+  googleOAuthConfigured: () => mockGoogleConfigured(),
   startOAuthSignIn: (p: string) => mockStartOAuthSignIn(p),
 }));
 
@@ -38,6 +40,7 @@ jest.mock("@react-oauth/google", () => ({
 beforeEach(() => {
   mockSignIn.mockReset();
   mockEnabledProviders.mockReset().mockReturnValue([]);
+  mockGoogleConfigured.mockReset().mockReturnValue(true);
   mockStartOAuthSignIn.mockReset().mockResolvedValue(undefined);
 });
 
@@ -48,6 +51,16 @@ describe("ProviderButtons", () => {
     expect(
       screen.queryByRole("button", { name: /continue with/i })
     ).toBeNull();
+  });
+
+  it("hides the Google button when the OAuth client id is not configured", () => {
+    mockGoogleConfigured.mockReturnValue(false);
+    mockEnabledProviders.mockReturnValue(["discord"]);
+    render(<ProviderButtons />);
+    expect(screen.queryByTestId("google-login")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Continue with Discord" })
+    ).toBeInTheDocument();
   });
 
   it("stacks configured providers with Apple first at equal prominence", () => {

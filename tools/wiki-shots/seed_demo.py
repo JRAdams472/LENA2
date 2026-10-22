@@ -416,7 +416,7 @@ if cellar_count == 0:
             break
     wtype = refs["types"][0]["id"]
     assert region, "no wine region found in reference data"
-    for vineyard, year, qty in [("Silver Oak", 2019, 2), ("Domaine Serene", 2021, 1)]:
+    for vineyard, year, qty, loc in [("Silver Oak", 2019, 2, "Cellar rack A"), ("Domaine Serene", 2021, 1, "Cellar rack B")]:
         bottle = gql(
             ADMIN,
             "mutation($input: CreateBottleInput!) { createBottle(input: $input) { id } }",
@@ -426,6 +426,11 @@ if cellar_count == 0:
             ADMIN,
             "mutation($id: ID!, $q: Int!) { adjustUserBottle(bottleId: $id, quantity: $q) { id } }",
             {"id": bottle["id"], "q": qty},
+        )
+        gql(
+            ADMIN,
+            "mutation($id: ID!, $input: UpdateUserBottleInput!) { updateUserBottle(bottleId: $id, input: $input) { id } }",
+            {"id": bottle["id"], "input": {"location": loc, "purchaseAt": "2026-09-15T00:00:00Z"}},
         )
     print("bottles added")
 else:

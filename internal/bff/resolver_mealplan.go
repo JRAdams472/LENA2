@@ -489,6 +489,201 @@ func (r *Resolver) AddMealSlot(ctx context.Context, args struct{ Input addMealSl
 	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: slot, as: r.allergySrc(u)}, nil
 }
 
+// updateMealSlotItemInput is one slot line in an UpdateMealSlot items
+// replacement — same fields as AddMealSlotItemInput minus the slotId the
+// mutation already carries.
+type updateMealSlotItemInput struct {
+	ItemID       *graphql.ID
+	IngredientID *graphql.ID
+	Quantity     float64
+	Unit         string
+	IsFromRecipe *bool
+}
+
+type updateMealSlotInput struct {
+	DayOfWeek *int32
+	MealType  *string
+	// RecipeID, Servings and ReplacementNote decode three states through
+	// the Null wrappers: omitted preserves, explicit null clears.
+	RecipeID        graphql.NullID
+	Servings        graphql.NullInt
+	ReplacementNote graphql.NullString
+	// Items absent or null leaves the slot's items alone; a provided list
+	// replaces the item set atomically with the slot update.
+	Items *[]updateMealSlotItemInput
+}
+
+// slotItemKey identifies a slot line for diffing: the item/ingredient pair
+// the row points at.
+type slotItemKey struct {
+	itemID       int64
+	ingredientID int64
+}
+
+func slotItemKeyOf(itemID, ingredientID *int64) slotItemKey {
+	var k slotItemKey
+	if itemID != nil {
+		k.itemID = *itemID
+	}
+	if ingredientID != nil {
+		k.ingredientID = *ingredientID
+	}
+	return k
+}
+
+// UpdateMealSlot edits a slot in place — the row keeps its ID and audit
+// fields (unlike a delete-then-recreate), and when the caller supplies
+// items the set is diffed atomically in the same transaction: missing
+// rows are deleted, new rows inserted, quantity/unit changes replaced;
+// unchanged is_from_recipe rows are untouched.
+func (r *Resolver) UpdateMealSlot(ctx context.Context, args struct {
+	SlotID graphql.ID
+	Input  updateMealSlotInput
+}) (*mealSlotResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slotID, err := parseID(string(args.SlotID))
+	if err != nil {
+		return nil, err
+	}
+	existing, err := r.MealPlanService.GetMealSlotByID(ctx, slotID, u.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	slot := mealplan.MealSlot{
+		DayOfWeek:       existing.DayOfWeek,
+		MealType:        existing.MealType,
+		RecipeID:        existing.RecipeID,
+		Servings:        existing.Servings,
+		ReplacementNote: existing.ReplacementNote,
+	}
+	if args.Input.DayOfWeek != nil {
+		dayOfWeek, err := checkedInt16(*args.Input.DayOfWeek, "dayOfWeek", 0, 6)
+		if err != nil {
+			return nil, err
+		}
+		slot.DayOfWeek = dayOfWeek
+	}
+	if args.Input.MealType != nil {
+		slot.MealType = *args.Input.MealType
+	}
+	if args.Input.RecipeID.Set {
+		slot.RecipeID = nil
+		if args.Input.RecipeID.Value != nil {
+			rid, err := parseID(string(*args.Input.RecipeID.Value))
+			if err != nil {
+				return nil, err
+			}
+			slot.RecipeID = &rid
+		}
+	}
+	if args.Input.Servings.Set {
+		slot.Servings = nil
+		if args.Input.Servings.Value != nil {
+			if *args.Input.Servings.Value <= 0 {
+				return nil, badInputf(msgServingsPositive)
+			}
+			s := *args.Input.Servings.Value
+			slot.Servings = &s
+		}
+	}
+	if args.Input.ReplacementNote.Set {
+		slot.ReplacementNote = derefString(args.Input.ReplacementNote.Value)
+	}
+
+	// Resolve the replacement item set before opening the transaction so
+	// validation errors never abort a half-applied write.
+	var desired map[slotItemKey]mealplan.MealSlotItem
+	if args.Input.Items != nil {
+		desired = make(map[slotItemKey]mealplan.MealSlotItem, len(*args.Input.Items))
+		for _, it := range *args.Input.Items {
+			itemID, err := optionalID(it.ItemID)
+			if err != nil {
+				return nil, err
+			}
+			ingredientID, err := optionalID(it.IngredientID)
+			if err != nil {
+				return nil, err
+			}
+			if itemID == nil && ingredientID == nil {
+				return nil, badInputf("slot item requires itemId or ingredientId")
+			}
+			// Brand-only input: fill in the ingredient when the link
+			// resolves one, matching AddMealSlotItem.
+			if ingredientID == nil {
+				resolved, err := r.InventoryService.ResolveItemIngredient(ctx, u.HouseholdID, *itemID)
+				if err != nil {
+					return nil, err
+				}
+				ingredientID = resolved
+			}
+			unitID, err := resolveUnitID(ctx, r.InventoryService, it.Unit)
+			if err != nil {
+				return nil, err
+			}
+			if it.Quantity <= 0 {
+				return nil, badInputf("quantity must be positive")
+			}
+			isFromRecipe := false
+			if it.IsFromRecipe != nil {
+				isFromRecipe = *it.IsFromRecipe
+			}
+			desired[slotItemKeyOf(itemID, ingredientID)] = mealplan.MealSlotItem{
+				SlotID:       slotID,
+				ItemID:       itemID,
+				IngredientID: ingredientID,
+				Quantity:     it.Quantity,
+				UnitID:       unitID,
+				IsFromRecipe: isFromRecipe,
+			}
+		}
+	}
+
+	var updated mealplan.MealSlot
+	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		if err := r.MealPlanService.UpdateMealSlot(ctx, slotID, u.HouseholdID, slot, u.Email); err != nil {
+			return err
+		}
+		if desired != nil {
+			current, err := r.MealPlanService.ListMealSlotItems(ctx, slotID, u.HouseholdID)
+			if err != nil {
+				return err
+			}
+			for _, cur := range current {
+				want, ok := desired[slotItemKeyOf(cur.ItemID, cur.IngredientID)]
+				if ok && want.Quantity == cur.Quantity && want.UnitID == cur.UnitID && want.IsFromRecipe == cur.IsFromRecipe {
+					// Unchanged — keep the row and its ID.
+					delete(desired, slotItemKeyOf(cur.ItemID, cur.IngredientID))
+					continue
+				}
+				if err := r.MealPlanService.DeleteMealSlotItem(ctx, cur.SlotItemID, u.HouseholdID); err != nil {
+					return err
+				}
+			}
+			for _, want := range desired {
+				if _, err := r.MealPlanService.AddMealSlotItem(ctx, want, u.HouseholdID, u.Email); err != nil {
+					return err
+				}
+			}
+		}
+		var gerr error
+		updated, gerr = r.MealPlanService.GetMealSlotByID(ctx, slotID, u.HouseholdID)
+		return gerr
+	}); err != nil {
+		return nil, mealSlotWriteError(err)
+	}
+	if slot.RecipeID != nil && (existing.RecipeID == nil || *existing.RecipeID != *slot.RecipeID) {
+		r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+			EventType:  analytics.EventMenuAdd,
+			EntityType: analytics.EntityRecipe,
+			EntityID:   *slot.RecipeID,
+		})
+	}
+	return &mealSlotResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, slot: updated, as: r.allergySrc(u)}, nil
+}
+
 // RemoveMealSlot removes a slot from a meal plan.
 func (r *Resolver) RemoveMealSlot(ctx context.Context, args struct{ SlotID graphql.ID }) (bool, error) {
 	u, err := userFromContext(ctx)

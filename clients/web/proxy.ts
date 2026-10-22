@@ -11,13 +11,25 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
+  // connect-src must allow the GraphQL/session origin — same-origin
+  // relative URLs are covered by 'self', but a cross-origin API base URL
+  // would be CSP-blocked without it.
+  let apiOrigin = "";
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (apiBase) {
+    try {
+      apiOrigin = new URL(apiBase).origin;
+    } catch {
+      apiOrigin = "";
+    }
+  }
   const cspHeader = `
     default-src 'self';
     script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""};
     style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/;
     img-src 'self' data: blob:;
     font-src 'self' data:;
-    connect-src 'self' https://accounts.google.com/gsi/;
+    connect-src 'self' https://accounts.google.com/gsi/${apiOrigin ? ` ${apiOrigin}` : ""};
     frame-src https://accounts.google.com/gsi/;
     object-src 'none';
     base-uri 'none';

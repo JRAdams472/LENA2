@@ -11,6 +11,7 @@ import { useAuth } from "@/app/auth/AuthProvider";
 import {
   OAuthProvider,
   enabledProviders,
+  googleOAuthConfigured,
   startOAuthSignIn,
 } from "@/lib/oauth";
 
@@ -119,26 +120,28 @@ export default function ProviderButtons() {
           {PROVIDER_META.apple.label}
         </Button>
       )}
-      <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
-        <GoogleLogin
-          width={300}
-          onSuccess={(response) => {
-            setError(null);
-            if (response.credential) {
-              signIn(response.credential);
-            } else {
+      {googleOAuthConfigured() && (
+        <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
+          <GoogleLogin
+            width={300}
+            onSuccess={(response) => {
+              setError(null);
+              if (response.credential) {
+                signIn(response.credential);
+              } else {
+                setError(
+                  "Google did not return a sign-in credential. Please try again."
+                );
+              }
+            }}
+            onError={() => {
               setError(
-                "Google did not return a sign-in credential. Please try again."
+                "Google sign-in failed. Verify NEXT_PUBLIC_GOOGLE_CLIENT_ID and the authorized JavaScript origin in Google Cloud Console."
               );
-            }
-          }}
-          onError={() => {
-            setError(
-              "Google sign-in failed. Verify NEXT_PUBLIC_GOOGLE_CLIENT_ID and the authorized JavaScript origin in Google Cloud Console."
-            );
-          }}
-        />
-      </Box>
+            }}
+          />
+        </Box>
+      )}
       {providers
         .filter((p) => p !== "apple")
         .map((provider) => {

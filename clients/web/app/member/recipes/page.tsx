@@ -74,8 +74,16 @@ const recipeTableFields: FieldDef<RecipeRow>[] = [
   { key: "isActive", label: "Active", type: "boolean" },
 ];
 
+// Dialog fields: only what CreateRecipeInput actually accepts. The table
+// fields can't be reused — allergyWarnings is computed server-side and
+// isActive isn't part of the recipe input, so both rendered as dead,
+// un-writable controls. isFavorite isn't part of the input either, but
+// it's a real write — handleSave routes it through setRecipeFavorite.
 const recipeFields: FieldDef<Recipe>[] = [
-  ...(recipeTableFields as FieldDef<Recipe>[]),
+  { key: "recipeName", label: "Name" },
+  { key: "description", label: "Description" },
+  { key: "prepTimeMinutes", label: "Prep Time", type: "number" },
+  { key: "cookTimeMinutes", label: "Cook Time", type: "number" },
   { key: "servings", label: "Servings", type: "number" },
   { key: "isFavorite", label: "Favorite", type: "boolean" },
 ];
@@ -241,10 +249,21 @@ export default function RecipesPage() {
   };
 
   const handleSave = (values: Record<string, unknown>) => {
+    const favorite = Boolean(values.isFavorite);
+    const saveFavorite = (recipeID: number) => {
+      if (favorite !== Boolean(dialogData.isFavorite)) {
+        void api
+          .setRecipeFavorite(recipeID, favorite)
+          .then(() => queryClient.invalidateQueries({ queryKey: ["recipes"] }));
+      }
+    };
     if (isCreate) {
-      createMutation.mutate(values);
+      void createMutation
+        .mutateAsync(values)
+        .then((created) => saveFavorite(created.recipeID));
     } else {
       updateMutation.mutate(values);
+      saveFavorite(values.recipeID as number);
     }
     setDialogOpen(false);
   };

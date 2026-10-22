@@ -18,10 +18,13 @@ function mockGraphQL(data: object | null, status = 200) {
   };
 }
 
-function lastRequestBody() {
-  const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+function lastRequestBody(callIndex = -1) {
+  const calls = mockFetch.mock.calls;
+  const [, init] = calls[calls.length + callIndex];
   return JSON.parse((init as RequestInit).body as string);
 }
+
+const EMPTY_CELLAR = { userBottles: { items: [] } };
 
 function gqlBottle(over: Record<string, unknown> = {}) {
   return {
@@ -80,11 +83,14 @@ describe("api client: bottles", () => {
   });
 
   it("getBottle maps nested grape varieties and flavor profiles", async () => {
-    mockFetch.mockResolvedValueOnce(mockGraphQL({ bottle: gqlBottle() }));
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL({ bottle: gqlBottle() }))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const bottle = await api.getBottle(1);
 
-    expect(lastRequestBody().variables).toEqual({ id: "1" });
+    expect(lastRequestBody(-2).variables).toEqual({ id: "1" });
+    expect(lastRequestBody().variables).toEqual({ bottleIds: ["1"] });
     expect(bottle.bottleID).toBe(1);
     expect(bottle.typeID).toBe(2);
     expect(bottle.countryID).toBe(3);
@@ -100,6 +106,39 @@ describe("api client: bottles", () => {
     expect(bottle.bottleNumber).toBeNull();
   });
 
+  it("getBottle overlays cellar holdings onto catalog data", async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL({ bottle: gqlBottle() }))
+      .mockResolvedValueOnce(
+        mockGraphQL({
+          userBottles: {
+            items: [
+              {
+                id: "77",
+                bottleNumber: 3,
+                quantity: 2,
+                purchaseAt: "2026-01-15",
+                purchasePrice: 45.5,
+                storageTemp: 55,
+                location: "Rack A",
+                notes: "gift",
+                isFavorite: true,
+                bottle: gqlBottle(),
+              },
+            ],
+          },
+        })
+      );
+
+    const bottle = await api.getBottle(1);
+    expect(bottle.quantity).toBe(2);
+    expect(bottle.bottleNumber).toBe(3);
+    expect(bottle.location).toBe("Rack A");
+    expect(bottle.purchaseDate).toBe("2026-01-15");
+    expect(bottle.isFavorite).toBe(true);
+    expect(bottle.notes).toBe("gift");
+  });
+
   it("getBottle throws ApiError 404 when missing", async () => {
     mockFetch.mockResolvedValueOnce(mockGraphQL({ bottle: null }));
 
@@ -110,11 +149,13 @@ describe("api client: bottles", () => {
   });
 
   it("getBottle handles null collection fields", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL({
-        bottle: gqlBottle({ grapeVarieties: null, flavorProfiles: null }),
-      })
-    );
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQL({
+          bottle: gqlBottle({ grapeVarieties: null, flavorProfiles: null }),
+        })
+      )
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const bottle = await api.getBottle(1);
     expect(bottle.bottleGrapeVarieties).toEqual([]);
@@ -224,9 +265,9 @@ describe("api client: bottles", () => {
   });
 
   it("getBottlesPaged passes filter variables in a single query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(bottlesPage([gqlBottle()], 57))
-    );
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()], 57)))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const result = await api.getBottlesPaged(2, 25, {
       search: "napa",
@@ -237,7 +278,7 @@ describe("api client: bottles", () => {
       favoritesOnly: true,
     });
 
-    const body = lastRequestBody();
+    const body = lastRequestBody(-2);
     expect(body.query).toContain(
       "bottles(page: $page, pageSize: $pageSize, search: $search, countryId: $countryId, regionId: $regionId, typeId: $typeId, vintageYear: $vintageYear, favoritesOnly: $favoritesOnly)"
     );
@@ -256,11 +297,13 @@ describe("api client: bottles", () => {
   });
 
   it("getBottlesPaged sends nulls for omitted filters", async () => {
-    mockFetch.mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])));
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     await api.getBottlesPaged(1, 25);
 
-    expect(lastRequestBody().variables).toEqual({
+    expect(lastRequestBody(-2).variables).toEqual({
       page: 1,
       pageSize: 25,
       search: null,
@@ -273,54 +316,56 @@ describe("api client: bottles", () => {
   });
 
   it("getBottlesByCountryId issues one filtered query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(bottlesPage([gqlBottle()]))
-    );
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const result = await api.getBottlesByCountryId(3);
-    expect(lastRequestBody().variables.countryId).toBe("3");
+    expect(lastRequestBody(-2).variables.countryId).toBe("3");
     expect(result.items).toHaveLength(1);
   });
 
   it("getBottlesByRegionId issues one filtered query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(bottlesPage([gqlBottle()]))
-    );
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const result = await api.getBottlesByRegionId(4);
-    expect(lastRequestBody().variables.regionId).toBe("4");
+    expect(lastRequestBody(-2).variables.regionId).toBe("4");
     expect(result.items).toHaveLength(1);
   });
 
   it("getBottlesByTypeId issues one filtered query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(bottlesPage([gqlBottle()]))
-    );
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const result = await api.getBottlesByTypeId(2);
-    expect(lastRequestBody().variables.typeId).toBe("2");
+    expect(lastRequestBody(-2).variables.typeId).toBe("2");
     expect(result.items).toHaveLength(1);
   });
 
   it("getBottlesByVintageYear issues one filtered query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(bottlesPage([gqlBottle()]))
-    );
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const result = await api.getBottlesByVintageYear(2020);
-    expect(lastRequestBody().variables.vintageYear).toBe(2020);
+    expect(lastRequestBody(-2).variables.vintageYear).toBe(2020);
     expect(result.items[0].vintageYear).toBe(2020);
   });
 
   it("searchBottles issues a ranked server-side query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(
-        bottlesPage([gqlBottle({ id: "1", vineyard: "Napa Valley" })])
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQL(
+          bottlesPage([gqlBottle({ id: "1", vineyard: "Napa Valley" })])
+        )
       )
-    );
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const bottles = await api.searchBottles("napa");
-    const body = lastRequestBody();
+    const body = lastRequestBody(-2);
     expect(body.query).toContain("search: $search");
     expect(body.variables.search).toBe("napa");
     expect(bottles).toHaveLength(1);
@@ -340,12 +385,12 @@ describe("api client: bottles", () => {
   });
 
   it("getFavoriteBottles issues one favorites-only query", async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockGraphQL(bottlesPage([gqlBottle()]))
-    );
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQL(bottlesPage([gqlBottle()])))
+      .mockResolvedValueOnce(mockGraphQL(EMPTY_CELLAR));
 
     const result = await api.getFavoriteBottles();
-    expect(lastRequestBody().variables.favoritesOnly).toBe(true);
+    expect(lastRequestBody(-2).variables.favoritesOnly).toBe(true);
     expect(result.items).toHaveLength(1);
   });
 });

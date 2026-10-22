@@ -3,7 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import BottlesPage from "@/app/member/wine/bottles/page";
 
+jest.mock("../../../../app/auth/useMe");
+import { useMe } from "@/app/auth/useMe";
+
 const mockFetch = global.fetch as jest.Mock;
+const mockedUseMe = useMe as jest.Mock;
 
 function gql(data: object) {
   return {
@@ -54,15 +58,35 @@ const bottle = {
   flavorProfiles: [],
 };
 
+const holding = {
+  id: "55",
+  bottleNumber: 7,
+  quantity: 5,
+  purchaseAt: "2025-12-01",
+  purchasePrice: 42.5,
+  storageTemp: 55,
+  location: "Rack B",
+  notes: "cellared",
+  isFavorite: false,
+  bottle,
+};
+
 describe("bottles page", () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    mockedUseMe.mockReturnValue({ me: { role: "admin" } });
     jest.spyOn(window, "confirm").mockReturnValue(true);
 
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("userBottles")) {
+        return Promise.resolve(gql({ userBottles: { items: [holding] } }));
+      }
       if (body.query.includes("createBottle")) {
         return Promise.resolve(gql({ createBottle: { ...bottle, id: "2", vineyard: "New Chateau" } }));
+      }
+      if (body.query.includes("updateUserBottle")) {
+        return Promise.resolve(gql({ updateUserBottle: holding }));
       }
       if (body.query.includes("updateBottle")) {
         return Promise.resolve(gql({ updateBottle: { ...bottle, vineyard: "Chateau Updated" } }));
@@ -102,26 +126,28 @@ describe("bottles page", () => {
     jest.restoreAllMocks();
   });
 
-  it("lists bottles", async () => {
+  it("lists bottles with the cellar overlay", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Chateau")).toBeInTheDocument());
     const bodies = getBodies();
     expect(bodies.some((b) => b.query.includes("bottles(page:"))).toBe(true);
+    expect(bodies.some((b) => b.query.includes("userBottles"))).toBe(true);
+    expect(screen.getByText("Rack B")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
   });
 
   it("creates a bottle", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Chateau"));
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
-    fireEvent.change(screen.getByLabelText("Type ID"), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("Country ID"), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("Region ID"), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("Vintage Year"), { target: { value: "2015" } });
+    fireEvent.mouseDown(await screen.findByRole("combobox", { name: "Type" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Red" }));
     fireEvent.change(screen.getByLabelText("Vineyard"), { target: { value: "New Chateau" } });
     fireEvent.change(screen.getByLabelText("Bottle Size"), { target: { value: "750ml" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(getBodies().some((b) => b.query.includes("createBottle"))).toBe(true);
+      const call = getBodies().find((b) => b.query.includes("createBottle"));
+      expect(call?.variables.input.typeId).toBe("1");
     });
   });
 
@@ -134,6 +160,7 @@ describe("bottles page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("updateBottle") && b.variables.id === "1")).toBe(true);
+      expect(getBodies().some((b) => b.query.includes("updateUserBottle") && b.variables.bottleId === "1")).toBe(true);
     });
   });
 
@@ -146,5 +173,33 @@ describe("bottles page", () => {
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteBottle") && b.variables.id === "1")).toBe(true);
     });
+  });
+
+  it("member sees cellar fields only and saves via updateUserBottle", async () => {
+    mockedUseMe.mockReturnValue({ me: { role: "member" } });
+    renderPage();
+    await waitFor(() => screen.getByText("Chateau"));
+    const row = screen.getByText("Chateau").closest("tr")!;
+    fireEvent.click(row.querySelectorAll("button")[0]);
+    expect(await screen.findByLabelText("Quantity")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Vineyard")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Rack C" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const bodies = getBodies();
+      expect(bodies.some((b) => b.query.includes("updateBottle("))).toBe(false);
+      const cellar = bodies.find((b) => b.query.includes("updateUserBottle"));
+      expect(cellar?.variables.bottleId).toBe("1");
+      expect(cellar?.variables.input.location).toBe("Rack C");
+    });
+  });
+
+  it("member has no delete action", async () => {
+    mockedUseMe.mockReturnValue({ me: { role: "member" } });
+    renderPage();
+    await waitFor(() => screen.getByText("Chateau"));
+    const row = screen.getByText("Chateau").closest("tr")!;
+    // Member rows expose only the edit action.
+    expect(row.querySelectorAll("button")).toHaveLength(1);
   });
 });

@@ -185,56 +185,51 @@ function SlotDialog({
       const slotServings = Number(servings) > 0 ? Number(servings) : 1;
       const recipeOptional = selectedRecipe?.recipeItems?.filter((ri) => ri.isOptional) ?? [];
 
-      let currentSlot = slot;
-      if (!currentSlot) {
-        currentSlot = await api.addMealSlot(planId, {
+      const desiredItems = [
+        ...selectedOptionalIds.flatMap((oid) => {
+          const ri = recipeOptional.find((r) => String(r.itemID) === oid);
+          return ri
+            ? [{ itemID: Number(oid), quantity: Number(ri.quantity), unitOfMeasure: ri.unitOfMeasure, isFromRecipe: true }]
+            : [];
+        }),
+        ...adhoc.map((a) => ({
+          itemID: a.itemID,
+          quantity: Number(a.quantity),
+          unitOfMeasure: a.unit,
+          isFromRecipe: false,
+        })),
+      ];
+
+      if (!slot) {
+        // New slot: addMealSlot has no items field, so the lines still go
+        // in as separate calls — there is nothing pre-existing to lose.
+        const created = await api.addMealSlot(planId, {
           dayOfWeek: day,
           mealType,
           recipeID: rid,
           servings: slotServings,
           replacementNote: replacementNote || null,
         } as Omit<MealSlot, "mealSlotID" | "mealPlanID" | "mealPlan" | "recipe" | "mealSlotItems">);
-      } else {
-        currentSlot = await api.updateMealSlot(planId, currentSlot.mealSlotID, {
-          ...currentSlot,
-          mealPlanID: planId,
+        for (const i of desiredItems) {
+          await api.addMealSlotItem(created.mealSlotID, i);
+        }
+        return created;
+      }
+
+      // Existing slot: one atomic mutation — the slot row and any
+      // unchanged item rows keep their IDs.
+      return api.updateMealSlot(
+        planId,
+        slot.mealSlotID,
+        {
           dayOfWeek: day,
           mealType,
           recipeID: rid,
           servings: slotServings,
           replacementNote: replacementNote || null,
-        });
-      }
-
-      const slotId = currentSlot.mealSlotID;
-
-      const fromRecipe = currentSlot.mealSlotItems?.filter((i) => i.isFromRecipe) ?? [];
-      for (const i of fromRecipe) {
-        await api.deleteMealSlotItem(slotId, i.mealSlotItemID);
-      }
-
-      for (const oid of selectedOptionalIds) {
-        const recipeItem = recipeOptional.find((ri) => String(ri.itemID) === oid);
-        if (recipeItem && currentSlot) {
-          await api.addMealSlotItem(slotId, {
-            itemID: Number(oid),
-            quantity: Number(recipeItem.quantity),
-            unitOfMeasure: recipeItem.unitOfMeasure,
-            isFromRecipe: true,
-          } as Omit<MealSlotItem, "mealSlotItemID" | "mealSlotID" | "mealSlot" | "item">);
-        }
-      }
-
-      for (const a of adhoc) {
-        await api.addMealSlotItem(slotId, {
-          itemID: a.itemID,
-          quantity: Number(a.quantity),
-          unitOfMeasure: a.unit,
-          isFromRecipe: false,
-        } as Omit<MealSlotItem, "mealSlotItemID" | "mealSlotID" | "mealSlot" | "item">);
-      }
-
-      return currentSlot;
+        },
+        desiredItems
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mealPlan", planId] });

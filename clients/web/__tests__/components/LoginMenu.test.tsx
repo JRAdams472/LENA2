@@ -18,6 +18,7 @@ jest.mock("../../app/auth/AuthProvider", () => ({
 const mockEnabledProviders = jest.fn(() => [] as string[]);
 jest.mock("../../lib/oauth", () => ({
   enabledProviders: () => mockEnabledProviders(),
+  googleOAuthConfigured: () => true,
   startOAuthSignIn: jest.fn(() => Promise.resolve()),
 }));
 

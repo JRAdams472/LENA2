@@ -90,7 +90,7 @@ describe("runAgent", () => {
     await expect(
       runAgent({ engine, systemPrompt: "sys", tools: TOOLS, callTool, question: "q", maxRounds: 2 })
     ).rejects.toThrow(AgentError);
-    // rounds 0,1,2 → 3 calls
-    expect(callTool).toHaveBeenCalledTimes(3);
+    // maxRounds is a cap on tool round-trips — rounds 0,1 → 2 calls.
+    expect(callTool).toHaveBeenCalledTimes(2);
   });
 });

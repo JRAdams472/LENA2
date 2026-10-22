@@ -8,7 +8,11 @@ import Chip from "@mui/material/Chip";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import Switch from "@mui/material/Switch";
+import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
 import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
@@ -18,12 +22,14 @@ import AllergenFlagsEditor from "@/app/components/AllergenFlagsEditor";
 import { AllergenFlag, Item, Brand, Ingredient } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
+// The brand itself renders as a picker in extraFields (writes go through
+// brandID, not the display name).
+// Brand and category render as pickers in extraFields — raw ID text
+// fields invited typos against catalog keys.
 const itemFields = [
   { key: "name", label: "Name" },
-  { key: "brand", label: "Brand" },
   { key: "upc12", label: "UPC12" },
   { key: "upc14", label: "UPC14" },
-  { key: "categoryID", label: "Category ID", type: "number" as const },
   { key: "unit", label: "Unit" },
   { key: "currentQuantity", label: "Current Quantity", type: "number" as const },
   { key: "minQuantity", label: "Min Quantity", type: "number" as const },
@@ -50,7 +56,10 @@ export default function ItemsPage() {
   const [qtyDialogItem, setQtyDialogItem] = useState<Item | null>(null);
   const [qtyEditItem, setQtyEditItem] = useState<Item | null>(null);
   const [favEditItem, setFavEditItem] = useState<Item | null>(null);
-  // undefined = untouched; null = clear the link; Ingredient = set it.
+  // undefined = untouched; null = clear the link; Brand/Ingredient = set it.
+  const [dialogBrand, setDialogBrand] = useState<Brand | null | undefined>(undefined);
+  const [dialogBrandInput, setDialogBrandInput] = useState("");
+  const [dialogCategoryId, setDialogCategoryId] = useState<number | "">("");
   const [dialogCatalogIng, setDialogCatalogIng] = useState<Ingredient | null | undefined>(undefined);
   const [dialogHouseholdIng, setDialogHouseholdIng] = useState<Ingredient | null | undefined>(undefined);
   const { me } = useMe();
@@ -89,6 +98,23 @@ export default function ItemsPage() {
       brandInput === ""
         ? api.getFrequentBrands(10)
         : api.getBrands(brandInput),
+  });
+
+  // The edit dialog gets its own brand search so typing there doesn't
+  // disturb the toolbar filter.
+  const dialogBrandsQuery = useQuery({
+    queryKey: ["item-dialog-brands", dialogBrandInput],
+    queryFn: () =>
+      dialogBrandInput === ""
+        ? api.getFrequentBrands(10)
+        : api.getBrands(dialogBrandInput),
+    enabled: dialogOpen,
+  });
+
+  const dialogCategoriesQuery = useQuery({
+    queryKey: ["item-dialog-categories"],
+    queryFn: () => api.getActiveCategories(),
+    enabled: dialogOpen,
   });
 
   const brandOptions = brandsQuery.data ?? [];
@@ -147,6 +173,9 @@ export default function ItemsPage() {
   const handleCreate = () => {
     setIsCreate(true);
     setDialogData({});
+    setDialogBrand(undefined);
+    setDialogBrandInput("");
+    setDialogCategoryId("");
     setDialogCatalogIng(undefined);
     setDialogHouseholdIng(undefined);
     setDialogOpen(true);
@@ -156,6 +185,9 @@ export default function ItemsPage() {
     void api.recordView("item", row.itemID);
     setIsCreate(false);
     setDialogData({ ...row });
+    setDialogBrand(undefined);
+    setDialogBrandInput(row.brand ?? "");
+    setDialogCategoryId(row.categoryID);
     setDialogCatalogIng(undefined);
     setDialogHouseholdIng(undefined);
     setDialogOpen(true);
@@ -182,39 +214,84 @@ export default function ItemsPage() {
     }
   };
 
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === "string" && v !== "" ? v : null;
+  const numOrNull = (v: unknown): number | null =>
+    v === undefined || v === null || v === "" ? null : Number(v);
+
+  // Pantry fields live on the household holding, not the catalog row —
+  // they round-trip through adjustUserItem. Empty dialog inputs serialize
+  // as null, which clears the stored value server-side (explicit clear).
+  const pantryFieldsChanged = (
+    values: Record<string, unknown>,
+    prev: Record<string, unknown>
+  ) =>
+    Number(values.currentQuantity ?? 0) !== Number(prev.currentQuantity ?? 0) ||
+    strOrNull(values.expiryDate) !== strOrNull(prev.expiryDate) ||
+    numOrNull(values.minQuantity) !== numOrNull(prev.minQuantity) ||
+    strOrNull(values.purchaseDate) !== strOrNull(prev.purchaseDate) ||
+    strOrNull(values.notes) !== strOrNull(prev.notes);
+
   const handleSave = (values: Record<string, unknown>) => {
+    if (dialogBrand !== undefined) {
+      values.brandID = dialogBrand?.brandID ?? null;
+    }
+    if (dialogCategoryId !== "") {
+      values.categoryID = dialogCategoryId;
+    }
     if (isCreate) {
       void createMutation
         .mutateAsync(values)
-        .then((created) => applyIngredientLinks(created.itemID));
+        .then((created) => {
+          applyIngredientLinks(created.itemID);
+          // First holding: quantity/min/expiry/purchase date/notes.
+          const qty = Number(values.currentQuantity ?? 0);
+          if (
+            qty > 0 ||
+            strOrNull(values.expiryDate) ||
+            numOrNull(values.minQuantity) !== null ||
+            strOrNull(values.purchaseDate) ||
+            strOrNull(values.notes)
+          ) {
+            void api
+              .adjustItemQuantity(
+                created.itemID,
+                qty,
+                strOrNull(values.purchaseDate),
+                strOrNull(values.expiryDate),
+                numOrNull(values.minQuantity),
+                strOrNull(values.notes)
+              )
+              .then(() => queryClient.invalidateQueries({ queryKey: ["items"] }));
+          }
+          if (values.isFavorite) {
+            setFavoriteMutation.mutate({
+              id: created.itemID,
+              isFavorite: true,
+            });
+          }
+        });
     } else {
+      const itemID = values.itemID as number;
       updateMutation.mutate(values);
-      applyIngredientLinks(values.itemID as number);
-      // Expiry and min-quantity live on the pantry holding, not the
-      // catalog item — route them through adjustUserItem (passing current
-      // qty/purchase date so they're unchanged).
-      const expiry = (values.expiryDate as string) || undefined;
-      const minRaw = values.minQuantity;
-      const minQty =
-        minRaw === undefined || minRaw === null || minRaw === ""
-          ? undefined
-          : Number(minRaw);
-      const prevMin = dialogData.minQuantity;
-      const minChanged =
-        minQty !== (prevMin === null || prevMin === undefined ? undefined : Number(prevMin));
-      if (
-        expiry !== ((dialogData.expiryDate as string) || undefined) ||
-        minChanged
-      ) {
+      applyIngredientLinks(itemID);
+      if (pantryFieldsChanged(values, dialogData)) {
         void api
           .adjustItemQuantity(
-            values.itemID as number,
+            itemID,
             Number(values.currentQuantity ?? 0),
-            (dialogData.purchaseDate as string) || undefined,
-            expiry,
-            minQty
+            strOrNull(values.purchaseDate),
+            strOrNull(values.expiryDate),
+            numOrNull(values.minQuantity),
+            strOrNull(values.notes)
           )
           .then(() => queryClient.invalidateQueries({ queryKey: ["items"] }));
+      }
+      if (Boolean(values.isFavorite) !== Boolean(dialogData.isFavorite)) {
+        setFavoriteMutation.mutate({
+          id: itemID,
+          isFavorite: Boolean(values.isFavorite),
+        });
       }
     }
     setDialogOpen(false);
@@ -405,6 +482,47 @@ export default function ItemsPage() {
         values={dialogData}
         extraFields={
           <>
+            <FormControl size="small" fullWidth sx={{ mt: 1 }}>
+              <InputLabel id="item-category-label">Category</InputLabel>
+              <Select
+                labelId="item-category-label"
+                label="Category"
+                value={dialogCategoryId}
+                onChange={(e) =>
+                  setDialogCategoryId(Number(e.target.value))
+                }
+              >
+                {(dialogCategoriesQuery.data ?? []).map((c) => (
+                  <MenuItem key={c.categoryID} value={c.categoryID}>
+                    {c.categoryName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Autocomplete
+              size="small"
+              options={dialogBrandsQuery.data ?? []}
+              getOptionLabel={(b) => (typeof b === "string" ? b : b?.brandName ?? "")}
+              isOptionEqualToValue={(a, b) =>
+                (typeof a === "object" && typeof b === "object" && a?.brandID === b?.brandID)
+              }
+              inputValue={dialogBrandInput}
+              onInputChange={(_, value) => setDialogBrandInput(value)}
+              value={
+                dialogBrand !== undefined
+                  ? dialogBrand
+                  : (dialogBrandsQuery.data ?? []).find(
+                      (b) => b.brandID === dialogData.brandID
+                    ) ?? null
+              }
+              onChange={(_, value) => setDialogBrand((value as Brand | null) ?? null)}
+              filterOptions={(options) => options}
+              loading={dialogBrandsQuery.isLoading}
+              noOptionsText="No brands found"
+              renderInput={(params) => (
+                <TextField {...params} label="Brand" size="small" margin="dense" />
+              )}
+            />
             {isAdmin && (
               <IngredientAutocomplete
                 label="Catalog ingredient"

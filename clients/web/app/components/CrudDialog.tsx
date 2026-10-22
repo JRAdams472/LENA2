@@ -36,6 +36,22 @@ interface CrudDialogProps<T> {
   onSave: (values: Record<string, unknown>) => void;
 }
 
+// A value-semantic signature for the supplied `values`: parents routinely
+// rebuild the object per render (`{ ...row }`), so comparing by identity
+// wiped in-progress typing on every unrelated rerender. Reset the form
+// only on an open/close transition or when the values actually differ.
+function valuesSignature(v: Record<string, unknown>): string {
+  return JSON.stringify(v, (_key, val: unknown) =>
+    val !== null && typeof val === "object" && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
+            a.localeCompare(b)
+          )
+        )
+      : val
+  );
+}
+
 export default function CrudDialog<T = Record<string, unknown>>({
   open,
   title,
@@ -49,10 +65,11 @@ export default function CrudDialog<T = Record<string, unknown>>({
   const [form, setForm] = useState<Record<string, unknown>>(() => ({
     ...values,
   }));
-  const [source, setSource] = useState({ values, open });
+  const [source, setSource] = useState(() => ({ open, sig: valuesSignature(values) }));
+  const sig = valuesSignature(values);
 
-  if (source.values !== values || source.open !== open) {
-    setSource({ values, open });
+  if (source.open !== open || source.sig !== sig) {
+    setSource({ open, sig });
     setForm({ ...values });
   }
 
