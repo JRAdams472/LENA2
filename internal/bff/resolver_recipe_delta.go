@@ -466,7 +466,7 @@ func (r *Resolver) RecipeDeltaEvents(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	events, err := r.RecipeService.ListRecipeDeltaEvents(ctx, recipeID, u.HouseholdID, args.Limit)
+	events, err := r.RecipeService.ListRecipeDeltaEvents(ctx, recipeID, u.HouseholdID, clamp(args.Limit, 1, 50))
 	if err != nil {
 		return nil, err
 	}

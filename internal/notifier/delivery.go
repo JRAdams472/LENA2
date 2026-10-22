@@ -74,6 +74,9 @@ type DeliveryConfig struct {
 	MaxAttempts int32
 	// BaseBackoff seeds the exponential retry delay (doubled per attempt).
 	BaseBackoff time.Duration
+	// SendTimeout bounds one provider call — a hung send lands as a
+	// transient error and retries rather than stalling the drain loop.
+	SendTimeout time.Duration
 }
 
 func (c DeliveryConfig) withDefaults() DeliveryConfig {
@@ -88,6 +91,9 @@ func (c DeliveryConfig) withDefaults() DeliveryConfig {
 	}
 	if c.BaseBackoff <= 0 {
 		c.BaseBackoff = 30 * time.Second
+	}
+	if c.SendTimeout <= 0 {
+		c.SendTimeout = 30 * time.Second
 	}
 	return c
 }
@@ -117,11 +123,18 @@ func NewDeliveryWorker(q sqlc.Querier, sender Sender, cfg DeliveryConfig) *Deliv
 
 // AttachDelivery builds and starts the push delivery worker on the
 // service's own querier — same lifecycle as the sweep (Stop halts both).
-// Called once during server wiring; a nil worker is fine when the
-// delivery channel is unused (tests).
+// Called once during server wiring; a repeat call swaps the worker after
+// stopping the old one so its goroutine can't leak.
 func (s *Service) AttachDelivery(ctx context.Context, sender Sender, cfg DeliveryConfig) {
-	s.delivery = NewDeliveryWorker(s.q, sender, cfg)
-	s.delivery.Start(ctx)
+	w := NewDeliveryWorker(s.q, sender, cfg)
+	s.mu.Lock()
+	old := s.delivery
+	s.delivery = w
+	s.mu.Unlock()
+	if old != nil {
+		old.Stop()
+	}
+	w.Start(ctx)
 }
 
 // Start spawns the drain loop: an immediate drain, then one per
@@ -202,11 +215,13 @@ func (w *DeliveryWorker) deliver(ctx context.Context, d sqlc.HouseholdPushDelive
 	}
 
 	title, body := w.titleBody(ctx, d)
-	results := w.sender.SendEach(ctx, tokenStrings(tokens), PushMessage{
+	sendCtx, cancel := context.WithTimeout(ctx, w.cfg.SendTimeout)
+	results := w.sender.SendEach(sendCtx, tokenStrings(tokens), PushMessage{
 		Title: title,
 		Body:  body,
 		Data:  pushData(d),
 	})
+	cancel()
 	w.settle(ctx, d, results)
 }
 

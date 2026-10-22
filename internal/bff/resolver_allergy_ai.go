@@ -129,6 +129,9 @@ func (r *Resolver) SuggestRecipeAllergens(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	if r.AIService == nil || !r.AIService.Available() {
+		return nil, errUnavailablef(msgAIUnavailable)
+	}
 	recipeID, err := parseID(string(args.RecipeID))
 	if err != nil {
 		return nil, err

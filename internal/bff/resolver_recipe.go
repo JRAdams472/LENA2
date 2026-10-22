@@ -650,15 +650,20 @@ func (r *Resolver) RecommendedRecipes(ctx context.Context, args struct{ Limit in
 	limit := clamp(args.Limit, 1, 50)
 
 	var sources []recommendationSource
-	overlap, err := r.AnalyticsService.ListRecipeRecommendations(ctx, u.UserID, analytics.ReasonIngredientOverlap, limit)
-	if err != nil {
-		return nil, err
+	// Analytics is optional — when it isn't configured the overlap,
+	// affinity, and trending sources drop out and recommendations fall
+	// back to rating recency alone (recipe + mealplan reads only).
+	if r.AnalyticsService != nil {
+		overlap, err := r.AnalyticsService.ListRecipeRecommendations(ctx, u.UserID, analytics.ReasonIngredientOverlap, limit)
+		if err != nil {
+			return nil, err
+		}
+		overlapScores := make(map[int64]float64, len(overlap))
+		for _, o := range overlap {
+			overlapScores[o.RecipeID] = o.Score
+		}
+		sources = append(sources, recommendationSource{reason: analytics.ReasonIngredientOverlap, scores: overlapScores})
 	}
-	overlapScores := make(map[int64]float64, len(overlap))
-	for _, o := range overlap {
-		overlapScores[o.RecipeID] = o.Score
-	}
-	sources = append(sources, recommendationSource{reason: analytics.ReasonIngredientOverlap, scores: overlapScores})
 	recency, err := r.ratingRecencyScores(ctx, u.UserID, u.HouseholdID, limit)
 	if err != nil {
 		return nil, err
@@ -1644,6 +1649,9 @@ func (r *Resolver) RecordView(ctx context.Context, args struct {
 	entityID, err := parseID(string(args.EntityID))
 	if err != nil {
 		return false, err
+	}
+	if r.AnalyticsService == nil {
+		return true, nil // analytics is optional — nothing to record into
 	}
 	r.runAsync("record view", 5*time.Second, func(ctx context.Context) error {
 		return r.AnalyticsService.RecordView(ctx, analytics.Event{

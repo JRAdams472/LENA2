@@ -704,6 +704,32 @@ func TestResolver_Recipe_RecommendedRecipes(t *testing.T) {
 		require.ErrorContains(t, err, "unauthorized")
 	})
 
+	// Analytics is optional: with no AnalyticsService configured the
+	// analytics-backed sources drop out and rating recency alone still
+	// produces recommendations — no panic, no error.
+	t.Run("nil analytics falls back to recency", func(t *testing.T) {
+		rec, _, up := newRecMocks(t)
+		mp := mock.NewMockMealPlanService(gomock.NewController(t))
+		rec.EXPECT().ListRatedAtLeast(gomock.Any(), int64(11), int16(ratingRecencyMinRating)).
+			Return([]recipe.RecipeRating{{UserID: 11, RecipeID: 7, Rating: 5}}, nil)
+		mp.EXPECT().LastPlannedDates(gomock.Any(), int64(11), gomock.Any()).
+			Return(map[int64]time.Time{}, nil)
+		rec.EXPECT().GetRecipesByIDs(gomock.Any(), []int64{7}).Return([]recipe.Recipe{{RecipeID: 7, Name: "A"}}, nil)
+		rec.EXPECT().ListRecipeItemsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeStepsByRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListCategoriesForRecipes(gomock.Any(), []int64{7}).Return(nil, nil)
+		up.EXPECT().ListRecipeFavorites(gomock.Any(), int64(11), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRecipeRatings(gomock.Any(), int64(11), []int64{7}).Return(nil, nil)
+		rec.EXPECT().ListRatingSummaries(gomock.Any(), []int64{7}).Return(nil, nil)
+
+		r := &Resolver{RecipeService: rec, MealPlanService: mp, UserPrefsService: up} // no AnalyticsService
+		res, err := r.RecommendedRecipes(recCtx(), struct{ Limit int32 }{Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		assert.Equal(t, graphql.ID("7"), res[0].Recipe().ID())
+		assert.Equal(t, analytics.ReasonRatingRecency, res[0].Reason())
+	})
+
 	t.Run("overlap error propagates", func(t *testing.T) {
 		rec, _, _ := newRecMocks(t)
 		an := mock.NewMockAnalyticsService(gomock.NewController(t))

@@ -2,11 +2,13 @@ package notifier
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/JRAdams472/LENA2/internal/notifier/sqlc"
@@ -26,8 +28,15 @@ const displayDateLayout = "Mon Jan 2"
 
 // Start launches the hourly reminder sweep on a background goroutine. The
 // caller's context owns the sweep lifetime — cancelling stops it; Stop()
-// drains the goroutine.
+// drains the goroutine. A second Start while running (or after Stop) is a
+// no-op — only one sweep may ever run.
 func (s *Service) Start(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.running {
+		return
+	}
+	s.running = true
 	sweepCtx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel
 	s.wg.Add(1)
@@ -52,8 +61,11 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 // Stop cancels the sweep goroutine and waits for any in-flight sweep to
-// finish. Called from Resolver.Shutdown ahead of pool close.
+// finish. Called from Resolver.Shutdown ahead of pool close. Safe to call
+// any number of times — before Start, while running, or after Stop.
 func (s *Service) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.stop != nil {
 		s.stop()
 	}
@@ -78,20 +90,20 @@ func (s *Service) runSweep(ctx context.Context) {
 // defrost and advance-prep reminders from active meal plans, and expiry
 // reminders from pantry items nearing expires_at. Inserts are dedup-keyed,
 // so re-running a sweep for the same period creates nothing twice. Returns
-// the number of notifications actually created.
+// the number of notifications actually created. Per-reminder write
+// failures don't abort the sweep — they join into the returned error so
+// callers see partial failures while the rest of the batch still lands.
 func (s *Service) Sweep(ctx context.Context, now time.Time) (int, error) {
+	gate := newGateCache(s)
 	created := 0
-	n, err := s.sweepMealReminders(ctx, now)
-	if err != nil {
-		return created, err
-	}
+	var errs []error
+	n, err := s.sweepMealReminders(ctx, now, gate)
 	created += n
-	n, err = s.sweepExpiry(ctx, now)
-	if err != nil {
-		return created, err
-	}
+	errs = append(errs, err)
+	n, err = s.sweepExpiry(ctx, now, gate)
 	created += n
-	return created, nil
+	errs = append(errs, err)
+	return created, errors.Join(errs...)
 }
 
 // slotDate resolves a recurring slot to a concrete date within its plan's
@@ -145,7 +157,7 @@ func servingScale(s sqlc.ListMealSlotsWithRecipesRow) float64 {
 	return float64(s.Servings.Int32) / float64(s.RecipeServings.Int32)
 }
 
-func (s *Service) sweepMealReminders(ctx context.Context, now time.Time) (int, error) {
+func (s *Service) sweepMealReminders(ctx context.Context, now time.Time, gate *gateCache) (int, error) {
 	slots, err := s.q.ListMealSlotsWithRecipes(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("list meal slots: %w", domainerr.FromStorage(err))
@@ -179,16 +191,19 @@ func (s *Service) sweepMealReminders(ctx context.Context, now time.Time) (int, e
 
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	created := 0
+	var errs []error
 	for _, sl := range slots {
 		meal := slotDate(sl)
 		// A meal dated before today is already over — too late to remind.
 		if meal.Before(today) {
 			continue
 		}
-		created += s.slotReminders(ctx, sl, meal, now, servingScale(sl),
-			slotContext{proteinByRecipe, maxStepByRecipe, members})
+		n, err := s.slotReminders(ctx, sl, meal, now, servingScale(sl),
+			slotContext{proteinByRecipe, maxStepByRecipe, members}, gate)
+		created += n
+		errs = append(errs, err)
 	}
-	return created, nil
+	return created, errors.Join(errs...)
 }
 
 // recipeSignals loads the per-recipe inputs both reminder rules need:
@@ -223,40 +238,47 @@ type slotContext struct {
 }
 
 // slotReminders emits the defrost and advance-prep reminders for one meal
-// slot whose date is not in the past.
-func (s *Service) slotReminders(ctx context.Context, sl sqlc.ListMealSlotsWithRecipesRow, meal, now time.Time, scale float64, sc slotContext) int {
+// slot whose date is not in the past. Dedup keys carry the recipe id so a
+// recipe swap in the same slot notifies again instead of colliding with
+// the reminder the old recipe already produced.
+func (s *Service) slotReminders(ctx context.Context, sl sqlc.ListMealSlotsWithRecipesRow, meal, now time.Time, scale float64, sc slotContext, gate *gateCache) (int, error) {
 	created := 0
+	var errs []error
 	if items := sc.proteinByRecipe[sl.RecipeID]; len(items) > 0 {
 		lbs := proteinPounds(items, scale)
 		lead := defrostLeadDays(lbs)
 		if !now.Before(s.dueAt(meal, lead)) {
-			created += s.insertRecipeReminder(ctx, sc.members[sl.HouseholdID], sl.HouseholdID, recipeReminder{
+			n, err := s.insertRecipeReminder(ctx, gate, sc.members[sl.HouseholdID], sl.HouseholdID, recipeReminder{
 				kind:  KindProteinDefrost,
 				title: fmt.Sprintf("Defrost protein for %s", meal.Format(displayDateLayout)),
 				body: fmt.Sprintf("%s calls for %.1f lb of protein, which needs about %d days to thaw — take it out of the freezer today.",
 					sl.RecipeName, lbs, lead),
 				recipeID:  sl.RecipeID,
-				dedupBase: fmt.Sprintf("%s:%d", KindProteinDefrost, sl.SlotID),
+				dedupBase: fmt.Sprintf("%s:%d:%d", KindProteinDefrost, sl.SlotID, sl.RecipeID),
 			})
+			created += n
+			errs = append(errs, err)
 		}
 	}
 	if maxDur, ok := sc.maxStepByRecipe[sl.RecipeID]; ok {
 		lead := int(math.Ceil(float64(maxDur) / float64(minutesPerDay)))
 		if !now.Before(s.dueAt(meal, lead)) {
-			created += s.insertRecipeReminder(ctx, sc.members[sl.HouseholdID], sl.HouseholdID, recipeReminder{
+			n, err := s.insertRecipeReminder(ctx, gate, sc.members[sl.HouseholdID], sl.HouseholdID, recipeReminder{
 				kind:  KindMealPrepAdvance,
 				title: fmt.Sprintf("Start prep for %s", sl.RecipeName),
 				body: fmt.Sprintf("%s on %s has a step that takes about %d day(s) — start it today to be ready in time.",
 					sl.RecipeName, meal.Format(displayDateLayout), lead),
 				recipeID:  sl.RecipeID,
-				dedupBase: fmt.Sprintf("%s:%d", KindMealPrepAdvance, sl.SlotID),
+				dedupBase: fmt.Sprintf("%s:%d:%d", KindMealPrepAdvance, sl.SlotID, sl.RecipeID),
 			})
+			created += n
+			errs = append(errs, err)
 		}
 	}
-	return created
+	return created, errors.Join(errs...)
 }
 
-func (s *Service) sweepExpiry(ctx context.Context, now time.Time) (int, error) {
+func (s *Service) sweepExpiry(ctx context.Context, now time.Time, gate *gateCache) (int, error) {
 	windowEnd := now.AddDate(0, 0, s.cfg.ExpiryDays)
 	items, err := s.q.ListExpiringHouseholdItems(ctx, sqlc.ListExpiringHouseholdItemsParams{
 		ExpiresAt:   pgtype.Timestamptz{Time: now, Valid: true},
@@ -280,11 +302,12 @@ func (s *Service) sweepExpiry(ctx context.Context, now time.Time) (int, error) {
 		return 0, err
 	}
 	created := 0
+	var errs []error
 	for _, it := range items {
 		exp := it.ExpiresAt.Time.Format(displayDateLayout)
 		title := fmt.Sprintf("%s expires soon", it.ItemName)
 		body := fmt.Sprintf("%s expires %s — use it or add a replacement to your grocery list.", it.ItemName, exp)
-		created += s.insertItemReminder(ctx, members[it.HouseholdID], it.HouseholdID, itemReminder{
+		n, err := s.insertItemReminder(ctx, gate, members[it.HouseholdID], it.HouseholdID, itemReminder{
 			kind:   KindItemExpiring,
 			title:  title,
 			body:   body,
@@ -292,8 +315,10 @@ func (s *Service) sweepExpiry(ctx context.Context, now time.Time) (int, error) {
 			dedupBase: fmt.Sprintf("%s:%d:%s", KindItemExpiring, it.HouseholdItemID,
 				it.ExpiresAt.Time.Format(time.DateOnly)),
 		})
+		created += n
+		errs = append(errs, err)
 	}
-	return created, nil
+	return created, errors.Join(errs...)
 }
 
 // membersByHousehold fetches member user IDs grouped by household.
@@ -333,11 +358,13 @@ type itemReminder struct {
 
 // insertRecipeReminder writes one protein/prep notification per member,
 // honoring each member's opt-outs. dedupBase is suffixed with :userID so
-// the per-user keys differ.
-func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, householdID int64, r recipeReminder) int {
+// the per-user keys differ. Per-member write failures join into the
+// returned error rather than aborting the fan-out.
+func (s *Service) insertRecipeReminder(ctx context.Context, gate *gateCache, memberIDs []int64, householdID int64, r recipeReminder) (int, error) {
 	created := 0
+	var errs []error
 	for _, uid := range memberIDs {
-		feedOK, pushOK := s.channelDecisions(ctx, uid, r.kind)
+		feedOK, pushOK := gate.decisions(ctx, uid, r.kind)
 		if !feedOK && !pushOK {
 			continue
 		}
@@ -353,14 +380,15 @@ func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, h
 				DedupKey:    pgtype.Text{String: dedup, Valid: true},
 			})
 			if err != nil {
-				slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
+				errs = append(errs, fmt.Errorf("feed reminder %s for user %d: %w",
+					r.kind, uid, domainerr.FromStorage(err)))
 				continue
 			}
 			created += int(tag.RowsAffected())
 			_ = s.q.PruneReadNotifications(ctx, uid)
 		}
 		if pushOK {
-			s.enqueuePush(ctx, sqlc.InsertPushDeliveryParams{
+			err := s.enqueuePush(ctx, sqlc.InsertPushDeliveryParams{
 				UserID:      uid,
 				Kind:        r.kind,
 				HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
@@ -369,15 +397,17 @@ func (s *Service) insertRecipeReminder(ctx context.Context, memberIDs []int64, h
 				Body:        pgtype.Text{String: r.body, Valid: true},
 				DedupKey:    pgtype.Text{String: dedup, Valid: true},
 			})
+			errs = append(errs, err)
 		}
 	}
-	return created
+	return created, errors.Join(errs...)
 }
 
-func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, householdID int64, r itemReminder) int {
+func (s *Service) insertItemReminder(ctx context.Context, gate *gateCache, memberIDs []int64, householdID int64, r itemReminder) (int, error) {
 	created := 0
+	var errs []error
 	for _, uid := range memberIDs {
-		feedOK, pushOK := s.channelDecisions(ctx, uid, r.kind)
+		feedOK, pushOK := gate.decisions(ctx, uid, r.kind)
 		if !feedOK && !pushOK {
 			continue
 		}
@@ -393,14 +423,15 @@ func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, hou
 				DedupKey:    pgtype.Text{String: dedup, Valid: true},
 			})
 			if err != nil {
-				slog.Warn("reminder insert failed", "kind", r.kind, "user", uid, "error", err)
+				errs = append(errs, fmt.Errorf("feed reminder %s for user %d: %w",
+					r.kind, uid, domainerr.FromStorage(err)))
 				continue
 			}
 			created += int(tag.RowsAffected())
 			_ = s.q.PruneReadNotifications(ctx, uid)
 		}
 		if pushOK {
-			s.enqueuePush(ctx, sqlc.InsertPushDeliveryParams{
+			err := s.enqueuePush(ctx, sqlc.InsertPushDeliveryParams{
 				UserID:      uid,
 				Kind:        r.kind,
 				HouseholdID: pgtype.Int8{Int64: householdID, Valid: true},
@@ -409,35 +440,103 @@ func (s *Service) insertItemReminder(ctx context.Context, memberIDs []int64, hou
 				Body:        pgtype.Text{String: r.body, Valid: true},
 				DedupKey:    pgtype.Text{String: dedup, Valid: true},
 			})
+			errs = append(errs, err)
 		}
 	}
-	return created
+	return created, errors.Join(errs...)
 }
 
-// channelDecisions evaluates the feed and push gates for one recipient.
-// Feed errors fail open (deliver); push errors fail closed — a prefs
-// outage must not send pushes to a phone.
-func (s *Service) channelDecisions(ctx context.Context, userID int64, kind string) (feedOK, pushOK bool) {
-	ok, err := s.Allowed(ctx, userID, kind)
-	if err != nil {
-		slog.Warn("notification suppression check failed, delivering anyway", "user", userID, "kind", kind, "error", err)
-		ok = true
+// gateCache memoizes the two lookups the channel gates repeat for every
+// member of every reminder: a kind's opt-out category and a member's
+// preference rows. Its scope is a single Sweep call — an opt-out edit
+// applies on the next sweep, never mid-fan-out.
+type gateCache struct {
+	s          *Service
+	categories map[string]string
+	unknown    map[string]bool // kinds absent from the registry
+	prefs      map[int64][]sqlc.UserprefsNotificationPref
+}
+
+func newGateCache(s *Service) *gateCache {
+	return &gateCache{
+		s:          s,
+		categories: map[string]string{},
+		unknown:    map[string]bool{},
+		prefs:      map[int64][]sqlc.UserprefsNotificationPref{},
 	}
-	feedOK = ok
-	ok, err = s.PushAllowed(ctx, userID, kind)
-	if err != nil {
-		slog.Warn("push suppression check failed, skipping push", "user", userID, "kind", kind, "error", err)
-		return feedOK, false
+}
+
+// category resolves a kind to its opt-out bucket; known=false means the
+// kind is not in the registry (both channels fail open for it).
+func (g *gateCache) category(ctx context.Context, kind string) (cat string, known bool, err error) {
+	if g.unknown[kind] {
+		return "", false, nil
 	}
-	return feedOK, ok
+	if c, ok := g.categories[kind]; ok {
+		return c, true, nil
+	}
+	c, err := g.s.q.GetNotificationTypeCategory(ctx, kind)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		g.unknown[kind] = true
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("notification kind lookup: %w", domainerr.FromStorage(err))
+	}
+	g.categories[kind] = c
+	return c, true, nil
+}
+
+func (g *gateCache) prefsFor(ctx context.Context, userID int64) ([]sqlc.UserprefsNotificationPref, error) {
+	if p, ok := g.prefs[userID]; ok {
+		return p, nil
+	}
+	p, err := g.s.q.ListNotificationPrefs(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list notification prefs: %w", domainerr.FromStorage(err))
+	}
+	g.prefs[userID] = p
+	return p, nil
+}
+
+// decisions evaluates both channel gates for one recipient, mirroring
+// Allowed + PushAllowed on the cached rows: feed errors fail open
+// (deliver), push errors fail closed — a prefs outage must not send
+// pushes to a phone. Mutes are channel-agnostic; 'enabled' gates the feed
+// only and push requires an explicit push_enabled opt-in.
+func (g *gateCache) decisions(ctx context.Context, userID int64, kind string) (feedOK, pushOK bool) {
+	cat, known, err := g.category(ctx, kind)
+	if err != nil {
+		slog.Warn("notification kind lookup failed, delivering feed anyway",
+			"user", userID, "kind", kind, "error", err)
+		return true, false
+	}
+	if !known {
+		return true, true
+	}
+	prefs, err := g.prefsFor(ctx, userID)
+	if err != nil {
+		slog.Warn("notification prefs lookup failed, skipping push",
+			"user", userID, "kind", kind, "error", err)
+		return true, false
+	}
+	now := time.Now()
+	feedOK = !prefMuted(prefs, CategoryAll, now) && !prefMuted(prefs, cat, now)
+	silenced := prefSilenced(prefs, CategoryAll, now) || prefSilenced(prefs, cat, now)
+	pushOK = !silenced && (prefPushOn(prefs, CategoryAll) || prefPushOn(prefs, cat))
+	return feedOK, pushOK
 }
 
 // enqueuePush writes the outbox row the delivery worker drains; dedup_key
-// makes a repeat sweep insert a no-op, matching the feed insert's idempotency.
-func (s *Service) enqueuePush(ctx context.Context, p sqlc.InsertPushDeliveryParams) {
+// makes a repeat sweep insert a no-op, matching the feed insert's
+// idempotency. The error propagates — an outbox write the caller can't
+// see is a push that silently never happens.
+func (s *Service) enqueuePush(ctx context.Context, p sqlc.InsertPushDeliveryParams) error {
 	if _, err := s.q.InsertPushDelivery(ctx, p); err != nil {
-		slog.Warn("push delivery enqueue failed", "kind", p.Kind, "user", p.UserID, "error", err)
+		return fmt.Errorf("push delivery enqueue %s for user %d: %w",
+			p.Kind, p.UserID, domainerr.FromStorage(err))
 	}
+	return nil
 }
 
 // distinctInt64s dedups preserving first-seen order.

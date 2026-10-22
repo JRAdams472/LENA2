@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -286,14 +287,14 @@ func TestSweep_CreatesDedupedReminders(t *testing.T) {
 		{HouseholdItemID: 3, HouseholdID: 7, ItemID: 9, ItemName: "Milk",
 			ExpiresAt: ts(now.AddDate(0, 0, 2))},
 	}, nil)
-	// Members allowed for all kinds; each member is checked twice per
-	// kind — once for the feed channel, once for push (nil prefs deny
-	// push, so no outbox rows are expected).
+	// The sweep's gate cache resolves each kind's category and each
+	// member's prefs exactly once no matter how many reminders fan out —
+	// nil prefs deny push, so no outbox rows are expected.
+	for _, kind := range []string{KindProteinDefrost, KindMealPrepAdvance, KindItemExpiring} {
+		mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), kind).Return("cat", nil).Times(1)
+	}
 	for _, uid := range []int64{11, 12} {
-		for _, kind := range []string{KindProteinDefrost, KindMealPrepAdvance, KindItemExpiring} {
-			mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), kind).Return("cat", nil).Times(2)
-			mq.EXPECT().ListNotificationPrefs(gomock.Any(), uid).Return(nil, nil).Times(2)
-		}
+		mq.EXPECT().ListNotificationPrefs(gomock.Any(), uid).Return(nil, nil).Times(1)
 	}
 	// 2 recipe reminders + 1 item reminder x 2 members = 6 inserts.
 	mq.EXPECT().InsertRecipeReminderNotification(gomock.Any(), gomock.Any()).
@@ -318,10 +319,10 @@ func TestSweep_SuppressedMemberGetsNothing(t *testing.T) {
 	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
 		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
 	}, nil)
-	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil).Times(2)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil).Times(1)
 	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return([]sqlc.UserprefsNotificationPref{
 		{Category: "expiry", Enabled: false},
-	}, nil).Times(2)
+	}, nil).Times(1)
 
 	n, err := svc.Sweep(context.Background(), now)
 	require.NoError(t, err)
@@ -341,10 +342,10 @@ func TestSweep_PushOptInEnqueuesDelivery(t *testing.T) {
 	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
 		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
 	}, nil)
-	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil).Times(2)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil).Times(1)
 	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return([]sqlc.UserprefsNotificationPref{
 		{Category: "expiry", Enabled: false, PushEnabled: true},
-	}, nil).Times(2)
+	}, nil).Times(1)
 	mq.EXPECT().InsertPushDelivery(gomock.Any(), gomock.Cond(func(a sqlc.InsertPushDeliveryParams) bool {
 		return a.UserID == 11 && a.Kind == KindItemExpiring &&
 			a.ItemID.Valid && a.ItemID.Int64 == 9 &&
@@ -354,6 +355,139 @@ func TestSweep_PushOptInEnqueuesDelivery(t *testing.T) {
 	n, err := svc.Sweep(context.Background(), now)
 	require.NoError(t, err)
 	assert.Equal(t, 0, n) // push rows don't count as feed notifications
+}
+
+// ---------- sweep lifecycle ----------
+
+// A repeated Start must not spawn a second sweep goroutine, and Stop is
+// safe any number of times — before Start, while running, and after.
+func TestService_StartIdempotentAndStopSafe(t *testing.T) {
+	svc, mq := newService(t)
+	svc.cfg.SweepInterval = time.Hour // only the immediate sweep can fire
+	mq.EXPECT().ListMealSlotsWithRecipes(gomock.Any()).Return(nil, nil).Times(1)
+	mq.EXPECT().ListExpiringHouseholdItems(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+
+	ctx := context.Background()
+	svc.Stop() // stopping a never-started service is fine
+	svc.Start(ctx)
+	svc.Start(ctx) // no-op while running — no second goroutine
+	require.Eventually(t, func() bool {
+		svc.mu.Lock()
+		defer svc.mu.Unlock()
+		return svc.running
+	}, time.Second, 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond) // a leaked sweep would re-hit the mocks
+	svc.Stop()
+	svc.Stop()
+	svc.Start(ctx) // stopped stays stopped
+	time.Sleep(50 * time.Millisecond)
+}
+
+// An outbox insert failure must surface from Sweep — a push the caller
+// can't see is a push that silently never happens.
+func TestSweep_PushEnqueueErrorPropagates(t *testing.T) {
+	svc, mq := newService(t)
+	now := time.Date(2025, 6, 2, 9, 0, 0, 0, time.Local)
+	mq.EXPECT().ListMealSlotsWithRecipes(gomock.Any()).Return(nil, nil)
+	mq.EXPECT().ListExpiringHouseholdItems(gomock.Any(), gomock.Any()).Return([]sqlc.ListExpiringHouseholdItemsRow{
+		{HouseholdItemID: 3, HouseholdID: 7, ItemID: 9, ItemName: "Milk",
+			ExpiresAt: ts(now.AddDate(0, 0, 1))},
+	}, nil)
+	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
+		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
+	}, nil)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil)
+	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return([]sqlc.UserprefsNotificationPref{
+		{Category: "expiry", Enabled: false, PushEnabled: true},
+	}, nil)
+	mq.EXPECT().InsertPushDelivery(gomock.Any(), gomock.Any()).
+		Return(pgconn.NewCommandTag(""), errors.New("outbox down"))
+
+	n, err := svc.Sweep(context.Background(), now)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "outbox down")
+	assert.Equal(t, 0, n)
+}
+
+// A feed-insert failure surfaces the same way — the sweep reports partial
+// failure instead of silently dropping the member's reminder.
+func TestSweep_FeedInsertErrorPropagates(t *testing.T) {
+	svc, mq := newService(t)
+	now := time.Date(2025, 6, 2, 9, 0, 0, 0, time.Local)
+	mq.EXPECT().ListMealSlotsWithRecipes(gomock.Any()).Return(nil, nil)
+	mq.EXPECT().ListExpiringHouseholdItems(gomock.Any(), gomock.Any()).Return([]sqlc.ListExpiringHouseholdItemsRow{
+		{HouseholdItemID: 3, HouseholdID: 7, ItemID: 9, ItemName: "Milk",
+			ExpiresAt: ts(now.AddDate(0, 0, 1))},
+	}, nil)
+	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
+		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
+	}, nil)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindItemExpiring).Return("expiry", nil)
+	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return(nil, nil)
+	mq.EXPECT().InsertItemReminderNotification(gomock.Any(), gomock.Any()).
+		Return(pgconn.NewCommandTag(""), errors.New("insert failed"))
+
+	n, err := svc.Sweep(context.Background(), now)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "insert failed")
+	assert.Equal(t, 0, n)
+}
+
+// The meal-reminder dedup key carries the recipe id — swapping a slot's
+// recipe must produce a fresh key so the new recipe notifies instead of
+// colliding with the old recipe's row.
+func TestSweep_MealDedupKeyIncludesRecipe(t *testing.T) {
+	svc, mq := newService(t)
+	now := time.Date(2025, 6, 2, 9, 0, 0, 0, time.Local)
+	mon := time.Date(2025, 6, 2, 0, 0, 0, 0, time.UTC)
+	slot := sqlc.ListMealSlotsWithRecipesRow{
+		SlotID: 10, DayOfWeek: 4,
+		WeekStartDate:      pgtype.Date{Time: mon, Valid: true},
+		WeekStartDayOfWeek: 1,
+		HouseholdID:        7,
+		RecipeID:           5, RecipeName: "Roast",
+	}
+	mq.EXPECT().ListMealSlotsWithRecipes(gomock.Any()).Return([]sqlc.ListMealSlotsWithRecipesRow{slot}, nil)
+	// 20 lb of protein -> 5-day lead -> already due for a Thursday meal.
+	mq.EXPECT().ListProteinItemsForRecipes(gomock.Any(), []int64{5}).Return([]sqlc.ListProteinItemsForRecipesRow{
+		{RecipeID: 5, Quantity: num(20), ToBaseFactor: num(453.592), UnitKind: pgtype.Text{String: "weight", Valid: true}},
+	}, nil)
+	mq.EXPECT().ListLongStepsForRecipes(gomock.Any(), []int64{5}).Return(nil, nil)
+	mq.EXPECT().ListMemberIDsForHouseholds(gomock.Any(), []int64{7}).Return([]sqlc.ListMemberIDsForHouseholdsRow{
+		{UserID: 11, HouseholdID: pgtype.Int8{Int64: 7, Valid: true}},
+	}, nil)
+	mq.EXPECT().ListExpiringHouseholdItems(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), KindProteinDefrost).Return("meal_reminders", nil)
+	mq.EXPECT().ListNotificationPrefs(gomock.Any(), int64(11)).Return(nil, nil)
+	mq.EXPECT().InsertRecipeReminderNotification(gomock.Any(), gomock.Cond(func(a sqlc.InsertRecipeReminderNotificationParams) bool {
+		return a.DedupKey.Valid && a.DedupKey.String == "protein_defrost:10:5:11"
+	})).Return(pgconn.NewCommandTag("INSERT 0 1"), nil)
+	mq.EXPECT().PruneReadNotifications(gomock.Any(), int64(11)).Return(nil)
+
+	n, err := svc.Sweep(context.Background(), now)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+}
+
+// ---------- gate cache ----------
+
+// A failed kind lookup opens the feed but closes push — the same
+// semantics Allowed/PushAllowed give callers outside the sweep.
+func TestGateCache_LookupErrorOpensFeedClosesPush(t *testing.T) {
+	svc, mq := newService(t)
+	mq.EXPECT().GetNotificationTypeCategory(gomock.Any(), "ghost_kind").Return("", pgx.ErrNoRows)
+	gate := newGateCache(svc)
+	feed, push := gate.decisions(context.Background(), 1, "ghost_kind")
+	assert.True(t, feed)
+	assert.True(t, push) // unknown kinds fail open on both channels
+
+	mq2 := mock.NewMockQuerier(gomock.NewController(t))
+	svc2 := &Service{q: mq2}
+	mq2.EXPECT().GetNotificationTypeCategory(gomock.Any(), "kind_x").Return("", errors.New("db gone"))
+	gate2 := newGateCache(svc2)
+	feed, push = gate2.decisions(context.Background(), 1, "kind_x")
+	assert.True(t, feed)
+	assert.False(t, push)
 }
 
 // ---------- push gate ----------
