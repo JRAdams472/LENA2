@@ -1,7 +1,6 @@
 package ocrimport
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -247,9 +246,4 @@ func JSONSchema() map[string]interface{} {
 			},
 		},
 	}
-}
-
-// MarshalDraftJSON returns an indented JSON representation of the draft.
-func MarshalDraftJSON(d *RecipeDraft) ([]byte, error) {
-	return json.MarshalIndent(d, "", "  ")
 }

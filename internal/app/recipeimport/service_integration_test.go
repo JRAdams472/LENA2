@@ -65,7 +65,7 @@ func walkToReady(t *testing.T, ctx context.Context, svc *Service, id int64, item
 	require.NoError(t, err)
 	require.NoError(t, svc.store.UpdateOCR(ctx, id, "text", nil))
 	require.NoError(t, svc.store.UpdateDraft(ctx, id, []byte("{}")))
-	require.NoError(t, svc.store.UpdateReview(ctx, id, []byte(reviewJSON), StatusReady, itBy))
+	require.NoError(t, svc.store.UpdateReview(ctx, id, []byte(reviewJSON), StatusReady, itBy, workerReviewFrom))
 }
 
 func TestIntegrationService_CreateGetRejectRetry(t *testing.T) {
@@ -120,6 +120,9 @@ func TestIntegrationService_UpdateReview(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, svc.store.UpdateOCR(ctx, ri.ID, "text", nil))
 	require.NoError(t, svc.store.UpdateDraft(ctx, ri.ID, []byte("{}")))
+	// The worker's mapping stage moves drafted → reviewing; the admin edit
+	// (svc.UpdateReview) is only valid once the row is under review.
+	require.NoError(t, svc.store.UpdateReview(ctx, ri.ID, []byte("{}"), StatusReviewing, itBy, workerReviewFrom))
 
 	review := &ocrimport.ReviewRecipe{
 		Name: "Pancakes",
@@ -153,6 +156,8 @@ func TestIntegrationService_UpdateReview_SuggestedIsNotReady(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, svc.store.UpdateOCR(ctx, ri.ID, "text", nil))
 	require.NoError(t, svc.store.UpdateDraft(ctx, ri.ID, []byte("{}")))
+	// Worker mapping lands the row in reviewing; the admin edit comes after.
+	require.NoError(t, svc.store.UpdateReview(ctx, ri.ID, []byte("{}"), StatusReviewing, itBy, workerReviewFrom))
 
 	review := &ocrimport.ReviewRecipe{
 		Name: "Pancakes",
@@ -250,7 +255,7 @@ func TestIntegrationService_Approve_NegativeStates(t *testing.T) {
 	unapproved := fmt.Sprintf(
 		`{"name":"IT Recipe","items":[{"draftItem":{"ingredient":"flour"},"itemId":"%d","unit":"cup","unitId":"%d","status":"accepted","approved":true}],"steps":[]}`,
 		itemID, unitID)
-	require.NoError(t, svc.store.UpdateReview(ctx, notApproved.ID, []byte(unapproved), StatusReady, itBy))
+	require.NoError(t, svc.store.UpdateReview(ctx, notApproved.ID, []byte(unapproved), StatusReady, itBy, workerReviewFrom))
 	_, _, err = svc.Approve(ctx, notApproved.ID, admin)
 	assert.ErrorIs(t, err, domainerr.ErrValidation, "unapproved review must not persist")
 }

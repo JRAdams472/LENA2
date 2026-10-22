@@ -363,10 +363,11 @@ UPDATE recipe.recipe_import
 SET status     = 'pending',
     updated_at = now()
 WHERE status = 'processing'
+  AND updated_at < now() - make_interval(secs => $1)
 `
 
-func (q *Queries) ResetProcessingRecipeImports(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, resetProcessingRecipeImports)
+func (q *Queries) ResetProcessingRecipeImports(ctx context.Context, secs float64) error {
+	_, err := q.db.Exec(ctx, resetProcessingRecipeImports, secs)
 	return err
 }
 

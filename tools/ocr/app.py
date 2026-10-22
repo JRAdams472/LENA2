@@ -17,6 +17,7 @@ import pytesseract
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from pdf2image import convert_from_path, pdfinfo_from_path
+from pdf2image.exceptions import PDFInfoNotInstalledError
 from PIL import Image, ImageOps
 from pytesseract import Output
 
@@ -26,6 +27,8 @@ app = FastAPI(title="LENA2 OCR", version="0.1.0")
 # Default is --psm 4 (assume single column of variable text). The caller can
 # override per-request, but the importer is expected to pick sensible defaults.
 DEFAULT_PSM = 4
+# Tesseract accepts --psm values 0 through 13 only.
+MIN_PSM, MAX_PSM = 0, 13
 
 # Untrusted-upload bounds. The Go BFF enforces the same limits, but the
 # sidecar defends itself too since it parses raw bytes with poppler/Pillow.
@@ -33,6 +36,9 @@ MAX_UPLOAD_BYTES = int(os.environ.get("OCR_MAX_UPLOAD_BYTES", str(25 * 1024 * 10
 MAX_PDF_PAGES = int(os.environ.get("OCR_MAX_PDF_PAGES", "20"))
 # Reject decompression bombs larger than ~40 MP (Pillow warns at half this).
 Image.MAX_IMAGE_PIXELS = int(os.environ.get("OCR_MAX_IMAGE_PIXELS", str(40_000_000)))
+# Bound each rasterized PDF page to the same ~40 MP ceiling: poppler scales
+# oversized pages down to fit a MAX_RASTER_DIM square, preserving aspect.
+MAX_RASTER_DIM = int(os.environ.get("OCR_MAX_RASTER_DIM", str(int(Image.MAX_IMAGE_PIXELS ** 0.5))))
 
 
 @app.get("/health")
@@ -131,10 +137,50 @@ def _write_temp(contents: bytes, suffix: str) -> str:
         return tmp.name
 
 
-@app.post("/ocr")
+class _PdfTooManyPages(Exception):
+    """Raised by _ocr_pdf so the handler can map it to a 413."""
+
+
+def _ocr_pdf(path: str, psm: int) -> list[dict[str, Any]]:
+    """CPU-bound PDF pipeline: pdfinfo -> bounded rasterize -> per-page OCR.
+
+    Runs inside asyncio.to_thread so poppler and Tesseract never block the
+    event loop (and /health stays responsive) during long imports.
+    """
+    info = pdfinfo_from_path(path)
+    page_count = int(info.get("Pages", 0))
+    if page_count > MAX_PDF_PAGES:
+        raise _PdfTooManyPages(
+            f"pdf has {page_count} pages; maximum is {MAX_PDF_PAGES}"
+        )
+    # -scale-to bounds every rasterized page inside a MAX_RASTER_DIM square,
+    # so a crafted huge page cannot explode memory (decompression-bomb
+    # equivalent for the poppler path, which bypasses Image.MAX_IMAGE_PIXELS).
+    pages = convert_from_path(path, dpi=300, fmt="png", size=MAX_RASTER_DIM)
+    results: list[dict[str, Any]] = []
+    for i, page_img in enumerate(pages, start=1):
+        result = _ocr_image(page_img, psm)
+        result["page"] = i
+        results.append(result)
+    return results
+
+
+def _ocr_image_bytes(contents: bytes, psm: int) -> dict[str, Any]:
+    """CPU-bound single-image pipeline, run inside asyncio.to_thread."""
+    page_img = Image.open(io.BytesIO(contents))
+    return _ocr_image(page_img, psm)
+
+
+@app.post("/ocr", response_model=None)
 async def ocr(
     image: Annotated[UploadFile, File()], psm: int = DEFAULT_PSM
 ) -> dict | JSONResponse:
+    if not MIN_PSM <= psm <= MAX_PSM:
+        return JSONResponse(
+            {"error": f"invalid psm {psm}; must be between {MIN_PSM} and {MAX_PSM}"},
+            status_code=400,
+        )
+
     # Streamed size limit: read at most MAX_UPLOAD_BYTES + 1 so a huge body
     # is rejected without being fully buffered.
     contents = await image.read(MAX_UPLOAD_BYTES + 1)
@@ -154,26 +200,22 @@ async def ocr(
         suffix = os.path.splitext(image.filename or "upload.pdf")[1] or ".pdf"
         tmp_path = await asyncio.to_thread(_write_temp, contents, suffix)
         try:
-            info = pdfinfo_from_path(tmp_path)
-            page_count = int(info.get("Pages", 0))
-            if page_count > MAX_PDF_PAGES:
-                return JSONResponse(
-                    {"error": f"pdf has {page_count} pages; maximum is {MAX_PDF_PAGES}"},
-                    status_code=413,
-                )
-            pages = convert_from_path(tmp_path, dpi=300, fmt="png")
-            for i, page_img in enumerate(pages, start=1):
-                result = _ocr_image(page_img, psm)
-                result["page"] = i
-                page_results.append(result)
+            page_results = await asyncio.to_thread(_ocr_pdf, tmp_path, psm)
+        except _PdfTooManyPages as exc:
+            return JSONResponse({"error": str(exc)}, status_code=413)
+        except PDFInfoNotInstalledError:
+            raise  # server misconfiguration, not a bad upload
+        except Exception:
+            return JSONResponse({"error": "invalid or unreadable pdf"}, status_code=400)
         finally:
             os.unlink(tmp_path)
     else:
         try:
-            page_img = Image.open(io.BytesIO(contents))
-            result = _ocr_image(page_img, psm)
+            result = await asyncio.to_thread(_ocr_image_bytes, contents, psm)
         except Image.DecompressionBombError:
             return JSONResponse({"error": "image exceeds pixel limit"}, status_code=413)
+        except Exception:
+            return JSONResponse({"error": "invalid or unreadable image"}, status_code=400)
         result["page"] = 1
         page_results.append(result)
 

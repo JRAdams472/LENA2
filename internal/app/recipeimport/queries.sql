@@ -50,7 +50,8 @@ ORDER BY created_at ASC;
 UPDATE recipe.recipe_import
 SET status     = 'pending',
     updated_at = now()
-WHERE status = 'processing';
+WHERE status = 'processing'
+  AND updated_at < now() - make_interval(secs => $1);
 
 -- name: ClaimRecipeImport :one
 UPDATE recipe.recipe_import

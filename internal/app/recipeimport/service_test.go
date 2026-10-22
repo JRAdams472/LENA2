@@ -43,6 +43,8 @@ func (m *memoryStore) transition(id int64, to Status) (*RecipeImport, error) {
 		return nil, domainerr.ErrConflict
 	}
 	r.Status = to
+	now := time.Now()
+	r.UpdatedAt = &now
 	return r, nil
 }
 
@@ -50,6 +52,9 @@ func (m *memoryStore) Create(_ context.Context, ri RecipeImport) (*RecipeImport,
 	ri.ID = m.nextID
 	m.nextID++
 	ri.Status = StatusPending
+	now := time.Now()
+	ri.CreatedAt = now
+	ri.UpdatedAt = &now
 	m.rows[ri.ID] = &ri
 	return &ri, nil
 }
@@ -131,11 +136,15 @@ func (m *memoryStore) ListClaimableIDs(context.Context) ([]int64, error) {
 	return ids, nil
 }
 
-func (m *memoryStore) ResetProcessing(context.Context) error {
+func (m *memoryStore) ResetProcessing(_ context.Context, staleFor time.Duration) error {
 	for _, r := range m.rows {
-		if r.Status == StatusProcessing {
-			r.Status = StatusPending
+		if r.Status != StatusProcessing {
+			continue
 		}
+		if staleFor > 0 && r.UpdatedAt != nil && time.Since(*r.UpdatedAt) <= staleFor {
+			continue
+		}
+		r.Status = StatusPending
 	}
 	return nil
 }
@@ -155,6 +164,8 @@ func (m *memoryStore) Claim(_ context.Context, id int64) (*RecipeImport, error) 
 		return nil, domainerr.ErrConflict
 	}
 	r.Status = StatusProcessing
+	now := time.Now()
+	r.UpdatedAt = &now
 	cp := *r
 	return &cp, nil
 }
@@ -178,7 +189,21 @@ func (m *memoryStore) UpdateDraft(_ context.Context, id int64, json []byte) erro
 	return nil
 }
 
-func (m *memoryStore) UpdateReview(_ context.Context, id int64, json []byte, status Status, updatedBy string) error {
+func (m *memoryStore) UpdateReview(_ context.Context, id int64, json []byte, status Status, updatedBy string, from []Status) error {
+	r, ok := m.rows[id]
+	if !ok {
+		return domainerr.ErrNotFound
+	}
+	allowed := false
+	for _, s := range from {
+		if r.Status == s {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return domainerr.ErrConflict
+	}
 	r, err := m.transition(id, status)
 	if err != nil {
 		return err
@@ -283,6 +308,14 @@ func (f *fakeInventory) GetItemByID(_ context.Context, id int64) (inventory.Item
 		}
 	}
 	return inventory.Item{}, errors.New("not found")
+}
+func (f *fakeInventory) GetIngredientByID(_ context.Context, id int64) (inventory.Ingredient, error) {
+	for _, in := range f.ingredients {
+		if in.IngredientID == id {
+			return in, nil
+		}
+	}
+	return inventory.Ingredient{}, errors.New("not found")
 }
 func (f *fakeInventory) GetUnitByID(_ context.Context, id int64) (inventory.Unit, error) {
 	for _, u := range f.units {
@@ -532,6 +565,135 @@ func TestService_catalogSnapshot_singleflight(t *testing.T) {
 		assert.Same(t, snaps[0], snaps[i])
 	}
 	assert.Equal(t, int64(1), inv.scans.Load(), "concurrent callers share one build")
+}
+
+func TestService_UpdateReview_IngredientKindResolves(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReviewing
+
+	// The selected id is an ingredient, not a branded item — items stays
+	// empty so a GetItemByID lookup would fail where GetIngredientByID wins.
+	inv := &fakeInventory{
+		units:       []inventory.Unit{{UnitID: 2, Name: "each"}},
+		ingredients: []inventory.Ingredient{{IngredientID: 7, Name: "flour"}},
+	}
+	svc := &Service{inv: inv, store: store}
+
+	review := &ocrimport.ReviewRecipe{
+		Name: "Simple",
+		Items: []ocrimport.MatchResult{{
+			DraftItem: ocrimport.DraftItem{Ingredient: "flour"},
+			ItemID:    "7",
+			ItemKind:  "ingredient",
+			Approved:  true,
+		}},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "x"}},
+	}
+	updated, err := svc.UpdateReview(context.Background(), ri.ID, review, "tester")
+	require.NoError(t, err)
+	assert.Equal(t, StatusReady, updated.Status)
+}
+
+func TestService_UpdateReview_IngredientKindMissing(t *testing.T) {
+	store := newMemoryStore()
+	ri, err := store.Create(context.Background(), RecipeImport{})
+	require.NoError(t, err)
+	store.rows[ri.ID].Status = StatusReviewing
+
+	svc := &Service{
+		inv:   &fakeInventory{units: []inventory.Unit{{UnitID: 2, Name: "each"}}, ingredients: []inventory.Ingredient{{IngredientID: 7, Name: "flour"}}},
+		store: store,
+	}
+	review := &ocrimport.ReviewRecipe{
+		Name: "Simple",
+		Items: []ocrimport.MatchResult{{
+			DraftItem: ocrimport.DraftItem{Ingredient: "flour"},
+			ItemID:    "999",
+			ItemKind:  "ingredient",
+			Approved:  true,
+		}},
+		Steps: []ocrimport.DraftStep{{StepNumber: 1, Instruction: "x"}},
+	}
+	_, err = svc.UpdateReview(context.Background(), ri.ID, review, "tester")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domainerr.ErrValidation), "want ValidationError, got %v", err)
+	assert.Contains(t, err.Error(), "no catalog ingredient")
+}
+
+func TestService_sweepClaimable_enqueuesPending(t *testing.T) {
+	mem := newMemoryStore()
+	ri, err := mem.Create(context.Background(), RecipeImport{Status: StatusPending})
+	require.NoError(t, err)
+	svc := &Service{store: mem, jobs: make(chan int64, 4)}
+
+	svc.sweepClaimable(context.Background())
+	select {
+	case id := <-svc.jobs:
+		assert.Equal(t, ri.ID, id)
+	default:
+		t.Fatal("sweep did not enqueue the pending job")
+	}
+}
+
+func TestService_sweepClaimable_drainsDroppedEnqueue(t *testing.T) {
+	mem := newMemoryStore()
+	ri, err := mem.Create(context.Background(), RecipeImport{Status: StatusPending})
+	require.NoError(t, err)
+	svc := &Service{store: mem, jobs: make(chan int64, 1)}
+
+	svc.jobs <- 9999          // saturate the bounded channel
+	svc.EnqueueProcess(ri.ID) // dropped: queue full, row stays claimable
+	<-svc.jobs                // worker drained the filler
+
+	svc.sweepClaimable(context.Background())
+	select {
+	case id := <-svc.jobs:
+		assert.Equal(t, ri.ID, id, "dropped enqueue must be re-offered by the sweep")
+	case <-time.After(2 * time.Second):
+		t.Fatal("sweep did not re-enqueue the dropped job")
+	}
+}
+
+func TestService_catalogSnapshot_invalidateDuringBuildDiscards(t *testing.T) {
+	gate := make(chan struct{})
+	inv := &fakeInventory{
+		units: []inventory.Unit{{UnitID: 1, Name: "cup"}},
+		gate:  gate,
+	}
+	svc := &Service{inv: inv}
+
+	type buildRes struct {
+		snap *ocrimport.CatalogSnapshot
+		err  error
+	}
+	done := make(chan buildRes, 1)
+	go func() {
+		snap, err := svc.catalogSnapshot(context.Background())
+		done <- buildRes{snap, err}
+	}()
+	// Wait for the build to reach the catalog scan, then land a catalog
+	// write mid-build.
+	require.Eventually(t, func() bool { return inv.scans.Load() == 1 },
+		2*time.Second, 5*time.Millisecond)
+	svc.InvalidateCatalog()
+	close(gate)
+	got := <-done
+	require.NoError(t, got.err)
+	require.NotNil(t, got.snap)
+
+	// The raced snapshot is returned to its caller but never installed —
+	// the next call rebuilds instead of serving data that missed the write.
+	svc.snapMu.RLock()
+	installed := svc.snap
+	svc.snapMu.RUnlock()
+	assert.Nil(t, installed, "snapshot built across an invalidation must not install")
+
+	second, err := svc.catalogSnapshot(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, int64(2), inv.scans.Load(), "next call must rebuild")
 }
 
 func TestService_catalogSnapshot_errorsNotCached(t *testing.T) {

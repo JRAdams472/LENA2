@@ -1736,7 +1736,7 @@ const listBrandsVisible = `-- name: ListBrandsVisible :many
 SELECT brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
 FROM inventory.brand
 WHERE status = 'approved' OR submitted_by_user_id = $1
-ORDER BY name
+ORDER BY name, brand_id
 LIMIT $2 OFFSET $3
 `
 
@@ -2084,7 +2084,7 @@ func (q *Queries) ListIngredientAllergensByIngredients(ctx context.Context, ingr
 const listIngredients = `-- name: ListIngredients :many
 SELECT ingredient_id, name, category_id, is_active, created_by, created_at, updated_by, updated_at, default_unit_id
 FROM inventory.ingredient
-ORDER BY name
+ORDER BY name, ingredient_id
 LIMIT $1 OFFSET $2
 `
 
@@ -2197,7 +2197,7 @@ const listItems = `-- name: ListItems :many
 SELECT item_id, name, brand_id, upc12, upc14, category_id, created_by, created_at, updated_by, updated_at, unit_id, status, submitted_by_user_id, approved_by_user_id, approved_at, net_weight, is_metric, ingredient_id
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1
-ORDER BY name
+ORDER BY name, item_id
 LIMIT $2 OFFSET $3
 `
 
@@ -2439,7 +2439,7 @@ func (q *Queries) ListPendingItems(ctx context.Context, arg ListPendingItemsPara
 const listUnits = `-- name: ListUnits :many
 SELECT unit_id, name, abbreviation, kind, is_active, created_by, created_at, updated_by, updated_at, to_base_factor
 FROM inventory.unit
-ORDER BY kind, name
+ORDER BY kind, name, unit_id
 `
 
 func (q *Queries) ListUnits(ctx context.Context) ([]InventoryUnit, error) {

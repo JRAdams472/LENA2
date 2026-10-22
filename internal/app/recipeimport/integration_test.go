@@ -64,7 +64,7 @@ func TestIntegrationStoreTransitions(t *testing.T) {
 	// Walk the worker stages.
 	require.NoError(t, store.UpdateOCR(ctx, ri.ID, "ocr text", []byte("{}")))
 	require.NoError(t, store.UpdateDraft(ctx, ri.ID, []byte("{}")))
-	require.NoError(t, store.UpdateReview(ctx, ri.ID, []byte(`{"items":[]}`), StatusReady, itBy))
+	require.NoError(t, store.UpdateReview(ctx, ri.ID, []byte(`{"items":[]}`), StatusReady, itBy, workerReviewFrom))
 
 	// Admin-owned states cannot be regressed by worker transitions.
 	assert.ErrorIs(t, store.MarkFailed(ctx, ri.ID, "boom"), domainerr.ErrConflict,
@@ -208,7 +208,7 @@ func TestIntegrationRecoveryReclaimsOrphans(t *testing.T) {
 
 	// Startup recovery: processing orphans reset to pending and become
 	// claimable again.
-	require.NoError(t, store.ResetProcessing(ctx))
+	require.NoError(t, store.ResetProcessing(ctx, -time.Second))
 	ids, err := store.ListClaimableIDs(ctx)
 	require.NoError(t, err)
 	assert.Contains(t, ids, ri.ID)

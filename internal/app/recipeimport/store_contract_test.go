@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,41 +53,44 @@ func runStoreContract(t *testing.T, fixture storeFixture) {
 	})
 
 	// Full transition matrix: for every source status, every mutator must
-	// succeed exactly when the transition table allows it.
+	// succeed exactly when the transition table allows it. fromSet narrows
+	// the legal sources further — the review writers distinguish worker
+	// (drafted only) and admin (reviewing|ready) callers.
 	mutators := []struct {
-		name string
-		to   Status
-		exec func(Store, int64, int64, int64) error
+		name    string
+		to      Status
+		fromSet []Status
+		exec    func(Store, int64, int64, int64) error
 	}{
-		{"claim", StatusProcessing, func(s Store, id, _, _ int64) error {
+		{"claim", StatusProcessing, nil, func(s Store, id, _, _ int64) error {
 			_, err := s.Claim(ctx, id)
 			return err
 		}},
-		{"updateOCR", StatusOCRED, func(s Store, id, _, _ int64) error {
+		{"updateOCR", StatusOCRED, nil, func(s Store, id, _, _ int64) error {
 			return s.UpdateOCR(ctx, id, "ocr", nil)
 		}},
-		{"updateDraft", StatusDrafted, func(s Store, id, _, _ int64) error {
+		{"updateDraft", StatusDrafted, nil, func(s Store, id, _, _ int64) error {
 			return s.UpdateDraft(ctx, id, []byte("{}"))
 		}},
-		{"updateReviewReady", StatusReady, func(s Store, id, _, _ int64) error {
-			return s.UpdateReview(ctx, id, []byte("{}"), StatusReady, "contract")
+		{"updateReviewReady", StatusReady, adminReviewFrom, func(s Store, id, _, _ int64) error {
+			return s.UpdateReview(ctx, id, []byte("{}"), StatusReady, "contract", adminReviewFrom)
 		}},
-		{"updateReviewReviewing", StatusReviewing, func(s Store, id, _, _ int64) error {
-			return s.UpdateReview(ctx, id, []byte("{}"), StatusReviewing, "contract")
+		{"updateReviewReviewing", StatusReviewing, adminReviewFrom, func(s Store, id, _, _ int64) error {
+			return s.UpdateReview(ctx, id, []byte("{}"), StatusReviewing, "contract", adminReviewFrom)
 		}},
-		{"markFailed", StatusFailed, func(s Store, id, _, _ int64) error {
+		{"markFailed", StatusFailed, nil, func(s Store, id, _, _ int64) error {
 			return s.MarkFailed(ctx, id, "boom")
 		}},
-		{"markProfanity", StatusProfanity, func(s Store, id, _, _ int64) error {
+		{"markProfanity", StatusProfanity, nil, func(s Store, id, _, _ int64) error {
 			return s.MarkProfanity(ctx, id, "bad words")
 		}},
-		{"setPending", StatusPending, func(s Store, id, _, _ int64) error {
+		{"setPending", StatusPending, nil, func(s Store, id, _, _ int64) error {
 			return s.SetPending(ctx, id)
 		}},
-		{"setRejected", StatusRejected, func(s Store, id, _, _ int64) error {
+		{"setRejected", StatusRejected, nil, func(s Store, id, _, _ int64) error {
 			return s.SetRejected(ctx, id)
 		}},
-		{"setPersisted", StatusPersisted, func(s Store, id, recipeID, userID int64) error {
+		{"setPersisted", StatusPersisted, nil, func(s Store, id, recipeID, userID int64) error {
 			return s.SetPersisted(ctx, id, recipeID, userID)
 		}},
 	}
@@ -105,7 +109,18 @@ func runStoreContract(t *testing.T, fixture storeFixture) {
 				walkImportTo(t, ctx, store, ri.ID, from, recipeID, userID)
 
 				err := m.exec(store, ri.ID, recipeID, userID)
-				if canTransition(from, m.to) {
+				allowed := canTransition(from, m.to)
+				if m.fromSet != nil {
+					inSet := false
+					for _, s := range m.fromSet {
+						if from == s {
+							inSet = true
+							break
+						}
+					}
+					allowed = allowed && inSet
+				}
+				if allowed {
 					require.NoError(t, err)
 					got, gerr := store.Get(ctx, ri.ID)
 					require.NoError(t, gerr)
@@ -142,14 +157,16 @@ func runStoreContract(t *testing.T, fixture storeFixture) {
 		assert.NotContains(t, ids, processing.ID)
 	})
 
-	t.Run("reset processing returns rows to pending", func(t *testing.T) {
+	t.Run("reset processing returns stale rows to pending", func(t *testing.T) {
 		store, recipeID, userID := fixture(t)
 		processing := mustCreateImport(t, ctx, store)
 		walkImportTo(t, ctx, store, processing.ID, StatusProcessing, recipeID, userID)
 		ready := mustCreateImport(t, ctx, store)
 		walkImportTo(t, ctx, store, ready.ID, StatusReady, recipeID, userID)
 
-		require.NoError(t, store.ResetProcessing(ctx))
+		// A non-positive stale window reclaims every processing row — the
+		// startup-recovery semantics.
+		require.NoError(t, store.ResetProcessing(ctx, -time.Second))
 
 		got, err := store.Get(ctx, processing.ID)
 		require.NoError(t, err)
@@ -157,6 +174,20 @@ func runStoreContract(t *testing.T, fixture storeFixture) {
 		got, err = store.Get(ctx, ready.ID)
 		require.NoError(t, err)
 		assert.Equal(t, StatusReady, got.Status, "non-processing rows untouched")
+	})
+
+	t.Run("reset processing leaves fresh claims alone", func(t *testing.T) {
+		store, recipeID, userID := fixture(t)
+		processing := mustCreateImport(t, ctx, store)
+		walkImportTo(t, ctx, store, processing.ID, StatusProcessing, recipeID, userID)
+
+		// The claim just refreshed updated_at, so a wide stale window must
+		// not steal the live job.
+		require.NoError(t, store.ResetProcessing(ctx, time.Hour))
+
+		got, err := store.Get(ctx, processing.ID)
+		require.NoError(t, err)
+		assert.Equal(t, StatusProcessing, got.Status)
 	})
 
 	t.Run("list by statuses filters and paginates", func(t *testing.T) {
@@ -225,7 +256,7 @@ func walkImportTo(t *testing.T, ctx context.Context, store Store, id int64, to S
 		must(store.UpdateDraft(ctx, id, []byte("{}")))
 	case StatusReviewing, StatusReady:
 		walkImportTo(t, ctx, store, id, StatusDrafted, recipeID, userID)
-		must(store.UpdateReview(ctx, id, []byte("{}"), to, "contract"))
+		must(store.UpdateReview(ctx, id, []byte("{}"), to, "contract", workerReviewFrom))
 	case StatusFailed:
 		walkImportTo(t, ctx, store, id, StatusProcessing, recipeID, userID)
 		must(store.MarkFailed(ctx, id, "boom"))

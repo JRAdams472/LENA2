@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,13 +23,19 @@ type Store interface {
 	ListByStatuses(ctx context.Context, statuses []Status, limit, offset int32) ([]RecipeImport, error)
 	CountByStatuses(ctx context.Context, statuses []Status) (int64, error)
 	ListClaimableIDs(ctx context.Context) ([]int64, error)
-	ResetProcessing(ctx context.Context) error
+	// ResetProcessing returns processing rows stale beyond staleFor to
+	// pending. staleFor <= 0 reclaims every processing row.
+	ResetProcessing(ctx context.Context, staleFor time.Duration) error
 	// Claim moves a claimable job to processing and returns the updated row.
 	// It returns domainerr.ErrConflict when the job is not claimable.
 	Claim(ctx context.Context, id int64) (*RecipeImport, error)
 	UpdateOCR(ctx context.Context, id int64, ocrText string, ocrJSON []byte) error
 	UpdateDraft(ctx context.Context, id int64, draftJSON []byte) error
-	UpdateReview(ctx context.Context, id int64, reviewJSON []byte, status Status, updatedBy string) error
+	// UpdateReview stores the review JSON only when the row's current
+	// status is in from. The worker passes {drafted}; admin edits pass
+	// {reviewing, ready} — keeping the two writers from clobbering each
+	// other's JSON.
+	UpdateReview(ctx context.Context, id int64, reviewJSON []byte, status Status, updatedBy string, from []Status) error
 	MarkProfanity(ctx context.Context, id int64, reason string) error
 	MarkFailed(ctx context.Context, id int64, errorMessage string) error
 	SetPersisted(ctx context.Context, id int64, recipeID int64, approvedByUserID int64) error
@@ -200,11 +207,13 @@ func (s *SQLStore) ListClaimableIDs(ctx context.Context) ([]int64, error) {
 	return ids, nil
 }
 
-// ResetProcessing moves orphaned processing rows back to pending. Called once
-// at service start; a row left in processing means the worker that claimed it
-// died before reaching a staged status.
-func (s *SQLStore) ResetProcessing(ctx context.Context) error {
-	if err := s.q.ResetProcessingRecipeImports(ctx); err != nil {
+// ResetProcessing moves stale processing rows back to pending. Called at
+// service start; a row left in processing longer than the stage timeout
+// means the worker that claimed it died before reaching a staged status.
+// Fresh rows are left alone so a still-running instance is never stolen
+// mid-flight.
+func (s *SQLStore) ResetProcessing(ctx context.Context, staleFor time.Duration) error {
+	if err := s.q.ResetProcessingRecipeImports(ctx, staleFor.Seconds()); err != nil {
 		return fmt.Errorf("reset processing recipe imports: %w", err)
 	}
 	return nil
@@ -252,14 +261,14 @@ func (s *SQLStore) UpdateDraft(ctx context.Context, id int64, draftJSON []byte) 
 }
 
 // UpdateReview stores the review JSON and moves to reviewing or ready.
-// Legal sources are drafted (worker), reviewing and ready (admin edits).
-func (s *SQLStore) UpdateReview(ctx context.Context, id int64, reviewJSON []byte, status Status, updatedBy string) error {
+// The caller declares which source statuses it may write from.
+func (s *SQLStore) UpdateReview(ctx context.Context, id int64, reviewJSON []byte, status Status, updatedBy string, from []Status) error {
 	n, err := s.q.UpdateRecipeImportReview(ctx, sqlc.UpdateRecipeImportReviewParams{
 		RecipeImportID: id,
 		ReviewJson:     reviewJSON,
 		Status:         string(status),
 		UpdatedBy:      pgtype.Text{String: updatedBy, Valid: updatedBy != ""},
-		Column5:        []string{string(StatusDrafted), string(StatusReviewing), string(StatusReady)},
+		Column5:        statusStrings(from),
 	})
 	if err != nil {
 		return fmt.Errorf("update review: %w", err)

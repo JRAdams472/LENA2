@@ -71,7 +71,7 @@ ORDER BY name;
 SELECT *
 FROM inventory.brand
 WHERE status = 'approved' OR submitted_by_user_id = $1
-ORDER BY name
+ORDER BY name, brand_id
 LIMIT $2 OFFSET $3;
 
 -- name: CountBrandsVisible :one
@@ -147,7 +147,7 @@ WHERE item_id = $1;
 SELECT *
 FROM inventory.item
 WHERE status = 'approved' OR submitted_by_user_id = $1
-ORDER BY name
+ORDER BY name, item_id
 LIMIT $2 OFFSET $3;
 
 -- name: CountItems :one
@@ -420,7 +420,7 @@ WHERE ingredient_id = ANY(sqlc.arg(ingredient_ids)::bigint[]);
 -- listing goes through SearchIngredients.
 SELECT *
 FROM inventory.ingredient
-ORDER BY name
+ORDER BY name, ingredient_id
 LIMIT $1 OFFSET $2;
 
 -- name: CountIngredients :one
@@ -700,7 +700,7 @@ WHERE unit_id = ANY(sqlc.arg(unit_ids)::bigint[]);
 -- name: ListUnits :many
 SELECT *
 FROM inventory.unit
-ORDER BY kind, name;
+ORDER BY kind, name, unit_id;
 
 -- ---------- allergen registry + entity flags ----------
 

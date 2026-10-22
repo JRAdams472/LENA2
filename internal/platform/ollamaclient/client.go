@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// maxErrorBodyBytes bounds how much of an upstream error body is read into
+// an error message — enough to capture the detail, never unbounded.
+const maxErrorBodyBytes = 2048
+
 // Client calls the Ollama API.
 type Client struct {
 	baseURL string
@@ -132,7 +136,7 @@ func (c *Client) Embed(ctx context.Context, model string, inputs []string) ([][]
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return nil, fmt.Errorf("ollama embed returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -193,7 +197,7 @@ func (c *Client) ChatRaw(ctx context.Context, reqBody ChatRequest) (ChatResponse
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return ChatResponse{}, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
 	}
 
