@@ -26,6 +26,7 @@ import (
 // SQL implementation is pinned by the shared contract suite in
 // store_contract_test.go, which runs identical assertions against both.
 type memoryStore struct {
+	mu     sync.Mutex
 	nextID int64
 	rows   map[int64]*RecipeImport
 }
@@ -49,6 +50,8 @@ func (m *memoryStore) transition(id int64, to Status) (*RecipeImport, error) {
 }
 
 func (m *memoryStore) Create(_ context.Context, ri RecipeImport) (*RecipeImport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	ri.ID = m.nextID
 	m.nextID++
 	ri.Status = StatusPending
@@ -60,6 +63,8 @@ func (m *memoryStore) Create(_ context.Context, ri RecipeImport) (*RecipeImport,
 }
 
 func (m *memoryStore) Get(_ context.Context, id int64) (*RecipeImport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, ok := m.rows[id]
 	if !ok {
 		return nil, domainerr.ErrNotFound
@@ -69,6 +74,8 @@ func (m *memoryStore) Get(_ context.Context, id int64) (*RecipeImport, error) {
 }
 
 func (m *memoryStore) List(_ context.Context, status string, limit, offset int32) ([]RecipeImport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var out []RecipeImport
 	for _, r := range m.rows {
 		if status != "" && string(r.Status) != status {
@@ -86,9 +93,15 @@ func (m *memoryStore) List(_ context.Context, status string, limit, offset int32
 	return out, nil
 }
 
-func (m *memoryStore) Count(context.Context, string) (int64, error) { return int64(len(m.rows)), nil }
+func (m *memoryStore) Count(context.Context, string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return int64(len(m.rows)), nil
+}
 
 func (m *memoryStore) ListByStatuses(_ context.Context, statuses []Status, limit, offset int32) ([]RecipeImport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	want := make(map[Status]bool, len(statuses))
 	for _, s := range statuses {
 		want[s] = true
@@ -111,6 +124,8 @@ func (m *memoryStore) ListByStatuses(_ context.Context, statuses []Status, limit
 }
 
 func (m *memoryStore) CountByStatuses(_ context.Context, statuses []Status) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	want := make(map[Status]bool, len(statuses))
 	for _, s := range statuses {
 		want[s] = true
@@ -125,6 +140,8 @@ func (m *memoryStore) CountByStatuses(_ context.Context, statuses []Status) (int
 }
 
 func (m *memoryStore) ListClaimableIDs(context.Context) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var ids []int64
 	for id, r := range m.rows {
 		for _, s := range claimableStatuses {
@@ -137,6 +154,8 @@ func (m *memoryStore) ListClaimableIDs(context.Context) ([]int64, error) {
 }
 
 func (m *memoryStore) ResetProcessing(_ context.Context, staleFor time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, r := range m.rows {
 		if r.Status != StatusProcessing {
 			continue
@@ -150,6 +169,8 @@ func (m *memoryStore) ResetProcessing(_ context.Context, staleFor time.Duration)
 }
 
 func (m *memoryStore) Claim(_ context.Context, id int64) (*RecipeImport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, ok := m.rows[id]
 	if !ok {
 		return nil, domainerr.ErrNotFound
@@ -171,6 +192,8 @@ func (m *memoryStore) Claim(_ context.Context, id int64) (*RecipeImport, error) 
 }
 
 func (m *memoryStore) UpdateOCR(_ context.Context, id int64, text string, json []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, err := m.transition(id, StatusOCRED)
 	if err != nil {
 		return err
@@ -181,6 +204,8 @@ func (m *memoryStore) UpdateOCR(_ context.Context, id int64, text string, json [
 }
 
 func (m *memoryStore) UpdateDraft(_ context.Context, id int64, json []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, err := m.transition(id, StatusDrafted)
 	if err != nil {
 		return err
@@ -190,6 +215,8 @@ func (m *memoryStore) UpdateDraft(_ context.Context, id int64, json []byte) erro
 }
 
 func (m *memoryStore) UpdateReview(_ context.Context, id int64, json []byte, status Status, updatedBy string, from []Status) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, ok := m.rows[id]
 	if !ok {
 		return domainerr.ErrNotFound
@@ -214,6 +241,8 @@ func (m *memoryStore) UpdateReview(_ context.Context, id int64, json []byte, sta
 }
 
 func (m *memoryStore) MarkProfanity(_ context.Context, id int64, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, err := m.transition(id, StatusProfanity)
 	if err != nil {
 		return err
@@ -224,6 +253,8 @@ func (m *memoryStore) MarkProfanity(_ context.Context, id int64, reason string) 
 }
 
 func (m *memoryStore) MarkFailed(_ context.Context, id int64, msg string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, err := m.transition(id, StatusFailed)
 	if err != nil {
 		return err
@@ -233,6 +264,8 @@ func (m *memoryStore) MarkFailed(_ context.Context, id int64, msg string) error 
 }
 
 func (m *memoryStore) SetPersisted(_ context.Context, id int64, recipeID int64, approver int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, err := m.transition(id, StatusPersisted)
 	if err != nil {
 		return err
@@ -243,11 +276,15 @@ func (m *memoryStore) SetPersisted(_ context.Context, id int64, recipeID int64, 
 }
 
 func (m *memoryStore) SetRejected(_ context.Context, id int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	_, err := m.transition(id, StatusRejected)
 	return err
 }
 
 func (m *memoryStore) SetPending(_ context.Context, id int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, err := m.transition(id, StatusPending)
 	if err != nil {
 		return err
