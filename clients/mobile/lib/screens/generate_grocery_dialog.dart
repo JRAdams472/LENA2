@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import '../graphql_utils.dart';
 
 const String mealPlansQuery = r'''
   query MealPlans {
@@ -38,6 +39,7 @@ class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
   static const String _manual = '';
   String? _mealPlanId = _manual;
   bool _isSaving = false;
+  String? _error;
 
   Future<List<Map<String, dynamic>>> _loadMealPlans() async {
     final client = GraphQLProvider.of(context).value;
@@ -49,19 +51,26 @@ class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
 
   Future<void> _generate() async {
     if (_mealPlanId == null) return;
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
     try {
       final client = GraphQLProvider.of(context).value;
-      await client.mutate(MutationOptions(
-        document: gql(generateGroceryListMutation),
-        variables: {
-          'mealPlanId': _mealPlanId!.isEmpty ? null : _mealPlanId,
-        },
-      ));
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(generateGroceryListMutation),
+            variables: {
+              'mealPlanId': _mealPlanId!.isEmpty ? null : _mealPlanId,
+            },
+          ));
       if (mounted) {
         Navigator.pop(context);
         widget.onGenerated?.call();
       }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -80,26 +89,50 @@ class _GenerateGroceryDialogState extends State<GenerateGroceryDialog> {
             ),
           );
         }
+        if (snapshot.hasError) {
+          return AlertDialog(
+            title: const Text('Generate Grocery List'),
+            content: Text('Could not load meal plans: ${snapshot.error}'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        }
 
         final plans = snapshot.data ?? [];
 
         return AlertDialog(
           title: const Text('Generate Grocery List'),
-          content: DropdownButtonFormField<String?>(
-            isExpanded: true,
-            value: _mealPlanId,
-            decoration: const InputDecoration(labelText: 'Meal plan'),
-            items: [
-              const DropdownMenuItem(
-                value: _manual,
-                child: Text('Manual list (no meal plan)'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<String?>(
+                isExpanded: true,
+                value: _mealPlanId,
+                decoration: const InputDecoration(labelText: 'Meal plan'),
+                items: [
+                  const DropdownMenuItem(
+                    value: _manual,
+                    child: Text('Manual list (no meal plan)'),
+                  ),
+                  ...plans.map((p) => DropdownMenuItem(
+                        value: p['id'] as String,
+                        child: Text(p['name'] as String),
+                      )),
+                ],
+                onChanged: (v) => setState(() => _mealPlanId = v),
               ),
-              ...plans.map((p) => DropdownMenuItem(
-                    value: p['id'] as String,
-                    child: Text(p['name'] as String),
-                  )),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
             ],
-            onChanged: (v) => setState(() => _mealPlanId = v),
           ),
           actions: [
             TextButton(

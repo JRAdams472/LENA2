@@ -14,14 +14,23 @@ String? _opName(Request request) {
 class _CaptureLink extends Link {
   final List<Request> requests = [];
   final Map<String, Map<String, dynamic>> responses;
+  final Set<String> errorOps;
 
-  _CaptureLink(this.responses);
+  _CaptureLink(this.responses, [this.errorOps = const {}]);
 
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
     requests.add(request);
+    final name = _opName(request);
+    if (errorOps.contains(name)) {
+      yield const Response(
+        errors: [GraphQLError(message: 'duplicate UPC')],
+        response: <String, dynamic>{},
+      );
+      return;
+    }
     yield Response(
-      data: responses[_opName(request)] ?? <String, dynamic>{},
+      data: responses[name] ?? <String, dynamic>{},
       response: const <String, dynamic>{},
     );
   }
@@ -161,6 +170,25 @@ void main() {
     expect(input['brandId'], isNull);
     expect(input['upc12'], isNull);
     expect(input['upc14'], isNull);
+  });
+
+  testWidgets('a failed save shows the error and stays on the form',
+      (tester) async {
+    final link = _CaptureLink(
+        _catalogs().cast<String, Map<String, dynamic>>(), {'CreateItem'});
+    await _open(tester, link);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Milk');
+    await tester.enterText(find.widgetWithText(TextField, 'Unit'), 'gal');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
+    await _settle(tester);
+
+    // The mutation reached the wire but failed — the screen must surface
+    // the error instead of popping back to 'open-form'.
+    expect(link.byName('CreateItem'), hasLength(1));
+    expect(find.textContaining('duplicate UPC'), findsOneWidget);
+    expect(find.text('Create Item'), findsOneWidget);
+    expect(find.text('open-form'), findsNothing);
   });
 
   testWidgets(

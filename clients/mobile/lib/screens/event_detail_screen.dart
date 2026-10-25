@@ -4,6 +4,7 @@ import '../widgets/recipe_picker.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
+import '../graphql_utils.dart';
 import 'edit_event_screen.dart';
 import 'event_timeline_screen.dart';
 
@@ -128,6 +129,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         variables: {'id': widget.foodEventId},
         fetchPolicy: FetchPolicy.networkOnly,
       ));
+      if (!mounted) return;
       final event = result.data?['foodEvent'] as Map<String, dynamic>?;
       if (event == null) {
         setState(() {
@@ -141,6 +143,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -169,21 +172,39 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(deleteFoodEventMutation),
-      variables: {'id': widget.foodEventId},
-    ));
-    if (mounted) Navigator.pop(context);
+    try {
+      final client = GraphQLProvider.of(context).value;
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(deleteFoodEventMutation),
+            variables: {'id': widget.foodEventId},
+          ));
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not delete event: $e')));
+      }
+    }
   }
 
   Future<void> _removeSlot(String slotId) async {
-    final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(removeEventRecipeMutation),
-      variables: {'id': slotId},
-    ));
-    await _load();
+    try {
+      final client = GraphQLProvider.of(context).value;
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(removeEventRecipeMutation),
+            variables: {'id': slotId},
+          ));
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not remove slot: $e')));
+      }
+    }
   }
 
   Future<void> _openSlotEditor({Map<String, dynamic>? slot}) async {
@@ -442,7 +463,7 @@ class _SlotDialogState extends State<_SlotDialog> {
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _saving = false);
     }

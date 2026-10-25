@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../scan/upc_utils.dart';
+import '../widgets/search_picker.dart';
 
 const String itemByUpcQuery = r'''
   query ItemByUpc($code: String!) {
@@ -84,6 +87,27 @@ const String setItemNutrientsMutation = r'''
   }
 ''';
 
+/// Flat-list vocabularies for the submit form's pickers (LEN-175) — the
+/// raw numeric ID fields they replace let users submit dangling ids.
+const String scanCategoriesQuery = r'''
+  query ScanCategories {
+    categories {
+      id
+      name
+    }
+  }
+''';
+
+const String nutrientTypesQuery = r'''
+  query NutrientTypes {
+    nutrientTypes {
+      id
+      name
+      unit
+    }
+  }
+''';
+
 /// Resolved ingredient for a catalog item: the household override wins over
 /// the catalog link, matching the backend's resolution order.
 Map<String, dynamic>? resolvedIngredientOf(Map<String, dynamic> item) {
@@ -124,8 +148,13 @@ class _ScanScreenState extends State<ScanScreen> {
   final _qtyCtrl = TextEditingController(text: '1');
   final _nameCtrl = TextEditingController();
   final _unitCtrl = TextEditingController();
-  final _categoryCtrl = TextEditingController();
-  final List<Map<String, TextEditingController>> _nutrientCtrls = [];
+  Map<String, dynamic>? _category;
+  // Nutrient rows: a picked nutrient type map plus an amount field —
+  // the picker's selection lives in the row, so no raw id is ever typed.
+  final List<Map<String, dynamic>> _nutrientRows = [];
+  // Cancellable post-success reset (LEN-175) — a bare Future.delayed
+  // fired _reset even after dispose, restarting a disposed scanner.
+  Timer? _resetTimer;
 
   bool _isLoading = false;
   String? _upc;
@@ -142,17 +171,16 @@ class _ScanScreenState extends State<ScanScreen> {
 
   void _addNutrient() {
     setState(() {
-      _nutrientCtrls.add({
-        'id': TextEditingController(),
+      _nutrientRows.add({
+        'nutrient': null,
         'amount': TextEditingController(),
       });
     });
   }
 
   void _removeNutrient(int index) {
-    final row = _nutrientCtrls.removeAt(index);
-    row['id']?.dispose();
-    row['amount']?.dispose();
+    final row = _nutrientRows.removeAt(index);
+    (row['amount'] as TextEditingController?)?.dispose();
     setState(() {});
   }
 
@@ -189,6 +217,9 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> _lookup(String code) async {
+    // The detect path reaches here after `await _stopScanner` — the
+    // screen may have been popped while the camera released.
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -256,9 +287,9 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> _submitItem() async {
     final name = _nameCtrl.text.trim();
     final unit = _unitCtrl.text.trim();
-    final category = _categoryCtrl.text.trim();
+    final category = _category;
 
-    if (name.isEmpty || unit.isEmpty || category.isEmpty || _upc == null) {
+    if (name.isEmpty || unit.isEmpty || category == null || _upc == null) {
       setState(() => _error = 'Please fill in name, unit, and category.');
       return;
     }
@@ -266,7 +297,7 @@ class _ScanScreenState extends State<ScanScreen> {
     final input = <String, dynamic>{
       'name': name,
       'unit': unit,
-      'categoryId': category,
+      'categoryId': category['id'],
       'brandId': null,
     };
 
@@ -296,13 +327,15 @@ class _ScanScreenState extends State<ScanScreen> {
     }
 
     final itemId = (result.data?['submitItem']?['id'] as String?) ?? '';
-    final nutrients = _nutrientCtrls
+    final nutrients = _nutrientRows
         .where((row) =>
-            row['id']!.text.trim().isNotEmpty &&
-            row['amount']!.text.trim().isNotEmpty)
+            row['nutrient'] != null &&
+            (row['amount'] as TextEditingController).text.trim().isNotEmpty)
         .map((row) => {
-              'nutrientId': row['id']!.text.trim(),
-              'amount': double.tryParse(row['amount']!.text.trim()) ?? 0,
+              'nutrientId': (row['nutrient'] as Map<String, dynamic>)['id'],
+              'amount': double.tryParse(
+                      (row['amount'] as TextEditingController).text.trim()) ??
+                  0,
             })
         .toList();
 
@@ -334,18 +367,20 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _clearNutrients() {
-    for (final row in _nutrientCtrls) {
-      row['id']?.dispose();
-      row['amount']?.dispose();
+    for (final row in _nutrientRows) {
+      (row['amount'] as TextEditingController?)?.dispose();
     }
-    _nutrientCtrls.clear();
+    _nutrientRows.clear();
   }
 
   void _reset() {
+    if (!mounted) return;
+    _resetTimer?.cancel();
+    _resetTimer = null;
     _qtyCtrl.text = '1';
     _nameCtrl.clear();
     _unitCtrl.clear();
-    _categoryCtrl.clear();
+    _category = null;
     _clearNutrients();
     setState(() {
       _foundItem = null;
@@ -358,7 +393,8 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _resetAfterDelay() {
-    Future.delayed(const Duration(seconds: 2), _reset);
+    _resetTimer?.cancel();
+    _resetTimer = Timer(const Duration(seconds: 2), _reset);
   }
 
   /// Debug-only (LEN-105): offers each LENA_DEBUG_SCAN_UPC entry as a
@@ -396,11 +432,11 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   void dispose() {
+    _resetTimer?.cancel();
     _scanner.dispose();
     _qtyCtrl.dispose();
     _nameCtrl.dispose();
     _unitCtrl.dispose();
-    _categoryCtrl.dispose();
     _clearNutrients();
     super.dispose();
   }
@@ -727,35 +763,49 @@ class _ScanScreenState extends State<ScanScreen> {
             decoration: const InputDecoration(labelText: 'Unit (e.g., oz, lb)'),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _categoryCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Category ID',
-              helperText: 'Use an existing category ID from the catalog.',
-            ),
-            keyboardType: TextInputType.number,
+          SearchPickerField(
+            label: 'Category',
+            displayText: (_category?['name'] as String?) ?? '',
+            hintText: 'Select a category',
+            sheetTitle: 'Search categories',
+            document: scanCategoriesQuery,
+            connectionField: 'categories',
+            isFlatList: true,
+            searchEntityType: 'category',
+            variablesFor: (_) => const {},
+            itemLabel: (c) => c['name'] as String? ?? '',
+            onChanged: (c) => setState(() => _category = c),
           ),
           const SizedBox(height: 24),
           Text('Nutrients (optional)',
               style: Theme.of(context).textTheme.titleMedium),
-          ..._nutrientCtrls.asMap().entries.map((entry) {
+          ..._nutrientRows.asMap().entries.map((entry) {
             final index = entry.key;
             final row = entry.value;
+            final nutrient = row['nutrient'] as Map<String, dynamic>?;
             return Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: row['id'],
-                    decoration: const InputDecoration(
-                      labelText: 'Nutrient ID',
-                    ),
-                    keyboardType: TextInputType.number,
+                  flex: 2,
+                  child: SearchPickerField(
+                    label: 'Nutrient',
+                    displayText: (nutrient?['name'] as String?) ?? '',
+                    hintText: 'Select',
+                    sheetTitle: 'Search nutrients',
+                    document: nutrientTypesQuery,
+                    connectionField: 'nutrientTypes',
+                    isFlatList: true,
+                    searchEntityType: 'nutrient',
+                    variablesFor: (_) => const {},
+                    itemLabel: (n) =>
+                        '${n['name']}${n['unit'] != null ? ' (${n['unit']})' : ''}',
+                    onChanged: (n) => setState(() => row['nutrient'] = n),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
-                    controller: row['amount'],
+                    controller: row['amount'] as TextEditingController?,
                     decoration: const InputDecoration(
                       labelText: 'Amount',
                     ),

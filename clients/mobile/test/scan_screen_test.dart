@@ -95,6 +95,38 @@ Map<String, dynamic> _scanResponder(Map<String, dynamic> body) {
       },
     };
   }
+  if (q.contains('categories')) {
+    return {
+      'data': {
+        '__typename': 'Query',
+        'categories': [
+          {'__typename': 'Category', 'id': '3', 'name': 'Dairy'},
+          {'__typename': 'Category', 'id': '4', 'name': 'Produce'},
+        ],
+      },
+    };
+  }
+  if (q.contains('nutrientTypes')) {
+    return {
+      'data': {
+        '__typename': 'Query',
+        'nutrientTypes': [
+          {
+            '__typename': 'NutrientType',
+            'id': '1008',
+            'name': 'Energy',
+            'unit': 'kcal',
+          },
+          {
+            '__typename': 'NutrientType',
+            'id': '1003',
+            'name': 'Protein',
+            'unit': 'g',
+          },
+        ],
+      },
+    };
+  }
   if (q.contains('ingredients')) {
     return {
       'data': {
@@ -305,8 +337,12 @@ void main() {
           find.widgetWithText(TextField, 'Item name'), 'New Item');
       await tester.enterText(
           find.widgetWithText(TextField, 'Unit (e.g., oz, lb)'), 'oz');
-      await tester.enterText(
-          find.widgetWithText(TextField, 'Category ID'), '3');
+      // Category is a SearchPickerField now — open the sheet and pick.
+      await tester.ensureVisible(find.text('Select a category'));
+      await tester.tap(find.text('Select a category'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dairy'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Submit for approval'));
       await tester.tap(find.text('Submit for approval'));
       await tester.pump();
@@ -364,15 +400,21 @@ void main() {
       await tester.tap(find.text('Add nutrient'));
       await tester.pump();
 
-      await tester.enterText(
-          find.widgetWithText(TextField, 'Nutrient ID'), '1008');
+      // Pick the nutrient via its search sheet, then fill the amount.
+      await tester.tap(find.text('Select'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Energy (kcal)'));
+      await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Amount'), '150');
       await tester.enterText(
           find.widgetWithText(TextField, 'Item name'), 'New Item');
       await tester.enterText(
           find.widgetWithText(TextField, 'Unit (e.g., oz, lb)'), 'oz');
-      await tester.enterText(
-          find.widgetWithText(TextField, 'Category ID'), '3');
+      await tester.ensureVisible(find.text('Select a category'));
+      await tester.tap(find.text('Select a category'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dairy'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Submit for approval'));
       await tester.tap(find.text('Submit for approval'));
       await tester.pump();

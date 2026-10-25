@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../widgets/skeleton.dart';
 import '../allergy.dart';
 import '../format.dart';
+import '../graphql_utils.dart';
 
 const String groceryRoutingQuery = r'''
   query GroceryRouting($id: ID!) {
@@ -202,22 +203,33 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     final id = item['id'] as String;
     // Ingredient-only line with no bound item and no remembered usual —
     // ask which brand was bought so it becomes the household's usual.
-    if (needsBrandPick(item)) {
-      final picked = await _promptBrandPick(
-          context, item['ingredient']['name'] as String? ?? 'item', client);
-      if (picked == null) return;
-      await client.mutate(MutationOptions(
-        document: gql(checkGroceryItemWithBrandMutation),
-        variables: {'groceryListItemId': id, 'itemId': picked['id']},
-      ));
+    try {
+      if (needsBrandPick(item)) {
+        final picked = await _promptBrandPick(
+            context, item['ingredient']['name'] as String? ?? 'item', client);
+        if (picked == null) return;
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(checkGroceryItemWithBrandMutation),
+              variables: {'groceryListItemId': id, 'itemId': picked['id']},
+            ));
+        refetch?.call();
+        return;
+      }
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(toggleGroceryItemMutation),
+            variables: {'groceryListItemId': id},
+          ));
       refetch?.call();
-      return;
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not update item: $e')));
+      }
     }
-    await client.mutate(MutationOptions(
-      document: gql(toggleGroceryItemMutation),
-      variables: {'groceryListItemId': id},
-    ));
-    refetch?.call();
   }
 
   /// First-time brand picker: searches catalog items and returns the pick
@@ -245,21 +257,30 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     final qty = double.tryParse(_qtyCtrl.text) ?? 0;
     if (manual.isEmpty || qty <= 0) return;
 
-    await client.mutate(MutationOptions(
-      document: gql(addGroceryItemMutation),
-      variables: {
-        'input': {
-          'groceryListId': widget.listId,
-          'manualItemName': manual,
-          'quantity': qty,
-          'unit': _unitCtrl.text,
-        },
-      },
-    ));
-    _manualCtrl.clear();
-    _qtyCtrl.clear();
-    _unitCtrl.clear();
-    refetch?.call();
+    try {
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(addGroceryItemMutation),
+            variables: {
+              'input': {
+                'groceryListId': widget.listId,
+                'manualItemName': manual,
+                'quantity': qty,
+                'unit': _unitCtrl.text,
+              },
+            },
+          ));
+      _manualCtrl.clear();
+      _qtyCtrl.clear();
+      _unitCtrl.clear();
+      refetch?.call();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not add item: $e')));
+      }
+    }
   }
 
   /// Pushes the list to the configured shopper provider and hands the
@@ -304,11 +325,20 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     VoidCallback? refetch,
   ) async {
     final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(setGroceryListStoreMutation),
-      variables: {'groceryListId': widget.listId, 'storeId': storeId},
-    ));
-    refetch?.call();
+    try {
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(setGroceryListStoreMutation),
+            variables: {'groceryListId': widget.listId, 'storeId': storeId},
+          ));
+      refetch?.call();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not set store: $e')));
+      }
+    }
   }
 
   /// Reorders an item to (group, index-within-group), moving it to that aisle
@@ -344,27 +374,41 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       }
     }
 
-    if (targetAisle == null &&
-        wasAssigned &&
-        storeId != null &&
-        movedItem != null) {
-      await client.mutate(MutationOptions(
-        document: gql(assignItemToAisleMutation),
-        variables: {
-          'storeId': storeId,
-          'aisleId': null,
-          'itemId': (movedItem['item'] as Map?)?['id'],
-          'ingredientId': (movedItem['ingredient'] as Map?)?['id'],
-          'manualItemName': movedItem['manualItemName'],
-        },
-      ));
-    }
+    try {
+      if (targetAisle == null &&
+          wasAssigned &&
+          storeId != null &&
+          movedItem != null) {
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(assignItemToAisleMutation),
+              variables: {
+                'storeId': storeId,
+                'aisleId': null,
+                'itemId': (movedItem['item'] as Map?)?['id'],
+                'ingredientId': (movedItem['ingredient'] as Map?)?['id'],
+                'manualItemName': movedItem['manualItemName'],
+              },
+            ));
+      }
 
-    await client.mutate(MutationOptions(
-      document: gql(reorderGroceryListItemsMutation),
-      variables: {'groceryListId': widget.listId, 'entries': entries},
-    ));
-    refetch?.call();
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(reorderGroceryListItemsMutation),
+            variables: {'groceryListId': widget.listId, 'entries': entries},
+          ));
+      refetch?.call();
+    } catch (e) {
+      // Refetch on failure too — the drop optimistically reordered the
+      // view, so resync from the server instead of leaving a phantom order.
+      refetch?.call();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not save order: $e')));
+      }
+    }
   }
 
   @override

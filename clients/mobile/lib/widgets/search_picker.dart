@@ -20,6 +20,7 @@ class SearchPickerField extends StatelessWidget {
     this.label = '',
     this.noneLabel,
     this.hintText,
+    this.isFlatList = false,
   });
 
   /// Text shown in the closed field (selection label, or empty).
@@ -45,6 +46,11 @@ class SearchPickerField extends StatelessWidget {
   /// Defaults to [noneLabel].
   final String? hintText;
 
+  /// When true, [connectionField] is a top-level `[T!]!` list (e.g.
+  /// `categories`, `nutrientTypes`) rather than a `{items}` connection —
+  /// the sheet fetches once and filters client-side on [itemLabel].
+  final bool isFlatList;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -59,6 +65,7 @@ class SearchPickerField extends StatelessWidget {
           itemLabel: itemLabel,
           searchEntityType: searchEntityType,
           noneLabel: noneLabel,
+          isFlatList: isFlatList,
           onSelected: onChanged,
         ),
       ),
@@ -98,6 +105,7 @@ class SearchPickerSheet extends StatefulWidget {
     required this.onSelected,
     required this.searchEntityType,
     this.noneLabel,
+    this.isFlatList = false,
   });
 
   final String title;
@@ -109,6 +117,9 @@ class SearchPickerSheet extends StatefulWidget {
   final String searchEntityType;
   final String? noneLabel;
 
+  /// See [SearchPickerField.isFlatList].
+  final bool isFlatList;
+
   @override
   State<SearchPickerSheet> createState() => _SearchPickerSheetState();
 }
@@ -117,9 +128,16 @@ class _SearchPickerSheetState extends State<SearchPickerSheet> {
   final _searchCtrl = TextEditingController();
   final _debouncer = Debouncer();
   List<Map<String, dynamic>> _results = [];
+  // Flat-list mode keeps the whole fetched vocabulary here and filters
+  // into _results — no per-keystroke round-trips.
+  List<Map<String, dynamic>> _allItems = [];
   bool _loading = true;
   bool _loadedOnce = false;
   String _search = '';
+  Object? _error;
+  // Monotonic request token — a slower response arriving after a newer
+  // search was issued must not overwrite fresher results.
+  int _requestSeq = 0;
 
   @override
   void didChangeDependencies() {
@@ -139,30 +157,66 @@ class _SearchPickerSheetState extends State<SearchPickerSheet> {
     super.dispose();
   }
 
+  List<Map<String, dynamic>> _filtered(List<Map<String, dynamic>> all) {
+    if (_search.isEmpty) return all;
+    final needle = _search.toLowerCase();
+    return all
+        .where((i) => widget.itemLabel(i).toLowerCase().contains(needle))
+        .toList();
+  }
+
   Future<void> _load() async {
+    final seq = ++_requestSeq;
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(
-      QueryOptions(
-        document: gql(widget.document),
-        fetchPolicy: FetchPolicy.noCache,
-        variables: widget.variablesFor(_search),
-      ),
-    );
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _results = (result.data?[widget.connectionField]?['items'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-    });
+    try {
+      final result = await client.query(
+        QueryOptions(
+          document: gql(widget.document),
+          fetchPolicy: FetchPolicy.noCache,
+          variables: widget.variablesFor(_search),
+        ),
+      );
+      // A newer request (or dispose) issued while this one was in flight —
+      // its response owns the results now.
+      if (!mounted || seq != _requestSeq) return;
+      setState(() {
+        _loading = false;
+        _error = result.hasException ? result.exception : null;
+        if (widget.isFlatList) {
+          _allItems = (result.data?[widget.connectionField] as List? ?? [])
+              .cast<Map<String, dynamic>>();
+          _results = _filtered(_allItems);
+        } else {
+          _results =
+              (result.data?[widget.connectionField]?['items'] as List? ?? [])
+                  .cast<Map<String, dynamic>>();
+        }
+      });
+    } catch (e) {
+      if (!mounted || seq != _requestSeq) return;
+      setState(() {
+        _loading = false;
+        _error = e;
+      });
+    }
   }
 
   void _onSearchChanged(String value) {
     _debouncer.run(() {
       final term = value.trim();
       if (term == _search) return;
+      // Flat lists filter the already-fetched vocabulary — no refetch.
+      if (widget.isFlatList) {
+        setState(() {
+          _search = term;
+          _results = _filtered(_allItems);
+        });
+        return;
+      }
       setState(() {
         _search = term;
         _loading = true;
+        _error = null;
       });
       if (term.isNotEmpty) {
         recordSearch(
@@ -170,6 +224,14 @@ class _SearchPickerSheetState extends State<SearchPickerSheet> {
       }
       _load();
     });
+  }
+
+  void _retry() {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    _load();
   }
 
   void _pick(Map<String, dynamic>? item) {
@@ -201,28 +263,52 @@ class _SearchPickerSheetState extends State<SearchPickerSheet> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      children: [
-                        if (widget.noneLabel != null)
-                          ListTile(
-                            leading: const Icon(Icons.block),
-                            title: Text(widget.noneLabel!),
-                            onTap: () => _pick(null),
-                          ),
-                        for (final r in _results)
-                          ListTile(
-                            title: Text(widget.itemLabel(r)),
-                            onTap: () => _pick(r),
-                          ),
-                        if (_results.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Center(child: Text('No matches.')),
-                          ),
-                      ],
+              // The noneLabel row stays reachable through loading and
+              // error states — clearing a pick must never depend on the
+              // server answering.
+              child: ListView(
+                children: [
+                  if (widget.noneLabel != null)
+                    ListTile(
+                      leading: const Icon(Icons.block),
+                      title: Text(widget.noneLabel!),
+                      onTap: () => _pick(null),
                     ),
+                  if (_loading)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Text('Could not load: $_error',
+                              textAlign: TextAlign.center),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: _retry,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else ...[
+                    for (final r in _results)
+                      ListTile(
+                        title: Text(widget.itemLabel(r)),
+                        onTap: () => _pick(r),
+                      ),
+                    if (_results.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: Text('No matches.')),
+                      ),
+                  ],
+                ],
+              ),
             ),
           ],
         ),

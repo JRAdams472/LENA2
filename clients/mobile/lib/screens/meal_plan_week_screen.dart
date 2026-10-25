@@ -5,6 +5,7 @@ import '../analytics/analytics.dart';
 import '../format.dart';
 import '../widgets/recipe_picker.dart';
 import '../widgets/skeleton.dart';
+import '../graphql_utils.dart';
 import 'edit_meal_plan_screen.dart';
 
 const String suggestMealsQuery = r'''
@@ -121,34 +122,65 @@ class _MealPlanWeekScreenState extends State<MealPlanWeekScreen> {
     return rows;
   }
 
+  void _showActionError(String what, Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('$what: $e')));
+  }
+
   Future<void> _addSlot(Map<String, dynamic> input) async {
     final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(addMealSlotMutation),
-      variables: {
-        'input': {'mealPlanId': widget.mealPlanId, ...input}
-      },
-    ));
-    final recipeId = input['recipeId'] as String?;
-    if (recipeId != null) recordSelection(client, 'recipe', recipeId);
-    await _load();
+    try {
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(addMealSlotMutation),
+            variables: {
+              'input': {'mealPlanId': widget.mealPlanId, ...input}
+            },
+          ));
+      final recipeId = input['recipeId'] as String?;
+      if (recipeId != null) recordSelection(client, 'recipe', recipeId);
+      await _load();
+    } catch (e) {
+      _showActionError('Could not add meal', e);
+    }
   }
 
   Future<void> _removeSlot(String slotId) async {
     final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(removeMealSlotMutation),
-      variables: {'slotId': slotId},
-    ));
-    await _load();
+    try {
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(removeMealSlotMutation),
+            variables: {'slotId': slotId},
+          ));
+      await _load();
+    } catch (e) {
+      _showActionError('Could not remove meal', e);
+    }
   }
 
-  /// No updateMealSlot mutation exists — the web client's updateSlot is a
-  /// remove+add pair, and this does the same.
+  /// Atomic update via updateMealSlot (LEN-175) — the slot keeps its id
+  /// and its items (the dialog's input carries no `items` key, so the
+  /// server leaves the item set untouched).
   Future<void> _editSlot(
       Map<String, dynamic> slot, Map<String, dynamic> input) async {
-    await _removeSlot(slot['id'] as String);
-    await _addSlot(input);
+    final client = GraphQLProvider.of(context).value;
+    try {
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(updateMealSlotMutation),
+            variables: {'slotId': slot['id'], 'input': input},
+          ));
+      final recipeId = input['recipeId'] as String?;
+      if (recipeId != null) recordSelection(client, 'recipe', recipeId);
+      await _load();
+    } catch (e) {
+      _showActionError('Could not update meal', e);
+    }
   }
 
   void _openSlotDialog({int? day, String? row, Map<String, dynamic>? slot}) {

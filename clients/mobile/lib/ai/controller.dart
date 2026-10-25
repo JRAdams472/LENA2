@@ -43,6 +43,13 @@ class AssistantController extends ChangeNotifier {
   String? _error;
   List<AgentToolSpec>? _tools;
   String? _systemPrompt;
+  // notifyListeners throws after dispose — async paths (download progress,
+  // ask's finally) can outlive the screen that owns this controller.
+  bool _disposed = false;
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
 
   bool get serverAvailable => _serverAvailable;
   bool get modelInstalled => _modelInstalled;
@@ -88,12 +95,12 @@ class AssistantController extends ChangeNotifier {
       _modelInstalled = false;
     }
     _status = _modelInstalled ? LocalStatus.ready : LocalStatus.optIn;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> _setMode(AssistantMode m) async {
     _mode = m;
-    notifyListeners();
+    _notify();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_modeKey, m.name);
@@ -111,12 +118,12 @@ class AssistantController extends ChangeNotifier {
     _downloadError = null;
     _downloadProgress = 0;
     _status = LocalStatus.downloading;
-    notifyListeners();
+    _notify();
     try {
       await _models.install(
         onProgress: (p) {
           _downloadProgress = p;
-          notifyListeners();
+          _notify();
         },
       );
       _modelInstalled = true;
@@ -128,7 +135,7 @@ class AssistantController extends ChangeNotifier {
       _downloadError = e.toString();
     } finally {
       _downloadProgress = null;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -141,7 +148,7 @@ class AssistantController extends ChangeNotifier {
     _engine = null;
     _modelInstalled = false;
     _status = LocalStatus.optIn;
-    notifyListeners();
+    _notify();
   }
 
   Future<List<AgentToolSpec>> _loadTools() async =>
@@ -155,7 +162,7 @@ class AssistantController extends ChangeNotifier {
   Future<AssistantResult> ask(String question) async {
     _sending = true;
     _error = null;
-    notifyListeners();
+    _notify();
     try {
       if (_mode != AssistantMode.server && _modelInstalled) {
         _engine ??= _engineFactory();
@@ -204,12 +211,13 @@ class AssistantController extends ChangeNotifier {
       rethrow;
     } finally {
       _sending = false;
-      notifyListeners();
+      _notify();
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _engine?.dispose();
     super.dispose();
   }

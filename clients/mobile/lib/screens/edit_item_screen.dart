@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
+import '../graphql_utils.dart';
 
 const String itemQuery = r'''
   query Item($id: ID!) {
@@ -78,6 +79,7 @@ class _EditItemScreenState extends State<EditItemScreen> {
   String? _categoryId;
   String? _brandId;
   bool _isSaving = false;
+  String? _error;
   bool _loaded = false;
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _brands = [];
@@ -168,7 +170,10 @@ class _EditItemScreenState extends State<EditItemScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
     try {
       final client = GraphQLProvider.of(context).value;
       final input = <String, dynamic>{
@@ -180,19 +185,25 @@ class _EditItemScreenState extends State<EditItemScreen> {
         'upc14': _upc14Controller.text.isEmpty ? null : _upc14Controller.text,
       };
       if (widget.itemId == null) {
-        await client.mutate(MutationOptions(
-          document: gql(createItemMutation),
-          variables: {'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(createItemMutation),
+              variables: {'input': input},
+            ));
       } else {
-        await client.mutate(MutationOptions(
-          document: gql(updateItemMutation),
-          variables: {'id': widget.itemId, 'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(updateItemMutation),
+              variables: {'id': widget.itemId, 'input': input},
+            ));
       }
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -267,6 +278,11 @@ class _EditItemScreenState extends State<EditItemScreen> {
               controller: _upc14Controller,
               decoration: const InputDecoration(labelText: 'UPC-14 (optional)'),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isSaving ? null : () => _save(context),

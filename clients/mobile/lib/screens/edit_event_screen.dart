@@ -107,7 +107,7 @@ class _EditEventScreenState extends State<EditEventScreen> {
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
