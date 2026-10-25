@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
+import '../graphql_utils.dart';
 
 const String typesQuery = r'''
   query Types {
@@ -90,6 +91,8 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
   String? _regionId;
   bool _oakIntegration = false;
   bool _isSaving = false;
+  String? _error;
+  Object? _loadError;
   bool _loaded = false;
   List<Map<String, dynamic>> _types = [];
   List<Map<String, dynamic>> _countries = [];
@@ -106,27 +109,42 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
 
   Future<void> _loadData() async {
     final client = GraphQLProvider.of(context).value;
-    final typesResult =
-        await client.query(QueryOptions(document: gql(typesQuery)));
-    final countriesResult =
-        await client.query(QueryOptions(document: gql(countriesQuery)));
+    try {
+      final typesResult =
+          await client.query(QueryOptions(document: gql(typesQuery)));
+      final countriesResult =
+          await client.query(QueryOptions(document: gql(countriesQuery)));
 
-    setState(() {
-      _types = (typesResult.data?['types'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-      _countries = (countriesResult.data?['countries'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-    });
+      if (!mounted) return;
+      setState(() {
+        _loadError = null;
+        _types = (typesResult.data?['types'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
+        _countries = (countriesResult.data?['countries'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
+      });
+    } catch (e) {
+      // A failed vocabulary load must not leave the skeleton spinning.
+      if (mounted) setState(() => _loadError = e);
+      return;
+    }
 
     if (widget.bottleId != null) {
       recordView(client, 'bottle', widget.bottleId!);
-      final bottleResult = await client.query(
-        QueryOptions(
-          document: gql(bottleQuery),
-          variables: {'id': widget.bottleId},
-        ),
-      );
+      late final QueryResult<Object?> bottleResult;
+      try {
+        bottleResult = await client.query(
+          QueryOptions(
+            document: gql(bottleQuery),
+            variables: {'id': widget.bottleId},
+          ),
+        );
+      } catch (e) {
+        if (mounted) setState(() => _loadError = e);
+        return;
+      }
       final bottle = bottleResult.data?['bottle'] as Map<String, dynamic>?;
+      if (!mounted) return;
       if (bottle != null) {
         setState(() {
           _typeId = bottle['typeId'] as String?;
@@ -159,6 +177,7 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
         variables: {'countryId': _countryId},
       ),
     );
+    if (!mounted) return;
     setState(() {
       _regions =
           (result.data?['regions'] as List? ?? []).cast<Map<String, dynamic>>();
@@ -179,7 +198,10 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
     try {
       final client = GraphQLProvider.of(context).value;
       final input = <String, dynamic>{
@@ -201,38 +223,59 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
         'oakIntegration': _oakIntegration,
       };
       if (widget.bottleId == null) {
-        await client.mutate(MutationOptions(
-          document: gql(createBottleMutation),
-          variables: {'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(createBottleMutation),
+              variables: {'input': input},
+            ));
       } else {
-        await client.mutate(MutationOptions(
-          document: gql(updateBottleMutation),
-          variables: {'id': widget.bottleId, 'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(updateBottleMutation),
+              variables: {'id': widget.bottleId, 'input': input},
+            ));
       }
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.bottleId == null ? 'Create Bottle' : 'Edit Bottle';
+    if (_loadError != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Could not load: $_loadError', textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _loadData,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_types.isEmpty || _countries.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title:
-              Text(widget.bottleId == null ? 'Create Bottle' : 'Edit Bottle'),
-        ),
+        appBar: AppBar(title: Text(title)),
         body: const SkeletonForm(),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.bottleId == null ? 'Create Bottle' : 'Edit Bottle'),
-      ),
+      appBar: AppBar(title: Text(title)),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
@@ -356,6 +399,11 @@ class _EditBottleScreenState extends State<EditBottleScreen> {
               value: _oakIntegration,
               onChanged: (v) => setState(() => _oakIntegration = v ?? false),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isSaving ? null : () => _save(context),

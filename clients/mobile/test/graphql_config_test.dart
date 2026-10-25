@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:lena_mobile/auth/auth_service.dart';
 import 'package:lena_mobile/graphql_config.dart';
 
@@ -30,8 +31,8 @@ void main() {
       final responses = await errorLink
           .request(
             _request(),
-            (req) => Stream.value(
-                const Response(data: {'probe': 1}, response: {})),
+            (req) =>
+                Stream.value(const Response(data: {'probe': 1}, response: {})),
           )
           .toList();
       expect(responses.single.data!['probe'], 1);
@@ -140,6 +141,69 @@ void main() {
         ),
         emitsError(isA<ServerException>()),
       );
+    });
+
+    group('403 approval gate', () {
+      tearDown(() async {
+        // The gate lives on the global authService — don't leak it into
+        // the next test.
+        await authService.signOut();
+      });
+
+      test('account_pending in the decoded body flags the gate', () async {
+        await expectLater(
+          errorLink.request(
+            _request(),
+            (req) => Stream<Response>.error(const ServerException(
+              statusCode: 403,
+              parsedResponse: Response(
+                response: {'message': 'account_pending'},
+              ),
+            )),
+          ),
+          emitsError(isA<ServerException>()),
+        );
+        await pumpEventQueue();
+        expect(authService.accountGate, 'pending');
+      });
+
+      test('account_denied read from the raw http body flags the gate',
+          () async {
+        await expectLater(
+          errorLink.request(
+            _request(),
+            (req) => Stream<Response>.error(HttpLinkServerException(
+              statusCode: 403,
+              response: http.Response(
+                '{"message": "account_denied"}',
+                403,
+              ),
+              parsedResponse: const Response(response: {}),
+            )),
+          ),
+          emitsError(isA<ServerException>()),
+        );
+        await pumpEventQueue();
+        expect(authService.accountGate, 'denied');
+      });
+
+      test('a 403 without an account_* message does not flag the gate',
+          () async {
+        await expectLater(
+          errorLink.request(
+            _request(),
+            (req) => Stream<Response>.error(const ServerException(
+              statusCode: 403,
+              parsedResponse: Response(
+                response: {'message': 'Forbidden'},
+              ),
+            )),
+          ),
+          emitsError(isA<ServerException>()),
+        );
+        await pumpEventQueue();
+        expect(authService.accountGate, isNull);
+      });
     });
   });
 

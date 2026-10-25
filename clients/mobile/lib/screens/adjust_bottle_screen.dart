@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/search_picker.dart';
+import '../graphql_utils.dart';
 
 const String bottlePickerQuery = r'''
   query BottlePicker($search: String) {
@@ -42,6 +43,7 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
   final _quantityCtrl = TextEditingController();
   Map<String, dynamic>? _bottle;
   bool _isSaving = false;
+  String? _error;
 
   @override
   void initState() {
@@ -62,19 +64,26 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
 
   Future<void> _save(BuildContext context) async {
     if (_bottle == null) return;
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
     try {
       final client = GraphQLProvider.of(context).value;
-      await client.mutate(MutationOptions(
-        document: gql(adjustUserBottleMutation),
-        variables: {
-          'bottleId': _bottle!['id'],
-          'quantity': int.tryParse(_quantityCtrl.text) ?? 0,
-        },
-      ));
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(adjustUserBottleMutation),
+            variables: {
+              'bottleId': _bottle!['id'],
+              'quantity': int.tryParse(_quantityCtrl.text) ?? 0,
+            },
+          ));
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -104,6 +113,11 @@ class _AdjustBottleScreenState extends State<AdjustBottleScreen> {
               decoration: const InputDecoration(labelText: 'Quantity'),
               keyboardType: TextInputType.number,
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed:

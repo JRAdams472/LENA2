@@ -5,6 +5,7 @@ import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
 import '../format.dart';
+import '../graphql_utils.dart';
 
 const String mealPlanQuery = r'''
   query MealPlan($id: ID!) {
@@ -106,6 +107,16 @@ const String removeMealSlotMutation = r'''
   }
 ''';
 
+/// Atomic slot update (LEN-175): replaces the remove+add pair — the slot
+/// keeps its id and, when `items` is absent, its item list untouched.
+const String updateMealSlotMutation = r'''
+  mutation UpdateMealSlot($slotId: ID!, $input: UpdateMealSlotInput!) {
+    updateMealSlot(slotId: $slotId, input: $input) {
+      id
+    }
+  }
+''';
+
 const String addMealSlotItemMutation = r'''
   mutation AddMealSlotItem($input: AddMealSlotItemInput!) {
     addMealSlotItem(input: $input) {
@@ -141,6 +152,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
 
   bool _isSaving = false;
   bool _isAddingSlot = false;
+  String? _error;
   bool _loaded = false;
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _categoryGroups = [];
@@ -195,6 +207,7 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
         ),
       );
       final plan = planResult.data?['mealPlan'] as Map<String, dynamic>?;
+      if (!mounted) return;
       if (plan != null) {
         setState(() {
           _plan = plan;
@@ -235,7 +248,10 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
     try {
       final client = GraphQLProvider.of(context).value;
       final input = <String, dynamic>{
@@ -244,20 +260,34 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
         'weekStartDayOfWeek': _weekStartDay,
       };
       if (widget.mealPlanId == null) {
-        await client.mutate(MutationOptions(
-          document: gql(createMealPlanMutation),
-          variables: {'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(createMealPlanMutation),
+              variables: {'input': input},
+            ));
       } else {
-        await client.mutate(MutationOptions(
-          document: gql(updateMealPlanMutation),
-          variables: {'id': widget.mealPlanId, 'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(updateMealPlanMutation),
+              variables: {'id': widget.mealPlanId, 'input': input},
+            ));
       }
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  /// Non-form slot actions surface failures via snackbar — the slot list
+  /// stays as it was since a failed write skips the reload.
+  void _showActionError(String what, Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('$what: $e')));
   }
 
   Future<void> _addSlot() async {
@@ -266,72 +296,96 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
     try {
       final client = GraphQLProvider.of(context).value;
       final recipeId = _selectedRecipe?['id'] as String?;
-      await client.mutate(MutationOptions(
-        document: gql(addMealSlotMutation),
-        variables: {
-          'input': {
-            'mealPlanId': widget.mealPlanId,
-            'dayOfWeek': _slotDay,
-            'mealType': _slotMealType,
-            'recipeId': recipeId,
-            'servings': _servingsCtrl.text.isEmpty
-                ? null
-                : int.tryParse(_servingsCtrl.text),
-            'replacementNote': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
-          }
-        },
-      ));
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(addMealSlotMutation),
+            variables: {
+              'input': {
+                'mealPlanId': widget.mealPlanId,
+                'dayOfWeek': _slotDay,
+                'mealType': _slotMealType,
+                'recipeId': recipeId,
+                'servings': _servingsCtrl.text.isEmpty
+                    ? null
+                    : int.tryParse(_servingsCtrl.text),
+                'replacementNote':
+                    _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
+              }
+            },
+          ));
       if (recipeId != null) {
         recordSelection(client, 'recipe', recipeId);
       }
       _servingsCtrl.clear();
       _noteCtrl.clear();
       await _loadData();
+    } catch (e) {
+      _showActionError('Could not add slot', e);
     } finally {
-      setState(() => _isAddingSlot = false);
+      if (mounted) setState(() => _isAddingSlot = false);
     }
   }
 
   Future<void> _removeSlot(String slotId) async {
-    final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(removeMealSlotMutation),
-      variables: {'slotId': slotId},
-    ));
-    await _loadData();
+    try {
+      final client = GraphQLProvider.of(context).value;
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(removeMealSlotMutation),
+            variables: {'slotId': slotId},
+          ));
+      await _loadData();
+    } catch (e) {
+      _showActionError('Could not remove slot', e);
+    }
   }
 
   Future<void> _addSlotItem(String slotId) async {
     final itemId = _itemSelections[slotId];
     final qty = _itemQtyCtrls[slotId]?.text ?? '';
     if (itemId == null || itemId.isEmpty || qty.isEmpty) return;
-    final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(addMealSlotItemMutation),
-      variables: {
-        'input': {
-          'slotId': slotId,
-          'itemId': itemId,
-          'quantity': double.tryParse(qty) ?? 0,
-          'unit': _itemUnitCtrls[slotId]?.text ?? '',
-          'isFromRecipe': false,
-        }
-      },
-    ));
-    recordSelection(client, 'item', itemId);
-    _itemQtyCtrls[slotId]?.clear();
-    _itemUnitCtrls[slotId]?.clear();
-    setState(() => _itemSelections[slotId] = null);
-    await _loadData();
+    try {
+      final client = GraphQLProvider.of(context).value;
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(addMealSlotItemMutation),
+            variables: {
+              'input': {
+                'slotId': slotId,
+                'itemId': itemId,
+                'quantity': double.tryParse(qty) ?? 0,
+                'unit': _itemUnitCtrls[slotId]?.text ?? '',
+                'isFromRecipe': false,
+              }
+            },
+          ));
+      recordSelection(client, 'item', itemId);
+      _itemQtyCtrls[slotId]?.clear();
+      _itemUnitCtrls[slotId]?.clear();
+      if (!mounted) return;
+      setState(() => _itemSelections[slotId] = null);
+      await _loadData();
+    } catch (e) {
+      _showActionError('Could not add item', e);
+    }
   }
 
   Future<void> _removeSlotItem(String slotItemId) async {
-    final client = GraphQLProvider.of(context).value;
-    await client.mutate(MutationOptions(
-      document: gql(removeMealSlotItemMutation),
-      variables: {'slotItemId': slotItemId},
-    ));
-    await _loadData();
+    try {
+      final client = GraphQLProvider.of(context).value;
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(removeMealSlotItemMutation),
+            variables: {'slotItemId': slotItemId},
+          ));
+      await _loadData();
+    } catch (e) {
+      _showActionError('Could not remove item', e);
+    }
   }
 
   @override
@@ -486,6 +540,11 @@ class _EditMealPlanScreenState extends State<EditMealPlanScreen> {
               ],
               onChanged: (v) => setState(() => _weekStartDay = v ?? 0),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isSaving ? null : () => _save(context),

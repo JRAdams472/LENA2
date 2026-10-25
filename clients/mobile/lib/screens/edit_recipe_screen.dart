@@ -3,6 +3,7 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/skeleton.dart';
 import '../analytics/analytics.dart';
 import '../allergy.dart';
+import '../graphql_utils.dart';
 import '../recipe_delta.dart';
 import 'cook_mode_screen.dart';
 import 'recipe_tweaks.dart';
@@ -246,6 +247,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   String? _ingredientId;
   bool _loaded = false;
   bool _isSaving = false;
+  String? _error;
+  Object? _loadError;
   bool _isFavorite = false;
   bool _isTogglingFavorite = false;
   bool _isSavingCategories = false;
@@ -289,12 +292,23 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   Future<void> _loadItems(String search) async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(itemsQuery),
-      variables: {'search': search.isEmpty ? null : search},
-    ));
+    late final QueryResult result;
+    try {
+      result = await client.query(QueryOptions(
+        document: gql(itemsQuery),
+        variables: {'search': search.isEmpty ? null : search},
+      ));
+    } catch (e) {
+      // Surface only when there is nothing to show — a failed re-search on
+      // a populated list keeps the stale list rather than blanking the form.
+      if (mounted && _items.isEmpty) {
+        setState(() => _loadError = e);
+      }
+      return;
+    }
     if (!mounted) return;
     setState(() {
+      _loadError = null;
       final loaded = (result.data?['items']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
       if (_itemId != null && !loaded.any((i) => i['id'] == _itemId)) {
@@ -317,12 +331,21 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   Future<void> _loadIngredients(String search) async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(ingredientsQuery),
-      variables: {'search': search.isEmpty ? null : search},
-    ));
+    late final QueryResult result;
+    try {
+      result = await client.query(QueryOptions(
+        document: gql(ingredientsQuery),
+        variables: {'search': search.isEmpty ? null : search},
+      ));
+    } catch (e) {
+      if (mounted && _ingredients.isEmpty) {
+        setState(() => _loadError = e);
+      }
+      return;
+    }
     if (!mounted) return;
     setState(() {
+      _loadError = null;
       final loaded = (result.data?['ingredients']?['items'] as List? ?? [])
           .cast<Map<String, dynamic>>();
       if (_ingredientId != null &&
@@ -347,12 +370,23 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   Future<void> _createIngredient(String name) async {
     final client = GraphQLProvider.of(context).value;
-    final result = await client.mutate(MutationOptions(
-      document: gql(getOrCreateIngredientMutation),
-      variables: {
-        'input': {'name': name},
-      },
-    ));
+    late final QueryResult<Object?> result;
+    try {
+      result = await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(getOrCreateIngredientMutation),
+            variables: {
+              'input': {'name': name},
+            },
+          ));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not create ingredient: $e')));
+      }
+      return;
+    }
     final created =
         result.data?['getOrCreateIngredient'] as Map<String, dynamic>?;
     if (!mounted || created == null) return;
@@ -375,6 +409,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
       final groupsResult = await client
           .query(QueryOptions(document: gql(recipeCategoryGroupsQuery)));
+      if (!mounted) return;
       setState(() {
         _categoryGroups =
             (groupsResult.data?['recipeCategoryGroups'] as List? ?? [])
@@ -461,8 +496,16 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
   void _fillForm(Map<String, dynamic> recipe) {
     _formFilled = true;
-    final item = (recipe['items'] as List?)?[0] as Map<String, dynamic>?;
-    final step = (recipe['steps'] as List?)?[0] as Map<String, dynamic>?;
+    // `?[]` null-checks but not bounds — a recipe with no items/steps
+    // would throw a RangeError here instead of filling blank fields.
+    final items = recipe['items'] as List?;
+    final steps = recipe['steps'] as List?;
+    final item = items != null && items.isNotEmpty
+        ? items[0] as Map<String, dynamic>?
+        : null;
+    final step = steps != null && steps.isNotEmpty
+        ? steps[0] as Map<String, dynamic>?
+        : null;
     setState(() {
       _nameCtrl.text = (recipe['name'] as String?) ?? '';
       _descCtrl.text = (recipe['description'] as String?) ?? '';
@@ -538,11 +581,18 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     try {
       final client = GraphQLProvider.of(context).value;
       final next = !_isFavorite;
-      await client.mutate(MutationOptions(
-        document: gql(setRecipeFavoriteMutation),
-        variables: {'recipeId': widget.recipeId, 'isFavorite': next},
-      ));
+      await mutateOrThrow(
+          client,
+          MutationOptions(
+            document: gql(setRecipeFavoriteMutation),
+            variables: {'recipeId': widget.recipeId, 'isFavorite': next},
+          ));
       if (mounted) setState(() => _isFavorite = next);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update favorite: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isTogglingFavorite = false);
     }
@@ -553,7 +603,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   Future<void> _switchView(String view) async {
     if (view == _view) return;
     final data = await _loadRecipe(view);
-    if (data == null) return;
+    if (data == null || !mounted) return;
     setState(() => _view = view);
     final recipe = data['recipe'] as Map<String, dynamic>?;
     if (recipe != null) {
@@ -573,7 +623,12 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       document: gql(acknowledgeRecipeDeltaMutation),
       variables: {'recipeId': widget.recipeId},
     ));
-    if (result.hasException || !mounted) return;
+    if (!mounted) return;
+    if (result.hasException) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not acknowledge changes: ${result.exception}')));
+      return;
+    }
     setState(() => _delta?['stale'] = false);
   }
 
@@ -611,7 +666,12 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       document: gql(clearRecipeDeltaMutation),
       variables: {'recipeId': widget.recipeId},
     ));
-    if (result.hasException || !mounted) return;
+    if (!mounted) return;
+    if (result.hasException) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not discard tweaks: ${result.exception}')));
+      return;
+    }
     setState(() {
       _delta = null;
       _rawDeltaItems = [];
@@ -766,7 +826,10 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
     try {
       final client = GraphQLProvider.of(context).value;
       final input = <String, dynamic>{
@@ -797,37 +860,60 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         ],
       };
       if (widget.recipeId == null) {
-        await client.mutate(MutationOptions(
-          document: gql(createRecipeMutation),
-          variables: {'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(createRecipeMutation),
+              variables: {'input': input},
+            ));
       } else {
-        await client.mutate(MutationOptions(
-          document: gql(updateRecipeMutation),
-          variables: {'id': widget.recipeId, 'input': input},
-        ));
+        await mutateOrThrow(
+            client,
+            MutationOptions(
+              document: gql(updateRecipeMutation),
+              variables: {'id': widget.recipeId, 'input': input},
+            ));
       }
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe';
+    if (_loadError != null && (_items.isEmpty || _ingredients.isEmpty)) {
+      return Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Could not load: $_loadError', textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _loadData,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_items.isEmpty || _ingredients.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title:
-              Text(widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe'),
-        ),
+        appBar: AppBar(title: Text(title)),
         body: const SkeletonForm(),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.recipeId == null ? 'Create Recipe' : 'Edit Recipe'),
+        title: Text(title),
         actions: widget.recipeId == null
             ? null
             : [
@@ -1199,6 +1285,11 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                   ],
                 ),
               ],
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 16),
             ElevatedButton(

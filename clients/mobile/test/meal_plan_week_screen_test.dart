@@ -103,6 +103,11 @@ class _Capture {
     if (query.contains('removeMealSlot')) {
       return gqlOk({'removeMealSlot': true});
     }
+    if (query.contains('updateMealSlot')) {
+      return gqlOk({
+        'updateMealSlot': {'id': 's1'}
+      });
+    }
     if (query.contains('mealPlan')) {
       return gqlOk({
         'mealPlan': planDetail(slots: [planSlot()])
@@ -206,6 +211,31 @@ void main() {
       expect(cap.countOf('removeMealSlot'), 1);
       expect(cap.lastMatching('removeMealSlot')!['variables'],
           contains('"slotId":"s1"'));
+    });
+
+    testWidgets('editing a slot sends one atomic updateMealSlot',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final cap = _Capture();
+      await tester.pumpWidget(_harness(cap));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Roast Chicken'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Servings'), '6');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      // One atomic update — no remove+add pair, and the slot id survives.
+      expect(cap.countOf('updateMealSlot'), 1);
+      expect(cap.countOf('removeMealSlot'), 0);
+      expect(cap.countOf('addMealSlot'), 0);
+      final vars = cap.lastMatching('updateMealSlot')!['variables']!;
+      expect(vars, contains('"slotId":"s1"'));
+      expect(vars, contains('"servings":6'));
     });
 
     testWidgets('suggest meals lists suggestions and Add creates a slot',

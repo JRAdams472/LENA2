@@ -11,15 +11,23 @@ import 'screens/pantry_screen.dart';
 /// Feed rows pass the notification map as-is; the values are dynamic because
 /// GraphQL IDs arrive as strings. Push taps pass `RemoteMessage.data`, where
 /// every value is already a String.
+/// Reads a link id tolerantly — push `RemoteMessage.data` values are
+/// Strings, but feed rows can carry num/null payloads; a hard `as String?`
+/// cast on the wrong type throws in the tap handler.
+String? _linkId(Map<dynamic, dynamic> fields, String key) {
+  final v = fields[key];
+  return v is String ? v : v?.toString();
+}
+
 Widget? notificationDestination(Map<dynamic, dynamic> fields) {
-  final recipeId = fields['recipeId'] as String?;
+  final recipeId = _linkId(fields, 'recipeId');
   if (recipeId != null) {
     return EditRecipeScreen(recipeId: recipeId);
   }
-  if (fields['itemId'] != null) {
+  if (_linkId(fields, 'itemId') != null) {
     return const PantryScreen();
   }
-  final eventId = fields['foodEventId'] as String?;
+  final eventId = _linkId(fields, 'foodEventId');
   if (eventId != null) {
     return EventDetailScreen(foodEventId: eventId);
   }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'auth/auth_service.dart';
 import 'idempotency_link.dart';
@@ -39,10 +41,12 @@ final ErrorLink errorLink = ErrorLink(
   onException: (request, forward, exception) {
     // Approval barrier (LEN-127): a 403 carrying account_pending /
     // account_denied flips the app to the gate screen. The credential
-    // stays valid — this is not a sign-out.
+    // stays valid — this is not a sign-out. `parsedResponse.data` is
+    // GraphQL data — null for the BFF's plain {"message": ...} body —
+    // so read the decoded raw body (or the http.Response directly).
     if (exception is ServerException && exception.statusCode == 403) {
-      final message = exception.parsedResponse?.data?['message'];
-      if (message is String &&
+      final message = _exceptionBodyMessage(exception);
+      if (message != null &&
           message.startsWith('account_') &&
           message.length > 'account_'.length) {
         authService.flagAccountGate(message.substring('account_'.length));
@@ -63,6 +67,25 @@ final ErrorLink errorLink = ErrorLink(
     return null;
   },
 );
+
+/// Extracts `{"message": ...}` from a failed HTTP response — first the
+/// already-decoded raw body (`parsedResponse.response`), then the wire
+/// bytes for bodies that never made it through the response parser.
+String? _exceptionBodyMessage(ServerException exception) {
+  final decoded = exception.parsedResponse?.response['message'];
+  if (decoded is String) return decoded;
+  if (exception is HttpLinkServerException) {
+    try {
+      final body = jsonDecode(exception.response.body);
+      if (body is Map && body['message'] is String) {
+        return body['message'] as String;
+      }
+    } catch (_) {
+      // Non-JSON error body (proxy page, empty body) — no gate message.
+    }
+  }
+  return null;
+}
 
 final GraphQLClient graphQLClient = GraphQLClient(
   cache: GraphQLCache(),

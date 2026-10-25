@@ -54,6 +54,14 @@ class LoginScreen extends StatelessWidget {
           icon: const _BrandLetter('D', Color(0xFF5865F2)),
           onPressed: () => auth.signInWithProvider('Discord'),
         ),
+      if (auth.isProviderConfigured('microsoft'))
+        _ProviderButton(
+          label: 'Continue with Microsoft',
+          background: const Color(0xFF2F2F2F),
+          foreground: Colors.white,
+          icon: const _BrandLetter('⊞', Color(0xFF00A4EF)),
+          onPressed: () => auth.signInWithProvider('Microsoft'),
+        ),
       if (auth.isProviderConfigured('facebook'))
         _ProviderButton(
           label: 'Continue with Facebook',
