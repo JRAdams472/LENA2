@@ -22,7 +22,7 @@ func TestNew_PanicsOnNonPositiveCapacity(t *testing.T) {
 func TestSubmit_RunsToCompletion(t *testing.T) {
 	r := New(1)
 	done := make(chan struct{})
-	if !r.Submit("ok", time.Second, func(ctx context.Context) error {
+	if !r.Submit("ok", time.Second, func(context.Context) error {
 		close(done)
 		return nil
 	}) {
