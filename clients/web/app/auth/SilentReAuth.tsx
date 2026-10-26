@@ -27,7 +27,10 @@ export default function SilentReAuth() {
     cancel_on_tap_outside: true,
     onSuccess: (response) => {
       if (response.credential) {
-        signIn(response.credential);
+        // Passive renewal, not a user action — announce:false keeps the
+        // page from treating it as a completed sign-in (LoginMenu would
+        // route to /member mid-read).
+        signIn(response.credential, { announce: false });
       }
     },
   });

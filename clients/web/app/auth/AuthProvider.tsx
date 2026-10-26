@@ -40,7 +40,13 @@ interface AuthContextValue {
   // isRestoring is true while a stored refresh token is being exchanged
   // (new tab / cleared tab storage) — SilentReAuth stays quiet meanwhile.
   isRestoring: boolean;
-  signIn: (credential: string) => void;
+  // justSignedIn is set only when an explicit sign-in action completes —
+  // never by hydration or a passive session restore — so marketing pages
+  // can route to /member on sign-in without racing the token store's
+  // hydration snapshot. Passive re-auth (One Tap) passes announce:false.
+  justSignedIn: boolean;
+  clearJustSignedIn: () => void;
+  signIn: (credential: string, opts?: { announce?: boolean }) => void;
   // signInWithProvider exchanges an OAuth2 authorization code for a LENA
   // session. Rejects when the exchange fails — no OIDC fallback exists.
   signInWithProvider: (
@@ -202,7 +208,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // snapshot; a restored session may hydrate it via the me query *after*
   // the access token lands, so an override covers that late arrival.
   const [userOverride, setUserOverride] = useState<AuthUser | null>(null);
+  const [justSignedIn, setJustSignedIn] = useState(false);
   const user = getUserForToken(token) ?? userOverride;
+
+  const clearJustSignedIn = useCallback(() => setJustSignedIn(false), []);
 
   // One refresh rotation; also the handler registered with api.ts for
   // the 401 → refresh → retry path. User info survives via USER_KEY;
@@ -230,29 +239,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  const signIn = useCallback((credential: string) => {
-    const userInfo = (() => {
-      const payload = decodeJwtPayload(credential);
-      return payload?.email ? { email: payload.email, sub: payload.sub } : null;
-    })();
-    // Exchange the provider credential for a LENA session; on any
-    // failure (sessions disabled, network, server error) the credential
-    // itself stays the bearer — OIDC-only mode keeps working.
-    createSession(credential, DEVICE)
-      .then((bundle) => {
-        persistUser(userInfo);
-        if (bundle) {
-          setSessionHint(true);
-          tokenStore.setToken(bundle.accessToken);
-        } else {
+  const signIn = useCallback(
+    (credential: string, opts?: { announce?: boolean }) => {
+      const announce = opts?.announce ?? true;
+      const userInfo = (() => {
+        const payload = decodeJwtPayload(credential);
+        return payload?.email ? { email: payload.email, sub: payload.sub } : null;
+      })();
+      // Exchange the provider credential for a LENA session; on any
+      // failure (sessions disabled, network, server error) the credential
+      // itself stays the bearer — OIDC-only mode keeps working.
+      createSession(credential, DEVICE)
+        .then((bundle) => {
+          persistUser(userInfo);
+          if (bundle) {
+            setSessionHint(true);
+            tokenStore.setToken(bundle.accessToken);
+          } else {
+            tokenStore.setToken(credential);
+          }
+          if (announce) setJustSignedIn(true);
+        })
+        .catch(() => {
+          persistUser(userInfo);
           tokenStore.setToken(credential);
-        }
-      })
-      .catch(() => {
-        persistUser(userInfo);
-        tokenStore.setToken(credential);
-      });
-  }, []);
+          if (announce) setJustSignedIn(true);
+        });
+    },
+    []
+  );
 
   // OAuth provider sign-in: the authorization code exchanges for a
   // session server-side, then `me` hydrates the display identity (a
@@ -262,6 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const bundle = await createProviderSession(provider, code, nonce, DEVICE, codeVerifier);
       setSessionHint(true);
       tokenStore.setToken(bundle.accessToken);
+      setJustSignedIn(true);
       const me = await api.getMe().catch(() => null);
       if (me?.email) {
         const u = { email: me.email, sub: String(me.userID) };
@@ -277,6 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void revokeSession();
     persistUser(null);
     setUserOverride(null);
+    setJustSignedIn(false);
     tokenRef.current = null;
     tokenStore.setToken(null);
   }, []);
@@ -317,6 +334,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     isAuthenticated: !!token && !!user,
     isRestoring,
+    justSignedIn,
+    clearJustSignedIn,
     signIn,
     signInWithProvider,
     signOut,

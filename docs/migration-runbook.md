@@ -2,133 +2,141 @@
 
 ## 1. Philosophy
 
-This rewrite is a **fresh start**. No data is migrated from the existing SQL Server database. However, reference data (categories, nutrient types, wine countries) can be seeded to make the app usable immediately.
+Migrations own the schema *and* the data the application cannot function
+without (roles, units, constraint support rows, catalog repairs).
+Optional reference data (pantry categories, nutrient types, wine
+countries/regions/grapes) lives under `migrations/seed/` and is applied
+by a separate, opt-in process — never by the migration chain itself.
+
+No data is carried over from the legacy SQL Server database.
 
 ## 2. Tooling
 
-- **Migrations**: `golang-migrate/migrate`
+- **Migrations**: `golang-migrate/migrate` (append-only `NNNN_name.up.sql`
+  / `.down.sql` pairs — the `.up.sql` suffix is required)
 - **Query code generation**: `sqlc`
-- **Seed data**: plain `.sql` files in `migrations/seed/*.sql`
+- **Seed data**: plain `.sql` files in `migrations/seed/*.sql`, applied
+  idempotently and tracked in `public.schema_seed`
 
 ## 3. Directory Layout
 
 ```
 migrations/
-  0001_identity.up.sql
-  0001_identity.down.sql
-  0002_inventory.up.sql
-  0002_inventory.down.sql
-  0003_wine.up.sql
-  0003_wine.down.sql
-  0004_recipe.up.sql
-  0004_recipe.down.sql
-  0005_userprefs.up.sql
-  0005_userprefs.down.sql
-  0006_mealplan.up.sql
-  0006_mealplan.down.sql
-  0007_grocery.up.sql
-  0007_grocery.down.sql
-  seed/
-    0001_inventory_ref.up.sql
-    0002_wine_ref.up.sql
+  0001_users.up.sql                 # identity
+  0001_users.down.sql
+  …                                 # 0058+ today; append-only, never edit
+  seed/                             # NOT golang-migrate files
+    0001_reference_data.sql         # categories, nutrient types, wine refs
+    0002_inventory_seed.sql         # catalog brands/items (uses seeded cats)
 ```
 
-## 4. Migration Order
+## 4. Critical Ordering Rule
 
-1. `identity` — users table.
-2. `inventory` — catalog tables.
-3. `wine` — wine catalog.
-4. `recipe` — recipe catalog.
-5. `userprefs` — per-user tables.
-6. `mealplan` — meal planning.
-7. `grocery` — grocery lists.
+**Migrations must not depend on seed data.** The seed files run under
+`--profile seed`, an opt-in path that many deployments never execute. A
+migration that joins seeded rows will silently succeed and apply *nothing*
+— that is exactly what happened to `0046_ingredient_dedupe_seed.up.sql`,
+which inner-joined `inventory.category` and recorded success while
+inserting zero ingredients on unseeded databases.
 
-This ordering ensures foreign key dependencies are satisfied.
+The repair pattern (see `0059_ingredient_catalog_repair.up.sql`) is:
+
+1. `INSERT` the reference rows the migration needs, with
+   `ON CONFLICT … DO NOTHING` (units and categories are both safe to
+   create — `inventory.unit` is already populated by migration 0012, and
+   the five pantry categories are now created by 0059 itself).
+2. Replay the payload through a uniqueness guard that matches the
+   table's own index (e.g. the normalized-name `NOT EXISTS` in 0059, which
+   mirrors `idx_ingredient_name_norm`), so reruns are idempotent and
+   already-present rows are left untouched.
+
+If a migration needs rows that only the seed provides, it must create
+them first — a join alone is a latent zero-row bug.
 
 ## 5. Running Migrations
+
+### Docker (normal path)
+
+`docker-compose.yml` wires this automatically:
+
+- `db-migrate` runs `golang-migrate up` as the **`POSTGRES_USER`
+  superuser** — migrations create schemas, extensions, and roles, so the
+  connection must be DDL-capable. Do not point it at `lena_app`.
+- `db-grant` then sets the `lena_app` password from
+  `LENA_DB_PASSWORD` via `psql -v` quoting (safe with special
+  characters).
+- `api` waits on both completing successfully.
 
 ### Local
 
 ```bash
-migrate -path ./migrations -database "postgres://lena_app:${LENA_DB_PASSWORD}@localhost:5432/lena?sslmode=disable" up
-```
-
-### Docker
-
-A one-shot `db-migrate` service runs `golang-migrate` before the API starts:
-
-```yaml
-  db-migrate:
-    image: migrate/migrate
-    command: ["-path", "/migrations", "-database", "postgres://lena_app:${LENA_DB_PASSWORD}@db:5432/lena?sslmode=disable", "up"]
-    volumes:
-      - ./migrations:/migrations:ro
-    depends_on:
-      db:
-        condition: service_healthy
+migrate -path ./migrations \
+  -database "postgres://<superuser>:${POSTGRES_PASSWORD}@localhost:5432/lena?sslmode=disable" up
+# then set the app role password
+psql "$ADMIN_DSN" -v pw="$LENA_DB_PASSWORD" \
+  -c "ALTER ROLE lena_app WITH PASSWORD :'pw'"
 ```
 
 ## 6. Seed Data
 
-Seed scripts insert default reference data only. They are **not** `golang-migrate` versioned files; they are applied idempotently via `INSERT ... ON CONFLICT DO NOTHING`.
+Seed scripts insert reference data only. They are not `golang-migrate`
+versioned files; `db-seed` applies each file once, recording the filename
+in `public.schema_seed` so repeated `--profile seed up` runs are no-ops:
 
-```sql
--- migrations/seed/0001_inventory_ref.up.sql
-INSERT INTO inventory.category (name, created_by) VALUES
-  ('Produce', 'seed'),
-  ('Dairy', 'seed'),
-  ('Meat', 'seed')
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO inventory.nutrient_type (name, unit, created_at) VALUES
-  ('Protein', 'g', now()),
-  ('Carbohydrates', 'g', now())
-ON CONFLICT (name) DO NOTHING;
+```bash
+docker compose --profile seed up db-seed
 ```
+
+Because seeds are optional and unordered relative to app traffic,
+application code and later migrations must tolerate a catalog that is
+empty or partially populated. `0002_inventory_seed.sql` assumes
+`0001_reference_data.sql` ran first (it joins categories by name) — keep
+the `0001` → `0002` ordering if you add seed files.
 
 ## 7. sqlc
 
-`sqlc` is configured per module. Example `sqlc.yaml`:
-
-```yaml
-version: "2"
-sql:
-  - engine: "postgresql"
-    queries: "internal/inventory/queries.sql"
-    schema: "migrations/0002_inventory.up.sql"
-    gen:
-      go:
-        package: "inventory"
-        out: "internal/inventory/sqlc"
-        sql_package: "pgx/v5"
-```
-
-Run:
+`sqlc` is configured in `sqlc.yaml`; generated code lands in
+`internal/*/sqlc/`. After touching `migrations/` or
+`internal/*/queries*.sql`:
 
 ```bash
 sqlc generate
 ```
 
+Commit the generated output — CI verifies it is in sync.
+
 ## 8. Test Data
 
-For integration tests, `testcontainers-go` spins up a Postgres container and applies the same migration path.
-
-```go
-func TestMain(m *testing.M) {
-    // start container, run migrations, run tests
-}
-```
+Integration tests use `testcontainers-go` and apply the same migration
+path — tests therefore run against an unseeded database unless they
+insert their own fixtures. If a test needs reference data, insert it in
+the test; do not assume the seed ran.
 
 ## 9. Resetting
 
-To start over:
-
 ```bash
+docker compose down -v            # drops pg_data entirely
+# or, on a local database:
 migrate -path ./migrations -database "$DATABASE" down -all
-docker compose down -v   # if using Docker volumes
 ```
 
-## 10. No Data Migration
+`schema_seed` is not migrated — reset it with the data volume, or delete
+rows manually to re-run a seed file.
 
-- Existing SQL Server data is intentionally not migrated.
-- If migration is needed later, a separate one-time ETL tool can be written after this rewrite is complete.
+## 10. Repairing an Already-Applied Bad Migration
+
+When a migration was recorded successful but applied incorrectly (the
+0046 case), never edit it in place — `golang-migrate` checksums and
+already-run databases won't re-execute it anyway. Instead:
+
+1. Add a new `NNNN_repair` migration that reaches the desired state
+   idempotently (create prerequisites, guard on real uniqueness, leave
+   existing rows alone).
+2. Write its `.down.sql` conservatively — only remove rows that provably
+   came from the migration (`created_by = 'seed'`) **and** are not
+   referenced by application data (`NOT EXISTS` FK probes on
+   `inventory.item`, `inventory.ingredient_nutrient`, etc.).
+3. For a truly broken recorded version on a live DB, fix forward — or as
+   a last resort `migrate -path ./migrations -database "$DSN" force <v>`
+   to clear a `dirty` flag, then re-run `up`. `force` never re-applies a
+   clean version.

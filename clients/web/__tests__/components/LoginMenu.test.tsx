@@ -11,6 +11,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 const mockUseAuth = jest.fn();
+const mockClearJustSignedIn = jest.fn();
 jest.mock("../../app/auth/AuthProvider", () => ({
   useAuth: () => mockUseAuth(),
 }));
@@ -30,7 +31,13 @@ jest.mock("@react-oauth/google", () => ({
 
 beforeEach(() => {
   mockReplace.mockReset();
-  mockUseAuth.mockReturnValue({ isAuthenticated: false, isRestoring: false });
+  mockClearJustSignedIn.mockReset();
+  mockUseAuth.mockReturnValue({
+    isAuthenticated: false,
+    isRestoring: false,
+    justSignedIn: false,
+    clearJustSignedIn: mockClearJustSignedIn,
+  });
   mockEnabledProviders.mockReturnValue([]);
 });
 
@@ -44,23 +51,44 @@ describe("login menu", () => {
     expect(screen.getByText(/welcome to lena/i)).toBeInTheDocument();
   });
 
-  it("routes to /member when auth flips to signed-in", async () => {
+  it("routes to /member when an explicit sign-in completes", async () => {
     const { rerender } = render(<LoginMenu />);
-    mockUseAuth.mockReturnValue({ isAuthenticated: true, isRestoring: false });
+    mockUseAuth.mockReturnValue({
+      isAuthenticated: true,
+      isRestoring: false,
+      justSignedIn: true,
+      clearJustSignedIn: mockClearJustSignedIn,
+    });
     rerender(<LoginMenu />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/member"));
+    expect(mockClearJustSignedIn).toHaveBeenCalled();
   });
 
   it("does not redirect a member who was already signed in on mount", () => {
-    mockUseAuth.mockReturnValue({ isAuthenticated: true, isRestoring: false });
+    mockUseAuth.mockReturnValue({
+      isAuthenticated: true,
+      isRestoring: false,
+      justSignedIn: false,
+      clearJustSignedIn: mockClearJustSignedIn,
+    });
     render(<LoginMenu />);
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it("does not redirect when a restoring session resolves", () => {
-    mockUseAuth.mockReturnValue({ isAuthenticated: false, isRestoring: true });
+    mockUseAuth.mockReturnValue({
+      isAuthenticated: false,
+      isRestoring: true,
+      justSignedIn: false,
+      clearJustSignedIn: mockClearJustSignedIn,
+    });
     const { rerender } = render(<LoginMenu />);
-    mockUseAuth.mockReturnValue({ isAuthenticated: true, isRestoring: false });
+    mockUseAuth.mockReturnValue({
+      isAuthenticated: true,
+      isRestoring: false,
+      justSignedIn: false,
+      clearJustSignedIn: mockClearJustSignedIn,
+    });
     rerender(<LoginMenu />);
     expect(mockReplace).not.toHaveBeenCalled();
   });

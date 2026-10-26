@@ -4,10 +4,16 @@
 # Start with:
 #   docker compose -f docker-compose.yml -f docker-compose.import.yml --profile import up -d
 #   docker compose -f docker-compose.yml -f docker-compose.import.yml --profile ai up -d
+#
+# Ollama runs CPU-only by default so the profiles work on any host. On a
+# machine with an NVIDIA GPU and the Container Toolkit installed, layer
+# docker-compose.gpu.yml to reserve the device:
+#   docker compose -f docker-compose.yml -f docker-compose.import.yml -f docker-compose.gpu.yml --profile import up -d
 services:
   ollama:
     image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
     profiles: ["import", "ai"]
+    restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -22,13 +28,6 @@ services:
       retries: 10
     security_opt:
       - no-new-privileges:true
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   ollama-pull:
     image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
@@ -45,6 +44,7 @@ services:
     build:
       context: ./tools/ocr
     profiles: ["import"]
+    restart: unless-stopped
     ports:
       - "127.0.0.1:${LENA_OCR_HOST_PORT:-8000}:8000"
     # The sidecar parses untrusted uploads: read-only root fs, scratch tmpfs
