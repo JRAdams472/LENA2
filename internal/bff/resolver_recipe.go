@@ -1247,7 +1247,7 @@ func (r *recipeItemResolver) Item(ctx context.Context) (*itemResolver, error) {
 }
 
 // Ingredient resolves the brand-agnostic ingredient linked to this recipe
-// item, when set. Scaffolding only — nothing populates ingredient_id yet.
+// item, when set.
 func (r *recipeItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
 	if r.item.IngredientID == nil {
 		return nil, nil

@@ -192,21 +192,6 @@ func (mr *MockQuerierMockRecorder) CreateBrand(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBrand", reflect.TypeOf((*MockQuerier)(nil).CreateBrand), ctx, arg)
 }
 
-// CreateBrandPending mocks base method.
-func (m *MockQuerier) CreateBrandPending(ctx context.Context, arg sqlc.CreateBrandPendingParams) (sqlc.InventoryBrand, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateBrandPending", ctx, arg)
-	ret0, _ := ret[0].(sqlc.InventoryBrand)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateBrandPending indicates an expected call of CreateBrandPending.
-func (mr *MockQuerierMockRecorder) CreateBrandPending(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBrandPending", reflect.TypeOf((*MockQuerier)(nil).CreateBrandPending), ctx, arg)
-}
-
 // CreateCategory mocks base method.
 func (m *MockQuerier) CreateCategory(ctx context.Context, arg sqlc.CreateCategoryParams) (sqlc.InventoryCategory, error) {
 	m.ctrl.T.Helper()

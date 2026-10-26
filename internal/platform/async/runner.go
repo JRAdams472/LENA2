@@ -4,6 +4,7 @@ package async
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -28,7 +29,13 @@ type Runner struct {
 }
 
 // New returns a Runner with the given maximum in-flight task count.
+// Capacity must be positive: zero makes the semaphore unbuffered so every
+// Submit silently drops — a misconfiguration that would disable all
+// background work with no signal. It is a programmer error, so panic.
 func New(capacity int) *Runner {
+	if capacity <= 0 {
+		panic(fmt.Sprintf("async.New: capacity must be positive, got %d", capacity))
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Runner{capacity: capacity, ctx: ctx, cancel: cancel, sem: make(chan struct{}, capacity)}
 }

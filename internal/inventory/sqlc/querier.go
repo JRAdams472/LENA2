@@ -23,9 +23,6 @@ type Querier interface {
 	CreateAllergenSuggestion(ctx context.Context, arg CreateAllergenSuggestionParams) (InventoryAllergenSuggestion, error)
 	// Admin-only fast path: brand is immediately approved.
 	CreateBrand(ctx context.Context, arg CreateBrandParams) (InventoryBrand, error)
-	// User-submitted brand: starts pending, visible only to the submitter
-	// until an admin approves it.
-	CreateBrandPending(ctx context.Context, arg CreateBrandPendingParams) (InventoryBrand, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (InventoryCategory, error)
 	CreateFlavorProfile(ctx context.Context, arg CreateFlavorProfileParams) (InventoryFlavorProfile, error)
 	CreateFoodFlavor(ctx context.Context, arg CreateFoodFlavorParams) (CreateFoodFlavorRow, error)

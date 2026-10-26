@@ -4,13 +4,6 @@ INSERT INTO inventory.brand (name, status, created_by, updated_by)
 VALUES ($1, 'approved', $2, $2)
 RETURNING *;
 
--- name: CreateBrandPending :one
--- User-submitted brand: starts pending, visible only to the submitter
--- until an admin approves it.
-INSERT INTO inventory.brand (name, status, submitted_by_user_id, created_by, updated_by)
-VALUES ($1, 'pending', $2, $3, $3)
-RETURNING *;
-
 -- name: GetBrandByID :one
 SELECT *
 FROM inventory.brand

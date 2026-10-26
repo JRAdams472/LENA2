@@ -237,39 +237,6 @@ func (q *Queries) CreateBrand(ctx context.Context, arg CreateBrandParams) (Inven
 	return i, err
 }
 
-const createBrandPending = `-- name: CreateBrandPending :one
-INSERT INTO inventory.brand (name, status, submitted_by_user_id, created_by, updated_by)
-VALUES ($1, 'pending', $2, $3, $3)
-RETURNING brand_id, name, created_at, created_by, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at, name_normalized
-`
-
-type CreateBrandPendingParams struct {
-	Name              string      `json:"name"`
-	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
-	CreatedBy         string      `json:"created_by"`
-}
-
-// User-submitted brand: starts pending, visible only to the submitter
-// until an admin approves it.
-func (q *Queries) CreateBrandPending(ctx context.Context, arg CreateBrandPendingParams) (InventoryBrand, error) {
-	row := q.db.QueryRow(ctx, createBrandPending, arg.Name, arg.SubmittedByUserID, arg.CreatedBy)
-	var i InventoryBrand
-	err := row.Scan(
-		&i.BrandID,
-		&i.Name,
-		&i.CreatedAt,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.UpdatedAt,
-		&i.Status,
-		&i.SubmittedByUserID,
-		&i.ApprovedByUserID,
-		&i.ApprovedAt,
-		&i.NameNormalized,
-	)
-	return i, err
-}
-
 const createCategory = `-- name: CreateCategory :one
 INSERT INTO inventory.category (name, description, is_active, is_protein, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6)

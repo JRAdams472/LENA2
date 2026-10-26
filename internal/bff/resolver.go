@@ -1593,6 +1593,9 @@ func applyLimitErrors(ctx context.Context, resp *graphql.Response, limiter *cost
 
 // pageArgs clamps pagination input to sane bounds; every list resolver
 // funnels through it so no unbounded LIMIT/OFFSET reaches the database.
+// The page cap also bounds the OFFSET scan: 1000 × 100 rows deep is
+// 100k row visits — deep pagination past that is abusive, not browsing
+// (cursor pagination is the documented won't-fix follow-up).
 func pageArgs(page, pageSize int32) (int32, int32) {
-	return clamp(page, 1, 1_000_000), clamp(pageSize, 1, 100)
+	return clamp(page, 1, 1_000), clamp(pageSize, 1, 100)
 }

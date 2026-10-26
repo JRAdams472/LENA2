@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/graph-gophers/graphql-go"
@@ -164,5 +165,35 @@ func TestResolver_RecordSearch(t *testing.T) {
 			Term       string
 		}{EntityType: analytics.EntityItem, Term: "milk"})
 		require.ErrorContains(t, err, "unauthorized")
+	})
+}
+
+func TestResolver_AnalyticsValidation(t *testing.T) {
+	t.Run("selection rejects unknown entity type", func(t *testing.T) {
+		// No RecordEvent expectation — must be rejected before the call.
+		r := &Resolver{AnalyticsService: newAnalyticsMock(t)}
+		_, err := r.RecordSelection(analyticsCtx(), struct {
+			EntityType string
+			EntityID   graphql.ID
+		}{EntityType: "garbage", EntityID: "42"})
+		require.ErrorContains(t, err, "unknown entity type")
+	})
+
+	t.Run("search rejects unknown entity type", func(t *testing.T) {
+		r := &Resolver{AnalyticsService: newAnalyticsMock(t)}
+		_, err := r.RecordSearch(analyticsCtx(), struct {
+			EntityType string
+			Term       string
+		}{EntityType: "garbage", Term: "milk"})
+		require.ErrorContains(t, err, "unknown entity type")
+	})
+
+	t.Run("search rejects over-length term", func(t *testing.T) {
+		r := &Resolver{AnalyticsService: newAnalyticsMock(t)}
+		_, err := r.RecordSearch(analyticsCtx(), struct {
+			EntityType string
+			Term       string
+		}{EntityType: analytics.EntityItem, Term: strings.Repeat("x", maxAnalyticsTermBytes+1)})
+		require.ErrorContains(t, err, "exceeds")
 	})
 }
