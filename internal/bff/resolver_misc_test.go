@@ -145,9 +145,9 @@ func TestMisc_SortArgs(t *testing.T) {
 
 	// Unknown keys are rejected, not silently ignored — a misspelled key
 	// that still returns data hides bugs.
-	_, _, err = sortArgs(strPtr("nmae"), nil, "name", "eventDate")
+	_, _, err = sortArgs(strPtr("bogus"), nil, "name", "eventDate")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, `sort "nmae" is not supported`)
+	assert.ErrorContains(t, err, `sort "bogus" is not supported`)
 	assert.ErrorContains(t, err, "name, eventDate")
 }
 
