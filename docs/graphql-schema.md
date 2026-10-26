@@ -293,7 +293,7 @@ type ShoppingLink {
 | `recipe(id)` | `ID!` | `Recipe` | Single recipe |
 | `recipes(page, pageSize, search, categoryIds, isFavorite, mealType, searchMode)` | `Int, Int, String, [ID!], Boolean, String, RecipeSearchMode` | `RecipePage!` | Paginated recipes — `searchMode: semantic` ranks embedded recipes by cosine distance + engagement (see `semanticSearchAvailable`) |
 | `userItems(page, pageSize, search, itemIds, inStock, isFavorite, brandId)` | `Int, Int, String, [ID!], Boolean, Boolean, ID` | `UserItemPage!` | Current user's pantry — `inStock` = qty > 0; `search`/`itemIds`/`brandId` resolve to catalog IDs and AND together |
-| `userBottles(page, pageSize)` | `Int, Int` | `UserBottlePage!` | Current user's cellar |
+| `userBottles(page, pageSize, search, bottleIds)` | `Int, Int, String, [ID!]` | `UserBottlePage!` | Current user's cellar — `bottleIds` restricts to specific catalog bottles (used to overlay holdings onto a catalog listing) |
 | `bottle(id)` | `ID!` | `Bottle` | Single wine bottle |
 | `bottles(page, pageSize, search, countryId, regionId, typeId, vintageYear, favoritesOnly)` | `Int, Int, String, ID, ID, ID, Int, Boolean` | `BottlePage!` | Paginated wine bottles — all filters compose server-side |
 | `mealPlan(id)` | `ID!` | `MealPlan` | Single meal plan |
@@ -338,10 +338,11 @@ type ShoppingLink {
 
 ### User pantry and cellar
 
-- `adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time): UserItem!`
+- `adjustUserItem(itemId: ID!, quantity: Float!, purchaseAt: Time, expiresAt: Time, minQty: Float, notes: String): UserItem!` — nullable args are three-state: omit preserves, explicit `null` clears, a value sets.
 - `setItemFavorite(itemId: ID!, isFavorite: Boolean!): UserItem!`
 - `deleteUserItem(itemId: ID!): Boolean!`
 - `adjustUserBottle(bottleId: ID!, quantity: Int!): UserBottle!`
+- `updateUserBottle(bottleId: ID!, input: UpdateUserBottleInput!): UserBottle!` — cellar fields (`quantity`, `bottleNumber`, `purchaseAt`, `purchasePrice`, `storageTemp`, `location`, `notes`); same omit/null/value semantics as `adjustUserItem`.
 - `setBottleFavorite(bottleId: ID!, isFavorite: Boolean!): UserBottle!`
 
 ### Meal planning and grocery
@@ -350,6 +351,7 @@ type ShoppingLink {
 - `updateMealPlan(id: ID!, input: CreateMealPlanInput!): MealPlan!`
 - `deleteMealPlan(id: ID!): Boolean!`
 - `addMealSlot(input: AddMealSlotInput!): MealSlot!`
+- `updateMealSlot(slotId: ID!, input: UpdateMealSlotInput!): MealSlot!` — updates the slot in place (no delete/recreate, so slot and item ids + `isFromRecipe` survive). `items` omitted/null leaves items untouched; a provided list replaces the item set atomically (`[]` clears).
 - `removeMealSlot(slotId: ID!): Boolean!`
 - `generateGroceryList(mealPlanId: ID!): GroceryList!`
 - `toggleGroceryItemChecked(groceryListItemId: ID!): GroceryListItem!`

@@ -163,23 +163,36 @@ CREATE TABLE inventory.item (
     UNIQUE (upc14)
 );
 
-CREATE TABLE inventory.user_item (
-    user_item_id BIGSERIAL PRIMARY KEY,
-    user_id      BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+-- Household pantry holding (renamed from inventory.user_item in the
+-- household switchover). Favorite is per-user, so it lives in
+-- userprefs.user_item_favorite, not on this row.
+CREATE TABLE userprefs.household_item (
+    household_item_id BIGSERIAL PRIMARY KEY,
+    household_id BIGINT NOT NULL REFERENCES household.households(household_id),
     item_id      BIGINT NOT NULL REFERENCES inventory.item(item_id) ON DELETE CASCADE,
-    current_qty  NUMERIC(10,2) NOT NULL DEFAULT 0,
-    min_qty      NUMERIC(10,2),
+    current_qty  NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (current_qty >= 0),
+    min_qty      NUMERIC(10,2) CHECK (min_qty >= 0),
     purchase_at  TIMESTAMPTZ,
     expires_at   TIMESTAMPTZ,
     notes        VARCHAR(500),
-    is_favorite  BOOLEAN NOT NULL DEFAULT FALSE,
     created_by   VARCHAR(100) NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by   VARCHAR(100),
     updated_at   TIMESTAMPTZ,
-    UNIQUE (user_id, item_id)
+    UNIQUE (household_id, item_id)
 );
-CREATE INDEX idx_user_item_item_id ON inventory.user_item (item_id);
+CREATE INDEX idx_household_item_item_id ON userprefs.household_item (item_id);
+
+CREATE TABLE userprefs.user_item_favorite (
+    user_id    BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    item_id    BIGINT NOT NULL REFERENCES inventory.item(item_id) ON DELETE CASCADE,
+    is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by VARCHAR(100),
+    updated_at TIMESTAMPTZ,
+    PRIMARY KEY (user_id, item_id)
+);
 
 -- Per-household override of an item's catalog ingredient link
 -- ("this item is actually X for us"). Wins over item.ingredient_id.
@@ -451,22 +464,35 @@ CREATE TABLE wine.bottle (
     updated_at      TIMESTAMPTZ
 );
 
-CREATE TABLE wine.user_bottle (
-    user_bottle_id BIGSERIAL PRIMARY KEY,
-    user_id        BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+-- Household cellar holding (renamed from userprefs.user_bottle in the
+-- household switchover; favorite extracted to user_bottle_favorite).
+CREATE TABLE userprefs.household_bottle (
+    household_bottle_id BIGSERIAL PRIMARY KEY,
+    household_id   BIGINT NOT NULL REFERENCES household.households(household_id),
     bottle_id      BIGINT NOT NULL REFERENCES wine.bottle(bottle_id) ON DELETE CASCADE,
     bottle_number  INTEGER,
-    quantity       INTEGER NOT NULL DEFAULT 1,
+    quantity       INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
     purchase_at    TIMESTAMPTZ,
     purchase_price NUMERIC(10,2),
     storage_temp   NUMERIC(5,1),
     location       VARCHAR(100),
     notes          VARCHAR(500),
-    is_favorite    BOOLEAN NOT NULL DEFAULT FALSE,
     created_by     VARCHAR(100) NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by     VARCHAR(100),
-    updated_at     TIMESTAMPTZ
+    updated_at     TIMESTAMPTZ,
+    UNIQUE (household_id, bottle_id)
+);
+
+CREATE TABLE userprefs.user_bottle_favorite (
+    user_id    BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    bottle_id  BIGINT NOT NULL REFERENCES wine.bottle(bottle_id) ON DELETE CASCADE,
+    is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by VARCHAR(100),
+    updated_at TIMESTAMPTZ,
+    PRIMARY KEY (user_id, bottle_id)
 );
 ```
 
@@ -531,7 +557,9 @@ CREATE TABLE recipe.recipe_step (
         ON DELETE SET NULL
 );
 
-CREATE TABLE recipe.user_recipe_preference (
+-- Per-user recipe favorite/rating prefs (moved to the userprefs schema
+-- in migration 0026).
+CREATE TABLE userprefs.user_recipe_preference (
     user_id      BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
     recipe_id    BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
     is_favorite  BOOLEAN NOT NULL DEFAULT FALSE,
@@ -547,7 +575,7 @@ CREATE TABLE recipe.user_recipe_preference (
 CREATE TABLE recipe.recipe_delta (
     delta_id         BIGSERIAL PRIMARY KEY,
     recipe_id        BIGINT NOT NULL REFERENCES recipe.recipe(recipe_id) ON DELETE CASCADE,
-    household_id     BIGINT NOT NULL REFERENCES identity.household(household_id) ON DELETE CASCADE,
+    household_id     BIGINT NOT NULL REFERENCES household.households(household_id) ON DELETE CASCADE,
     -- Canonical recipe.updated_at this delta was written against; stale
     -- until acknowledge_recipe_delta() realigns it.
     base_updated_at  TIMESTAMPTZ,
@@ -607,7 +635,7 @@ CREATE INDEX idx_recipe_delta_step_delta ON recipe.recipe_delta_step (delta_id, 
 ```sql
 CREATE TABLE mealplan.meal_plan (
     meal_plan_id        BIGSERIAL PRIMARY KEY,
-    user_id             BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    household_id        BIGINT NOT NULL REFERENCES household.households(household_id),
     name                VARCHAR(200) NOT NULL,
     week_start_date     DATE NOT NULL,
     week_start_day_of_week SMALLINT NOT NULL DEFAULT 0,
@@ -617,7 +645,11 @@ CREATE TABLE mealplan.meal_plan (
     updated_by          VARCHAR(100),
     updated_at          TIMESTAMPTZ
 );
-CREATE INDEX idx_meal_plan_user_week ON mealplan.meal_plan (user_id, week_start_date);
+CREATE INDEX idx_meal_plan_household_week ON mealplan.meal_plan (household_id, week_start_date);
+-- At most one active plan per household; two concurrent activations
+-- race to a unique violation instead of silently producing two.
+CREATE UNIQUE INDEX meal_plan_one_active_per_household
+    ON mealplan.meal_plan (household_id) WHERE is_active;
 
 CREATE TABLE mealplan.meal_slot (
     slot_id       BIGSERIAL PRIMARY KEY,
@@ -633,6 +665,8 @@ CREATE TABLE mealplan.meal_slot (
     updated_at    TIMESTAMPTZ,
     UNIQUE (meal_plan_id, day_of_week, meal_type)
 );
+CREATE INDEX idx_meal_slot_plan ON mealplan.meal_slot (meal_plan_id);
+CREATE INDEX idx_meal_slot_recipe ON mealplan.meal_slot (recipe_id);
 
 CREATE TABLE mealplan.meal_slot_item (
     slot_item_id  BIGSERIAL PRIMARY KEY,
@@ -647,6 +681,7 @@ CREATE TABLE mealplan.meal_slot_item (
     updated_by    VARCHAR(100),
     updated_at    TIMESTAMPTZ
 );
+CREATE INDEX idx_meal_slot_item_slot ON mealplan.meal_slot_item (slot_id);
 ```
 
 ## 8. Grocery
@@ -654,7 +689,7 @@ CREATE TABLE mealplan.meal_slot_item (
 ```sql
 CREATE TABLE grocery.grocery_list (
     grocery_list_id BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT NOT NULL REFERENCES identity.users(user_id) ON DELETE CASCADE,
+    household_id    BIGINT NOT NULL REFERENCES household.households(household_id),
     meal_plan_id    BIGINT REFERENCES mealplan.meal_plan(meal_plan_id),
     store_id        BIGINT REFERENCES grocery.store(store_id) ON DELETE SET NULL,
     generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -663,6 +698,7 @@ CREATE TABLE grocery.grocery_list (
     updated_by      VARCHAR(100),
     updated_at      TIMESTAMPTZ
 );
+CREATE INDEX idx_grocery_list_household ON grocery.grocery_list (household_id);
 
 CREATE TABLE grocery.grocery_list_item (
     grocery_list_item_id BIGSERIAL PRIMARY KEY,
@@ -681,6 +717,7 @@ CREATE TABLE grocery.grocery_list_item (
     updated_by           VARCHAR(100),
     updated_at           TIMESTAMPTZ
 );
+CREATE INDEX idx_grocery_list_item_list ON grocery.grocery_list_item (grocery_list_id);
 ```
 
 `checked_at`/`checked_seq` stamp each check-off with a monotonically increasing sequence — the signal the store-routing feature learns from.

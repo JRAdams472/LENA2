@@ -80,7 +80,7 @@ export function Screenshot({
           src={src}
           alt={alt}
           width={device === "web" ? 1120 : device === "tablet" ? 1024 : 320}
-          height={device === "web" ? 700 : device === "tablet" ? 640 : 640}
+          height={device === "web" ? 700 : 640}
           style={{ maxWidth: "100%", height: "auto" }}
         />
       </Paper>

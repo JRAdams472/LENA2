@@ -85,9 +85,11 @@ export function useAssistant(): AssistantController {
   useEffect(() => {
     if (capability !== "nano") return;
     let live = true;
-    nanoAvailability().then((a) => {
-      if (live) setNanoReady(a === "available");
-    });
+    nanoAvailability()
+      .then((a) => {
+        if (live) setNanoReady(a === "available");
+      })
+      .catch(() => {});
     return () => {
       live = false;
     };

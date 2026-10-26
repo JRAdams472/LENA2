@@ -32,18 +32,19 @@ export default function Page() {
           <Fragment key={4}>{"Pick a "}<strong key={0}>{"recipe"}</strong>{" from your household collection, or leave it blank"}</Fragment>,
           <Fragment key={5}>{"Set "}<strong key={0}>{"servings"}</strong>{" — how many people the meal needs to feed. Servings matter: they're used to scale ingredient quantities on your grocery list"}</Fragment>,
         ]} />
-        <P>{<Fragment key={6}>{"You don't have to fill every slot — plan just dinners, or the whole week, whatever suits you."}</Fragment>}</P>
-        <Callout>{<Fragment key={7}>{"If a planned recipe conflicts with someone's "}<DocLink key={0} href="/docs/allergy-tracking">{"allergy records"}</DocLink>{", the slot shows a warning chip — hover or tap for which member and which allergen."}</Fragment>}</Callout>
+        <P>{<Fragment key={6}>{"Slot edits apply "}<strong key={0}>{"in place"}</strong>{" — changing the recipe or servings updates the slot rather than rebuilding it, so manually adjusted items on the slot survive the save."}</Fragment>}</P>
+        <P>{<Fragment key={7}>{"You don't have to fill every slot — plan just dinners, or the whole week, whatever suits you."}</Fragment>}</P>
+        <Callout>{<Fragment key={8}>{"If a planned recipe conflicts with someone's "}<DocLink key={0} href="/docs/allergy-tracking">{"allergy records"}</DocLink>{", the slot shows a warning chip — hover or tap for which member and which allergen."}</Fragment>}</Callout>
       </Section>
       <Section title={"The plan and the Dashboard"}>
-        <P>{<Fragment key={8}>{"When today's date falls inside a plan's week, that plan becomes \"active\" and its meals show up on your "}<DocLink key={0} href="/docs/dashboard">{"Dashboard"}</DocLink>{" under today's Breakfast / Lunch / Dinner."}</Fragment>}</P>
+        <P>{<Fragment key={9}>{"When today's date falls inside a plan's week, that plan becomes \"active\" and its meals show up on your "}<DocLink key={0} href="/docs/dashboard">{"Dashboard"}</DocLink>{" under today's Breakfast / Lunch / Dinner."}</Fragment>}</P>
       </Section>
       <Section title={"Generating a grocery list"}>
-        <P>{<Fragment key={9}>{"From the plan page, hit "}<strong key={0}>{"Generate Grocery List"}</strong>{". LENA walks the week's recipes and writes a grocery list with every ingredient across all planned recipes — "}<strong key={1}>{"scaled by each slot's servings, minus what your pantry already has"}</strong>{" (needs your stock fully covers are dropped)."}</Fragment>}</P>
-        <P>{<Fragment key={10}>{"See "}<DocLink key={0} href="/docs/grocery-lists">{"Grocery Lists"}</DocLink>{" for how to shop with it."}</Fragment>}</P>
+        <P>{<Fragment key={10}>{"From the plan page, hit "}<strong key={0}>{"Generate Grocery List"}</strong>{". LENA walks the week's recipes and writes a grocery list with every ingredient across all planned recipes — "}<strong key={1}>{"scaled by each slot's servings, minus what your pantry already has"}</strong>{" (needs your stock fully covers are dropped)."}</Fragment>}</P>
+        <P>{<Fragment key={11}>{"See "}<DocLink key={0} href="/docs/grocery-lists">{"Grocery Lists"}</DocLink>{" for how to shop with it."}</Fragment>}</P>
       </Section>
       <Section title={"Editing and sharing"}>
-        <P>{<Fragment key={11}>{"Weekly plans are household-shared: anyone in your household can open the plan and adjust it. Changes notify the other members, so nobody plans dinner on stale information."}</Fragment>}</P>
+        <P>{<Fragment key={12}>{"Weekly plans are household-shared: anyone in your household can open the plan and adjust it. Changes notify the other members, so nobody plans dinner on stale information."}</Fragment>}</P>
       </Section>
     </DocPage>
   );
