@@ -1,0 +1,20 @@
+# Optional GPU acceleration for Ollama. The import/ai profiles in
+# docker-compose.import.yml run CPU-only by default so they work on any
+# host; layer this file to reserve an NVIDIA device instead:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.import.yml -f docker-compose.gpu.yml --profile import up -d
+#
+# Requires an NVIDIA GPU plus the Container Toolkit (the `nvidia` device
+# driver must appear in `docker info` under Runtimes). Compose cannot
+# env-toggle a nested deploy.reservations block — Docker resolves the
+# driver per request even at count 0 — so the reservation lives in its
+# own overlay rather than behind a variable.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -117,7 +117,7 @@ jobs:
 
       - name: Audit OCR Python dependencies
         run: |
-          pip install pip-audit
+          pip install pip-audit==2.10.1
           pip-audit -r tools/ocr/requirements.txt
 
       - name: Recipe import unit tests
@@ -311,7 +311,9 @@ jobs:
 
   docker:
     name: docker ${{ matrix.image }}
-    needs: [go, lint, web, e2e, mobile]
+    # Publishing waits on the whole gate set — the coverage floors and the
+    # OCR unit tests/pip-audit are part of "CI green", not optional extras.
+    needs: [go, lint, web, e2e, mobile, coverage, ocr-import]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -346,6 +348,16 @@ jobs:
             type=sha,prefix=,suffix=
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # The published web image must carry the real Google client id —
+      # silently baking 'e2e-client' (the previous fallback) ships a login
+      # button that can never complete. Fail loudly when the repo variable
+      # is unset instead.
+      - name: Require NEXT_PUBLIC_GOOGLE_CLIENT_ID
+        if: matrix.image == 'lena2-web' && vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID == ''
+        run: |
+          echo "::error::NEXT_PUBLIC_GOOGLE_CLIENT_ID repo variable is unset — refusing to publish a web image with no usable Google sign-in" >&2
+          exit 1
+
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -358,7 +370,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=/graphql
-            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'e2e-client' }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

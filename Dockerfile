@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-# Build stage — Go toolchain matches go.mod (go 1.26.6).
+# Build stage — toolchain image must be >= the go.mod directive
+# (currently `go 1.26.10`); keep both in sync when bumping either.
 FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
 
 WORKDIR /build

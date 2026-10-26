@@ -33,6 +33,7 @@ services:
   # in place; the migration creates the extension itself.
   db:
     image: pgvector/pgvector:0.8.7-pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     environment:
@@ -76,10 +77,16 @@ services:
       PGHOST: db
       PGPORT: 5432
       PGDATABASE: ${POSTGRES_DB:-lena}
+    # The password is bound through a psql variable — :'pw' expands to a
+    # safely-quoted literal, so quotes/special chars in it can't break the
+    # statement (the previous '$LENA_DB_PASSWORD' inline interpolation
+    # could). Variable interpolation only runs on the stdin scanner, never
+    # in -c, so the SQL is piped; $$ keeps the value out of `docker
+    # inspect`'s command line.
     command:
       - /bin/sh
       - -c
-      - "psql -v ON_ERROR_STOP=1 -c \"ALTER ROLE lena_app WITH PASSWORD '$LENA_DB_PASSWORD'\""
+      - "printf '%s\\n' \"ALTER ROLE lena_app WITH PASSWORD :'pw'\" | psql -v ON_ERROR_STOP=1 -v \"pw=$$LENA_DB_PASSWORD\""
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -124,6 +131,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       LENA_PORT: 8080
       LENA_LOG_LEVEL: ${LENA_LOG_LEVEL:-info}
@@ -227,6 +235,7 @@ services:
         NEXT_PUBLIC_MICROSOFT_REDIRECT_URI: ${NEXT_PUBLIC_MICROSOFT_REDIRECT_URI:-http://localhost/auth/microsoft/callback}
         NEXT_PUBLIC_FACEBOOK_CLIENT_ID: ${NEXT_PUBLIC_FACEBOOK_CLIENT_ID:-}
         NEXT_PUBLIC_FACEBOOK_REDIRECT_URI: ${NEXT_PUBLIC_FACEBOOK_REDIRECT_URI:-http://localhost/auth/facebook/callback}
+    restart: unless-stopped
     environment:
       PORT: 3000
     # Edge-only: the browser reaches the API through Caddy, so web never
@@ -247,8 +256,14 @@ services:
 
   caddy:
     image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    restart: unless-stopped
+    # The only inbound edge. 443/tcp+udp are inert while CADDY_ADDR is
+    # :80 — set it to a domain and Caddy provisions TLS and redirects
+    # :80 → https automatically (udp enables HTTP/3).
     ports:
       - "80:80"
+      - "443:443"
+      - "443:443/udp"
     environment:
       CADDY_ADDR: ${CADDY_ADDR:-:80}
     volumes:

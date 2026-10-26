@@ -19,7 +19,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/labstack/gommon/log"
 
 	// otelecho is deprecated in favour of github.com/labstack/echo-opentelemetry,
 	// which requires Echo v5; we are on v4, so keep otelecho until that upgrade.
@@ -640,12 +639,12 @@ func registerAuthRoutes(e *echo.Echo, cfg config.Config, s *serverServices) {
 	if cfg.AppleClientID != "" || cfg.AppleTeamID != "" || cfg.AppleKeyID != "" || cfg.ApplePrivateKeyFile != "" {
 		key, err := bff.LoadApplePrivateKey(cfg.ApplePrivateKeyFile)
 		if err != nil {
-			log.Error("apple sign-in disabled: private key failed to load", "err", err)
+			slog.Error("apple sign-in disabled: private key failed to load", "err", err)
 		} else if v := bff.NewAppleVerifier(cfg.AppleClientID, cfg.AppleTeamID,
 			cfg.AppleKeyID, cfg.AppleRedirectURI, key, s.Authenticator); v != nil {
 			codeVerifiers[bff.AppleProvider] = v
 		} else {
-			log.Warn("apple sign-in disabled: incomplete APPLE_* configuration")
+			slog.Warn("apple sign-in disabled: incomplete APPLE_* configuration")
 		}
 	}
 

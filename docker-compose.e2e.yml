@@ -15,7 +15,7 @@ services:
       ISSUER_URL: http://testissuer:8085
       TOKEN_AUDIENCE: lena-e2e-client
     ports:
-      - "8085:8085"
+      - "127.0.0.1:8085:8085"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8085/health || exit 1"]
       interval: 5s
