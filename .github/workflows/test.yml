@@ -358,7 +358,7 @@ jobs:
           echo "::error::NEXT_PUBLIC_GOOGLE_CLIENT_ID repo variable is unset — refusing to publish a web image with no usable Google sign-in" >&2
           exit 1
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
