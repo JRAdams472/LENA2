@@ -21,14 +21,18 @@ func (r *Resolver) RecordSelection(ctx context.Context, args struct {
 	if err != nil {
 		return false, err
 	}
+	entityType, err := validAnalyticsEntityType(args.EntityType)
+	if err != nil {
+		return false, err
+	}
 	entityID, err := parseID(string(args.EntityID))
 	if err != nil {
 		return false, err
 	}
 	if err := r.AnalyticsService.RecordEvent(ctx, analytics.Event{
 		UserID:     u.UserID,
-		EventType:  selectionEventType(args.EntityType),
-		EntityType: strings.TrimSpace(args.EntityType),
+		EventType:  selectionEventType(entityType),
+		EntityType: entityType,
 		EntityID:   entityID,
 	}, u.Email); err != nil {
 		slog.Default().Error("record selection failed", "error", err)
@@ -46,15 +50,40 @@ func (r *Resolver) RecordSearch(ctx context.Context, args struct {
 	if err != nil {
 		return false, err
 	}
+	entityType, err := validAnalyticsEntityType(args.EntityType)
+	if err != nil {
+		return false, err
+	}
+	term := strings.TrimSpace(args.Term)
+	if len(term) > maxAnalyticsTermBytes {
+		return false, badInputf("search term exceeds %d bytes", maxAnalyticsTermBytes)
+	}
 	if err := r.AnalyticsService.RecordEvent(ctx, analytics.Event{
 		UserID:     u.UserID,
-		EventType:  searchEventType(args.EntityType),
-		EntityType: strings.TrimSpace(args.EntityType),
-		SearchTerm: strings.TrimSpace(args.Term),
+		EventType:  searchEventType(entityType),
+		EntityType: entityType,
+		SearchTerm: term,
 	}, u.Email); err != nil {
 		slog.Default().Error("record search failed", "error", err)
 	}
 	return true, nil
+}
+
+// maxAnalyticsTermBytes bounds recorded search terms so a client can't
+// stuff unbounded text into the analytics tables.
+const maxAnalyticsTermBytes = 200
+
+// validAnalyticsEntityType allowlists the analytics entity types; an
+// unrecognized value previously fell through to the "item" event bucket,
+// silently corrupting engagement data.
+func validAnalyticsEntityType(entityType string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(entityType)) {
+	case analytics.EntityItem, analytics.EntityBrand, analytics.EntityRecipe,
+		analytics.EntityBottle, analytics.EntityIngredient:
+		return strings.ToLower(strings.TrimSpace(entityType)), nil
+	default:
+		return "", badInputf("unknown entity type %q", entityType)
+	}
 }
 
 func selectionEventType(entityType string) string {

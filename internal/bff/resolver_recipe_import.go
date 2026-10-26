@@ -3,7 +3,7 @@ package bff
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"math"
 	"strconv"
 
@@ -186,30 +186,28 @@ func (r *recipeImportResolver) ProfanityReason() *string { return nilIfEmpty(r.r
 func (r *recipeImportResolver) ErrorMessage() *string    { return nilIfEmpty(r.ri.ErrorMessage) }
 func (r *recipeImportResolver) UpdatedAt() *graphql.Time { return timeToGraphQL(r.ri.UpdatedAt) }
 
-func (r *recipeImportResolver) Draft() *recipeImportDraftResolver {
+func (r *recipeImportResolver) Draft() (*recipeImportDraftResolver, error) {
 	if len(r.ri.DraftJSON) == 0 {
-		return nil
+		return nil, nil
 	}
 	var draft ocrimport.RecipeDraft
 	if err := json.Unmarshal(r.ri.DraftJSON, &draft); err != nil {
-		slog.Default().Warn("recipe import draft json undecodable",
-			"recipe_import_id", r.ri.ID, "error", err)
-		return nil
+		// A corrupt draft is data corruption, not an empty field — surface
+		// it so the review queue can't silently hide the import.
+		return nil, fmt.Errorf("recipe import %d draft undecodable: %w", r.ri.ID, err)
 	}
-	return &recipeImportDraftResolver{draft: draft}
+	return &recipeImportDraftResolver{draft: draft}, nil
 }
 
-func (r *recipeImportResolver) Review() *recipeImportReviewResolver {
+func (r *recipeImportResolver) Review() (*recipeImportReviewResolver, error) {
 	if len(r.ri.ReviewJSON) == 0 {
-		return nil
+		return nil, nil
 	}
 	var review ocrimport.ReviewRecipe
 	if err := json.Unmarshal(r.ri.ReviewJSON, &review); err != nil {
-		slog.Default().Warn("recipe import review json undecodable",
-			"recipe_import_id", r.ri.ID, "error", err)
-		return nil
+		return nil, fmt.Errorf("recipe import %d review undecodable: %w", r.ri.ID, err)
 	}
-	return &recipeImportReviewResolver{review: review}
+	return &recipeImportReviewResolver{review: review}, nil
 }
 
 func (r *recipeImportResolver) Recipe(ctx context.Context) (*recipeResolver, error) {
@@ -220,7 +218,10 @@ func (r *recipeImportResolver) Recipe(ctx context.Context) (*recipeResolver, err
 	if err != nil {
 		return nil, err
 	}
-	u, _ := currentuser.FromContext(ctx)
+	u, ok := currentuser.FromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("recipe import %d recipe: no user in context", r.ri.ID)
+	}
 	// Preload the child graph so nested fields (items, favorites, ratings)
 	// resolve from the batch maps instead of a query per row.
 	rc, err := loadRecipeChildren(ctx, recipeChildLoaders{rec: r.rec, up: r.up, id: r.id, inv: r.inv}, u.UserID, u.HouseholdID, []int64{recipe.RecipeID}, nil, nil)

@@ -2246,6 +2246,12 @@ const GROCERY_LIST_FIELDS = `
 // Catalog order is engagement-ranked by the server (favorites → personal →
 // household → global → name); preserve it — never re-sort fetched pages.
 
+// pagedSlice pages an already-fetched list client-side. Used for bounded
+// reference data (countries, regions, vintages, grape types) whose
+// GraphQL schema only exposes flat lists — adding server-side pagination
+// there would cost a schema + resolver change for datasets that fit in a
+// single response. Documented choice, not an oversight: real entities
+// (items, recipes, bottles) use server-paged connection queries.
 function pagedSlice<T>(all: T[], pageNumber: number, pageSize: number): PagedResult<T> {
   const start = (pageNumber - 1) * pageSize;
   return {

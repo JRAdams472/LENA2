@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	gqlerrors "github.com/graph-gophers/graphql-go/errors"
@@ -156,4 +157,20 @@ func TestGraphQLTracer_NestedFieldInheritsOperationType(t *testing.T) {
 	require.True(t, found, "nested field sample missing")
 	op, _ := nested.Attributes.Value("operation_type")
 	assert.Equal(t, "query", op.AsString())
+}
+
+func TestSpanOpName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", "anonymous"},
+		{"ListItems", "ListItems"},
+		{"_private9", "_private9"},
+		{strings.Repeat("a", 64), strings.Repeat("a", 64)},
+		{strings.Repeat("a", 65), "invalid"},
+		{"'; DROP TABLE", "invalid"},
+		{"9bad", "invalid"},
+		{"has space", "invalid"},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, spanOpName(c.in), "in=%q", c.in)
+	}
 }

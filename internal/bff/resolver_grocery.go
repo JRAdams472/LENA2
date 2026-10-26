@@ -1035,8 +1035,7 @@ func (r *groceryListItemResolver) Source() string { return r.item.Source }
 func (r *groceryListItemResolver) IsChecked() bool { return r.item.IsChecked }
 
 // Ingredient resolves the brand-agnostic ingredient linked to this grocery
-// list item, when set. Scaffolding only — nothing populates ingredient_id
-// yet.
+// list item, when set.
 func (r *groceryListItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
 	if r.item.IngredientID == nil {
 		return nil, nil

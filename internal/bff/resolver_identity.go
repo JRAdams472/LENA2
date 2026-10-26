@@ -381,7 +381,7 @@ func mapAdminGuardError(err error) error {
 	case errors.Is(err, identity.ErrSelfModification),
 		errors.Is(err, identity.ErrProtectedUser),
 		errors.Is(err, identity.ErrLastAdmin):
-		return &clientError{msg: "forbidden: " + err.Error(), code: codeForbidden}
+		return forbiddenf("%s", err)
 	default:
 		return err
 	}

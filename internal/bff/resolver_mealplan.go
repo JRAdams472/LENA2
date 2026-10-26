@@ -993,7 +993,7 @@ func (r *mealSlotItemResolver) Unit(ctx context.Context) (string, error) {
 func (r *mealSlotItemResolver) IsFromRecipe() bool { return r.item.IsFromRecipe }
 
 // Ingredient resolves the brand-agnostic ingredient linked to this slot
-// item, when set. Scaffolding only — nothing populates ingredient_id yet.
+// item, when set.
 func (r *mealSlotItemResolver) Ingredient(ctx context.Context) (*ingredientResolver, error) {
 	if r.item.IngredientID == nil {
 		return nil, nil

@@ -3,6 +3,7 @@ package bff
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -47,11 +48,26 @@ func newGraphQLTracer() *graphQLTracer {
 	return t
 }
 
-func (t *graphQLTracer) TraceQuery(ctx context.Context, _, operationName string, _ map[string]any, _ map[string]*introspection.Type) (context.Context, tracer.QueryFinishFunc) {
-	name := operationName
-	if name == "" {
-		name = "anonymous"
+// operationName is client-controlled text — span names must stay
+// low-cardinality or every crafted name mints a new aggregation bucket.
+// GraphQL-spec names ([_A-Za-z][_0-9A-Za-z]*, ≤64 chars) pass through;
+// anything else collapses to "invalid" so a hostile or broken client
+// can't fan the trace out.
+var validOpName = regexp.MustCompile(`^[_A-Za-z][_0-9A-Za-z]{0,63}$`)
+
+func spanOpName(operationName string) string {
+	switch {
+	case operationName == "":
+		return "anonymous"
+	case validOpName.MatchString(operationName):
+		return operationName
+	default:
+		return "invalid"
 	}
+}
+
+func (t *graphQLTracer) TraceQuery(ctx context.Context, _, operationName string, _ map[string]any, _ map[string]*introspection.Type) (context.Context, tracer.QueryFinishFunc) {
+	name := spanOpName(operationName)
 	ctx, span := t.tr.Start(ctx, "graphql "+name,
 		oteltrace.WithAttributes(
 			attribute.String("graphql.operation.name", operationName),

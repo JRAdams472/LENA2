@@ -116,44 +116,51 @@ class _MainScreenState extends State<MainScreen> {
       return Scaffold(
         body: Row(
           children: [
-            NavigationRail(
-              selectedIndex: _index,
-              onDestinationSelected: _select,
-              labelType: NavigationRailLabelType.all,
-              destinations: [
-                const NavigationRailDestination(
-                  icon: Icon(Icons.dashboard),
-                  label: Text('Home'),
+            // Scrollable so the rail shrinks gracefully when the soft
+            // keyboard's viewInsets cut the available height (the fixed
+            // 8-destination layout overflowed otherwise).
+            SingleChildScrollView(
+              child: IntrinsicHeight(
+                child: NavigationRail(
+                  selectedIndex: _index,
+                  onDestinationSelected: _select,
+                  labelType: NavigationRailLabelType.all,
+                  destinations: [
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.dashboard),
+                      label: Text('Home'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.shopping_cart),
+                      label: Text('Grocery'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.event),
+                      label: Text('Events'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.qr_code_scanner),
+                      label: Text('Scan'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.kitchen),
+                      label: Text('Pantry'),
+                    ),
+                    NavigationRailDestination(
+                      icon: _badgePeopleIcon,
+                      label: const Text('People'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.auto_awesome),
+                      label: Text('Ask Dot'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.more_horiz),
+                      label: Text('More'),
+                    ),
+                  ],
                 ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.shopping_cart),
-                  label: Text('Grocery'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.event),
-                  label: Text('Events'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.qr_code_scanner),
-                  label: Text('Scan'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.kitchen),
-                  label: Text('Pantry'),
-                ),
-                NavigationRailDestination(
-                  icon: _badgePeopleIcon,
-                  label: const Text('People'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.auto_awesome),
-                  label: Text('Ask Dot'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.more_horiz),
-                  label: Text('More'),
-                ),
-              ],
+              ),
             ),
             const VerticalDivider(width: 1),
             Expanded(child: body),
