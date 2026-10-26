@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build stage — Node 22 LTS matches CI (node-version: 22 in test.yml).
-FROM node:26.12.0-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS builder
+FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -53,7 +53,7 @@ CMD ["server.js"]
 # Debug stage — node alpine with a shell so `docker exec` works while
 # testing. Selected via `target: debug` in docker-compose.debug.yml;
 # never ship this target.
-FROM node:26.12.0-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS debug
+FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS debug
 WORKDIR /app
 
 ENV NODE_ENV=production
