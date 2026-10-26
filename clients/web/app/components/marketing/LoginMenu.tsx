@@ -17,26 +17,22 @@ import ProviderButtons from "@/app/components/ProviderButtons";
 export default function LoginMenu() {
   const theme = useTheme();
   const router = useRouter();
-  const { isAuthenticated, isRestoring } = useAuth();
+  const { justSignedIn, clearJustSignedIn } = useAuth();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  // The baseline is seeded on the first effect, not the first render:
-  // useSyncExternalStore serves the null server snapshot through
-  // hydration, so render-time isAuthenticated is always false — a member
-  // would look like a fresh sign-in and get bounced to /member.
-  const wasAuthedRef = useRef<boolean | null>(null);
 
-  // Route to the member app only when auth flips during this session —
-  // a signed-in member can still read the public docs without being
-  // bounced back out.
+  // Route to the member app only when an explicit sign-in completes —
+  // never on hydration or a passive session restore, so a signed-in
+  // member can read the public docs without being bounced back out. The
+  // flag is event-driven (AuthProvider.signIn), which is immune to the
+  // useSyncExternalStore hydration-snapshot timing that made a
+  // baseline-ref approach flaky.
   useEffect(() => {
-    if (wasAuthedRef.current === null) {
-      wasAuthedRef.current = isAuthenticated || isRestoring;
-      return;
+    if (justSignedIn) {
+      clearJustSignedIn();
+      router.replace("/member");
     }
-    if (!wasAuthedRef.current && isAuthenticated) router.replace("/member");
-    wasAuthedRef.current = isAuthenticated;
-  }, [isAuthenticated, isRestoring, router]);
+  }, [justSignedIn, clearJustSignedIn, router]);
 
   return (
     <>
