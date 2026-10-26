@@ -66,13 +66,19 @@ func (r *Resolver) FoodEvent(ctx context.Context, args struct{ ID graphql.ID }) 
 func (r *Resolver) FoodEvents(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Sort     *string
+	SortDesc *bool
 }) (*foodEventPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	events, err := r.EventService.ListFoodEvents(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "name", "eventDate")
+	if err != nil {
+		return nil, err
+	}
+	events, err := r.EventService.ListFoodEvents(ctx, u.HouseholdID, sortKey, sortDesc, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}

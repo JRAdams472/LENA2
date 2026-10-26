@@ -400,18 +400,32 @@ const listMealPlans = `-- name: ListMealPlans :many
 SELECT meal_plan_id, name, week_start_date, week_start_day_of_week, is_active, created_by, created_at, updated_by, updated_at, household_id
 FROM mealplan.meal_plan
 WHERE household_id = $1
-ORDER BY week_start_date DESC
+ORDER BY
+  CASE WHEN $4::text = 'planName' AND $5::bool THEN name END DESC NULLS LAST,
+  CASE WHEN $4::text = 'planName' AND NOT $5::bool THEN name END ASC NULLS LAST,
+  CASE WHEN $4::text = 'weekStartDate' AND $5::bool THEN week_start_date END DESC NULLS LAST,
+  CASE WHEN $4::text = 'weekStartDate' AND NOT $5::bool THEN week_start_date END ASC NULLS LAST,
+  week_start_date DESC,
+  meal_plan_id
 LIMIT $2 OFFSET $3
 `
 
 type ListMealPlansParams struct {
-	HouseholdID int64 `json:"household_id"`
-	Limit       int32 `json:"limit"`
-	Offset      int32 `json:"offset"`
+	HouseholdID int64       `json:"household_id"`
+	Limit       int32       `json:"limit"`
+	Offset      int32       `json:"offset"`
+	Sort        pgtype.Text `json:"sort"`
+	SortDesc    pgtype.Bool `json:"sort_desc"`
 }
 
 func (q *Queries) ListMealPlans(ctx context.Context, arg ListMealPlansParams) ([]MealplanMealPlan, error) {
-	rows, err := q.db.Query(ctx, listMealPlans, arg.HouseholdID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listMealPlans,
+		arg.HouseholdID,
+		arg.Limit,
+		arg.Offset,
+		arg.Sort,
+		arg.SortDesc,
+	)
 	if err != nil {
 		return nil, err
 	}

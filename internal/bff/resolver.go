@@ -1599,3 +1599,20 @@ func applyLimitErrors(ctx context.Context, resp *graphql.Response, limiter *cost
 func pageArgs(page, pageSize int32) (int32, int32) {
 	return clamp(page, 1, 1_000), clamp(pageSize, 1, 100)
 }
+
+// sortArgs validates a client sort key against a per-query allowlist and
+// returns the key plus direction. Sort keys are case-sensitive API surface
+// ("name", "eventDate"…) — unknown values are rejected, never silently
+// ignored, because a misspelled key that still returns data hides bugs.
+func sortArgs(sort *string, desc *bool, allowed ...string) (string, bool, error) {
+	if sort == nil || strings.TrimSpace(*sort) == "" {
+		return "", false, nil
+	}
+	key := strings.TrimSpace(*sort)
+	for _, a := range allowed {
+		if key == a {
+			return key, desc != nil && *desc, nil
+		}
+	}
+	return "", false, badInputf("sort %q is not supported (allowed: %s)", key, strings.Join(allowed, ", "))
+}

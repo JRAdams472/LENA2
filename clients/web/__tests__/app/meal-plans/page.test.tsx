@@ -135,6 +135,36 @@ describe("meal plans page", () => {
     });
   });
 
+  it("keeps the dialog open and shows the error when save fails", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("createMealPlan")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => "application/json" },
+          json: async () => ({ errors: [{ message: "Duplicate plan name" }] }),
+        });
+      }
+      return Promise.resolve(
+        gql({
+          mealPlans: {
+            items: [plan],
+            pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+          },
+        })
+      );
+    });
+    renderPage(<MealPlansPage />);
+    await waitFor(() => screen.getByText("Plan 1"));
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(screen.getByText("Duplicate plan name")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("deletes a meal plan", async () => {
     renderPage(<MealPlansPage />);
     await waitFor(() => screen.getByText("Plan 1"));

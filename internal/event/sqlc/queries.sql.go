@@ -821,18 +821,31 @@ const listFoodEvents = `-- name: ListFoodEvents :many
 SELECT food_event_id, household_id, name, event_date, slot_granularity_minutes, is_active, created_by, created_at, updated_by, updated_at
 FROM event.food_event
 WHERE household_id = $1
-ORDER BY event_date DESC, food_event_id DESC
+ORDER BY
+  CASE WHEN $4::text = 'name' AND $5::bool THEN name END DESC NULLS LAST,
+  CASE WHEN $4::text = 'name' AND NOT $5::bool THEN name END ASC NULLS LAST,
+  CASE WHEN $4::text = 'eventDate' AND $5::bool THEN event_date END DESC NULLS LAST,
+  CASE WHEN $4::text = 'eventDate' AND NOT $5::bool THEN event_date END ASC NULLS LAST,
+  event_date DESC, food_event_id DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListFoodEventsParams struct {
-	HouseholdID int64 `json:"household_id"`
-	Limit       int32 `json:"limit"`
-	Offset      int32 `json:"offset"`
+	HouseholdID int64       `json:"household_id"`
+	Limit       int32       `json:"limit"`
+	Offset      int32       `json:"offset"`
+	Sort        pgtype.Text `json:"sort"`
+	SortDesc    pgtype.Bool `json:"sort_desc"`
 }
 
 func (q *Queries) ListFoodEvents(ctx context.Context, arg ListFoodEventsParams) ([]EventFoodEvent, error) {
-	rows, err := q.db.Query(ctx, listFoodEvents, arg.HouseholdID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listFoodEvents,
+		arg.HouseholdID,
+		arg.Limit,
+		arg.Offset,
+		arg.Sort,
+		arg.SortDesc,
+	)
 	if err != nil {
 		return nil, err
 	}

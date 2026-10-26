@@ -20,12 +20,18 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 	PageSize  int32
 	Search    *string
 	BottleIDs *[]graphql.ID
+	Sort      *string
+	SortDesc  *bool
 }) (*userBottlePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "quantity", "purchaseDate")
+	if err != nil {
+		return nil, err
+	}
 	var includeIDs []int64
 	scoped := false
 	scopeBy := func(ids []int64) {
@@ -39,7 +45,7 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 	if term := strings.TrimSpace(derefString(args.Search)); term != "" {
 		// The cellar schema cannot join wine — resolve the term to catalog
 		// bottle IDs here and scope the holding query by them.
-		includeIDs, err = r.WineService.MatchBottleIDs(ctx, term)
+		includeIDs, err = r.WineService.MatchBottleIDs(ctx, term, u.UserID)
 		if err != nil {
 			return nil, err
 		}
@@ -66,6 +72,8 @@ func (r *Resolver) UserBottles(ctx context.Context, args struct {
 		FavoriteIDs:  favIDs,
 		PersonalIDs:  eng.PersonalIDs,
 		HouseholdIDs: eng.HouseholdIDs,
+		Sort:         sortKey,
+		SortDesc:     sortDesc,
 		Limit:        pageSize,
 		Offset:       (page - 1) * pageSize,
 	})

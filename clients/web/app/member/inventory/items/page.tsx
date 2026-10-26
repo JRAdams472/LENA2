@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -53,9 +54,15 @@ export default function ItemsPage() {
   const [debouncedBrandInput, setDebouncedBrandInput] = useState("");
   const [inStock, setInStock] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  // Server-side sort: only "name" is in the items allowlist — every other
+  // column is marked sortable:false below so no dead affordance shows.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
   const [qtyDialogItem, setQtyDialogItem] = useState<Item | null>(null);
   const [qtyEditItem, setQtyEditItem] = useState<Item | null>(null);
   const [favEditItem, setFavEditItem] = useState<Item | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [catDialogItem, setCatDialogItem] = useState<Item | null>(null);
   // undefined = untouched; null = clear the link; Brand/Ingredient = set it.
   const [dialogBrand, setDialogBrand] = useState<Brand | null | undefined>(undefined);
   const [dialogBrandInput, setDialogBrandInput] = useState("");
@@ -114,7 +121,7 @@ export default function ItemsPage() {
   const dialogCategoriesQuery = useQuery({
     queryKey: ["item-dialog-categories"],
     queryFn: () => api.getActiveCategories(),
-    enabled: dialogOpen,
+    enabled: dialogOpen || catDialogItem !== null,
   });
 
   const brandOptions = brandsQuery.data ?? [];
@@ -124,8 +131,8 @@ export default function ItemsPage() {
       : brandOptions.find((b) => b.brandID === brandId) ?? null;
 
   const listQuery = useQuery({
-    queryKey: ["items", pageNumber, pageSize, debouncedSearch, brandId, inStock, isFavorite],
-    queryFn: () => api.getItemsPaged(pageNumber, pageSize, debouncedSearch, brandId ?? undefined, inStock, isFavorite),
+    queryKey: ["items", pageNumber, pageSize, debouncedSearch, brandId, inStock, isFavorite, sort],
+    queryFn: () => api.getItemsPaged(pageNumber, pageSize, debouncedSearch, brandId ?? undefined, inStock, isFavorite, sort ?? undefined),
     placeholderData: (prev) => prev,
   });
 
@@ -171,6 +178,9 @@ export default function ItemsPage() {
   });
 
   const handleCreate = () => {
+    createMutation.reset();
+    updateMutation.reset();
+    setSaveNotice(null);
     setIsCreate(true);
     setDialogData({});
     setDialogBrand(undefined);
@@ -183,6 +193,9 @@ export default function ItemsPage() {
 
   const handleEdit = (row: Item) => {
     void api.recordView("item", row.itemID);
+    createMutation.reset();
+    updateMutation.reset();
+    setSaveNotice(null);
     setIsCreate(false);
     setDialogData({ ...row });
     setDialogBrand(undefined);
@@ -199,7 +212,7 @@ export default function ItemsPage() {
     }
   };
 
-  const applyIngredientLinks = (itemID: number) => {
+  const applyIngredientLinks = async (itemID: number, failed: string[]) => {
     const jobs: Promise<void>[] = [];
     if (dialogCatalogIng !== undefined && isAdmin) {
       jobs.push(api.setItemIngredient(itemID, dialogCatalogIng?.ingredientID ?? null));
@@ -207,10 +220,12 @@ export default function ItemsPage() {
     if (dialogHouseholdIng !== undefined) {
       jobs.push(api.setHouseholdItemIngredient(itemID, dialogHouseholdIng?.ingredientID ?? null));
     }
-    if (jobs.length > 0) {
-      void Promise.all(jobs).then(() =>
-        queryClient.invalidateQueries({ queryKey: ["items"] })
-      );
+    if (jobs.length === 0) return;
+    try {
+      await Promise.all(jobs);
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    } catch {
+      failed.push("ingredient links");
     }
   };
 
@@ -232,80 +247,89 @@ export default function ItemsPage() {
     strOrNull(values.purchaseDate) !== strOrNull(prev.purchaseDate) ||
     strOrNull(values.notes) !== strOrNull(prev.notes);
 
-  const handleSave = (values: Record<string, unknown>) => {
+  const handleSave = async (values: Record<string, unknown>) => {
     if (dialogBrand !== undefined) {
       values.brandID = dialogBrand?.brandID ?? null;
     }
     if (dialogCategoryId !== "") {
       values.categoryID = dialogCategoryId;
     }
-    if (isCreate) {
-      void createMutation
-        .mutateAsync(values)
-        .then((created) => {
-          applyIngredientLinks(created.itemID);
-          // First holding: quantity/min/expiry/purchase date/notes.
-          const qty = Number(values.currentQuantity ?? 0);
-          if (
-            qty > 0 ||
-            strOrNull(values.expiryDate) ||
-            numOrNull(values.minQuantity) !== null ||
-            strOrNull(values.purchaseDate) ||
-            strOrNull(values.notes)
-          ) {
-            void api
-              .adjustItemQuantity(
-                created.itemID,
-                qty,
-                strOrNull(values.purchaseDate),
-                strOrNull(values.expiryDate),
-                numOrNull(values.minQuantity),
-                strOrNull(values.notes)
-              )
-              .then(() => queryClient.invalidateQueries({ queryKey: ["items"] }));
-          }
-          if (values.isFavorite) {
-            setFavoriteMutation.mutate({
-              id: created.itemID,
-              isFavorite: true,
-            });
-          }
-        });
-    } else {
-      const itemID = values.itemID as number;
-      updateMutation.mutate(values);
-      applyIngredientLinks(itemID);
-      if (pantryFieldsChanged(values, dialogData)) {
-        void api
-          .adjustItemQuantity(
-            itemID,
-            Number(values.currentQuantity ?? 0),
-            strOrNull(values.purchaseDate),
-            strOrNull(values.expiryDate),
-            numOrNull(values.minQuantity),
-            strOrNull(values.notes)
-          )
-          .then(() => queryClient.invalidateQueries({ queryKey: ["items"] }));
+    const failed: string[] = [];
+    setSaving(true);
+    // Pantry holding write shared by create and edit; empty inputs clear
+    // server-side, so "should we write" is about whether anything was set.
+    const adjustPantry = async (itemID: number) => {
+      const qty = Number(values.currentQuantity ?? 0);
+      if (
+        qty > 0 ||
+        strOrNull(values.expiryDate) ||
+        numOrNull(values.minQuantity) !== null ||
+        strOrNull(values.purchaseDate) ||
+        strOrNull(values.notes)
+      ) {
+        await api.adjustItemQuantity(
+          itemID,
+          qty,
+          strOrNull(values.purchaseDate),
+          strOrNull(values.expiryDate),
+          numOrNull(values.minQuantity),
+          strOrNull(values.notes)
+        );
+        queryClient.invalidateQueries({ queryKey: ["items"] });
       }
-      if (Boolean(values.isFavorite) !== Boolean(dialogData.isFavorite)) {
-        setFavoriteMutation.mutate({
-          id: itemID,
-          isFavorite: Boolean(values.isFavorite),
-        });
+    };
+    const run = async (label: string, job: () => Promise<unknown>) => {
+      try {
+        await job();
+      } catch {
+        failed.push(label);
       }
+    };
+    try {
+      if (isCreate) {
+        const created = await createMutation.mutateAsync(values);
+        await applyIngredientLinks(created.itemID, failed);
+        await run("pantry details", () => adjustPantry(created.itemID));
+        if (values.isFavorite) {
+          await run("favorite flag", () =>
+            api.setItemFavorite(created.itemID, true)
+          );
+        }
+      } else {
+        const itemID = values.itemID as number;
+        await updateMutation.mutateAsync(values);
+        await applyIngredientLinks(itemID, failed);
+        if (pantryFieldsChanged(values, dialogData)) {
+          await run("pantry details", () => adjustPantry(itemID));
+        }
+        if (Boolean(values.isFavorite) !== Boolean(dialogData.isFavorite)) {
+          await run("favorite flag", () =>
+            api.setItemFavorite(itemID, Boolean(values.isFavorite))
+          );
+        }
+      }
+    } catch {
+      // Main mutation failed — its error state is shown in the dialog.
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    if (failed.length > 0) {
+      setSaveNotice(`Item saved, but ${failed.join(", ")} didn't apply.`);
     }
     setDialogOpen(false);
   };
 
-  const handleChangeCategory = (id: number) => {
-    const value = window.prompt("Enter new Category ID");
-    if (value === null) return;
-    const categoryId = Number(value);
-    if (Number.isNaN(categoryId)) {
-      alert("Category ID must be a number");
-      return;
-    }
-    changeCategoryMutation.mutate({ id, categoryId });
+  const handleChangeCategory = (row: Item) => {
+    setCatDialogItem(row);
+  };
+
+  const handleSaveCategory = (values: Record<string, unknown>) => {
+    if (!catDialogItem || values.categoryID === "") return;
+    changeCategoryMutation.mutate(
+      { id: catDialogItem.itemID, categoryId: Number(values.categoryID) },
+      { onSuccess: () => setCatDialogItem(null) }
+    );
   };
 
   const handleSaveQuantity = (quantity: number) => {
@@ -332,18 +356,22 @@ export default function ItemsPage() {
     setQtyDialogItem(null);
   };
 
+  // Only "name" is server-sortable; brand/ingredient are joins and the
+  // pantry columns come from the per-row userItems overlay.
   const itemColumns: FieldDef<Item>[] = [
-    { key: "name", label: "Name", minWidth: 220 },
-    { key: "brand", label: "Brand" },
+    { key: "name", label: "Name", minWidth: 220, sortable: true },
+    { key: "brand", label: "Brand", sortable: false },
     {
       key: "ingredient",
       label: "Ingredient",
+      sortable: false,
       render: (row) => row.householdIngredient?.name ?? row.ingredient?.name ?? "—",
     },
     {
       key: "currentQuantity",
       label: "Qty",
       type: "number",
+      sortable: false,
       render: (row) => (
         <Chip
           size="small"
@@ -355,13 +383,14 @@ export default function ItemsPage() {
         />
       ),
     },
-    { key: "minQuantity", label: "Min Qty", type: "number" },
-    { key: "purchaseDate", label: "Purchase Date" },
-    { key: "expiryDate", label: "Expiry Date" },
-    { key: "notes", label: "Notes" },
+    { key: "minQuantity", label: "Min Qty", type: "number", sortable: false },
+    { key: "purchaseDate", label: "Purchase Date", sortable: false },
+    { key: "expiryDate", label: "Expiry Date", sortable: false },
+    { key: "notes", label: "Notes", sortable: false },
     {
       key: "isFavorite",
       label: "Favorite",
+      sortable: false,
       render: (row) => (
         <Chip
           size="small"
@@ -385,7 +414,7 @@ export default function ItemsPage() {
       </Button>
       <Button
         size="small"
-        onClick={() => handleChangeCategory(row.itemID)}
+        onClick={() => handleChangeCategory(row)}
       >
         Category
       </Button>
@@ -452,16 +481,25 @@ export default function ItemsPage() {
           label="Favorites"
         />
       </Box>
+      {saveNotice && (
+        <Alert severity="warning" onClose={() => setSaveNotice(null)} sx={{ mb: 2 }}>
+          {saveNotice}
+        </Alert>
+      )}
       <DataTable
         title="Items"
         rows={listQuery.data?.items ?? []}
         isLoading={listQuery.isLoading}
-        error={listQuery.error as Error | null}
+        error={(listQuery.error ?? deleteMutation.error) as Error | null}
         onCreate={handleCreate}
         onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
         fields={itemColumns}
+        serverSort={(key, desc) => {
+          setSort({ key, desc });
+          setPageNumber(1);
+        }}
         pagination={
           listQuery.data
             ? {
@@ -480,6 +518,8 @@ export default function ItemsPage() {
         title={isCreate ? "Create Item" : "Edit Item"}
         fields={itemFields}
         values={dialogData}
+        error={createMutation.error ?? updateMutation.error}
+        saving={saving}
         extraFields={
           <>
             <FormControl size="small" fullWidth sx={{ mt: 1 }}>
@@ -607,6 +647,30 @@ export default function ItemsPage() {
         }
         onClose={() => setFavEditItem(null)}
         onSave={handleSaveFavorite}
+      />
+      <CrudDialog
+        open={catDialogItem !== null}
+        title={
+          catDialogItem
+            ? `Change ${catDialogItem.name} Category`
+            : "Change Category"
+        }
+        fields={[
+          {
+            key: "categoryID",
+            label: "Category",
+            type: "select",
+            options: (dialogCategoriesQuery.data ?? []).map((c) => ({
+              value: c.categoryID,
+              label: c.categoryName,
+            })),
+          },
+        ]}
+        values={{ categoryID: catDialogItem?.categoryID ?? "" }}
+        error={changeCategoryMutation.error}
+        saving={changeCategoryMutation.isPending}
+        onClose={() => setCatDialogItem(null)}
+        onSave={handleSaveCategory}
       />
     </Box>
   );

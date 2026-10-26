@@ -12,7 +12,7 @@ import (
 // EventTimelineReader is the event surface the timeline tool needs.
 type EventTimelineReader interface {
 	GetFoodEventByID(ctx context.Context, foodEventID, householdID int64) (event.FoodEvent, error)
-	ListFoodEvents(ctx context.Context, householdID int64, limit, offset int32) ([]event.FoodEvent, error)
+	ListFoodEvents(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]event.FoodEvent, error)
 	ListEventRecipesForEvent(ctx context.Context, foodEventID, householdID int64) ([]event.EventRecipe, error)
 	ListEventRecipeStepsForEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipeStep, error)
 }
@@ -77,7 +77,7 @@ func RegisterEventTools(reg *Registry, events EventTimelineReader, recipes Recip
 			return EventTimelineOut{}, nil
 		}
 		if a.FoodEventID <= 0 {
-			list, err := events.ListFoodEvents(ctx, scope.HouseholdID, 1, 0)
+			list, err := events.ListFoodEvents(ctx, scope.HouseholdID, "", false, 1, 0)
 			if err != nil {
 				return nil, fmt.Errorf("list food events: %w", err)
 			}

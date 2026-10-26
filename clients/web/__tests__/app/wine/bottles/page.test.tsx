@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import BottlesPage from "@/app/member/wine/bottles/page";
 
@@ -81,6 +81,13 @@ describe("bottles page", () => {
       const body = JSON.parse((init as RequestInit).body as string);
       if (body.query.includes("userBottles")) {
         return Promise.resolve(gql({ userBottles: { items: [holding] } }));
+      }
+      if (body.query.includes("submitBottle")) {
+        return Promise.resolve(
+          gql({
+            submitBottle: { ...bottle, id: "9", vineyard: "Member Vine", status: "pending", submittedByMe: true },
+          })
+        );
       }
       if (body.query.includes("createBottle")) {
         return Promise.resolve(gql({ createBottle: { ...bottle, id: "2", vineyard: "New Chateau" } }));
@@ -201,5 +208,121 @@ describe("bottles page", () => {
     const row = screen.getByText("Chateau").closest("tr")!;
     // Member rows expose only the edit action.
     expect(row.querySelectorAll("button")).toHaveLength(1);
+  });
+
+  it("member can submit a new bottle for review and add it to the cellar", async () => {
+    mockedUseMe.mockReturnValue({ me: { role: "member" } });
+    // The cellar picker's catalog search finds nothing, surfacing the
+    // "Submit new bottle" action in the empty state.
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("submitBottle")) {
+        return Promise.resolve(
+          gql({
+            submitBottle: { ...bottle, id: "9", vineyard: "Member Vine", status: "pending", submittedByMe: true },
+          })
+        );
+      }
+      if (body.query.includes("updateUserBottle")) {
+        return Promise.resolve(gql({ updateUserBottle: { ...holding, bottle: { ...bottle, id: "9" } } }));
+      }
+      if (body.query.includes("userBottles")) {
+        return Promise.resolve(
+          gql({
+            userBottles: {
+              items: [holding],
+              pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+            },
+          })
+        );
+      }
+      if (body.query.includes("bottles(page:")) {
+        if (body.variables.page === 1 && body.variables.pageSize === 1) {
+          return Promise.resolve(
+            gql({ bottles: { pageInfo: { pageNumber: 1, pageSize: 1, totalCount: 1 } } })
+          );
+        }
+        if (body.variables.pageSize === 50) {
+          // Cellar picker's searchBottles call — empty so the "Submit new
+          // bottle" empty-state action surfaces.
+          return Promise.resolve(
+            gql({
+              bottles: {
+                items: [],
+                pageInfo: { pageNumber: 1, pageSize: 50, totalCount: 0 },
+              },
+            })
+          );
+        }
+        return Promise.resolve(
+          gql({
+            bottles: {
+              items: [bottle],
+              pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+            },
+          })
+        );
+      }
+      if (body.query.includes("regions(")) {
+        return Promise.resolve(gql({ regions: [region] }));
+      }
+      if (body.query.includes("types")) {
+        return Promise.resolve(gql({ types: [type] }));
+      }
+      if (body.query.includes("vintages")) {
+        return Promise.resolve(gql({ vintages: [vintage] }));
+      }
+      return Promise.resolve(gql({ countries: [country] }));
+    });
+
+    renderPage();
+    await waitFor(() => screen.getByText("Rack B"));
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    // Open the cellar autocomplete; empty results offer the submit action.
+    fireEvent.mouseDown(await screen.findByLabelText("Bottle"));
+    fireEvent.click(await screen.findByText("Submit new bottle"));
+
+    const dlg = await screen.findByRole("dialog", { name: /submit new bottle/i });
+    fireEvent.mouseDown(within(dlg).getByRole("combobox", { name: "Type" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Red" }));
+    fireEvent.mouseDown(within(dlg).getByRole("combobox", { name: "Country" }));
+    fireEvent.click(await screen.findByRole("option", { name: "France" }));
+    fireEvent.mouseDown(within(dlg).getByRole("combobox", { name: "Region" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Bordeaux" }));
+    fireEvent.mouseDown(within(dlg).getByRole("combobox", { name: "Vintage" }));
+    fireEvent.click(await screen.findByRole("option", { name: "2015" }));
+    fireEvent.change(within(dlg).getByLabelText("Vineyard"), { target: { value: "Member Vine" } });
+    fireEvent.click(within(dlg).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const call = getBodies().find((b) => b.query.includes("submitBottle"));
+      expect(call?.variables.input).toMatchObject({
+        typeId: "1",
+        countryId: "1",
+        regionId: "1",
+        vintageYear: 2015,
+        vineyard: "Member Vine",
+      });
+    });
+
+    // The pending bottle is selected in the cellar dialog with a notice.
+    // Wait for the submit dialog's exit transition to unmount it — while it
+    // is still mounted, the cellar dialog behind it is aria-hidden and its
+    // Save button is unreachable to role queries.
+    await screen.findByText(/submitted for review/i);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /submit new bottle/i })
+      ).not.toBeInTheDocument()
+    );
+    const cellarDlg = screen.getByRole("dialog", { name: /add bottle to cellar/i });
+    fireEvent.click(within(cellarDlg).getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const cellar = getBodies().find(
+        (b) => b.query.includes("updateUserBottle") && b.variables.bottleId === "9"
+      );
+      expect(cellar).toBeTruthy();
+    });
   });
 });

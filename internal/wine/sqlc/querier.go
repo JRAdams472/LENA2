@@ -6,13 +6,18 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
-	CountBottles(ctx context.Context) (int64, error)
+	CountBottles(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error)
+	CountPendingBottles(ctx context.Context) (int64, error)
 	// Must apply the exact same predicates as SearchBottles so pageInfo.totalCount
 	// agrees with the returned rows.
 	CountSearchBottles(ctx context.Context, arg CountSearchBottlesParams) (int64, error)
+	// Admin creates pass status='approved'; member submissions pass 'pending'
+	// plus submitted_by_user_id so the row stays visible to its creator.
 	CreateBottle(ctx context.Context, arg CreateBottleParams) (WineBottle, error)
 	CreateBottleFlavorProfile(ctx context.Context, arg CreateBottleFlavorProfileParams) (WineBottleFlavorProfile, error)
 	CreateBottleGrapeVariety(ctx context.Context, arg CreateBottleGrapeVarietyParams) (WineBottleGrapeVariety, error)
@@ -44,17 +49,21 @@ type Querier interface {
 	ListBottleGrapeVarieties(ctx context.Context, bottleID int64) ([]ListBottleGrapeVarietiesRow, error)
 	ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleIds []int64) ([]ListBottleGrapeVarietiesByBottlesRow, error)
 	// Plain insertion-order paging for internal consumers; ranked listing goes
-	// through SearchBottles.
+	// through SearchBottles. Bottles are visible when approved, or when the
+	// caller submitted them.
 	ListBottles(ctx context.Context, arg ListBottlesParams) ([]WineBottle, error)
 	ListCountries(ctx context.Context) ([]WineCountry, error)
 	ListGrapeVarieties(ctx context.Context) ([]WineGrapeVariety, error)
+	// Member-submitted bottles awaiting admin approval, oldest first.
+	ListPendingBottles(ctx context.Context, arg ListPendingBottlesParams) ([]WineBottle, error)
 	ListRegions(ctx context.Context, countryID int64) ([]WineRegion, error)
 	ListTypes(ctx context.Context) ([]WineType, error)
 	ListVintages(ctx context.Context) ([]WineVintage, error)
 	ListWineFlavorProfiles(ctx context.Context) ([]WineFlavorProfile, error)
 	// IDs of bottles matching the term — feeds include_ids on household-scoped
-	// queries that cannot join this schema (cellar search).
-	MatchBottleIDs(ctx context.Context, lower string) ([]int64, error)
+	// queries that cannot join this schema (cellar search). Pending bottles
+	// match only for their submitter.
+	MatchBottleIDs(ctx context.Context, arg MatchBottleIDsParams) ([]int64, error)
 	// Engagement-ranked bottle browse/search. The term and prior-search-term
 	// tiers match a haystack of vineyard + type/country/region names (all
 	// same-schema joins). Optional structured filters (country, region, type,
@@ -63,6 +72,7 @@ type Querier interface {
 	//   0 favorite, 1 personal-used, 2 household-used, 3 prior-search-term
 	//   match, 4 global-popular, 5 rest.
 	SearchBottles(ctx context.Context, arg SearchBottlesParams) ([]WineBottle, error)
+	SetBottleStatus(ctx context.Context, arg SetBottleStatusParams) (int64, error)
 	UpdateBottle(ctx context.Context, arg UpdateBottleParams) (int64, error)
 	UpdateCountry(ctx context.Context, arg UpdateCountryParams) (WineCountry, error)
 	UpdateGrapeVariety(ctx context.Context, arg UpdateGrapeVarietyParams) (WineGrapeVariety, error)

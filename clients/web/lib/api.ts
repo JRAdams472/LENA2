@@ -796,6 +796,8 @@ interface GqlBottle {
   sweetness: number | null;
   oakIntegration: boolean | null;
   bottleSize: string;
+  status: string;
+  submittedByMe: boolean;
   grapeVarieties: GqlBottleGrapeVariety[];
   flavorProfiles: GqlBottleFlavorProfile[];
 }
@@ -1691,6 +1693,10 @@ function toBottle(b: GqlBottle, ub?: GqlUserBottle): Bottle {
     sweetness: b.sweetness,
     oakIntegration: b.oakIntegration,
     bottleSize: b.bottleSize,
+    // Catalog rows default to approved; pending marks a member's own
+    // submission awaiting admin review.
+    status: b.status ?? "approved",
+    submittedByMe: b.submittedByMe ?? false,
     quantity: ub?.quantity ?? 0,
     purchaseDate: ub?.purchaseAt ?? null,
     purchasePrice: ub?.purchasePrice ?? null,
@@ -2163,7 +2169,7 @@ const RECIPE_IMPORT_FIELDS = `
 
 const BOTTLE_FIELDS = `
   id typeId countryId regionId vineyard vintageYear abv acidity tanninLevel
-  body sweetness oakIntegration bottleSize
+  body sweetness oakIntegration bottleSize status submittedByMe
   grapeVarieties { percentage grapeVariety { id name description isActive } }
   flavorProfiles { intensity flavorProfile { id name description isActive } }
 `;
@@ -2635,7 +2641,8 @@ export const api = {
     search?: string,
     brandId?: number,
     inStock?: boolean,
-    isFavorite?: boolean
+    isFavorite?: boolean,
+    sort?: { key: string; desc: boolean }
   ): Promise<PagedResult<Item>> => {
     const term = (search ?? "").trim();
     if (inStock || isFavorite) {
@@ -2663,13 +2670,20 @@ export const api = {
       );
     }
     const data = await request<{ items: GqlItemPage }>(
-      `query ($page: Int, $pageSize: Int, $search: String, $brandId: ID) {
-        items(page: $page, pageSize: $pageSize, search: $search, brandId: $brandId) {
+      `query ($page: Int, $pageSize: Int, $search: String, $brandId: ID, $sort: String, $sortDesc: Boolean) {
+        items(page: $page, pageSize: $pageSize, search: $search, brandId: $brandId, sort: $sort, sortDesc: $sortDesc) {
           items { ${ITEM_FIELDS} }
           pageInfo { pageNumber pageSize totalCount }
         }
       }`,
-      { page: pageNumber, pageSize, search: term || null, brandId: brandId ? String(brandId) : null }
+      {
+        page: pageNumber,
+        pageSize,
+        search: term || null,
+        brandId: brandId ? String(brandId) : null,
+        sort: sort?.key ?? null,
+        sortDesc: sort?.desc ?? null,
+      }
     );
     // Household state only for the rows on this page — a second request bounded
     // by pageSize instead of fetching the whole pantry.
@@ -2868,10 +2882,10 @@ export const api = {
   // Generic ingredients — the semantic identity recipes and grocery needs
   // key on; branded items are optional purchasing representatives.
 
-  getIngredients: async (page: number, pageSize: number, search?: string): Promise<PagedResult<Ingredient>> => {
+  getIngredients: async (page: number, pageSize: number, search?: string, sort?: { key: string; desc: boolean }): Promise<PagedResult<Ingredient>> => {
     const data = await request<{ ingredients: GqlIngredientPage }>(
-      `query ($page: Int, $pageSize: Int, $search: String) { ingredients(page: $page, pageSize: $pageSize, search: $search) { items { ${INGREDIENT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-      { page, pageSize, search: search || null }
+      `query ($page: Int, $pageSize: Int, $search: String, $sort: String, $sortDesc: Boolean) { ingredients(page: $page, pageSize: $pageSize, search: $search, sort: $sort, sortDesc: $sortDesc) { items { ${INGREDIENT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize, search: search || null, sort: sort?.key ?? null, sortDesc: sort?.desc ?? null }
     );
     return toPaged(data.ingredients.items.map(toIngredient), data.ingredients.pageInfo);
   },
@@ -3417,16 +3431,17 @@ export const api = {
   getUserBottlesPaged: async (
     pageNumber: number,
     pageSize: number,
-    search?: string
+    search?: string,
+    sort?: { key: string; desc: boolean }
   ): Promise<PagedResult<Bottle>> => {
     const data = await request<{ userBottles: { items: GqlUserBottle[]; pageInfo: GqlPageInfo } }>(
-      `query ($page: Int, $pageSize: Int, $search: String) {
-        userBottles(page: $page, pageSize: $pageSize, search: $search) {
+      `query ($page: Int, $pageSize: Int, $search: String, $sort: String, $sortDesc: Boolean) {
+        userBottles(page: $page, pageSize: $pageSize, search: $search, sort: $sort, sortDesc: $sortDesc) {
           items { ${USER_BOTTLE_FIELDS} }
           pageInfo { pageNumber pageSize totalCount }
         }
       }`,
-      { page: pageNumber, pageSize, search: search?.trim() || null }
+      { page: pageNumber, pageSize, search: search?.trim() || null, sort: sort?.key ?? null, sortDesc: sort?.desc ?? null }
     );
     return toPaged(data.userBottles.items.map((ub) => toBottle(ub.bottle, ub)), data.userBottles.pageInfo);
   },
@@ -3527,6 +3542,61 @@ export const api = {
       { id: String(id) }
     );
     return null;
+  },
+
+  // Member path: same input shape as createBottle, but the row lands in
+  // 'pending' status — visible to the submitter until an admin moderates.
+  submitBottle: async (bottle: Omit<Bottle, keyof AuditableEntity>): Promise<Bottle> => {
+    const data = await request<{ submitBottle: GqlBottle }>(
+      `mutation ($input: CreateBottleInput!) { submitBottle(input: $input) { ${BOTTLE_FIELDS} } }`,
+      {
+        input: {
+          typeId: String(bottle.typeID),
+          countryId: String(bottle.countryID),
+          regionId: String(bottle.regionID),
+          vintageYear: bottle.vintageYear,
+          vineyard: bottle.vineyard,
+          abv: bottle.abv,
+          acidity: bottle.acidity,
+          tanninLevel: bottle.tanninLevel,
+          body: bottle.body,
+          sweetness: bottle.sweetness,
+          oakIntegration: bottle.oakIntegration,
+          bottleSize: bottle.bottleSize,
+        },
+      }
+    );
+    return toBottle(data.submitBottle);
+  },
+
+  getPendingBottles: async (
+    page: number,
+    pageSize: number
+  ): Promise<PagedResult<Bottle>> => {
+    const data = await request<{ pendingBottles: GqlBottlePage }>(
+      `query ($page: Int, $pageSize: Int) { pendingBottles(page: $page, pageSize: $pageSize) { items { ${BOTTLE_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page, pageSize }
+    );
+    return toPaged(
+      (data.pendingBottles.items ?? []).map((b) => toBottle(b)),
+      data.pendingBottles.pageInfo
+    );
+  },
+
+  approveBottle: async (id: number): Promise<Bottle> => {
+    const data = await request<{ approveBottle: GqlBottle }>(
+      `mutation ($id: ID!) { approveBottle(id: $id) { ${BOTTLE_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toBottle(data.approveBottle);
+  },
+
+  rejectBottle: async (id: number): Promise<Bottle> => {
+    const data = await request<{ rejectBottle: GqlBottle }>(
+      `mutation ($id: ID!) { rejectBottle(id: $id) { ${BOTTLE_FIELDS} } }`,
+      { id: String(id) }
+    );
+    return toBottle(data.rejectBottle);
   },
 
   getBottlesByCountryId: async (countryId: number): Promise<PagedResult<Bottle>> =>
@@ -3839,11 +3909,12 @@ export const api = {
     isFavorite?: boolean,
     categoryIds?: number[],
     searchMode?: "keyword" | "semantic",
-    mealType?: string
+    mealType?: string,
+    sort?: { key: string; desc: boolean }
   ): Promise<PagedResult<Recipe>> => {
     const data = await request<{ recipes: GqlRecipePage }>(
-      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean, $searchMode: RecipeSearchMode, $mealType: String) {
-        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite, searchMode: $searchMode, mealType: $mealType) {
+      `query ($page: Int, $pageSize: Int, $search: String, $categoryIds: [ID!], $isFavorite: Boolean, $searchMode: RecipeSearchMode, $mealType: String, $sort: String, $sortDesc: Boolean) {
+        recipes(page: $page, pageSize: $pageSize, search: $search, categoryIds: $categoryIds, isFavorite: $isFavorite, searchMode: $searchMode, mealType: $mealType, sort: $sort, sortDesc: $sortDesc) {
           items { ${RECIPE_FIELDS} } pageInfo { pageNumber pageSize totalCount }
         }
       }`,
@@ -3855,6 +3926,8 @@ export const api = {
         isFavorite: isFavorite ?? null,
         searchMode: searchMode ?? "keyword",
         mealType: mealType ?? null,
+        sort: sort?.key ?? null,
+        sortDesc: sort?.desc ?? null,
       }
     );
     const items = data.recipes.items.map(toRecipe);
@@ -4226,10 +4299,10 @@ export const api = {
   },
 
   // Meal Plans
-  getMealPlansPaged: async (pageNumber: number, pageSize: number): Promise<PagedResult<MealPlan>> => {
+  getMealPlansPaged: async (pageNumber: number, pageSize: number, sort?: { key: string; desc: boolean }): Promise<PagedResult<MealPlan>> => {
     const data = await request<{ mealPlans: GqlMealPlanPage }>(
-      `query ($page: Int, $pageSize: Int) { mealPlans(page: $page, pageSize: $pageSize) { items { ${MEAL_PLAN_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-      { page: pageNumber, pageSize }
+      `query ($page: Int, $pageSize: Int, $sort: String, $sortDesc: Boolean) { mealPlans(page: $page, pageSize: $pageSize, sort: $sort, sortDesc: $sortDesc) { items { ${MEAL_PLAN_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page: pageNumber, pageSize, sort: sort?.key ?? null, sortDesc: sort?.desc ?? null }
     );
     return toPaged(data.mealPlans.items.map(toMealPlan), data.mealPlans.pageInfo);
   },
@@ -4408,10 +4481,10 @@ export const api = {
   },
 
   // Food Events (household-scoped gatherings grouping recipes by serve time)
-  getFoodEventsPaged: async (pageNumber: number, pageSize: number): Promise<PagedResult<FoodEvent>> => {
+  getFoodEventsPaged: async (pageNumber: number, pageSize: number, sort?: { key: string; desc: boolean }): Promise<PagedResult<FoodEvent>> => {
     const data = await request<{ foodEvents: GqlFoodEventPage }>(
-      `query ($page: Int, $pageSize: Int) { foodEvents(page: $page, pageSize: $pageSize) { items { ${FOOD_EVENT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
-      { page: pageNumber, pageSize }
+      `query ($page: Int, $pageSize: Int, $sort: String, $sortDesc: Boolean) { foodEvents(page: $page, pageSize: $pageSize, sort: $sort, sortDesc: $sortDesc) { items { ${FOOD_EVENT_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { page: pageNumber, pageSize, sort: sort?.key ?? null, sortDesc: sort?.desc ?? null }
     );
     return toPaged(data.foodEvents.items.map(toFoodEvent), data.foodEvents.pageInfo);
   },
@@ -4595,9 +4668,10 @@ export const api = {
   },
 
   // Grocery Lists
-  getGroceryLists: async (): Promise<GroceryList[]> => {
+  getGroceryLists: async (sort?: { key: string; desc: boolean }): Promise<GroceryList[]> => {
     const data = await request<{ groceryLists: GqlGroceryListPage }>(
-      `query { groceryLists(page: 1, pageSize: 200) { items { ${GROCERY_LIST_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`
+      `query ($sort: String, $sortDesc: Boolean) { groceryLists(page: 1, pageSize: 200, sort: $sort, sortDesc: $sortDesc) { items { ${GROCERY_LIST_FIELDS} } pageInfo { pageNumber pageSize totalCount } } }`,
+      { sort: sort?.key ?? null, sortDesc: sort?.desc ?? null }
     );
     return data.groceryLists.items.map(toGroceryList);
   },

@@ -2883,26 +2883,30 @@ SELECT ingredient_id, name, category_id, is_active, created_by, created_at, upda
 FROM inventory.ingredient
 WHERE ($1::text IS NULL OR lower(name) LIKE '%' || lower($1) || '%')
 ORDER BY
+  CASE WHEN $2::text = 'name' AND $3::bool THEN name END DESC NULLS LAST,
+  CASE WHEN $2::text = 'name' AND NOT $3::bool THEN name END ASC NULLS LAST,
   CASE
-    WHEN ingredient_id = ANY($2::bigint[]) THEN 0
-    WHEN ingredient_id = ANY($3::bigint[]) THEN 1
+    WHEN ingredient_id = ANY($4::bigint[]) THEN 0
+    WHEN ingredient_id = ANY($5::bigint[]) THEN 1
     WHEN EXISTS (
-      SELECT 1 FROM unnest($4::text[]) t
+      SELECT 1 FROM unnest($6::text[]) t
       WHERE position(lower(t) in lower(name)) > 0
     ) THEN 2
-    WHEN ingredient_id = ANY($5::bigint[]) THEN 3
+    WHEN ingredient_id = ANY($7::bigint[]) THEN 3
     ELSE 4
   END,
-  array_position($2::bigint[], ingredient_id),
-  array_position($3::bigint[], ingredient_id),
+  array_position($4::bigint[], ingredient_id),
   array_position($5::bigint[], ingredient_id),
+  array_position($7::bigint[], ingredient_id),
   name,
   ingredient_id
-LIMIT $7::int OFFSET $6::int
+LIMIT $9::int OFFSET $8::int
 `
 
 type SearchIngredientsParams struct {
 	Search       pgtype.Text `json:"search"`
+	Sort         pgtype.Text `json:"sort"`
+	SortDesc     pgtype.Bool `json:"sort_desc"`
 	PersonalIds  []int64     `json:"personal_ids"`
 	HouseholdIds []int64     `json:"household_ids"`
 	SearchTerms  []string    `json:"search_terms"`
@@ -2916,6 +2920,8 @@ type SearchIngredientsParams struct {
 func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsParams) ([]InventoryIngredient, error) {
 	rows, err := q.db.Query(ctx, searchIngredients,
 		arg.Search,
+		arg.Sort,
+		arg.SortDesc,
 		arg.PersonalIds,
 		arg.HouseholdIds,
 		arg.SearchTerms,
@@ -2958,8 +2964,11 @@ WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND ($2::text IS NULL OR lower(name) LIKE '%' || lower($2) || '%')
   AND ($3::bigint IS NULL OR brand_id = $3)
   AND item_id NOT IN (SELECT unnest($4::bigint[]))
-ORDER BY name, item_id
-LIMIT $6::int OFFSET $5::int
+ORDER BY
+  CASE WHEN $5::text = 'name' AND $6::bool THEN name END DESC NULLS LAST,
+  CASE WHEN $5::text = 'name' AND NOT $6::bool THEN name END ASC NULLS LAST,
+  name, item_id
+LIMIT $8::int OFFSET $7::int
 `
 
 type SearchItemsRemainderParams struct {
@@ -2967,19 +2976,26 @@ type SearchItemsRemainderParams struct {
 	Search            pgtype.Text `json:"search"`
 	BrandID           pgtype.Int8 `json:"brand_id"`
 	EngagedIds        []int64     `json:"engaged_ids"`
+	Sort              pgtype.Text `json:"sort"`
+	SortDesc          pgtype.Bool `json:"sort_desc"`
 	Offset            int32       `json:"offset"`
 	Limit             int32       `json:"limit"`
 }
 
 // The non-engaged slice, served in (name, item_id) index order with a
 // hashed NOT IN probe — no sort, so deep pagination stays cheap on the
-// large catalog.
+// large catalog. When the caller passes a sort key the engaged_ids
+// exclusion is dropped (empty array) and the CASE arms below order the
+// whole visible catalog — the user-requested sort wins over engagement
+// ranking.
 func (q *Queries) SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error) {
 	rows, err := q.db.Query(ctx, searchItemsRemainder,
 		arg.SubmittedByUserID,
 		arg.Search,
 		arg.BrandID,
 		arg.EngagedIds,
+		arg.Sort,
+		arg.SortDesc,
 		arg.Offset,
 		arg.Limit,
 	)

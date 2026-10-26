@@ -86,13 +86,15 @@ func TestResolver_GroceryLists_Happy(t *testing.T) {
 		{GroceryListID: 12, HouseholdID: grocUserID},
 	}
 	// page=2, pageSize=10 -> limit=10, offset=10
-	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(10)).Return(lists, nil)
+	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, "", false, int32(10), int32(10)).Return(lists, nil)
 	g.EXPECT().CountGroceryLists(gomock.Any(), grocUserID).Return(int64(5), nil)
 	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11, 12}, grocUserID).Return(nil, nil)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32
 		PageSize int32
+		Sort     *string
+		SortDesc *bool
 	}{Page: 2, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -114,12 +116,14 @@ func TestResolver_GroceryLists_ClampsPageArgs(t *testing.T) {
 	r := &Resolver{GroceryService: g}
 
 	// page clamps to 1, pageSize clamps to 100.
-	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(100), int32(0)).Return(nil, nil)
+	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, "", false, int32(100), int32(0)).Return(nil, nil)
 	g.EXPECT().CountGroceryLists(gomock.Any(), grocUserID).Return(int64(0), nil)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32
 		PageSize int32
+		Sort     *string
+		SortDesc *bool
 	}{Page: 0, PageSize: 5000})
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), res.PageInfo().PageNumber())
@@ -132,6 +136,8 @@ func TestResolver_GroceryLists_Unauthorized(t *testing.T) {
 	res, err := r.GroceryLists(context.Background(), struct {
 		Page     int32
 		PageSize int32
+		Sort     *string
+		SortDesc *bool
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -142,11 +148,13 @@ func TestResolver_GroceryLists_ServiceError(t *testing.T) {
 	g := mock.NewMockGroceryService(ctrl)
 	r := &Resolver{GroceryService: g}
 
-	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(10), int32(0)).Return(nil, errGrocBoom)
+	g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, "", false, int32(10), int32(0)).Return(nil, errGrocBoom)
 
 	res, err := r.GroceryLists(grocCtx(), struct {
 		Page     int32
 		PageSize int32
+		Sort     *string
+		SortDesc *bool
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errGrocBoom)
@@ -775,7 +783,7 @@ func TestResolver_SuggestedRestockItems(t *testing.T) {
 			{ItemID: 50, CurrentQty: 0, MinQty: &minQ}, // low, less engagement
 			{ItemID: 60, CurrentQty: 0, MinQty: &minQ}, // low, no engagement at all
 		}, nil)
-		g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(1), int32(0)).Return([]grocery.GroceryList{
+		g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, "", false, int32(1), int32(0)).Return([]grocery.GroceryList{
 			{GroceryListID: 7, HouseholdID: grocUserID},
 		}, nil)
 		g.EXPECT().ListGroceryListItems(gomock.Any(), int64(7), grocUserID).Return([]grocery.GroceryListItem{
@@ -820,7 +828,7 @@ func TestResolver_SuggestedRestockItems(t *testing.T) {
 		up.EXPECT().ListHouseholdItems(gomock.Any(), grocUserID, int32(5000), int32(0)).Return([]userprefs.HouseholdItem{
 			{ItemID: 10, CurrentQty: 0, MinQty: &minQ},
 		}, nil)
-		g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, int32(1), int32(0)).Return(nil, nil)
+		g.EXPECT().ListGroceryLists(gomock.Any(), grocUserID, "", false, int32(1), int32(0)).Return(nil, nil)
 		an.EXPECT().HouseholdSelectionCounts(gomock.Any(), grocUserID, analytics.EntityItem, []int64{10}).Return(map[int64]int64{}, nil)
 
 		res, err := r.SuggestedRestockItems(grocCtx(), struct{ Limit int32 }{Limit: 10})

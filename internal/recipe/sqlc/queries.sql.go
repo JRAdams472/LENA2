@@ -1551,25 +1551,32 @@ WHERE r.is_active = $1
   AND ($4::bigint[] IS NULL OR r.recipe_id = ANY($4::bigint[]))
   AND ($5::bigint[] IS NULL OR NOT (r.recipe_id = ANY($5::bigint[])))
 ORDER BY
+  CASE WHEN $6::text = 'name' AND $7::bool THEN r.name END DESC NULLS LAST,
+  CASE WHEN $6::text = 'name' AND NOT $7::bool THEN r.name END ASC NULLS LAST,
+  CASE WHEN $6::text = 'totalTime' AND $7::bool
+    THEN COALESCE(r.prep_time_minutes, 0) + COALESCE(r.cook_time_minutes, 0) END DESC NULLS LAST,
+  CASE WHEN $6::text = 'totalTime' AND NOT $7::bool
+    THEN COALESCE(r.prep_time_minutes, 0) + COALESCE(r.cook_time_minutes, 0) END ASC NULLS LAST,
   CASE
-    WHEN $6::bigint[] IS NOT NULL AND r.recipe_id = ANY($6::bigint[]) THEN 0
-    WHEN $7::bigint IS NOT NULL AND EXISTS (
+    WHEN $8::bigint[] IS NOT NULL AND r.recipe_id = ANY($8::bigint[]) THEN 0
+    WHEN $9::bigint IS NOT NULL AND EXISTS (
       SELECT 1 FROM recipe.recipe_category rc
       WHERE rc.recipe_id = r.recipe_id
-        AND rc.category_id = $7::bigint
+        AND rc.category_id = $9::bigint
     ) THEN 1
-    WHEN r.recipe_id = ANY($8::bigint[]) THEN 2
-    WHEN r.recipe_id = ANY($9::bigint[]) THEN 3
+    WHEN r.recipe_id = ANY($10::bigint[]) THEN 2
+    WHEN r.recipe_id = ANY($11::bigint[]) THEN 3
     WHEN EXISTS (
-      SELECT 1 FROM unnest($10::text[]) t
+      SELECT 1 FROM unnest($12::text[]) t
       WHERE position(lower(t) in lower(r.name)) > 0
     ) THEN 4
     ELSE 5
   END,
-  array_position($8::bigint[], r.recipe_id),
-  array_position($9::bigint[], r.recipe_id),
-  r.name
-LIMIT $12::int OFFSET $11::int
+  array_position($10::bigint[], r.recipe_id),
+  array_position($11::bigint[], r.recipe_id),
+  r.name,
+  r.recipe_id
+LIMIT $14::int OFFSET $13::int
 `
 
 type SearchRecipesParams struct {
@@ -1578,6 +1585,8 @@ type SearchRecipesParams struct {
 	CategoryIds     []int64     `json:"category_ids"`
 	IncludeIds      []int64     `json:"include_ids"`
 	ExcludeIds      []int64     `json:"exclude_ids"`
+	Sort            pgtype.Text `json:"sort"`
+	SortDesc        pgtype.Bool `json:"sort_desc"`
 	FavoriteIds     []int64     `json:"favorite_ids"`
 	BoostCategoryID pgtype.Int8 `json:"boost_category_id"`
 	UsedIds         []int64     `json:"used_ids"`
@@ -1603,6 +1612,8 @@ func (q *Queries) SearchRecipes(ctx context.Context, arg SearchRecipesParams) ([
 		arg.CategoryIds,
 		arg.IncludeIds,
 		arg.ExcludeIds,
+		arg.Sort,
+		arg.SortDesc,
 		arg.FavoriteIds,
 		arg.BoostCategoryID,
 		arg.UsedIds,

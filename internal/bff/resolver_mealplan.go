@@ -38,13 +38,19 @@ func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (
 func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Sort     *string
+	SortDesc *bool
 }) (*mealPlanPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	plans, err := r.MealPlanService.ListMealPlans(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "planName", "weekStartDate")
+	if err != nil {
+		return nil, err
+	}
+	plans, err := r.MealPlanService.ListMealPlans(ctx, u.HouseholdID, sortKey, sortDesc, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}

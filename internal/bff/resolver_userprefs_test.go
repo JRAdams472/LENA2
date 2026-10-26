@@ -198,6 +198,8 @@ func TestResolver_UserBottles_Happy(t *testing.T) {
 		PageSize  int32
 		Search    *string
 		BottleIDs *[]graphql.ID
+		Sort      *string
+		SortDesc  *bool
 	}{Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -227,6 +229,8 @@ func TestResolver_UserBottles_Unauthorized(t *testing.T) {
 		PageSize  int32
 		Search    *string
 		BottleIDs *[]graphql.ID
+		Sort      *string
+		SortDesc  *bool
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.EqualError(t, err, "unauthorized")
@@ -245,6 +249,8 @@ func TestResolver_UserBottles_ServiceError(t *testing.T) {
 		PageSize  int32
 		Search    *string
 		BottleIDs *[]graphql.ID
+		Sort      *string
+		SortDesc  *bool
 	}{Page: 1, PageSize: 10})
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, errUpBoom)
@@ -538,6 +544,8 @@ func TestResolver_UserBottles_BottleIDs(t *testing.T) {
 		PageSize  int32
 		Search    *string
 		BottleIDs *[]graphql.ID
+		Sort      *string
+		SortDesc  *bool
 	}{Page: 1, PageSize: 10, BottleIDs: &ids})
 	require.NoError(t, err)
 	items := res.Items()

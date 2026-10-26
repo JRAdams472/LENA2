@@ -602,7 +602,7 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 		GlobalIDs:    []int64{globalID},
 		SearchTerms:  []string{"qz9 ccc"},
 	}
-	got, err := svc.SearchItems(ctx, uid, "qz9", nil, rank, 20, 0)
+	got, err := svc.SearchItems(ctx, uid, "qz9", nil, rank, "", false, 20, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 6)
 	order := []int64{favID, personalID, householdItemID, searchedID, globalID, alphaID}
@@ -615,7 +615,7 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 	assert.Equal(t, int64(6), total)
 
 	t.Run("cold start falls back to alphabetical", func(t *testing.T) {
-		got, err := svc.SearchItems(ctx, uid, "qz9", nil, RankParams{}, 20, 0)
+		got, err := svc.SearchItems(ctx, uid, "qz9", nil, RankParams{}, "", false, 20, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 6)
 		for i, it := range got {
@@ -624,7 +624,7 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 	})
 
 	t.Run("term scopes the ranked window", func(t *testing.T) {
-		got, err := svc.SearchItems(ctx, uid, "qz9 eee", nil, rank, 20, 0)
+		got, err := svc.SearchItems(ctx, uid, "qz9 eee", nil, rank, "", false, 20, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		assert.Equal(t, personalID, got[0].ItemID)
@@ -644,7 +644,7 @@ func TestIntegrationSearchItemsRanking(t *testing.T) {
 			require.NoError(t, err)
 			return it.ItemID
 		}()
-		got, err := svc.SearchItems(ctx, uid, "qz9", &brand.BrandID, rank, 20, 0)
+		got, err := svc.SearchItems(ctx, uid, "qz9", &brand.BrandID, rank, "", false, 20, 0)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		assert.Equal(t, brandedID, got[0].ItemID)

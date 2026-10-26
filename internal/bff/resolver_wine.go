@@ -6,11 +6,14 @@ import (
 	"strings"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
+	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/wine"
 	"github.com/graph-gophers/graphql-go"
 )
 
-// Bottle resolves a single wine bottle by ID.
+// Bottle resolves a single wine bottle by ID. Bottles not visible to the
+// caller (another member's pending submission, or a rejected row for a
+// non-admin) resolve to null, matching `item`.
 func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*bottleResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
@@ -23,6 +26,9 @@ func (r *Resolver) Bottle(ctx context.Context, args struct{ ID graphql.ID }) (*b
 	b, err := r.WineService.GetBottleByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !bottleVisibleTo(b, u) {
+		return nil, nil
 	}
 	counts, err := loadBottleSelectionCounts(ctx, r.AnalyticsService, u.UserID, []int64{id})
 	if err != nil {
@@ -74,7 +80,7 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	bottles, err := r.WineService.SearchBottles(ctx, term, filters, wine.RankParams{
+	bottles, err := r.WineService.SearchBottles(ctx, u.UserID, term, filters, wine.RankParams{
 		FavoriteIDs:  favIDs,
 		PersonalIDs:  eng.PersonalIDs,
 		HouseholdIDs: eng.HouseholdIDs,
@@ -84,7 +90,7 @@ func (r *Resolver) Bottles(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	total, err := r.WineService.CountSearchBottles(ctx, term, filters, favIDs)
+	total, err := r.WineService.CountSearchBottles(ctx, u.UserID, term, filters, favIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -362,12 +368,13 @@ func (r *Resolver) CreateBottle(ctx context.Context, args struct{ Input createBo
 	return &bottleResolver{wine: r.WineService, b: b}, nil
 }
 
-// UpdateBottle modifies an existing bottle definition.
+// UpdateBottle modifies an existing bottle definition. Admins may edit any
+// bottle; other users may edit only their own pending submissions.
 func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 	ID    graphql.ID
 	Input updateBottleInput
 }) (*bottleResolver, error) {
-	u, err := requireAdmin(ctx)
+	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -378,6 +385,9 @@ func (r *Resolver) UpdateBottle(ctx context.Context, args struct {
 	existing, err := r.WineService.GetBottleByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !canModifyBottle(existing, u) {
+		return nil, forbiddenf("you can only modify bottles you submitted while they are pending")
 	}
 	patch, err := mergeBottlePatch(existing, args.Input)
 	if err != nil {
@@ -426,6 +436,154 @@ func mergeBottlePatch(existing wine.Bottle, in updateBottleInput) (wine.Bottle, 
 		return patch, err
 	}
 	return patch, nil
+}
+
+// SubmitBottle creates a catalog bottle in 'pending' status on behalf of
+// the current user. Pending bottles are visible to (and editable by) their
+// submitter until an admin approves or rejects them.
+func (r *Resolver) SubmitBottle(ctx context.Context, args struct{ Input createBottleInput }) (*bottleResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	typeID, err := parseID(string(args.Input.TypeID))
+	if err != nil {
+		return nil, err
+	}
+	countryID, err := parseID(string(args.Input.CountryID))
+	if err != nil {
+		return nil, err
+	}
+	regionID, err := parseID(string(args.Input.RegionID))
+	if err != nil {
+		return nil, err
+	}
+	acidity, err := checkedInt16Ptr(args.Input.Acidity, "acidity", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	tanninLevel, err := checkedInt16Ptr(args.Input.TanninLevel, "tanninLevel", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	body, err := checkedInt16Ptr(args.Input.Body, "body", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	sweetness, err := checkedInt16Ptr(args.Input.Sweetness, "sweetness", 1, 5)
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.WineService.SubmitBottle(ctx, wine.Bottle{
+		TypeID:         typeID,
+		CountryID:      countryID,
+		RegionID:       regionID,
+		VintageYear:    args.Input.VintageYear,
+		Vineyard:       derefString(args.Input.Vineyard),
+		Abv:            args.Input.Abv,
+		Acidity:        acidity,
+		TanninLevel:    tanninLevel,
+		Body:           body,
+		Sweetness:      sweetness,
+		OakIntegration: args.Input.OakIntegration,
+		BottleSize:     args.Input.BottleSize,
+	}, u.UserID, u.Email)
+	if err != nil {
+		return nil, err
+	}
+	r.recordEventAsync(u.UserID, u.Email, analytics.Event{
+		EventType:  analytics.EventBottleCreated,
+		EntityType: analytics.EntityBottle,
+		EntityID:   b.BottleID,
+	})
+	return &bottleResolver{wine: r.WineService, b: b}, nil
+}
+
+// PendingBottles resolves the admin queue of member-submitted bottles
+// awaiting approval, oldest first.
+func (r *Resolver) PendingBottles(ctx context.Context, args struct {
+	Page     int32
+	PageSize int32
+}) (*bottlePageResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	page, pageSize := pageArgs(args.Page, args.PageSize)
+	bottles, err := r.WineService.ListPendingBottles(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := r.WineService.CountPendingBottles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleIDs := distinctIDs(bottles, func(b wine.Bottle) *int64 { return &b.BottleID })
+	bc, err := loadBottleChildren(ctx, r.WineService, bottleIDs, false)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := loadBottleSelectionCounts(ctx, r.AnalyticsService, u.UserID, bottleIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &bottlePageResolver{wine: r.WineService, bottles: bottles, bc: bc, counts: counts, page: page, pageSize: pageSize, total: int64ToInt32(total)}, nil
+}
+
+// ApproveBottle marks a pending bottle approved so it becomes visible to
+// all users. Admin only.
+func (r *Resolver) ApproveBottle(ctx context.Context, args struct{ ID graphql.ID }) (*bottleResolver, error) {
+	return r.setBottleStatus(ctx, args.ID, wine.BottleStatusApproved)
+}
+
+// RejectBottle marks a pending bottle rejected so it is hidden from
+// everyone. Admin only.
+func (r *Resolver) RejectBottle(ctx context.Context, args struct{ ID graphql.ID }) (*bottleResolver, error) {
+	return r.setBottleStatus(ctx, args.ID, wine.BottleStatusRejected)
+}
+
+func (r *Resolver) setBottleStatus(ctx context.Context, id graphql.ID, status string) (*bottleResolver, error) {
+	u, err := requireAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bottleID, err := parseID(string(id))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.WineService.SetBottleStatus(ctx, bottleID, status, u.UserID, u.Email); err != nil {
+		return nil, err
+	}
+	b, err := r.WineService.GetBottleByID(ctx, bottleID)
+	if err != nil {
+		return nil, err
+	}
+	return &bottleResolver{wine: r.WineService, b: b}, nil
+}
+
+// bottleVisibleTo reports whether a catalog bottle may be shown to the
+// user: approved bottles are public, pending bottles are visible to their
+// submitter and to admins, rejected bottles are hidden from everyone but
+// admins.
+func bottleVisibleTo(b wine.Bottle, u currentuser.User) bool {
+	switch b.Status {
+	case "", wine.BottleStatusApproved:
+		return true
+	case wine.BottleStatusPending:
+		return u.IsAdmin || (b.SubmittedByUserID != nil && *b.SubmittedByUserID == u.UserID)
+	default:
+		return u.IsAdmin
+	}
+}
+
+// canModifyBottle reports whether the user may edit catalog bottle b:
+// admins always may; the submitter may while the bottle is still pending.
+func canModifyBottle(b wine.Bottle, u currentuser.User) bool {
+	if u.IsAdmin {
+		return true
+	}
+	return b.Status == wine.BottleStatusPending &&
+		b.SubmittedByUserID != nil && *b.SubmittedByUserID == u.UserID
 }
 
 // AddBottleGrapeVariety links a grape variety to a bottle.
@@ -569,6 +727,25 @@ func (r *bottleResolver) SelectionCount() int32 {
 // PersonalSelectionCount is the current user's lifetime selection count.
 func (r *bottleResolver) PersonalSelectionCount() int32 {
 	return int64ToInt32(r.counts.personal)
+}
+
+// Status is the moderation state of the catalog row: "approved" for normal
+// bottles, "pending" for member submissions awaiting review, "rejected"
+// for declined submissions.
+func (r *bottleResolver) Status() string {
+	if r.b.Status == "" {
+		return wine.BottleStatusApproved
+	}
+	return r.b.Status
+}
+
+// SubmittedByMe reports whether the current user submitted this bottle.
+func (r *bottleResolver) SubmittedByMe(ctx context.Context) bool {
+	if r.b.SubmittedByUserID == nil {
+		return false
+	}
+	u, ok := currentuser.FromContext(ctx)
+	return ok && *r.b.SubmittedByUserID == u.UserID
 }
 
 func (r *bottleResolver) GrapeVarieties(ctx context.Context) ([]*bottleGrapeVarietyResolver, error) {

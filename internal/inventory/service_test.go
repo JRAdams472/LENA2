@@ -1361,7 +1361,7 @@ func TestSearchItems_MapsRankParams(t *testing.T) {
 		Offset:            0,
 	}).Return([]sqlc.InventoryItem{{ItemID: 42, Name: "Plain Milk"}}, nil)
 
-	got, err := s.SearchItems(ctx, 7, "milk", nil, rank, 7, 0)
+	got, err := s.SearchItems(ctx, 7, "milk", nil, rank, "", false, 7, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 7)
 	// Tier order: favorite 1, personal 2 then 3, household 4, searched 6,
@@ -1398,7 +1398,7 @@ func TestSearchItems_PageIntoRemainder(t *testing.T) {
 		{ItemID: 12, Name: "D"},
 	}, nil)
 
-	got, err := s.SearchItems(ctx, 7, "", nil, rank, 3, 2)
+	got, err := s.SearchItems(ctx, 7, "", nil, rank, "", false, 3, 2)
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	assert.Equal(t, int64(10), got[0].ItemID)
@@ -1417,7 +1417,7 @@ func TestSearchItems_NoEngagement(t *testing.T) {
 		Offset:            0,
 	}).Return([]sqlc.InventoryItem{{ItemID: 1, Name: "A"}, {ItemID: 2, Name: "B"}}, nil)
 
-	got, err := s.SearchItems(ctx, 7, "", nil, RankParams{}, 2, 0)
+	got, err := s.SearchItems(ctx, 7, "", nil, RankParams{}, "", false, 2, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 }
@@ -1456,7 +1456,7 @@ func TestSearchIngredients_MapsRankParams(t *testing.T) {
 		Offset:       0,
 	}).Return([]sqlc.InventoryIngredient{{IngredientID: 4, Name: "Flour"}}, nil)
 
-	got, err := s.SearchIngredients(ctx, "flour", rank, 10, 0)
+	got, err := s.SearchIngredients(ctx, "flour", rank, "", false, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, int64(4), got[0].IngredientID)

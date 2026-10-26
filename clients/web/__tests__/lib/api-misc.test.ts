@@ -235,7 +235,7 @@ describe("api client: meal plans and slots", () => {
 
     const result = await api.getMealPlansPaged(1, 10);
 
-    expect(lastRequestBody().variables).toEqual({ page: 1, pageSize: 10 });
+    expect(lastRequestBody().variables).toEqual({ page: 1, pageSize: 10, sort: null, sortDesc: null });
     expect(result.items[0].mealPlanID).toBe(1);
     const slot = result.items[0].mealSlots?.[0];
     expect(slot?.mealSlotID).toBe(10);

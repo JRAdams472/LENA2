@@ -426,12 +426,18 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 	PageSize int32
 	Search   *string
 	BrandID  *graphql.ID
+	Sort     *string
+	SortDesc *bool
 }) (*itemPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "name")
+	if err != nil {
+		return nil, err
+	}
 	term := strings.TrimSpace(derefString(args.Search))
 	var brandID *int64
 	if args.BrandID != nil {
@@ -456,7 +462,7 @@ func (r *Resolver) Items(ctx context.Context, args struct {
 		GlobalIDs:    eng.GlobalIDs,
 		SearchTerms:  eng.SearchTerms,
 	}
-	items, err := r.InventoryService.SearchItems(ctx, u.UserID, term, brandID, rank, pageSize, (page-1)*pageSize)
+	items, err := r.InventoryService.SearchItems(ctx, u.UserID, term, brandID, rank, sortKey, sortDesc, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -565,12 +571,18 @@ func (r *Resolver) Ingredients(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
 	Search   *string
+	Sort     *string
+	SortDesc *bool
 }) (*ingredientPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "name")
+	if err != nil {
+		return nil, err
+	}
 	term := strings.TrimSpace(derefString(args.Search))
 	eng, err := r.entityEngagement(ctx, u.UserID, u.HouseholdID, analytics.EntityIngredient)
 	if err != nil {
@@ -581,7 +593,7 @@ func (r *Resolver) Ingredients(ctx context.Context, args struct {
 		HouseholdIDs: eng.HouseholdIDs,
 		GlobalIDs:    eng.GlobalIDs,
 		SearchTerms:  eng.SearchTerms,
-	}, pageSize, (page-1)*pageSize)
+	}, sortKey, sortDesc, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}

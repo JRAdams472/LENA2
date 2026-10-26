@@ -8,6 +8,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Alert from "@mui/material/Alert";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import MenuItem from "@mui/material/MenuItem";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -16,7 +17,9 @@ import { useTheme } from "@mui/material/styles";
 export interface FieldDef<T = Record<string, unknown>> {
   key: Extract<keyof T, string>;
   label: string;
-  type?: "text" | "number" | "boolean" | "date";
+  type?: "text" | "number" | "boolean" | "date" | "select";
+  // Required for type "select".
+  options?: { value: string | number; label: string }[];
   sortable?: boolean;
   render?: (row: T) => ReactNode;
   // Table-only hints — ignored by the dialog.
@@ -29,6 +32,9 @@ interface CrudDialogProps<T> {
   fields: FieldDef<T>[];
   values: Record<string, unknown>;
   error?: Error | null;
+  // True while the save mutation is in flight — disables the action
+  // buttons so a slow request can't be double-submitted.
+  saving?: boolean;
   // Rendered after the generated fields — for pickers that don't fit the
   // text/number/boolean/date shape (their state lives in the parent).
   extraFields?: ReactNode;
@@ -58,6 +64,7 @@ export default function CrudDialog<T = Record<string, unknown>>({
   fields,
   values,
   error,
+  saving = false,
   extraFields,
   onClose,
   onSave,
@@ -130,6 +137,26 @@ export default function CrudDialog<T = Record<string, unknown>>({
             );
           }
 
+          if (type === "select") {
+            return (
+              <TextField
+                key={field.key}
+                label={field.label}
+                select
+                fullWidth
+                margin="dense"
+                value={val ?? ""}
+                onChange={(e) => setValue(field.key, e.target.value)}
+              >
+                {(field.options ?? []).map((o) => (
+                  <MenuItem key={o.value} value={o.value}>
+                    {o.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            );
+          }
+
           if (type === "date") {
             return (
               <TextField
@@ -158,9 +185,11 @@ export default function CrudDialog<T = Record<string, unknown>>({
         {extraFields}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={() => onSave(form)} variant="contained">
-          Save
+        <Button onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button onClick={() => onSave(form)} variant="contained" disabled={saving}>
+          {saving ? "Saving…" : "Save"}
         </Button>
       </DialogActions>
     </Dialog>

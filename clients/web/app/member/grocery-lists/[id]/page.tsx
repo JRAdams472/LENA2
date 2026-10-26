@@ -40,6 +40,7 @@ import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, fmtDate, fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { lineClamp } from "@/lib/themeVars";
 import { GroceryListItem, GroceryRouteGroup, ShoppingLink, Store, StoreAisle } from "@/lib/types";
+import CrudDialog from "@/app/components/CrudDialog";
 
 function brandItemLabel(item: { name: string; brand?: string | null }): string {
   return brandedName(item.brand, item.name);
@@ -600,6 +601,7 @@ export default function GroceryListDetailPage({
   const queryClient = useQueryClient();
   const dragItemRef = useRef<number | null>(null);
   const [layoutStore, setLayoutStore] = useState<Store | null>(null);
+  const [storeCreateOpen, setStoreCreateOpen] = useState(false);
 
   const listQuery = useQuery({
     queryKey: ["groceryList", listId],
@@ -646,6 +648,16 @@ export default function GroceryListDetailPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
       queryClient.invalidateQueries({ queryKey: ["routeGroups", listId] });
+    },
+  });
+
+  // Create-then-select: the new store becomes the list's store in one flow.
+  const createStoreMutation = useMutation({
+    mutationFn: (name: string) => api.createStore(name),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["groceryStores"] });
+      setStoreMutation.mutate(created.storeID);
+      setStoreCreateOpen(false);
     },
   });
 
@@ -825,9 +837,13 @@ export default function GroceryListDetailPage({
               label="Store"
               value={store ? String(store.storeID) : ""}
               displayEmpty
-              onChange={(e) =>
-                setStoreMutation.mutate(e.target.value === "" ? null : Number(e.target.value))
-              }
+              onChange={(e) => {
+                if (e.target.value === "__new__") {
+                  setStoreCreateOpen(true);
+                  return;
+                }
+                setStoreMutation.mutate(e.target.value === "" ? null : Number(e.target.value));
+              }}
             >
               <MenuItem value="">No store</MenuItem>
               {(storesQuery.data ?? []).map((s) => (
@@ -835,6 +851,7 @@ export default function GroceryListDetailPage({
                   {s.name}
                 </MenuItem>
               ))}
+              <MenuItem value="__new__">＋ New store…</MenuItem>
             </Select>
           </FormControl>
           {store && (
@@ -1105,6 +1122,19 @@ export default function GroceryListDetailPage({
       {layoutStore && (
         <StoreLayoutDialog store={layoutStore} onClose={() => setLayoutStore(null)} />
       )}
+      <CrudDialog
+        open={storeCreateOpen}
+        title="New store"
+        fields={[{ key: "name", label: "Store name" }]}
+        values={{}}
+        error={createStoreMutation.error}
+        saving={createStoreMutation.isPending}
+        onClose={() => setStoreCreateOpen(false)}
+        onSave={(v) => {
+          const name = String(v.name ?? "").trim();
+          if (name) createStoreMutation.mutate(name);
+        }}
+      />
       {shopResult && (
         <ShopLinkDialog
           link={shopResult.link}

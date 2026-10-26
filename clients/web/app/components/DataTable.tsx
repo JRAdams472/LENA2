@@ -52,6 +52,11 @@ interface DataTableProps<T extends object> {
     onPageSizeChange: (size: number) => void;
   };
   fields?: FieldDef<T>[];
+  // When set, column-header clicks delegate to the server (the page
+  // refetches with sort/sortDesc) instead of client-sorting the fetched
+  // page — client-sorting one page of a paged dataset is misleading.
+  // The sort indicator still tracks the clicked column locally.
+  serverSort?: (key: string, desc: boolean) => void;
 }
 
 // Fallback cell rendering when a field has no custom render: objects
@@ -124,6 +129,7 @@ export default function DataTable<T extends object>({
   onPageSizeChange,
   pagination,
   fields,
+  serverSort,
 }: DataTableProps<T>) {
   // Last-resort header text when a page doesn't pass fields: "weekStartDate"
   // → "Week Start Date". Pages should pass fields for real labels.
@@ -170,7 +176,8 @@ export default function DataTable<T extends object>({
   };
 
   const displayRows = useMemo(() => {
-    if (!sortField) return rows;
+    // Server-sorted pages arrive already ordered — never re-sort them.
+    if (!sortField || serverSort) return rows;
     const sorted = [...rows];
     sorted.sort((a, b) => {
       const aVal = (a as Record<string, unknown>)[sortField];
@@ -186,14 +193,15 @@ export default function DataTable<T extends object>({
       return sortDirection === "asc" ? comparison : -comparison;
     });
     return sorted;
-  }, [rows, sortField, sortDirection]);
+  }, [rows, sortField, sortDirection, serverSort]);
 
   const handleSort = (key: Extract<keyof T, string>) => {
-    if (sortField === key) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(key);
-      setSortDirection("asc");
+    const nextDirection =
+      sortField === key ? (sortDirection === "asc" ? "desc" : "asc") : "asc";
+    setSortField(key);
+    setSortDirection(nextDirection);
+    if (serverSort) {
+      serverSort(key, nextDirection === "desc");
     }
   };
 

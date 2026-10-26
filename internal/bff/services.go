@@ -37,7 +37,7 @@ import (
 type GroceryReader interface {
 	GetGroceryListByID(ctx context.Context, groceryListID, householdID int64) (grocery.GroceryList, error)
 	GetLatestGroceryListByPlan(ctx context.Context, mealPlanID, householdID int64) (grocery.GroceryList, error)
-	ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]grocery.GroceryList, error)
+	ListGroceryLists(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]grocery.GroceryList, error)
 	CountGroceryLists(ctx context.Context, householdID int64) (int64, error)
 	GetGroceryListItemByID(ctx context.Context, groceryListItemID, householdID int64) (grocery.GroceryListItem, error)
 	ListGroceryListItems(ctx context.Context, groceryListID, householdID int64) ([]grocery.GroceryListItem, error)
@@ -110,7 +110,7 @@ type ItemReader interface {
 	ListNutrientTypes(ctx context.Context) ([]inventory.NutrientType, error)
 	GetItemByID(ctx context.Context, itemID int64) (inventory.Item, error)
 	GetItemByUpc(ctx context.Context, code string, userID int64) (inventory.Item, error)
-	SearchItems(ctx context.Context, userID int64, term string, brandID *int64, rank inventory.RankParams, limit, offset int32) ([]inventory.Item, error)
+	SearchItems(ctx context.Context, userID int64, term string, brandID *int64, rank inventory.RankParams, sort string, desc bool, limit, offset int32) ([]inventory.Item, error)
 	CountSearchItems(ctx context.Context, userID int64, term string, brandID *int64) (int64, error)
 	MatchItemIDs(ctx context.Context, term string, userID int64) ([]int64, error)
 	MatchItemIDsByBrand(ctx context.Context, brandID int64, userID int64) ([]int64, error)
@@ -126,7 +126,7 @@ type ItemReader interface {
 	ListFoodFlavorsByItems(ctx context.Context, itemIDs []int64) ([]inventory.FoodFlavor, error)
 	GetIngredientByID(ctx context.Context, ingredientID int64) (inventory.Ingredient, error)
 	GetIngredientsByIDs(ctx context.Context, ingredientIDs []int64) ([]inventory.Ingredient, error)
-	SearchIngredients(ctx context.Context, term string, rank inventory.RankParams, limit, offset int32) ([]inventory.Ingredient, error)
+	SearchIngredients(ctx context.Context, term string, rank inventory.RankParams, sort string, desc bool, limit, offset int32) ([]inventory.Ingredient, error)
 	CountSearchIngredients(ctx context.Context, term string) (int64, error)
 	GetUnitByID(ctx context.Context, unitID int64) (inventory.Unit, error)
 	GetUnitByName(ctx context.Context, name string) (inventory.Unit, error)
@@ -231,7 +231,7 @@ var _ InventoryService = (*inventory.Service)(nil)
 type MealPlanReader interface {
 	GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error)
 	GetMealPlansByIDs(ctx context.Context, householdID int64, mealPlanIDs []int64) ([]mealplan.MealPlan, error)
-	ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error)
+	ListMealPlans(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]mealplan.MealPlan, error)
 	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error)
 	GetMealSlotByID(ctx context.Context, slotID, householdID int64) (mealplan.MealSlot, error)
@@ -271,7 +271,7 @@ var _ MealPlanService = (*mealplan.Service)(nil)
 // currentuser, never from client input.
 type EventReader interface {
 	GetFoodEventByID(ctx context.Context, foodEventID, householdID int64) (event.FoodEvent, error)
-	ListFoodEvents(ctx context.Context, householdID int64, limit, offset int32) ([]event.FoodEvent, error)
+	ListFoodEvents(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]event.FoodEvent, error)
 	CountFoodEvents(ctx context.Context, householdID int64) (int64, error)
 	ListEventRecipesForEvent(ctx context.Context, foodEventID, householdID int64) ([]event.EventRecipe, error)
 	ListEventRecipesByEvents(ctx context.Context, foodEventIDs []int64, householdID int64) ([]event.EventRecipe, error)
@@ -629,11 +629,11 @@ var _ AnalyticsService = (*analytics.Service)(nil)
 // resolvers and the bottle preload helper.
 type BottleReader interface {
 	GetBottleByID(ctx context.Context, bottleID int64) (wine.Bottle, error)
-	ListBottles(ctx context.Context, limit, offset int32) ([]wine.Bottle, error)
-	CountBottles(ctx context.Context) (int64, error)
-	SearchBottles(ctx context.Context, term string, filters wine.BottleFilters, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error)
-	CountSearchBottles(ctx context.Context, term string, filters wine.BottleFilters, favoriteIDs []int64) (int64, error)
-	MatchBottleIDs(ctx context.Context, term string) ([]int64, error)
+	ListBottles(ctx context.Context, userID int64, limit, offset int32) ([]wine.Bottle, error)
+	CountBottles(ctx context.Context, userID int64) (int64, error)
+	SearchBottles(ctx context.Context, userID int64, term string, filters wine.BottleFilters, rank wine.RankParams, limit, offset int32) ([]wine.Bottle, error)
+	CountSearchBottles(ctx context.Context, userID int64, term string, filters wine.BottleFilters, favoriteIDs []int64) (int64, error)
+	MatchBottleIDs(ctx context.Context, term string, userID int64) ([]int64, error)
 	ListTypes(ctx context.Context) ([]wine.Type, error)
 	ListCountries(ctx context.Context) ([]wine.Country, error)
 	ListRegions(ctx context.Context, countryID int64) ([]wine.Region, error)
@@ -656,6 +656,7 @@ type BottleReader interface {
 // BottleWriter is the member-facing bottle write surface.
 type BottleWriter interface {
 	CreateBottle(ctx context.Context, arg wine.Bottle, by string) (wine.Bottle, error)
+	SubmitBottle(ctx context.Context, arg wine.Bottle, userID int64, by string) (wine.Bottle, error)
 	UpdateBottle(ctx context.Context, bottleID int64, arg wine.Bottle, by string) error
 	DeleteBottle(ctx context.Context, bottleID int64) error
 	AddBottleGrapeVariety(ctx context.Context, bottleID, grapeVarietyID int64, percentage *int16, by string) (wine.BottleGrapeVariety, error)
@@ -666,6 +667,11 @@ type BottleWriter interface {
 
 // WineCatalogAdmin is the admin surface for wine taxonomy and reference data.
 type WineCatalogAdmin interface {
+	// Bottle moderation: member submissions awaiting review and the
+	// approve/reject transition.
+	ListPendingBottles(ctx context.Context, limit, offset int32) ([]wine.Bottle, error)
+	CountPendingBottles(ctx context.Context) (int64, error)
+	SetBottleStatus(ctx context.Context, bottleID int64, status string, approverUserID int64, by string) error
 	CreateWineFlavorProfile(ctx context.Context, name, description, by string) (wine.WineFlavorProfile, error)
 	UpdateWineFlavorProfile(ctx context.Context, flavorProfileID int64, name, description string, isActive bool, by string) (wine.WineFlavorProfile, error)
 	DeleteWineFlavorProfile(ctx context.Context, flavorProfileID int64) error

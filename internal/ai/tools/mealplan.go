@@ -12,7 +12,7 @@ import (
 
 // MealPlanner is the mealplan surface the meal-plan tool needs.
 type MealPlanner interface {
-	ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]mealplan.MealPlan, error)
+	ListMealPlans(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]mealplan.MealPlan, error)
 	GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error)
 	ListMealSlotsForPlan(ctx context.Context, mealPlanID, householdID int64) ([]mealplan.MealSlot, error)
 }
@@ -68,7 +68,7 @@ func RegisterMealPlanTools(reg *Registry, mp MealPlanner, recipes RecipeLookup) 
 			return MealPlanOut{}, nil
 		}
 		if a.MealPlanID <= 0 {
-			plans, err := mp.ListMealPlans(ctx, scope.HouseholdID, 1, 0)
+			plans, err := mp.ListMealPlans(ctx, scope.HouseholdID, "", false, 1, 0)
 			if err != nil {
 				return nil, fmt.Errorf("list meal plans: %w", err)
 			}

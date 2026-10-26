@@ -894,18 +894,30 @@ const listGroceryLists = `-- name: ListGroceryLists :many
 SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
 FROM grocery.grocery_list
 WHERE household_id = $1
-ORDER BY generated_at DESC
+ORDER BY
+  CASE WHEN $4::text = 'generatedAt' AND $5::bool THEN generated_at END DESC NULLS LAST,
+  CASE WHEN $4::text = 'generatedAt' AND NOT $5::bool THEN generated_at END ASC NULLS LAST,
+  generated_at DESC,
+  grocery_list_id
 LIMIT $2 OFFSET $3
 `
 
 type ListGroceryListsParams struct {
-	HouseholdID int64 `json:"household_id"`
-	Limit       int32 `json:"limit"`
-	Offset      int32 `json:"offset"`
+	HouseholdID int64       `json:"household_id"`
+	Limit       int32       `json:"limit"`
+	Offset      int32       `json:"offset"`
+	Sort        pgtype.Text `json:"sort"`
+	SortDesc    pgtype.Bool `json:"sort_desc"`
 }
 
 func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsParams) ([]GroceryGroceryList, error) {
-	rows, err := q.db.Query(ctx, listGroceryLists, arg.HouseholdID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listGroceryLists,
+		arg.HouseholdID,
+		arg.Limit,
+		arg.Offset,
+		arg.Sort,
+		arg.SortDesc,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -151,6 +151,10 @@ FROM userprefs.household_bottle
 WHERE household_id = $1
   AND (sqlc.arg(include_ids)::bigint[] IS NULL OR bottle_id = ANY(sqlc.arg(include_ids)::bigint[]))
 ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'quantity' AND sqlc.narg('sort_desc')::bool THEN quantity END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'quantity' AND NOT sqlc.narg('sort_desc')::bool THEN quantity END ASC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'purchaseDate' AND sqlc.narg('sort_desc')::bool THEN purchase_at END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'purchaseDate' AND NOT sqlc.narg('sort_desc')::bool THEN purchase_at END ASC NULLS LAST,
   CASE
     WHEN bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
     WHEN bottle_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 1

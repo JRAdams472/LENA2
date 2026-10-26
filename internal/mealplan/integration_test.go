@@ -89,12 +89,12 @@ func TestIntegrationMealPlanLifecycle(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
-	plansA, err := svc.ListMealPlans(ctx, userA, 100, 0)
+	plansA, err := svc.ListMealPlans(ctx, userA, "", false, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, plansA, 1)
 	assert.Equal(t, plan.MealPlanID, plansA[0].MealPlanID)
 
-	plansB, err := svc.ListMealPlans(ctx, userB, 100, 0)
+	plansB, err := svc.ListMealPlans(ctx, userB, "", false, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, plansB)
 

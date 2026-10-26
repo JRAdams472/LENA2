@@ -127,6 +127,8 @@ describe("api client: items", () => {
       pageSize: 10,
       search: "milk",
       brandId: "3",
+      sort: null,
+      sortDesc: null,
     });
     const item = result.items[0];
     expect(item.itemID).toBe(1);

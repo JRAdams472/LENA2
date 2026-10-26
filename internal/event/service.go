@@ -110,8 +110,16 @@ func (s *Service) GetFoodEventByID(ctx context.Context, foodEventID, householdID
 }
 
 // ListFoodEvents returns a household's events ordered by date descending.
-func (s *Service) ListFoodEvents(ctx context.Context, householdID int64, limit, offset int32) ([]FoodEvent, error) {
-	rows, err := s.q.ListFoodEvents(ctx, sqlc.ListFoodEventsParams{HouseholdID: householdID, Limit: limit, Offset: offset})
+// A non-empty sort key (validated against the BFF allowlist: "name",
+// "eventDate") overrides the date ordering, which remains the tiebreaker.
+func (s *Service) ListFoodEvents(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]FoodEvent, error) {
+	rows, err := s.q.ListFoodEvents(ctx, sqlc.ListFoodEventsParams{
+		HouseholdID: householdID,
+		Sort:        textOrNull(sort),
+		SortDesc:    pgtype.Bool{Bool: desc, Valid: sort != ""},
+		Limit:       limit,
+		Offset:      offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list food events: %w", err)
 	}

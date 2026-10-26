@@ -279,6 +279,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 2, PageSize: 10})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 2)
@@ -302,6 +304,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: -3, PageSize: 500})
 		require.NoError(t, err)
 		pi := res.PageInfo()
@@ -342,6 +346,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10, MealType: &mt})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 1)
@@ -370,6 +376,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10, MealType: &mt})
 		require.NoError(t, err)
 		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
@@ -386,6 +394,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10})
 		require.ErrorContains(t, err, "unauthorized")
 	})
@@ -402,6 +412,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10})
 		require.ErrorIs(t, err, errRecBoom)
 	})
@@ -437,6 +449,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10, Search: &q, SearchMode: mode})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 1)
@@ -457,6 +471,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10, Search: &q, SearchMode: mode})
 		require.ErrorContains(t, err, "semantic search isn't available")
 	})
@@ -477,6 +493,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10, Search: &q, SearchMode: mode})
 		require.ErrorContains(t, err, "semantic search isn't available")
 	})
@@ -498,6 +516,8 @@ func TestResolver_Recipe_Recipes(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 10, SearchMode: mode})
 		require.NoError(t, err)
 		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
@@ -855,6 +875,8 @@ func TestResolver_Recipe_RatingFields(t *testing.T) {
 			IsFavorite  *bool
 			MealType    *string
 			SearchMode  string
+			Sort        *string
+			SortDesc    *bool
 		}{Page: 1, PageSize: 25})
 		require.NoError(t, err)
 		items := res.Items()

@@ -108,7 +108,7 @@ func TestListGroceryLists(t *testing.T) {
 				{GroceryListID: 4, HouseholdID: 42},
 			}, nil)
 
-		got, err := s.ListGroceryLists(ctx, 42, 10, 5)
+		got, err := s.ListGroceryLists(ctx, 42, "", false, 10, 5)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.Equal(t, int64(3), got[0].GroceryListID)
@@ -118,7 +118,7 @@ func TestListGroceryLists(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().ListGroceryLists(ctx, gomock.Any()).Return(nil, errDB)
-		_, err := s.ListGroceryLists(ctx, 42, 10, 0)
+		_, err := s.ListGroceryLists(ctx, 42, "", false, 10, 0)
 		assert.ErrorContains(t, err, "list grocery lists")
 		assert.ErrorIs(t, err, errDB)
 	})

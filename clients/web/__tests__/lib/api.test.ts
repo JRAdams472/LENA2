@@ -1049,7 +1049,7 @@ describe("api client: ingredients", () => {
 
     const page = await api.getIngredients(1, 25, "cor");
     const vars = lastRequestBody().variables;
-    expect(vars).toEqual({ page: 1, pageSize: 25, search: "cor" });
+    expect(vars).toEqual({ page: 1, pageSize: 25, search: "cor", sort: null, sortDesc: null });
     expect(page.totalCount).toBe(1);
     expect(page.items[0].name).toBe("corn");
     expect(page.items[0].category?.categoryName).toBe("Vegetables");

@@ -182,6 +182,8 @@ describe("api client: bottles", () => {
       sweetness: 1,
       oakIntegration: true,
       bottleSize: "750ml",
+      status: "approved",
+      submittedByMe: false,
       quantity: 0,
       purchaseDate: null,
       purchasePrice: null,
@@ -254,6 +256,87 @@ describe("api client: bottles", () => {
       },
     });
     expect(bottle.vineyard).toBe("Sonoma");
+  });
+
+  it("submitBottle posts the same input shape as createBottle", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        submitBottle: gqlBottle({ id: "7", status: "pending", submittedByMe: true }),
+      })
+    );
+
+    const bottle = await api.submitBottle({
+      bottleID: 0,
+      bottleNumber: null,
+      typeID: 2,
+      countryID: 3,
+      regionID: 4,
+      vintageYear: 2020,
+      vineyard: "Napa",
+      abv: null,
+      acidity: null,
+      tanninLevel: null,
+      body: null,
+      sweetness: null,
+      oakIntegration: null,
+      bottleSize: "750ml",
+      status: "pending",
+      submittedByMe: true,
+      quantity: 0,
+      purchaseDate: null,
+      purchasePrice: null,
+      storageTemp: null,
+      location: null,
+      notes: null,
+      isFavorite: false,
+      type: null,
+      country: null,
+      region: null,
+      vintage: null,
+      bottleGrapeVarieties: [],
+      bottleFlavorProfiles: [],
+    });
+
+    expect(lastRequestBody().query).toContain("submitBottle");
+    expect(lastRequestBody().variables.input.typeId).toBe("2");
+    expect(bottle.bottleID).toBe(7);
+    expect(bottle.status).toBe("pending");
+    expect(bottle.submittedByMe).toBe(true);
+  });
+
+  it("getPendingBottles maps the admin queue page", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({
+        pendingBottles: {
+          items: [gqlBottle({ status: "pending" })],
+          pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+        },
+      })
+    );
+
+    const result = await api.getPendingBottles(1, 25);
+    expect(lastRequestBody().query).toContain("pendingBottles");
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].status).toBe("pending");
+    expect(result.totalCount).toBe(1);
+  });
+
+  it("approveBottle and rejectBottle post the id", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQL({ approveBottle: gqlBottle({ status: "approved" }) })
+      )
+      .mockResolvedValueOnce(
+        mockGraphQL({ rejectBottle: gqlBottle({ status: "rejected" }) })
+      );
+
+    const approved = await api.approveBottle(1);
+    expect(lastRequestBody().variables).toEqual({ id: "1" });
+    expect(approved.status).toBe("approved");
+
+    const rejected = await api.rejectBottle(1);
+    expect(lastRequestBody().variables).toEqual({ id: "1" });
+    expect(rejected.status).toBe("rejected");
   });
 
   it("deleteBottle posts the id and resolves null", async () => {

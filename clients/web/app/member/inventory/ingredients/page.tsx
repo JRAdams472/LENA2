@@ -38,6 +38,8 @@ function IngredientsContent() {
   const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  // Server-side sort — only "name" is in the ingredients allowlist.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
   // undefined = untouched; null = clear the category.
   const [dialogCategory, setDialogCategory] = useState<Category | null | undefined>(undefined);
   const [mergeSource, setMergeSource] = useState<Ingredient | null>(null);
@@ -54,8 +56,8 @@ function IngredientsContent() {
   }, [debouncedSearch]);
 
   const listQuery = useQuery({
-    queryKey: ["ingredients", pageNumber, pageSize, debouncedSearch],
-    queryFn: () => api.getIngredients(pageNumber, pageSize, debouncedSearch || undefined),
+    queryKey: ["ingredients", pageNumber, pageSize, debouncedSearch, sort],
+    queryFn: () => api.getIngredients(pageNumber, pageSize, debouncedSearch || undefined, sort ?? undefined),
     placeholderData: (prev) => prev,
   });
 
@@ -131,15 +133,18 @@ function IngredientsContent() {
     }
   };
 
+  // Only "name" is server-sortable — category is a join and the rest have
+  // no allowlisted column.
   const columns: FieldDef<Ingredient>[] = [
     { key: "name", label: "Name", sortable: true },
     {
       key: "category",
       label: "Category",
+      sortable: false,
       render: (row) => row.category?.categoryName ?? "—",
     },
-    { key: "defaultUnit", label: "Default Unit" },
-    { key: "isActive", label: "Active", type: "boolean", sortable: true },
+    { key: "defaultUnit", label: "Default Unit", sortable: false },
+    { key: "isActive", label: "Active", type: "boolean", sortable: false },
   ];
 
   const extraActions = (row: Ingredient) => (
@@ -172,6 +177,10 @@ function IngredientsContent() {
         onDelete={handleDelete}
         extraActions={extraActions}
         fields={columns}
+        serverSort={(key, desc) => {
+          setSort({ key, desc });
+          setPageNumber(1);
+        }}
         pagination={
           listQuery.data
             ? {

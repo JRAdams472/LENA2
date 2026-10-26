@@ -163,14 +163,20 @@ WHERE (status = 'approved' OR submitted_by_user_id = $1)
 -- name: SearchItemsRemainder :many
 -- The non-engaged slice, served in (name, item_id) index order with a
 -- hashed NOT IN probe — no sort, so deep pagination stays cheap on the
--- large catalog.
+-- large catalog. When the caller passes a sort key the engaged_ids
+-- exclusion is dropped (empty array) and the CASE arms below order the
+-- whole visible catalog — the user-requested sort wins over engagement
+-- ranking.
 SELECT *
 FROM inventory.item
 WHERE (status = 'approved' OR submitted_by_user_id = $1)
   AND (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
   AND (sqlc.narg('brand_id')::bigint IS NULL OR brand_id = sqlc.narg('brand_id'))
   AND item_id NOT IN (SELECT unnest(sqlc.arg(engaged_ids)::bigint[]))
-ORDER BY name, item_id
+ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND sqlc.narg('sort_desc')::bool THEN name END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND NOT sqlc.narg('sort_desc')::bool THEN name END ASC NULLS LAST,
+  name, item_id
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 
 -- name: CountSearchItems :one
@@ -427,6 +433,8 @@ SELECT *
 FROM inventory.ingredient
 WHERE (sqlc.narg('search')::text IS NULL OR lower(name) LIKE '%' || lower(sqlc.narg('search')) || '%')
 ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND sqlc.narg('sort_desc')::bool THEN name END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND NOT sqlc.narg('sort_desc')::bool THEN name END ASC NULLS LAST,
   CASE
     WHEN ingredient_id = ANY(sqlc.arg(personal_ids)::bigint[]) THEN 0
     WHEN ingredient_id = ANY(sqlc.arg(household_ids)::bigint[]) THEN 1

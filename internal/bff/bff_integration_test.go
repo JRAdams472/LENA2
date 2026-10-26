@@ -1789,7 +1789,7 @@ func TestIntegrationGenerateGroceryList(t *testing.T) {
 	// same list — no duplicate is created, generated lines are refreshed,
 	// and manual lines survive.
 	assert.Equal(t, res.ID(), res2.ID(), "second generation must reuse the same list")
-	lists, err := grocerySvc.ListGroceryLists(ctx, userID, 50, 0)
+	lists, err := grocerySvc.ListGroceryLists(ctx, userID, "", false, 50, 0)
 	require.NoError(t, err)
 	assert.Len(t, lists, 1, "regeneration must not stack up duplicate lists")
 
