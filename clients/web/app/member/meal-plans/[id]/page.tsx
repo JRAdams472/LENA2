@@ -14,6 +14,7 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
+import Dialog from "@mui/material/Dialog";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -28,6 +29,7 @@ import { api, asEntity } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, brandSuffix, fmtDate, fmtQty } from "@/lib/format";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import RecipeAutocomplete from "@/app/components/RecipeAutocomplete";
 import {
   AuditableEntity,
@@ -72,10 +74,12 @@ interface SlotDialogState {
 function SlotDialog({
   planId,
   state,
+  onDirtyChange,
   onClose,
 }: {
   planId: number;
   state: SlotDialogState;
+  onDirtyChange: (dirty: boolean) => void;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -178,6 +182,35 @@ function SlotDialog({
   );
 
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
+
+  // Dirty detection: snapshot the slot's persisted values and compare the
+  // editable fields against them — lets the parent confirm before a
+  // backdrop-click or Escape discards real edits.
+  const initialSig = useMemo(
+    () =>
+      JSON.stringify({
+        r: slot?.recipeID ?? null,
+        s: String(slot?.servings ?? 1),
+        n: slot?.replacementNote ?? "",
+        o: (slot?.mealSlotItems?.filter((i) => i.isFromRecipe) ?? [])
+          .map((i) => String(i.itemID))
+          .sort(),
+        a: (slot?.mealSlotItems?.filter((i) => !i.isFromRecipe) ?? []).map(
+          (i) => `${i.itemID}:${i.quantity}:${i.unitOfMeasure ?? ""}`
+        ),
+      }),
+    [slot]
+  );
+  const currentSig = JSON.stringify({
+    r: selectedRecipeId,
+    s: servings,
+    n: replacementNote,
+    o: [...selectedOptionalIds].sort(),
+    a: adhoc.map((a) => `${a.itemID}:${a.quantity}:${a.unit}`),
+  });
+  useEffect(() => {
+    onDirtyChange(currentSig !== initialSig);
+  }, [currentSig, initialSig, onDirtyChange]);
 
   const slotSaveMutation = useMutation({
     mutationFn: async () => {
@@ -611,6 +644,8 @@ export default function MealPlanDetailPage({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [slotDialog, setSlotDialog] = useState<SlotDialogState | null>(null);
+  const [slotDirty, setSlotDirty] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<MealPlanSuggestion[] | null>(null);
 
   const localAIReady = useLocalEngineReady();
@@ -710,6 +745,15 @@ export default function MealPlanDetailPage({
       (m) => m.dayOfWeek === day && m.mealType === mealType
     );
 
+  // Backdrop/Escape close while the form is dirty asks before discarding.
+  const tryCloseSlotDialog = () => {
+    if (slotDirty) {
+      setDiscardConfirmOpen(true);
+    } else {
+      setSlotDialog(null);
+    }
+  };
+
   const theme = useTheme();
   const isNarrow = useMediaQuery(theme.breakpoints.down("sm"));
 
@@ -719,6 +763,9 @@ export default function MealPlanDetailPage({
     return (
       <Paper
         key={`${day}-${mt}`}
+        role="button"
+        tabIndex={0}
+        aria-label={`${DAY_NAMES[day]} ${MEAL_TYPES[mt]}${slot?.recipeID ? ` — ${slot.recipe?.recipeName ?? ""}` : " — add a meal"}`}
         sx={{
           p: 1,
           minHeight: 100,
@@ -730,6 +777,12 @@ export default function MealPlanDetailPage({
         onClick={() =>
           setSlotDialog({ open: true, day, mealType: mt, slot })
         }
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSlotDialog({ open: true, day, mealType: mt, slot });
+          }
+        }}
       >
         {slot?.recipeID ? (
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -974,31 +1027,33 @@ export default function MealPlanDetailPage({
         <NutritionPanel nutrition={nutritionQuery.data} />
       )}
 
-      {slotDialog?.open && (
-        <Box
-          sx={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            bgcolor: "rgba(0,0,0,0.4)",
-            zIndex: 1300,
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSlotDialog(null);
-          }}
-        >
+      <Dialog
+        open={slotDialog?.open === true}
+        onClose={tryCloseSlotDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        {slotDialog && (
           <SlotDialog
             planId={planId}
             state={slotDialog}
+            onDirtyChange={setSlotDirty}
             onClose={() => setSlotDialog(null)}
           />
-        </Box>
-      )}
+        )}
+      </Dialog>
+      <ConfirmDialog
+        open={discardConfirmOpen}
+        title="Discard changes?"
+        message="Your edits to this meal slot will be lost."
+        confirmLabel="Discard"
+        destructive
+        onConfirm={() => {
+          setDiscardConfirmOpen(false);
+          setSlotDialog(null);
+        }}
+        onClose={() => setDiscardConfirmOpen(false)}
+      />
     </Box>
   );
 }

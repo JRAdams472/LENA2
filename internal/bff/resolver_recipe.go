@@ -130,17 +130,25 @@ func (r *Resolver) Recipes(ctx context.Context, args struct {
 	IsFavorite  *bool
 	MealType    *string
 	SearchMode  string
+	Sort        *string
+	SortDesc    *bool
 }) (*recipePageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "name", "totalTime")
+	if err != nil {
+		return nil, err
+	}
 
 	search := recipe.RecipeSearch{
-		Active: true,
-		Limit:  pageSize,
-		Offset: (page - 1) * pageSize,
+		Active:   true,
+		Sort:     sortKey,
+		SortDesc: sortDesc,
+		Limit:    pageSize,
+		Offset:   (page - 1) * pageSize,
 	}
 	if args.Search != nil {
 		search.Search = strings.TrimSpace(*args.Search)

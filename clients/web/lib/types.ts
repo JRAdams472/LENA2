@@ -311,6 +311,10 @@ export interface Bottle extends AuditableEntity {
   location: string | null;
   notes: string | null;
   isFavorite: boolean;
+  // Catalog moderation state: "approved" for normal rows, "pending" for
+  // the caller's own submissions awaiting admin review.
+  status: string;
+  submittedByMe: boolean;
   type: WineType | null;
   country: Country | null;
   region: Region | null;

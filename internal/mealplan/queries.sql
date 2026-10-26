@@ -17,7 +17,13 @@ WHERE household_id = $1 AND meal_plan_id = ANY(sqlc.arg('ids')::bigint[]);
 SELECT *
 FROM mealplan.meal_plan
 WHERE household_id = $1
-ORDER BY week_start_date DESC
+ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'planName' AND sqlc.narg('sort_desc')::bool THEN name END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'planName' AND NOT sqlc.narg('sort_desc')::bool THEN name END ASC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'weekStartDate' AND sqlc.narg('sort_desc')::bool THEN week_start_date END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'weekStartDate' AND NOT sqlc.narg('sort_desc')::bool THEN week_start_date END ASC NULLS LAST,
+  week_start_date DESC,
+  meal_plan_id
 LIMIT $2 OFFSET $3;
 
 -- name: CountMealPlans :one

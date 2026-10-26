@@ -101,7 +101,7 @@ type Query {
   flavorProfiles: [FlavorProfile!]!
   nutrientTypes: [NutrientType!]!
   item(id: ID!): Item
-  items(page: Int = 1, pageSize: Int = 25, search: String, brandId: ID): ItemPage!
+  items(page: Int = 1, pageSize: Int = 25, search: String, brandId: ID, sort: String, sortDesc: Boolean): ItemPage!
   # Barcode lookup: matches upc12 for 12-digit codes and upc14 for
   # 13/14-digit codes (13-digit EAN is left-padded to GTIN-14). Returns
   # null when nothing visible to the caller matches.
@@ -110,7 +110,7 @@ type Query {
   pendingItems(page: Int = 1, pageSize: Int = 25): ItemPage! @admin
   frequentItems(limit: Int = 10): [Item!]!
   ingredient(id: ID!): Ingredient
-  ingredients(page: Int = 1, pageSize: Int = 25, search: String): IngredientPage!
+  ingredients(page: Int = 1, pageSize: Int = 25, search: String, sort: String, sortDesc: Boolean): IngredientPage!
   # The allergen registry — admin-curated; every entry a member can
   # record an allergy or dietary restriction against.
   allergens: [Allergen!]!
@@ -126,13 +126,15 @@ type Query {
   # The household's tweak-set audit log for a recipe, newest first
   # (LEN-58). Covers set/clear/acknowledge with before/after snapshots.
   recipeDeltaEvents(recipeId: ID!, limit: Int = 20): [RecipeDeltaEvent!]!
-  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String, searchMode: RecipeSearchMode = keyword): RecipePage!
+  recipes(page: Int = 1, pageSize: Int = 25, search: String, categoryIds: [ID!], isFavorite: Boolean, mealType: String, searchMode: RecipeSearchMode = keyword, sort: String, sortDesc: Boolean): RecipePage!
   recipeCategoryGroups: [RecipeCategoryGroup!]!
   recommendedRecipes(limit: Int = 10): [RecipeRecommendation!]!
   userItems(page: Int = 1, pageSize: Int = 25, search: String, itemIds: [ID!], inStock: Boolean, isFavorite: Boolean, brandId: ID): UserItemPage!
-  userBottles(page: Int = 1, pageSize: Int = 25, search: String, bottleIds: [ID!]): UserBottlePage!
+  userBottles(page: Int = 1, pageSize: Int = 25, search: String, bottleIds: [ID!], sort: String, sortDesc: Boolean): UserBottlePage!
   bottle(id: ID!): Bottle
   bottles(page: Int = 1, pageSize: Int = 25, search: String, countryId: ID, regionId: ID, typeId: ID, vintageYear: Int, favoritesOnly: Boolean): BottlePage!
+  # Admin-only: catalog bottles submitted by users awaiting approval.
+  pendingBottles(page: Int = 1, pageSize: Int = 25): BottlePage! @admin
   types: [WineType!]!
   countries: [Country!]!
   regions(countryId: ID!): [Region!]!
@@ -140,7 +142,7 @@ type Query {
   grapeVarieties: [GrapeVariety!]!
   wineFlavorProfiles: [WineFlavorProfile!]!
   mealPlan(id: ID!): MealPlan
-  mealPlans(page: Int = 1, pageSize: Int = 25): MealPlanPage!
+  mealPlans(page: Int = 1, pageSize: Int = 25, sort: String, sortDesc: Boolean): MealPlanPage!
   # Aggregated nutrition for a meal plan. Nutrient amounts are stored per
   # a declared basis (default: per 100 g of the item); consumed quantities
   # are converted into that basis before summing. Lines whose units cannot
@@ -148,7 +150,7 @@ type Query {
   # skipped and reported in `warnings` instead of producing a wrong sum.
   nutrition(mealPlanId: ID!): MealPlanNutrition!
   groceryList(id: ID!): GroceryList
-  groceryLists(page: Int = 1, pageSize: Int = 25): GroceryListPage!
+  groceryLists(page: Int = 1, pageSize: Int = 25, sort: String, sortDesc: Boolean): GroceryListPage!
   # Household stores for routing grocery lists through aisle layouts.
   groceryStores: [Store!]!
   # The authoritative walk order for a list — aisle groups in position
@@ -189,7 +191,7 @@ type Query {
   # Unread notification count — backs the nav badge; clients poll it.
   unreadNotificationCount: Int!
   # The household's food events, newest event date first.
-  foodEvents(page: Int = 1, pageSize: Int = 25): FoodEventPage!
+  foodEvents(page: Int = 1, pageSize: Int = 25, sort: String, sortDesc: Boolean): FoodEventPage!
   foodEvent(id: ID!): FoodEvent
   # Master timeline for an event: every recipe's steps backwards-scheduled
   # from their serve times, with missing-duration estimates and appliance
@@ -398,8 +400,18 @@ type Mutation {
   createShoppingLink(groceryListId: ID!, provider: ShopperProvider, includeChecked: Boolean): ShoppingLink!
 
   createBottle(input: CreateBottleInput!): Bottle! @admin
-  updateBottle(id: ID!, input: UpdateBottleInput!): Bottle! @admin
+  # Admins may edit any bottle; other users may edit only their own
+  # pending submissions.
+  updateBottle(id: ID!, input: UpdateBottleInput!): Bottle!
   deleteBottle(id: ID!): Boolean! @admin
+  # Any authenticated user: submit a new catalog bottle in 'pending'
+  # status. It is visible to (and editable by) the submitter until an
+  # admin approves or rejects it.
+  submitBottle(input: CreateBottleInput!): Bottle!
+  # Admin-only moderation of user-submitted bottles. Rejected bottles are
+  # hidden from everyone.
+  approveBottle(id: ID!): Bottle! @admin
+  rejectBottle(id: ID!): Bottle! @admin
   addBottleGrapeVariety(input: AddBottleGrapeVarietyInput!): BottleGrapeVariety! @admin
   removeBottleGrapeVariety(bottleId: ID!, grapeVarietyId: ID!): Boolean! @admin
   addBottleFlavorProfile(input: AddBottleFlavorProfileInput!): BottleFlavorProfile! @admin
@@ -1099,6 +1111,11 @@ type Bottle {
   flavorProfiles: [BottleFlavorProfile!]!
   selectionCount: Int!
   personalSelectionCount: Int!
+  # Catalog rows are approved; user submissions start pending until an
+  # admin moderates them.
+  status: ModerationStatus!
+  # True when the current user submitted this (pending) bottle.
+  submittedByMe: Boolean!
 }
 
 type BottleGrapeVariety {

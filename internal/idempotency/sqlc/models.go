@@ -817,23 +817,27 @@ type UserprefsUserRecipePreference struct {
 }
 
 type WineBottle struct {
-	BottleID       int64              `json:"bottle_id"`
-	TypeID         int64              `json:"type_id"`
-	CountryID      int64              `json:"country_id"`
-	RegionID       int64              `json:"region_id"`
-	VintageYear    int32              `json:"vintage_year"`
-	Vineyard       pgtype.Text        `json:"vineyard"`
-	Abv            pgtype.Numeric     `json:"abv"`
-	Acidity        pgtype.Int2        `json:"acidity"`
-	TanninLevel    pgtype.Int2        `json:"tannin_level"`
-	Body           pgtype.Int2        `json:"body"`
-	Sweetness      pgtype.Int2        `json:"sweetness"`
-	OakIntegration pgtype.Bool        `json:"oak_integration"`
-	BottleSize     string             `json:"bottle_size"`
-	CreatedBy      string             `json:"created_by"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedBy      pgtype.Text        `json:"updated_by"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	BottleID          int64              `json:"bottle_id"`
+	TypeID            int64              `json:"type_id"`
+	CountryID         int64              `json:"country_id"`
+	RegionID          int64              `json:"region_id"`
+	VintageYear       int32              `json:"vintage_year"`
+	Vineyard          pgtype.Text        `json:"vineyard"`
+	Abv               pgtype.Numeric     `json:"abv"`
+	Acidity           pgtype.Int2        `json:"acidity"`
+	TanninLevel       pgtype.Int2        `json:"tannin_level"`
+	Body              pgtype.Int2        `json:"body"`
+	Sweetness         pgtype.Int2        `json:"sweetness"`
+	OakIntegration    pgtype.Bool        `json:"oak_integration"`
+	BottleSize        string             `json:"bottle_size"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedBy         pgtype.Text        `json:"updated_by"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	Status            string             `json:"status"`
+	SubmittedByUserID pgtype.Int8        `json:"submitted_by_user_id"`
+	ApprovedByUserID  pgtype.Int8        `json:"approved_by_user_id"`
+	ApprovedAt        pgtype.Timestamptz `json:"approved_at"`
 }
 
 type WineBottleFlavorProfile struct {

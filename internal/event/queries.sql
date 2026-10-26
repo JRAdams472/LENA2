@@ -12,7 +12,12 @@ WHERE food_event_id = $1 AND household_id = $2;
 SELECT *
 FROM event.food_event
 WHERE household_id = $1
-ORDER BY event_date DESC, food_event_id DESC
+ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND sqlc.narg('sort_desc')::bool THEN name END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND NOT sqlc.narg('sort_desc')::bool THEN name END ASC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'eventDate' AND sqlc.narg('sort_desc')::bool THEN event_date END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'eventDate' AND NOT sqlc.narg('sort_desc')::bool THEN event_date END ASC NULLS LAST,
+  event_date DESC, food_event_id DESC
 LIMIT $2 OFFSET $3;
 
 -- name: CountFoodEvents :one

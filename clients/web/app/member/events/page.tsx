@@ -24,15 +24,18 @@ import { FoodEvent } from "@/lib/types";
 
 type EventRow = ReturnType<typeof toRow>;
 
+// Server-side sort keys "name"/"eventDate" match the row keys exactly —
+// the granularity and flag columns aren't in the allowlist.
 const eventTableFields: FieldDef<EventRow>[] = [
-  { key: "name", label: "Name" },
-  { key: "eventDate", label: "Event Date", type: "date" },
+  { key: "name", label: "Name", sortable: true },
+  { key: "eventDate", label: "Event Date", type: "date", sortable: true },
   {
     key: "slotGranularityMinutes",
     label: "Time Slots",
+    sortable: false,
     render: (row) => `${row.slotGranularityMinutes} min`,
   },
-  { key: "isActive", label: "Active", type: "boolean" },
+  { key: "isActive", label: "Active", type: "boolean", sortable: false },
 ];
 
 interface EventFormState {
@@ -67,10 +70,12 @@ export default function EventsPage() {
   const [form, setForm] = useState<EventFormState>(emptyForm);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  // Server-side sort state — null keeps the date-descending default.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
 
   const listQuery = useQuery({
-    queryKey: ["foodEvents", pageNumber, pageSize],
-    queryFn: () => api.getFoodEventsPaged(pageNumber, pageSize),
+    queryKey: ["foodEvents", pageNumber, pageSize, sort],
+    queryFn: () => api.getFoodEventsPaged(pageNumber, pageSize, sort ?? undefined),
     placeholderData: (prev) => prev,
   });
 
@@ -151,6 +156,10 @@ export default function EventsPage() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
+        serverSort={(key, desc) => {
+          setSort({ key, desc });
+          setPageNumber(1);
+        }}
         pagination={
           listQuery.data
             ? {

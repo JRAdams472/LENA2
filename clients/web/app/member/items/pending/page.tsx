@@ -23,8 +23,9 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { api, ApiError } from "@/lib/api";
 import { fmtQty } from "@/lib/format";
-import { Item } from "@/lib/types";
+import { Bottle, Item } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 
 const PAGE_SIZE = 25;
 
@@ -32,8 +33,10 @@ export default function PendingItemsPage() {
   const { isAdmin, isLoading: meLoading } = useMe();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
+  const [bottlePage, setBottlePage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ item: Item; action: "approve" | "reject" } | null>(null);
+  const [bottleConfirm, setBottleConfirm] = useState<{ bottle: Bottle; action: "approve" | "reject" } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["pending-items", page],
@@ -41,8 +44,15 @@ export default function PendingItemsPage() {
     enabled: isAdmin,
   });
 
+  const bottlesQuery = useQuery({
+    queryKey: ["pending-bottles", bottlePage],
+    queryFn: () => api.getPendingBottles(bottlePage + 1, PAGE_SIZE),
+    enabled: isAdmin,
+  });
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["pending-items"] });
+    queryClient.invalidateQueries({ queryKey: ["pending-bottles"] });
   };
 
   const approveMutation = useMutation({
@@ -68,6 +78,32 @@ export default function PendingItemsPage() {
     onError: (e) => {
       setError(e instanceof ApiError ? e.message : "Failed to reject item");
       setConfirm(null);
+    },
+  });
+
+  const approveBottleMutation = useMutation({
+    mutationFn: (bottleId: number) => api.approveBottle(bottleId),
+    onSuccess: () => {
+      setError(null);
+      setBottleConfirm(null);
+      invalidate();
+    },
+    onError: (e) => {
+      setError(e instanceof ApiError ? e.message : "Failed to approve bottle");
+      setBottleConfirm(null);
+    },
+  });
+
+  const rejectBottleMutation = useMutation({
+    mutationFn: (bottleId: number) => api.rejectBottle(bottleId),
+    onSuccess: () => {
+      setError(null);
+      setBottleConfirm(null);
+      invalidate();
+    },
+    onError: (e) => {
+      setError(e instanceof ApiError ? e.message : "Failed to reject bottle");
+      setBottleConfirm(null);
     },
   });
 
@@ -174,6 +210,70 @@ export default function PendingItemsPage() {
       />
       {isLoading && <CircularProgress size={24} sx={{ mt: 2 }} />}
 
+      <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
+        Pending Bottles
+      </Typography>
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Vineyard</TableCell>
+              <TableCell>Vintage</TableCell>
+              <TableCell>Size</TableCell>
+              <TableCell>ABV</TableCell>
+              <TableCell>Submitter</TableCell>
+              <TableCell align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {(bottlesQuery.data?.items ?? []).map((bottle) => (
+              <TableRow key={bottle.bottleID}>
+                <TableCell>{bottle.vineyard ?? "—"}</TableCell>
+                <TableCell>{bottle.vintageYear}</TableCell>
+                <TableCell>{bottle.bottleSize}</TableCell>
+                <TableCell>{bottle.abv ?? "—"}</TableCell>
+                <TableCell>
+                  {bottle.submittedByMe ? <Chip size="small" label="You" /> : "—"}
+                </TableCell>
+                <TableCell align="right">
+                  <Button
+                    size="small"
+                    color="primary"
+                    onClick={() => setBottleConfirm({ bottle, action: "approve" })}
+                    disabled={approveBottleMutation.isPending || rejectBottleMutation.isPending}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => setBottleConfirm({ bottle, action: "reject" })}
+                    disabled={approveBottleMutation.isPending || rejectBottleMutation.isPending}
+                    sx={{ ml: 1 }}
+                  >
+                    Reject
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      {!bottlesQuery.isLoading && (bottlesQuery.data?.items ?? []).length === 0 && (
+        <Typography color="text.secondary" sx={{ mt: 2 }}>
+          No bottles pending right now.
+        </Typography>
+      )}
+      <TablePagination
+        component="div"
+        count={bottlesQuery.data?.totalCount ?? 0}
+        page={bottlePage}
+        onPageChange={(_, p) => setBottlePage(p)}
+        rowsPerPage={PAGE_SIZE}
+        rowsPerPageOptions={[PAGE_SIZE]}
+      />
+      {bottlesQuery.isLoading && <CircularProgress size={24} sx={{ mt: 2 }} />}
+
       <Dialog open={confirm !== null} onClose={() => setConfirm(null)}>
         <DialogTitle>
           {confirm?.action === "approve" ? "Approve item?" : "Reject item?"}
@@ -201,6 +301,25 @@ export default function PendingItemsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={bottleConfirm !== null}
+        title={bottleConfirm?.action === "approve" ? "Approve bottle?" : "Reject bottle?"}
+        message={
+          bottleConfirm?.action === "approve"
+            ? `"${bottleConfirm?.bottle.vineyard ?? "Bottle"} ${bottleConfirm?.bottle.vintageYear ?? ""}" will become visible to all users.`
+            : `"${bottleConfirm?.bottle.vineyard ?? "Bottle"} ${bottleConfirm?.bottle.vintageYear ?? ""}" will be marked rejected and hidden from everyone.`
+        }
+        destructive={bottleConfirm?.action === "reject"}
+        busy={approveBottleMutation.isPending || rejectBottleMutation.isPending}
+        onClose={() => setBottleConfirm(null)}
+        onConfirm={() =>
+          bottleConfirm &&
+          (bottleConfirm.action === "approve"
+            ? approveBottleMutation.mutate(bottleConfirm.bottle.bottleID)
+            : rejectBottleMutation.mutate(bottleConfirm.bottle.bottleID))
+        }
+      />
     </Box>
   );
 }

@@ -20,7 +20,7 @@ type stubPlanner struct {
 	err   error
 }
 
-func (s *stubPlanner) ListMealPlans(_ context.Context, _ int64, limit, _ int32) ([]mealplan.MealPlan, error) {
+func (s *stubPlanner) ListMealPlans(_ context.Context, _ int64, _ string, _ bool, limit, _ int32) ([]mealplan.MealPlan, error) {
 	if s.err != nil {
 		return nil, s.err
 	}

@@ -639,12 +639,22 @@ type RankParams struct {
 // Instead the engaged rows are fetched by ID (a few thousand at most) and
 // tier-sorted here, while the remaining catalog is served in (name, id)
 // index order behind a hashed NOT IN probe.
-func (s *Service) SearchItems(ctx context.Context, userID int64, term string, brandID *int64, rank RankParams, limit, offset int32) ([]Item, error) {
+//
+// A non-empty sort key (validated against the BFF allowlist) bypasses the
+// engagement machinery entirely: the remainder query runs with an empty
+// exclusion set and its CASE arms order the whole visible catalog.
+func (s *Service) SearchItems(ctx context.Context, userID int64, term string, brandID *int64, rank RankParams, sort string, desc bool, limit, offset int32) ([]Item, error) {
 	user := pgtype.Int8{Int64: userID, Valid: true}
 	search := textOrNull(term)
 	brand := pgtype.Int8{Valid: brandID != nil}
 	if brandID != nil {
 		brand.Int64 = *brandID
+	}
+
+	// User-requested sort: one index-ordered pass over the full match set —
+	// no engagement ID resolution or ranked merge.
+	if sort != "" {
+		return s.remainderItems(ctx, user, search, brand, nil, sort, desc, limit, offset)
 	}
 
 	// Resolve the prior-search-term tier to IDs only when the user has
@@ -686,7 +696,7 @@ func (s *Service) SearchItems(ctx context.Context, userID int64, term string, br
 
 	// Fill the rest of the page from the index-ordered remainder.
 	if intToInt32(len(out)) < limit {
-		rem, err := s.remainderItems(ctx, user, search, brand, engagedIDs, limit-intToInt32(len(out)), offset-intToInt32(len(ranked)))
+		rem, err := s.remainderItems(ctx, user, search, brand, engagedIDs, "", false, limit-intToInt32(len(out)), offset-intToInt32(len(ranked)))
 		if err != nil {
 			return nil, err
 		}
@@ -713,7 +723,9 @@ func (s *Service) searchedItemIDs(ctx context.Context, user pgtype.Int8, search 
 }
 
 // remainderItems pages the index-ordered catalog behind the ranked prefix.
-func (s *Service) remainderItems(ctx context.Context, user pgtype.Int8, search pgtype.Text, brand pgtype.Int8, engagedIDs []int64, limit, offset int32) ([]Item, error) {
+// A non-empty sort key switches the query's CASE arms to user-requested
+// ordering; pass an empty engagedIDs to sort the whole match set.
+func (s *Service) remainderItems(ctx context.Context, user pgtype.Int8, search pgtype.Text, brand pgtype.Int8, engagedIDs []int64, sort string, desc bool, limit, offset int32) ([]Item, error) {
 	if offset < 0 {
 		offset = 0
 	}
@@ -722,6 +734,8 @@ func (s *Service) remainderItems(ctx context.Context, user pgtype.Int8, search p
 		Search:            search,
 		BrandID:           brand,
 		EngagedIds:        engagedIDs,
+		Sort:              textOrNull(sort),
+		SortDesc:          pgtype.Bool{Bool: desc, Valid: sort != ""},
 		Limit:             limit,
 		Offset:            offset,
 	})
@@ -1309,14 +1323,18 @@ func (s *Service) CountIngredients(ctx context.Context) (int64, error) {
 }
 
 // SearchIngredients returns one page of ingredients filtered by an optional
-// name term and ordered by engagement tier before paging.
-func (s *Service) SearchIngredients(ctx context.Context, term string, rank RankParams, limit, offset int32) ([]Ingredient, error) {
+// name term and ordered by engagement tier before paging. A non-empty sort
+// key (validated against the BFF allowlist) overrides the tier order — the
+// tiers remain as the tiebreaker.
+func (s *Service) SearchIngredients(ctx context.Context, term string, rank RankParams, sort string, desc bool, limit, offset int32) ([]Ingredient, error) {
 	rows, err := s.q.SearchIngredients(ctx, sqlc.SearchIngredientsParams{
 		Search:       textOrNull(term),
 		PersonalIds:  rank.PersonalIDs,
 		HouseholdIds: rank.HouseholdIDs,
 		SearchTerms:  rank.SearchTerms,
 		GlobalIds:    rank.GlobalIDs,
+		Sort:         textOrNull(sort),
+		SortDesc:     pgtype.Bool{Bool: desc, Valid: sort != ""},
 		Limit:        limit,
 		Offset:       offset,
 	})

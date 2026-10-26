@@ -139,9 +139,18 @@ func (s *Service) GetMealPlansByIDs(ctx context.Context, householdID int64, meal
 	return out, nil
 }
 
-// ListMealPlans returns a household's plans ordered by week.
-func (s *Service) ListMealPlans(ctx context.Context, householdID int64, limit, offset int32) ([]MealPlan, error) {
-	rows, err := s.q.ListMealPlans(ctx, sqlc.ListMealPlansParams{HouseholdID: householdID, Limit: limit, Offset: offset})
+// ListMealPlans returns a household's plans ordered by week. A non-empty
+// sort key (validated against the BFF allowlist: "planName",
+// "weekStartDate") overrides the week ordering, which remains the
+// tiebreaker.
+func (s *Service) ListMealPlans(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]MealPlan, error) {
+	rows, err := s.q.ListMealPlans(ctx, sqlc.ListMealPlansParams{
+		HouseholdID: householdID,
+		Sort:        textOrNull(sort),
+		SortDesc:    pgtype.Bool{Bool: desc, Valid: sort != ""},
+		Limit:       limit,
+		Offset:      offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list meal plans: %w", err)
 	}

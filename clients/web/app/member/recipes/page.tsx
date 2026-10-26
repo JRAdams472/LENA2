@@ -43,6 +43,10 @@ function toRow(recipe: Recipe) {
     description: recipe.description,
     prepTimeMinutes: recipe.prepTimeMinutes,
     cookTimeMinutes: recipe.cookTimeMinutes,
+    totalTime:
+      recipe.prepTimeMinutes == null && recipe.cookTimeMinutes == null
+        ? null
+        : (recipe.prepTimeMinutes ?? 0) + (recipe.cookTimeMinutes ?? 0),
     isActive: recipe.isActive,
     allergyWarnings: recipe.allergyWarnings,
   };
@@ -50,17 +54,21 @@ function toRow(recipe: Recipe) {
 
 type RecipeRow = ReturnType<typeof toRow>;
 
+// Server-side sort: the GraphQL keys are "name" and "totalTime" — the
+// serverSort handler maps the recipeName column key to "name".
 const recipeTableFields: FieldDef<RecipeRow>[] = [
-  { key: "recipeName", label: "Name" },
-  { key: "description", label: "Description" },
+  { key: "recipeName", label: "Name", sortable: true },
+  { key: "description", label: "Description", sortable: false },
   {
     key: "allergyWarnings",
     label: "Warnings",
+    sortable: false,
     render: (row) => <AllergyWarningChip warnings={row.allergyWarnings} />,
   },
   {
     key: "prepTimeMinutes",
     label: "Prep Time",
+    sortable: false,
     // type drives the dialog input; render drives the table cell.
     type: "number",
     render: (r) => (r.prepTimeMinutes == null ? "—" : `${r.prepTimeMinutes} min`),
@@ -69,9 +77,17 @@ const recipeTableFields: FieldDef<RecipeRow>[] = [
     key: "cookTimeMinutes",
     label: "Cook Time",
     type: "number",
+    sortable: false,
     render: (r) => (r.cookTimeMinutes == null ? "—" : `${r.cookTimeMinutes} min`),
   },
-  { key: "isActive", label: "Active", type: "boolean" },
+  {
+    key: "totalTime",
+    label: "Total Time",
+    type: "number",
+    sortable: true,
+    render: (r) => (r.totalTime == null ? "—" : `${r.totalTime} min`),
+  },
+  { key: "isActive", label: "Active", type: "boolean", sortable: false },
 ];
 
 // Dialog fields: only what CreateRecipeInput actually accepts. The table
@@ -94,6 +110,7 @@ export default function RecipesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogData, setDialogData] = useState<Record<string, unknown>>({});
   const [isCreate, setIsCreate] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [previewId, setPreviewId] = useState<number | null>(null);
@@ -102,6 +119,8 @@ export default function RecipesPage() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [semantic, setSemantic] = useState(false);
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
+  // Server-side sort state — null keeps engagement-ranked order.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -156,9 +175,9 @@ export default function RecipesPage() {
     aiAvailable && isOfDrinkingAge(me?.birthdate);
 
   const listQuery = useQuery({
-    queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, semantic, categoryIds],
+    queryKey: ["recipes", pageNumber, pageSize, debouncedSearch, isFavorite, semantic, categoryIds, sort],
     queryFn: () =>
-      api.getRecipesPaged(pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds, semantic ? "semantic" : "keyword"),
+      api.getRecipesPaged(pageNumber, pageSize, debouncedSearch, isFavorite, categoryIds, semantic ? "semantic" : "keyword", undefined, sort ?? undefined),
     placeholderData: (prev) => prev,
     // With semantic on and nothing typed yet there's no query to embed —
     // the hint below replaces the list instead.
@@ -229,6 +248,9 @@ export default function RecipesPage() {
   };
 
   const handleCreate = () => {
+    createMutation.reset();
+    updateMutation.reset();
+    setSaveNotice(null);
     setIsCreate(true);
     setDialogData({});
     setDialogOpen(true);
@@ -237,6 +259,9 @@ export default function RecipesPage() {
   const handleEdit = (row: RecipeRow) => {
     const full = listQuery.data?.items.find((r) => r.recipeID === row.recipeID);
     if (!full) return;
+    createMutation.reset();
+    updateMutation.reset();
+    setSaveNotice(null);
     setIsCreate(false);
     setDialogData({ ...full });
     setDialogOpen(true);
@@ -248,24 +273,26 @@ export default function RecipesPage() {
     }
   };
 
-  const handleSave = (values: Record<string, unknown>) => {
+  const handleSave = async (values: Record<string, unknown>) => {
     const favorite = Boolean(values.isFavorite);
-    const saveFavorite = (recipeID: number) => {
-      if (favorite !== Boolean(dialogData.isFavorite)) {
-        void api
-          .setRecipeFavorite(recipeID, favorite)
-          .then(() => queryClient.invalidateQueries({ queryKey: ["recipes"] }));
+    const wantsFavChange = favorite !== Boolean(dialogData.isFavorite);
+    try {
+      const saved = isCreate
+        ? await createMutation.mutateAsync(values)
+        : await updateMutation.mutateAsync(values);
+      const recipeID = (saved?.recipeID ?? values.recipeID) as number;
+      if (wantsFavChange && recipeID) {
+        try {
+          await api.setRecipeFavorite(recipeID, favorite);
+          queryClient.invalidateQueries({ queryKey: ["recipes"] });
+        } catch {
+          setSaveNotice("Recipe saved, but the favorite flag didn't apply.");
+        }
       }
-    };
-    if (isCreate) {
-      void createMutation
-        .mutateAsync(values)
-        .then((created) => saveFavorite(created.recipeID));
-    } else {
-      updateMutation.mutate(values);
-      saveFavorite(values.recipeID as number);
+      setDialogOpen(false);
+    } catch {
+      // create/update mutation state carries the error into the dialog.
     }
-    setDialogOpen(false);
   };
 
   // Name/description cells open the read-only ingredients+steps preview.
@@ -410,6 +437,11 @@ export default function RecipesPage() {
           <AlcoholGateHint />
         )}
       </Box>
+      {saveNotice && (
+        <Alert severity="warning" onClose={() => setSaveNotice(null)} sx={{ mb: 2 }}>
+          {saveNotice}
+        </Alert>
+      )}
       {semanticIdle ? (
         <Alert severity="info" icon={<AutoAwesomeIcon />}>
           Describe what you&apos;re in the mood for — semantic search matches
@@ -420,12 +452,17 @@ export default function RecipesPage() {
         title="Recipes"
         rows={(listQuery.data?.items ?? []).map(toRow)}
         isLoading={listQuery.isLoading}
-        error={listQuery.error as Error | null}
+        error={(listQuery.error ?? deleteMutation.error) as Error | null}
         onCreate={handleCreate}
         onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
         fields={tableFields}
+        serverSort={(key, desc) => {
+          // recipeName is the row's display key; the API sort key is "name".
+          setSort({ key: key === "recipeName" ? "name" : key, desc });
+          setPageNumber(1);
+        }}
         pagination={
           listQuery.data
             ? {
@@ -449,6 +486,8 @@ export default function RecipesPage() {
         title={isCreate ? "Create Recipe" : "Edit Recipe"}
         fields={recipeFields}
         values={dialogData}
+        error={createMutation.error ?? updateMutation.error}
+        saving={createMutation.isPending || updateMutation.isPending}
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
       />

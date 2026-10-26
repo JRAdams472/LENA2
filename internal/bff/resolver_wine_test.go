@@ -228,10 +228,10 @@ func TestResolver_Wine_Bottles_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{WineService: m, UserPrefsService: up}
 
-	m.EXPECT().SearchBottles(gomock.Any(), "", wine.BottleFilters{}, wine.RankParams{FavoriteIDs: []int64{1}}, int32(10), int32(0)).Return([]wine.Bottle{
+	m.EXPECT().SearchBottles(gomock.Any(), wineUserID, "", wine.BottleFilters{}, wine.RankParams{FavoriteIDs: []int64{1}}, int32(10), int32(0)).Return([]wine.Bottle{
 		{BottleID: 1, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020, BottleSize: "750ml"},
 	}, nil)
-	m.EXPECT().CountSearchBottles(gomock.Any(), "", wine.BottleFilters{}, []int64{1}).Return(int64(5), nil)
+	m.EXPECT().CountSearchBottles(gomock.Any(), wineUserID, "", wine.BottleFilters{}, []int64{1}).Return(int64(5), nil)
 	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), wineUserID).Return([]int64{1}, nil)
 	m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
 	m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{1}).Return(nil, nil)
@@ -276,10 +276,10 @@ func TestResolver_Wine_Bottles_Filters(t *testing.T) {
 		VintageYear:   &year,
 		FavoritesOnly: true,
 	}
-	m.EXPECT().SearchBottles(gomock.Any(), "ch", wantFilters, wine.RankParams{FavoriteIDs: []int64{4}}, int32(25), int32(0)).Return([]wine.Bottle{
+	m.EXPECT().SearchBottles(gomock.Any(), wineUserID, "ch", wantFilters, wine.RankParams{FavoriteIDs: []int64{4}}, int32(25), int32(0)).Return([]wine.Bottle{
 		{BottleID: 4, TypeID: 9, CountryID: 7, RegionID: 8, VintageYear: 2019, BottleSize: "750ml"},
 	}, nil)
-	m.EXPECT().CountSearchBottles(gomock.Any(), "ch", wantFilters, []int64{4}).Return(int64(1), nil)
+	m.EXPECT().CountSearchBottles(gomock.Any(), wineUserID, "ch", wantFilters, []int64{4}).Return(int64(1), nil)
 	up.EXPECT().ListFavoriteBottleIDs(gomock.Any(), wineUserID).Return([]int64{4}, nil)
 	m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{4}).Return(nil, nil)
 	m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{4}).Return(nil, nil)
@@ -1130,4 +1130,198 @@ func TestResolver_Wine_ServiceError(t *testing.T) {
 			assert.ErrorIs(t, err, errWineBoom)
 		})
 	}
+}
+
+func TestResolver_Wine_SubmitBottle(t *testing.T) {
+	type args = struct{ Input createBottleInput }
+
+	t.Run("creates pending bottle", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		m.EXPECT().SubmitBottle(gomock.Any(), gomock.Cond(func(b wine.Bottle) bool {
+			return b.TypeID == 1 && b.CountryID == 2 && b.RegionID == 3 &&
+				b.VintageYear == 2020 && b.Vineyard == "Chateau" && b.BottleSize == "750ml"
+		}), wineUserID, wineEmail).Return(wine.Bottle{
+			BottleID:          21,
+			TypeID:            1,
+			CountryID:         2,
+			RegionID:          3,
+			VintageYear:       2020,
+			Vineyard:          "Chateau",
+			BottleSize:        "750ml",
+			Status:            wine.BottleStatusPending,
+			SubmittedByUserID: ptrInt64(wineUserID),
+		}, nil)
+		r := newWineTestResolver(m)
+
+		res, err := r.SubmitBottle(wineUserCtx(), args{Input: createBottleInput{
+			TypeID: "1", CountryID: "2", RegionID: "3", VintageYear: 2020,
+			Vineyard: winePtrString("Chateau"), BottleSize: "750ml",
+		}})
+		require.NoError(t, err)
+		assert.Equal(t, graphql.ID("21"), res.ID())
+		assert.Equal(t, "pending", res.Status())
+		assert.True(t, res.SubmittedByMe(wineUserCtx()))
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		r := newWineTestResolver(mock.NewMockWineService(gomock.NewController(t)))
+		_, err := r.SubmitBottle(context.Background(), args{})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+}
+
+func TestResolver_Wine_PendingBottles(t *testing.T) {
+	type pageArgs = struct {
+		Page     int32
+		PageSize int32
+	}
+
+	t.Run("admin sees pending", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		m.EXPECT().ListPendingBottles(gomock.Any(), int32(25), int32(0)).Return([]wine.Bottle{
+			{BottleID: 9, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020, BottleSize: "750ml", Status: wine.BottleStatusPending},
+		}, nil)
+		m.EXPECT().CountPendingBottles(gomock.Any()).Return(int64(1), nil)
+		m.EXPECT().ListBottleGrapeVarietiesByBottles(gomock.Any(), []int64{9}).Return(nil, nil)
+		m.EXPECT().ListBottleFlavorProfilesByBottles(gomock.Any(), []int64{9}).Return(nil, nil)
+		r := newWineTestResolver(m)
+
+		res, err := r.PendingBottles(wineCtx(), pageArgs{Page: 1, PageSize: 25})
+		require.NoError(t, err)
+		require.Len(t, res.Items(), 1)
+		assert.Equal(t, "pending", res.Items()[0].Status())
+		assert.Equal(t, int32(1), res.PageInfo().TotalCount())
+	})
+
+	t.Run("forbidden for non-admin", func(t *testing.T) {
+		r := newWineTestResolver(mock.NewMockWineService(gomock.NewController(t)))
+		_, err := r.PendingBottles(wineUserCtx(), pageArgs{Page: 1, PageSize: 25})
+		require.ErrorContains(t, err, "forbidden")
+	})
+}
+
+func TestResolver_Wine_ApproveRejectBottle(t *testing.T) {
+	type idArgs = struct{ ID graphql.ID }
+
+	t.Run("approve marks approved", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		m.EXPECT().SetBottleStatus(gomock.Any(), int64(9), wine.BottleStatusApproved, wineUserID, wineEmail).Return(nil)
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(9)).Return(wine.Bottle{BottleID: 9, Status: wine.BottleStatusApproved}, nil)
+		r := newWineTestResolver(m)
+
+		res, err := r.ApproveBottle(wineCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		assert.Equal(t, "approved", res.Status())
+	})
+
+	t.Run("reject marks rejected", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		m.EXPECT().SetBottleStatus(gomock.Any(), int64(9), wine.BottleStatusRejected, wineUserID, wineEmail).Return(nil)
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(9)).Return(wine.Bottle{BottleID: 9, Status: wine.BottleStatusRejected}, nil)
+		r := newWineTestResolver(m)
+
+		res, err := r.RejectBottle(wineCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		assert.Equal(t, "rejected", res.Status())
+	})
+
+	t.Run("forbidden for non-admin", func(t *testing.T) {
+		r := newWineTestResolver(mock.NewMockWineService(gomock.NewController(t)))
+		_, err := r.ApproveBottle(wineUserCtx(), idArgs{ID: "9"})
+		require.ErrorContains(t, err, "forbidden")
+		_, err = r.RejectBottle(wineUserCtx(), idArgs{ID: "9"})
+		require.ErrorContains(t, err, "forbidden")
+	})
+}
+
+func TestResolver_Wine_BottleVisibility(t *testing.T) {
+	type idArgs = struct{ ID graphql.ID }
+	pending := wine.Bottle{
+		BottleID: 9, BottleSize: "750ml",
+		Status:            wine.BottleStatusPending,
+		SubmittedByUserID: ptrInt64(wineUserID),
+	}
+
+	t.Run("pending bottle visible to its submitter", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(9)).Return(pending, nil)
+		r := newWineTestResolver(m)
+
+		res, err := r.Bottle(wineUserCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Equal(t, "pending", res.Status())
+	})
+
+	t.Run("pending bottle hidden from other members", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(9)).Return(pending, nil)
+		r := newWineTestResolver(m)
+
+		other := testutil.WithUser(context.Background(), 77, "other@example.com")
+		res, err := r.Bottle(other, idArgs{ID: "9"})
+		require.NoError(t, err)
+		assert.Nil(t, res)
+	})
+
+	t.Run("rejected bottle visible to admin only", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		rejected := pending
+		rejected.Status = wine.BottleStatusRejected
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(9)).Return(rejected, nil)
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(9)).Return(rejected, nil)
+		r := newWineTestResolver(m)
+
+		res, err := r.Bottle(wineCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		res, err = r.Bottle(wineUserCtx(), idArgs{ID: "9"})
+		require.NoError(t, err)
+		assert.Nil(t, res)
+	})
+}
+
+func TestResolver_Wine_UpdateBottle_MemberGating(t *testing.T) {
+	pending := wine.Bottle{
+		BottleID: 101, TypeID: 1, CountryID: 2, RegionID: 3, VintageYear: 2020,
+		Vineyard: "Old", BottleSize: "750ml",
+		Status:            wine.BottleStatusPending,
+		SubmittedByUserID: ptrInt64(wineUserID),
+	}
+	vineyard := "New Name"
+
+	t.Run("submitter may edit own pending bottle", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		updated := pending
+		updated.Vineyard = "New Name"
+		gomock.InOrder(
+			m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(pending, nil),
+			m.EXPECT().UpdateBottle(gomock.Any(), int64(101), gomock.Cond(func(b wine.Bottle) bool {
+				return b.Vineyard == "New Name" && b.TypeID == 1 && b.VintageYear == 2020
+			}), wineEmail).Return(nil),
+			m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(updated, nil),
+		)
+		r := newWineTestResolver(m)
+
+		res, err := r.UpdateBottle(wineUserCtx(), struct {
+			ID    graphql.ID
+			Input updateBottleInput
+		}{ID: "101", Input: updateBottleInput{Vineyard: &vineyard}})
+		require.NoError(t, err)
+		assert.Equal(t, "New Name", *res.Vineyard())
+	})
+
+	t.Run("member cannot edit approved or others' bottles", func(t *testing.T) {
+		m := mock.NewMockWineService(gomock.NewController(t))
+		approved := pending
+		approved.Status = wine.BottleStatusApproved
+		m.EXPECT().GetBottleByID(gomock.Any(), int64(101)).Return(approved, nil)
+		r := newWineTestResolver(m)
+
+		_, err := r.UpdateBottle(wineUserCtx(), struct {
+			ID    graphql.ID
+			Input updateBottleInput
+		}{ID: "101", Input: updateBottleInput{Vineyard: &vineyard}})
+		require.ErrorContains(t, err, "forbidden")
+	})
 }

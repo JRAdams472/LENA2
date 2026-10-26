@@ -117,6 +117,40 @@ func TestMisc_Clamp(t *testing.T) {
 	assert.Equal(t, int32(100), clamp(101, 1, 100))
 }
 
+func TestMisc_SortArgs(t *testing.T) {
+	// No sort supplied — nil, empty, and whitespace all mean "default order".
+	for _, in := range []*string{nil, strPtr(""), strPtr("   ")} {
+		key, desc, err := sortArgs(in, nil, "name")
+		require.NoError(t, err)
+		assert.Equal(t, "", key)
+		assert.False(t, desc)
+	}
+
+	// Allowed key round-trips; absent sortDesc means ascending.
+	key, desc, err := sortArgs(strPtr("name"), nil, "name", "eventDate")
+	require.NoError(t, err)
+	assert.Equal(t, "name", key)
+	assert.False(t, desc)
+
+	// Explicit direction.
+	key, desc, err = sortArgs(strPtr("eventDate"), boolPtr(true), "name", "eventDate")
+	require.NoError(t, err)
+	assert.Equal(t, "eventDate", key)
+	assert.True(t, desc)
+
+	// Keys are trimmed before allowlist matching.
+	key, _, err = sortArgs(strPtr(" name "), nil, "name")
+	require.NoError(t, err)
+	assert.Equal(t, "name", key)
+
+	// Unknown keys are rejected, not silently ignored — a misspelled key
+	// that still returns data hides bugs.
+	_, _, err = sortArgs(strPtr("nmae"), nil, "name", "eventDate")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `sort "nmae" is not supported`)
+	assert.ErrorContains(t, err, "name, eventDate")
+}
+
 func TestMisc_TimeToGraphQL(t *testing.T) {
 	assert.Nil(t, timeToGraphQL(nil))
 	now := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)

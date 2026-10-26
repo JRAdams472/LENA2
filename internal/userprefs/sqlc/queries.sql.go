@@ -1030,28 +1030,34 @@ FROM userprefs.household_bottle
 WHERE household_id = $1
   AND ($2::bigint[] IS NULL OR bottle_id = ANY($2::bigint[]))
 ORDER BY
+  CASE WHEN $3::text = 'quantity' AND $4::bool THEN quantity END DESC NULLS LAST,
+  CASE WHEN $3::text = 'quantity' AND NOT $4::bool THEN quantity END ASC NULLS LAST,
+  CASE WHEN $3::text = 'purchaseDate' AND $4::bool THEN purchase_at END DESC NULLS LAST,
+  CASE WHEN $3::text = 'purchaseDate' AND NOT $4::bool THEN purchase_at END ASC NULLS LAST,
   CASE
-    WHEN bottle_id = ANY($3::bigint[]) THEN 0
-    WHEN bottle_id = ANY($4::bigint[]) THEN 1
-    WHEN bottle_id = ANY($5::bigint[]) THEN 2
+    WHEN bottle_id = ANY($5::bigint[]) THEN 0
+    WHEN bottle_id = ANY($6::bigint[]) THEN 1
+    WHEN bottle_id = ANY($7::bigint[]) THEN 2
     ELSE 3
   END,
-  array_position($3::bigint[], bottle_id),
-  array_position($4::bigint[], bottle_id),
   array_position($5::bigint[], bottle_id),
+  array_position($6::bigint[], bottle_id),
+  array_position($7::bigint[], bottle_id),
   updated_at DESC NULLS LAST,
   household_bottle_id
-LIMIT $7::int OFFSET $6::int
+LIMIT $9::int OFFSET $8::int
 `
 
 type SearchHouseholdBottlesParams struct {
-	HouseholdID  int64   `json:"household_id"`
-	IncludeIds   []int64 `json:"include_ids"`
-	FavoriteIds  []int64 `json:"favorite_ids"`
-	PersonalIds  []int64 `json:"personal_ids"`
-	HouseholdIds []int64 `json:"household_ids"`
-	Offset       int32   `json:"offset"`
-	Limit        int32   `json:"limit"`
+	HouseholdID  int64       `json:"household_id"`
+	IncludeIds   []int64     `json:"include_ids"`
+	Sort         pgtype.Text `json:"sort"`
+	SortDesc     pgtype.Bool `json:"sort_desc"`
+	FavoriteIds  []int64     `json:"favorite_ids"`
+	PersonalIds  []int64     `json:"personal_ids"`
+	HouseholdIds []int64     `json:"household_ids"`
+	Offset       int32       `json:"offset"`
+	Limit        int32       `json:"limit"`
 }
 
 // Ranked cellar listing. Tiers: 0 the caller's favorite bottles,
@@ -1062,6 +1068,8 @@ func (q *Queries) SearchHouseholdBottles(ctx context.Context, arg SearchHousehol
 	rows, err := q.db.Query(ctx, searchHouseholdBottles,
 		arg.HouseholdID,
 		arg.IncludeIds,
+		arg.Sort,
+		arg.SortDesc,
 		arg.FavoriteIds,
 		arg.PersonalIds,
 		arg.HouseholdIds,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -609,54 +610,89 @@ func (s *Service) RemoveBottleFlavorProfile(ctx context.Context, bottleID, flavo
 	}))
 }
 
+// Bottle approval statuses. Member-submitted bottles start pending and stay
+// visible only to their creator until an admin approves them; rejected
+// bottles are hidden from everyone.
+const (
+	BottleStatusPending  = "pending"
+	BottleStatusApproved = "approved"
+	BottleStatusRejected = "rejected"
+)
+
 // Bottle is a catalog wine bottle definition. Nullable tasting-note fields
 // are pointers so a real 0 is distinguishable from "not set".
 type Bottle struct {
-	BottleID       int64
-	TypeID         int64
-	CountryID      int64
-	RegionID       int64
-	VintageYear    int32
-	Vineyard       string
-	Abv            *float64
-	Acidity        *int16
-	TanninLevel    *int16
-	Body           *int16
-	Sweetness      *int16
-	OakIntegration *bool
-	BottleSize     string
+	BottleID          int64
+	TypeID            int64
+	CountryID         int64
+	RegionID          int64
+	VintageYear       int32
+	Vineyard          string
+	Abv               *float64
+	Acidity           *int16
+	TanninLevel       *int16
+	Body              *int16
+	Sweetness         *int16
+	OakIntegration    *bool
+	BottleSize        string
+	Status            string
+	SubmittedByUserID *int64
+	ApprovedByUserID  *int64
+	ApprovedAt        *time.Time
 }
 
-// CreateBottle adds a new bottle definition.
-func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bottle, error) {
+// validateBottleScores checks the 1-5 tasting-scale fields shared by the
+// create and submit paths.
+func validateBottleScores(arg Bottle, op string) error {
 	for _, f := range []struct {
 		name string
 		v    *int16
 	}{{"acidity", arg.Acidity}, {"tannin level", arg.TanninLevel}, {"body", arg.Body}, {"sweetness", arg.Sweetness}} {
 		if err := checkScore(f.v, f.name); err != nil {
-			return Bottle{}, fmt.Errorf("create bottle: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 	}
+	return nil
+}
+
+// createBottleParams maps the shared create/submit fields into the insert
+// parameters; status and submitter differ between the two paths.
+func createBottleParams(arg Bottle, status string, submittedBy pgtype.Int8, by string) (sqlc.CreateBottleParams, error) {
 	abv, err := optNumeric(arg.Abv)
+	if err != nil {
+		return sqlc.CreateBottleParams{}, err
+	}
+	return sqlc.CreateBottleParams{
+		TypeID:            arg.TypeID,
+		CountryID:         arg.CountryID,
+		RegionID:          arg.RegionID,
+		VintageYear:       arg.VintageYear,
+		Vineyard:          textOrNull(arg.Vineyard),
+		Abv:               abv,
+		Acidity:           optInt2(arg.Acidity),
+		TanninLevel:       optInt2(arg.TanninLevel),
+		Body:              optInt2(arg.Body),
+		Sweetness:         optInt2(arg.Sweetness),
+		OakIntegration:    optBool(arg.OakIntegration),
+		BottleSize:        arg.BottleSize,
+		Status:            status,
+		SubmittedByUserID: submittedBy,
+		CreatedBy:         by,
+		UpdatedBy:         textOrNull(by),
+	}, nil
+}
+
+// CreateBottle adds a new bottle definition. The bottle is immediately
+// approved; this is the trusted (admin) create path.
+func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bottle, error) {
+	if err := validateBottleScores(arg, "create bottle"); err != nil {
+		return Bottle{}, err
+	}
+	params, err := createBottleParams(arg, BottleStatusApproved, optInt8(arg.SubmittedByUserID), by)
 	if err != nil {
 		return Bottle{}, fmt.Errorf("create bottle: %w", err)
 	}
-	row, err := s.q.CreateBottle(ctx, sqlc.CreateBottleParams{
-		TypeID:         arg.TypeID,
-		CountryID:      arg.CountryID,
-		RegionID:       arg.RegionID,
-		VintageYear:    arg.VintageYear,
-		Vineyard:       textOrNull(arg.Vineyard),
-		Abv:            abv,
-		Acidity:        optInt2(arg.Acidity),
-		TanninLevel:    optInt2(arg.TanninLevel),
-		Body:           optInt2(arg.Body),
-		Sweetness:      optInt2(arg.Sweetness),
-		OakIntegration: optBool(arg.OakIntegration),
-		BottleSize:     arg.BottleSize,
-		CreatedBy:      by,
-		UpdatedBy:      textOrNull(by),
-	})
+	row, err := s.q.CreateBottle(ctx, params)
 	if err != nil {
 		return Bottle{}, fmt.Errorf("create bottle: %w", domainerr.FromStorage(err))
 	}
@@ -665,6 +701,79 @@ func (s *Service) CreateBottle(ctx context.Context, arg Bottle, by string) (Bott
 		return Bottle{}, fmt.Errorf("create bottle: %w", err)
 	}
 	return b, nil
+}
+
+// SubmitBottle adds a new bottle to the catalog in 'pending' status on
+// behalf of the submitting user, who keeps visibility until an admin
+// approves it.
+func (s *Service) SubmitBottle(ctx context.Context, arg Bottle, userID int64, by string) (Bottle, error) {
+	if err := validateBottleScores(arg, "submit bottle"); err != nil {
+		return Bottle{}, err
+	}
+	params, err := createBottleParams(arg, BottleStatusPending, pgtype.Int8{Int64: userID, Valid: true}, by)
+	if err != nil {
+		return Bottle{}, fmt.Errorf("submit bottle: %w", err)
+	}
+	row, err := s.q.CreateBottle(ctx, params)
+	if err != nil {
+		return Bottle{}, fmt.Errorf("submit bottle: %w", domainerr.FromStorage(err))
+	}
+	b, err := toBottle(row)
+	if err != nil {
+		return Bottle{}, fmt.Errorf("submit bottle: %w", err)
+	}
+	return b, nil
+}
+
+// ListPendingBottles returns bottles awaiting admin approval, oldest first.
+func (s *Service) ListPendingBottles(ctx context.Context, limit, offset int32) ([]Bottle, error) {
+	rows, err := s.q.ListPendingBottles(ctx, sqlc.ListPendingBottlesParams{Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, fmt.Errorf("list pending bottles: %w", err)
+	}
+	out := make([]Bottle, len(rows))
+	for i := range rows {
+		b, err := toBottle(rows[i])
+		if err != nil {
+			return nil, fmt.Errorf("list pending bottles: %w", err)
+		}
+		out[i] = b
+	}
+	return out, nil
+}
+
+// CountPendingBottles returns the number of bottles awaiting approval.
+func (s *Service) CountPendingBottles(ctx context.Context) (int64, error) {
+	n, err := s.q.CountPendingBottles(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count pending bottles: %w", err)
+	}
+	return n, nil
+}
+
+// SetBottleStatus marks a bottle approved or rejected. Approving records the
+// approving user and timestamp; rejecting clears them.
+func (s *Service) SetBottleStatus(ctx context.Context, bottleID int64, status string, approverUserID int64, by string) error {
+	var approvedAt pgtype.Timestamptz
+	var approver pgtype.Int8
+	if status == BottleStatusApproved {
+		approvedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+		approver = pgtype.Int8{Int64: approverUserID, Valid: true}
+	}
+	n, err := s.q.SetBottleStatus(ctx, sqlc.SetBottleStatusParams{
+		BottleID:         bottleID,
+		Status:           status,
+		ApprovedByUserID: approver,
+		ApprovedAt:       approvedAt,
+		UpdatedBy:        textOrNull(by),
+	})
+	if err != nil {
+		return fmt.Errorf("set bottle status: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("set bottle status: %w", domainerr.ErrNotFound)
+	}
+	return nil
 }
 
 // GetBottleByID returns a bottle by its primary key.
@@ -697,9 +806,14 @@ func (s *Service) GetBottlesByIDs(ctx context.Context, bottleIDs []int64) ([]Bot
 	return out, nil
 }
 
-// ListBottles returns a paginated list of bottles.
-func (s *Service) ListBottles(ctx context.Context, limit, offset int32) ([]Bottle, error) {
-	rows, err := s.q.ListBottles(ctx, sqlc.ListBottlesParams{Limit: limit, Offset: offset})
+// ListBottles returns a paginated list of bottles visible to the given
+// user: approved bottles plus the user's own pending submissions.
+func (s *Service) ListBottles(ctx context.Context, userID int64, limit, offset int32) ([]Bottle, error) {
+	rows, err := s.q.ListBottles(ctx, sqlc.ListBottlesParams{
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+		Limit:             limit,
+		Offset:            offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list bottles: %w", domainerr.FromStorage(err))
 	}
@@ -714,9 +828,10 @@ func (s *Service) ListBottles(ctx context.Context, limit, offset int32) ([]Bottl
 	return out, nil
 }
 
-// CountBottles returns the total number of catalog bottles.
-func (s *Service) CountBottles(ctx context.Context) (int64, error) {
-	n, err := s.q.CountBottles(ctx)
+// CountBottles returns the number of catalog bottles visible to the given
+// user.
+func (s *Service) CountBottles(ctx context.Context, userID int64) (int64, error) {
+	n, err := s.q.CountBottles(ctx, pgtype.Int8{Int64: userID, Valid: true})
 	if err != nil {
 		return 0, fmt.Errorf("count bottles: %w", domainerr.FromStorage(err))
 	}
@@ -748,10 +863,12 @@ type BottleFilters struct {
 // SearchBottles returns one page of bottles filtered by an optional term —
 // matched against vineyard and type/country/region names — plus any
 // structured filters, ordered by engagement tier before paging. Pass an
-// empty term to rank the catalog.
-func (s *Service) SearchBottles(ctx context.Context, term string, filters BottleFilters, rank RankParams, limit, offset int32) ([]Bottle, error) {
+// empty term to rank the catalog. Pending bottles are visible only to
+// their submitter (userID).
+func (s *Service) SearchBottles(ctx context.Context, userID int64, term string, filters BottleFilters, rank RankParams, limit, offset int32) ([]Bottle, error) {
 	rows, err := s.q.SearchBottles(ctx, sqlc.SearchBottlesParams{
 		Search:        textOrNull(term),
+		Submitter:     userID,
 		CountryID:     optInt8(filters.CountryID),
 		RegionID:      optInt8(filters.RegionID),
 		TypeID:        optInt8(filters.TypeID),
@@ -780,10 +897,12 @@ func (s *Service) SearchBottles(ctx context.Context, term string, filters Bottle
 }
 
 // CountSearchBottles returns the un-paged match count for the same term,
-// structured filters and favorites scope as SearchBottles.
-func (s *Service) CountSearchBottles(ctx context.Context, term string, filters BottleFilters, favoriteIDs []int64) (int64, error) {
+// structured filters, favorites scope and submitter visibility as
+// SearchBottles.
+func (s *Service) CountSearchBottles(ctx context.Context, userID int64, term string, filters BottleFilters, favoriteIDs []int64) (int64, error) {
 	n, err := s.q.CountSearchBottles(ctx, sqlc.CountSearchBottlesParams{
 		Search:        textOrNull(term),
+		Submitter:     userID,
 		CountryID:     optInt8(filters.CountryID),
 		RegionID:      optInt8(filters.RegionID),
 		TypeID:        optInt8(filters.TypeID),
@@ -799,8 +918,12 @@ func (s *Service) CountSearchBottles(ctx context.Context, term string, filters B
 
 // MatchBottleIDs returns IDs of bottles matching the term — used to scope
 // household-level listings that cannot join this schema (cellar search).
-func (s *Service) MatchBottleIDs(ctx context.Context, term string) ([]int64, error) {
-	ids, err := s.q.MatchBottleIDs(ctx, term)
+// Pending bottles match only for their submitter.
+func (s *Service) MatchBottleIDs(ctx context.Context, term string, userID int64) ([]int64, error) {
+	ids, err := s.q.MatchBottleIDs(ctx, sqlc.MatchBottleIDsParams{
+		Lower:             term,
+		SubmittedByUserID: pgtype.Int8{Int64: userID, Valid: true},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("match bottle ids: %w", domainerr.FromStorage(err))
 	}
@@ -950,6 +1073,16 @@ func toBottle(row sqlc.WineBottle) (Bottle, error) {
 		TanninLevel: int16Ptr(row.TanninLevel),
 		Body:        int16Ptr(row.Body),
 		Sweetness:   int16Ptr(row.Sweetness),
+		Status:      row.Status,
+	}
+	if row.SubmittedByUserID.Valid {
+		b.SubmittedByUserID = &row.SubmittedByUserID.Int64
+	}
+	if row.ApprovedByUserID.Valid {
+		b.ApprovedByUserID = &row.ApprovedByUserID.Int64
+	}
+	if row.ApprovedAt.Valid {
+		b.ApprovedAt = &row.ApprovedAt.Time
 	}
 	if row.Abv.Valid {
 		f8, err := row.Abv.Float64Value()

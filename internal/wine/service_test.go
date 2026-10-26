@@ -867,6 +867,7 @@ func TestBottle(t *testing.T) {
 			Sweetness:      optInt2(i16(2)),
 			OakIntegration: boolOrNull(true),
 			BottleSize:     `750ml`,
+			Status:         BottleStatusApproved,
 			CreatedBy:      `user`,
 			UpdatedBy:      textOrNull(`user`),
 		})).Return(bottleRow, nil)
@@ -908,11 +909,12 @@ func TestBottle(t *testing.T) {
 	t.Run(`ListBottles success`, func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListBottles(ctx, gomock.Eq(sqlc.ListBottlesParams{
-			Limit:  10,
-			Offset: 5,
+			SubmittedByUserID: pgtype.Int8{Int64: 7, Valid: true},
+			Limit:             10,
+			Offset:            5,
 		})).Return([]sqlc.WineBottle{bottleRow}, nil)
 
-		got, err := svc.ListBottles(ctx, 10, 5)
+		got, err := svc.ListBottles(ctx, 7, 10, 5)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		assert.Equal(t, expectedBottle, got[0])
@@ -922,7 +924,7 @@ func TestBottle(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().ListBottles(ctx, gomock.Any()).Return(nil, errDB)
 
-		_, err := svc.ListBottles(ctx, 10, 5)
+		_, err := svc.ListBottles(ctx, 7, 10, 5)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, `list bottles`)
 		assert.ErrorIs(t, err, errDB)
@@ -1143,20 +1145,120 @@ func TestCountBottles(t *testing.T) {
 
 	t.Run(`success`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountBottles(ctx).Return(int64(42), nil)
+		mq.EXPECT().CountBottles(ctx, pgtype.Int8{Int64: 7, Valid: true}).Return(int64(42), nil)
 
-		got, err := svc.CountBottles(ctx)
+		got, err := svc.CountBottles(ctx, 7)
 		require.NoError(t, err)
 		assert.Equal(t, int64(42), got)
 	})
 
 	t.Run(`error`, func(t *testing.T) {
 		svc, mq := newService(t)
-		mq.EXPECT().CountBottles(ctx).Return(int64(0), errDB)
+		mq.EXPECT().CountBottles(ctx, gomock.Any()).Return(int64(0), errDB)
 
-		_, err := svc.CountBottles(ctx)
+		_, err := svc.CountBottles(ctx, 7)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, `count bottles`)
 		assert.ErrorIs(t, err, errDB)
 	})
+}
+
+func TestSubmitBottle(t *testing.T) {
+	ctx := context.Background()
+
+	svc, mq := newService(t)
+	mq.EXPECT().CreateBottle(ctx, gomock.Eq(sqlc.CreateBottleParams{
+		TypeID:            1,
+		CountryID:         2,
+		RegionID:          3,
+		VintageYear:       2020,
+		Vineyard:          textOrNull(`Chateau`),
+		BottleSize:        `750ml`,
+		Status:            BottleStatusPending,
+		SubmittedByUserID: pgtype.Int8{Int64: 42, Valid: true},
+		CreatedBy:         `bob`,
+		UpdatedBy:         textOrNull(`bob`),
+	})).Return(sqlc.WineBottle{
+		BottleID:          21,
+		TypeID:            1,
+		CountryID:         2,
+		RegionID:          3,
+		VintageYear:       2020,
+		Vineyard:          textOrNull(`Chateau`),
+		BottleSize:        `750ml`,
+		Status:            BottleStatusPending,
+		SubmittedByUserID: pgtype.Int8{Int64: 42, Valid: true},
+	}, nil)
+
+	got, err := svc.SubmitBottle(ctx, Bottle{
+		TypeID:      1,
+		CountryID:   2,
+		RegionID:    3,
+		VintageYear: 2020,
+		Vineyard:    `Chateau`,
+		BottleSize:  `750ml`,
+	}, 42, `bob`)
+	require.NoError(t, err)
+	assert.Equal(t, int64(21), got.BottleID)
+	assert.Equal(t, BottleStatusPending, got.Status)
+	require.NotNil(t, got.SubmittedByUserID)
+	assert.Equal(t, int64(42), *got.SubmittedByUserID)
+}
+
+func TestSubmitBottle_Error(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	mq.EXPECT().CreateBottle(ctx, gomock.Any()).Return(sqlc.WineBottle{}, errDB)
+
+	_, err := svc.SubmitBottle(ctx, Bottle{BottleSize: `750ml`}, 42, `bob`)
+	assert.ErrorIs(t, err, errDB)
+	assert.ErrorContains(t, err, `submit bottle:`)
+}
+
+func TestListPendingBottles(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	mq.EXPECT().ListPendingBottles(ctx, sqlc.ListPendingBottlesParams{Limit: 10, Offset: 0}).
+		Return([]sqlc.WineBottle{{BottleID: 5, Vineyard: textOrNull(`Pending Chateau`), Status: BottleStatusPending}}, nil)
+
+	bottles, err := svc.ListPendingBottles(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, bottles, 1)
+	assert.Equal(t, BottleStatusPending, bottles[0].Status)
+}
+
+func TestCountPendingBottles(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	mq.EXPECT().CountPendingBottles(ctx).Return(int64(3), nil)
+
+	got, err := svc.CountPendingBottles(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), got)
+}
+
+func TestSetBottleStatus_Approve(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	mq.EXPECT().SetBottleStatus(ctx, gomock.Cond(func(arg sqlc.SetBottleStatusParams) bool {
+		return arg.BottleID == 11 &&
+			arg.Status == BottleStatusApproved &&
+			arg.ApprovedByUserID.Valid && arg.ApprovedByUserID.Int64 == 9 &&
+			arg.ApprovedAt.Valid
+	})).Return(int64(1), nil)
+
+	require.NoError(t, svc.SetBottleStatus(ctx, 11, BottleStatusApproved, 9, `admin@example.com`))
+}
+
+func TestSetBottleStatus_Reject(t *testing.T) {
+	ctx := context.Background()
+	svc, mq := newService(t)
+	mq.EXPECT().SetBottleStatus(ctx, gomock.Cond(func(arg sqlc.SetBottleStatusParams) bool {
+		return arg.BottleID == 11 &&
+			arg.Status == BottleStatusRejected &&
+			!arg.ApprovedByUserID.Valid &&
+			!arg.ApprovedAt.Valid
+	})).Return(int64(1), nil)
+
+	require.NoError(t, svc.SetBottleStatus(ctx, 11, BottleStatusRejected, 9, `admin@example.com`))
 }

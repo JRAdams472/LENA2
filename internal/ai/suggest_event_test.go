@@ -33,7 +33,7 @@ func (s *sugEvents) GetFoodEventByID(_ context.Context, id, hh int64) (event.Foo
 	}, nil
 }
 
-func (s *sugEvents) ListFoodEvents(_ context.Context, hh int64, _, _ int32) ([]event.FoodEvent, error) {
+func (s *sugEvents) ListFoodEvents(_ context.Context, hh int64, _ string, _ bool, _, _ int32) ([]event.FoodEvent, error) {
 	if hh != 9 {
 		return nil, nil
 	}

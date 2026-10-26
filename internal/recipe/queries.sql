@@ -255,6 +255,12 @@ WHERE r.is_active = $1
   AND (sqlc.arg(include_ids)::bigint[] IS NULL OR r.recipe_id = ANY(sqlc.arg(include_ids)::bigint[]))
   AND (sqlc.arg(exclude_ids)::bigint[] IS NULL OR NOT (r.recipe_id = ANY(sqlc.arg(exclude_ids)::bigint[])))
 ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND sqlc.narg('sort_desc')::bool THEN r.name END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'name' AND NOT sqlc.narg('sort_desc')::bool THEN r.name END ASC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'totalTime' AND sqlc.narg('sort_desc')::bool
+    THEN COALESCE(r.prep_time_minutes, 0) + COALESCE(r.cook_time_minutes, 0) END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'totalTime' AND NOT sqlc.narg('sort_desc')::bool
+    THEN COALESCE(r.prep_time_minutes, 0) + COALESCE(r.cook_time_minutes, 0) END ASC NULLS LAST,
   CASE
     WHEN sqlc.arg(favorite_ids)::bigint[] IS NOT NULL AND r.recipe_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
     WHEN sqlc.narg(boost_category_id)::bigint IS NOT NULL AND EXISTS (
@@ -272,7 +278,8 @@ ORDER BY
   END,
   array_position(sqlc.arg(used_ids)::bigint[], r.recipe_id),
   array_position(sqlc.arg(viewed_ids)::bigint[], r.recipe_id),
-  r.name
+  r.name,
+  r.recipe_id
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 
 -- name: CountSearchRecipes :one

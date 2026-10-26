@@ -29,15 +29,18 @@ const planFields: FieldDef<MealPlan>[] = [
 
 type PlanRow = ReturnType<typeof toRow>;
 
+// Server-side sort keys "planName"/"weekStartDate" match the row keys
+// exactly — the weekday and flag columns aren't in the allowlist.
 const planTableFields: FieldDef<PlanRow>[] = [
-  { key: "planName", label: "Plan Name" },
-  { key: "weekStartDate", label: "Week Of", type: "date" },
+  { key: "planName", label: "Plan Name", sortable: true },
+  { key: "weekStartDate", label: "Week Of", type: "date", sortable: true },
   {
     key: "weekStartDayOfWeek",
     label: "Week Starts On",
+    sortable: false,
     render: (row) => WEEKDAYS[row.weekStartDayOfWeek] ?? "—",
   },
-  { key: "isActive", label: "Active", type: "boolean" },
+  { key: "isActive", label: "Active", type: "boolean", sortable: false },
 ];
 
 function toRow(plan: MealPlan) {
@@ -57,10 +60,12 @@ export default function MealPlansPage() {
   const [isCreate, setIsCreate] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  // Server-side sort state — null keeps the week-descending default.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
 
   const listQuery = useQuery({
-    queryKey: ["mealPlans", pageNumber, pageSize],
-    queryFn: () => api.getMealPlansPaged(pageNumber, pageSize),
+    queryKey: ["mealPlans", pageNumber, pageSize, sort],
+    queryFn: () => api.getMealPlansPaged(pageNumber, pageSize, sort ?? undefined),
     placeholderData: (prev) => prev,
   });
 
@@ -83,12 +88,16 @@ export default function MealPlansPage() {
   });
 
   const handleCreate = () => {
+    createMutation.reset();
+    updateMutation.reset();
     setIsCreate(true);
     setDialogData({ weekStartDayOfWeek: 0, isActive: true });
     setDialogOpen(true);
   };
 
   const handleEdit = (row: Record<string, unknown>) => {
+    createMutation.reset();
+    updateMutation.reset();
     setIsCreate(false);
     setDialogData({ ...row });
     setDialogOpen(true);
@@ -101,12 +110,8 @@ export default function MealPlansPage() {
   };
 
   const handleSave = (values: Record<string, unknown>) => {
-    if (isCreate) {
-      createMutation.mutate(values);
-    } else {
-      updateMutation.mutate(values);
-    }
-    setDialogOpen(false);
+    const mutation = isCreate ? createMutation : updateMutation;
+    mutation.mutate(values, { onSuccess: () => setDialogOpen(false) });
   };
 
   const extraActions = (row: Record<string, unknown>) => (
@@ -126,11 +131,15 @@ export default function MealPlansPage() {
         rows={(listQuery.data?.items ?? []).map(toRow)}
         fields={planTableFields}
         isLoading={listQuery.isLoading}
-        error={listQuery.error as Error | null}
+        error={(listQuery.error ?? deleteMutation.error) as Error | null}
         onCreate={handleCreate}
         onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
+        serverSort={(key, desc) => {
+          setSort({ key, desc });
+          setPageNumber(1);
+        }}
         pagination={
           listQuery.data
             ? {
@@ -149,6 +158,8 @@ export default function MealPlansPage() {
         title={isCreate ? "Create Meal Plan" : "Edit Meal Plan"}
         fields={planFields}
         values={dialogData}
+        error={createMutation.error ?? updateMutation.error}
+        saving={createMutation.isPending || updateMutation.isPending}
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
       />

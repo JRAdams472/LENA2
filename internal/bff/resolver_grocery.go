@@ -178,13 +178,19 @@ func (r *Resolver) newGroceryListResolver(u currentuser.User, list grocery.Groce
 func (r *Resolver) GroceryLists(ctx context.Context, args struct {
 	Page     int32
 	PageSize int32
+	Sort     *string
+	SortDesc *bool
 }) (*groceryListPageResolver, error) {
 	u, err := userFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	page, pageSize := pageArgs(args.Page, args.PageSize)
-	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, pageSize, (page-1)*pageSize)
+	sortKey, sortDesc, err := sortArgs(args.Sort, args.SortDesc, "generatedAt")
+	if err != nil {
+		return nil, err
+	}
+	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, sortKey, sortDesc, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -1248,7 +1254,7 @@ func (r *Resolver) restockCandidates(ctx context.Context, householdID int64) ([]
 	if err != nil || len(lowIDs) == 0 {
 		return nil, err
 	}
-	lists, err := r.GroceryService.ListGroceryLists(ctx, householdID, 1, 0)
+	lists, err := r.GroceryService.ListGroceryLists(ctx, householdID, "", false, 1, 0)
 	if err != nil {
 		return nil, err
 	}

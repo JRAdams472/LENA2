@@ -185,7 +185,7 @@ func TestResolver_ClearNotificationMute(t *testing.T) {
 func TestResolver_AddItemToCurrentGroceryList(t *testing.T) {
 	g := mock.NewMockGroceryService(gomock.NewController(t))
 	itemID := int64(9)
-	g.EXPECT().ListGroceryLists(gomock.Any(), int64(7), int32(1), int32(0)).Return([]grocery.GroceryList{
+	g.EXPECT().ListGroceryLists(gomock.Any(), int64(7), "", false, int32(1), int32(0)).Return([]grocery.GroceryList{
 		{GroceryListID: 3, HouseholdID: 7},
 	}, nil)
 	g.EXPECT().AddGroceryListItem(gomock.Any(), gomock.Cond(func(a grocery.GroceryListItem) bool {
@@ -206,7 +206,7 @@ func TestResolver_AddItemToCurrentGroceryList(t *testing.T) {
 
 func TestResolver_AddItemToCurrentGroceryList_NoList(t *testing.T) {
 	g := mock.NewMockGroceryService(gomock.NewController(t))
-	g.EXPECT().ListGroceryLists(gomock.Any(), int64(7), int32(1), int32(0)).Return(nil, nil)
+	g.EXPECT().ListGroceryLists(gomock.Any(), int64(7), "", false, int32(1), int32(0)).Return(nil, nil)
 	r := &Resolver{GroceryService: g}
 
 	_, err := r.AddItemToCurrentGroceryList(testutil.WithUser(context.Background(), 7, "u@example.com"), struct {

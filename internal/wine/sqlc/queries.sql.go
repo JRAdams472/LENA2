@@ -14,10 +14,24 @@ import (
 const countBottles = `-- name: CountBottles :one
 SELECT COUNT(*)
 FROM wine.bottle
+WHERE status = 'approved' OR submitted_by_user_id = $1
 `
 
-func (q *Queries) CountBottles(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countBottles)
+func (q *Queries) CountBottles(ctx context.Context, submittedByUserID pgtype.Int8) (int64, error) {
+	row := q.db.QueryRow(ctx, countBottles, submittedByUserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPendingBottles = `-- name: CountPendingBottles :one
+SELECT COUNT(*)
+FROM wine.bottle
+WHERE status = 'pending'
+`
+
+func (q *Queries) CountPendingBottles(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingBottles)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -55,6 +69,7 @@ WHERE (
     $6::bool IS DISTINCT FROM TRUE
     OR b.bottle_id = ANY($7::bigint[])
   )
+  AND (b.status = 'approved' OR b.submitted_by_user_id = $8::bigint)
 `
 
 type CountSearchBottlesParams struct {
@@ -65,6 +80,7 @@ type CountSearchBottlesParams struct {
 	VintageYear   pgtype.Int4 `json:"vintage_year"`
 	FavoritesOnly pgtype.Bool `json:"favorites_only"`
 	FavoriteIds   []int64     `json:"favorite_ids"`
+	Submitter     int64       `json:"submitter"`
 }
 
 // Must apply the exact same predicates as SearchBottles so pageInfo.totalCount
@@ -78,6 +94,7 @@ func (q *Queries) CountSearchBottles(ctx context.Context, arg CountSearchBottles
 		arg.VintageYear,
 		arg.FavoritesOnly,
 		arg.FavoriteIds,
+		arg.Submitter,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -88,29 +105,33 @@ const createBottle = `-- name: CreateBottle :one
 INSERT INTO wine.bottle (
     type_id, country_id, region_id, vintage_year, vineyard, abv,
     acidity, tannin_level, body, sweetness, oak_integration, bottle_size,
-    created_by, updated_by
+    status, submitted_by_user_id, created_by, updated_by
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
 `
 
 type CreateBottleParams struct {
-	TypeID         int64          `json:"type_id"`
-	CountryID      int64          `json:"country_id"`
-	RegionID       int64          `json:"region_id"`
-	VintageYear    int32          `json:"vintage_year"`
-	Vineyard       pgtype.Text    `json:"vineyard"`
-	Abv            pgtype.Numeric `json:"abv"`
-	Acidity        pgtype.Int2    `json:"acidity"`
-	TanninLevel    pgtype.Int2    `json:"tannin_level"`
-	Body           pgtype.Int2    `json:"body"`
-	Sweetness      pgtype.Int2    `json:"sweetness"`
-	OakIntegration pgtype.Bool    `json:"oak_integration"`
-	BottleSize     string         `json:"bottle_size"`
-	CreatedBy      string         `json:"created_by"`
-	UpdatedBy      pgtype.Text    `json:"updated_by"`
+	TypeID            int64          `json:"type_id"`
+	CountryID         int64          `json:"country_id"`
+	RegionID          int64          `json:"region_id"`
+	VintageYear       int32          `json:"vintage_year"`
+	Vineyard          pgtype.Text    `json:"vineyard"`
+	Abv               pgtype.Numeric `json:"abv"`
+	Acidity           pgtype.Int2    `json:"acidity"`
+	TanninLevel       pgtype.Int2    `json:"tannin_level"`
+	Body              pgtype.Int2    `json:"body"`
+	Sweetness         pgtype.Int2    `json:"sweetness"`
+	OakIntegration    pgtype.Bool    `json:"oak_integration"`
+	BottleSize        string         `json:"bottle_size"`
+	Status            string         `json:"status"`
+	SubmittedByUserID pgtype.Int8    `json:"submitted_by_user_id"`
+	CreatedBy         string         `json:"created_by"`
+	UpdatedBy         pgtype.Text    `json:"updated_by"`
 }
 
+// Admin creates pass status='approved'; member submissions pass 'pending'
+// plus submitted_by_user_id so the row stays visible to its creator.
 func (q *Queries) CreateBottle(ctx context.Context, arg CreateBottleParams) (WineBottle, error) {
 	row := q.db.QueryRow(ctx, createBottle,
 		arg.TypeID,
@@ -125,6 +146,8 @@ func (q *Queries) CreateBottle(ctx context.Context, arg CreateBottleParams) (Win
 		arg.Sweetness,
 		arg.OakIntegration,
 		arg.BottleSize,
+		arg.Status,
+		arg.SubmittedByUserID,
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
@@ -147,6 +170,10 @@ func (q *Queries) CreateBottle(ctx context.Context, arg CreateBottleParams) (Win
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.Status,
+		&i.SubmittedByUserID,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
@@ -540,7 +567,7 @@ func (q *Queries) DeleteWineFlavorProfile(ctx context.Context, flavorProfileID i
 }
 
 const getBottleByID = `-- name: GetBottleByID :one
-SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
+SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM wine.bottle
 WHERE bottle_id = $1
 `
@@ -566,12 +593,16 @@ func (q *Queries) GetBottleByID(ctx context.Context, bottleID int64) (WineBottle
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.Status,
+		&i.SubmittedByUserID,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
 
 const getBottlesByIDs = `-- name: GetBottlesByIDs :many
-SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
+SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM wine.bottle
 WHERE bottle_id = ANY($1::bigint[])
 `
@@ -603,6 +634,10 @@ func (q *Queries) GetBottlesByIDs(ctx context.Context, bottleIds []int64) ([]Win
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -897,21 +932,24 @@ func (q *Queries) ListBottleGrapeVarietiesByBottles(ctx context.Context, bottleI
 }
 
 const listBottles = `-- name: ListBottles :many
-SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at
+SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
 FROM wine.bottle
+WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY bottle_id DESC
-LIMIT $1 OFFSET $2
+LIMIT $2 OFFSET $3
 `
 
 type ListBottlesParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+	Limit             int32       `json:"limit"`
+	Offset            int32       `json:"offset"`
 }
 
 // Plain insertion-order paging for internal consumers; ranked listing goes
-// through SearchBottles.
+// through SearchBottles. Bottles are visible when approved, or when the
+// caller submitted them.
 func (q *Queries) ListBottles(ctx context.Context, arg ListBottlesParams) ([]WineBottle, error) {
-	rows, err := q.db.Query(ctx, listBottles, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listBottles, arg.SubmittedByUserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -937,6 +975,10 @@ func (q *Queries) ListBottles(ctx context.Context, arg ListBottlesParams) ([]Win
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1008,6 +1050,62 @@ func (q *Queries) ListGrapeVarieties(ctx context.Context) ([]WineGrapeVariety, e
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingBottles = `-- name: ListPendingBottles :many
+SELECT bottle_id, type_id, country_id, region_id, vintage_year, vineyard, abv, acidity, tannin_level, body, sweetness, oak_integration, bottle_size, created_by, created_at, updated_by, updated_at, status, submitted_by_user_id, approved_by_user_id, approved_at
+FROM wine.bottle
+WHERE status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2
+`
+
+type ListPendingBottlesParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+// Member-submitted bottles awaiting admin approval, oldest first.
+func (q *Queries) ListPendingBottles(ctx context.Context, arg ListPendingBottlesParams) ([]WineBottle, error) {
+	rows, err := q.db.Query(ctx, listPendingBottles, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WineBottle{}
+	for rows.Next() {
+		var i WineBottle
+		if err := rows.Scan(
+			&i.BottleID,
+			&i.TypeID,
+			&i.CountryID,
+			&i.RegionID,
+			&i.VintageYear,
+			&i.Vineyard,
+			&i.Abv,
+			&i.Acidity,
+			&i.TanninLevel,
+			&i.Body,
+			&i.Sweetness,
+			&i.OakIntegration,
+			&i.BottleSize,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1170,13 +1268,20 @@ JOIN wine.region rg ON rg.region_id = b.region_id
 WHERE position(lower($1) in lower(
     coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
   )) > 0
+  AND (b.status = 'approved' OR b.submitted_by_user_id = $2)
 LIMIT 1000
 `
 
+type MatchBottleIDsParams struct {
+	Lower             string      `json:"lower"`
+	SubmittedByUserID pgtype.Int8 `json:"submitted_by_user_id"`
+}
+
 // IDs of bottles matching the term — feeds include_ids on household-scoped
-// queries that cannot join this schema (cellar search).
-func (q *Queries) MatchBottleIDs(ctx context.Context, lower string) ([]int64, error) {
-	rows, err := q.db.Query(ctx, matchBottleIDs, lower)
+// queries that cannot join this schema (cellar search). Pending bottles
+// match only for their submitter.
+func (q *Queries) MatchBottleIDs(ctx context.Context, arg MatchBottleIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, matchBottleIDs, arg.Lower, arg.SubmittedByUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -1196,7 +1301,7 @@ func (q *Queries) MatchBottleIDs(ctx context.Context, lower string) ([]int64, er
 }
 
 const searchBottles = `-- name: SearchBottles :many
-SELECT b.bottle_id, b.type_id, b.country_id, b.region_id, b.vintage_year, b.vineyard, b.abv, b.acidity, b.tannin_level, b.body, b.sweetness, b.oak_integration, b.bottle_size, b.created_by, b.created_at, b.updated_by, b.updated_at
+SELECT b.bottle_id, b.type_id, b.country_id, b.region_id, b.vintage_year, b.vineyard, b.abv, b.acidity, b.tannin_level, b.body, b.sweetness, b.oak_integration, b.bottle_size, b.created_by, b.created_at, b.updated_by, b.updated_at, b.status, b.submitted_by_user_id, b.approved_by_user_id, b.approved_at
 FROM wine.bottle b
 JOIN wine.type t ON t.type_id = b.type_id
 JOIN wine.country c ON c.country_id = b.country_id
@@ -1227,28 +1332,29 @@ WHERE (
     $6::bool IS DISTINCT FROM TRUE
     OR b.bottle_id = ANY($7::bigint[])
   )
+  AND (b.status = 'approved' OR b.submitted_by_user_id = $8::bigint)
 ORDER BY
   CASE
     WHEN b.bottle_id = ANY($7::bigint[]) THEN 0
-    WHEN b.bottle_id = ANY($8::bigint[]) THEN 1
-    WHEN b.bottle_id = ANY($9::bigint[]) THEN 2
+    WHEN b.bottle_id = ANY($9::bigint[]) THEN 1
+    WHEN b.bottle_id = ANY($10::bigint[]) THEN 2
     WHEN EXISTS (
-      SELECT 1 FROM unnest($10::text[]) term
+      SELECT 1 FROM unnest($11::text[]) term
       WHERE position(lower(term) in lower(
         coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
       )) > 0
     ) THEN 3
-    WHEN b.bottle_id = ANY($11::bigint[]) THEN 4
+    WHEN b.bottle_id = ANY($12::bigint[]) THEN 4
     ELSE 5
   END,
   array_position($7::bigint[], b.bottle_id),
-  array_position($8::bigint[], b.bottle_id),
   array_position($9::bigint[], b.bottle_id),
-  array_position($11::bigint[], b.bottle_id),
+  array_position($10::bigint[], b.bottle_id),
+  array_position($12::bigint[], b.bottle_id),
   lower(coalesce(b.vineyard, '')),
   b.vintage_year,
   b.bottle_id
-LIMIT $13::int OFFSET $12::int
+LIMIT $14::int OFFSET $13::int
 `
 
 type SearchBottlesParams struct {
@@ -1259,6 +1365,7 @@ type SearchBottlesParams struct {
 	VintageYear   pgtype.Int4 `json:"vintage_year"`
 	FavoritesOnly pgtype.Bool `json:"favorites_only"`
 	FavoriteIds   []int64     `json:"favorite_ids"`
+	Submitter     int64       `json:"submitter"`
 	PersonalIds   []int64     `json:"personal_ids"`
 	HouseholdIds  []int64     `json:"household_ids"`
 	SearchTerms   []string    `json:"search_terms"`
@@ -1284,6 +1391,7 @@ func (q *Queries) SearchBottles(ctx context.Context, arg SearchBottlesParams) ([
 		arg.VintageYear,
 		arg.FavoritesOnly,
 		arg.FavoriteIds,
+		arg.Submitter,
 		arg.PersonalIds,
 		arg.HouseholdIds,
 		arg.SearchTerms,
@@ -1316,6 +1424,10 @@ func (q *Queries) SearchBottles(ctx context.Context, arg SearchBottlesParams) ([
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.Status,
+			&i.SubmittedByUserID,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1325,6 +1437,38 @@ func (q *Queries) SearchBottles(ctx context.Context, arg SearchBottlesParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const setBottleStatus = `-- name: SetBottleStatus :execrows
+UPDATE wine.bottle
+SET status              = $2,
+    approved_by_user_id = $3,
+    approved_at         = $4,
+    updated_by          = $5,
+    updated_at          = now()
+WHERE bottle_id = $1
+`
+
+type SetBottleStatusParams struct {
+	BottleID         int64              `json:"bottle_id"`
+	Status           string             `json:"status"`
+	ApprovedByUserID pgtype.Int8        `json:"approved_by_user_id"`
+	ApprovedAt       pgtype.Timestamptz `json:"approved_at"`
+	UpdatedBy        pgtype.Text        `json:"updated_by"`
+}
+
+func (q *Queries) SetBottleStatus(ctx context.Context, arg SetBottleStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setBottleStatus,
+		arg.BottleID,
+		arg.Status,
+		arg.ApprovedByUserID,
+		arg.ApprovedAt,
+		arg.UpdatedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateBottle = `-- name: UpdateBottle :execrows

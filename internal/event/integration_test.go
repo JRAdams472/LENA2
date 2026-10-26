@@ -62,10 +62,10 @@ func TestIntegrationFoodEventLifecycle(t *testing.T) {
 	_, err = svc.GetFoodEventByID(ctx, ev.FoodEventID, hhB)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
-	listA, err := svc.ListFoodEvents(ctx, hhA, 100, 0)
+	listA, err := svc.ListFoodEvents(ctx, hhA, "", false, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, listA, 1)
-	listB, err := svc.ListFoodEvents(ctx, hhB, 100, 0)
+	listB, err := svc.ListFoodEvents(ctx, hhB, "", false, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, listB)
 

@@ -55,12 +55,14 @@ FROM wine.type
 ORDER BY name;
 
 -- name: CreateBottle :one
+-- Admin creates pass status='approved'; member submissions pass 'pending'
+-- plus submitted_by_user_id so the row stays visible to its creator.
 INSERT INTO wine.bottle (
     type_id, country_id, region_id, vintage_year, vineyard, abv,
     acidity, tannin_level, body, sweetness, oak_integration, bottle_size,
-    created_by, updated_by
+    status, submitted_by_user_id, created_by, updated_by
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 RETURNING *;
 
 -- name: GetBottleByID :one
@@ -70,15 +72,40 @@ WHERE bottle_id = $1;
 
 -- name: ListBottles :many
 -- Plain insertion-order paging for internal consumers; ranked listing goes
--- through SearchBottles.
+-- through SearchBottles. Bottles are visible when approved, or when the
+-- caller submitted them.
 SELECT *
 FROM wine.bottle
+WHERE status = 'approved' OR submitted_by_user_id = $1
 ORDER BY bottle_id DESC
-LIMIT $1 OFFSET $2;
+LIMIT $2 OFFSET $3;
 
 -- name: CountBottles :one
 SELECT COUNT(*)
-FROM wine.bottle;
+FROM wine.bottle
+WHERE status = 'approved' OR submitted_by_user_id = $1;
+
+-- name: ListPendingBottles :many
+-- Member-submitted bottles awaiting admin approval, oldest first.
+SELECT *
+FROM wine.bottle
+WHERE status = 'pending'
+ORDER BY created_at
+LIMIT $1 OFFSET $2;
+
+-- name: CountPendingBottles :one
+SELECT COUNT(*)
+FROM wine.bottle
+WHERE status = 'pending';
+
+-- name: SetBottleStatus :execrows
+UPDATE wine.bottle
+SET status              = $2,
+    approved_by_user_id = $3,
+    approved_at         = $4,
+    updated_by          = $5,
+    updated_at          = now()
+WHERE bottle_id = $1;
 
 -- name: SearchBottles :many
 -- Engagement-ranked bottle browse/search. The term and prior-search-term
@@ -119,6 +146,7 @@ WHERE (
     sqlc.narg('favorites_only')::bool IS DISTINCT FROM TRUE
     OR b.bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[])
   )
+  AND (b.status = 'approved' OR b.submitted_by_user_id = sqlc.arg(submitter)::bigint)
 ORDER BY
   CASE
     WHEN b.bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[]) THEN 0
@@ -175,11 +203,13 @@ WHERE (
   AND (
     sqlc.narg('favorites_only')::bool IS DISTINCT FROM TRUE
     OR b.bottle_id = ANY(sqlc.arg(favorite_ids)::bigint[])
-  );
+  )
+  AND (b.status = 'approved' OR b.submitted_by_user_id = sqlc.arg(submitter)::bigint);
 
 -- name: MatchBottleIDs :many
 -- IDs of bottles matching the term — feeds include_ids on household-scoped
--- queries that cannot join this schema (cellar search).
+-- queries that cannot join this schema (cellar search). Pending bottles
+-- match only for their submitter.
 SELECT b.bottle_id
 FROM wine.bottle b
 JOIN wine.type t ON t.type_id = b.type_id
@@ -188,6 +218,7 @@ JOIN wine.region rg ON rg.region_id = b.region_id
 WHERE position(lower($1) in lower(
     coalesce(b.vineyard, '') || ' ' || t.name || ' ' || c.name || ' ' || rg.name
   )) > 0
+  AND (b.status = 'approved' OR b.submitted_by_user_id = $2)
 LIMIT 1000;
 
 -- name: UpdateBottle :execrows

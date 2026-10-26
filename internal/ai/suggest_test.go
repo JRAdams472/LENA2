@@ -22,7 +22,7 @@ import (
 
 type sugPlanner struct{ foreignErr error }
 
-func (s *sugPlanner) ListMealPlans(context.Context, int64, int32, int32) ([]mealplan.MealPlan, error) {
+func (s *sugPlanner) ListMealPlans(context.Context, int64, string, bool, int32, int32) ([]mealplan.MealPlan, error) {
 	return []mealplan.MealPlan{{MealPlanID: 10, HouseholdID: 9, Name: "W"}}, nil
 }
 

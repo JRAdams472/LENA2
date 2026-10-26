@@ -33,7 +33,7 @@ func (s *stubEvents) GetFoodEventByID(_ context.Context, id, hh int64) (event.Fo
 	return event.FoodEvent{}, errors.New("not found")
 }
 
-func (s *stubEvents) ListFoodEvents(_ context.Context, hh int64, limit, _ int32) ([]event.FoodEvent, error) {
+func (s *stubEvents) ListFoodEvents(_ context.Context, hh int64, _ string, _ bool, limit, _ int32) ([]event.FoodEvent, error) {
 	if s.err != nil {
 		return nil, s.err
 	}

@@ -138,9 +138,17 @@ func (s *Service) ReplaceGeneratedItems(ctx context.Context, groceryListID, hous
 	return out, nil
 }
 
-// ListGroceryLists returns a household's grocery lists.
-func (s *Service) ListGroceryLists(ctx context.Context, householdID int64, limit, offset int32) ([]GroceryList, error) {
-	rows, err := s.q.ListGroceryLists(ctx, sqlc.ListGroceryListsParams{HouseholdID: householdID, Limit: limit, Offset: offset})
+// ListGroceryLists returns a household's grocery lists. A non-empty sort
+// key (validated against the BFF allowlist: "generatedAt") overrides the
+// recency ordering, which remains the tiebreaker.
+func (s *Service) ListGroceryLists(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]GroceryList, error) {
+	rows, err := s.q.ListGroceryLists(ctx, sqlc.ListGroceryListsParams{
+		HouseholdID: householdID,
+		Sort:        textOrNull(sort),
+		SortDesc:    pgtype.Bool{Bool: desc, Valid: sort != ""},
+		Limit:       limit,
+		Offset:      offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list grocery lists: %w", err)
 	}

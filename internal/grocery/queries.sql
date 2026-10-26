@@ -19,7 +19,11 @@ WHERE grocery_list_id = $1 AND household_id = $2;
 SELECT *
 FROM grocery.grocery_list
 WHERE household_id = $1
-ORDER BY generated_at DESC
+ORDER BY
+  CASE WHEN sqlc.narg('sort')::text = 'generatedAt' AND sqlc.narg('sort_desc')::bool THEN generated_at END DESC NULLS LAST,
+  CASE WHEN sqlc.narg('sort')::text = 'generatedAt' AND NOT sqlc.narg('sort_desc')::bool THEN generated_at END ASC NULLS LAST,
+  generated_at DESC,
+  grocery_list_id
 LIMIT $2 OFFSET $3;
 
 -- name: CountGroceryLists :one

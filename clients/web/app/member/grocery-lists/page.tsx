@@ -34,11 +34,14 @@ type ListRow = {
   itemCount: string;
 };
 
+// Server-side sort: only the Generated column maps to an allowlisted key
+// ("generatedAt") — the list name comes from the linked meal plan and the
+// store/itemCount columns are computed cross-schema displays.
 const listTableFields: FieldDef<ListRow>[] = [
-  { key: "name", label: "List" },
-  { key: "generatedDate", label: "Generated", type: "date" },
-  { key: "store", label: "Store" },
-  { key: "itemCount", label: "Items" },
+  { key: "name", label: "List", sortable: false },
+  { key: "generatedDate", label: "Generated", type: "date", sortable: true },
+  { key: "store", label: "Store", sortable: false },
+  { key: "itemCount", label: "Items", sortable: false },
 ];
 
 export default function GroceryListsPage() {
@@ -50,9 +53,12 @@ export default function GroceryListsPage() {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
 
+  // Server-side sort state — null keeps the generated-descending default.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
+
   const listQuery = useQuery({
-    queryKey: ["groceryLists"],
-    queryFn: () => api.getGroceryLists(),
+    queryKey: ["groceryLists", sort],
+    queryFn: () => api.getGroceryLists(sort ?? undefined),
   });
 
   const plansQuery = useQuery({
@@ -111,6 +117,10 @@ export default function GroceryListsPage() {
         error={listQuery.error as Error | null}
         onCreate={handleCreate}
         extraActions={extraActions}
+        serverSort={(key, desc) =>
+          // generatedDate is the row's display key; the API sort key is "generatedAt".
+          setSort({ key: key === "generatedDate" ? "generatedAt" : key, desc })
+        }
       />
       <Dialog
         open={dialogOpen}

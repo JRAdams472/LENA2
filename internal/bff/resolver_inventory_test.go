@@ -275,12 +275,14 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		PageSize int32
 		Search   *string
 		BrandID  *graphql.ID
+		Sort     *string
+		SortDesc *bool
 	}
 
 	t.Run("happy path", func(t *testing.T) {
 		inv := newInvMock(t)
 		up := mock.NewMockUserPrefsService(gomock.NewController(t))
-		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{FavoriteIDs: []int64{2}}, int32(10), int32(10)).Return([]inventory.Item{
+		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{FavoriteIDs: []int64{2}}, "", false, int32(10), int32(10)).Return([]inventory.Item{
 			{ItemID: 1, Name: "Milk"},
 			{ItemID: 2, Name: "Eggs"},
 		}, nil)
@@ -306,7 +308,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		inv := newInvMock(t)
 		up := mock.NewMockUserPrefsService(gomock.NewController(t))
 		up.EXPECT().ListFavoriteItemIDs(gomock.Any(), int64(7)).Return(nil, nil)
-		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{}, int32(100), int32(0)).Return([]inventory.Item{}, nil)
+		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{}, "", false, int32(100), int32(0)).Return([]inventory.Item{}, nil)
 		inv.EXPECT().CountSearchItems(gomock.Any(), int64(7), "", (*int64)(nil)).Return(int64(0), nil)
 		r := &Resolver{InventoryService: inv, UserPrefsService: up}
 		res, err := r.Items(invCtx(), pageArgs{Page: 0, PageSize: 500})
@@ -327,7 +329,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		inv := newInvMock(t)
 		up := mock.NewMockUserPrefsService(gomock.NewController(t))
 		up.EXPECT().ListFavoriteItemIDs(gomock.Any(), int64(7)).Return(nil, nil)
-		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{}, int32(10), int32(0)).Return(nil, errInvBoom)
+		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{}, "", false, int32(10), int32(0)).Return(nil, errInvBoom)
 		r := &Resolver{InventoryService: inv, UserPrefsService: up}
 		_, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 10})
 		require.ErrorIs(t, err, errInvBoom)
@@ -337,7 +339,7 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		inv := newInvMock(t)
 		up := mock.NewMockUserPrefsService(gomock.NewController(t))
 		up.EXPECT().ListFavoriteItemIDs(gomock.Any(), int64(7)).Return(nil, nil)
-		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "milk", (*int64)(nil), inventory.RankParams{}, int32(25), int32(0)).Return([]inventory.Item{}, nil)
+		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "milk", (*int64)(nil), inventory.RankParams{}, "", false, int32(25), int32(0)).Return([]inventory.Item{}, nil)
 		inv.EXPECT().CountSearchItems(gomock.Any(), int64(7), "milk", (*int64)(nil)).Return(int64(0), nil)
 		r := &Resolver{InventoryService: inv, UserPrefsService: up}
 		res, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 25, Search: invStrPtr("  milk  ")})
@@ -350,13 +352,32 @@ func TestResolver_Inventory_Items(t *testing.T) {
 		up := mock.NewMockUserPrefsService(gomock.NewController(t))
 		up.EXPECT().ListFavoriteItemIDs(gomock.Any(), int64(7)).Return(nil, nil)
 		brand := int64(42)
-		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", &brand, inventory.RankParams{}, int32(25), int32(0)).Return([]inventory.Item{}, nil)
+		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", &brand, inventory.RankParams{}, "", false, int32(25), int32(0)).Return([]inventory.Item{}, nil)
 		inv.EXPECT().CountSearchItems(gomock.Any(), int64(7), "", &brand).Return(int64(0), nil)
 		r := &Resolver{InventoryService: inv, UserPrefsService: up}
 		bid := graphql.ID("42")
 		res, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 25, BrandID: &bid})
 		require.NoError(t, err)
 		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
+	})
+
+	t.Run("passes sort through", func(t *testing.T) {
+		inv := newInvMock(t)
+		up := mock.NewMockUserPrefsService(gomock.NewController(t))
+		up.EXPECT().ListFavoriteItemIDs(gomock.Any(), int64(7)).Return(nil, nil)
+		inv.EXPECT().SearchItems(gomock.Any(), int64(7), "", (*int64)(nil), inventory.RankParams{}, "name", true, int32(25), int32(0)).Return([]inventory.Item{}, nil)
+		inv.EXPECT().CountSearchItems(gomock.Any(), int64(7), "", (*int64)(nil)).Return(int64(0), nil)
+		r := &Resolver{InventoryService: inv, UserPrefsService: up}
+		res, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 25, Sort: invStrPtr("name"), SortDesc: invBoolPtr(true)})
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), res.PageInfo().TotalCount())
+	})
+
+	t.Run("rejects unknown sort key", func(t *testing.T) {
+		inv := newInvMock(t)
+		r := &Resolver{InventoryService: inv}
+		_, err := r.Items(invCtx(), pageArgs{Page: 1, PageSize: 25, Sort: invStrPtr("brand")})
+		require.ErrorContains(t, err, `sort "brand" is not supported`)
 	})
 }
 
@@ -810,7 +831,7 @@ func TestResolver_Inventory_Ingredient(t *testing.T) {
 func TestResolver_Inventory_Ingredients(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		inv := newInvMock(t)
-		inv.EXPECT().SearchIngredients(gomock.Any(), "", inventory.RankParams{}, int32(25), int32(0)).Return([]inventory.Ingredient{
+		inv.EXPECT().SearchIngredients(gomock.Any(), "", inventory.RankParams{}, "", false, int32(25), int32(0)).Return([]inventory.Ingredient{
 			{IngredientID: 1, Name: "Flour", IsActive: true},
 			{IngredientID: 2, Name: "Sugar", IsActive: true},
 		}, nil)
@@ -821,6 +842,8 @@ func TestResolver_Inventory_Ingredients(t *testing.T) {
 			Page     int32
 			PageSize int32
 			Search   *string
+			Sort     *string
+			SortDesc *bool
 		}{Page: 1, PageSize: 25})
 		require.NoError(t, err)
 		require.Len(t, res.Items(), 2)
@@ -833,6 +856,8 @@ func TestResolver_Inventory_Ingredients(t *testing.T) {
 			Page     int32
 			PageSize int32
 			Search   *string
+			Sort     *string
+			SortDesc *bool
 		}{Page: 1, PageSize: 25})
 		require.ErrorContains(t, err, "unauthorized")
 	})

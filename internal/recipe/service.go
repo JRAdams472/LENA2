@@ -947,8 +947,13 @@ type RecipeSearch struct {
 	// directly below favorites — the meal-plan slot picker passes the
 	// Course category matching the slot's meal_type.
 	CourseBoostID *int64
-	Limit         int32
-	Offset        int32
+	// Sort is a caller-validated sort key ("name", "totalTime"); when set
+	// it outranks the engagement tiers, which remain the tiebreaker.
+	// SortDesc flips the direction. Empty Sort keeps the tier ordering.
+	Sort     string
+	SortDesc bool
+	Limit    int32
+	Offset   int32
 }
 
 func (rs RecipeSearch) params() sqlc.SearchRecipesParams {
@@ -958,6 +963,8 @@ func (rs RecipeSearch) params() sqlc.SearchRecipesParams {
 		FavoriteIds: rs.FavoriteIDs, UsedIds: rs.UsedIDs, ViewedIds: rs.ViewedIDs,
 		SearchTerms: rs.SearchTerms, Limit: rs.Limit, Offset: rs.Offset,
 		BoostCategoryID: optInt8(rs.CourseBoostID),
+		Sort:            textOrNull(rs.Sort),
+		SortDesc:        pgtype.Bool{Bool: rs.SortDesc, Valid: rs.Sort != ""},
 	}
 }
 

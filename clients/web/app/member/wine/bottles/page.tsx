@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -21,8 +22,9 @@ import QuantityDialog from "@/app/components/QuantityDialog";
 import { Bottle, PagedResult } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
-// Catalog attributes — admin-only (createBottle/updateBottle are @admin).
-// The FKs (type/country/region/vintage) render as pickers in extraFields.
+// Catalog attributes — admins write them via createBottle/updateBottle;
+// members supply them through submitBottle (pending review). The FKs
+// (type/country/region/vintage) render as pickers in extraFields.
 const catalogFields = [
   { key: "vineyard", label: "Vineyard" },
   { key: "abv", label: "ABV", type: "number" as const },
@@ -65,6 +67,11 @@ export default function BottlesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  // Server-side sort state. The catalog `bottles` query has no sort args —
+  // sorting lives on `userBottles` (cellar holdings), so requesting a sort
+  // switches the listing to the cellar-scoped query. Only "quantity" is
+  // sortable; bottle names are cross-schema and can't be sorted here.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -91,6 +98,10 @@ export default function BottlesPage() {
   const [pickVintageYear, setPickVintageYear] = useState<number | "">("");
   const [cellarBottle, setCellarBottle] = useState<Bottle | null>(null);
   const [cellarSearch, setCellarSearch] = useState("");
+  // Member "submit new bottle" flow: the submit dialog plus a notice on
+  // the cellar dialog while the fresh submission awaits admin review.
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [pendingNotice, setPendingNotice] = useState(false);
   const { me } = useMe();
   const isAdmin = me?.role === "admin";
 
@@ -127,16 +138,21 @@ export default function BottlesPage() {
       debouncedSearch,
       pageNumber,
       pageSize,
+      sort,
     ],
     queryFn: () =>
-      api.getBottlesPaged(pageNumber, pageSize, {
-        search: debouncedSearch,
-        countryId: countryId ? Number(countryId) : undefined,
-        regionId: regionId ? Number(regionId) : undefined,
-        typeId: typeId ? Number(typeId) : undefined,
-        vintageYear: vintageYear ? Number(vintageYear) : undefined,
-        favoritesOnly: favorites || undefined,
-      }),
+      sort
+        ? // Sorted listings come from the cellar (userBottles) — the only
+          // query with sort args. Catalog facet filters don't apply there.
+          api.getUserBottlesPaged(pageNumber, pageSize, debouncedSearch, sort)
+        : api.getBottlesPaged(pageNumber, pageSize, {
+            search: debouncedSearch,
+            countryId: countryId ? Number(countryId) : undefined,
+            regionId: regionId ? Number(regionId) : undefined,
+            typeId: typeId ? Number(typeId) : undefined,
+            vintageYear: vintageYear ? Number(vintageYear) : undefined,
+            favoritesOnly: favorites || undefined,
+          }),
     placeholderData: (prev) => prev,
   });
 
@@ -203,6 +219,39 @@ export default function BottlesPage() {
     onSuccess: invalidateBottles,
   });
 
+  const submitBottleMutation = useMutation({
+    mutationFn: (values: Record<string, unknown>) => {
+      if (
+        pickTypeId === "" ||
+        pickCountryId === "" ||
+        pickRegionId === "" ||
+        pickVintageYear === ""
+      ) {
+        return Promise.reject(
+          new Error("Pick a type, country, region and vintage")
+        );
+      }
+      return api.submitBottle(
+        asEntity({
+          ...values,
+          typeID: pickTypeId,
+          countryID: pickCountryId,
+          regionID: pickRegionId,
+          vintageYear: pickVintageYear,
+        })
+      );
+    },
+    // The pending bottle is immediately usable by its submitter: select it
+    // in the cellar picker so the parent dialog can add it to the cellar.
+    onSuccess: (b) => {
+      setSubmitOpen(false);
+      setCellarBottle(b);
+      setPendingNotice(true);
+      invalidateBottles();
+      void queryClient.invalidateQueries({ queryKey: ["cellar-bottle-pick"] });
+    },
+  });
+
   const adjustQtyMutation = useMutation({
     mutationFn: ({ id, quantity }: { id: number; quantity: number }) =>
       api.adjustBottleQuantity(id, quantity),
@@ -228,12 +277,14 @@ export default function BottlesPage() {
     setPickRegionId("");
     setPickVintageYear("");
     setCellarBottle(null);
+    setPendingNotice(false);
     setDialogOpen(true);
   };
 
   const handleEdit = (row: Bottle) => {
     void api.recordView("bottle", row.bottleID);
     setIsCreate(false);
+    setPendingNotice(false);
     setDialogData({ ...row });
     setPickTypeId(row.typeID);
     setPickCountryId(row.countryID);
@@ -255,16 +306,20 @@ export default function BottlesPage() {
     );
   };
 
+  // Only "quantity" is server-sortable — it maps to the cellar holding's
+  // quantity column. Catalog attributes (vineyard/type/country/…) live in
+  // the wine schema, which the cellar query can't join.
   const bottleTableFields: FieldDef<Bottle>[] = [
-    { key: "vineyard", label: "Vineyard", render: (r) => r.vineyard ?? "—" },
-    { key: "vintageYear", label: "Vintage", type: "number" },
-    { key: "type", label: "Type", render: (r) => r.type?.typeName ?? "—" },
-    { key: "country", label: "Country", render: (r) => r.country?.countryName ?? "—" },
-    { key: "region", label: "Region", render: (r) => r.region?.regionName ?? "—" },
-    { key: "bottleSize", label: "Size" },
+    { key: "vineyard", label: "Vineyard", sortable: false, render: (r) => r.vineyard ?? "—" },
+    { key: "vintageYear", label: "Vintage", type: "number", sortable: false },
+    { key: "type", label: "Type", sortable: false, render: (r) => r.type?.typeName ?? "—" },
+    { key: "country", label: "Country", sortable: false, render: (r) => r.country?.countryName ?? "—" },
+    { key: "region", label: "Region", sortable: false, render: (r) => r.region?.regionName ?? "—" },
+    { key: "bottleSize", label: "Size", sortable: false },
     {
       key: "quantity",
       label: "Qty",
+      sortable: true,
       render: (r) => (
         <Chip
           size="small"
@@ -276,10 +331,11 @@ export default function BottlesPage() {
         />
       ),
     },
-    { key: "location", label: "Location", render: (r) => r.location ?? "—" },
+    { key: "location", label: "Location", sortable: false, render: (r) => r.location ?? "—" },
     {
       key: "isFavorite",
       label: "Favorite",
+      sortable: false,
       render: (r) => (
         <Chip
           size="small"
@@ -306,7 +362,9 @@ export default function BottlesPage() {
       ? regions
       : regions.filter((r) => r.countryID === pickCountryId);
 
-  const catalogPickers = isAdmin && (
+  // The type/country/region/vintage pickers — used by the admin create
+  // dialog and by the member submit-new-bottle dialog.
+  const bottlePickers = (
     <>
       <FormControl size="small" fullWidth sx={{ mt: 1 }}>
         <InputLabel id="bottle-type-label">Type</InputLabel>
@@ -374,22 +432,47 @@ export default function BottlesPage() {
     </>
   );
 
+  const openSubmitDialog = () => {
+    setPickTypeId("");
+    setPickCountryId("");
+    setPickRegionId("");
+    setPickVintageYear("");
+    setSubmitOpen(true);
+  };
+
   const cellarPicker = isCreate && !isAdmin && (
-    <Autocomplete
-      options={cellarPickQuery.data ?? []}
-      getOptionLabel={(b) => `${b.vineyard ?? "Bottle"} ${b.vintageYear}`}
-      isOptionEqualToValue={(a, b) => a.bottleID === b.bottleID}
-      inputValue={cellarSearch}
-      onInputChange={(_, v) => setCellarSearch(v)}
-      value={cellarBottle}
-      onChange={(_, v) => setCellarBottle(v)}
-      loading={cellarPickQuery.isLoading}
-      noOptionsText="No catalog bottles found"
-      renderInput={(params) => (
-        <TextField {...params} label="Bottle" size="small" />
+    <>
+      <Autocomplete
+        options={cellarPickQuery.data ?? []}
+        getOptionLabel={(b) =>
+          `${b.vineyard ?? "Bottle"} ${b.vintageYear}${b.status === "pending" ? " (pending review)" : ""}`
+        }
+        isOptionEqualToValue={(a, b) => a.bottleID === b.bottleID}
+        inputValue={cellarSearch}
+        onInputChange={(_, v) => setCellarSearch(v)}
+        value={cellarBottle}
+        onChange={(_, v) => { setCellarBottle(v); setPendingNotice(false); }}
+        loading={cellarPickQuery.isLoading}
+        noOptionsText={
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            No catalog bottles found
+            <Button size="small" onClick={openSubmitDialog}>
+              Submit new bottle
+            </Button>
+          </Box>
+        }
+        renderInput={(params) => (
+          <TextField {...params} label="Bottle" size="small" />
+        )}
+        sx={{ mt: 1 }}
+      />
+      {pendingNotice && (
+        <Alert severity="info" sx={{ mt: 1 }}>
+          Bottle submitted for review — it is visible to you now and you can
+          add it to your cellar while an admin approves it.
+        </Alert>
       )}
-      sx={{ mt: 1 }}
-    />
+    </>
   );
 
   const pagedData = listQuery.data;
@@ -515,6 +598,10 @@ export default function BottlesPage() {
         onCreate={handleCreate}
         onEdit={handleEdit}
         onDelete={isAdmin ? handleDelete : undefined}
+        serverSort={(key, desc) => {
+          setSort({ key, desc });
+          setPageNumber(1);
+        }}
         pagination={
           pagedData
             ? {
@@ -544,11 +631,30 @@ export default function BottlesPage() {
         extraFields={
           <>
             {cellarPicker}
-            {catalogPickers}
+            {isAdmin && bottlePickers}
           </>
         }
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
+      />
+      <CrudDialog
+        open={submitOpen}
+        title="Submit New Bottle"
+        fields={catalogFields}
+        values={{ vineyard: cellarSearch, bottleSize: "750ml" }}
+        error={submitBottleMutation.error as Error | null}
+        saving={submitBottleMutation.isPending}
+        extraFields={
+          <>
+            <Alert severity="info" sx={{ mt: 1 }}>
+              This bottle goes to an admin for review. You can add it to
+              your cellar right away — other members see it once approved.
+            </Alert>
+            {bottlePickers}
+          </>
+        }
+        onClose={() => setSubmitOpen(false)}
+        onSave={(values) => submitBottleMutation.mutate(values)}
       />
       <QuantityDialog
         open={qtyBottle !== null}

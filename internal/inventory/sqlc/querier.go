@@ -162,7 +162,10 @@ type Querier interface {
 	SearchIngredients(ctx context.Context, arg SearchIngredientsParams) ([]InventoryIngredient, error)
 	// The non-engaged slice, served in (name, item_id) index order with a
 	// hashed NOT IN probe — no sort, so deep pagination stays cheap on the
-	// large catalog.
+	// large catalog. When the caller passes a sort key the engaged_ids
+	// exclusion is dropped (empty array) and the CASE arms below order the
+	// whole visible catalog — the user-requested sort wins over engagement
+	// ranking.
 	SearchItemsRemainder(ctx context.Context, arg SearchItemsRemainderParams) ([]InventoryItem, error)
 	SetAllergenSuggestionStatus(ctx context.Context, arg SetAllergenSuggestionStatusParams) (InventoryAllergenSuggestion, error)
 	SetBrandStatus(ctx context.Context, arg SetBrandStatusParams) (int64, error)

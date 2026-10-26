@@ -12,6 +12,9 @@ jest.mock("../../../../lib/api", () => ({
     getItemByUpc: jest.fn(),
     approveItem: jest.fn(),
     rejectItem: jest.fn(),
+    getPendingBottles: jest.fn(),
+    approveBottle: jest.fn(),
+    rejectBottle: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -79,9 +82,52 @@ function renderPage() {
   );
 }
 
+const baseBottle = {
+  bottleID: 41,
+  bottleNumber: null,
+  typeID: 1,
+  countryID: 1,
+  regionID: 1,
+  vintageYear: 2018,
+  vineyard: "Pending Chateau",
+  abv: 13.5,
+  acidity: null,
+  tanninLevel: null,
+  body: null,
+  sweetness: null,
+  oakIntegration: null,
+  bottleSize: "750ml",
+  quantity: 0,
+  purchaseDate: null,
+  purchasePrice: null,
+  storageTemp: null,
+  location: null,
+  notes: null,
+  isFavorite: false,
+  status: "pending",
+  submittedByMe: false,
+  type: null,
+  country: null,
+  region: null,
+  vintage: null,
+  bottleGrapeVarieties: [],
+  bottleFlavorProfiles: [],
+  createdBy: "user",
+  createDate: "2025-01-01T00:00:00Z",
+  lastUpdatedBy: null,
+  lastUpdatedDate: null,
+};
+
 describe("pending items admin page", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedApi.getPendingBottles.mockResolvedValue({
+      items: [],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 0,
+      totalPages: 1,
+    });
   });
 
   it("shows Forbidden for non-admins", () => {
@@ -123,10 +169,9 @@ describe("pending items admin page", () => {
       expect(screen.getByText("Pending Milk")).toBeInTheDocument()
     );
 
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(1);
-    expect(within(rows[0]).getByRole("button", { name: /approve/i })).toBeInTheDocument();
-    expect(within(rows[0]).getByRole("button", { name: /reject/i })).toBeInTheDocument();
+    const milkRow = screen.getByText("Pending Milk").closest("tr")!;
+    expect(within(milkRow).getByRole("button", { name: /approve/i })).toBeInTheDocument();
+    expect(within(milkRow).getByRole("button", { name: /reject/i })).toBeInTheDocument();
   });
 
   it("approves an item through the confirm dialog", async () => {
@@ -255,9 +300,66 @@ describe("pending items admin page", () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Pending Milk")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /next page/i })[0]);
     await waitFor(() =>
       expect(mockedApi.getPendingItems).toHaveBeenCalledWith(2, 25)
     );
+  });
+
+  it("lists pending bottles and approves one via ConfirmDialog", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 0,
+      totalPages: 1,
+    });
+    mockedApi.getPendingBottles.mockResolvedValue({
+      items: [baseBottle],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+    mockedApi.approveBottle.mockResolvedValue({ ...baseBottle, status: "approved" });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Bottles")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Pending Chateau")).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /approve/i })[0]);
+    expect(screen.getByText(/will become visible to all users/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(mockedApi.approveBottle).toHaveBeenCalledWith(41));
+  });
+
+  it("rejects a pending bottle via ConfirmDialog", async () => {
+    mockedUseMe.mockReturnValue(meReturn(true));
+    mockedApi.getPendingItems.mockResolvedValue({
+      items: [],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 0,
+      totalPages: 1,
+    });
+    mockedApi.getPendingBottles.mockResolvedValue({
+      items: [baseBottle],
+      pageNumber: 1,
+      pageSize: 25,
+      totalCount: 1,
+      totalPages: 1,
+    });
+    mockedApi.rejectBottle.mockResolvedValue({ ...baseBottle, status: "rejected" });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Pending Chateau")).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /reject/i })[0]);
+    expect(screen.getByText(/will be marked rejected/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(mockedApi.rejectBottle).toHaveBeenCalledWith(41));
   });
 });

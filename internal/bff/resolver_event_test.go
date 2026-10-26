@@ -181,7 +181,7 @@ func TestResolver_FoodEvents_Page(t *testing.T) {
 	ev := mock.NewMockEventService(ctrl)
 	r := &Resolver{EventService: ev}
 
-	ev.EXPECT().ListFoodEvents(gomock.Any(), int64(7), int32(10), int32(10)).
+	ev.EXPECT().ListFoodEvents(gomock.Any(), int64(7), "", false, int32(10), int32(10)).
 		Return([]event.FoodEvent{evRow(3), evRow(4)}, nil)
 	ev.EXPECT().CountFoodEvents(gomock.Any(), int64(7)).Return(int64(25), nil)
 	ev.EXPECT().ListEventRecipesByEvents(gomock.Any(), gomock.InAnyOrder([]int64{3, 4}), int64(7)).
@@ -197,6 +197,8 @@ func TestResolver_FoodEvents_Page(t *testing.T) {
 	res, err := r.FoodEvents(evCtx(), struct {
 		Page     int32
 		PageSize int32
+		Sort     *string
+		SortDesc *bool
 	}{Page: 2, PageSize: 10})
 	require.NoError(t, err)
 	items := res.Items()

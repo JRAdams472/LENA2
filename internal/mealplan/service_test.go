@@ -136,7 +136,7 @@ func TestListMealPlans(t *testing.T) {
 				{MealPlanID: 8, HouseholdID: 42, Name: "B"},
 			}, nil)
 
-		got, err := s.ListMealPlans(ctx, 42, 10, 5)
+		got, err := s.ListMealPlans(ctx, 42, "", false, 10, 5)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.Equal(t, "A", got[0].Name)
@@ -146,7 +146,7 @@ func TestListMealPlans(t *testing.T) {
 	t.Run("error is wrapped", func(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().ListMealPlans(ctx, gomock.Any()).Return(nil, errDB)
-		_, err := s.ListMealPlans(ctx, 42, 10, 0)
+		_, err := s.ListMealPlans(ctx, 42, "", false, 10, 0)
 		assert.ErrorContains(t, err, "list meal plans")
 		assert.ErrorIs(t, err, errDB)
 	})

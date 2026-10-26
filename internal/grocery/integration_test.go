@@ -86,11 +86,11 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 
-	listsA, err := svc.ListGroceryLists(ctx, userA, 100, 0)
+	listsA, err := svc.ListGroceryLists(ctx, userA, "", false, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, listsA, 1)
 
-	listsB, err := svc.ListGroceryLists(ctx, userB, 100, 0)
+	listsB, err := svc.ListGroceryLists(ctx, userB, "", false, 100, 0)
 	require.NoError(t, err)
 	assert.Empty(t, listsB)
 
@@ -165,7 +165,7 @@ func TestIntegrationGroceryLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, genItems, 2)
 
-	listsA, err = svc.ListGroceryLists(ctx, userA, 100, 0)
+	listsA, err = svc.ListGroceryLists(ctx, userA, "", false, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, listsA, 2)
 

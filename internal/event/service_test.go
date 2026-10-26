@@ -104,7 +104,7 @@ func TestListFoodEvents(t *testing.T) {
 			{FoodEventID: 7, HouseholdID: 42, Name: "A", EventDate: pgtype.Date{Time: day, Valid: true}, SlotGranularityMinutes: 15, IsActive: false},
 		}, nil)
 
-	got, err := s.ListFoodEvents(ctx, 42, 10, 0)
+	got, err := s.ListFoodEvents(ctx, 42, "", false, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	assert.Equal(t, int64(8), got[0].FoodEventID)

@@ -148,7 +148,7 @@ func (r *Resolver) AddItemToCurrentGroceryList(ctx context.Context, args struct 
 	if err != nil {
 		return nil, err
 	}
-	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, 1, 0)
+	lists, err := r.GroceryService.ListGroceryLists(ctx, u.HouseholdID, "", false, 1, 0)
 	if err != nil {
 		return nil, err
 	}

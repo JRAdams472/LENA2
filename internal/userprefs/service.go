@@ -384,12 +384,17 @@ func (s *Service) CountHouseholdBottles(ctx context.Context, householdID int64) 
 
 // CellarSearch carries the filter and ranking inputs for
 // SearchHouseholdBottles — same shape as PantrySearch over bottle IDs.
+// Sort is a caller-validated key ("quantity", "purchaseDate"); when set it
+// outranks the tiers, which remain the tiebreaker. Name sorting isn't
+// possible here — bottle names live in the wine schema.
 type CellarSearch struct {
 	HouseholdID  int64
 	IncludeIDs   []int64
 	FavoriteIDs  []int64
 	PersonalIDs  []int64
 	HouseholdIDs []int64
+	Sort         string
+	SortDesc     bool
 	Limit        int32
 	Offset       int32
 }
@@ -403,6 +408,8 @@ func (s *Service) SearchHouseholdBottles(ctx context.Context, arg CellarSearch) 
 		FavoriteIds:  arg.FavoriteIDs,
 		PersonalIds:  arg.PersonalIDs,
 		HouseholdIds: arg.HouseholdIDs,
+		Sort:         textOrNull(arg.Sort),
+		SortDesc:     pgtype.Bool{Bool: arg.SortDesc, Valid: arg.Sort != ""},
 		Limit:        arg.Limit,
 		Offset:       arg.Offset,
 	})

@@ -114,7 +114,7 @@ func TestResolver_MealPlans_Happy(t *testing.T) {
 	up := mock.NewMockUserPrefsService(ctrl)
 	r := &Resolver{MealPlanService: mp, InventoryService: inv, RecipeService: rec, UserPrefsService: up}
 
-	mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, int32(10), int32(10)).Return([]mealplan.MealPlan{
+	mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, "", false, int32(10), int32(10)).Return([]mealplan.MealPlan{
 		{MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
 		{MealPlanID: 11, HouseholdID: mealPlanUserID, Name: "Week 2", WeekStartDate: mealPlanDate, WeekStartDayOfWeek: 1, IsActive: true},
 	}, nil)
@@ -125,6 +125,8 @@ func TestResolver_MealPlans_Happy(t *testing.T) {
 	res, err := r.MealPlans(mealPlanCtx(), struct {
 		Page     int32
 		PageSize int32
+		Sort     *string
+		SortDesc *bool
 	}{Page: 2, PageSize: 10})
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -502,7 +504,12 @@ func TestResolver_MealPlan_Unauthorized(t *testing.T) {
 			return (&Resolver{}).MealPlan(ctx, struct{ ID graphql.ID }{ID: "10"})
 		}},
 		{"MealPlans", func(ctx context.Context) (any, error) {
-			return (&Resolver{}).MealPlans(ctx, struct{ Page, PageSize int32 }{Page: 1, PageSize: 10})
+			return (&Resolver{}).MealPlans(ctx, struct {
+				Page     int32
+				PageSize int32
+				Sort     *string
+				SortDesc *bool
+			}{Page: 1, PageSize: 10})
 		}},
 		{"CreateMealPlan", func(ctx context.Context) (any, error) {
 			return (&Resolver{}).CreateMealPlan(ctx, struct{ Input createMealPlanInput }{
@@ -634,10 +641,15 @@ func TestResolver_MealPlan_ServiceError(t *testing.T) {
 		{
 			name: "MealPlans",
 			setup: func(mp *mock.MockMealPlanService) {
-				mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, int32(10), int32(0)).Return(nil, errMealPlanBoom)
+				mp.EXPECT().ListMealPlans(gomock.Any(), mealPlanUserID, "", false, int32(10), int32(0)).Return(nil, errMealPlanBoom)
 			},
 			call: func(r *Resolver, ctx context.Context) (any, error) {
-				return r.MealPlans(ctx, struct{ Page, PageSize int32 }{Page: 1, PageSize: 10})
+				return r.MealPlans(ctx, struct {
+					Page     int32
+					PageSize int32
+					Sort     *string
+					SortDesc *bool
+				}{Page: 1, PageSize: 10})
 			},
 		},
 		{
