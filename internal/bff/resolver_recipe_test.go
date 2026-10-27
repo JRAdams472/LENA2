@@ -848,6 +848,49 @@ func TestResolver_Recipe_RateRecipe(t *testing.T) {
 	})
 }
 
+func TestResolver_Recipe_ClearRecipeRating(t *testing.T) {
+	t.Run("clears the caller's rating", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().ClearRating(gomock.Any(), int64(11), int64(9)).Return(nil)
+
+		r := &Resolver{RecipeService: rec}
+		ok, err := r.ClearRecipeRating(recCtx(), struct {
+			RecipeID graphql.ID
+		}{RecipeID: "9"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.ClearRecipeRating(context.Background(), struct {
+			RecipeID graphql.ID
+		}{RecipeID: "9"})
+		require.ErrorContains(t, err, "unauthorized")
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		r := &Resolver{RecipeService: rec}
+		_, err := r.ClearRecipeRating(recCtx(), struct {
+			RecipeID graphql.ID
+		}{RecipeID: "abc"})
+		require.Error(t, err)
+	})
+
+	t.Run("service error propagates", func(t *testing.T) {
+		rec, _, _ := newRecMocks(t)
+		rec.EXPECT().ClearRating(gomock.Any(), int64(11), int64(9)).Return(errRecBoom)
+
+		r := &Resolver{RecipeService: rec}
+		_, err := r.ClearRecipeRating(recCtx(), struct {
+			RecipeID graphql.ID
+		}{RecipeID: "9"})
+		require.ErrorIs(t, err, errRecBoom)
+	})
+}
+
 func TestResolver_Recipe_RatingFields(t *testing.T) {
 	t.Run("batch-loaded via recipeChildren", func(t *testing.T) {
 		rec, _, up := newRecMocks(t)

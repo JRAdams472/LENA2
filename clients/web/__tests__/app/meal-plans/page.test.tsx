@@ -116,11 +116,31 @@ describe("meal plans page", () => {
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     fireEvent.change(screen.getByLabelText("Plan Name"), { target: { value: "Plan 2" } });
     fireEvent.change(screen.getByLabelText("Week Start Date"), { target: { value: "2024-01-08" } });
-    fireEvent.change(screen.getByLabelText("Week Start Day (0=Sun)"), { target: { value: "1" } });
+    fireEvent.mouseDown(screen.getByLabelText("Week Starts On"));
+    fireEvent.click(await screen.findByRole("option", { name: "Monday" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(getBodies().some((b) => b.query.includes("createMealPlan"))).toBe(true);
+      const body = getBodies().find((b) => b.query.includes("createMealPlan"));
+      expect(body).toBeTruthy();
+      expect(body!.variables.input.weekStartDayOfWeek).toBe(1);
     });
+  });
+
+  it("offers weekday names instead of a raw day integer", async () => {
+    renderPage(<MealPlansPage />);
+    await waitFor(() => screen.getByText("Plan 1"));
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    fireEvent.mouseDown(screen.getByLabelText("Week Starts On"));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ]);
   });
 
   it("edits a meal plan", async () => {
@@ -515,7 +535,18 @@ describe("meal plan detail page", () => {
       );
     });
 
-    it("removes a slot", async () => {
+    it("links Create New Recipe out to the recipes page instead of a dead-end shell", async () => {
+      mockDetail();
+      await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Plan 1"));
+
+      fireEvent.click(screen.getAllByText("Nothing planned — tap to add")[0]);
+      await screen.findByText("Sun - Breakfast");
+      const link = screen.getByRole("link", { name: "+ Create New Recipe" });
+      expect(link).toHaveAttribute("href", "/member/recipes?create=1");
+    });
+
+    it("asks before removing a slot, then removes it", async () => {
       mockDetail({ thePlan: plannedPlan });
       await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
       await waitFor(() => screen.getByText("Chili"));
@@ -523,9 +554,33 @@ describe("meal plan detail page", () => {
       fireEvent.click(screen.getByText("Chili"));
       await screen.findByText("Mon - Dinner");
       fireEvent.click(screen.getByRole("button", { name: "Remove Slot" }));
+      // The confirm dialog gates the delete — nothing is sent yet.
+      expect(
+        getBodies().some((b) => b.query.includes("removeMealSlot"))
+      ).toBe(false);
+      await screen.findByText("Remove this meal slot?");
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
       await waitFor(() =>
         expect(getBodies().some((b) => b.query.includes("removeMealSlot"))).toBe(true)
       );
+    });
+
+    it("does not remove a slot when the confirm is cancelled", async () => {
+      mockDetail({ thePlan: plannedPlan });
+      await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Chili"));
+
+      fireEvent.click(screen.getByText("Chili"));
+      await screen.findByText("Mon - Dinner");
+      fireEvent.click(screen.getByRole("button", { name: "Remove Slot" }));
+      await screen.findByText("Remove this meal slot?");
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await waitFor(() =>
+        expect(screen.queryByText("Remove this meal slot?")).not.toBeInTheDocument()
+      );
+      expect(
+        getBodies().some((b) => b.query.includes("removeMealSlot"))
+      ).toBe(false);
     });
 
     it("suggests meals and adds a suggestion to the plan", async () => {
@@ -565,6 +620,53 @@ describe("meal plan detail page", () => {
       expect(screen.queryByRole("button", { name: "Suggest Meals" })).not.toBeInTheDocument();
     });
 
+    it("shows the calendar date under each weekday header", async () => {
+      mockDetail();
+      await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() => screen.getByText("Weekly Grid"));
+      // weekStartDate is Mon 2024-01-01; until the API returns
+      // weekStartDayOfWeek it resolves to 0 (Sun) — so Sun shows Jan 1
+      // and the week runs through Sat Jan 7.
+      expect(screen.getByText("Jan 1")).toBeInTheDocument();
+      expect(screen.getByText("Jan 7")).toBeInTheDocument();
+    });
+
+    it("collapses per-ingredient nutrition warnings into one friendly line", async () => {
+      mockFetch.mockImplementation((_, init) => {
+        const body = JSON.parse((init as RequestInit).body as string);
+        if (body.query.includes("nutrition(")) {
+          return Promise.resolve(
+            gql({
+              nutrition: {
+                entries: [{ name: "Calories", unit: "kcal", amount: 600 }],
+                warnings: [
+                  'no linked item for ingredient "shallot"; skipped in nutrition',
+                  'no linked item for ingredient "shallot"; skipped in nutrition',
+                  'no linked item for ingredient "garlic"; skipped in nutrition',
+                ],
+              },
+            })
+          );
+        }
+        if (body.query.includes("recipeCategoryGroups")) {
+          return Promise.resolve(gql({ recipeCategoryGroups: [] }));
+        }
+        if (body.query.includes("aiAvailable")) {
+          return Promise.resolve(gql({ aiAvailable: false }));
+        }
+        return Promise.resolve(gql({ mealPlan: plan }));
+      });
+      await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
+      await waitFor(() =>
+        expect(
+          screen.getByText(/2 ingredients couldn't be counted in the nutrition totals/)
+        ).toBeInTheDocument()
+      );
+      expect(screen.getByText(/shallot, garlic/)).toBeInTheDocument();
+      // The raw engine strings never reach the page.
+      expect(screen.queryByText(/skipped in nutrition/)).not.toBeInTheDocument();
+    });
+
     it("adds an ad-hoc item to a slot", async () => {
       mockDetail();
       await renderDetailPage(<MealPlanDetailPage params={Promise.resolve({ id: "1" })} />);
@@ -584,6 +686,11 @@ describe("meal plan detail page", () => {
       );
       const option = await screen.findByRole("option", { name: /Milk/ });
       await userEvent.click(option);
+
+      // The picked item's inventory unit drives the field — read-only.
+      const unitInput = screen.getByLabelText("Unit");
+      expect(unitInput).toHaveValue("gallon");
+      expect(unitInput).toHaveAttribute("readonly");
 
       fireEvent.change(screen.getByLabelText("Qty"), { target: { value: "2" } });
       fireEvent.click(screen.getByRole("button", { name: "Add" }));

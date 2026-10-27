@@ -579,6 +579,23 @@ func (q *Queries) DeleteRecipeItems(ctx context.Context, recipeID int64) error {
 	return err
 }
 
+const deleteRecipeRating = `-- name: DeleteRecipeRating :exec
+DELETE FROM recipe.recipe_rating
+WHERE user_id = $1 AND recipe_id = $2
+`
+
+type DeleteRecipeRatingParams struct {
+	UserID   int64 `json:"user_id"`
+	RecipeID int64 `json:"recipe_id"`
+}
+
+// Un-rate: idempotent — a missing row still satisfies "no rating", so
+// callers never gate on a prior read.
+func (q *Queries) DeleteRecipeRating(ctx context.Context, arg DeleteRecipeRatingParams) error {
+	_, err := q.db.Exec(ctx, deleteRecipeRating, arg.UserID, arg.RecipeID)
+	return err
+}
+
 const deleteRecipeStep = `-- name: DeleteRecipeStep :execrows
 DELETE FROM recipe.recipe_step
 WHERE step_id = $1

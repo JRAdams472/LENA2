@@ -254,6 +254,41 @@ func (q *Queries) DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItem
 	return result.RowsAffected(), nil
 }
 
+const getCurrentMealPlan = `-- name: GetCurrentMealPlan :one
+SELECT meal_plan_id, name, week_start_date, week_start_day_of_week, is_active, created_by, created_at, updated_by, updated_at, household_id
+FROM mealplan.meal_plan
+WHERE household_id = $1
+  AND week_start_date <= $2::date
+  AND week_start_date + 7 > $2::date
+ORDER BY week_start_date DESC, meal_plan_id DESC
+LIMIT 1
+`
+
+type GetCurrentMealPlanParams struct {
+	HouseholdID int64       `json:"household_id"`
+	Day         pgtype.Date `json:"day"`
+}
+
+// The plan whose 7-day week contains the given day — the dashboard's
+// "current week" lookup, bounded to one row instead of a full table scan.
+func (q *Queries) GetCurrentMealPlan(ctx context.Context, arg GetCurrentMealPlanParams) (MealplanMealPlan, error) {
+	row := q.db.QueryRow(ctx, getCurrentMealPlan, arg.HouseholdID, arg.Day)
+	var i MealplanMealPlan
+	err := row.Scan(
+		&i.MealPlanID,
+		&i.Name,
+		&i.WeekStartDate,
+		&i.WeekStartDayOfWeek,
+		&i.IsActive,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+	)
+	return i, err
+}
+
 const getMealPlanByID = `-- name: GetMealPlanByID :one
 SELECT meal_plan_id, name, week_start_date, week_start_day_of_week, is_active, created_by, created_at, updated_by, updated_at, household_id
 FROM mealplan.meal_plan

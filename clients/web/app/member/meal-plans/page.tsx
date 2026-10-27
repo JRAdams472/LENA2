@@ -23,7 +23,12 @@ const WEEKDAYS = [
 const planFields: FieldDef<MealPlan>[] = [
   { key: "planName", label: "Plan Name" },
   { key: "weekStartDate", label: "Week Start Date", type: "date" },
-  { key: "weekStartDayOfWeek", label: "Week Start Day (0=Sun)", type: "number" },
+  {
+    key: "weekStartDayOfWeek",
+    label: "Week Starts On",
+    type: "select",
+    options: WEEKDAYS.map((label, value) => ({ value, label })),
+  },
   { key: "isActive", label: "Active", type: "boolean" },
 ];
 

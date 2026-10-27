@@ -34,6 +34,23 @@ func (r *Resolver) MealPlan(ctx context.Context, args struct{ ID graphql.ID }) (
 	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp, as: r.allergySrc(u)}, nil
 }
 
+// CurrentMealPlan resolves the plan whose week contains today — the
+// bounded dashboard lookup; null when no plan covers this week.
+func (r *Resolver) CurrentMealPlan(ctx context.Context) (*mealPlanResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mp, err := r.MealPlanService.GetCurrentMealPlan(ctx, u.HouseholdID, time.Now())
+	if err != nil {
+		if errors.Is(err, domainerr.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &mealPlanResolver{mp: r.MealPlanService, inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, plan: mp, as: r.allergySrc(u)}, nil
+}
+
 // MealPlans resolves the current household's meal plans.
 func (r *Resolver) MealPlans(ctx context.Context, args struct {
 	Page     int32
@@ -802,6 +819,8 @@ func (r *mealPlanResolver) ID() graphql.ID {
 func (r *mealPlanResolver) Name() string { return r.plan.Name }
 
 func (r *mealPlanResolver) WeekStartDate() string { return r.plan.WeekStartDate.Format(time.DateOnly) }
+
+func (r *mealPlanResolver) WeekStartDayOfWeek() int32 { return int32(r.plan.WeekStartDayOfWeek) }
 
 func (r *mealPlanResolver) IsActive() bool { return r.plan.IsActive }
 

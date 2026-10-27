@@ -447,6 +447,25 @@ func (s *Service) MarkAllNotificationsRead(ctx context.Context, userID, househol
 	return nil
 }
 
+// MarkNotificationRead clears one unread notification scoped the same way
+// as the mark-all sweep: the row must belong to the caller and to their
+// active household (or be user-global). Zero rows means the notification
+// is missing, foreign, or already read — surfaced as ErrNotFound.
+func (s *Service) MarkNotificationRead(ctx context.Context, userID, householdID, notificationID int64) error {
+	n, err := s.q.MarkNotificationRead(ctx, sqlc.MarkNotificationReadParams{
+		NotificationID: notificationID,
+		UserID:         userID,
+		HouseholdID:    pgtype.Int8{Int64: householdID, Valid: householdID != 0},
+	})
+	if err != nil {
+		return fmt.Errorf("mark notification read: %w", domainerr.FromStorage(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("mark notification read: %w", domainerr.ErrNotFound)
+	}
+	return nil
+}
+
 // CancelPendingInvitesFrom cancels pending invites a departing member
 // sent for the given household and returns them — callers fan out
 // invite_cancelled notifications per recipient.

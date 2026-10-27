@@ -116,6 +116,8 @@ export interface HouseholdNotification {
   // Deep-link + replacement-action target for ITEM_EXPIRING reminders.
   itemId: number | null;
   createdAt: string;
+  // When the caller marked the row read; null while unread.
+  readAt: string | null;
 }
 
 // One notification opt-out bucket as seen by the current user: "_all" is
@@ -780,6 +782,9 @@ export interface GroceryList extends AuditableEntity {
   // Source plan for generated lists; null on manual lists.
   mealPlanID: number | null;
   mealPlanName?: string | null;
+  // Optional member-set label (renameGroceryList); null means derive the
+  // display name from the source plan or generated date.
+  name?: string | null;
   generatedDate: string;
   groceryListItems?: GroceryListItem[];
   store?: Store | null;

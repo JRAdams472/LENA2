@@ -273,6 +273,17 @@ export default function RecipesPage() {
     }
   };
 
+  // Deep link from elsewhere (e.g. the meal-slot editor's "Create New
+  // Recipe"): ?create=1 opens the create dialog on arrival. Read from
+  // window.location rather than useSearchParams so the page doesn't need
+  // a Suspense boundary around the search-param read.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("create") === "1") {
+      handleCreate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSave = async (values: Record<string, unknown>) => {
     const favorite = Boolean(values.isFavorite);
     const wantsFavChange = favorite !== Boolean(dialogData.isFavorite);
@@ -323,13 +334,18 @@ export default function RecipesPage() {
   );
 
   const extraActions = (row: Record<string, unknown>) => (
-    <Button
-      size="small"
-      component={Link}
-      href={`/member/recipes/${row.recipeID as number}`}
-    >
-      Manage
-    </Button>
+    <>
+      <Button size="small" onClick={() => handleEdit(row as RecipeRow)}>
+        Details
+      </Button>
+      <Button
+        size="small"
+        component={Link}
+        href={`/member/recipes/${row.recipeID as number}`}
+      >
+        Manage
+      </Button>
+    </>
   );
 
   return (
@@ -454,7 +470,6 @@ export default function RecipesPage() {
         isLoading={listQuery.isLoading}
         error={(listQuery.error ?? deleteMutation.error) as Error | null}
         onCreate={handleCreate}
-        onEdit={handleEdit}
         onDelete={handleDelete}
         extraActions={extraActions}
         fields={tableFields}
@@ -483,7 +498,9 @@ export default function RecipesPage() {
       />
       <CrudDialog
         open={dialogOpen}
-        title={isCreate ? "Create Recipe" : "Edit Recipe"}
+        // "Details" is the metadata-only edit (name/times/servings) — the
+        // row's Manage action is where ingredients and steps change.
+        title={isCreate ? "Create Recipe" : "Recipe Details"}
         fields={recipeFields}
         values={dialogData}
         error={createMutation.error ?? updateMutation.error}

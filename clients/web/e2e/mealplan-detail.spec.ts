@@ -43,8 +43,7 @@ test.describe("meal plan detail", () => {
       ).toBeVisible();
 
       // Empty cells show a soft empty label; open the first one
-      // (Sun - Breakfast). The slot editor is a custom overlay, not a
-      // role=dialog.
+      // (Sun - Breakfast). The slot editor is a MUI Dialog.
       await page.getByText(/Nothing planned/).first().click();
       await expect(page.getByText("Sun - Breakfast")).toBeVisible();
 
@@ -55,11 +54,16 @@ test.describe("meal plan detail", () => {
       await expect(page.getByText("Sun - Breakfast")).toHaveCount(0);
       await expect(page.getByText(note)).toBeVisible();
 
-      // Reopen the same cell and remove the slot.
+      // Reopen the same cell and remove the slot — destructive now asks
+      // for confirmation first.
       await page.getByText(note).click();
       await expect(page.getByText("Sun - Breakfast")).toBeVisible();
       await page
         .getByRole("button", { name: "Remove Slot" })
+        .click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Remove" })
         .click();
       await expect(page.getByText(note)).toHaveCount(0);
     } finally {

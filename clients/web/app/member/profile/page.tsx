@@ -28,6 +28,7 @@ import DisclaimerConsentDialog from "@/app/components/DisclaimerConsentDialog";
 // Keyed by userID so the form mounts with the loaded profile values and
 // remounts if the signed-in user changes — avoids syncing props into state.
 function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
+  const [displayName, setDisplayName] = useState(me.displayName ?? "");
   const [firstName, setFirstName] = useState(me.firstName ?? "");
   const [lastName, setLastName] = useState(me.lastName ?? "");
   const [backupEmail, setBackupEmail] = useState(me.backupEmail ?? "");
@@ -36,9 +37,13 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Any edit invalidates the previous save — drop the "saved" banner so it
+  // never lingers over a dirty form.
+  const edited = () => setSaved(false);
+
   const mutation = useMutation({
     mutationFn: () =>
-      api.updateMyProfile({ firstName, lastName, backupEmail, birthdate, isSearchable }),
+      api.updateMyProfile({ displayName, firstName, lastName, backupEmail, birthdate, isSearchable }),
     onSuccess: () => {
       setSaved(true);
       setError(null);
@@ -62,16 +67,33 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
       {saved && <Alert severity="success">Profile saved.</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
       <TextField
+        label="Display name"
+        value={displayName}
+        onChange={(e) => {
+          edited();
+          setDisplayName(e.target.value);
+        }}
+        helperText="What your household sees — falls back to your name when blank."
+        slotProps={{ htmlInput: { maxLength: 100 } }}
+        fullWidth
+      />
+      <TextField
         label="First name"
         value={firstName}
-        onChange={(e) => setFirstName(e.target.value)}
+        onChange={(e) => {
+          edited();
+          setFirstName(e.target.value);
+        }}
         slotProps={{ htmlInput: { maxLength: 100 } }}
         fullWidth
       />
       <TextField
         label="Last name"
         value={lastName}
-        onChange={(e) => setLastName(e.target.value)}
+        onChange={(e) => {
+          edited();
+          setLastName(e.target.value);
+        }}
         slotProps={{ htmlInput: { maxLength: 100 } }}
         fullWidth
       />
@@ -79,7 +101,10 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
         label="Backup email"
         type="email"
         value={backupEmail}
-        onChange={(e) => setBackupEmail(e.target.value)}
+        onChange={(e) => {
+          edited();
+          setBackupEmail(e.target.value);
+        }}
         helperText="Used only if we need to reach you and your sign-in email fails."
         fullWidth
       />
@@ -87,7 +112,10 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
         label="Birthdate"
         type="date"
         value={birthdate}
-        onChange={(e) => setBirthdate(e.target.value)}
+        onChange={(e) => {
+          edited();
+          setBirthdate(e.target.value);
+        }}
         helperText="Optional — unlocks wine pairing and cocktail suggestions (21+)."
         slotProps={{ inputLabel: { shrink: true } }}
         fullWidth
@@ -96,7 +124,10 @@ function ProfileForm({ me, onSaved }: { me: User; onSaved: () => void }) {
         control={
           <Switch
             checked={isSearchable}
-            onChange={(e) => setIsSearchable(e.target.checked)}
+            onChange={(e) => {
+              edited();
+              setIsSearchable(e.target.checked);
+            }}
           />
         }
         label="Let other users find me by name or email to invite me to a household"

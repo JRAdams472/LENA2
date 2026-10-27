@@ -19,6 +19,7 @@ import Switch from "@mui/material/Switch";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { FieldDef } from "@/app/components/CrudDialog";
 import { FoodEvent } from "@/lib/types";
 
@@ -72,6 +73,7 @@ export default function EventsPage() {
   const [pageSize, setPageSize] = useState(25);
   // Server-side sort state — null keeps the date-descending default.
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EventRow | null>(null);
 
   const listQuery = useQuery({
     queryKey: ["foodEvents", pageNumber, pageSize, sort],
@@ -124,9 +126,7 @@ export default function EventsPage() {
   };
 
   const handleDelete = (row: Record<string, unknown>) => {
-    if (window.confirm("Delete this event?")) {
-      deleteMutation.mutate(row.foodEventID as number);
-    }
+    setDeleteTarget(row as EventRow);
   };
 
   const handleSave = () => {
@@ -241,6 +241,24 @@ export default function EventsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete event"
+        message={
+          deleteTarget
+            ? `Delete "${deleteTarget.name}"? Its dishes and timeline go with it.`
+            : ""
+        }
+        confirmLabel="Delete"
+        destructive
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          const row = deleteTarget;
+          setDeleteTarget(null);
+          if (row) deleteMutation.mutate(row.foodEventID);
+        }}
+        onClose={() => setDeleteTarget(null)}
+      />
     </Box>
   );
 }

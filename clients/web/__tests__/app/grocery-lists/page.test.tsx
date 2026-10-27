@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom";
 import { Suspense } from "react";
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import GroceryListsPage from "@/app/member/grocery-lists/page";
@@ -374,14 +374,55 @@ describe("grocery list detail page", () => {
     });
   });
 
-  it("deletes an item", async () => {
+  it("deletes an item and offers an undo that re-adds it", async () => {
     await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
     await waitFor(() => screen.getByText("Milk"));
-    const deleteButton = screen.getByTestId("DeleteIcon").closest("button")!;
+    const deleteButton = screen.getByLabelText("delete item");
     fireEvent.click(deleteButton);
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteGroceryItem"))).toBe(true);
     });
+
+    // Undo restores the line via the same add mutation.
+    await screen.findByText("Removed Milk");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => {
+      const add = getBodies().find((b) => b.query.includes("addGroceryItem"));
+      expect(add).toBeTruthy();
+      expect(add.variables.input).toMatchObject({
+        groceryListId: "1",
+        itemId: "1",
+        manualItemName: null,
+        quantity: 2,
+        unit: "cup",
+      });
+    });
+  });
+
+  it("shows the source meal plan's name in the header", async () => {
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("groceryRouteGroups")) {
+        return Promise.resolve(gql({ groceryRouteGroups: routeGroups }));
+      }
+      if (body.query.includes("groceryStores")) {
+        return Promise.resolve(gql({ groceryStores: [] }));
+      }
+      if (body.query.includes("suggestedRestockItems")) {
+        return Promise.resolve(gql({ suggestedRestockItems: [] }));
+      }
+      if (body.query.includes("shopperProviders")) {
+        return Promise.resolve(gql({ shopperProviders: [] }));
+      }
+      return Promise.resolve(
+        gql({
+          groceryList: { ...list, mealPlan: { id: "9", name: "Week 37" } },
+        })
+      );
+    });
+    await renderDetailPage(<GroceryListDetailPage params={Promise.resolve({ id: "1" })} />);
+    await waitFor(() => expect(screen.getByText(/for Week 37/)).toBeInTheDocument());
+    expect(screen.queryByText(/Meal Plan 9/)).not.toBeInTheDocument();
   });
 
   describe("shop with Instacart", () => {
@@ -637,15 +678,31 @@ describe("grocery list detail page", () => {
         expect(getBodies().some((b) => b.query.includes("reorderStoreAisles"))).toBe(true)
       );
 
+      // Rename needs an explicit save — no blur-commit.
+      fireEvent.click(screen.getAllByLabelText("rename aisle")[0]);
       fireEvent.change(screen.getByDisplayValue("Produce"), { target: { value: "Fresh" } });
-      fireEvent.blur(screen.getByDisplayValue("Fresh"));
+      fireEvent.click(screen.getByLabelText("save aisle name"));
       await waitFor(() =>
         expect(getBodies().some((b) => b.query.includes("renameStoreAisle"))).toBe(true)
       );
 
+      // Delete confirms before it fires.
       fireEvent.click(screen.getAllByLabelText("delete aisle")[0]);
+      expect(
+        getBodies().some((b) => b.query.includes("deleteStoreAisle"))
+      ).toBe(false);
+      const confirm = await screen.findByRole("dialog", { name: "Delete aisle" });
+      expect(confirm).toHaveTextContent('Delete aisle "Produce"?');
+      fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
       await waitFor(() =>
         expect(getBodies().some((b) => b.query.includes("deleteStoreAisle"))).toBe(true)
+      );
+      // While the confirm exits, the layout dialog behind it stays
+      // aria-hidden — wait for it to unmount before touching its fields.
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Delete aisle" })
+        ).not.toBeInTheDocument()
       );
 
       fireEvent.change(screen.getByLabelText("New aisle"), { target: { value: "Bakery" } });

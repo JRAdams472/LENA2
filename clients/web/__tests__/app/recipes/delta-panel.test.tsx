@@ -257,9 +257,13 @@ describe("RecipeDeltaPanel", () => {
     });
   });
 
-  it("adds a new step row to the draft", () => {
+  it("adds a new step row to the draft", async () => {
     const onDraftChange = renderPanel();
-    fireEvent.change(screen.getByLabelText("At step"), { target: { value: "2" } });
+    // Position select resolves to the canonical slot after step 1 → 2.
+    fireEvent.mouseDown(screen.getByLabelText("Position"));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "After step 1" })
+    );
     fireEvent.change(screen.getByLabelText("Step directions"), {
       target: { value: "Fold in cheese" },
     });

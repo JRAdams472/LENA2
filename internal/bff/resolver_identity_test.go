@@ -144,12 +144,12 @@ func (f *fakeIdentityService) AcceptDisclaimer(_ context.Context, userID int64, 
 	return nil
 }
 
-func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, first, last, backup string, birthdate *time.Time, _ string) error {
+func (f *fakeIdentityService) UpdateProfile(_ context.Context, userID int64, displayName, first, last, backup string, birthdate *time.Time, _ string) error {
 	if f.profileErr != nil {
 		return f.profileErr
 	}
 	u := f.users[userID]
-	u.FirstName, u.LastName, u.BackupEmail, u.Birthdate = first, last, backup, birthdate
+	u.DisplayName, u.FirstName, u.LastName, u.BackupEmail, u.Birthdate = displayName, first, last, backup, birthdate
 	f.users[userID] = u
 	return nil
 }
@@ -402,6 +402,17 @@ func TestResolver_UpdateMyProfile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Ada", *got.FirstName())
 	assert.Nil(t, got.BackupEmail())
+
+	// displayName persists through the same input and stays put when unset.
+	got, err = r.UpdateMyProfile(ctx, struct{ Input updateProfileInput }{
+		Input: updateProfileInput{DisplayName: str("Ada L.")},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Ada L.", *got.DisplayName())
+	assert.Equal(t, "Ada", *got.FirstName())
+	got, err = r.UpdateMyProfile(ctx, input(nil, nil, nil))
+	require.NoError(t, err)
+	assert.Equal(t, "Ada L.", *got.DisplayName())
 
 	// Validation.
 	_, err = r.UpdateMyProfile(ctx, input(nil, nil, str("not-an-email")))

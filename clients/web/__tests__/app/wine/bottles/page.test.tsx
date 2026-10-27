@@ -171,15 +171,79 @@ describe("bottles page", () => {
     });
   });
 
-  it("deletes a bottle", async () => {
+  it("deletes a bottle after confirming", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Chateau"));
     const row = screen.getByText("Chateau").closest("tr")!;
     const buttons = row.querySelectorAll("button");
     fireEvent.click(buttons[buttons.length - 1]);
+    expect(
+      getBodies().some((b) => b.query.includes("deleteBottle"))
+    ).toBe(false);
+    const confirm = await screen.findByRole("dialog", { name: "Delete bottle" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteBottle") && b.variables.id === "1")).toBe(true);
     });
+  });
+
+  it("scopes the region filter to the selected country", async () => {
+    const usa = { id: "2", name: "USA", isoCode: "US", description: null };
+    const napa = { id: "2", name: "Napa Valley", description: null, country: usa };
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("userBottles")) {
+        return Promise.resolve(gql({ userBottles: { items: [holding] } }));
+      }
+      if (body.query.includes("bottles(page:")) {
+        return Promise.resolve(
+          gql({
+            bottles: {
+              items: [bottle],
+              pageInfo: { pageNumber: 1, pageSize: 25, totalCount: 1 },
+            },
+          })
+        );
+      }
+      if (body.query.includes("regions(")) {
+        // getRegions fans out one regions(countryId) call per country.
+        const byCountry = body.variables.countryId === "2" ? napa : region;
+        return Promise.resolve(gql({ regions: [byCountry] }));
+      }
+      if (body.query.includes("types")) {
+        return Promise.resolve(gql({ types: [type] }));
+      }
+      if (body.query.includes("vintages")) {
+        return Promise.resolve(gql({ vintages: [vintage] }));
+      }
+      return Promise.resolve(gql({ countries: [country, usa] }));
+    });
+
+    renderPage();
+    await waitFor(() => screen.getByText("Chateau"));
+
+    // Unscoped: every region is offered.
+    fireEvent.mouseDown(screen.getByLabelText("Region"));
+    const allOptions = await screen.findAllByRole("option");
+    expect(allOptions.map((o) => o.textContent)).toEqual([
+      "All",
+      "Bordeaux",
+      "Napa Valley",
+    ]);
+    // Pick the USA region, then switch the country to France — the stale
+    // region selection must clear and the list must rescope.
+    fireEvent.click(screen.getByRole("option", { name: "Napa Valley" }));
+    fireEvent.mouseDown(screen.getByLabelText("Country"));
+    fireEvent.click(await screen.findByRole("option", { name: "France" }));
+
+    fireEvent.mouseDown(screen.getByLabelText("Region"));
+    const franceOptions = await screen.findAllByRole("option");
+    expect(franceOptions.map((o) => o.textContent)).toEqual(["All", "Bordeaux"]);
+    // The reset also drops the region filter from the next fetch.
+    const lastListCall = getBodies()
+      .filter((b) => b.query.includes("bottles(page:"))
+      .pop();
+    expect(lastListCall?.variables.regionId ?? null).toBeNull();
   });
 
   it("member sees cellar fields only and saves via updateUserBottle", async () => {

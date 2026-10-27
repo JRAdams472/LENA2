@@ -166,6 +166,7 @@ func (r *Resolver) SetUserActive(ctx context.Context, args struct {
 // updateProfileInput mirrors the UpdateProfileInput GraphQL input type.
 // A nil field leaves the stored value unchanged; an empty string clears it.
 type updateProfileInput struct {
+	DisplayName  *string
 	FirstName    *string
 	LastName     *string
 	BackupEmail  *string
@@ -185,6 +186,10 @@ func (r *Resolver) UpdateMyProfile(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	displayName, err := profileNameField(args.Input.DisplayName, current.DisplayName, "displayName")
+	if err != nil {
+		return nil, err
+	}
 	first, err := profileNameField(args.Input.FirstName, current.FirstName, "firstName")
 	if err != nil {
 		return nil, err
@@ -201,7 +206,7 @@ func (r *Resolver) UpdateMyProfile(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := r.IdentityService.UpdateProfile(ctx, actor.UserID, first, last, backup, birthdate, actor.Email); err != nil {
+	if err := r.IdentityService.UpdateProfile(ctx, actor.UserID, displayName, first, last, backup, birthdate, actor.Email); err != nil {
 		return nil, err
 	}
 	// Searchability lives on the identity row but is cached in the

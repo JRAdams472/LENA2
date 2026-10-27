@@ -3,6 +3,7 @@ package grocery
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"github.com/JRAdams472/LENA2/internal/grocery/sqlc"
 	"github.com/JRAdams472/LENA2/internal/grocery/sqlc/mock"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 )
 
 var errDB = errors.New("db error")
@@ -137,6 +139,55 @@ func TestDeleteGroceryList(t *testing.T) {
 		s, mq := newService(t)
 		mq.EXPECT().DeleteGroceryList(ctx, gomock.Any()).Return(int64(0), errDB)
 		assert.ErrorIs(t, s.DeleteGroceryList(ctx, 3, 42), errDB)
+	})
+}
+
+func TestRenameGroceryList(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success threads household and maps name", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().RenameGroceryList(ctx, sqlc.RenameGroceryListParams{
+			GroceryListID: 3,
+			HouseholdID:   42,
+			Name:          pgtype.Text{String: "Thanksgiving", Valid: true},
+			UpdatedBy:     pgtype.Text{String: "tester", Valid: true},
+		}).Return(sqlc.GroceryGroceryList{
+			GroceryListID: 3, HouseholdID: 42,
+			Name: pgtype.Text{String: "Thanksgiving", Valid: true},
+		}, nil)
+
+		got, err := s.RenameGroceryList(ctx, 3, 42, "Thanksgiving", "tester")
+		require.NoError(t, err)
+		require.NotNil(t, got.Name)
+		assert.Equal(t, "Thanksgiving", *got.Name)
+	})
+
+	t.Run("empty name clears to null", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().RenameGroceryList(ctx, gomock.Any()).
+			DoAndReturn(func(_ context.Context, arg sqlc.RenameGroceryListParams) (sqlc.GroceryGroceryList, error) {
+				assert.False(t, arg.Name.Valid)
+				return sqlc.GroceryGroceryList{GroceryListID: arg.GroceryListID, HouseholdID: arg.HouseholdID}, nil
+			})
+
+		got, err := s.RenameGroceryList(ctx, 3, 42, "   ", "tester")
+		require.NoError(t, err)
+		assert.Nil(t, got.Name)
+	})
+
+	t.Run("overlong name rejected", func(t *testing.T) {
+		s, _ := newService(t)
+		_, err := s.RenameGroceryList(ctx, 3, 42, strings.Repeat("x", 201), "tester")
+		assert.ErrorIs(t, err, domainerr.ErrValidation)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().RenameGroceryList(ctx, gomock.Any()).Return(sqlc.GroceryGroceryList{}, errDB)
+		_, err := s.RenameGroceryList(ctx, 3, 42, "x", "tester")
+		assert.ErrorContains(t, err, "rename grocery list")
+		assert.ErrorIs(t, err, errDB)
 	})
 }
 

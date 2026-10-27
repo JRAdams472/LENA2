@@ -121,7 +121,7 @@ test.describe("household invites", () => {
 
       // PRIMARY_USER invites through the search box.
       await page.goto("/member/household");
-      await page.getByLabel("Name or email").fill(JOINER.name);
+      await page.getByLabel("Find a member").fill(JOINER.name);
       await page.getByRole("button", { name: "Search", exact: true }).click();
       const hit = page
         .getByRole("listitem")

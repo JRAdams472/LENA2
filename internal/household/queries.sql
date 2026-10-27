@@ -107,6 +107,16 @@ WHERE user_id = $1
   AND read_at IS NULL
   AND (household_id IS NULL OR household_id = $2);
 
+-- name: MarkNotificationRead :execrows
+-- Single-row read: same scoping as the mark-all sweep — the row must
+-- belong to the caller and to their active household (or be user-global).
+UPDATE household.notifications
+SET read_at = now()
+WHERE notification_id = $1
+  AND user_id = $2
+  AND read_at IS NULL
+  AND (household_id IS NULL OR household_id = $3);
+
 -- name: CancelPendingInvitesFrom :many
 -- Leave/remove cleanup: pending invites a departing member sent for that
 -- household are cancelled so they can no longer be accepted against a

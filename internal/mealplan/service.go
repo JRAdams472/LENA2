@@ -125,6 +125,20 @@ func (s *Service) GetMealPlanByID(ctx context.Context, mealPlanID, householdID i
 	return toMealPlan(row), nil
 }
 
+// GetCurrentMealPlan returns the plan whose 7-day week contains day —
+// the dashboard's "current week" lookup, bounded to one row by the
+// week_start_date ordering. ErrNotFound means no plan covers that week.
+func (s *Service) GetCurrentMealPlan(ctx context.Context, householdID int64, day time.Time) (MealPlan, error) {
+	row, err := s.q.GetCurrentMealPlan(ctx, sqlc.GetCurrentMealPlanParams{
+		HouseholdID: householdID,
+		Day:         pgtype.Date{Time: day, Valid: true},
+	})
+	if err != nil {
+		return MealPlan{}, fmt.Errorf("get current meal plan: %w", domainerr.FromStorage(err))
+	}
+	return toMealPlan(row), nil
+}
+
 // GetMealPlansByIDs returns the household's plans for the given IDs in
 // one query — batch paths (grocery list pages) must not fetch per row.
 func (s *Service) GetMealPlansByIDs(ctx context.Context, householdID int64, mealPlanIDs []int64) ([]MealPlan, error) {

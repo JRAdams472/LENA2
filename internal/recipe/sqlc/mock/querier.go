@@ -336,6 +336,20 @@ func (mr *MockQuerierMockRecorder) DeleteRecipeItems(ctx, recipeID any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecipeItems", reflect.TypeOf((*MockQuerier)(nil).DeleteRecipeItems), ctx, recipeID)
 }
 
+// DeleteRecipeRating mocks base method.
+func (m *MockQuerier) DeleteRecipeRating(ctx context.Context, arg sqlc.DeleteRecipeRatingParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRecipeRating", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteRecipeRating indicates an expected call of DeleteRecipeRating.
+func (mr *MockQuerierMockRecorder) DeleteRecipeRating(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecipeRating", reflect.TypeOf((*MockQuerier)(nil).DeleteRecipeRating), ctx, arg)
+}
+
 // DeleteRecipeStep mocks base method.
 func (m *MockQuerier) DeleteRecipeStep(ctx context.Context, stepID int64) (int64, error) {
 	m.ctrl.T.Helper()

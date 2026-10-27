@@ -665,6 +665,34 @@ func TestSetRating(t *testing.T) {
 	})
 }
 
+func TestClearRating(t *testing.T) {
+	t.Run("deletes the user's rating row", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteRecipeRating(gomock.Any(), sqlc.DeleteRecipeRatingParams{UserID: 3, RecipeID: 7}).
+			Return(nil)
+
+		require.NoError(t, svc.ClearRating(context.Background(), 3, 7))
+	})
+
+	t.Run("absent rating is a no-op success", func(t *testing.T) {
+		svc, mq := newService(t)
+		// :exec reports no row count — clearing an unrated recipe succeeds.
+		mq.EXPECT().DeleteRecipeRating(gomock.Any(), gomock.Any()).Return(nil)
+
+		require.NoError(t, svc.ClearRating(context.Background(), 3, 99))
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().DeleteRecipeRating(gomock.Any(), gomock.Any()).Return(errDB)
+
+		err := svc.ClearRating(context.Background(), 3, 7)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errDB)
+		assert.ErrorContains(t, err, "clear rating:")
+	})
+}
+
 func TestGetUserRating(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		svc, mq := newService(t)

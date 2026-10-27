@@ -125,6 +125,39 @@ func TestGetMealPlanByID(t *testing.T) {
 	})
 }
 
+func TestGetCurrentMealPlan(t *testing.T) {
+	ctx := context.Background()
+	day := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+
+	t.Run("success threads household and day", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().GetCurrentMealPlan(ctx, sqlc.GetCurrentMealPlanParams{
+			HouseholdID: 42,
+			Day:         pgtype.Date{Time: day, Valid: true},
+		}).Return(sqlc.MealplanMealPlan{MealPlanID: 7, HouseholdID: 42, Name: "Week 37"}, nil)
+
+		got, err := s.GetCurrentMealPlan(ctx, 42, day)
+		require.NoError(t, err)
+		assert.Equal(t, int64(7), got.MealPlanID)
+		assert.Equal(t, "Week 37", got.Name)
+	})
+
+	t.Run("no covering plan is not found", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().GetCurrentMealPlan(ctx, gomock.Any()).Return(sqlc.MealplanMealPlan{}, pgx.ErrNoRows)
+		_, err := s.GetCurrentMealPlan(ctx, 42, day)
+		assert.ErrorIs(t, err, domainerr.ErrNotFound)
+	})
+
+	t.Run("error is wrapped", func(t *testing.T) {
+		s, mq := newService(t)
+		mq.EXPECT().GetCurrentMealPlan(ctx, gomock.Any()).Return(sqlc.MealplanMealPlan{}, errDB)
+		_, err := s.GetCurrentMealPlan(ctx, 42, day)
+		assert.ErrorContains(t, err, "get current meal plan")
+		assert.ErrorIs(t, err, errDB)
+	})
+}
+
 func TestListMealPlans(t *testing.T) {
 	ctx := context.Background()
 

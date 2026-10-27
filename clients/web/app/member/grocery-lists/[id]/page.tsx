@@ -21,8 +21,12 @@ import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Snackbar from "@mui/material/Snackbar";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import EditIcon from "@mui/icons-material/Edit";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
@@ -40,6 +44,7 @@ import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, fmtDate, fmtQty, sizeBadge, stripSize } from "@/lib/format";
 import { lineClamp } from "@/lib/themeVars";
 import { GroceryListItem, GroceryRouteGroup, ShoppingLink, Store, StoreAisle } from "@/lib/types";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import CrudDialog from "@/app/components/CrudDialog";
 
 function brandItemLabel(item: { name: string; brand?: string | null }): string {
@@ -247,6 +252,7 @@ export function ItemRow({
   onMoveToAisle,
   onDragStart,
   onDragOverRow,
+  onDeleted,
   reorder,
 }: {
   item: GroceryListItem;
@@ -257,6 +263,9 @@ export function ItemRow({
   onMoveToAisle?: (item: GroceryListItem, aisleID: number | null) => void;
   onDragStart?: (itemID: number) => void;
   onDragOverRow?: (e: React.DragEvent, itemID: number) => void;
+  // Fires after a successful delete so the page can offer an undo — the
+  // row unmounts with its list entry, so the snackbar can't live here.
+  onDeleted?: (item: GroceryListItem) => void;
   // Touch fallback for the drag handle — HTML5 drag never fires on phone
   // browsers, so narrow viewports get up/down buttons instead.
   reorder?: {
@@ -312,6 +321,7 @@ export function ItemRow({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
       queryClient.invalidateQueries({ queryKey: ["routeGroups", listId] });
+      onDeleted?.(item);
     },
   });
 
@@ -494,6 +504,10 @@ function StoreLayoutDialog({
 }) {
   const queryClient = useQueryClient();
   const [newAisle, setNewAisle] = useState("");
+  // Aisle being renamed — the row swaps its name for a field with
+  // explicit save/cancel so a stray blur can't silently commit.
+  const [rename, setRename] = useState<{ aisleID: number; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<StoreAisle | null>(null);
   const aisles = [...(store.aisles ?? [])].sort((a, b) => a.position - b.position);
 
   const refresh = () => {
@@ -532,7 +546,17 @@ function StoreLayoutDialog({
     moveMutation.mutate(ids);
   };
 
+  const saveRename = () => {
+    const name = rename?.name.trim();
+    if (!rename || !name) return;
+    renameMutation.mutate(
+      { aisleID: rename.aisleID, name },
+      { onSuccess: () => setRename(null) }
+    );
+  };
+
   return (
+    <>
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{store.name} — aisle layout</DialogTitle>
       <DialogContent>
@@ -551,18 +575,56 @@ function StoreLayoutDialog({
             <IconButton size="small" onClick={() => move(idx, 1)} disabled={idx === aisles.length - 1} aria-label="move aisle down">
               <ArrowDownwardIcon fontSize="small" />
             </IconButton>
-            <TextField
-              size="small"
-              defaultValue={a.name}
-              sx={{ flexGrow: 1 }}
-              onBlur={(e) => {
-                const name = e.target.value.trim();
-                if (name && name !== a.name) {
-                  renameMutation.mutate({ aisleID: a.aisleID, name });
-                }
-              }}
-            />
-            <IconButton size="small" onClick={() => deleteMutation.mutate(a.aisleID)} aria-label="delete aisle">
+            {rename?.aisleID === a.aisleID ? (
+              <>
+                <TextField
+                  size="small"
+                  autoFocus
+                  value={rename.name}
+                  sx={{ flexGrow: 1 }}
+                  onChange={(e) =>
+                    setRename({ aisleID: a.aisleID, name: e.target.value })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveRename();
+                    if (e.key === "Escape") setRename(null);
+                  }}
+                />
+                <IconButton
+                  size="small"
+                  aria-label="save aisle name"
+                  disabled={
+                    rename.name.trim() === "" ||
+                    rename.name.trim() === a.name ||
+                    renameMutation.isPending
+                  }
+                  onClick={saveRename}
+                >
+                  <CheckIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label="cancel rename"
+                  onClick={() => setRename(null)}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </>
+            ) : (
+              <>
+                <Typography sx={{ flexGrow: 1 }} noWrap>
+                  {a.name}
+                </Typography>
+                <IconButton
+                  size="small"
+                  aria-label="rename aisle"
+                  onClick={() => setRename({ aisleID: a.aisleID, name: a.name })}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </>
+            )}
+            <IconButton size="small" onClick={() => setPendingDelete(a)} aria-label="delete aisle">
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Box>
@@ -588,6 +650,25 @@ function StoreLayoutDialog({
         <Button onClick={onClose}>Done</Button>
       </DialogActions>
     </Dialog>
+    <ConfirmDialog
+      open={pendingDelete !== null}
+      title="Delete aisle"
+      message={
+        pendingDelete
+          ? `Delete aisle "${pendingDelete.name}"? Items assigned to it move to the unassigned group.`
+          : ""
+      }
+      confirmLabel="Delete"
+      destructive
+      busy={deleteMutation.isPending}
+      onConfirm={() => {
+        const a = pendingDelete;
+        setPendingDelete(null);
+        if (a) deleteMutation.mutate(a.aisleID);
+      }}
+      onClose={() => setPendingDelete(null)}
+    />
+    </>
   );
 }
 
@@ -722,6 +803,9 @@ export default function GroceryListDetailPage({
     quantityNeeded: "",
     unitOfMeasure: "",
   });
+  // The last deleted line — powers the "Undo" snackbar. The row unmounts
+  // on delete, so the affordance has to live at page level.
+  const [removedItem, setRemovedItem] = useState<GroceryListItem | null>(null);
   const [addPick, setAddPick] = useState<AddPick | null>(null);
   const [addInput, setAddInput] = useState("");
   const [debouncedAdd, setDebouncedAdd] = useState("");
@@ -783,6 +867,31 @@ export default function GroceryListDetailPage({
     }
   };
 
+  // Undo re-adds the line through the same mutation as a manual add — the
+  // restored row gets a fresh id and lands at the end of the walk (aisle
+  // placement and position are not preserved). A previously checked line
+  // re-adds unchecked, so a second call restores the check mark.
+  const undoRemoveMutation = useMutation({
+    mutationFn: async (it: GroceryListItem) => {
+      const added = await api.addGroceryListItem(listId, {
+        itemID: it.itemID,
+        ingredientID: it.ingredientID ?? null,
+        manualItemName: it.manualItemName,
+        quantityNeeded: it.quantityNeeded,
+        unitOfMeasure: it.unitOfMeasure,
+        source: it.source,
+        isChecked: false,
+      } as Omit<GroceryListItem, "groceryListItemID" | "groceryListID" | "groceryList">);
+      if (it.isChecked) {
+        await api.toggleGroceryListItemChecked(added.groceryListItemID);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["groceryList", listId] });
+      queryClient.invalidateQueries({ queryKey: ["routeGroups", listId] });
+    },
+  });
+
   const groups = routeQuery.data ?? [];
   // Only groups with rows render; drag drops and the narrow-viewport arrow
   // buttons must translate a visible-group position back to its index in
@@ -827,7 +936,7 @@ export default function GroceryListDetailPage({
             </Typography>
             <Typography variant="body1" color="text.secondary">
               Generated {fmtDate(list.generatedDate)}
-              {list.mealPlanID ? ` for Meal Plan ${list.mealPlanID}` : ""}
+              {list.mealPlanName ? ` for ${list.mealPlanName}` : ""}
             </Typography>
           </Box>
           <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -919,6 +1028,7 @@ export default function GroceryListDetailPage({
                   draggable={!isNarrow}
                   aisles={storeAisles}
                   onMoveToAisle={moveToAisle}
+                  onDeleted={setRemovedItem}
                   onDragStart={(itemID) => {
                     dragItemRef.current = itemID;
                   }}
@@ -975,9 +1085,9 @@ export default function GroceryListDetailPage({
           );
         })
       )}
-      {reorderMutation.error && (
+      {(reorderMutation.error || undoRemoveMutation.error) && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {(reorderMutation.error as Error).message}
+          {((reorderMutation.error ?? undoRemoveMutation.error) as Error).message}
         </Alert>
       )}
 
@@ -1142,6 +1252,26 @@ export default function GroceryListDetailPage({
           onClose={() => setShopResult(null)}
         />
       )}
+      <Snackbar
+        open={removedItem !== null}
+        autoHideDuration={6000}
+        onClose={() => setRemovedItem(null)}
+        message={removedItem ? `Removed ${itemName(removedItem)}` : ""}
+        action={
+          <Button
+            color="inherit"
+            size="small"
+            disabled={undoRemoveMutation.isPending}
+            onClick={() => {
+              const it = removedItem;
+              setRemovedItem(null);
+              if (it) undoRemoveMutation.mutate(it);
+            }}
+          >
+            Undo
+          </Button>
+        }
+      />
     </Box>
   );
 }

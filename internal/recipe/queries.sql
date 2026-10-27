@@ -115,6 +115,12 @@ SELECT *
 FROM recipe.recipe_rating
 WHERE user_id = $1 AND recipe_id = $2;
 
+-- name: DeleteRecipeRating :exec
+-- Un-rate: idempotent — a missing row still satisfies "no rating", so
+-- callers never gate on a prior read.
+DELETE FROM recipe.recipe_rating
+WHERE user_id = $1 AND recipe_id = $2;
+
 -- name: ListRecipeRatings :many
 SELECT *
 FROM recipe.recipe_rating

@@ -350,7 +350,7 @@ VALUES ($1, $2,
      ORDER BY generated_at DESC, grocery_list_id DESC
      LIMIT 1),
     $3, $4)
-RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id, name
 `
 
 type CreateGroceryListParams struct {
@@ -380,6 +380,7 @@ func (q *Queries) CreateGroceryList(ctx context.Context, arg CreateGroceryListPa
 		&i.UpdatedAt,
 		&i.HouseholdID,
 		&i.StoreID,
+		&i.Name,
 	)
 	return i, err
 }
@@ -575,7 +576,7 @@ func (q *Queries) GetAisleByID(ctx context.Context, arg GetAisleByIDParams) (Gro
 }
 
 const getGroceryListByID = `-- name: GetGroceryListByID :one
-SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id, name
 FROM grocery.grocery_list
 WHERE grocery_list_id = $1 AND household_id = $2
 `
@@ -598,6 +599,7 @@ func (q *Queries) GetGroceryListByID(ctx context.Context, arg GetGroceryListByID
 		&i.UpdatedAt,
 		&i.HouseholdID,
 		&i.StoreID,
+		&i.Name,
 	)
 	return i, err
 }
@@ -638,7 +640,7 @@ func (q *Queries) GetGroceryListItemByID(ctx context.Context, arg GetGroceryList
 }
 
 const getLatestGroceryListByPlan = `-- name: GetLatestGroceryListByPlan :one
-SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id, name
 FROM grocery.grocery_list
 WHERE household_id = $1 AND meal_plan_id = $2
 ORDER BY generated_at DESC, grocery_list_id DESC
@@ -663,6 +665,7 @@ func (q *Queries) GetLatestGroceryListByPlan(ctx context.Context, arg GetLatestG
 		&i.UpdatedAt,
 		&i.HouseholdID,
 		&i.StoreID,
+		&i.Name,
 	)
 	return i, err
 }
@@ -891,7 +894,7 @@ func (q *Queries) ListGroceryListItemsByLists(ctx context.Context, arg ListGroce
 }
 
 const listGroceryLists = `-- name: ListGroceryLists :many
-SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
+SELECT grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id, name
 FROM grocery.grocery_list
 WHERE household_id = $1
 ORDER BY
@@ -935,6 +938,7 @@ func (q *Queries) ListGroceryLists(ctx context.Context, arg ListGroceryListsPara
 			&i.UpdatedAt,
 			&i.HouseholdID,
 			&i.StoreID,
+			&i.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -1103,6 +1107,43 @@ func (q *Queries) RenameAisle(ctx context.Context, arg RenameAisleParams) (Groce
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const renameGroceryList = `-- name: RenameGroceryList :one
+UPDATE grocery.grocery_list
+SET name = $3, updated_by = $4, updated_at = now()
+WHERE grocery_list_id = $1 AND household_id = $2
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id, name
+`
+
+type RenameGroceryListParams struct {
+	GroceryListID int64       `json:"grocery_list_id"`
+	HouseholdID   int64       `json:"household_id"`
+	Name          pgtype.Text `json:"name"`
+	UpdatedBy     pgtype.Text `json:"updated_by"`
+}
+
+func (q *Queries) RenameGroceryList(ctx context.Context, arg RenameGroceryListParams) (GroceryGroceryList, error) {
+	row := q.db.QueryRow(ctx, renameGroceryList,
+		arg.GroceryListID,
+		arg.HouseholdID,
+		arg.Name,
+		arg.UpdatedBy,
+	)
+	var i GroceryGroceryList
+	err := row.Scan(
+		&i.GroceryListID,
+		&i.MealPlanID,
+		&i.GeneratedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.HouseholdID,
+		&i.StoreID,
+		&i.Name,
 	)
 	return i, err
 }
@@ -1377,7 +1418,7 @@ SET generated_at = now(),
     updated_by   = $3,
     updated_at   = now()
 WHERE grocery_list_id = $1 AND household_id = $2
-RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id
+RETURNING grocery_list_id, meal_plan_id, generated_at, created_by, created_at, updated_by, updated_at, household_id, store_id, name
 `
 
 type TouchGroceryListGeneratedAtParams struct {
@@ -1399,6 +1440,7 @@ func (q *Queries) TouchGroceryListGeneratedAt(ctx context.Context, arg TouchGroc
 		&i.UpdatedAt,
 		&i.HouseholdID,
 		&i.StoreID,
+		&i.Name,
 	)
 	return i, err
 }

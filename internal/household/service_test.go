@@ -347,6 +347,22 @@ func TestNotificationCountsAndRead(t *testing.T) {
 		}).Return(int64(2), nil)
 		require.NoError(t, svc.MarkAllNotificationsRead(ctx, 4, 8))
 	})
+
+	t.Run("mark one read", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().MarkNotificationRead(ctx, sqlc.MarkNotificationReadParams{
+			NotificationID: 21,
+			UserID:         4,
+			HouseholdID:    pgtype.Int8{Int64: 8, Valid: true},
+		}).Return(int64(1), nil)
+		require.NoError(t, svc.MarkNotificationRead(ctx, 4, 8, 21))
+	})
+
+	t.Run("mark one read missing is not found", func(t *testing.T) {
+		svc, mq := newService(t)
+		mq.EXPECT().MarkNotificationRead(ctx, gomock.Any()).Return(int64(0), nil)
+		assert.ErrorIs(t, svc.MarkNotificationRead(ctx, 4, 8, 99), domainerr.ErrNotFound)
+	})
 }
 
 func TestCancelPendingInvitesFrom(t *testing.T) {

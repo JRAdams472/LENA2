@@ -35,6 +35,7 @@ import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
 import { api, EventRecipeStepInput, EventRecipeItemInput } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { fmtDate, fmtQty } from "@/lib/format";
 import { EventFixSuggestion, EventRecipe, EventRecipeItem, EventRecipeStep, EventTimelineRecipe, Item, Recipe } from "@/lib/types";
 import RecipeAutocomplete from "@/app/components/RecipeAutocomplete";
@@ -51,6 +52,22 @@ function timeOptions(granularity: number): string[] {
     out.push(`${h}:${m}`);
   }
   return out;
+}
+
+// Default serve time for a new dish: the slot nearest 18:00 (dinner).
+// slots[0] is always 00:00 — a meaningless default for a meal event.
+function nearestSlot(slots: string[], targetMinutes = 18 * 60): string {
+  let best = slots[0];
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const t of slots) {
+    const [h, m] = t.split(":").map(Number);
+    const dist = Math.abs(h * 60 + m - targetMinutes);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = t;
+    }
+  }
+  return best ?? "18:00";
 }
 
 // The resolver compares targetTime's date to the event date using the
@@ -98,6 +115,9 @@ interface StepForm {
   durationMinutes: string;
   stepType: string;
   isPassive: boolean;
+  // "" = no dependency; otherwise the earlier step's stepNumber as a string
+  // (Select values are strings).
+  dependsOnStepNumber: string;
   appliance: string;
 }
 
@@ -135,6 +155,18 @@ export default function EventDetailPage({
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
   const [fixes, setFixes] = useState<EventFixSuggestion[] | null>(null);
+  // Step numbers available as "After step" choices in the step dialog —
+  // captured from the slot when the dialog opens.
+  const [stepDialogDeps, setStepDialogDeps] = useState<number[]>([]);
+  // Shared destructive-action confirmation (dish/step/ingredient/event
+  // deletes and the destructive recipe sync all route through it).
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void;
+  } | null>(null);
 
   const eventQuery = useQuery({
     queryKey: ["foodEvent", eventId],
@@ -218,6 +250,8 @@ export default function EventDetailPage({
         durationMinutes: f.durationMinutes === "" ? null : Number(f.durationMinutes),
         stepType: f.stepType === "" ? null : f.stepType,
         isPassive: f.isPassive,
+        dependsOnStepNumber:
+          f.dependsOnStepNumber === "" ? null : Number(f.dependsOnStepNumber),
         appliance: f.appliance === "" ? null : f.appliance,
       };
       return f.eventRecipeStepID === null
@@ -308,7 +342,7 @@ export default function EventDetailPage({
       recipeID: null,
       recipe: null,
       mealType: "dinner",
-      time: slots[0] ?? "18:00",
+      time: nearestSlot(slots),
       servings: "",
       notes: "",
     });
@@ -339,8 +373,10 @@ export default function EventDetailPage({
       durationMinutes: "",
       stepType: "",
       isPassive: false,
+      dependsOnStepNumber: "",
       appliance: "",
     });
+    setStepDialogDeps((r.steps ?? []).map((s) => s.stepNumber));
     setStepDialogOpen(true);
   };
 
@@ -352,8 +388,16 @@ export default function EventDetailPage({
       durationMinutes: s.durationMinutes != null ? String(s.durationMinutes) : "",
       stepType: s.stepType ?? "",
       isPassive: s.isPassive,
+      dependsOnStepNumber:
+        s.dependsOnStepNumber != null ? String(s.dependsOnStepNumber) : "",
       appliance: s.appliance ?? "",
     });
+    // A step can't depend on itself — offer only the other steps.
+    setStepDialogDeps(
+      (r.steps ?? [])
+        .map((x) => x.stepNumber)
+        .filter((n) => n !== s.stepNumber)
+    );
     setStepDialogOpen(true);
   };
 
@@ -423,11 +467,13 @@ export default function EventDetailPage({
             <Button
               variant="outlined"
               color="error"
-              onClick={() => {
-                if (window.confirm(`Delete "${event.name}"?`)) {
-                  deleteEventMutation.mutate();
-                }
-              }}
+              onClick={() =>
+                setConfirm({
+                  title: "Delete event",
+                  message: `Delete "${event.name}"? Its dishes and timeline go with it.`,
+                  action: () => deleteEventMutation.mutate(),
+                })
+              }
               disabled={deleteEventMutation.isPending}
             >
               Delete Event
@@ -512,7 +558,14 @@ export default function EventDetailPage({
                         <IconButton
                           size="small"
                           aria-label="Delete"
-                          onClick={() => removeSlotMutation.mutate(r.eventRecipeID)}
+                          onClick={() =>
+                            setConfirm({
+                              title: "Remove dish",
+                              message: `Remove ${recipeName(r) ?? "this free-form dish"} from the event?`,
+                              action: () =>
+                                removeSlotMutation.mutate(r.eventRecipeID),
+                            })
+                          }
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -525,23 +578,38 @@ export default function EventDetailPage({
                             slot={r}
                             onAdd={() => openStepCreate(r)}
                             onEdit={(s) => openStepEdit(r, s)}
-                            onRemove={(id) => removeStepMutation.mutate(id)}
-                            onSync={() => {
-                              if (
-                                window.confirm(
-                                  "Re-copy the linked recipe's steps and ingredients? Edits to this slot's copies will be lost."
-                                )
-                              ) {
-                                syncStepsMutation.mutate(r.eventRecipeID);
-                              }
-                            }}
+                            onRemove={(s) =>
+                              setConfirm({
+                                title: "Delete step",
+                                message: `Delete step ${s.stepNumber} "${s.instruction}"?`,
+                                action: () =>
+                                  removeStepMutation.mutate(s.eventRecipeStepID),
+                              })
+                            }
+                            onSync={() =>
+                              setConfirm({
+                                title: "Sync from recipe",
+                                message:
+                                  "Re-copy the linked recipe's steps and ingredients? Edits to this slot's copies will be lost.",
+                                confirmLabel: "Sync",
+                                action: () =>
+                                  syncStepsMutation.mutate(r.eventRecipeID),
+                              })
+                            }
                           />
                           <Divider sx={{ my: 1 }} />
                           <SlotItems
                             slot={r}
                             onAdd={() => openItemCreate(r)}
                             onEdit={(i) => openItemEdit(r, i)}
-                            onRemove={(id) => removeItemMutation.mutate(id)}
+                            onRemove={(i) =>
+                              setConfirm({
+                                title: "Delete ingredient",
+                                message: `Remove ${i.itemName ?? `item ${i.itemID}`} from this dish?`,
+                                action: () =>
+                                  removeItemMutation.mutate(i.eventRecipeItemID),
+                              })
+                            }
                           />
                         </TableCell>
                       </TableRow>
@@ -777,6 +845,28 @@ export default function EventDetailPage({
                   ))}
                 </Select>
               </FormControl>
+              {stepDialogDeps.length > 0 && (
+                <FormControl fullWidth margin="dense">
+                  <InputLabel id="step-depends-label">After step</InputLabel>
+                  <Select
+                    labelId="step-depends-label"
+                    label="After step"
+                    value={stepForm.dependsOnStepNumber}
+                    onChange={(e) =>
+                      setStepForm({ ...stepForm, dependsOnStepNumber: e.target.value })
+                    }
+                  >
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                    {stepDialogDeps.map((n) => (
+                      <MenuItem key={n} value={String(n)}>
+                        Step {n}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
               <TextField
                 label="Appliance"
                 fullWidth
@@ -887,6 +977,18 @@ export default function EventDetailPage({
           </Button>
         </DialogActions>
       </Dialog>
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.title ?? ""}
+        message={confirm?.message ?? ""}
+        confirmLabel={confirm?.confirmLabel ?? "Delete"}
+        destructive={confirm?.destructive ?? true}
+        onConfirm={() => {
+          confirm?.action();
+          setConfirm(null);
+        }}
+        onClose={() => setConfirm(null)}
+      />
       <Divider />
     </Box>
   );
@@ -904,7 +1006,7 @@ function SlotSteps({
   slot: EventRecipe;
   onAdd: () => void;
   onEdit: (step: EventRecipeStep) => void;
-  onRemove: (stepId: number) => void;
+  onRemove: (step: EventRecipeStep) => void;
   onSync: () => void;
 }) {
   const steps = slot.steps ?? [];
@@ -960,7 +1062,7 @@ function SlotSteps({
                   <IconButton
                     size="small"
                     aria-label="Delete step"
-                    onClick={() => onRemove(s.eventRecipeStepID)}
+                    onClick={() => onRemove(s)}
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>
@@ -986,7 +1088,7 @@ function SlotItems({
   slot: EventRecipe;
   onAdd: () => void;
   onEdit: (item: EventRecipeItem) => void;
-  onRemove: (itemId: number) => void;
+  onRemove: (item: EventRecipeItem) => void;
 }) {
   const items = [...(slot.items ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
   let note = "";
@@ -1053,7 +1155,7 @@ function SlotItems({
                   <IconButton
                     size="small"
                     aria-label="Delete ingredient"
-                    onClick={() => onRemove(i.eventRecipeItemID)}
+                    onClick={() => onRemove(i)}
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>

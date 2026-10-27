@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/app/auth/AuthProvider";
@@ -89,9 +90,14 @@ function OAuthCallback() {
       }}
     >
       {error || provider === null ? (
-        <Typography color="error">
-          {error ?? "Unknown sign-in provider."}
-        </Typography>
+        <>
+          <Typography color="error">
+            {error ?? "Unknown sign-in provider."}
+          </Typography>
+          <Button variant="outlined" onClick={() => router.push("/login")}>
+            Back to sign in
+          </Button>
+        </>
       ) : (
         <>
           <CircularProgress />

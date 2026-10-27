@@ -28,6 +28,9 @@ type Querier interface {
 	DeleteMealPlansByHousehold(ctx context.Context, householdID int64) error
 	DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) (int64, error)
 	DeleteMealSlotItem(ctx context.Context, arg DeleteMealSlotItemParams) (int64, error)
+	// The plan whose 7-day week contains the given day — the dashboard's
+	// "current week" lookup, bounded to one row instead of a full table scan.
+	GetCurrentMealPlan(ctx context.Context, arg GetCurrentMealPlanParams) (MealplanMealPlan, error)
 	GetMealPlanByID(ctx context.Context, arg GetMealPlanByIDParams) (MealplanMealPlan, error)
 	GetMealPlansByIDs(ctx context.Context, arg GetMealPlansByIDsParams) ([]MealplanMealPlan, error)
 	GetMealSlotByID(ctx context.Context, arg GetMealSlotByIDParams) (MealplanMealSlot, error)

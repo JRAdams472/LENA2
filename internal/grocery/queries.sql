@@ -218,6 +218,12 @@ UPDATE grocery.grocery_list
 SET store_id = $3, updated_by = $4, updated_at = now()
 WHERE grocery_list_id = $1 AND household_id = $2;
 
+-- name: RenameGroceryList :one
+UPDATE grocery.grocery_list
+SET name = $3, updated_by = $4, updated_at = now()
+WHERE grocery_list_id = $1 AND household_id = $2
+RETURNING *;
+
 -- name: CreateAisle :one
 INSERT INTO grocery.store_aisle (store_id, name, position, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5)

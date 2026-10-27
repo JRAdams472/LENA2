@@ -1007,7 +1007,8 @@ SET first_name   = $2,
     last_name    = $3,
     backup_email = $4,
     birthdate    = $5,
-    updated_by   = $6,
+    display_name = $6,
+    updated_by   = $7,
     updated_at   = now()
 WHERE user_id = $1
 `
@@ -1018,6 +1019,7 @@ type UpdateUserProfileParams struct {
 	LastName    pgtype.Text `json:"last_name"`
 	BackupEmail pgtype.Text `json:"backup_email"`
 	Birthdate   pgtype.Date `json:"birthdate"`
+	DisplayName pgtype.Text `json:"display_name"`
 	UpdatedBy   pgtype.Text `json:"updated_by"`
 }
 
@@ -1028,6 +1030,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		arg.LastName,
 		arg.BackupEmail,
 		arg.Birthdate,
+		arg.DisplayName,
 		arg.UpdatedBy,
 	)
 	if err != nil {
@@ -1102,7 +1105,9 @@ ON CONFLICT (provider, external_subject)
     DO UPDATE SET
         -- An empty email claim must never blank out a stored address.
         email = CASE WHEN EXCLUDED.email = '' THEN identity.users.email ELSE EXCLUDED.email END,
-        display_name = EXCLUDED.display_name,
+        -- A user-set display name (or any earlier non-empty value) survives
+        -- sign-in upserts; the provider claim only fills an empty slot.
+        display_name = COALESCE(NULLIF(identity.users.display_name, ''), EXCLUDED.display_name),
         last_login_at = now(),
         updated_by = EXCLUDED.updated_by,
         updated_at = now()

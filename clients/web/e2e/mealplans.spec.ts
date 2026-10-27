@@ -66,11 +66,13 @@ test.describe("meal plans", () => {
       await expect(itemRow.getByRole("checkbox")).toBeChecked();
 
       await itemRow.getByRole("button", { name: "delete item" }).click();
-      await expect(page.getByText("E2E Eggs")).toHaveCount(0);
+      // Delete is instant + undo snackbar, so the row detaches but the
+      // snackbar still mentions the name — assert on the row itself.
+      await expect(itemRow).toHaveCount(0);
     } finally {
-      // There is no deleteGroceryList mutation, and grocery_list has an FK
-      // to meal_plan, so the plan cannot be deleted once a list references
-      // it. Attempt cleanup but tolerate the FK violation.
+      // Attempt cleanup but tolerate the FK violation if a generated
+      // grocery list still references the plan (deleteGroceryList exists
+      // but the generated list id isn't captured in this test).
       await graphql(
         request,
         token,

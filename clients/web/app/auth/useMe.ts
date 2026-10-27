@@ -25,14 +25,28 @@ export function useMe() {
     error: null,
   });
   const requestIdRef = useRef(0);
+  // Post-mount hint so returning admins see the Administration nav group
+  // on the first frame instead of it popping in after the /me round-trip.
+  // Read in an effect (not the useState initializer) to avoid an SSR/CSR
+  // hydration mismatch; the real role always wins once the fetch lands.
+  const [adminHint, setAdminHint] = useState(false);
+  useEffect(() => {
+    setAdminHint(localStorage.getItem("lena_is_admin") === "1");
+  }, []);
 
   const load = useCallback(() => {
     const id = ++requestIdRef.current;
     api
       .getMe()
       .then((u) => {
-        if (requestIdRef.current === id)
+        if (requestIdRef.current === id) {
+          localStorage.setItem(
+            "lena_is_admin",
+            u.role === "admin" ? "1" : "0"
+          );
+          setAdminHint(u.role === "admin");
           setState({ me: u, isLoading: false, error: null });
+        }
       })
       .catch((e: Error) => {
         if (requestIdRef.current === id)
@@ -48,7 +62,9 @@ export function useMe() {
 
   return {
     me: isAuthenticated ? state.me : null,
-    isAdmin: isAuthenticated && state.me?.role === "admin",
+    isAdmin:
+      isAuthenticated &&
+      (state.me?.role === "admin" || (state.isLoading && adminHint)),
     isLoading: isAuthenticated ? state.isLoading : false,
     error: state.error,
     refetch: load,

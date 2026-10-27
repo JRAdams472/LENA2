@@ -8,6 +8,17 @@ SELECT *
 FROM mealplan.meal_plan
 WHERE meal_plan_id = $1 AND household_id = $2;
 
+-- name: GetCurrentMealPlan :one
+-- The plan whose 7-day week contains the given day — the dashboard's
+-- "current week" lookup, bounded to one row instead of a full table scan.
+SELECT *
+FROM mealplan.meal_plan
+WHERE household_id = $1
+  AND week_start_date <= sqlc.arg(day)::date
+  AND week_start_date + 7 > sqlc.arg(day)::date
+ORDER BY week_start_date DESC, meal_plan_id DESC
+LIMIT 1;
+
 -- name: GetMealPlansByIDs :many
 SELECT *
 FROM mealplan.meal_plan

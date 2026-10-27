@@ -33,11 +33,13 @@ func TestIntegrationUserLifecycle(t *testing.T) {
 	assert.Equal(t, "Alice", userA.DisplayName)
 	assert.True(t, userA.IsActive)
 
+	// A non-empty display_name survives the sign-in upsert — the provider
+	// claim no longer clobbers a name the user (or a prior sign-in) set.
 	userA2, err := svc.UpsertUser(ctx, "google", "sub-123", "alice.new@example.com", "Alice Updated")
 	require.NoError(t, err)
 	assert.Equal(t, userA.UserID, userA2.UserID)
 	assert.Equal(t, "alice.new@example.com", userA2.Email)
-	assert.Equal(t, "Alice Updated", userA2.DisplayName)
+	assert.Equal(t, "Alice", userA2.DisplayName)
 
 	userB, err := svc.UpsertUser(ctx, "google", "sub-456", "bob@example.com", "Bob")
 	require.NoError(t, err)
@@ -47,11 +49,33 @@ func TestIntegrationUserLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, userA.UserID, got.UserID)
 	assert.Equal(t, "alice.new@example.com", got.Email)
-	assert.Equal(t, "Alice Updated", got.DisplayName)
+	assert.Equal(t, "Alice", got.DisplayName)
 
 	_, err = svc.GetByID(ctx, 99999999)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domainerr.ErrNotFound)
+}
+
+// The display-name preserve guard must not strand users whose stored name
+// is empty — a later claim still fills the slot.
+func TestIntegrationUpsertUserFillsEmptyDisplayName(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	ctx := context.Background()
+	pool, err := testutil.SharedTestDB(t, ctx)
+	require.NoError(t, err)
+
+	svc := identity.NewService(pool)
+
+	user, err := svc.UpsertUser(ctx, "google", "sub-noname", "noname@example.com", "")
+	require.NoError(t, err)
+	assert.Equal(t, "", user.DisplayName)
+
+	user2, err := svc.UpsertUser(ctx, "google", "sub-noname", "noname@example.com", "Named Later")
+	require.NoError(t, err)
+	assert.Equal(t, user.UserID, user2.UserID)
+	assert.Equal(t, "Named Later", user2.DisplayName)
 }
 
 // TestIntegrationHouseholdFields covers the household columns added in

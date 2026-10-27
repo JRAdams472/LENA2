@@ -836,8 +836,9 @@ func (s *Service) AdminSetActive(ctx context.Context, actorID, targetID int64, a
 
 // UpdateProfile stores the user's editable profile fields. Names are
 // already validated for length by the caller; backupEmail may be empty to
-// clear the field. birthdate is nil to clear.
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error {
+// clear the field. birthdate is nil to clear. displayName is resolved by
+// the caller (unset input preserves the stored value).
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error {
 	var bd pgtype.Date
 	if birthdate != nil {
 		bd = pgtype.Date{Time: *birthdate, Valid: true}
@@ -848,6 +849,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, firstName, la
 		LastName:    textOrNull(lastName),
 		BackupEmail: textOrNull(backupEmail),
 		Birthdate:   bd,
+		DisplayName: textOrNull(displayName),
 		UpdatedBy:   textOrNull(by),
 	})
 	if err != nil {

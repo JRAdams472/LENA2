@@ -17,6 +17,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import QuantityDialog from "@/app/components/QuantityDialog";
 import { Bottle, PagedResult } from "@/lib/types";
@@ -91,6 +92,7 @@ export default function BottlesPage() {
   const [dialogData, setDialogData] = useState<Record<string, unknown>>({});
   const [isCreate, setIsCreate] = useState(false);
   const [qtyBottle, setQtyBottle] = useState<Bottle | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Bottle | null>(null);
   // FK picker + add-to-cellar state (lives outside the generated fields).
   const [pickTypeId, setPickTypeId] = useState<number | "">("");
   const [pickCountryId, setPickCountryId] = useState<number | "">("");
@@ -294,9 +296,7 @@ export default function BottlesPage() {
   };
 
   const handleDelete = (row: Bottle) => {
-    if (window.confirm("Delete this bottle?")) {
-      deleteMutation.mutate(row);
-    }
+    setDeleteTarget(row);
   };
 
   const handleSave = (values: Record<string, unknown>) => {
@@ -361,6 +361,13 @@ export default function BottlesPage() {
     pickCountryId === ""
       ? regions
       : regions.filter((r) => r.countryID === pickCountryId);
+
+  // The toolbar's Region filter scopes to the selected Country the same
+  // way — a region outside the country can never match a bottle anyway.
+  const filterRegions =
+    countryId === ""
+      ? regions
+      : regions.filter((r) => r.countryID === Number(countryId));
 
   // The type/country/region/vintage pickers — used by the admin create
   // dialog and by the member submit-new-bottle dialog.
@@ -494,7 +501,13 @@ export default function BottlesPage() {
           <Select
             labelId="filter-country-label"
             value={countryId}
-            onChange={(e) => { setCountryId(e.target.value); setPageNumber(1); }}
+            onChange={(e) => {
+              setCountryId(e.target.value);
+              // A region picked under another country can never match —
+              // clear it rather than leave a dead filter.
+              setRegionId("");
+              setPageNumber(1);
+            }}
             label="Country"
           >
             <MenuItem value="">All</MenuItem>
@@ -515,7 +528,7 @@ export default function BottlesPage() {
             label="Region"
           >
             <MenuItem value="">All</MenuItem>
-            {regions.map((r) => (
+            {filterRegions.map((r) => (
               <MenuItem key={r.regionID} value={String(r.regionID)}>
                 {r.regionName}
               </MenuItem>
@@ -669,6 +682,24 @@ export default function BottlesPage() {
           adjustQtyMutation.mutate({ id: qtyBottle.bottleID, quantity: q });
           setQtyBottle(null);
         }}
+      />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete bottle"
+        message={
+          deleteTarget
+            ? `Delete "${deleteTarget.vineyard ?? "this bottle"} ${deleteTarget.vintageYear}"? Its cellar record goes with it.`
+            : ""
+        }
+        confirmLabel="Delete"
+        destructive
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          const row = deleteTarget;
+          setDeleteTarget(null);
+          if (row) deleteMutation.mutate(row);
+        }}
+        onClose={() => setDeleteTarget(null)}
       />
     </Box>
   );
