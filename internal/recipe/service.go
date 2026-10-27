@@ -542,6 +542,15 @@ func (s *Service) SetRating(ctx context.Context, userID, recipeID int64, rating 
 	return RecipeRating{UserID: row.UserID, RecipeID: row.RecipeID, Rating: row.Rating}, nil
 }
 
+// ClearRating removes a user's rating for a recipe (un-rate). Idempotent —
+// clearing an absent rating is a no-op success.
+func (s *Service) ClearRating(ctx context.Context, userID, recipeID int64) error {
+	if err := s.q.DeleteRecipeRating(ctx, sqlc.DeleteRecipeRatingParams{UserID: userID, RecipeID: recipeID}); err != nil {
+		return fmt.Errorf("clear rating: %w", err)
+	}
+	return nil
+}
+
 // GetUserRating returns a user's rating for a recipe, or an error wrapping
 // domainerr.ErrNotFound when the user has not rated it.
 func (s *Service) GetUserRating(ctx context.Context, userID, recipeID int64) (RecipeRating, error) {

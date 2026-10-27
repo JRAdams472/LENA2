@@ -113,6 +113,7 @@ describe("profile page", () => {
 
   it("prefills the form from me", () => {
     renderPage();
+    expect(screen.getByLabelText("Display name")).toHaveValue("Me");
     expect(screen.getByLabelText("First name")).toHaveValue("Ada");
     expect(screen.getByLabelText("Last name")).toHaveValue("Lovelace");
     expect(screen.getByLabelText("Backup email")).toHaveValue("");
@@ -127,6 +128,7 @@ describe("profile page", () => {
 
     await waitFor(() =>
       expect(mockedApi.updateMyProfile).toHaveBeenCalledWith({
+        displayName: "Me",
         firstName: "Ada",
         lastName: "Lovelace",
         backupEmail: "alt@x.com",
@@ -135,6 +137,34 @@ describe("profile page", () => {
       })
     );
     expect(await screen.findByText("Profile saved.")).toBeInTheDocument();
+  });
+
+  it("sends an edited display name", async () => {
+    mockedApi.updateMyProfile.mockResolvedValue({ ...me, displayName: "Chef" });
+    renderPage();
+
+    const field = screen.getByLabelText("Display name");
+    await userEvent.clear(field);
+    await userEvent.type(field, "Chef");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(mockedApi.updateMyProfile).toHaveBeenCalledWith(
+        expect.objectContaining({ displayName: "Chef" })
+      )
+    );
+  });
+
+  it("clears the saved banner when the form is edited again", async () => {
+    mockedApi.updateMyProfile.mockResolvedValue(me);
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText("Backup email"), "alt@x.com");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByText("Profile saved.")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("First name"), "x");
+    expect(screen.queryByText("Profile saved.")).not.toBeInTheDocument();
   });
 
   it("lists active allergens and skips inactive ones", async () => {

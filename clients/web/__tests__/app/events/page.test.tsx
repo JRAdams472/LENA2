@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 import { Suspense } from "react";
 import userEvent from "@testing-library/user-event";
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import EventsPage from "@/app/member/events/page";
@@ -199,8 +199,8 @@ describe("EventDetailPage", () => {
     );
     const addBody = getBodies().find((b) => b.query.includes("addEventRecipe"))!;
     expect(addBody.variables.input.mealType).toBe("lunch");
-    // 30-minute granularity — default first option 00:00.
-    expect(addBody.variables.input.targetTime).toBe("2026-11-26T00:00:00Z");
+    // 30-minute granularity — the default is the slot nearest 18:00, not 00:00.
+    expect(addBody.variables.input.targetTime).toBe("2026-11-26T18:00:00Z");
     expect(addBody.variables.input.notes).toBe("apps");
   });
 
@@ -218,13 +218,18 @@ describe("EventDetailPage", () => {
       )
       .mockResolvedValueOnce(gql({ deleteFoodEvent: true }));
 
-    window.confirm = jest.fn(() => true);
     await renderDetailPage(
       <EventDetailPage params={Promise.resolve({ id: "3" })} />
     );
     await waitFor(() => screen.getByText("Friendsgiving"));
 
     fireEvent.click(screen.getByRole("button", { name: "Delete Event" }));
+    // Deletion is confirmed through the styled dialog, not window.confirm.
+    expect(
+      getBodies().some((b) => b.query.includes("deleteFoodEvent"))
+    ).toBe(false);
+    const confirm = await screen.findByRole("dialog", { name: "Delete event" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
     await waitFor(() =>
       expect(getBodies().some((b) => b.query.includes("deleteFoodEvent"))).toBe(true)
     );
@@ -602,7 +607,6 @@ describe("EventDetailPage", () => {
 
     it("expands a slot to show steps, scaled items, and sync", async () => {
       mockDetail();
-      window.confirm = jest.fn(() => true);
       await renderExpanded();
 
       expect(screen.getByText("Roast turkey")).toBeInTheDocument();
@@ -612,6 +616,10 @@ describe("EventDetailPage", () => {
       ).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Sync from recipe" }));
+      const confirm = await screen.findByRole("dialog", {
+        name: "Sync from recipe",
+      });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Sync" }));
       await waitFor(() =>
         expect(getBodies().some((b) => b.query.includes("syncEventRecipe"))).toBe(true)
       );
@@ -656,11 +664,33 @@ describe("EventDetailPage", () => {
       });
 
       fireEvent.click(screen.getByLabelText("Delete step"));
+      const confirm = await screen.findByRole("dialog", { name: "Delete step" });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
       await waitFor(() =>
         expect(
           getBodies().some((b) => b.query.includes("removeEventRecipeStep"))
         ).toBe(true)
       );
+    });
+
+    it("adds a step with an after-step dependency", async () => {
+      mockDetail();
+      await renderExpanded();
+
+      fireEvent.click(screen.getByRole("button", { name: "Add step" }));
+      await screen.findByText("Add Step");
+      fireEvent.change(screen.getByLabelText("Instruction"), {
+        target: { value: "Plate" },
+      });
+      fireEvent.mouseDown(screen.getByLabelText("After step"));
+      fireEvent.click(await screen.findByRole("option", { name: "Step 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => {
+        const body = getBodies().find((b) =>
+          b.query.includes("addEventRecipeStep")
+        );
+        expect(body?.variables.input.dependsOnStepNumber).toBe(1);
+      });
     });
 
     it("adds an ingredient through the dialog", async () => {
@@ -710,6 +740,10 @@ describe("EventDetailPage", () => {
       );
 
       fireEvent.click(screen.getByLabelText("Delete ingredient"));
+      const confirm = await screen.findByRole("dialog", {
+        name: "Delete ingredient",
+      });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
       await waitFor(() =>
         expect(
           getBodies().some((b) => b.query.includes("removeEventRecipeItem"))
@@ -745,6 +779,8 @@ describe("EventDetailPage", () => {
       await waitFor(() => screen.getByText("Friendsgiving"));
 
       fireEvent.click(screen.getByLabelText("Delete"));
+      const confirm = await screen.findByRole("dialog", { name: "Remove dish" });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
       await waitFor(() =>
         expect(
           getBodies().some((b) => b.query.includes("removeEventRecipe"))

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
 import Fade from "@mui/material/Fade";
+import Link from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/app/auth/AuthProvider";
@@ -84,16 +85,19 @@ export default function LoginScreen() {
         </Typography>
         <ProviderButtons />
         {/* Login-only by design (LEN-136): account creation happens on
-            the marketing site, never through this flow — and the URL
-            stays plain text, not a link. */}
+            the marketing site, never through this flow. The domain is a
+            link — a plain-text URL is a dead end for new users (LEN-180). */}
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{ maxWidth: 340 }}
         >
           Account registration and plan management are handled on our
-          website. New users must set up their account at
-          lenaskitchen.app before signing in here or in the mobile app.
+          website. New users must set up their account at{" "}
+          <Link href="https://lenaskitchen.app" target="_blank" rel="noopener">
+            lenaskitchen.app
+          </Link>{" "}
+          before signing in here or in the mobile app.
         </Typography>
         </Box>
       </Paper>

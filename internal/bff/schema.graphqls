@@ -143,6 +143,9 @@ type Query {
   wineFlavorProfiles: [WineFlavorProfile!]!
   mealPlan(id: ID!): MealPlan
   mealPlans(page: Int = 1, pageSize: Int = 25, sort: String, sortDesc: Boolean): MealPlanPage!
+  # The plan whose 7-day week contains today — the bounded "current week"
+  # lookup; null when no plan covers this week.
+  currentMealPlan: MealPlan
   # Aggregated nutrition for a meal plan. Nutrient amounts are stored per
   # a declared basis (default: per 100 g of the item); consumed quantities
   # are converted into that basis before summing. Lines whose units cannot
@@ -344,6 +347,9 @@ type Mutation {
   deleteRecipe(id: ID!): Boolean! @admin
   setRecipeFavorite(recipeId: ID!, isFavorite: Boolean!): Boolean!
   rateRecipe(recipeId: ID!, rating: Int!): Recipe!
+  # Removes the caller's rating entirely (un-rate); idempotent — clearing
+  # an absent rating still returns true.
+  clearRecipeRating(recipeId: ID!): Boolean!
   # Household recipe deltas — any member may write these.
   setRecipeDelta(recipeId: ID!, items: [RecipeDeltaItemInput!]!, steps: [RecipeDeltaStepInput!]!): RecipeDelta!
   clearRecipeDelta(recipeId: ID!): Boolean!
@@ -390,6 +396,11 @@ type Mutation {
   assignItemToAisle(storeId: ID!, aisleId: ID, itemId: ID, ingredientId: ID, manualItemName: String): Boolean!
   # Selects which store routes a list; null clears it.
   setGroceryListStore(groceryListId: ID!, storeId: ID): GroceryList!
+  # Sets the list's optional display name (max 200 chars); an empty or
+  # whitespace name clears it back to null.
+  renameGroceryList(groceryListId: ID!, name: String!): GroceryList!
+  # Removes the list and its items (item rows cascade).
+  deleteGroceryList(groceryListId: ID!): Boolean!
   # Persists the user's arrangement — entries are the items in display
   # order; an entry carrying aisleId also moves the item to that aisle.
   reorderGroceryListItems(groceryListId: ID!, entries: [GroceryReorderEntryInput!]!): Boolean!
@@ -477,6 +488,9 @@ type Mutation {
   transferHouseholdOwnership(userId: ID!): Household!
   # Marks every unread notification read; returns whether any changed.
   markAllNotificationsRead: Boolean!
+  # Marks one of the caller's unread notifications read. NOT_FOUND when
+  # the row is missing, foreign, or already read.
+  markNotificationRead(notificationId: ID!): Boolean!
   # Turns a notification category on/off ("_all" toggles nothing extra --
   # global muting goes through muteNotifications instead).
   setNotificationCategoryEnabled(category: String!, enabled: Boolean!): Boolean!
@@ -536,6 +550,7 @@ type Mutation {
 }
 
 input UpdateProfileInput {
+  displayName: String
   firstName: String
   lastName: String
   backupEmail: String
@@ -661,6 +676,8 @@ type HouseholdNotification {
   # Deep-link + action target for item_expiring reminders.
   itemId: ID
   createdAt: Time!
+  # When the caller marked this row read; null while unread.
+  readAt: Time
 }
 
 # One notification opt-out bucket as seen by the current user: a registry
@@ -1178,6 +1195,8 @@ type MealPlan {
   id: ID!
   name: String!
   weekStartDate: String!
+  # Weekday the plan's 7-day week opens on, 0 = Sunday … 6 = Saturday.
+  weekStartDayOfWeek: Int!
   isActive: Boolean!
   slots: [MealSlot!]!
 }
@@ -1376,6 +1395,9 @@ type TimelineStep {
 type GroceryList {
   id: ID!
   generatedAt: Time!
+  # Optional member-set label; null means derive the display name from
+  # the source plan or the generated date.
+  name: String
   # The plan this list was generated from; null for manual lists.
   mealPlan: MealPlan
   items: [GroceryListItem!]!

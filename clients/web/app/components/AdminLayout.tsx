@@ -35,6 +35,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Button from "@mui/material/Button";
 import { api, isApiErrorKind } from "@/lib/api";
+import {
+  notificationHref,
+  notificationText,
+  timeAgo,
+  unreadNotificationIds,
+} from "@/lib/notifications";
 import { lineClamp, paletteFor } from "@/lib/themeVars";
 import { HouseholdNotification } from "@/lib/types";
 import { useAuth } from "@/app/auth/AuthProvider";
@@ -134,27 +140,20 @@ const BOTTOM_NAV: NavEntry[] = [
 ];
 
 function isActive(pathname: string, href: string): boolean {
-  return pathname === href;
+  // Prefix match keeps the section highlighted on detail routes
+  // (/member/recipes/12 highlights Recipes).
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function isGroupActive(pathname: string, children: NavItem[]): boolean {
   return children.some((child) => isActive(pathname, child.href));
 }
 
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const mins = Math.floor((Date.now() - then) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
 // NotificationBell polls the unread count every 30s while idle. Opening
-// the menu fetches the feed, marks everything read, and refreshes the
-// feed every 5s until closed — the recipes/pending cadence precedent.
+// the menu fetches the feed and refreshes it every 5s until closed — the
+// recipes/pending cadence precedent. Reading is per-item: clicking a
+// notification marks just that one read; "Mark all read" stays a manual
+// action so opening the bell never silently clears the badge.
 // Deliberately not react-query: AdminLayout must render without
 // QueryClientProvider (same constraint as useMe).
 function NotificationBell() {
@@ -162,6 +161,11 @@ function NotificationBell() {
   const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
   const [unread, setUnread] = React.useState(0);
   const [items, setItems] = React.useState<HouseholdNotification[]>([]);
+  // Session-local read marks — the server exposes only an unread count,
+  // so rows we marked here keep their dot off until readAt lands.
+  const [readIds, setReadIds] = React.useState<ReadonlySet<number>>(
+    () => new Set()
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -187,19 +191,44 @@ function NotificationBell() {
         .then((ns) => !cancelled && setItems(ns))
         .catch(() => {});
     load();
-    // Mark-read-on-open: whatever was unread when the menu opened is
-    // cleared; items arriving while the menu is up stay unread until the
-    // next open, so they still trigger the badge.
-    api
-      .markAllNotificationsRead()
-      .then(() => !cancelled && setUnread(0))
-      .catch(() => {});
     const timer = setInterval(load, 5000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
   }, [anchor]);
+
+  const unreadSet = unreadNotificationIds(items, unread, readIds);
+  const isUnread = (n: HouseholdNotification) =>
+    unreadSet.has(n.notificationID);
+
+  const markOne = (n: HouseholdNotification) => {
+    setReadIds((prev) =>
+      prev.has(n.notificationID) ? prev : new Set(prev).add(n.notificationID)
+    );
+    api.markNotificationRead(n.notificationID).catch(() => {});
+  };
+
+  const open = (n: HouseholdNotification) => {
+    if (isUnread(n)) {
+      markOne(n);
+      setUnread((u) => Math.max(0, u - 1));
+    }
+    setAnchor(null);
+    router.push(notificationHref(n));
+  };
+
+  const markAll = () => {
+    api.markAllNotificationsRead().catch(() => {});
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      items.forEach((n) => next.add(n.notificationID));
+      return next;
+    });
+    setUnread(0);
+  };
+
+  const hasUnread = unreadSet.size > 0;
 
   return (
     <>
@@ -220,15 +249,29 @@ function NotificationBell() {
       >
         {items.length === 0 && <MenuItem disabled>No notifications</MenuItem>}
         {items.map((n) => (
-          <MenuItem
-            key={n.notificationID}
-            onClick={() => {
-              setAnchor(null);
-              router.push(notificationHref(n));
-            }}
-          >
+          <MenuItem key={n.notificationID} onClick={() => open(n)}>
             <ListItemText
-              primary={notificationText(n)}
+              primary={
+                <Box
+                  component="span"
+                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                >
+                  {isUnread(n) && (
+                    <Box
+                      component="span"
+                      data-testid={`unread-dot-${n.notificationID}`}
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        bgcolor: "primary.main",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  {notificationText(n)}
+                </Box>
+              }
               secondary={
                 <>
                   <Box component="span" sx={lineClamp(2)}>
@@ -260,6 +303,9 @@ function NotificationBell() {
           </MenuItem>
         ))}
         <Divider />
+        <MenuItem onClick={markAll} disabled={!hasUnread}>
+          <ListItemText primary="Mark all read" />
+        </MenuItem>
         <MenuItem
           onClick={() => {
             setAnchor(null);
@@ -276,16 +322,6 @@ function NotificationBell() {
   );
 }
 
-// Reminders deep-link to their subject; event notifications to the
-// event; household activity to the household page.
-function notificationHref(n: HouseholdNotification): string {
-  if (n.kind === "ACCESS_REQUESTED") return "/member/users";
-  if (n.recipeId != null) return `/member/recipes/${n.recipeId}`;
-  if (n.foodEventId != null) return `/member/events/${n.foodEventId}`;
-  if (n.itemId != null) return "/member/inventory/items";
-  return "/member/household";
-}
-
 function navGroupIcon(label: string) {
   switch (label) {
     case "Inventory":
@@ -298,48 +334,6 @@ function navGroupIcon(label: string) {
       return <RestaurantIcon />;
     default:
       return null;
-  }
-}
-
-function notificationText(n: HouseholdNotification): string {
-  // Scheduled reminders carry server-rendered text.
-  if (n.title) return n.title;
-  const actor = n.actor?.displayName ?? "Someone";
-  switch (n.kind) {
-    case "INVITE_RECEIVED":
-      return `${actor} invited you to their household`;
-    case "INVITE_ACCEPTED":
-      return `${actor} accepted your household invite`;
-    case "INVITE_DECLINED":
-      return `${actor} declined your household invite`;
-    case "INVITE_CANCELLED":
-      return `${actor} cancelled a household invite`;
-    case "MEMBER_JOINED":
-      return `${actor} joined your household`;
-    case "MEMBER_LEFT":
-      return `${actor} left your household`;
-    case "MEMBER_REMOVED":
-      return "You were removed from a household";
-    case "ACCESS_REQUESTED":
-      return `${actor} requested access to LENA`;
-    case "ROLE_CHANGED":
-      return `${actor} changed a household role`;
-    case "HOUSEHOLD_RENAMED":
-      return `${actor} renamed the household`;
-    case "EVENT_CREATED":
-      return `${actor} created an event`;
-    case "EVENT_UPDATED":
-      return `${actor} updated an event`;
-    case "EVENT_DELETED":
-      return `${actor} deleted an event`;
-    case "PROTEIN_DEFROST":
-      return "Time to defrost protein for an upcoming meal";
-    case "MEAL_PREP_ADVANCE":
-      return "A recipe on your meal plan needs advance prep";
-    case "ITEM_EXPIRING":
-      return "A pantry item is expiring soon";
-    default:
-      return "Notification";
   }
 }
 

@@ -3,6 +3,7 @@
 import { use, useMemo, useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
@@ -25,14 +26,13 @@ import CloseIcon from "@mui/icons-material/Close";
 import Autocomplete from "@mui/material/Autocomplete";
 import * as aiSuggest from "@/lib/ai/suggest";
 import { useLocalEngineReady } from "@/lib/ai/engineStore";
-import { api, asEntity } from "@/lib/api";
+import { api } from "@/lib/api";
 import { AllergyWarningChip } from "@/app/components/AllergyWarning";
 import { brandedName, brandSuffix, fmtDate, fmtQty } from "@/lib/format";
-import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import RecipeAutocomplete from "@/app/components/RecipeAutocomplete";
 import {
-  AuditableEntity,
+  MealPlan,
   MealSlot,
   MealSlotItem,
   MealPlanSuggestion,
@@ -41,18 +41,35 @@ import {
   Brand,
 } from "@/lib/types";
 
-const recipeFields: FieldDef<Recipe>[] = [
-  { key: "recipeName", label: "Recipe Name" },
-  { key: "description", label: "Description" },
-  { key: "servings", label: "Servings", type: "number" },
-  { key: "prepTimeMinutes", label: "Prep Time (min)", type: "number" },
-  { key: "cookTimeMinutes", label: "Cook Time (min)", type: "number" },
-  { key: "isActive", label: "Active", type: "boolean" },
-];
-
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_TYPE_IDS = [0, 1, 2];
+
+// Mirrors notifier.slotDate on the server: a slot on weekday `day` lands
+// `day - weekStartDayOfWeek` days (mod 7) after weekStartDate. Date-only
+// strings parse as UTC under Date.parse — split the components and build
+// a local Date instead so the rendered day never shifts.
+function slotCalendarDate(
+  weekStartDate: string,
+  weekStartDayOfWeek: number,
+  day: number
+): Date | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})/.exec(weekStartDate);
+  if (!dm) return null;
+  const offset = (((day - weekStartDayOfWeek) % 7) + 7) % 7;
+  return new Date(
+    Number(dm[1]),
+    Number(dm[2]) - 1,
+    Number(dm[3]) + offset
+  );
+}
+
+function dayHeaderLabel(plan: MealPlan, day: number): string {
+  const d = slotCalendarDate(plan.weekStartDate, plan.weekStartDayOfWeek, day);
+  return d === null
+    ? ""
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 function brandItemName(item: { name: string; brand?: string | null }): string {
   return brandedName(item.brand, item.name, " — ");
@@ -181,7 +198,7 @@ function SlotDialog({
       }))
   );
 
-  const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
 
   // Dirty detection: snapshot the slot's persisted values and compare the
   // editable fields against them — lets the parent confirm before a
@@ -271,19 +288,6 @@ function SlotDialog({
     },
   });
 
-  const createRecipeMutation = useMutation({
-    mutationFn: (row: Record<string, unknown>) =>
-      api.createRecipe(asEntity<Omit<Recipe, keyof AuditableEntity>>(row)),
-    onSuccess: (created) => {
-      setRecipe(created);
-      setSelectedOptionalIds([]);
-      setAdhoc([]);
-      queryClient.invalidateQueries({ queryKey: ["recipes"] });
-      queryClient.invalidateQueries({ queryKey: ["recipe-autocomplete"] });
-      setRecipeDialogOpen(false);
-    },
-  });
-
   const deleteSlotMutation = useMutation({
     mutationFn: () =>
       slot ? api.deleteMealSlot(slot.mealPlanID, slot.mealSlotID) : Promise.resolve(),
@@ -315,11 +319,23 @@ function SlotDialog({
     enabled: neededItemIds.length > 0,
   });
 
+  // The item the ad-hoc picker currently points at — its inventory unit
+  // drives the Unit field (read-only) so quantities can't be recorded in
+  // a unit the item isn't stocked in.
+  const pickedItem =
+    searchQuery.data?.find((item) => String(item.itemID) === newItemId) ??
+    null;
+
   const handleAddAdhoc = () => {
     if (newItemId !== "" && newQty !== "") {
       setAdhoc((prev) => [
         ...prev,
-        { keyId: crypto.randomUUID(), itemID: Number(newItemId), quantity: newQty, unit: newUnit },
+        {
+          keyId: crypto.randomUUID(),
+          itemID: Number(newItemId),
+          quantity: newQty,
+          unit: pickedItem?.unit || newUnit,
+        },
       ]);
       setNewItemId("");
       setNewQty("");
@@ -392,9 +408,17 @@ function SlotDialog({
             }
             sx={{ mb: 1 }}
           />
-          <Button size="small" onClick={() => setRecipeDialogOpen(true)}>
+          <Button
+            size="small"
+            component={Link}
+            href="/member/recipes?create=1"
+          >
             + Create New Recipe
           </Button>
+          <Typography variant="caption" color="text.secondary">
+            New recipes are created on the Recipes page — add ingredients and
+            steps there, then come back and pick it here.
+          </Typography>
         </Box>
 
         {recipe !== null && optionalItems.length > 0 && (
@@ -503,11 +527,7 @@ function SlotDialog({
             }
             inputValue={itemSearch}
             onInputChange={(_, value) => setItemSearch(value)}
-            value={
-              searchQuery.data?.find(
-                (item) => String(item.itemID) === newItemId
-              ) ?? null
-            }
+            value={pickedItem}
             onChange={(_, value) => {
               setNewItemId(value ? String(value.itemID) : "");
               setNewUnit(value ? value.unit ?? "" : "");
@@ -537,13 +557,25 @@ function SlotDialog({
             value={newQty}
             onChange={(e) => setNewQty(e.target.value)}
           />
-          <TextField
-            size="small"
-            label="Unit"
-            value={newUnit}
-            onChange={(e) => setNewUnit(e.target.value)}
-            helperText="Match the item's inventory unit"
-          />
+          {pickedItem?.unit ? (
+            // The picked item's inventory unit wins — quantities are only
+            // meaningful in the unit the item is stocked in.
+            <TextField
+              size="small"
+              label="Unit"
+              value={pickedItem.unit}
+              helperText="Set by the item's inventory unit"
+              slotProps={{ input: { readOnly: true } }}
+            />
+          ) : (
+            <TextField
+              size="small"
+              label="Unit"
+              value={newUnit}
+              onChange={(e) => setNewUnit(e.target.value)}
+              helperText="Match the item's inventory unit"
+            />
+          )}
           <Button variant="outlined" onClick={handleAddAdhoc}>
             Add
           </Button>
@@ -579,7 +611,7 @@ function SlotDialog({
             <Button
               variant="outlined"
               color="error"
-              onClick={() => deleteSlotMutation.mutate()}
+              onClick={() => setRemoveConfirmOpen(true)}
               disabled={slotSaveMutation.isPending || deleteSlotMutation.isPending}
             >
               Remove Slot
@@ -589,16 +621,49 @@ function SlotDialog({
         </Box>
       </Paper>
 
-      <CrudDialog
-        open={recipeDialogOpen}
-        title="Create Recipe"
-        fields={recipeFields}
-        values={{ isActive: true }}
-        onClose={() => setRecipeDialogOpen(false)}
-        onSave={(values) => createRecipeMutation.mutate(values)}
+      <ConfirmDialog
+        open={removeConfirmOpen}
+        title="Remove this meal slot?"
+        message={`The ${DAY_NAMES[day]} ${MEAL_TYPES[mealType]} slot and its items will be deleted.`}
+        confirmLabel="Remove"
+        destructive
+        busy={deleteSlotMutation.isPending}
+        onConfirm={() => deleteSlotMutation.mutate()}
+        onClose={() => setRemoveConfirmOpen(false)}
       />
     </>
   );
+}
+
+// The engine emits one raw line per skipped ingredient ("no linked item
+// for ingredient "shallot"; skipped in nutrition") — noisy and jargon-y.
+// Collapse those into a single friendly sentence that still names the
+// ingredients; unrelated warnings pass through deduplicated.
+const NO_LINKED_ITEM_RE =
+  /no linked item for ingredient "([^"]+)"; skipped in nutrition/;
+
+function humanizeNutritionWarnings(warnings: string[] | undefined): string[] {
+  const missing: string[] = [];
+  const other = new Set<string>();
+  for (const w of warnings ?? []) {
+    const m = NO_LINKED_ITEM_RE.exec(w);
+    if (m) {
+      if (!missing.includes(m[1])) missing.push(m[1]);
+    } else {
+      other.add(w);
+    }
+  }
+  const out = [...other];
+  if (missing.length === 1) {
+    out.push(
+      `1 ingredient couldn't be counted in the nutrition totals (${missing[0]} has no linked pantry item).`
+    );
+  } else if (missing.length > 1) {
+    out.push(
+      `${missing.length} ingredients couldn't be counted in the nutrition totals (${missing.join(", ")} — no linked pantry item).`
+    );
+  }
+  return out;
 }
 
 function NutritionPanel({ nutrition }: { nutrition: MealPlanNutrition }) {
@@ -607,7 +672,7 @@ function NutritionPanel({ nutrition }: { nutrition: MealPlanNutrition }) {
       <Typography variant="h5" gutterBottom>
         Nutrition
       </Typography>
-      {nutrition.warnings?.map((w) => (
+      {humanizeNutritionWarnings(nutrition.warnings).map((w) => (
         <Typography key={w} variant="body2" color="warning.main">
           {w}
         </Typography>
@@ -977,9 +1042,16 @@ export default function MealPlanDetailPage({
               <Paper key={name} variant="outlined" sx={{ p: 1.5 }}>
                 <Typography
                   variant="subtitle2"
-                  sx={{ fontWeight: 700, mb: 1 }}
+                  sx={{ fontWeight: 700 }}
                 >
                   {name}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mb: 1 }}
+                >
+                  {dayHeaderLabel(plan, day)}
                 </Typography>
                 {MEAL_TYPE_IDS.map((mt) => (
                   <Box
@@ -1015,7 +1087,12 @@ export default function MealPlanDetailPage({
 
             {DAY_NAMES.map((name, day) => (
               <Fragment key={name}>
-                <Box sx={{ fontWeight: 700 }}>{DAY_NAMES[day]}</Box>
+                <Box>
+                  <Box sx={{ fontWeight: 700 }}>{DAY_NAMES[day]}</Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {dayHeaderLabel(plan, day)}
+                  </Typography>
+                </Box>
                 {MEAL_TYPE_IDS.map((mt) => renderSlotCell(day, mt))}
               </Fragment>
             ))}

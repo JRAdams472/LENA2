@@ -568,6 +568,7 @@ func TestUpdateProfile(t *testing.T) {
 		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
 			func(_ context.Context, arg sqlc.UpdateUserProfileParams) (int64, error) {
 				assert.Equal(t, int64(7), arg.UserID)
+				assert.Equal(t, pgtype.Text{String: "Ada L.", Valid: true}, arg.DisplayName)
 				assert.Equal(t, pgtype.Text{String: "Ada", Valid: true}, arg.FirstName)
 				assert.Equal(t, pgtype.Text{String: "Lovelace", Valid: true}, arg.LastName)
 				assert.Equal(t, pgtype.Text{String: "alt@b.com", Valid: true}, arg.BackupEmail)
@@ -575,7 +576,7 @@ func TestUpdateProfile(t *testing.T) {
 				return 1, nil
 			})
 
-		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "alt@b.com", nil, "a@b.com"))
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada L.", "Ada", "Lovelace", "alt@b.com", nil, "a@b.com"))
 	})
 
 	t.Run("birthdate is stored", func(t *testing.T) {
@@ -588,20 +589,21 @@ func TestUpdateProfile(t *testing.T) {
 				return 1, nil
 			})
 
-		require.NoError(t, svc.UpdateProfile(ctx, 7, "Ada", "Lovelace", "", &bd, "a@b.com"))
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "Ada", "Lovelace", "", &bd, "a@b.com"))
 	})
 
 	t.Run("empty fields become null", func(t *testing.T) {
 		svc, mq := newService(t)
 		mq.EXPECT().UpdateUserProfile(ctx, gomock.Any()).DoAndReturn(
 			func(_ context.Context, arg sqlc.UpdateUserProfileParams) (int64, error) {
+				assert.False(t, arg.DisplayName.Valid)
 				assert.False(t, arg.FirstName.Valid)
 				assert.False(t, arg.BackupEmail.Valid)
 				assert.False(t, arg.Birthdate.Valid)
 				return 1, nil
 			})
 
-		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "Lovelace", "", nil, "a@b.com"))
+		require.NoError(t, svc.UpdateProfile(ctx, 7, "", "", "Lovelace", "", nil, "a@b.com"))
 	})
 }
 

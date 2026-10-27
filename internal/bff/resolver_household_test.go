@@ -866,6 +866,15 @@ func TestResolver_NotificationCountAndMarkRead(t *testing.T) {
 	ok, err := r.MarkAllNotificationsRead(hhCtx())
 	require.NoError(t, err)
 	assert.True(t, ok)
+
+	h.EXPECT().MarkNotificationRead(gomock.Any(), hhUserID, hhUserID, int64(21)).Return(nil)
+	ok, err = r.MarkNotificationRead(hhCtx(), struct{ NotificationID graphql.ID }{NotificationID: "21"})
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	h.EXPECT().MarkNotificationRead(gomock.Any(), hhUserID, hhUserID, int64(99)).Return(domainerr.ErrNotFound)
+	_, err = r.MarkNotificationRead(hhCtx(), struct{ NotificationID graphql.ID }{NotificationID: "99"})
+	assert.ErrorIs(t, err, domainerr.ErrNotFound)
 }
 
 // ---------- LEN-26: multi-household surface ----------

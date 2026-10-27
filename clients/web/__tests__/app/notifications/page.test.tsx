@@ -5,9 +5,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import NotificationsPage from "@/app/member/notifications/page";
 import { api } from "@/lib/api";
 
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: jest.fn(() => ({ push: mockPush })),
+}));
+
 jest.mock("../../../lib/api", () => ({
   api: {
     getMyNotificationPreferences: jest.fn(),
+    getMyNotifications: jest.fn(),
+    getUnreadNotificationCount: jest.fn(),
+    markNotificationRead: jest.fn(),
+    markAllNotificationsRead: jest.fn(),
     setNotificationCategoryEnabled: jest.fn(),
     setNotificationCategoryPushEnabled: jest.fn(),
     muteNotifications: jest.fn(),
@@ -23,6 +32,38 @@ jest.mock("../../../lib/api", () => ({
 }));
 
 const mockedApi = api as jest.Mocked<typeof api>;
+
+const notifications = [
+  {
+    notificationID: 4,
+    kind: "ITEM_EXPIRING" as const,
+    actor: null,
+    foodEventId: null,
+    title: "Milk expires soon",
+    body: "Use it or add a replacement.",
+    recipeId: null,
+    itemId: 9,
+    createdAt: "2026-09-20T10:00:00Z",
+    readAt: null,
+  },
+  {
+    notificationID: 3,
+    kind: "INVITE_RECEIVED" as const,
+    actor: {
+      userID: 9,
+      displayName: "Mate",
+      firstName: null,
+      lastName: null,
+    },
+    foodEventId: null,
+    title: null,
+    body: null,
+    recipeId: null,
+    itemId: null,
+    createdAt: "2026-09-19T10:00:00Z",
+    readAt: null,
+  },
+];
 
 const prefs = [
   {
@@ -61,6 +102,8 @@ describe("NotificationsPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedApi.getMyNotificationPreferences.mockResolvedValue(prefs);
+    mockedApi.getMyNotifications.mockResolvedValue(notifications);
+    mockedApi.getUnreadNotificationCount.mockResolvedValue(2);
   });
 
   it("lists every opt-out bucket with its effective state", async () => {
@@ -171,5 +214,66 @@ describe("NotificationsPage", () => {
     await waitFor(() =>
       expect(mockedApi.clearNotificationMute).toHaveBeenCalledWith("household")
     );
+  });
+
+  describe("notification feed", () => {
+    it("lists notification history newest first with unread markers", async () => {
+      renderPage();
+
+      expect(await screen.findByText("Milk expires soon")).toBeInTheDocument();
+      expect(
+        screen.getByText("Mate invited you to their household")
+      ).toBeInTheDocument();
+      // Until the API returns per-item readAt both rows read as unread.
+      expect(screen.getByTestId("unread-dot-4")).toBeInTheDocument();
+      expect(screen.getByTestId("unread-dot-3")).toBeInTheDocument();
+      // Newest (id 4) precedes the older invite row.
+      expect(
+        screen
+          .getByText("Milk expires soon")
+          .compareDocumentPosition(
+            screen.getByText("Mate invited you to their household")
+          ) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
+
+    it("shows an empty-feed message instead of a bare list", async () => {
+      mockedApi.getMyNotifications.mockResolvedValue([]);
+      renderPage();
+      expect(
+        await screen.findByText(/No notifications yet/i)
+      ).toBeInTheDocument();
+    });
+
+    it("marks a single notification read and follows its deep-link", async () => {
+      mockedApi.markNotificationRead.mockResolvedValue(true);
+      renderPage();
+
+      await userEvent.click(await screen.findByText("Milk expires soon"));
+
+      await waitFor(() =>
+        expect(mockedApi.markNotificationRead).toHaveBeenCalledWith(4)
+      );
+      expect(mockPush).toHaveBeenCalledWith("/member/inventory/items");
+      // The marked row loses its unread dot; the other stays.
+      await waitFor(() =>
+        expect(screen.queryByTestId("unread-dot-4")).not.toBeInTheDocument()
+      );
+      expect(screen.getByTestId("unread-dot-3")).toBeInTheDocument();
+    });
+
+    it("marks everything read via the manual action", async () => {
+      mockedApi.markAllNotificationsRead.mockResolvedValue(true);
+      renderPage();
+      await screen.findByText("Milk expires soon");
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /mark all read/i })
+      );
+
+      await waitFor(() =>
+        expect(mockedApi.markAllNotificationsRead).toHaveBeenCalled()
+      );
+    });
   });
 });

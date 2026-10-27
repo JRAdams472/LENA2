@@ -66,6 +66,8 @@ type GroceryRouter interface {
 	RenameStore(ctx context.Context, storeID, householdID int64, name, by string) (grocery.Store, error)
 	DeleteStore(ctx context.Context, storeID, householdID int64) error
 	SetGroceryListStore(ctx context.Context, groceryListID, householdID int64, storeID *int64, by string) error
+	RenameGroceryList(ctx context.Context, groceryListID, householdID int64, name, by string) (grocery.GroceryList, error)
+	DeleteGroceryList(ctx context.Context, groceryListID, householdID int64) error
 	CreateAisle(ctx context.Context, storeID, householdID int64, name string, position int32, by string) (grocery.StoreAisle, error)
 	ListAisles(ctx context.Context, storeID, householdID int64) ([]grocery.StoreAisle, error)
 	RenameAisle(ctx context.Context, aisleID, householdID int64, name, by string) (grocery.StoreAisle, error)
@@ -230,6 +232,9 @@ var _ InventoryService = (*inventory.Service)(nil)
 // currentuser, never from client input.
 type MealPlanReader interface {
 	GetMealPlanByID(ctx context.Context, mealPlanID, householdID int64) (mealplan.MealPlan, error)
+	// GetCurrentMealPlan returns the plan whose week contains the given
+	// day; ErrNotFound when no plan covers it.
+	GetCurrentMealPlan(ctx context.Context, householdID int64, day time.Time) (mealplan.MealPlan, error)
 	GetMealPlansByIDs(ctx context.Context, householdID int64, mealPlanIDs []int64) ([]mealplan.MealPlan, error)
 	ListMealPlans(ctx context.Context, householdID int64, sort string, desc bool, limit, offset int32) ([]mealplan.MealPlan, error)
 	CountMealPlans(ctx context.Context, householdID int64) (int64, error)
@@ -352,6 +357,7 @@ type RecipeWriter interface {
 // RecipeRater is the rating surface of the recipe domain.
 type RecipeRater interface {
 	SetRating(ctx context.Context, userID, recipeID int64, rating int16, by string) (recipe.RecipeRating, error)
+	ClearRating(ctx context.Context, userID, recipeID int64) error
 	GetUserRating(ctx context.Context, userID, recipeID int64) (recipe.RecipeRating, error)
 	ListRecipeRatings(ctx context.Context, userID int64, recipeIDs []int64) ([]recipe.RecipeRating, error)
 	ListRatingSummaries(ctx context.Context, recipeIDs []int64) ([]recipe.RatingSummary, error)
@@ -517,7 +523,7 @@ type IdentityService interface {
 	UserReader
 	UserAdmin
 	HouseholdDirectory
-	UpdateProfile(ctx context.Context, userID int64, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error
+	UpdateProfile(ctx context.Context, userID int64, displayName, firstName, lastName, backupEmail string, birthdate *time.Time, by string) error
 	// AcceptDisclaimer stamps medical/allergen disclaimer acceptance
 	// (LEN-31); setMyAllergy writes are gated on it.
 	AcceptDisclaimer(ctx context.Context, userID int64, by string) error
@@ -549,6 +555,9 @@ type HouseholdService interface {
 	ListNotificationsForUser(ctx context.Context, userID, householdID int64, limit int32) ([]household.Notification, error)
 	CountUnreadNotifications(ctx context.Context, userID, householdID int64) (int64, error)
 	MarkAllNotificationsRead(ctx context.Context, userID, householdID int64) error
+	// MarkNotificationRead clears one notification scoped to the caller's
+	// user + active household; ErrNotFound when it's missing or foreign.
+	MarkNotificationRead(ctx context.Context, userID, householdID, notificationID int64) error
 	GetMembership(ctx context.Context, householdID, userID int64) (household.Membership, error)
 	ListMembersByHousehold(ctx context.Context, householdID int64) ([]household.Membership, error)
 	ListMembershipsByUser(ctx context.Context, userID int64) ([]household.Membership, error)

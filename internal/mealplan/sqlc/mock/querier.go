@@ -174,6 +174,21 @@ func (mr *MockQuerierMockRecorder) DeleteMealSlotItem(ctx, arg any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMealSlotItem", reflect.TypeOf((*MockQuerier)(nil).DeleteMealSlotItem), ctx, arg)
 }
 
+// GetCurrentMealPlan mocks base method.
+func (m *MockQuerier) GetCurrentMealPlan(ctx context.Context, arg sqlc.GetCurrentMealPlanParams) (sqlc.MealplanMealPlan, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentMealPlan", ctx, arg)
+	ret0, _ := ret[0].(sqlc.MealplanMealPlan)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCurrentMealPlan indicates an expected call of GetCurrentMealPlan.
+func (mr *MockQuerierMockRecorder) GetCurrentMealPlan(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentMealPlan", reflect.TypeOf((*MockQuerier)(nil).GetCurrentMealPlan), ctx, arg)
+}
+
 // GetMealPlanByID mocks base method.
 func (m *MockQuerier) GetMealPlanByID(ctx context.Context, arg sqlc.GetMealPlanByIDParams) (sqlc.MealplanMealPlan, error) {
 	m.ctrl.T.Helper()

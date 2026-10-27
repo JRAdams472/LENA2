@@ -36,6 +36,9 @@ type Querier interface {
 	DeleteRecipe(ctx context.Context, recipeID int64) (int64, error)
 	DeleteRecipeDelta(ctx context.Context, arg DeleteRecipeDeltaParams) (int64, error)
 	DeleteRecipeItems(ctx context.Context, recipeID int64) error
+	// Un-rate: idempotent — a missing row still satisfies "no rating", so
+	// callers never gate on a prior read.
+	DeleteRecipeRating(ctx context.Context, arg DeleteRecipeRatingParams) error
 	DeleteRecipeStep(ctx context.Context, stepID int64) (int64, error)
 	DeleteRecipeSteps(ctx context.Context, recipeID int64) error
 	GetCategoryByID(ctx context.Context, categoryID int64) (RecipeCategory, error)

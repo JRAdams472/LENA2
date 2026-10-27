@@ -291,7 +291,7 @@ describe("household page", () => {
     renderPage();
     await screen.findByText("Members");
 
-    await userEvent.type(screen.getByLabelText(/name or email/i), "tar");
+    await userEvent.type(screen.getByLabelText(/find a member/i), "tar");
     await userEvent.click(screen.getByRole("button", { name: /search/i }));
 
     expect(await screen.findByText("Target")).toBeInTheDocument();
@@ -299,6 +299,27 @@ describe("household page", () => {
     await waitFor(() =>
       expect(mockedApi.inviteHouseholdMember).toHaveBeenCalledWith(11)
     );
+  });
+
+  it("explains the search limits and empty results", async () => {
+    renderPage();
+    await screen.findByText("Members");
+
+    expect(
+      screen.getByText(/only members who opted into search appear/i)
+    ).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/find a member/i), "nobody");
+    await userEvent.click(screen.getByRole("button", { name: /search/i }));
+
+    expect(
+      await screen.findByText(/No members found for .*nobody/i)
+    ).toBeInTheDocument();
+    // The "no email invites" honesty note now shows in both the helper
+    // text under the input and the empty-result message.
+    expect(
+      screen.getAllByText(/Email invites aren't supported yet/i).length
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("lists all memberships with the active one marked", async () => {
@@ -449,5 +470,61 @@ describe("household page", () => {
       expect(mockedApi.leaveHousehold).toHaveBeenCalledWith(42)
     );
     confirm.mockRestore();
+  });
+
+  it("offers the sole member a dissolve action instead of leave", async () => {
+    const solo = { ...household, members: [household.members[0]] };
+    mockedApi.getMyHousehold.mockResolvedValue(solo);
+    mockedApi.getMyHouseholds.mockResolvedValue([solo]);
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", { name: /dissolve household/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /leave household/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("dissolves a sole-member household through the confirm dialog", async () => {
+    const solo = { ...household, members: [household.members[0]] };
+    mockedApi.getMyHousehold.mockResolvedValue(solo);
+    mockedApi.getMyHouseholds.mockResolvedValue([solo]);
+    mockedApi.leaveHousehold.mockResolvedValue(true);
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dissolve household/i })
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/permanently deletes the household/i)
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /dissolve/i })
+    );
+    await waitFor(() =>
+      expect(mockedApi.leaveHousehold).toHaveBeenCalledWith(42)
+    );
+  });
+
+  it("cancel on the dissolve dialog leaves the household intact", async () => {
+    const solo = { ...household, members: [household.members[0]] };
+    mockedApi.getMyHousehold.mockResolvedValue(solo);
+    mockedApi.getMyHouseholds.mockResolvedValue([solo]);
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dissolve household/i })
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /cancel/i })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    expect(mockedApi.leaveHousehold).not.toHaveBeenCalled();
   });
 });

@@ -849,6 +849,57 @@ func groceryEntityEvent(eventType string, it grocery.GroceryListItem) analytics.
 	return e
 }
 
+// RenameGroceryList sets a list's optional display name; an empty or
+// whitespace name clears it. Members of the owning household only — the
+// service scopes the write by household.
+func (r *Resolver) RenameGroceryList(ctx context.Context, args struct {
+	GroceryListID graphql.ID
+	Name          string
+}) (*groceryListResolver, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	listID, err := parseID(string(args.GroceryListID))
+	if err != nil {
+		return nil, err
+	}
+	var list grocery.GroceryList
+	if err := r.unitOfWork().InTx(ctx, func(ctx context.Context) error {
+		var err error
+		list, err = r.GroceryService.RenameGroceryList(ctx, listID, u.HouseholdID, args.Name, u.Email)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	gc, err := loadGroceryChildren(ctx, r.GroceryService, r.InventoryService, r.IdentityService, r.UserPrefsService, u.HouseholdID, []int64{listID})
+	if err != nil {
+		return nil, err
+	}
+	plans, err := loadGroceryPlans(ctx, r.MealPlanService, u.HouseholdID, []grocery.GroceryList{list})
+	if err != nil {
+		return nil, err
+	}
+	return r.newGroceryListResolver(u, list, gc, plans), nil
+}
+
+// DeleteGroceryList removes a grocery list owned by the caller's
+// household; its items cascade with the row.
+func (r *Resolver) DeleteGroceryList(ctx context.Context, args struct{ GroceryListID graphql.ID }) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	listID, err := parseID(string(args.GroceryListID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.GroceryService.DeleteGroceryList(ctx, listID, u.HouseholdID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // DeleteGroceryItem removes an item from a grocery list.
 func (r *Resolver) DeleteGroceryItem(ctx context.Context, args struct{ GroceryListItemID graphql.ID }) (bool, error) {
 	u, err := userFromContext(ctx)
@@ -975,6 +1026,9 @@ func (r *groceryListResolver) MealPlan() *mealPlanResolver {
 func (r *groceryListResolver) GeneratedAt() graphql.Time {
 	return graphqlTime(r.list.GeneratedAt)
 }
+
+// Name resolves the list's optional member-set label.
+func (r *groceryListResolver) Name() *string { return r.list.Name }
 
 // Store resolves the store selected to route this list.
 func (r *groceryListResolver) Store(ctx context.Context) (*storeResolver, error) {

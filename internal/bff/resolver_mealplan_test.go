@@ -14,6 +14,7 @@ import (
 	"github.com/JRAdams472/LENA2/internal/bff/mock"
 	"github.com/JRAdams472/LENA2/internal/inventory"
 	"github.com/JRAdams472/LENA2/internal/mealplan"
+	"github.com/JRAdams472/LENA2/internal/platform/domainerr"
 	"github.com/JRAdams472/LENA2/internal/recipe"
 	"github.com/JRAdams472/LENA2/internal/testutil"
 )
@@ -104,6 +105,34 @@ func TestResolver_MealPlan_Happy(t *testing.T) {
 	require.NotNil(t, recipeRes)
 	assert.Equal(t, graphql.ID("20"), recipeRes.ID())
 	assert.Equal(t, "Pasta", recipeRes.Name())
+}
+
+func TestResolver_CurrentMealPlan_Happy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{MealPlanService: mp}
+
+	mp.EXPECT().GetCurrentMealPlan(gomock.Any(), mealPlanUserID, gomock.Any()).Return(mealplan.MealPlan{
+		MealPlanID: 10, HouseholdID: mealPlanUserID, Name: "Week 1", WeekStartDate: mealPlanDate, IsActive: true,
+	}, nil)
+
+	res, err := r.CurrentMealPlan(mealPlanCtx())
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, graphql.ID("10"), res.ID())
+	assert.Equal(t, "Week 1", res.Name())
+}
+
+func TestResolver_CurrentMealPlan_NoneIsNull(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mp := mock.NewMockMealPlanService(ctrl)
+	r := &Resolver{MealPlanService: mp}
+
+	mp.EXPECT().GetCurrentMealPlan(gomock.Any(), mealPlanUserID, gomock.Any()).Return(mealplan.MealPlan{}, domainerr.ErrNotFound)
+
+	res, err := r.CurrentMealPlan(mealPlanCtx())
+	require.NoError(t, err)
+	assert.Nil(t, res)
 }
 
 func TestResolver_MealPlans_Happy(t *testing.T) {

@@ -42,6 +42,7 @@ function renderPage() {
 describe("assistant page", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    sessionStorage.clear();
     mockUseAssistant.mockReturnValue(controller());
   });
 
@@ -109,5 +110,58 @@ describe("assistant page", () => {
     await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "hi");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(await screen.findByText("slow down")).toBeInTheDocument();
+  });
+
+  it("links capability chips only at routes that exist", async () => {
+    renderPage();
+    await screen.findByText("Ask Dot");
+
+    const chips = screen.getAllByRole("link");
+    const hrefs = chips.map((c) => c.getAttribute("href"));
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/member/meal-plans",
+        "/member/recipes",
+        "/member/wine/bottles",
+      ])
+    );
+    for (const href of hrefs) {
+      expect(href).toMatch(/^\/member\//);
+    }
+    // No chip may promise a feature Dot doesn't have.
+    expect(screen.queryByText(/wine pairing/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cocktail/i)).not.toBeInTheDocument();
+  });
+
+  it("persists the conversation in sessionStorage across remounts", async () => {
+    const { unmount } = renderPage();
+    await screen.findByText("Ask Dot");
+    await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "hi");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+    await screen.findByText("Your milk expires tomorrow.");
+
+    const raw = sessionStorage.getItem("lena-assistant-chat");
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw as string)).toHaveLength(2);
+
+    unmount();
+    renderPage();
+    expect(await screen.findByText("Your milk expires tomorrow.")).toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+  });
+
+  it("clears the conversation and its stored copy", async () => {
+    renderPage();
+    await screen.findByText("Ask Dot");
+    await userEvent.type(screen.getByPlaceholderText("Ask Dot…"), "hi");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+    await screen.findByText("Your milk expires tomorrow.");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /clear conversation/i })
+    );
+
+    expect(screen.queryByText("Your milk expires tomorrow.")).not.toBeInTheDocument();
+    expect(sessionStorage.getItem("lena-assistant-chat")).toBeNull();
   });
 });

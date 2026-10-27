@@ -1023,6 +1023,24 @@ func (r *Resolver) MarkAllNotificationsRead(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// MarkNotificationRead clears one of the caller's unread notifications.
+func (r *Resolver) MarkNotificationRead(ctx context.Context, args struct {
+	NotificationID graphql.ID
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	notificationID, err := parseID(string(args.NotificationID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.HouseholdService.MarkNotificationRead(ctx, u.UserID, u.HouseholdID, notificationID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // hydrateNotifications batch-loads actors for a notification page in one
 // ListUsersByIDs call.
 func (r *Resolver) hydrateNotifications(ctx context.Context, notifs []household.Notification) ([]*householdNotificationResolver, error) {
@@ -1259,6 +1277,11 @@ func (r *householdNotificationResolver) FoodEventID() *graphql.ID {
 
 func (r *householdNotificationResolver) CreatedAt() graphql.Time {
 	return graphqlTime(r.n.CreatedAt)
+}
+
+// ReadAt stamps when the caller marked the row read; null while unread.
+func (r *householdNotificationResolver) ReadAt() *graphql.Time {
+	return timeToGraphQL(r.n.ReadAt)
 }
 
 // Title is the server-rendered heading for scheduled reminders; null on

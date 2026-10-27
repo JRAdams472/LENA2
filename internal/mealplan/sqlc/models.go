@@ -142,6 +142,7 @@ type GroceryGroceryList struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 	HouseholdID   int64              `json:"household_id"`
 	StoreID       pgtype.Int8        `json:"store_id"`
+	Name          pgtype.Text        `json:"name"`
 }
 
 type GroceryGroceryListItem struct {

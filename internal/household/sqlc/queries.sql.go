@@ -683,6 +683,31 @@ func (q *Queries) MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotif
 	return result.RowsAffected(), nil
 }
 
+const markNotificationRead = `-- name: MarkNotificationRead :execrows
+UPDATE household.notifications
+SET read_at = now()
+WHERE notification_id = $1
+  AND user_id = $2
+  AND read_at IS NULL
+  AND (household_id IS NULL OR household_id = $3)
+`
+
+type MarkNotificationReadParams struct {
+	NotificationID int64       `json:"notification_id"`
+	UserID         int64       `json:"user_id"`
+	HouseholdID    pgtype.Int8 `json:"household_id"`
+}
+
+// Single-row read: same scoping as the mark-all sweep — the row must
+// belong to the caller and to their active household (or be user-global).
+func (q *Queries) MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markNotificationRead, arg.NotificationID, arg.UserID, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const pruneReadNotifications = `-- name: PruneReadNotifications :exec
 DELETE FROM household.notifications n
 WHERE n.user_id = $1

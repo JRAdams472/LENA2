@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useMutation } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
@@ -24,8 +24,8 @@ interface ChatMessage {
   tools?: string[];
 }
 
-// Quick prompts seed the chat; the capability chips jump to the richer
-// reviewable surfaces built in ai-p3..p5.
+// Quick prompts seed the chat; the capability chips link to surfaces that
+// actually exist today — no promised-feature dead ends.
 const QUICK_PROMPTS = [
   "What's expiring in my pantry soon?",
   "What should I cook this week?",
@@ -33,17 +33,63 @@ const QUICK_PROMPTS = [
 ];
 
 const CAPABILITIES = [
-  { label: "Suggest meals", href: "/member/meal-plans" },
-  { label: "Cocktail ideas", href: "/member/recipes" },
-  { label: "Wine pairing", href: "/member/recipes" },
+  { label: "Meal plans", href: "/member/meal-plans" },
+  { label: "Recipes", href: "/member/recipes" },
+  { label: "Wine cellar", href: "/member/wine/bottles" },
 ];
+
+// Conversation survives in-app navigation for the browser session only —
+// nothing is kept across sessions or shared with other tabs.
+const CHAT_KEY = "lena-assistant-chat";
+
+function loadMessages(): ChatMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is ChatMessage =>
+        typeof m === "object" &&
+        m !== null &&
+        typeof (m as ChatMessage).id === "string" &&
+        ((m as ChatMessage).role === "user" ||
+          (m as ChatMessage).role === "assistant") &&
+        typeof (m as ChatMessage).text === "string"
+    );
+  } catch {
+    return [];
+  }
+}
 
 export default function AssistantPage() {
   const dot = useAssistant();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      if (messages.length === 0) {
+        window.sessionStorage.removeItem(CHAT_KEY);
+      } else {
+        window.sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages));
+      }
+    } catch {
+      // sessionStorage full/unavailable — the chat still works in-memory.
+    }
+  }, [messages]);
+
+  const clearChat = () => {
+    setMessages([]);
+    try {
+      window.sessionStorage.removeItem(CHAT_KEY);
+    } catch {
+      // ignore — clearing state already dropped the visible history
+    }
+  };
 
   const ask = useMutation({
     mutationFn: (question: string) => dot.ask(question),
@@ -101,6 +147,11 @@ export default function AssistantPage() {
           color={dot.localActive ? "primary" : "default"}
           label={dot.localActive ? "On this device" : "Via server"}
         />
+        {messages.length > 0 && (
+          <Button size="small" sx={{ ml: "auto" }} onClick={clearChat}>
+            Clear conversation
+          </Button>
+        )}
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Ask about your pantry, meal plan, recipes, or cellar. Every answer shows

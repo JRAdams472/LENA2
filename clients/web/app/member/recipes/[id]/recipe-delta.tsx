@@ -636,8 +636,9 @@ export function RecipeDeltaPanel({
   const [addQty, setAddQty] = useState("");
   const [addUnitId, setAddUnitId] = useState<number | null>(null);
   const [addOptional, setAddOptional] = useState(false);
-  // add-step form
-  const [addStepNumber, setAddStepNumber] = useState("");
+  // add-step form — position is picked relative to canonical steps, same
+  // model as the recipe editor: "beginning", "end", or `after-<stepId>`.
+  const [addStepPosition, setAddStepPosition] = useState("end");
   const [addInstruction, setAddInstruction] = useState("");
   const [addDuration, setAddDuration] = useState("");
   const [addStepType, setAddStepType] = useState("");
@@ -673,6 +674,24 @@ export function RecipeDeltaPanel({
   const stepBase = new Map(
     canonicalSteps.map((s) => [s.recipeStepID, s])
   );
+  // The position select resolves to a canonical step-number slot: an added
+  // step claims that number and sorts ahead of the canonical step sharing
+  // it, then the effective list renumbers 1..N (see applyStepDelta).
+  const sortedCanonicalSteps = [...canonicalSteps].sort(
+    (a, b) => a.stepNumber - b.stepNumber
+  );
+  const addStepNumberFor = (position: string): number => {
+    const first = sortedCanonicalSteps[0]?.stepNumber;
+    const last =
+      sortedCanonicalSteps[sortedCanonicalSteps.length - 1]?.stepNumber ?? 0;
+    if (position === "beginning") return Math.max(1, first ?? 1);
+    if (position === "end") return Math.max(1, last + 1);
+    const anchor = sortedCanonicalSteps.find(
+      (s) => `after-${s.recipeStepID}` === position
+    );
+    // A stale pick (step deleted meanwhile) appends at the end.
+    return anchor != null ? anchor.stepNumber + 1 : last + 1;
+  };
   const unitName = (id: number | null) =>
     id != null ? units.find((u) => u.unitID === id)?.name ?? null : null;
 
@@ -711,7 +730,7 @@ export function RecipeDeltaPanel({
   };
 
   const addStep = () => {
-    if (addStepNumber === "" || addInstruction.trim() === "") return;
+    if (addInstruction.trim() === "") return;
     onDraftChange({
       ...draft,
       steps: [
@@ -720,7 +739,7 @@ export function RecipeDeltaPanel({
           key: nextKey(),
           stepId: null,
           kind: "add",
-          stepNumber: Number(addStepNumber),
+          stepNumber: addStepNumberFor(addStepPosition),
           instruction: addInstruction,
           durationMinutes: addDuration === "" ? null : Number(addDuration),
           stepType: addStepType === "" ? null : addStepType,
@@ -731,7 +750,7 @@ export function RecipeDeltaPanel({
         },
       ],
     });
-    setAddStepNumber("");
+    setAddStepPosition("end");
     setAddInstruction("");
     setAddDuration("");
     setAddStepType("");
@@ -909,14 +928,26 @@ export function RecipeDeltaPanel({
         Add a step
       </Typography>
       <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
-        <TextField
-          size="small"
-          label="At step"
-          type="number"
-          value={addStepNumber}
-          onChange={(e) => setAddStepNumber(e.target.value)}
-          sx={{ width: 90 }}
-        />
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <InputLabel id="delta-step-position-label">Position</InputLabel>
+          <Select
+            labelId="delta-step-position-label"
+            label="Position"
+            value={addStepPosition}
+            onChange={(e) => setAddStepPosition(e.target.value)}
+          >
+            <MenuItem value="beginning">At the beginning</MenuItem>
+            {sortedCanonicalSteps.map((s) => (
+              <MenuItem
+                key={s.recipeStepID}
+                value={`after-${s.recipeStepID}`}
+              >
+                After step {s.stepNumber}
+              </MenuItem>
+            ))}
+            <MenuItem value="end">At the end</MenuItem>
+          </Select>
+        </FormControl>
         <TextField
           size="small"
           label="Step directions"
@@ -938,7 +969,7 @@ export function RecipeDeltaPanel({
           size="small"
           variant="outlined"
           onClick={addStep}
-          disabled={addStepNumber === "" || addInstruction.trim() === ""}
+          disabled={addInstruction.trim() === ""}
         >
           Add new step
         </Button>

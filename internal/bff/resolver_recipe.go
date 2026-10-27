@@ -607,6 +607,25 @@ func (r *Resolver) RateRecipe(ctx context.Context, args struct {
 	return &recipeResolver{inv: r.InventoryService, rec: r.RecipeService, up: r.UserPrefsService, user: u, recipe: rec, rc: rc, as: firstSource(asOfRecipeChildren(rc), r.allergySrc(u))}, nil
 }
 
+// ClearRecipeRating removes the current user's rating for a recipe
+// (un-rate). Idempotent — clearing an absent rating still succeeds.
+func (r *Resolver) ClearRecipeRating(ctx context.Context, args struct {
+	RecipeID graphql.ID
+}) (bool, error) {
+	u, err := userFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	id, err := parseID(string(args.RecipeID))
+	if err != nil {
+		return false, err
+	}
+	if err := r.RecipeService.ClearRating(ctx, u.UserID, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // courseCategoryName is the category group whose members double as meal
 // types (Breakfast, Lunch, Dinner, ...).
 const courseCategoryName = "Course"

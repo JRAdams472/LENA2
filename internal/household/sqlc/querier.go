@@ -55,6 +55,9 @@ type Querier interface {
 	// received-invite list (ListPendingInvitesForUser) stays unscoped.
 	ListSentInvitesForUser(ctx context.Context, arg ListSentInvitesForUserParams) ([]HouseholdInvite, error)
 	MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error)
+	// Single-row read: same scoping as the mark-all sweep — the row must
+	// belong to the caller and to their active household (or be user-global).
+	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
 	// Retention: keep at most the 100 most recent read notifications per user;
 	// called inside the same transaction as CreateNotification.
 	PruneReadNotifications(ctx context.Context, userID int64) error

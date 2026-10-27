@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act, within } from "@testing-librar
 import { usePathname, useRouter } from "next/navigation";
 import AdminLayout from "@/app/components/AdminLayout";
 import { AuthProvider } from "@/app/auth/AuthProvider";
+import { api } from "@/lib/api";
 
 jest.mock("next/navigation");
 jest.mock("@react-oauth/google", () => ({
@@ -73,6 +74,13 @@ const meResponse = {
   },
 };
 
+// Per-item read marking is a separate api helper landing in parallel —
+// the bell calls it directly; shim it here so tests don't depend on the
+// merge order.
+const mockMarkNotificationRead = jest.fn();
+(api as unknown as Record<string, jest.Mock>).markNotificationRead =
+  mockMarkNotificationRead;
+
 describe("AdminLayout", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -80,6 +88,7 @@ describe("AdminLayout", () => {
     mockedUsePathname.mockReturnValue("/");
     mockedUseRouter.mockReturnValue({ push: mockPush });
     mockPush.mockReset();
+    mockMarkNotificationRead.mockReset().mockResolvedValue(true);
     mockFetch.mockReset();
     mockFetch.mockImplementation((_, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
@@ -287,7 +296,23 @@ describe("AdminLayout", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText(/ago|just now/).length).toBeGreaterThan(0);
 
-    // Opening the menu marks everything read.
+    // Opening the menu does NOT mark anything read — that's per-item now.
+    expect(
+      mockFetch.mock.calls.some(([, init]) => {
+        const body = (init as RequestInit).body;
+        return typeof body === "string" && body.includes("markAllNotificationsRead");
+      })
+    ).toBe(false);
+    expect(
+      screen
+        .getByTestId("notification-badge")
+        .querySelector(".MuiBadge-badge")
+    ).not.toHaveClass("MuiBadge-invisible");
+
+    // The manual action still clears everything.
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark all read"));
+    });
     expect(
       mockFetch.mock.calls.some(([, init]) => {
         const body = (init as RequestInit).body;
@@ -300,6 +325,50 @@ describe("AdminLayout", () => {
         .getByTestId("notification-badge")
         .querySelector(".MuiBadge-badge")
     ).toHaveClass("MuiBadge-invisible");
+  });
+
+  it("marks a single notification read when it is clicked", async () => {
+    signIn();
+    renderLayout();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("notification-badge")).toHaveTextContent("2")
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    });
+    await act(async () => {
+      fireEvent.click(
+        await screen.findByText("Mate invited you to their household")
+      );
+    });
+
+    expect(mockMarkNotificationRead).toHaveBeenCalledWith(3);
+    expect(mockPush).toHaveBeenCalledWith("/member/household");
+    // Badge drops by one, not to zero.
+    expect(screen.getByTestId("notification-badge")).toHaveTextContent("1");
+  });
+
+  it("does not re-mark a notification that is already read", async () => {
+    signIn();
+    renderLayout();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("notification-badge")).toHaveTextContent("2")
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    });
+    // With 2 unread out of 3 newest-first rows, the defrost reminder is
+    // the already-read one — clicking it navigates without marking.
+    await act(async () => {
+      fireEvent.click(
+        await screen.findByText("Defrost protein for Oct 3")
+      );
+    });
+
+    expect(mockMarkNotificationRead).not.toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/member/recipes/7");
   });
 
   it("renders reminder notifications with server text and actions", async () => {

@@ -275,6 +275,25 @@ describe("ItemRow brand-picked check-off", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("reports a successful delete through onDeleted", async () => {
+    mockFetch.mockReset();
+    mockFetch.mockImplementation((_, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.query.includes("deleteGroceryItem")) {
+        return Promise.resolve(gql({ deleteGroceryItem: true }));
+      }
+      return Promise.resolve(gql({}));
+    });
+    const onDeleted = jest.fn();
+    const item = baseGroceryItem({ manualItemName: "Apples" });
+    render(<ItemRow item={item} listId={1} onDeleted={onDeleted} />, {
+      wrapper: Wrapper,
+    });
+
+    fireEvent.click(screen.getByLabelText("delete item"));
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith(item));
+  });
+
   it("fires the reorder callbacks and honors disabled bounds", () => {
     const onMoveUp = jest.fn();
     const onMoveDown = jest.fn();

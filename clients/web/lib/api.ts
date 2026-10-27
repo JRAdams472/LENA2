@@ -87,14 +87,39 @@ export class ApiError extends Error {
   // GraphQL extensions.code when the response carries one — e.g.
   // "DISCLAIMER_REQUIRED" from the LEN-31 consent gate.
   code: string | null;
+  // Raw response body that produced the error (HTTP failures only) —
+  // kept for debugging; `message` is a short human-readable summary.
+  body: string | null;
 
-  constructor(status: number, message: string, kind: string | null = null, code: string | null = null) {
+  constructor(status: number, message: string, kind: string | null = null, code: string | null = null, body: string | null = null) {
     super(message);
-    this.status = status;
     this.name = "ApiError";
+    this.status = status;
     this.kind = kind;
     this.code = code;
+    this.body = body;
   }
+}
+
+// humanErrorMessage condenses a raw HTTP error body into a short,
+// displayable message. JSON bodies contribute their message/detail/title
+// field; short plain-text bodies (e.g. "Bad Request") are already
+// readable and pass through verbatim; HTML pages and oversized dumps get
+// the generic fallback so raw markup never reaches the UI.
+function humanErrorMessage(status: number, body: string): string {
+  const text = body.trim();
+  if (!text) return `Request failed (${status})`;
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown> | null;
+    for (const key of ["message", "detail", "title", "error"] as const) {
+      const v = parsed?.[key];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+  } catch {
+    // Not JSON — fall through to the plain-text/generic branches.
+  }
+  if (text.length <= 160 && !text.startsWith("<")) return text;
+  return "Something went wrong — try again";
 }
 
 export function isApiErrorKind(e: unknown, kind: string): boolean {
@@ -368,7 +393,7 @@ async function request<T>(
     if (res.status === 401) {
       onUnauthorized?.();
     }
-    throw new ApiError(res.status, text || `HTTP ${res.status}`, kind);
+    throw new ApiError(res.status, humanErrorMessage(res.status, text), kind, null, text || null);
   }
 
   const payload = (await res.json()) as GraphQLResponse<T>;
@@ -880,6 +905,7 @@ interface GqlMealPlan {
   id: string;
   name: string;
   weekStartDate: string;
+  weekStartDayOfWeek: number;
   isActive: boolean;
   slots: GqlMealSlot[];
 }
@@ -1053,6 +1079,7 @@ interface GqlStore {
 interface GqlGroceryList {
   id: string;
   generatedAt: string;
+  name: string | null;
   mealPlan: { id: string; name: string } | null;
   store: GqlStore | null;
   items: GqlGroceryListItem[];
@@ -1128,6 +1155,7 @@ interface GqlHouseholdNotification {
   recipeId: string | null;
   itemId: string | null;
   createdAt: string;
+  readAt: string | null;
 }
 
 interface GqlNotificationCategoryPreference {
@@ -1212,6 +1240,7 @@ const toHouseholdNotification = (
   recipeId: n.recipeId ? num(n.recipeId) : null,
   itemId: n.itemId ? num(n.itemId) : null,
   createdAt: n.createdAt,
+  readAt: n.readAt ?? null,
 });
 
 const toHouseholdInvite = (i: GqlHouseholdInvite): HouseholdInvite => ({
@@ -1840,7 +1869,7 @@ function toMealPlan(p: GqlMealPlan): MealPlan {
     mealPlanID: planID,
     planName: p.name,
     weekStartDate: p.weekStartDate,
-    weekStartDayOfWeek: 0,
+    weekStartDayOfWeek: num(p.weekStartDayOfWeek),
     isActive: p.isActive,
     mealSlots: (p.slots ?? []).map((s) => toMealSlot(planID, s)),
   };
@@ -2063,6 +2092,7 @@ function toGroceryList(g: GqlGroceryList): GroceryList {
     groceryListID: listID,
     mealPlanID: g.mealPlan ? num(g.mealPlan.id) : null,
     mealPlanName: g.mealPlan?.name ?? null,
+    name: g.name ?? null,
     generatedDate: g.generatedAt,
     groceryListItems: (g.items ?? []).map((i) => toGroceryListItem(listID, i)),
     store: g.store ? toStore(g.store) : null,
@@ -2198,7 +2228,7 @@ async function fetchCellarHoldings(bottleIds: string[]): Promise<Map<string, Gql
 }
 
 const MEAL_PLAN_FIELDS = `
-  id name weekStartDate isActive
+  id name weekStartDate weekStartDayOfWeek isActive
   slots {
     id dayOfWeek mealType servings replacementNote
     recipe { ${RECIPE_FIELDS} }
@@ -2237,7 +2267,7 @@ const STORE_FIELDS = `
 `;
 
 const GROCERY_LIST_FIELDS = `
-  id generatedAt
+  id generatedAt name
   mealPlan { id name }
   store { ${STORE_FIELDS} }
   items {
@@ -2284,6 +2314,7 @@ export const api = {
 
   // Profile (self-service)
   updateMyProfile: async (input: {
+    displayName?: string;
     firstName?: string;
     lastName?: string;
     backupEmail?: string;
@@ -2453,7 +2484,7 @@ export const api = {
     limit = 20
   ): Promise<HouseholdNotification[]> => {
     const data = await request<{ myNotifications: GqlHouseholdNotification[] }>(
-      `query ($limit: Int) { myNotifications(limit: $limit) { id kind foodEventId title body recipeId itemId createdAt actor { id displayName firstName lastName } } }`,
+      `query ($limit: Int) { myNotifications(limit: $limit) { id kind foodEventId title body recipeId itemId createdAt readAt actor { id displayName firstName lastName } } }`,
       { limit }
     );
     return (data.myNotifications ?? []).map(toHouseholdNotification);
@@ -2471,6 +2502,14 @@ export const api = {
       `mutation { markAllNotificationsRead }`
     );
     return data.markAllNotificationsRead;
+  },
+
+  markNotificationRead: async (notificationId: number): Promise<boolean> => {
+    const data = await request<{ markNotificationRead: boolean }>(
+      `mutation ($notificationId: ID!) { markNotificationRead(notificationId: $notificationId) }`,
+      { notificationId: String(notificationId) }
+    );
+    return data.markNotificationRead;
   },
 
   getMyNotificationPreferences: async (): Promise<
@@ -4138,6 +4177,15 @@ export const api = {
     return toRecipe(data.rateRecipe);
   },
 
+  // Removes the caller's rating entirely (un-rate); idempotent.
+  clearRecipeRating: async (id: number): Promise<boolean> => {
+    const data = await request<{ clearRecipeRating: boolean }>(
+      `mutation ($recipeId: ID!) { clearRecipeRating(recipeId: $recipeId) }`,
+      { recipeId: String(id) }
+    );
+    return data.clearRecipeRating;
+  },
+
   getRecipeItems: async (recipeId: number, view: RecipeView = "effective"): Promise<RecipeItem[]> =>
     (await api.getRecipe(recipeId, view)).recipeItems ?? [],
 
@@ -4305,6 +4353,15 @@ export const api = {
       { page: pageNumber, pageSize, sort: sort?.key ?? null, sortDesc: sort?.desc ?? null }
     );
     return toPaged(data.mealPlans.items.map(toMealPlan), data.mealPlans.pageInfo);
+  },
+
+  // The plan whose 7-day week contains today — one bounded row, replaces
+  // the dashboard's old fetch-all-then-filter scan. Null when none covers it.
+  getCurrentMealPlan: async (): Promise<MealPlan | null> => {
+    const data = await request<{ currentMealPlan: GqlMealPlan | null }>(
+      `query { currentMealPlan { ${MEAL_PLAN_FIELDS} } }`
+    );
+    return data.currentMealPlan ? toMealPlan(data.currentMealPlan) : null;
   },
 
   getMealPlan: async (id: number): Promise<MealPlan> => {
@@ -4898,6 +4955,24 @@ export const api = {
       { groceryListId: String(listId), storeId: storeId != null ? String(storeId) : null }
     );
     return toGroceryList(data.setGroceryListStore);
+  },
+
+  renameGroceryList: async (listId: number, name: string): Promise<GroceryList> => {
+    const data = await request<{ renameGroceryList: GqlGroceryList }>(
+      `mutation ($groceryListId: ID!, $name: String!) {
+        renameGroceryList(groceryListId: $groceryListId, name: $name) { ${GROCERY_LIST_FIELDS} }
+      }`,
+      { groceryListId: String(listId), name }
+    );
+    return toGroceryList(data.renameGroceryList);
+  },
+
+  deleteGroceryList: async (listId: number): Promise<boolean> => {
+    const data = await request<{ deleteGroceryList: boolean }>(
+      `mutation ($groceryListId: ID!) { deleteGroceryList(groceryListId: $groceryListId) }`,
+      { groceryListId: String(listId) }
+    );
+    return data.deleteGroceryList;
   },
 
   reorderGroceryListItems: async (

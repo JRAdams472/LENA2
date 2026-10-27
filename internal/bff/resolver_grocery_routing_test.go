@@ -130,6 +130,58 @@ func TestResolver_SetGroceryListStore_ForeignStore(t *testing.T) {
 	assert.ErrorIs(t, err, errGrocBoom)
 }
 
+func TestResolver_RenameGroceryList_Happy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	r := &Resolver{GroceryService: g}
+
+	name := "Thanksgiving"
+	list := grocery.GroceryList{GroceryListID: 11, HouseholdID: grocUserID, Name: &name}
+	g.EXPECT().RenameGroceryList(gomock.Any(), int64(11), grocUserID, "Thanksgiving", grocEmail).Return(list, nil)
+	g.EXPECT().ListGroceryListItemsByLists(gomock.Any(), []int64{11}, grocUserID).Return(nil, nil)
+
+	res, err := r.RenameGroceryList(grocCtx(), struct {
+		GroceryListID graphql.ID
+		Name          string
+	}{GroceryListID: "11", Name: "Thanksgiving"})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, graphql.ID("11"), res.ID())
+	require.NotNil(t, res.Name())
+	assert.Equal(t, "Thanksgiving", *res.Name())
+}
+
+func TestResolver_RenameGroceryList_ForeignList(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	r := &Resolver{GroceryService: g}
+
+	g.EXPECT().RenameGroceryList(gomock.Any(), int64(11), grocUserID, "x", grocEmail).Return(grocery.GroceryList{}, errGrocBoom)
+
+	res, err := r.RenameGroceryList(grocCtx(), struct {
+		GroceryListID graphql.ID
+		Name          string
+	}{GroceryListID: "11", Name: "x"})
+	assert.Nil(t, res)
+	assert.ErrorIs(t, err, errGrocBoom)
+}
+
+func TestResolver_DeleteGroceryList(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	g := mock.NewMockGroceryService(ctrl)
+	r := &Resolver{GroceryService: g}
+
+	g.EXPECT().DeleteGroceryList(gomock.Any(), int64(11), grocUserID).Return(nil)
+	ok, err := r.DeleteGroceryList(grocCtx(), struct{ GroceryListID graphql.ID }{GroceryListID: "11"})
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	g.EXPECT().DeleteGroceryList(gomock.Any(), int64(11), grocUserID).Return(errGrocBoom)
+	ok, err = r.DeleteGroceryList(grocCtx(), struct{ GroceryListID graphql.ID }{GroceryListID: "11"})
+	assert.False(t, ok)
+	assert.ErrorIs(t, err, errGrocBoom)
+}
+
 func TestResolver_ReorderGroceryListItems_Happy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	g := mock.NewMockGroceryService(ctrl)

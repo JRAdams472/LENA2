@@ -45,6 +45,7 @@ import {
   draftForLine,
   draftForStep,
   draftFromDelta,
+  draftIsDirty,
   upsertItemDraft,
   upsertStepDraft,
 } from "@/lib/delta";
@@ -82,7 +83,9 @@ export default function RecipeDetailPage() {
   const [unit, setUnit] = useState("");
   const [isOptional, setIsOptional] = useState(false);
 
-  const [stepNumber, setStepNumber] = useState("");
+  // Where the new/edited step lands: "beginning", "end", or
+  // `after-<recipeStepID>` — the raw step number is derived, never typed.
+  const [stepPosition, setStepPosition] = useState("end");
   const [instruction, setInstruction] = useState("");
   const [stepDuration, setStepDuration] = useState("");
   const [stepType, setStepType] = useState("");
@@ -193,6 +196,20 @@ export default function RecipeDetailPage() {
     }
   }, [delta]);
 
+  // Unsaved-tweaks guard: browsers get the native leave prompt via
+  // beforeunload. In-app client-side navigation (next/link) can't be
+  // intercepted in the App Router — a known limit; the "Unsaved changes"
+  // caption in the panel is the in-app signal.
+  const deltaDirty = draftIsDirty(draft, delta);
+  useEffect(() => {
+    if (!deltaDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [deltaDirty]);
+
   const acknowledgeMutation = useMutation({
     mutationFn: () => api.acknowledgeRecipeDelta(recipeId),
     onSuccess: () => {
@@ -238,23 +255,12 @@ export default function RecipeDetailPage() {
     onSuccess: invalidateItems,
   });
 
-  const addStepMutation = useMutation({
-    mutationFn: (payload: Partial<RecipeStep> & { stepNumber: number; instruction: string }) =>
-      api.addRecipeStep(recipeId, payload),
-    onSuccess: () => {
-      resetStepForm();
-      return invalidateSteps();
-    },
-  });
-
-  const updateStepMutation = useMutation({
-    mutationFn: ({
-      stepId,
-      ...payload
-    }: {
-      stepId: number;
-    } & Partial<RecipeStep> & { stepNumber: number; instruction: string }) =>
-      api.updateRecipeStep(recipeId, stepId, payload),
+  // Step writes go through one whole-list replace (updateRecipe with
+  // replaceContents rewrites recipe_step rows atomically), so inserting
+  // mid-list just means computing the new ordering + numbers here.
+  const saveStepsMutation = useMutation({
+    mutationFn: (steps: RecipeStep[]) =>
+      api.updateRecipe(recipeId, { recipeSteps: steps }, { replaceContents: true }),
     onSuccess: () => {
       resetStepForm();
       return invalidateSteps();
@@ -286,6 +292,17 @@ export default function RecipeDetailPage() {
     },
   });
 
+  // Rating's clear gesture (re-clicking the active star → null) un-rates.
+  const clearRatingMutation = useMutation({
+    mutationFn: () => api.clearRecipeRating(recipeId),
+    onSuccess: () => {
+      queryClient.setQueryData(["recipe", recipeId, view], (old: Recipe | undefined) =>
+        old ? { ...old, myRating: null } : old
+      );
+      queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] });
+    },
+  });
+
   const setCategoriesMutation = useMutation({
     mutationFn: (categoryIds: number[]) =>
       api.setRecipeCategories(recipeId, categoryIds),
@@ -300,7 +317,7 @@ export default function RecipeDetailPage() {
 
   const resetStepForm = () => {
     setEditingStepId(null);
-    setStepNumber("");
+    setStepPosition("end");
     setInstruction("");
     setStepDuration("");
     setStepType("");
@@ -328,27 +345,93 @@ export default function RecipeDetailPage() {
     });
   };
 
+  // Step writes happen on the CANONICAL list — the displayed steps can be
+  // the delta-applied effective view, and writing those rows back would
+  // bake household tweaks into the shared recipe.
+  const canonicalSteps = [...(canonicalQuery.data?.recipeSteps ?? [])].sort(
+    (a, b) => a.stepNumber - b.stepNumber
+  );
+
   const handleSaveStep = () => {
-    if (stepNumber === "" || instruction.trim() === "") return;
-    if (editingStepId === null) {
-      addStepMutation.mutate({
-        stepNumber: Number(stepNumber),
-        instruction,
-        ...stepTimingFields(),
-      });
+    if (instruction.trim() === "") return;
+    const editingStep =
+      editingStepId === null
+        ? null
+        : canonicalSteps.find((s) => s.recipeStepID === editingStepId) ?? null;
+    // Insert position is counted among the OTHER steps (the edited step
+    // is lifted out and re-inserted at the chosen spot).
+    const others = canonicalSteps.filter(
+      (s) => s.recipeStepID !== editingStepId
+    );
+    let pos =
+      stepPosition === "beginning"
+        ? 0
+        : stepPosition === "end"
+          ? others.length
+          : others.findIndex(
+                (s) => `after-${s.recipeStepID}` === stepPosition
+              ) + 1;
+    if (pos < 0 || pos > others.length) pos = others.length; // stale pick → append
+
+    // Step numbers must stay UNIQUE (recipe_id, step_number). Prefer a
+    // free number in the gap; when the slot sits inside a contiguous run
+    // the whole suffix shifts up by one and depends_on references get
+    // remapped to match.
+    const prev = pos > 0 ? others[pos - 1].stepNumber : 0;
+    const next = pos < others.length ? others[pos].stepNumber : null;
+    const shifted = new Set<number>();
+    let newNumber: number;
+    if (next === null || next - prev > 1) {
+      newNumber = prev + 1;
     } else {
-      updateStepMutation.mutate({
-        stepId: editingStepId,
-        stepNumber: Number(stepNumber),
-        instruction,
-        ...stepTimingFields(),
-      });
+      newNumber = next;
+      for (const s of others.slice(pos)) shifted.add(s.stepNumber);
     }
+    const bump = (n: number | null | undefined) =>
+      n != null && shifted.has(n) ? n + 1 : (n ?? null);
+    const renumbered: RecipeStep[] = others.map((s) => ({
+      ...s,
+      stepNumber: shifted.has(s.stepNumber) ? s.stepNumber + 1 : s.stepNumber,
+      dependsOnStepNumber: bump(s.dependsOnStepNumber),
+    }));
+
+    const dep =
+      stepDependsOn === "" ? null : bump(Number(stepDependsOn));
+    const step: RecipeStep = editingStep
+      ? {
+          ...editingStep,
+          stepNumber: newNumber,
+          instruction,
+          ...stepTimingFields(),
+          dependsOnStepNumber: dep,
+        }
+      : {
+          createdBy: "",
+          createDate: "",
+          lastUpdatedBy: null,
+          lastUpdatedDate: null,
+          recipeStepID: 0,
+          recipeID: recipeId,
+          stepNumber: newNumber,
+          instruction,
+          ...stepTimingFields(),
+          dependsOnStepNumber: dep,
+        };
+    renumbered.splice(pos, 0, step);
+    saveStepsMutation.mutate(renumbered);
   };
 
   const handleEditStep = (step: RecipeStep) => {
     setEditingStepId(step.recipeStepID);
-    setStepNumber(String(step.stepNumber));
+    // Reflect the step's current spot in the position select.
+    const idx = canonicalSteps.findIndex(
+      (s) => s.recipeStepID === step.recipeStepID
+    );
+    setStepPosition(
+      idx <= 0
+        ? "beginning"
+        : `after-${canonicalSteps[idx - 1].recipeStepID}`
+    );
     setInstruction(step.instruction);
     setStepDuration(step.durationMinutes != null ? String(step.durationMinutes) : "");
     setStepType(step.stepType ?? "");
@@ -464,6 +547,8 @@ export default function RecipeDetailPage() {
                 value={recipeQuery.data.myRating}
                 onChange={(_, value) => {
                   if (value != null) rateMutation.mutate(value);
+                  else if (recipeQuery.data.myRating != null)
+                    clearRatingMutation.mutate();
                 }}
               />
               <Typography variant="body2" color="text.secondary">
@@ -472,6 +557,15 @@ export default function RecipeDetailPage() {
                   recipeQuery.data.ratingCount
                 )}
               </Typography>
+              {recipeQuery.data.myRating != null && (
+                <Button
+                  size="small"
+                  onClick={() => clearRatingMutation.mutate()}
+                  disabled={clearRatingMutation.isPending}
+                >
+                  Clear
+                </Button>
+              )}
             </Box>
             {(recipeQuery.data.categories ?? []).length > 0 && (
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
@@ -862,13 +956,25 @@ export default function RecipeDetailPage() {
         {isAdmin && (
         <>
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
-          <TextField
-            size="small"
-            label="Step Number"
-            type="number"
-            value={stepNumber}
-            onChange={(e) => setStepNumber(e.target.value)}
-          />
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel id="step-position-label">Position</InputLabel>
+            <Select
+              labelId="step-position-label"
+              label="Position"
+              value={stepPosition}
+              onChange={(e) => setStepPosition(e.target.value)}
+            >
+              <MenuItem value="beginning">At the beginning</MenuItem>
+              {canonicalSteps
+                .filter((s) => s.recipeStepID !== editingStepId)
+                .map((s) => (
+                  <MenuItem key={s.recipeStepID} value={`after-${s.recipeStepID}`}>
+                    After step {s.stepNumber}
+                  </MenuItem>
+                ))}
+              <MenuItem value="end">At the end</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             size="small"
             label="Instruction"
@@ -879,7 +985,7 @@ export default function RecipeDetailPage() {
           <Button
             variant="contained"
             onClick={handleSaveStep}
-            disabled={stepNumber === "" || instruction.trim() === ""}
+            disabled={instruction.trim() === "" || saveStepsMutation.isPending}
           >
             {editingStepId === null ? "Add Step" : "Save Step"}
           </Button>
@@ -942,14 +1048,9 @@ export default function RecipeDetailPage() {
         </>
         )}
 
-        {addStepMutation.error && (
+        {saveStepsMutation.error && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            {(addStepMutation.error as Error).message}
-          </Alert>
-        )}
-        {updateStepMutation.error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {(updateStepMutation.error as Error).message}
+            {(saveStepsMutation.error as Error).message}
           </Alert>
         )}
         {deleteStepMutation.error && (

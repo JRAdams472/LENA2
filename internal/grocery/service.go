@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -75,12 +76,15 @@ func (s *Service) InTx(ctx context.Context, fn func(*Service) error) error {
 
 // GroceryList is a household's generated shopping list. StoreID selects
 // which store layout routes the list; new lists inherit the household's
-// most recent store so web and mobile route identically.
+// most recent store so web and mobile route identically. Name is an
+// optional member-facing label (LEN-180); nil means the client derives a
+// display name from the source plan or the generated timestamp.
 type GroceryList struct {
 	GroceryListID int64
 	HouseholdID   int64
 	MealPlanID    *int64
 	StoreID       *int64
+	Name          *string
 	GeneratedAt   time.Time
 }
 
@@ -166,6 +170,25 @@ func (s *Service) CountGroceryLists(ctx context.Context, householdID int64) (int
 		return 0, fmt.Errorf("count grocery lists: %w", err)
 	}
 	return n, nil
+}
+
+// RenameGroceryList sets the list's optional display name. An empty name
+// clears the column back to NULL so clients resume deriving the label.
+func (s *Service) RenameGroceryList(ctx context.Context, groceryListID, householdID int64, name, by string) (GroceryList, error) {
+	name = strings.TrimSpace(name)
+	if len(name) > 200 {
+		return GroceryList{}, fmt.Errorf("rename grocery list: %w", &domainerr.ValidationError{Field: "name", Msg: "must be at most 200 characters"})
+	}
+	row, err := s.q.RenameGroceryList(ctx, sqlc.RenameGroceryListParams{
+		GroceryListID: groceryListID,
+		HouseholdID:   householdID,
+		Name:          textOrNull(name),
+		UpdatedBy:     textOrNull(by),
+	})
+	if err != nil {
+		return GroceryList{}, fmt.Errorf("rename grocery list: %w", domainerr.FromStorage(err))
+	}
+	return toGroceryList(row), nil
 }
 
 // DeleteGroceryList removes a grocery list owned by the household.
@@ -567,6 +590,9 @@ func toGroceryList(row sqlc.GroceryGroceryList) GroceryList {
 	if row.StoreID.Valid {
 		v := row.StoreID.Int64
 		gl.StoreID = &v
+	}
+	if row.Name.Valid {
+		gl.Name = &row.Name.String
 	}
 	return gl
 }

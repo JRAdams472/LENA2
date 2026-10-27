@@ -162,7 +162,7 @@ describe("api client: auth and helpers", () => {
     expect((error as ApiError).kind).toBeNull();
   });
 
-  it("uses the HTTP status text fallback when the body read fails", async () => {
+  it("uses the status fallback when the body read fails", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -174,7 +174,31 @@ describe("api client: auth and helpers", () => {
 
     const error = await api.getBrandsPaged(1, 100).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).message).toBe("HTTP 500");
+    expect((error as ApiError).message).toBe("Request failed (500)");
+    expect((error as ApiError).body).toBeNull();
+  });
+
+  it("humanizes JSON and non-JSON HTTP error bodies", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ title: "Name is required" }),
+    });
+    let error = await api.getBrandsPaged(1, 100).catch((e) => e);
+    expect((error as ApiError).message).toBe("Name is required");
+    expect((error as ApiError).body).toContain("Name is required");
+
+    // An HTML error page must never surface as the message.
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      headers: { get: () => null },
+      text: async () => "<html><body>Bad Gateway</body></html>",
+    });
+    error = await api.getBrandsPaged(1, 100).catch((e) => e);
+    expect((error as ApiError).message).toBe("Something went wrong — try again");
+    expect((error as ApiError).status).toBe(502);
   });
 
   it("calls onUnauthorized on UNAUTHORIZED GraphQL errors", async () => {
@@ -308,6 +332,23 @@ describe("api client: meal plans and slots", () => {
     const error = await api.getMealPlan(9).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(404);
+  });
+
+  it("getMealPlan maps weekStartDayOfWeek from the server", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQL({ mealPlan: gqlMealPlan({ weekStartDayOfWeek: 1 }) })
+    );
+
+    const plan = await api.getMealPlan(1);
+    expect(plan.weekStartDayOfWeek).toBe(1);
+    expect(lastRequestBody().query).toContain("weekStartDayOfWeek");
+  });
+
+  it("getMealPlan defaults weekStartDayOfWeek to 0 when absent", async () => {
+    mockFetch.mockResolvedValueOnce(mockGraphQL({ mealPlan: gqlMealPlan() }));
+
+    const plan = await api.getMealPlan(1);
+    expect(plan.weekStartDayOfWeek).toBe(0);
   });
 
   it("createMealPlan posts name and week fields", async () => {

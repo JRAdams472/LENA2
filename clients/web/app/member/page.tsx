@@ -147,16 +147,7 @@ function DashboardSkeleton() {
   );
 }
 
-function isDateInRange(date: Date, weekStartDate: string) {
-  const start = new Date(weekStartDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  end.setHours(0, 0, 0, 0);
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d >= start && d < end;
-}
+
 
 export default function Dashboard() {
   const theme = useTheme();
@@ -172,17 +163,11 @@ export default function Dashboard() {
   const todayDay = today.getDay();
 
   const plansQuery = useQuery({
-    queryKey: ["mealPlans", "dashboard"],
-    queryFn: () => api.getMealPlansPaged(1, 1000),
+    queryKey: ["currentMealPlan", "dashboard"],
+    queryFn: () => api.getCurrentMealPlan(),
   });
 
-  const activePlanId = useMemo(() => {
-    if (!plansQuery.data) return null;
-    return (
-      plansQuery.data.items.find((p) => isDateInRange(today, p.weekStartDate))
-        ?.mealPlanID ?? null
-    );
-  }, [plansQuery.data, today]);
+  const activePlanId = plansQuery.data?.mealPlanID ?? null;
 
   const planQuery = useQuery({
     queryKey: ["mealPlan", activePlanId],
@@ -202,6 +187,17 @@ export default function Dashboard() {
 
   const queryClient = useQueryClient();
   const { me } = useMe();
+  // A household I solely own is merge-eligible on invite accept — the
+  // household page carries the merge dialog, so dashboard Accept routes
+  // there instead of silently forfeiting the merge.
+  const householdsQuery = useQuery({
+    queryKey: ["myHouseholds"],
+    queryFn: () => api.getMyHouseholds(),
+  });
+  const mergeSource = (householdsQuery.data ?? []).find(
+    (h) => h.members.length === 1 && h.myRole === "OWNER"
+  );
+
   const invitesQuery = useQuery({
     queryKey: ["householdInvites"],
     queryFn: () => api.getHouseholdInvites(),
@@ -273,16 +269,27 @@ export default function Dashboard() {
                 invited you to their household
               </Typography>
               <Box sx={{ display: "flex", gap: 1 }}>
-                <Button
-                  size="small"
-                  variant="contained"
-                  onClick={() =>
-                    inviteAction.mutate({ id: inv.inviteID, accept: true })
-                  }
-                  disabled={inviteAction.isPending}
-                >
-                  Accept
-                </Button>
+                {mergeSource ? (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    component={Link}
+                    href="/member/household"
+                  >
+                    Accept
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={() =>
+                      inviteAction.mutate({ id: inv.inviteID, accept: true })
+                    }
+                    disabled={inviteAction.isPending}
+                  >
+                    Accept
+                  </Button>
+                )}
                 <Button
                   size="small"
                   onClick={() =>

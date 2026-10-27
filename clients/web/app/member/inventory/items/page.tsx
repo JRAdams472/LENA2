@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Switch from "@mui/material/Switch";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -16,6 +21,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import { api, asEntity } from "@/lib/api";
 import DataTable from "@/app/components/DataTable";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import CrudDialog, { FieldDef } from "@/app/components/CrudDialog";
 import QuantityDialog from "@/app/components/QuantityDialog";
 import IngredientAutocomplete from "@/app/components/IngredientAutocomplete";
@@ -23,21 +29,18 @@ import AllergenFlagsEditor from "@/app/components/AllergenFlagsEditor";
 import { AllergenFlag, Item, Brand, Ingredient } from "@/lib/types";
 import { useMe } from "@/app/auth/useMe";
 
-// The brand itself renders as a picker in extraFields (writes go through
-// brandID, not the display name).
-// Brand and category render as pickers in extraFields — raw ID text
-// fields invited typos against catalog keys.
+// The generated fields cover the item's identity plus the pantry holding.
+// Catalog extras (barcodes, brand, category, ingredient links) render as
+// pickers/fields in extraFields inside a collapsed "Catalog details"
+// section — the dialog's everyday flow stays short.
 const itemFields = [
   { key: "name", label: "Name" },
-  { key: "upc12", label: "UPC12" },
-  { key: "upc14", label: "UPC14" },
   { key: "unit", label: "Unit" },
   { key: "currentQuantity", label: "Current Quantity", type: "number" as const },
   { key: "minQuantity", label: "Min Quantity", type: "number" as const },
-  { key: "purchaseDate", label: "Purchase Date" },
-  { key: "expiryDate", label: "Expiry Date" },
+  { key: "purchaseDate", label: "Purchase Date", type: "date" as const },
+  { key: "expiryDate", label: "Expiry Date", type: "date" as const },
   { key: "notes", label: "Notes" },
-  { key: "isFavorite", label: "Favorite", type: "boolean" as const },
 ];
 
 export default function ItemsPage() {
@@ -59,7 +62,7 @@ export default function ItemsPage() {
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
   const [qtyDialogItem, setQtyDialogItem] = useState<Item | null>(null);
   const [qtyEditItem, setQtyEditItem] = useState<Item | null>(null);
-  const [favEditItem, setFavEditItem] = useState<Item | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [catDialogItem, setCatDialogItem] = useState<Item | null>(null);
@@ -69,6 +72,10 @@ export default function ItemsPage() {
   const [dialogCategoryId, setDialogCategoryId] = useState<number | "">("");
   const [dialogCatalogIng, setDialogCatalogIng] = useState<Ingredient | null | undefined>(undefined);
   const [dialogHouseholdIng, setDialogHouseholdIng] = useState<Ingredient | null | undefined>(undefined);
+  // Barcode fields live in the collapsed catalog section — controlled here
+  // (like dialogBrand) and merged into the save payload in handleSave.
+  const [dialogUpc12, setDialogUpc12] = useState("");
+  const [dialogUpc14, setDialogUpc14] = useState("");
   const { me } = useMe();
   const isAdmin = me?.role === "admin";
 
@@ -188,6 +195,8 @@ export default function ItemsPage() {
     setDialogCategoryId("");
     setDialogCatalogIng(undefined);
     setDialogHouseholdIng(undefined);
+    setDialogUpc12("");
+    setDialogUpc14("");
     setDialogOpen(true);
   };
 
@@ -203,13 +212,13 @@ export default function ItemsPage() {
     setDialogCategoryId(row.categoryID);
     setDialogCatalogIng(undefined);
     setDialogHouseholdIng(undefined);
+    setDialogUpc12(row.upc12 ?? "");
+    setDialogUpc14(row.upc14 ?? "");
     setDialogOpen(true);
   };
 
   const handleDelete = (row: Item) => {
-    if (window.confirm("Delete this item?")) {
-      deleteMutation.mutate(row);
-    }
+    setDeleteTarget(row);
   };
 
   const applyIngredientLinks = async (itemID: number, failed: string[]) => {
@@ -254,6 +263,10 @@ export default function ItemsPage() {
     if (dialogCategoryId !== "") {
       values.categoryID = dialogCategoryId;
     }
+    // Barcode fields are controlled (catalog section), not generated —
+    // empty input serializes as null, which clears the stored value.
+    values.upc12 = strOrNull(dialogUpc12.trim());
+    values.upc14 = strOrNull(dialogUpc14.trim());
     const failed: string[] = [];
     setSaving(true);
     // Pantry holding write shared by create and edit; empty inputs clear
@@ -290,22 +303,12 @@ export default function ItemsPage() {
         const created = await createMutation.mutateAsync(values);
         await applyIngredientLinks(created.itemID, failed);
         await run("pantry details", () => adjustPantry(created.itemID));
-        if (values.isFavorite) {
-          await run("favorite flag", () =>
-            api.setItemFavorite(created.itemID, true)
-          );
-        }
       } else {
         const itemID = values.itemID as number;
         await updateMutation.mutateAsync(values);
         await applyIngredientLinks(itemID, failed);
         if (pantryFieldsChanged(values, dialogData)) {
           await run("pantry details", () => adjustPantry(itemID));
-        }
-        if (Boolean(values.isFavorite) !== Boolean(dialogData.isFavorite)) {
-          await run("favorite flag", () =>
-            api.setItemFavorite(itemID, Boolean(values.isFavorite))
-          );
         }
       }
     } catch {
@@ -336,15 +339,6 @@ export default function ItemsPage() {
     if (!qtyEditItem) return;
     adjustQuantityMutation.mutate({ id: qtyEditItem.itemID, quantity });
     setQtyEditItem(null);
-  };
-
-  const handleSaveFavorite = (values: Record<string, unknown>) => {
-    if (!favEditItem) return;
-    setFavoriteMutation.mutate({
-      id: favEditItem.itemID,
-      isFavorite: Boolean(values.isFavorite),
-    });
-    setFavEditItem(null);
   };
 
   const handleAddToInventory = (quantity: number) => {
@@ -397,7 +391,12 @@ export default function ItemsPage() {
           variant="outlined"
           clickable
           label={row.isFavorite ? "Yes" : "No"}
-          onClick={() => setFavEditItem(row)}
+          onClick={() =>
+            setFavoriteMutation.mutate({
+              id: row.itemID,
+              isFavorite: !row.isFavorite,
+            })
+          }
           title="Toggle favorite"
         />
       ),
@@ -521,7 +520,37 @@ export default function ItemsPage() {
         error={createMutation.error ?? updateMutation.error}
         saving={saving}
         extraFields={
-          <>
+          // Catalog attributes are rarely touched — collapse them so the
+          // everyday pantry fields stay above the fold.
+          <Accordion sx={{ mt: 1, boxShadow: "none" }} disableGutters>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              aria-controls="item-catalog-details"
+              id="item-catalog-details-header"
+            >
+              <Typography color="text.secondary">
+                Catalog details — barcodes, brand, category, ingredients
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+            <TextField
+              label="UPC-A"
+              helperText="12-digit barcode (US products)"
+              size="small"
+              fullWidth
+              margin="dense"
+              value={dialogUpc12}
+              onChange={(e) => setDialogUpc12(e.target.value)}
+            />
+            <TextField
+              label="GTIN-14"
+              helperText="14-digit barcode (international / case packs)"
+              size="small"
+              fullWidth
+              margin="dense"
+              value={dialogUpc14}
+              onChange={(e) => setDialogUpc14(e.target.value)}
+            />
             <FormControl size="small" fullWidth sx={{ mt: 1 }}>
               <InputLabel id="item-category-label">Category</InputLabel>
               <Select
@@ -608,7 +637,8 @@ export default function ItemsPage() {
                 }}
               />
             )}
-          </>
+            </AccordionDetails>
+          </Accordion>
         }
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
@@ -636,17 +666,23 @@ export default function ItemsPage() {
         onClose={() => setQtyEditItem(null)}
         onConfirm={handleSaveQuantity}
       />
-      <CrudDialog
-        open={favEditItem !== null}
-        title={
-          favEditItem ? `Edit ${favEditItem.name} Favorite` : "Edit Favorite"
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete item"
+        message={
+          deleteTarget
+            ? `Delete "${deleteTarget.name}"? Its pantry record and settings go with it.`
+            : ""
         }
-        fields={[{ key: "isFavorite", label: "Favorite", type: "boolean" }]}
-        values={
-          favEditItem ? { isFavorite: favEditItem.isFavorite } : {}
-        }
-        onClose={() => setFavEditItem(null)}
-        onSave={handleSaveFavorite}
+        confirmLabel="Delete"
+        destructive
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          const row = deleteTarget;
+          setDeleteTarget(null);
+          if (row) deleteMutation.mutate(row);
+        }}
+        onClose={() => setDeleteTarget(null)}
       />
       <CrudDialog
         open={catDialogItem !== null}

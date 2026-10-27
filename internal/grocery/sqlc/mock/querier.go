@@ -548,6 +548,21 @@ func (mr *MockQuerierMockRecorder) RenameAisle(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameAisle", reflect.TypeOf((*MockQuerier)(nil).RenameAisle), ctx, arg)
 }
 
+// RenameGroceryList mocks base method.
+func (m *MockQuerier) RenameGroceryList(ctx context.Context, arg sqlc.RenameGroceryListParams) (sqlc.GroceryGroceryList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameGroceryList", ctx, arg)
+	ret0, _ := ret[0].(sqlc.GroceryGroceryList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenameGroceryList indicates an expected call of RenameGroceryList.
+func (mr *MockQuerierMockRecorder) RenameGroceryList(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameGroceryList", reflect.TypeOf((*MockQuerier)(nil).RenameGroceryList), ctx, arg)
+}
+
 // RenameStore mocks base method.
 func (m *MockQuerier) RenameStore(ctx context.Context, arg sqlc.RenameStoreParams) (sqlc.GroceryStore, error) {
 	m.ctrl.T.Helper()

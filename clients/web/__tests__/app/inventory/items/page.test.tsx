@@ -161,6 +161,8 @@ describe("items page", () => {
     await waitFor(() => screen.getByText("Milk"));
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Butter" } });
+    // Category lives inside the collapsed "Catalog details" section.
+    fireEvent.click(await screen.findByText(/Catalog details/));
     fireEvent.mouseDown(
       await screen.findByRole("combobox", { name: "Category" })
     );
@@ -190,13 +192,20 @@ describe("items page", () => {
     });
   });
 
-  it("deletes an item", async () => {
+  it("deletes an item after confirming", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Milk"));
     const row = screen.getByText("Milk").closest("tr")!;
     fireEvent.click(
       row.querySelector('[data-testid="row-delete-button"]')!
     );
+    // Deletion goes through the styled confirm dialog first.
+    expect(
+      getBodies().some((b) => b.query.includes("deleteItem"))
+    ).toBe(false);
+    const confirm = await screen.findByRole("dialog", { name: "Delete item" });
+    expect(confirm).toHaveTextContent('Delete "Milk"?');
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("deleteItem") && b.variables.id === "1")).toBe(true);
     });
@@ -256,17 +265,12 @@ describe("items page", () => {
     });
   });
 
-  it("edits favorite via the column link", async () => {
+  it("toggles favorite instantly via the column chip", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Milk"));
     const row = screen.getByText("Milk").closest("tr")!;
+    // One interaction — the chip toggles in place, no dialog.
     fireEvent.click(within(row).getByRole("button", { name: "No" }));
-
-    const dialog = await screen.findByRole("dialog");
-    const toggle = within(dialog).getByRole("switch", { name: "Favorite" });
-    expect(toggle).not.toBeChecked();
-    fireEvent.click(toggle);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(
         getBodies().some(
@@ -276,6 +280,65 @@ describe("items page", () => {
             b.variables.isFavorite === true
         )
       ).toBe(true);
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renders purchase and expiry as date pickers", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Milk"));
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Purchase Date")).toHaveAttribute(
+      "type",
+      "date"
+    );
+    expect(within(dialog).getByLabelText("Expiry Date")).toHaveAttribute(
+      "type",
+      "date"
+    );
+  });
+
+  it("collapses catalog fields and explains the barcode formats", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Milk"));
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    // Collapsed by default — catalog pickers aren't exposed until expanded.
+    expect(
+      within(dialog).queryByRole("combobox", { name: "Category" })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText(/Catalog details/));
+
+    expect(
+      await within(dialog).findByRole("combobox", { name: "Category" })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("12-digit barcode (US products)")
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("14-digit barcode (international / case packs)")
+    ).toBeInTheDocument();
+  });
+
+  it("saves barcode fields through the dialog", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Milk"));
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Butter" },
+    });
+    fireEvent.click(within(dialog).getByText(/Catalog details/));
+    fireEvent.change(await within(dialog).findByLabelText("UPC-A"), {
+      target: { value: "012345678905" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const call = getBodies().find((b) => b.query.includes("createItem"));
+      expect(call?.variables.input.upc12).toBe("012345678905");
+      expect(call?.variables.input.upc14).toBeNull();
     });
   });
 });

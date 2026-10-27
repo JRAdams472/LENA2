@@ -94,6 +94,9 @@ describe("dashboard page", () => {
           gql({ recipes: { items: [plan.slots[0].recipe], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 } } })
         );
       }
+      if (body.query.includes("currentMealPlan")) {
+        return Promise.resolve(gql({ currentMealPlan: plan }));
+      }
       if (body.query.includes("mealPlan(")) {
         return Promise.resolve(gql({ mealPlan: plan }));
       }
@@ -144,6 +147,9 @@ describe("dashboard page", () => {
         return Promise.resolve(
           gql({ recipes: { items: [plan.slots[0].recipe], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 } } })
         );
+      }
+      if (body.query.includes("currentMealPlan")) {
+        return Promise.resolve(gql({ currentMealPlan: plan }));
       }
       if (body.query.includes("mealPlan(")) {
         return Promise.resolve(gql({ mealPlan: plan }));
@@ -204,6 +210,9 @@ describe("dashboard page", () => {
           gql({ recipes: { items: [plan.slots[0].recipe], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 1 } } })
         );
       }
+      if (body.query.includes("currentMealPlan")) {
+        return Promise.resolve(gql({ currentMealPlan: plan }));
+      }
       if (body.query.includes("mealPlan(")) {
         return Promise.resolve(gql({ mealPlan: plan }));
       }
@@ -250,6 +259,9 @@ describe("dashboard page", () => {
         return Promise.resolve(
           gql({ recipes: { items: [], pageInfo: { pageNumber: 1, pageSize: 200, totalCount: 0 } } })
         );
+      }
+      if (body.query.includes("currentMealPlan")) {
+        return Promise.resolve(gql({ currentMealPlan: plan }));
       }
       if (body.query.includes("mealPlan(")) {
         return Promise.resolve(gql({ mealPlan: plan }));

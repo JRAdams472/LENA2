@@ -147,16 +147,28 @@ describe("recipes page", () => {
     });
   });
 
-  it("edits a recipe", async () => {
+  it("edits a recipe's details", async () => {
     renderPage(<RecipesPage />);
     await waitFor(() => screen.getByText("Pasta"));
     const row = screen.getByText("Pasta").closest("tr")!;
-    fireEvent.click(row.querySelector('[data-testid="row-edit-button"]')!);
+    // Metadata editing moved to an explicit "Details" action — "Manage"
+    // is the content editor.
+    fireEvent.click(within(row).getByRole("button", { name: "Details" }));
+    await screen.findByText("Recipe Details");
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Pasta Updated" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(getBodies().some((b) => b.query.includes("updateRecipe") && b.variables.id === "1")).toBe(true);
     });
+  });
+
+  it("opens the create dialog when linked with ?create=1", async () => {
+    window.history.pushState({}, "", "/member/recipes?create=1");
+    renderPage(<RecipesPage />);
+    await waitFor(() =>
+      expect(screen.getByText("Create Recipe")).toBeInTheDocument()
+    );
+    window.history.pushState({}, "", "/member/recipes");
   });
 
   it("deletes a recipe", async () => {
@@ -405,15 +417,64 @@ describe("recipe detail page", () => {
     });
   });
 
-  it("adds a step", async () => {
+  it("adds a step at the end by default", async () => {
     renderPage(<RecipeDetailPage />);
     await waitFor(() => screen.getByText("Pasta"));
-    fireEvent.change(screen.getByLabelText("Step Number"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("Instruction"), { target: { value: "Drain pasta" } });
     fireEvent.click(screen.getByRole("button", { name: /add step/i }));
     await waitFor(() => {
-      expect(getBodies().some((b) => b.query.includes("updateRecipe"))).toBe(true);
+      const body = getBodies().find((b) => b.query.includes("updateRecipe"));
+      expect(body).toBeTruthy();
+      expect(body!.variables.input.steps).toEqual([
+        expect.objectContaining({ stepNumber: 1, instruction: "Boil water" }),
+        expect.objectContaining({ stepNumber: 2, instruction: "Drain pasta" }),
+      ]);
     });
+  });
+
+  it("inserts a step before an existing one and renumbers the rest", async () => {
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => screen.getByText("Pasta"));
+    // "Position" defaults to "At the end" — move it to the beginning.
+    fireEvent.mouseDown(screen.getByLabelText("Position"));
+    fireEvent.click(await screen.findByRole("option", { name: "At the beginning" }));
+    fireEvent.change(screen.getByLabelText("Instruction"), { target: { value: "Mise en place" } });
+    fireEvent.click(screen.getByRole("button", { name: /add step/i }));
+    await waitFor(() => {
+      const body = getBodies().find((b) => b.query.includes("updateRecipe"));
+      expect(body).toBeTruthy();
+      expect(body!.variables.input.steps).toEqual([
+        expect.objectContaining({ stepNumber: 1, instruction: "Mise en place" }),
+        expect.objectContaining({ stepNumber: 2, instruction: "Boil water" }),
+      ]);
+    });
+  });
+
+  it("warns on page unload while household tweaks are unsaved", async () => {
+    mockedUseMe.mockReturnValue({
+      me: { role: "member", household: { id: "7" } },
+      isAdmin: false,
+      isLoading: false,
+    });
+    renderPage(<RecipeDetailPage />);
+    await waitFor(() => screen.getByText("Boil water"));
+
+    // Clean draft → the beforeunload handler stays out of the way.
+    let evt = new Event("beforeunload", { cancelable: true });
+    fireEvent(window, evt);
+    expect(evt.defaultPrevented).toBe(false);
+
+    // Apply a tweak so the draft diverges from the saved delta.
+    fireEvent.click(screen.getByRole("button", { name: "Tweak" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Apply tweak" }));
+    await screen.findByText("Unsaved changes");
+
+    evt = new Event("beforeunload", { cancelable: true });
+    fireEvent(window, evt);
+    expect(evt.defaultPrevented).toBe(true);
+
+    // Restore the admin default the detail describe relies on.
+    mockedUseMe.mockReturnValue({ me: { role: "admin" }, isAdmin: true, isLoading: false });
   });
 
   it("deletes a step", async () => {

@@ -1127,6 +1127,7 @@ describe("api client: notifications", () => {
             recipeId: null,
             foodEventId: null,
             createdAt: "2026-09-20T10:00:00Z",
+            readAt: "2026-09-20T12:00:00Z",
             actor: null,
           },
         ],
@@ -1139,7 +1140,9 @@ describe("api client: notifications", () => {
     expect(n.title).toBe("Milk expires soon");
     expect(n.itemId).toBe(9);
     expect(n.recipeId).toBeNull();
+    expect(n.readAt).toBe("2026-09-20T12:00:00Z");
     expect(lastRequestBody().query).toContain("recipeId");
+    expect(lastRequestBody().query).toContain("readAt");
   });
 
   it("getMyNotificationPreferences returns the buckets", async () => {

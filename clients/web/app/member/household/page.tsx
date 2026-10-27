@@ -23,6 +23,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { api, ApiError } from "@/lib/api";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import {
   Household,
   HouseholdMember,
@@ -63,6 +64,7 @@ export default function HouseholdPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [acceptFor, setAcceptFor] = useState<number | null>(null);
+  const [dissolveOpen, setDissolveOpen] = useState(false);
 
   const householdQuery = useQuery({
     queryKey: ["myHousehold"],
@@ -161,6 +163,7 @@ export default function HouseholdPage() {
     mutationFn: (householdID?: number) => api.leaveHousehold(householdID),
     onSuccess: () => {
       setError(null);
+      setDissolveOpen(false);
       invalidateAll();
     },
     onError: onErr,
@@ -478,6 +481,15 @@ export default function HouseholdPage() {
             Leave household
           </Button>
         )}
+        {memberCount === 1 && household && (
+          <Button
+            color="error"
+            onClick={() => setDissolveOpen(true)}
+            disabled={leaveMutation.isPending}
+          >
+            Dissolve household
+          </Button>
+        )}
       </Paper>
 
       {incoming.length > 0 && (
@@ -569,11 +581,12 @@ export default function HouseholdPage() {
           sx={{ display: "flex", gap: 1, mb: 2 }}
         >
           <TextField
-            label="Name or email"
+            label="Find a member"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
             size="small"
             fullWidth
+            helperText="Search by name — only members who opted into search appear. Email invites aren't supported yet."
           />
           <Button type="submit" variant="outlined">
             Search
@@ -605,7 +618,10 @@ export default function HouseholdPage() {
           ))}
         </List>
         {searchQuery.data?.length === 0 && (
-          <Typography color="text.secondary">Nobody by that name.</Typography>
+          <Typography color="text.secondary">
+            No members found for &ldquo;{searchTerm}&rdquo; — they may not have
+            opted into search. Email invites aren&apos;t supported yet.
+          </Typography>
         )}
       </Paper>
 
@@ -692,6 +708,17 @@ export default function HouseholdPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={dissolveOpen}
+        title="Dissolve this household?"
+        message="You're the only member — dissolving permanently deletes the household and everything in it: pantry, cellar, meal plans, and grocery lists. This can't be undone."
+        confirmLabel="Dissolve"
+        destructive
+        busy={leaveMutation.isPending}
+        onConfirm={() => leaveMutation.mutate(household?.householdID)}
+        onClose={() => setDissolveOpen(false)}
+      />
     </Box>
   );
 }

@@ -73,6 +73,7 @@ type Querier interface {
 	// rows is not an error.
 	ReassignGroceryListsToHousehold(ctx context.Context, arg ReassignGroceryListsToHouseholdParams) error
 	RenameAisle(ctx context.Context, arg RenameAisleParams) (GroceryStoreAisle, error)
+	RenameGroceryList(ctx context.Context, arg RenameGroceryListParams) (GroceryGroceryList, error)
 	RenameStore(ctx context.Context, arg RenameStoreParams) (GroceryStore, error)
 	// Rewrite every aisle's position from the submitted order in one
 	// statement: position is the row's index in the id array.
