@@ -43,9 +43,8 @@ test.describe("recipe detail", () => {
       ).toBeVisible();
       await expect(page.getByText("No steps")).toBeVisible();
 
-      // Add a step.
+      // Add a step — position defaults to the end, no index math needed.
       const step1 = unique("E2E step one");
-      await page.getByLabel("Step Number").fill("1");
       await page.getByLabel("Instruction").fill(step1);
       await page.getByRole("button", { name: "Add Step" }).click();
       await expect(page.getByText(step1)).toBeVisible();
