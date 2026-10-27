@@ -102,8 +102,12 @@ test.describe("wine", () => {
           (b) => (b as { vineyard?: string }).vineyard === vineyard
         )?.id ?? null;
 
-      page.once("dialog", (d) => d.accept());
       await row.locator("button").nth(1).click();
+      // Destructive delete goes through a ConfirmDialog now.
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete" })
+        .click();
       await expect(page.getByText(vineyard)).toHaveCount(0);
     } finally {
       if (bottleId) {

@@ -22,8 +22,8 @@ test.describe("recipes", () => {
     const row = page.getByRole("row", { name: new RegExp(name) });
     await expect(row).toBeVisible();
 
-    // Edit the description.
-    await row.getByTestId("row-edit-button").click();
+    // Edit the description via the metadata-only "Details" action.
+    await row.getByRole("button", { name: "Details" }).click();
     dialog = page.getByRole("dialog");
     await dialog.getByLabel("Description").fill("updated by e2e");
     await dialog.getByRole("button", { name: "Save" }).click();
