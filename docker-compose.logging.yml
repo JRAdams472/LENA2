@@ -36,7 +36,7 @@ services:
         condition: service_started
 
   seq:
-    image: datalust/seq:2026.1.17182@sha256:9e9cc9183c6efaa7c187407d16901506ab3bc0aed7522bfc3ad7b529be30d8d8
+    image: datalust/seq:2026.1.17526@sha256:76f6ecdf9f742442f5b7e31eb9b94084b952af0575049d5c1e9d9101a6c8100f
     # Observability net only — Seq cannot reach the database tier.
     networks:
       - observability
