@@ -52,7 +52,7 @@ services:
       - seq_data:/data
 
   seq-gelf:
-    image: datalust/seq-input-gelf:4.0.02323@sha256:38d92d99e98f01206223c84337ca7bc1961128440803b8d71da929d49743b368
+    image: datalust/seq-input-gelf:4.0.02331@sha256:7af03b90be96d5aa41e84ac109d6252959fef3d397cae5e9a1e25f3c1dd9ca1b
     networks:
       - observability
     security_opt:
