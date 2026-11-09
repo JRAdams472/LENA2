@@ -32,7 +32,7 @@ services:
   # Same PGDATA layout as the postgres:18 image, so existing volumes migrate
   # in place; the migration creates the extension itself.
   db:
-    image: pgvector/pgvector:0.8.7-pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    image: pgvector/pgvector:0.8.7-pg18@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -69,7 +69,7 @@ services:
   # Applies the lena_app role password after migrations create the role.
   # One-shot and instant; the API waits on this, not on the seed.
   db-grant:
-    image: pgvector/pgvector:0.8.7-pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    image: pgvector/pgvector:0.8.7-pg18@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47
     environment:
       PGUSER: ${POSTGRES_USER:-lena}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -96,7 +96,7 @@ services:
   # is a no-op and the API never waits on it.
   #   docker compose --profile seed up db-seed
   db-seed:
-    image: pgvector/pgvector:0.8.7-pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    image: pgvector/pgvector:0.8.7-pg18@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47
     profiles: ["seed"]
     environment:
       PGUSER: ${POSTGRES_USER:-lena}
