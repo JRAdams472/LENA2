@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Pre-permission explainer shown once before the OS push dialog (LEN-136).
 /// Store review requires the reason a permission is needed to be clear

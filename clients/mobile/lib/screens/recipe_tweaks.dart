@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../recipe_delta.dart';
 
@@ -104,16 +104,14 @@ class RecipeTweaksCard extends StatelessWidget {
               for (final d in itemDrafts)
                 _DraftRow(
                   icon: Icons.restaurant,
-                  text: describeItemChange(
-                      d, itemBaseLabels[d.recipeItemId]),
+                  text: describeItemChange(d, itemBaseLabels[d.recipeItemId]),
                   orphaned: d.orphaned,
                   onRemove: () => onRemoveDraft(false, d),
                 ),
               for (final d in stepDrafts)
                 _DraftRow(
                   icon: Icons.format_list_numbered,
-                  text: describeStepChange(
-                      d, stepBaseNumbers[d.stepId]),
+                  text: describeStepChange(d, stepBaseNumbers[d.stepId]),
                   orphaned: d.orphaned,
                   onRemove: () => onRemoveDraft(true, d),
                 ),
@@ -386,10 +384,9 @@ class _ItemTweakSheetState extends State<_ItemTweakSheet> {
                   ));
                   if (!mounted) return;
                   setState(() {
-                    _ingredients = (result.data?['ingredients']?['items']
-                                as List? ??
-                            [])
-                        .cast<Map<String, dynamic>>();
+                    _ingredients =
+                        (result.data?['ingredients']?['items'] as List? ?? [])
+                            .cast<Map<String, dynamic>>();
                   });
                 },
               ),
@@ -411,8 +408,8 @@ class _ItemTweakSheetState extends State<_ItemTweakSheet> {
               DropdownButtonFormField<String?>(
                 isExpanded: true,
                 initialValue: _itemId,
-                decoration: const InputDecoration(
-                    labelText: 'Brand item (optional)'),
+                decoration:
+                    const InputDecoration(labelText: 'Brand item (optional)'),
                 items: _items
                     .map((i) => DropdownMenuItem(
                           value: i['id'] as String,
@@ -538,11 +535,8 @@ class _StepTweakSheetState extends State<_StepTweakSheet> {
   DeltaStepDraft _draft() => DeltaStepDraft(
         stepId: widget.anchorStepId,
         kind: _kind,
-        stepNumber:
-            _kind == 'add' ? int.tryParse(_numberCtrl.text) : null,
-        instruction: _kind == 'remove'
-            ? null
-            : _instructionCtrl.text.trim(),
+        stepNumber: _kind == 'add' ? int.tryParse(_numberCtrl.text) : null,
+        instruction: _kind == 'remove' ? null : _instructionCtrl.text.trim(),
         durationMinutes: int.tryParse(_durationCtrl.text),
       );
 
@@ -584,8 +578,7 @@ class _StepTweakSheetState extends State<_StepTweakSheet> {
             if (_kind != 'remove') ...[
               TextField(
                 controller: _instructionCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'Directions'),
+                decoration: const InputDecoration(labelText: 'Directions'),
                 onChanged: (_) => setState(() {}),
                 maxLines: 3,
                 minLines: 1,
@@ -593,8 +586,7 @@ class _StepTweakSheetState extends State<_StepTweakSheet> {
               const SizedBox(height: 12),
               TextField(
                 controller: _durationCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'Duration (min)'),
+                decoration: const InputDecoration(labelText: 'Duration (min)'),
                 keyboardType: TextInputType.number,
               ),
             ],

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -28,13 +28,14 @@ func HTTPMetrics() (echo.MiddlewareFunc, error) {
 		return nil, fmt.Errorf("http metrics instruments: %w", err)
 	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			start := time.Now()
 			err := next(c)
+			_, status := echo.ResolveResponseStatus(c.Response(), err)
 			attrs := metric.WithAttributes(
 				attribute.String("method", c.Request().Method),
 				attribute.String("route", c.Path()),
-				attribute.Int("status", c.Response().Status),
+				attribute.Int("status", status),
 			)
 			requests.Add(c.Request().Context(), 1, attrs)
 			duration.Record(c.Request().Context(), time.Since(start).Seconds(), attrs)

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Shared skeleton placeholders for list/form loading states.
 ///
@@ -136,11 +136,8 @@ class LenaSplash extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               'Lena',
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineMedium
-                  ?.copyWith(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer),
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onPrimaryContainer),
             ),
           ],
         ),

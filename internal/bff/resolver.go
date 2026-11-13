@@ -20,7 +20,7 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 	gqlerrors "github.com/graph-gophers/graphql-go/errors"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/JRAdams472/LENA2/internal/analytics"
 	"github.com/JRAdams472/LENA2/internal/identity"
@@ -1464,7 +1464,7 @@ func NewGraphQLHandler(r *Resolver, timeout time.Duration, aiTimeout time.Durati
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		req, body, ok := decodeGraphQLRequest(c)
 		if !ok {
 			// Return bind failures in GraphQL error shape so clients get a
@@ -1511,7 +1511,7 @@ type graphQLRequest struct {
 // decodeGraphQLRequest reads the body once up front — the dedup layer
 // hashes the exact bytes, so they must be captured before decoding — and
 // returns the parsed request. ok is false on read/bind failure.
-func decodeGraphQLRequest(c echo.Context) (graphQLRequest, []byte, bool) {
+func decodeGraphQLRequest(c *echo.Context) (graphQLRequest, []byte, bool) {
 	body, err := io.ReadAll(c.Request().Body)
 	var req graphQLRequest
 	ok := err == nil && json.Unmarshal(body, &req) == nil
@@ -1531,7 +1531,7 @@ func badRequestErrorBody() map[string]any {
 // dedupMutation runs the mutation dedup gate. handled reports whether the
 // response was already written (rejected or replayed), in which case err
 // carries the write result.
-func (r *Resolver) dedupMutation(c echo.Context, req graphQLRequest, body []byte) (*idemClaim, bool, error) {
+func (r *Resolver) dedupMutation(c *echo.Context, req graphQLRequest, body []byte) (*idemClaim, bool, error) {
 	if r.IdemStore == nil || !isMutationOperation(req.Query) {
 		return nil, false, nil
 	}
@@ -1558,7 +1558,7 @@ func (r *Resolver) dedupMutation(c echo.Context, req graphQLRequest, body []byte
 
 // execGraphQL executes the request under the time/cost budgets and
 // sanitizes the response errors.
-func execGraphQL(c echo.Context, parsed *graphql.Schema, req graphQLRequest, timeout, aiTimeout time.Duration, maxCost int) *graphql.Response {
+func execGraphQL(c *echo.Context, parsed *graphql.Schema, req graphQLRequest, timeout, aiTimeout time.Duration, maxCost int) *graphql.Response {
 	execTimeout := timeout
 	if aiTimeout > timeout && usesAIProvider(req.Query) {
 		execTimeout = aiTimeout

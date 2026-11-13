@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"golang.org/x/time/rate"
 
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -19,7 +19,7 @@ func newRateLimiter(perMinute, burst int, extract middleware.Extractor) echo.Mid
 		return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
 	}
 	store := middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
-		Rate:      rate.Limit(float64(perMinute) / 60.0),
+		Rate:      float64(perMinute) / 60.0,
 		Burst:     burst,
 		ExpiresIn: 10 * time.Minute,
 	})
@@ -35,7 +35,7 @@ func newRateLimiter(perMinute, burst int, extract middleware.Extractor) echo.Mid
 // before it can reach auth or the resolver. RealIP relies on the echo
 // IPExtractor configured on the server (X-Forwarded-For behind Caddy).
 func IPRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
-	return newRateLimiter(perMinute, burst, func(c echo.Context) (string, error) {
+	return newRateLimiter(perMinute, burst, func(c *echo.Context) (string, error) {
 		return "ip:" + c.RealIP(), nil
 	})
 }
@@ -48,7 +48,7 @@ func IPRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
 // unauthenticated requests are already throttled by IPRateLimiter and
 // rejected with 401 before reaching this middleware.
 func GraphQLRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
-	return newRateLimiter(perMinute, burst, func(c echo.Context) (string, error) {
+	return newRateLimiter(perMinute, burst, func(c *echo.Context) (string, error) {
 		if u, ok := currentuser.FromContext(c.Request().Context()); ok {
 			return "user:" + strconv.FormatInt(u.UserID, 10), nil
 		}
@@ -62,7 +62,7 @@ func GraphQLRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
 // make outbound requests to third-party token endpoints, so a distributed
 // flood of valid source IPs still hits one global ceiling.
 func GlobalRateLimiter(perMinute, burst int) echo.MiddlewareFunc {
-	return newRateLimiter(perMinute, burst, func(echo.Context) (string, error) {
+	return newRateLimiter(perMinute, burst, func(*echo.Context) (string, error) {
 		return "global", nil
 	})
 }

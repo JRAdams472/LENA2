@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 
 	"github.com/JRAdams472/LENA2/internal/identity"
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
@@ -76,7 +76,7 @@ func (h *LinkHandler) verifyCredential(ctx context.Context, provider, credential
 // RegisterRoutes mounts the endpoints behind the authenticator
 // middleware; link additionally rejects session-authenticated requests.
 func (h *LinkHandler) RegisterRoutes(e *echo.Echo, authMW, ipLimit echo.MiddlewareFunc) {
-	g := e.Group("/auth", middleware.BodyLimit("8K"))
+	g := e.Group("/auth", middleware.BodyLimit(8<<10))
 	g.GET("/identities", h.List, ipLimit, authMW)
 	g.POST("/link", h.Link, ipLimit, authMW)
 	g.DELETE("/link", h.Unlink, ipLimit, authMW)
@@ -104,7 +104,7 @@ func toLoginResponses(logins []identity.Login) []loginResponse {
 	return out
 }
 
-func (h *LinkHandler) currentUser(c echo.Context) (currentuser.User, error) {
+func (h *LinkHandler) currentUser(c *echo.Context) (currentuser.User, error) {
 	u, ok := currentuser.FromContext(c.Request().Context())
 	if !ok {
 		return currentuser.User{}, echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
@@ -113,7 +113,7 @@ func (h *LinkHandler) currentUser(c echo.Context) (currentuser.User, error) {
 }
 
 // List returns the caller's linked provider identities.
-func (h *LinkHandler) List(c echo.Context) error {
+func (h *LinkHandler) List(c *echo.Context) error {
 	u, err := h.currentUser(c)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ type linkRequest struct {
 // Link verifies the supplied provider credential and binds it to the
 // caller. A provider-credential bearer is already fresh proof of the
 // account; a session bearer must be accompanied by currentCredential.
-func (h *LinkHandler) Link(c echo.Context) error {
+func (h *LinkHandler) Link(c *echo.Context) error {
 	u, err := h.currentUser(c)
 	if err != nil {
 		return err
@@ -201,7 +201,7 @@ type unlinkRequest struct {
 
 // Unlink removes a provider login from the caller's account. The last
 // remaining sign-in method cannot be removed.
-func (h *LinkHandler) Unlink(c echo.Context) error {
+func (h *LinkHandler) Unlink(c *echo.Context) error {
 	u, err := h.currentUser(c)
 	if err != nil {
 		return err

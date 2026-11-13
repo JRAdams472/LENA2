@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
@@ -26,8 +26,7 @@ class _MemStorage implements TokenStorage {
   Future<void> delete(String key) async => map.remove(key);
 }
 
-AuthService _auth({Map<String, String>? providerClientIds}) =>
-    AuthService.test(
+AuthService _auth({Map<String, String>? providerClientIds}) => AuthService.test(
       storage: _MemStorage(),
       httpClient: http_testing.MockClient(
         (req) async => http.Response('{}', 401),
@@ -61,8 +60,8 @@ void main() {
         await auth.ready;
         debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
         try {
-          await tester.pumpWidget(
-              _wrap(const LoginScreen(), dark: dark, auth: auth));
+          await tester
+              .pumpWidget(_wrap(const LoginScreen(), dark: dark, auth: auth));
           await tester.pumpAndSettle();
           await expectLater(
             find.byType(LoginScreen),

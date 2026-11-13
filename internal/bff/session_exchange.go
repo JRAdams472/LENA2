@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/session"
@@ -39,7 +39,7 @@ func NewProviderSessionHandler(providers map[string]CodeVerifier, provision iden
 // siblings (/auth/session/refresh, /revoke) take precedence over the
 // :provider parameter in echo's router.
 func (h *ProviderSessionHandler) RegisterRoutes(e *echo.Echo, mw ...echo.MiddlewareFunc) {
-	g := e.Group("/auth/session", middleware.BodyLimit("8K"))
+	g := e.Group("/auth/session", middleware.BodyLimit(8<<10))
 	g.POST("/:provider", h.CreateSession, mw...)
 }
 
@@ -60,7 +60,7 @@ type providerSessionRequest struct {
 
 // CreateSession exchanges a provider authorization code for a LENA
 // session: verify → provision (upsert/household/ban/admin) → issue.
-func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
+func (h *ProviderSessionHandler) CreateSession(c *echo.Context) error {
 	name := c.Param("provider")
 	verifier, ok := h.providers[name]
 	if !ok || verifier == nil || h.sessions == nil || !h.sessions.Enabled() {
@@ -120,7 +120,7 @@ func (h *ProviderSessionHandler) CreateSession(c echo.Context) error {
 // otherwise provider outages and store failures are invisible behind the
 // generic 401 body. Backend failures log at error, rejected credentials
 // at warn, matching the auth middleware's severity split.
-func logExchangeError(c echo.Context, provider, stage string, err error) {
+func logExchangeError(c *echo.Context, provider, stage string, err error) {
 	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
 	if errors.Is(err, errProviderUnavailable) || errors.Is(err, errKeyDiscovery) ||
 		errors.Is(err, errIdentityStore) {

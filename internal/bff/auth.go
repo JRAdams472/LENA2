@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
@@ -308,7 +308,7 @@ func splitProviderScoped(s string) (provider, value string) {
 // handler.
 func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			raw, err := extractBearer(c.Request())
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
@@ -346,7 +346,7 @@ func (a *Authenticator) Middleware() echo.MiddlewareFunc {
 
 // logAuthError records the cause of an authentication failure for ops and
 // security review, redacting the raw token itself.
-func (a *Authenticator) logAuthError(c echo.Context, err error) {
+func (a *Authenticator) logAuthError(c *echo.Context, err error) {
 	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
 	issuer := c.Request().Header.Get("X-Issuer")
 	subject := c.Request().Header.Get("X-Subject")

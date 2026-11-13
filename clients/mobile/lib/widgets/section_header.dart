@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Section title with an optional trailing action — the dashboard /
 /// household grouping pattern (design.md v2 §6). Trailing actions use

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,7 +62,7 @@ func (f *fakeLinkStore) ResolveLoginUserID(_ context.Context, _, _ string) (int6
 	return f.resolveID, f.resolveErr
 }
 
-func linkCtx(t *testing.T, method, target, body string, session bool) (echo.Context, *httptest.ResponseRecorder) {
+func linkCtx(t *testing.T, method, target, body string, session bool) (*echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	e := echo.New()
 	req := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
 /// updateQuery for graphql_flutter's FetchMoreOptions: appends the new
@@ -14,7 +14,10 @@ UpdateQuery appendPageItems(String field) {
     // Skip rows already merged — a re-requested page must not re-append
     // (LEN-104). Rows without an `id` key always append.
     final prevItems = prevPage['items'] as List? ?? [];
-    final prevIds = {for (final it in prevItems) if (it is Map) it['id']};
+    final prevIds = {
+      for (final it in prevItems)
+        if (it is Map) it['id']
+    };
     final merged = Map<String, dynamic>.from(morePage);
     merged['items'] = [
       ...prevItems,

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -48,7 +48,7 @@ func (f *fakeSessionIssuer) Revoke(_ context.Context, refreshToken string) error
 	return f.revokeErr
 }
 
-func sessionCtx(t *testing.T, body string) (echo.Context, *httptest.ResponseRecorder) {
+func sessionCtx(t *testing.T, body string) (*echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	e := echo.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/session", strings.NewReader(body))

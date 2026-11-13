@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Shared empty state (design.md v2 §6): soft icon circle, title,
 /// optional description, optional CTA. Replaces bare `Center(Text(...))`

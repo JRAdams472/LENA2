@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Motion spec from docs/design.md §7 — decelerate curves, three
 /// durations, content enters rather than snapping in.

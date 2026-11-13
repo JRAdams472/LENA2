@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Semantic tint for [StatusChip].
 enum StatusTone { primary, secondary, neutral, error }
@@ -7,7 +7,8 @@ enum StatusTone { primary, secondary, neutral, error }
 /// matching readable-on-surface tone. Used for active/role markers,
 /// invitation states, and similar inline status (design.md v2 §6).
 class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.label, this.tone = StatusTone.neutral});
+  const StatusChip(
+      {super.key, required this.label, this.tone = StatusTone.neutral});
 
   final String label;
   final StatusTone tone;

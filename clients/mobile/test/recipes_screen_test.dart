@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gql/ast.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
@@ -34,8 +34,7 @@ class _CaptureLink extends Link {
   final Map<String, List<GraphQLError>> errors;
   final Map<String, Map<String, dynamic> Function(Request)> fns;
 
-  _CaptureLink(this.responses,
-      {this.errors = const {}, this.fns = const {}});
+  _CaptureLink(this.responses, {this.errors = const {}, this.fns = const {}});
 
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
@@ -510,16 +509,13 @@ void main() {
       expect(find.byType(EditRecipeScreen), findsOneWidget);
     });
 
-    testWidgets(
-        'back from the view preserves search text, results, and scroll',
+    testWidgets('back from the view preserves search text, results, and scroll',
         (tester) async {
       final page1 = [
-        for (var i = 0; i < 25; i++)
-          _recipe(id: 'r$i', name: 'Pasta $i'),
+        for (var i = 0; i < 25; i++) _recipe(id: 'r$i', name: 'Pasta $i'),
       ];
       final page2 = [
-        for (var i = 25; i < 40; i++)
-          _recipe(id: 'r$i', name: 'Pasta $i'),
+        for (var i = 25; i < 40; i++) _recipe(id: 'r$i', name: 'Pasta $i'),
       ];
       final link = _CaptureLink(
         {
@@ -575,8 +571,7 @@ void main() {
       // The list widget stayed mounted — controller text, filtered rows,
       // and scroll offset are untouched.
       expect(find.text('pasta'), findsOneWidget);
-      expect(tester.state<ScrollableState>(scrollable).position.pixels,
-          before);
+      expect(tester.state<ScrollableState>(scrollable).position.pixels, before);
       // And the search results are the filtered set, not a refetched list.
       expect(find.text('Pasta 24'), findsOneWidget);
       expect(
