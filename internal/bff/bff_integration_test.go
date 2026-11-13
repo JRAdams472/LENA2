@@ -15,7 +15,7 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,7 +118,6 @@ func TestBFF_Integration(t *testing.T) {
 	}, Options{})
 
 	e := echo.New()
-	e.HideBanner = true
 	handler, err := NewGraphQLHandler(resolver, 10*time.Second, 0, 0)
 	require.NoError(t, err)
 	e.POST("/graphql", handler, authenticator.Middleware())

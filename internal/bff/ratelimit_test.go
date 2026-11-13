@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/JRAdams472/LENA2/internal/testutil"
@@ -14,7 +14,7 @@ import (
 
 func withUser(userID int64) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			c.SetRequest(c.Request().WithContext(testutil.WithUser(c.Request().Context(), userID, "t@example.com")))
 			return next(c)
 		}
@@ -25,7 +25,7 @@ func TestGraphQLRateLimiter_LimitsPerUser(t *testing.T) {
 	e := echo.New()
 	e.Use(withUser(7))
 	e.Use(GraphQLRateLimiter(60, 2))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	codes := make([]int, 3)
 	for i := range codes {
@@ -40,13 +40,13 @@ func TestGraphQLRateLimiter_UsersAreIndependent(t *testing.T) {
 	e := echo.New()
 	var userID int64 = 7
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			c.SetRequest(c.Request().WithContext(testutil.WithUser(c.Request().Context(), userID, "t@example.com")))
 			return next(c)
 		}
 	})
 	e.Use(GraphQLRateLimiter(60, 1))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	do := func() int {
 		rec := httptest.NewRecorder()
@@ -67,7 +67,7 @@ func TestGraphQLRateLimiter_IdentifiesByUserNotIP(t *testing.T) {
 	e := echo.New()
 	e.Use(withUser(7))
 	e.Use(GraphQLRateLimiter(60, 1))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	do := func(ip string) int {
 		rec := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestGraphQLRateLimiter_IdentifiesByUserNotIP(t *testing.T) {
 func TestIPRateLimiter_LimitsPerIP(t *testing.T) {
 	e := echo.New()
 	e.Use(IPRateLimiter(60, 2))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	codes := make([]int, 3)
 	for i := range codes {
@@ -102,7 +102,7 @@ func TestIPRateLimiter_LimitsPerIP(t *testing.T) {
 func TestIPRateLimiter_IPsAreIndependent(t *testing.T) {
 	e := echo.New()
 	e.Use(IPRateLimiter(60, 1))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	do := func(ip string) int {
 		rec := httptest.NewRecorder()
@@ -121,7 +121,7 @@ func TestIPRateLimiter_UsesXForwardedFor(t *testing.T) {
 	e := echo.New()
 	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 	e.Use(IPRateLimiter(60, 1))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	do := func(xff string) int {
 		rec := httptest.NewRecorder()
@@ -141,7 +141,7 @@ func TestIPRateLimiter_UsesXForwardedFor(t *testing.T) {
 func TestIPRateLimiter_Disabled(t *testing.T) {
 	e := echo.New()
 	e.Use(IPRateLimiter(0, 0))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	for i := 0; i < 10; i++ {
 		rec := httptest.NewRecorder()
@@ -153,7 +153,7 @@ func TestIPRateLimiter_Disabled(t *testing.T) {
 func TestGraphQLRateLimiter_Disabled(t *testing.T) {
 	e := echo.New()
 	e.Use(GraphQLRateLimiter(0, 0))
-	e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	for i := 0; i < 10; i++ {
 		rec := httptest.NewRecorder()

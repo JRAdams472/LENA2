@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lena_mobile/allergy.dart';
 import 'package:lena_mobile/screens/disclaimer_screen.dart';
@@ -37,8 +37,7 @@ void main() {
       expect(find.text('Not now'), findsOneWidget);
     });
 
-    testWidgets('full disclaimer screen renders every section',
-        (tester) async {
+    testWidgets('full disclaimer screen renders every section', (tester) async {
       await tester.pumpWidget(
         MaterialApp(theme: lenaTheme(), home: const DisclaimerScreen()),
       );

@@ -4,25 +4,23 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 
-	// otelecho is deprecated in favour of github.com/labstack/echo-opentelemetry,
-	// which requires Echo v5; we are on v4, so keep otelecho until that upgrade.
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho" //nolint:staticcheck
+	echootel "github.com/labstack/echo-otel/v5"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/JRAdams472/LENA2/internal/ai"
@@ -140,30 +138,15 @@ func run() int {
 		return 1
 	}
 
-	serverErr := make(chan error, 1)
-	go func() {
-		addr := ":" + cfg.Port
-		log.Info("starting server", "addr", addr)
-		if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- err
-		}
-	}()
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	code := 0
-	select {
-	case <-sig:
-	case err := <-serverErr:
+	log.Info("starting server", "addr", ":"+cfg.Port)
+	// Start blocks until ctx is cancelled, then shuts down gracefully.
+	if err := newStartConfig(*cfg, log).Start(ctx, e); err != nil {
 		log.Error("server error", "error", err)
 		code = 1
-	}
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
-	if err := e.Shutdown(shutdownCtx); err != nil {
-		log.Error("shutdown error", "error", err)
 	}
 
 	// Drain in-flight background work (analytics events, recommendation
@@ -453,24 +436,63 @@ func (s *serverServices) wireAuth(cfg config.Config, pool *pgxpool.Pool, log *sl
 	return nil
 }
 
+// newStartConfig builds the HTTP server start configuration. Bound
+// connection lifecycle: without timeouts the server is exposed to
+// slowloris and large-body resource exhaustion.
+func newStartConfig(cfg config.Config, log *slog.Logger) echo.StartConfig {
+	return echo.StartConfig{
+		Address:         ":" + cfg.Port,
+		HideBanner:      true,
+		HidePort:        true,
+		GracefulTimeout: 10 * time.Second,
+		OnShutdownError: func(err error) { log.Error("shutdown error", "error", err) },
+		BeforeServeFunc: func(s *http.Server) error {
+			s.ReadHeaderTimeout = cfg.HTTPReadHeaderTimeout
+			s.ReadTimeout = cfg.HTTPReadTimeout
+			s.WriteTimeout = cfg.HTTPWriteTimeout
+			s.IdleTimeout = cfg.HTTPIdleTimeout
+			return nil
+		},
+	}
+}
+
+// parseByteSize parses a size such as "64K", "4M" or "1GB" (binary
+// multiples, case-insensitive) into bytes.
+func parseByteSize(s string) (int64, error) {
+	v := strings.ToUpper(strings.TrimSpace(s))
+	v = strings.TrimSuffix(strings.TrimSuffix(v, "IB"), "B")
+	mult := int64(1)
+	if n := len(v); n > 0 {
+		switch v[n-1] {
+		case 'K':
+			mult = 1 << 10
+		case 'M':
+			mult = 1 << 20
+		case 'G':
+			mult = 1 << 30
+		}
+		if mult > 1 {
+			v = v[:n-1]
+		}
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid byte size %q", s)
+	}
+	return n * mult, nil
+}
+
 // newEcho builds the Echo instance with timeouts, middleware, health
 // probes, and (when telemetry is enabled) the guarded /metrics route.
 func newEcho(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry, pool *pgxpool.Pool, auth *bff.Authenticator) (*echo.Echo, error) {
-	e := echo.New()
-	e.HideBanner = true
+	e := echo.NewWithConfig(echo.Config{Logger: log})
 	// The API sits behind Caddy, which appends X-Forwarded-For. Only
 	// explicitly configured proxy CIDRs (plus loopback) are trusted; the
 	// default private range trust is disabled so a direct spoofed XFF
 	// cannot change the client IP used by the rate limiter.
 	e.IPExtractor = buildIPExtractor(splitAndTrim(cfg.TrustedProxyCIDRs))
-	// Bound connection lifecycle: without timeouts the server is exposed
-	// to slowloris and large-body resource exhaustion.
-	e.Server.ReadHeaderTimeout = cfg.HTTPReadHeaderTimeout
-	e.Server.ReadTimeout = cfg.HTTPReadTimeout
-	e.Server.WriteTimeout = cfg.HTTPWriteTimeout
-	e.Server.IdleTimeout = cfg.HTTPIdleTimeout
 	e.Use(middleware.Recover())
-	e.Use(otelecho.Middleware(cfg.ServiceName))
+	e.Use(echootel.NewMiddleware(cfg.ServiceName))
 	e.Use(middleware.RequestID())
 
 	e.Use(middleware.CORSWithConfig(buildCORSConfig(cfg.CORSAllowedOrigins)))
@@ -480,8 +502,7 @@ func newEcho(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry, pool
 		LogMethod:   true,
 		LogLatency:  true,
 		LogRemoteIP: true,
-		LogError:    true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
 			requestID := c.Response().Header().Get(echo.HeaderXRequestID)
 			var traceID string
 			if sc := oteltrace.SpanContextFromContext(c.Request().Context()); sc.IsValid() {
@@ -513,10 +534,10 @@ func newEcho(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry, pool
 		},
 	}))
 
-	e.GET("/health", func(c echo.Context) error {
+	e.GET("/health", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
-	e.GET("/ready", func(c echo.Context) error {
+	e.GET("/ready", func(c *echo.Context) error {
 		if err := pool.Ping(c.Request().Context()); err != nil {
 			// Do not leak the database error string to unauthenticated callers.
 			log.Error("readiness check failed", "error", err)
@@ -592,7 +613,11 @@ func registerAPIRoutes(e *echo.Echo, cfg config.Config, pool *pgxpool.Pool, s *s
 		bff.GraphQLRateLimiter(cfg.GraphQLRateLimitPerMinute, cfg.GraphQLRateLimitBurst),
 	}
 	if cfg.GraphQLBodyLimit != "" {
-		graphqlMW = append([]echo.MiddlewareFunc{middleware.BodyLimit(cfg.GraphQLBodyLimit)}, graphqlMW...)
+		limit, err := parseByteSize(cfg.GraphQLBodyLimit)
+		if err != nil {
+			return nil, fmt.Errorf("GRAPHQL_BODY_LIMIT: %w", err)
+		}
+		graphqlMW = append([]echo.MiddlewareFunc{middleware.BodyLimit(limit)}, graphqlMW...)
 	}
 	e.POST("/graphql", handler, graphqlMW...)
 
@@ -676,11 +701,14 @@ func buildCORSConfig(allowedOrigins string) middleware.CORSConfig {
 		MaxAge:       86400,
 	}
 	if allowedOrigins == "*" {
-		cfg.AllowOriginFunc = func(string) (bool, error) { return true, nil }
+		cfg.UnsafeAllowOriginFunc = func(_ *echo.Context, origin string) (string, bool, error) { return origin, true, nil }
 		cfg.AllowCredentials = false
-	} else {
-		cfg.AllowOrigins = splitAndTrim(allowedOrigins)
+	} else if origins := splitAndTrim(allowedOrigins); len(origins) > 0 {
+		cfg.AllowOrigins = origins
 		cfg.AllowCredentials = true
+	} else {
+		// No allowlist configured: fail closed and reject cross-origin requests.
+		cfg.UnsafeAllowOriginFunc = func(*echo.Context, string) (string, bool, error) { return "", false, nil }
 	}
 	return cfg
 }

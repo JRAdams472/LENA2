@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'screens/edit_recipe_screen.dart';
 import 'screens/event_detail_screen.dart';
 import 'screens/pantry_screen.dart';

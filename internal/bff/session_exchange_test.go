@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -46,15 +46,14 @@ func (f *fakeProvisioner) ProvisionUser(_ context.Context, provider, subject, em
 	return f.user, f.err
 }
 
-func exchangeCtx(t *testing.T, provider, body string) (echo.Context, *httptest.ResponseRecorder) {
+func exchangeCtx(t *testing.T, provider, body string) (*echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	e := echo.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/session/"+provider, strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("provider")
-	c.SetParamValues(provider)
+	c.SetPathValues(echo.PathValues{{Name: "provider", Value: provider}})
 	return c, rec
 }
 

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
@@ -83,7 +83,8 @@ void main() {
         );
 
     test('substitute names base and target', () {
-      expect(describeItemChange(draft('substitute', target: 'shallot'), 'garlic'),
+      expect(
+          describeItemChange(draft('substitute', target: 'shallot'), 'garlic'),
           'Swap garlic for shallot');
     });
     test('remove names the base line', () {
@@ -94,7 +95,8 @@ void main() {
           'Adjust pasta — 0.5 lb');
     });
     test('add names the target', () {
-      expect(describeItemChange(draft('add', target: 'red pepper flakes'), null),
+      expect(
+          describeItemChange(draft('add', target: 'red pepper flakes'), null),
           'Add red pepper flakes');
     });
     test('orphaned anchors fall back to a generic label', () {
@@ -105,14 +107,12 @@ void main() {
 
   group('describeStepChange', () {
     test('replace/remove/add describe the anchor or position', () {
-      expect(
-          describeStepChange(DeltaStepDraft(kind: 'replace'), 3),
+      expect(describeStepChange(DeltaStepDraft(kind: 'replace'), 3),
           'Replace step 3');
       expect(describeStepChange(DeltaStepDraft(kind: 'remove'), 2),
           'Remove step 2');
       expect(
-          describeStepChange(
-              DeltaStepDraft(kind: 'add', stepNumber: 2), null),
+          describeStepChange(DeltaStepDraft(kind: 'add', stepNumber: 2), null),
           'Add a step at 2');
       expect(describeStepChange(DeltaStepDraft(kind: 'replace'), null),
           'Replace the original step');
@@ -146,8 +146,7 @@ void main() {
 
     test('remove sends only the anchor + kind', () {
       expect(
-          toDeltaItemInput(
-              DeltaItemDraft(recipeItemId: '12', kind: 'remove')),
+          toDeltaItemInput(DeltaItemDraft(recipeItemId: '12', kind: 'remove')),
           {'recipeItemId': '12', 'kind': 'remove'});
     });
 
@@ -195,8 +194,7 @@ void main() {
 
     test('a changed field marks the set dirty', () {
       final edited = DeltaItemDraft.fromRow(row)..quantity = 3;
-      expect(
-          itemDraftsEqual([DeltaItemDraft.fromRow(row)], [edited]), isFalse);
+      expect(itemDraftsEqual([DeltaItemDraft.fromRow(row)], [edited]), isFalse);
     });
 
     test('added/removed rows mark the set dirty', () {
@@ -244,7 +242,9 @@ void main() {
       await tester.pumpWidget(card(
         items: [
           DeltaItemDraft(
-              recipeItemId: '10', kind: 'substitute', ingredientName: 'shallot'),
+              recipeItemId: '10',
+              kind: 'substitute',
+              ingredientName: 'shallot'),
           DeltaItemDraft(
               kind: 'substitute', ingredientName: 'miso', orphaned: true),
         ],
@@ -318,9 +318,13 @@ void main() {
                     kind: 'substitute',
                     ingredientName: 'shallot'),
                 DeltaItemDraft(
-                    recipeItemId: '11', kind: 'adjust', quantity: 0.5, unit: 'lb'),
+                    recipeItemId: '11',
+                    kind: 'adjust',
+                    quantity: 0.5,
+                    unit: 'lb'),
                 DeltaItemDraft(recipeItemId: '12', kind: 'remove'),
-                DeltaItemDraft(kind: 'add', ingredientName: 'red pepper flakes'),
+                DeltaItemDraft(
+                    kind: 'add', ingredientName: 'red pepper flakes'),
               ],
               stepDrafts: [
                 DeltaStepDraft(stepId: '20', kind: 'replace'),

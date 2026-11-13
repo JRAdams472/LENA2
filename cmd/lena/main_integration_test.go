@@ -48,10 +48,12 @@ func TestIntegration(t *testing.T) {
 	e, resolver, err := newServer(cfg, pool, log, nil)
 	require.NoError(t, err)
 	// HTTP timeouts must be wired onto the underlying server.
-	assert.Equal(t, cfg.HTTPReadHeaderTimeout, e.Server.ReadHeaderTimeout)
-	assert.Equal(t, cfg.HTTPReadTimeout, e.Server.ReadTimeout)
-	assert.Equal(t, cfg.HTTPWriteTimeout, e.Server.WriteTimeout)
-	assert.Equal(t, cfg.HTTPIdleTimeout, e.Server.IdleTimeout)
+	var hs http.Server
+	require.NoError(t, newStartConfig(cfg, log).BeforeServeFunc(&hs))
+	assert.Equal(t, cfg.HTTPReadHeaderTimeout, hs.ReadHeaderTimeout)
+	assert.Equal(t, cfg.HTTPReadTimeout, hs.ReadTimeout)
+	assert.Equal(t, cfg.HTTPWriteTimeout, hs.WriteTimeout)
+	assert.Equal(t, cfg.HTTPIdleTimeout, hs.IdleTimeout)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/JRAdams472/LENA2/internal/bff"
 	"github.com/JRAdams472/LENA2/internal/household"
@@ -32,10 +32,10 @@ func TestBuildCORSConfig(t *testing.T) {
 	if wild.AllowCredentials {
 		t.Error("wildcard origins must not allow credentials")
 	}
-	if wild.AllowOriginFunc == nil {
-		t.Error("wildcard origins should reflect via AllowOriginFunc")
+	if wild.UnsafeAllowOriginFunc == nil {
+		t.Fatal("wildcard origins should reflect via UnsafeAllowOriginFunc")
 	}
-	if ok, err := wild.AllowOriginFunc("https://evil.example.com"); err != nil || !ok {
+	if origin, ok, err := wild.UnsafeAllowOriginFunc(nil, "https://evil.example.com"); err != nil || !ok || origin != "https://evil.example.com" {
 		t.Error("wildcard should accept any origin")
 	}
 
@@ -48,6 +48,21 @@ func TestBuildCORSConfig(t *testing.T) {
 	want := []string{"https://app.example.com", "https://admin.example.com"}
 	if !reflect.DeepEqual(explicit.AllowOrigins, want) {
 		t.Errorf("AllowOrigins = %v, want %v", explicit.AllowOrigins, want)
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	cases := map[string]int64{"512": 512, "8K": 8 << 10, "64kb": 64 << 10, "4M": 4 << 20, "1MiB": 1 << 20, "2G": 2 << 30}
+	for in, want := range cases {
+		got, err := parseByteSize(in)
+		if err != nil || got != want {
+			t.Errorf("parseByteSize(%q) = %d, %v; want %d", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "K", "abc", "-1M", "0"} {
+		if _, err := parseByteSize(in); err == nil {
+			t.Errorf("parseByteSize(%q) should fail", in)
+		}
 	}
 }
 
@@ -459,7 +474,7 @@ func TestRegisterAuthRoutes(t *testing.T) {
 	registerAuthRoutes(e, cfg, s)
 
 	var paths []string
-	for _, r := range e.Routes() {
+	for _, r := range e.Router().Routes() {
 		paths = append(paths, r.Method+" "+r.Path)
 	}
 	// All providers share a single :provider route; the codeVerifier

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/graph-gophers/graphql-go"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/JRAdams472/LENA2/internal/idempotency"
 )
@@ -127,7 +127,7 @@ type idemRejection struct {
 // a rejection describing why the request must not run. A nil store or
 // unauthenticated request skips dedup entirely; store failures fail open —
 // dedup must never break the API.
-func (r *Resolver) beginDedup(c echo.Context, userID int64, key string, body []byte) (*idemClaim, *idempotency.Stored, *idemRejection) {
+func (r *Resolver) beginDedup(c *echo.Context, userID int64, key string, body []byte) (*idemClaim, *idempotency.Stored, *idemRejection) {
 	store := r.IdemStore
 	hash := idempotency.Hash(body)
 	if key == "" {

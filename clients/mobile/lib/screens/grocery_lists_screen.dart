@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../widgets/adaptive_detail.dart';
 import '../widgets/empty_state.dart';

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
@@ -398,7 +398,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	e := echo.New()
 	e.Use(a.Middleware())
-	e.POST("/graphql", func(c echo.Context) error {
+	e.POST("/graphql", func(c *echo.Context) error {
 		u, ok := currentuser.FromContext(c.Request().Context())
 		if !ok || u.UserID != 3 {
 			return c.NoContent(http.StatusInternalServerError)
@@ -729,7 +729,7 @@ func TestMiddleware_SessionAuthMarked(t *testing.T) {
 	c := e.NewContext(req, rec)
 
 	var sawSession bool
-	h := a.Middleware()(func(c echo.Context) error {
+	h := a.Middleware()(func(c *echo.Context) error {
 		sawSession = isSessionAuth(c.Request().Context())
 		_, ok := currentuser.FromContext(c.Request().Context())
 		assert.True(t, ok)
@@ -889,7 +889,7 @@ func TestProvisionApprovalGate_Middleware(t *testing.T) {
 
 			e := echo.New()
 			e.Use(a.Middleware())
-			e.POST("/graphql", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+			e.POST("/graphql", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 
 			raw := signToken(t, priv, "key-a", iss.server.URL, "lena-client", "sub-11", "u@example.com", nil)
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/graphql", nil)

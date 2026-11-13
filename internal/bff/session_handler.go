@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 
 	"github.com/JRAdams472/LENA2/internal/platform/currentuser"
 	"github.com/JRAdams472/LENA2/internal/session"
@@ -26,7 +26,7 @@ import (
 // platform secure storage. A request supplies either form.
 const refreshCookieName = "lena_refresh"
 
-func refreshCookieSecure(c echo.Context) bool {
+func refreshCookieSecure(c *echo.Context) bool {
 	return c.IsTLS() ||
 		strings.EqualFold(c.Request().Header.Get("X-Forwarded-Proto"), "https")
 }
@@ -34,7 +34,7 @@ func refreshCookieSecure(c echo.Context) bool {
 // setRefreshCookie writes the rotated refresh token as a browser cookie.
 // MaxAge mirrors the server-side session expiry so the cookie dies with
 // the credential instead of outliving it.
-func setRefreshCookie(c echo.Context, iss session.Issued) {
+func setRefreshCookie(c *echo.Context, iss session.Issued) {
 	c.SetCookie(&http.Cookie{ //nolint:gosec // Secure is set dynamically — literal true would break the plain-HTTP dev stack
 		Name:     refreshCookieName,
 		Value:    iss.RefreshToken,
@@ -46,7 +46,7 @@ func setRefreshCookie(c echo.Context, iss session.Issued) {
 	})
 }
 
-func clearRefreshCookie(c echo.Context) {
+func clearRefreshCookie(c *echo.Context) {
 	c.SetCookie(&http.Cookie{ //nolint:gosec // Secure is set dynamically — literal true would break the plain-HTTP dev stack
 		Name:     refreshCookieName,
 		Value:    "",
@@ -61,7 +61,7 @@ func clearRefreshCookie(c echo.Context) {
 // requestRefreshToken reads the credential from the JSON body (mobile) or
 // the cookie (browser) — the body wins when both are present so a stale
 // cookie cannot shadow an explicit client credential.
-func requestRefreshToken(c echo.Context, req sessionTokenRequest) string {
+func requestRefreshToken(c *echo.Context, req sessionTokenRequest) string {
 	if req.RefreshToken != "" {
 		return req.RefreshToken
 	}
@@ -96,7 +96,7 @@ func NewSessionHandler(sessions sessionIssuer) *SessionHandler {
 // ID token — is what gets exchanged); refresh/revoke are unauthenticated
 // but IP-rate-limited because the refresh token is the credential.
 func (h *SessionHandler) RegisterRoutes(e *echo.Echo, authMW, ipLimit echo.MiddlewareFunc) {
-	g := e.Group(sessionPath, middleware.BodyLimit("8K"))
+	g := e.Group(sessionPath, middleware.BodyLimit(8<<10))
 	g.POST("", h.Create, ipLimit, authMW)
 	g.POST("/refresh", h.Refresh, ipLimit)
 	g.POST("/revoke", h.Revoke, ipLimit)
@@ -130,7 +130,7 @@ const (
 // auth middleware) for a LENA session. Requests authenticated by a LENA
 // access token are rejected — a stolen short-lived token must not be
 // able to mint fresh refresh tokens.
-func (h *SessionHandler) Create(c echo.Context) error {
+func (h *SessionHandler) Create(c *echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	}
@@ -162,7 +162,7 @@ func (h *SessionHandler) Create(c echo.Context) error {
 // Refresh rotates a refresh token into a new credential pair. The refresh
 // token is the credential — the caller's access token is expected to be
 // expired, so this endpoint is intentionally unauthenticated.
-func (h *SessionHandler) Refresh(c echo.Context) error {
+func (h *SessionHandler) Refresh(c *echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	}
@@ -191,7 +191,7 @@ func (h *SessionHandler) Refresh(c echo.Context) error {
 }
 
 // Revoke ends a session (sign-out). The refresh token is the credential.
-func (h *SessionHandler) Revoke(c echo.Context) error {
+func (h *SessionHandler) Revoke(c *echo.Context) error {
 	if h.sessions == nil || !h.sessions.Enabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, msgSessionsUnavailable)
 	}

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ func TestSetupAndHTTPMetrics(t *testing.T) {
 	mw, err := HTTPMetrics()
 	require.NoError(t, err)
 	e.Use(mw)
-	e.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+	e.GET("/ping", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ping", nil))

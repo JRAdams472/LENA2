@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -145,8 +145,9 @@ void main() {
             },
           };
         }
-        return _listsResponse(
-            [_list('1', '2026-10-04T18:48:42Z', mealPlan: _plan('7', 'Wk 37'))]);
+        return _listsResponse([
+          _list('1', '2026-10-04T18:48:42Z', mealPlan: _plan('7', 'Wk 37'))
+        ]);
       });
       await _pump(tester, mock);
       await tester.pumpAndSettle();
@@ -178,8 +179,9 @@ void main() {
             },
           };
         }
-        return _listsResponse(
-            [_list('1', '2026-10-04T18:48:42Z', mealPlan: _plan('7', 'Wk 37'))]);
+        return _listsResponse([
+          _list('1', '2026-10-04T18:48:42Z', mealPlan: _plan('7', 'Wk 37'))
+        ]);
       });
       await _pump(tester, mock);
       await tester.pumpAndSettle();

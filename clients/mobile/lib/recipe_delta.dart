@@ -76,9 +76,9 @@ class DeltaItemDraft {
 
   /// Display name of the swap/add target (brand item or ingredient).
   String get targetLabel =>
-      ingredientName ?? itemName ?? (ingredientId != null || itemId != null
-          ? 'selected item'
-          : 'ingredient');
+      ingredientName ??
+      itemName ??
+      (ingredientId != null || itemId != null ? 'selected item' : 'ingredient');
 }
 
 /// Step tweak: replace a step's text/meta, remove it, or add a new step

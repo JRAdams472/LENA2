@@ -27,6 +27,7 @@ dependencies:
   flutter_web_auth_2: ^5.1.0
   sign_in_with_apple: ^8.2.0
   crypto: ^3.0.7
+  material_ui: ^1.11.0
 
 dev_dependencies:
   flutter_test:
