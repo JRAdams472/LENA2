@@ -13,7 +13,7 @@
 # http://host.docker.internal:9000 — see .devin/mcp_config.local.json.
 services:
   sonarqube:
-    image: sonarqube:community@sha256:f95aaa9016dd4e92c7d70691167a6d96dbb5d8acffd61eba1cb4335d364a7840
+    image: sonarqube:community@sha256:1ce197471f5f2bac347694a336862fd2c23e9f57c6edb46acebbfbe70f2c7d9c
     container_name: lena2-sonarqube
     ports:
       - "127.0.0.1:9000:9000"
