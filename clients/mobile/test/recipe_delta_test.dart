@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:lena_mobile/graphql_config.dart';
@@ -10,20 +9,6 @@ import 'package:lena_mobile/screens/recipe_tweaks.dart';
 import 'package:lena_mobile/theme.dart';
 
 void main() {
-  setUpAll(() async {
-    // Real fonts so golden captures render legible text instead of boxes.
-    final loader = FontLoader('Nunito');
-    for (final f in [
-      'Nunito-Regular.ttf',
-      'Nunito-Medium.ttf',
-      'Nunito-SemiBold.ttf',
-      'Nunito-Bold.ttf',
-    ]) {
-      loader.addFont(Future.value(
-          File('assets/fonts/$f').readAsBytesSync().buffer.asByteData()));
-    }
-    await loader.load();
-  });
   group('DeltaItemDraft.fromRow', () {
     test('maps a substitute row with target names', () {
       final d = DeltaItemDraft.fromRow({
