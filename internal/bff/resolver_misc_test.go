@@ -271,8 +271,8 @@ func TestResolver_AsyncWorkerBoundsAndDrains(t *testing.T) {
 		shDone <- r.Shutdown(shCtx)
 	}()
 	select {
-	case <-shDone:
-		t.Fatal("Shutdown returned while tasks were still running")
+	case err := <-shDone:
+		t.Fatalf("Shutdown returned while tasks were still running (err=%v)", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 	close(release)

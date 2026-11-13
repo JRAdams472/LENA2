@@ -400,7 +400,8 @@ func runCopy(ctx context.Context, pool *pgxpool.Pool, root, stmt string) error {
 		filePath = filepath.Join(root, filePath)
 	}
 
-	cf, err := os.Open(filepath.Clean(filePath))
+	// Path comes from the repo's own migration/seed SQL, resolved under root.
+	cf, err := os.Open(filepath.Clean(filePath)) //nolint:gosec // G703: trusted repo-local seed path
 	if err != nil {
 		return fmt.Errorf("open copy source %s: %w", filePath, err)
 	}
