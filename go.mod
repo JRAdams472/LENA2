@@ -6,7 +6,7 @@ require (
 	firebase.google.com/go/v4 v4.23.0
 	github.com/exaring/otelpgx v0.13.0
 	github.com/go-playground/validator/v10 v10.30.6
-	github.com/graph-gophers/graphql-go v1.11.0
+	github.com/graph-gophers/graphql-go v1.11.1
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/labstack/echo-otel/v5 v5.0.0
