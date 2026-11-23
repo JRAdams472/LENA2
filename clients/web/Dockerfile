@@ -34,7 +34,7 @@ RUN npm run build
 # Runtime stage — distroless nodejs: no shell, npm, or OS tools for an
 # attacker to pivot with. The image's entrypoint is node itself, and the
 # :nonroot tag runs as uid 65532. This is the production target.
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:6abfcb367ebc291572c774c1592a986be2ab26a2486f73093401327495a5962a AS runner
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:39b0407357c9fadf1a9708d22088f02de21f0e1e8a688474eea2d8701e7d5693 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
